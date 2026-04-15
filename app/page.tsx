@@ -202,7 +202,7 @@ export default async function Home({
             )}
           </div>
           <div>
-            <div className="inline-flex flex-col overflow-hidden border rounded-xl border-zinc-600 bg-zinc-100 shadow-lg mb-3 min-w-21">
+            <div className="inline-flex flex-col overflow-hidden border rounded-xl border-zinc-600 bg-zinc-300 shadow-lg mb-3 min-w-21">
               <div className="bg-brand-purple text-white text-xs font-bold py-1 px-2 flex items-center justify-between gap-1 w-full">
                 <span className="tracking-[0.14em]">{todayMonthLabel}</span>
                 <span>|</span>
