@@ -59,6 +59,56 @@ export default async function Home({
     console.error(err);
   }
 
+  const today = new Date().toLocaleDateString("en-US", {
+    month: "numeric",
+    day: "numeric",
+    year: "numeric",
+  });
+
+  const todayParts = new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).formatToParts(new Date());
+  const todayMonthLabel =
+    todayParts.find((part) => part.type === "month")?.value.toUpperCase() || "";
+  const todayDayLabel =
+    todayParts.find((part) => part.type === "day")?.value || "";
+  const todayYearLabel =
+    todayParts.find((part) => part.type === "year")?.value || "";
+
+  const venueStats = Array.from(
+    games.reduce((acc, game) => {
+      const venue = game._embedded?.venue?.name?.trim();
+      if (!venue) return acc;
+
+      const current = acc.get(venue) || {
+        venue,
+        todayGames: 0,
+        cancelledTodayGames: 0,
+      };
+
+      if (game.localized_date) {
+        const gameDate = new Date(game.localized_date).toLocaleDateString(
+          "en-US",
+          {
+            month: "numeric",
+            day: "numeric",
+            year: "numeric",
+          },
+        );
+
+        if (gameDate === today) {
+          current.todayGames += 1;
+          if (game.status === "C") current.cancelledTodayGames += 1;
+        }
+      }
+
+      acc.set(venue, current);
+      return acc;
+    }, new Map<string, { venue: string; todayGames: number; cancelledTodayGames: number }>()),
+  ).sort((a, b) => a[0].localeCompare(b[0]));
+
   return (
     <main className="min-h-screen">
       {/* Hero Section */}
@@ -84,7 +134,7 @@ export default async function Home({
           </h1>
 
           <p className="text-2xl md:text-3xl mb-10 text-brand-gold max-w-2xl mx-auto">
-            Fun, development, and competition for kids ages 3–12 in Ascension
+            Fun, development, and competition for kids ages 9–17 in Ascension
             Parish
           </p>
 
@@ -112,13 +162,56 @@ export default async function Home({
         <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-3 gap-10 text-center">
           <div>
             <div className="text-6xl mb-3">🏟️</div>
-            <h3 className="font-semibold text-xl mb-1">
-              Tee-Joe Gonzales Park
-            </h3>
-            <p className="text-zinc-400">Primary home fields</p>
+            <h3 className="font-semibold text-xl mb-3">Park Status</h3>
+            {venueStats.length > 0 ? (
+              <div className="space-y-2">
+                {venueStats.map(([, venue]) => {
+                  const statusLabel =
+                    venue.todayGames === 0
+                      ? "No games today"
+                      : venue.cancelledTodayGames === venue.todayGames
+                        ? "Rainout today"
+                        : venue.cancelledTodayGames > 0
+                          ? `${venue.cancelledTodayGames}/${venue.todayGames} cancelled`
+                          : "Games today";
+
+                  const statusClass =
+                    venue.todayGames === 0
+                      ? "text-zinc-500"
+                      : venue.cancelledTodayGames === venue.todayGames
+                        ? "text-red-400"
+                        : venue.cancelledTodayGames > 0
+                          ? "text-amber-400"
+                          : "text-emerald-400";
+
+                  return (
+                    <p
+                      key={venue.venue}
+                      className="text-zinc-200 leading-tight"
+                    >
+                      {venue.venue}
+                      <small className={`block text-xs mt-1 ${statusClass}`}>
+                        {statusLabel}
+                      </small>
+                    </p>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-zinc-400">No venue data yet</p>
+            )}
           </div>
           <div>
-            <div className="text-6xl mb-3">📅</div>
+            <div className="inline-flex flex-col overflow-hidden border rounded-xl border-zinc-600 bg-zinc-100 shadow-lg mb-3 min-w-21">
+              <div className="bg-brand-purple text-white text-xs font-bold py-1 px-2 flex items-center justify-between gap-1 w-full">
+                <span className="tracking-[0.14em]">{todayMonthLabel}</span>
+                <span>|</span>
+                <span className="tracking-[0.08em]">{todayYearLabel}</span>
+              </div>
+              <div className="text-4xl font-black leading-none py-3 text-shadow-zinc-950 text-zinc-900">
+                {todayDayLabel}
+              </div>
+            </div>
             <h3 className="font-semibold text-xl mb-1">Registration</h3>
             <p className="text-brand-gold">
               {regOpen ? "Spring 2026 Season" : "Closed"}
