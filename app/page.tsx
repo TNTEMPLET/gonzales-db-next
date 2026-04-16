@@ -9,6 +9,14 @@ import logo from "@/public/images/logo.png";
 
 type ViewMode = "thisWeek" | "nextWeek" | "fullSeason";
 
+type HomepageRotatorPost = {
+  id: string;
+  title: string;
+  slug: string;
+  imageUrl: string | null;
+  excerpt: string | null;
+};
+
 export default async function Home({
   searchParams,
 }: {
@@ -19,8 +27,8 @@ export default async function Home({
   const regOpen = isRegistrationOpen();
   const rotatorPosts = await getHomepageRotatorPosts();
   const heroRotatorItems = rotatorPosts
-    .filter((post) => Boolean(post.imageUrl))
-    .map((post) => ({
+    .filter((post: HomepageRotatorPost) => Boolean(post.imageUrl))
+    .map((post: HomepageRotatorPost) => ({
       id: post.id,
       title: post.title,
       slug: post.slug,
