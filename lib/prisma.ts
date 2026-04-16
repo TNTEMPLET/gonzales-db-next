@@ -1,13 +1,15 @@
 import { PrismaClient } from "@prisma/client";
-
-import { createSqliteAdapter } from "@/lib/prismaAdapter";
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
 
 declare global {
   var prisma: PrismaClient | undefined;
 }
 
 function createClient() {
-  return new PrismaClient({ adapter: createSqliteAdapter() });
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg(pool);
+  return new PrismaClient({ adapter });
 }
 
 const cached = global.prisma;

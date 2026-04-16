@@ -5,13 +5,14 @@ import { defineConfig } from "prisma/config";
 export default defineConfig({
   schema: path.join(__dirname, "prisma", "schema.prisma"),
   datasource: {
-    url: "file:./prisma/dev.db",
+    url: process.env.DATABASE_URL,
   },
   migrate: {
     async adapter() {
-      const { PrismaBetterSqlite3 } =
-        await import("@prisma/adapter-better-sqlite3");
-      return new PrismaBetterSqlite3({ url: "file:./prisma/dev.db" });
+      const { Pool } = await import("pg");
+      const { PrismaPg } = await import("@prisma/adapter-pg");
+      const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+      return new PrismaPg(pool);
     },
   },
 });

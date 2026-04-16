@@ -1,9 +1,8 @@
-import { NewsStatus, PrismaClient } from "@prisma/client";
+import { PrismaClient } from "@prisma/client";
+import { NewsStatus } from "@prisma/client";
 import bcrypt from "bcryptjs";
 
-import { createSqliteAdapter } from "@/lib/prismaAdapter";
-
-const prisma = new PrismaClient({ adapter: createSqliteAdapter() });
+const prisma = new PrismaClient();
 
 async function main() {
   const posts = [
