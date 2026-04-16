@@ -118,7 +118,9 @@ export async function GET(request: NextRequest) {
         prisma.adminAuditLog.count({ where: auditWhere }),
       ]);
 
-    const adminEmailSet = new Set(admins.map((admin) => admin.email));
+    const adminEmailSet = new Set(
+      admins.map((admin: { email: string }) => admin.email),
+    );
     const totalPages = Math.max(1, Math.ceil(totalAuditLogs / logPageSize));
 
     return NextResponse.json({
@@ -134,7 +136,7 @@ export async function GET(request: NextRequest) {
         to: logTo?.toISOString() || null,
       },
       currentAdminEmail: currentAdmin?.email || null,
-      data: users.map((user) => ({
+      data: users.map((user: { email: string }) => ({
         ...user,
         isAdmin: adminEmailSet.has(user.email),
       })),
