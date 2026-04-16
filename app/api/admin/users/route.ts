@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AdminAuditAction } from "@prisma/client";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureNewsAdmin } from "@/lib/news/auth";
@@ -13,6 +12,8 @@ type DemotePayload = {
   adminId?: string;
   email?: string;
 };
+
+type AuditAction = "PROMOTE" | "DEMOTE";
 
 function toPositiveInt(value: string | null, fallback: number) {
   const parsed = Number(value);
@@ -70,11 +71,11 @@ export async function GET(request: NextRequest) {
     );
     const logQuery = query.get("logQuery")?.trim() || "";
     const logQueryUpper = logQuery.toUpperCase();
-    const actionQuery =
-      logQueryUpper === AdminAuditAction.PROMOTE
-        ? AdminAuditAction.PROMOTE
-        : logQueryUpper === AdminAuditAction.DEMOTE
-          ? AdminAuditAction.DEMOTE
+    const actionQuery: AuditAction | null =
+      logQueryUpper === "PROMOTE"
+        ? "PROMOTE"
+        : logQueryUpper === "DEMOTE"
+          ? "DEMOTE"
           : null;
     const logFrom = parseDate(query.get("logFrom"));
     const logTo = parseDate(query.get("logTo"));
