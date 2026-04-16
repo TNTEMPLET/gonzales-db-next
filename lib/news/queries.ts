@@ -1,42 +1,63 @@
 import prisma from "@/lib/prisma";
 
 export async function getPublishedNewsPosts() {
-  return prisma.newsPost.findMany({
-    where: { status: "PUBLISHED" },
-    orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
-  });
+  try {
+    return await prisma.newsPost.findMany({
+      where: { status: "PUBLISHED" },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+    });
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Unknown news loading error";
+    console.error(`Failed to fetch published news posts: ${message}`);
+    return [];
+  }
 }
 
 export async function getPublishedNewsPostBySlug(slug: string) {
-  return prisma.newsPost.findFirst({
-    where: {
-      slug,
-      status: "PUBLISHED",
-    },
-  });
+  try {
+    return await prisma.newsPost.findFirst({
+      where: {
+        slug,
+        status: "PUBLISHED",
+      },
+    });
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Unknown news loading error";
+    console.error(`Failed to fetch published news post by slug: ${message}`);
+    return null;
+  }
 }
 
 export async function getHomepageRotatorPosts() {
-  return prisma.newsPost.findMany({
-    where: {
-      status: "PUBLISHED",
-      rotatorEnabled: true,
-      imageUrl: {
-        not: null,
+  try {
+    return await prisma.newsPost.findMany({
+      where: {
+        status: "PUBLISHED",
+        rotatorEnabled: true,
+        imageUrl: {
+          not: null,
+        },
       },
-    },
-    select: {
-      id: true,
-      title: true,
-      slug: true,
-      imageUrl: true,
-      excerpt: true,
-    },
-    orderBy: [
-      { featured: "desc" },
-      { publishedAt: "desc" },
-      { createdAt: "desc" },
-    ],
-    take: 8,
-  });
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        imageUrl: true,
+        excerpt: true,
+      },
+      orderBy: [
+        { featured: "desc" },
+        { publishedAt: "desc" },
+        { createdAt: "desc" },
+      ],
+      take: 8,
+    });
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Unknown rotator loading error";
+    console.error(`Failed to fetch homepage rotator posts: ${message}`);
+    return [];
+  }
 }
