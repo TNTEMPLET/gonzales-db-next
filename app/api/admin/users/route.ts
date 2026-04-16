@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { Prisma } from "@prisma/client";
+import { AdminAuditAction } from "@prisma/client";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureNewsAdmin } from "@/lib/news/auth";
@@ -69,10 +69,17 @@ export async function GET(request: NextRequest) {
       100,
     );
     const logQuery = query.get("logQuery")?.trim() || "";
+    const logQueryUpper = logQuery.toUpperCase();
+    const actionQuery =
+      logQueryUpper === AdminAuditAction.PROMOTE
+        ? AdminAuditAction.PROMOTE
+        : logQueryUpper === AdminAuditAction.DEMOTE
+          ? AdminAuditAction.DEMOTE
+          : null;
     const logFrom = parseDate(query.get("logFrom"));
     const logTo = parseDate(query.get("logTo"));
 
-    const auditWhere: Prisma.AdminAuditLogWhereInput = {
+    const auditWhere = {
       createdAt:
         logFrom || logTo
           ? {
@@ -87,10 +94,7 @@ export async function GET(request: NextRequest) {
             { targetName: { contains: logQuery } },
             { sourcePath: { contains: logQuery } },
             { requestIp: { contains: logQuery } },
-            {
-              action:
-                logQuery.toUpperCase() === "PROMOTE" ? "PROMOTE" : "DEMOTE",
-            },
+            ...(actionQuery ? [{ action: actionQuery }] : []),
           ]
         : undefined,
     };
