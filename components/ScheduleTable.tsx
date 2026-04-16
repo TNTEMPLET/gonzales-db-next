@@ -933,7 +933,10 @@ export default function ScheduleTable({
           </div>
         )}
 
-        <p className="text-center text-xs text-zinc-500 mt-8">
+        <p
+          className="text-center text-xs text-zinc-500 mt-8"
+          suppressHydrationWarning
+        >
           Data refreshes every 5 minutes • Last updated: {lastUpdateTime}
         </p>
       </div>
