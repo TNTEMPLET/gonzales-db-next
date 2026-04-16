@@ -1,8 +1,15 @@
 import { PrismaClient } from "@prisma/client";
-import { NewsStatus } from "@prisma/client";
+import { Pool } from "pg";
+import { PrismaPg } from "@prisma/adapter-pg";
 import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient();
+function createClient() {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  const adapter = new PrismaPg(pool);
+  return new PrismaClient({ adapter });
+}
+
+const prisma = createClient();
 
 async function main() {
   const posts = [
@@ -14,7 +21,7 @@ async function main() {
       content:
         "Opening Day starts at 8:30 AM with team check-in, followed by a parade of teams and first games at 10:00 AM.",
       author: "League Staff",
-      status: NewsStatus.PUBLISHED,
+      status: "PUBLISHED" as const,
       featured: true,
       publishedAt: new Date(),
     },
@@ -26,7 +33,7 @@ async function main() {
       content:
         "Rainout updates will be posted to the schedule board and announced through league communication channels as conditions change.",
       author: "Board of Directors",
-      status: NewsStatus.PUBLISHED,
+      status: "PUBLISHED" as const,
       featured: false,
       publishedAt: new Date(),
     },
