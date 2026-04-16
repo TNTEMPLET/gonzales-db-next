@@ -56,7 +56,7 @@ async function GamesContent({
         <h3 className="font-semibold text-2xl mb-6 flex items-center gap-3">
           📅 Upcoming & Recent Games
         </h3>
-        <div className="space-y-4 max-h-[620px] overflow-auto pr-2 custom-scroll">
+        <div className="space-y-4 max-h-155 overflow-auto pr-2 custom-scroll">
           {games.map((game) => {
             const gameDate = game.start_time
               ? new Date(game.start_time).toLocaleString("en-US", {
