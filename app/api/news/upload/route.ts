@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import path from "node:path";
 import { mkdir, writeFile } from "node:fs/promises";
 
+import { put } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureNewsAdmin } from "@/lib/news/auth";
@@ -71,13 +72,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const uniqueName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.${safeExt}`;
+    const arrayBuffer = await file.arrayBuffer();
+
+    if (process.env.NODE_ENV === "production") {
+      const blob = await put(`news/${uniqueName}`, Buffer.from(arrayBuffer), {
+        access: "public",
+        addRandomSuffix: false,
+        contentType: file.type,
+      });
+
+      return NextResponse.json({
+        data: {
+          imageUrl: blob.url,
+        },
+      });
+    }
+
     const uploadDir = path.join(process.cwd(), "public", "uploads", "news");
     await mkdir(uploadDir, { recursive: true });
 
-    const uniqueName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.${safeExt}`;
     const destination = path.join(uploadDir, uniqueName);
-
-    const arrayBuffer = await file.arrayBuffer();
     await writeFile(destination, Buffer.from(arrayBuffer));
 
     return NextResponse.json({
@@ -87,6 +102,19 @@ export async function POST(request: NextRequest) {
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
+    if (
+      message.includes("BLOB_READ_WRITE_TOKEN") ||
+      message.includes("Vercel Blob")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Image uploads require Vercel Blob in production. Connect Blob storage and set BLOB_READ_WRITE_TOKEN.",
+        },
+        { status: 500 },
+      );
+    }
+
     return NextResponse.json(
       { error: `Failed to upload image: ${message}` },
       { status: 500 },
