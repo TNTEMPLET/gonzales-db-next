@@ -10,6 +10,17 @@ export const metadata = {
     "Latest announcements, rainout alerts, and league updates from Gonzales Diamond Baseball.",
 };
 
+type NewsListPost = {
+  id: string;
+  slug: string;
+  title: string;
+  excerpt: string | null;
+  imageUrl: string | null;
+  author: string | null;
+  featured: boolean;
+  publishedAt: Date | null;
+};
+
 function formatPublishedDate(value: Date | null) {
   if (!value) return "Draft";
   return new Intl.DateTimeFormat("en-US", {
@@ -54,7 +65,7 @@ export default async function NewsPage() {
           </div>
         ) : (
           <div className="grid gap-5">
-            {posts.map((post) => (
+            {posts.map((post: NewsListPost) => (
               <article
                 key={post.id}
                 className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 hover:border-zinc-700 transition"
