@@ -1,9 +1,10 @@
-import { NewsStatus, Prisma } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { isNewsAdmin, ensureNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
+
+type NewsStatus = "DRAFT" | "PUBLISHED";
 
 type CreateNewsPayload = {
   title?: string;
@@ -22,8 +23,7 @@ const MAX_PAGE_SIZE = 50;
 
 function toStatus(value: string | null): NewsStatus | null {
   if (!value) return null;
-  if (value === NewsStatus.DRAFT || value === NewsStatus.PUBLISHED)
-    return value;
+  if (value === "DRAFT" || value === "PUBLISHED") return value;
   return null;
 }
 
@@ -64,8 +64,8 @@ export async function GET(request: NextRequest) {
     }
 
     const admin = await isNewsAdmin(request);
-    const where: Prisma.NewsPostWhereInput = {
-      status: requestedStatus || (admin ? undefined : NewsStatus.PUBLISHED),
+    const where = {
+      status: requestedStatus || (admin ? undefined : "PUBLISHED"),
     };
 
     const [items, total] = await Promise.all([
@@ -115,7 +115,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const status = body.status || NewsStatus.DRAFT;
+    const status = body.status || "DRAFT";
     const requestedSlug = body.slug ? slugify(body.slug) : slugify(body.title);
     if (!requestedSlug) {
       return NextResponse.json(
@@ -139,7 +139,7 @@ export async function POST(request: NextRequest) {
         status,
         publishedAt: body.publishedAt
           ? new Date(body.publishedAt)
-          : status === NewsStatus.PUBLISHED
+          : status === "PUBLISHED"
             ? new Date()
             : null,
       },

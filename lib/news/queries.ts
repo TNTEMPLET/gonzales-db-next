@@ -1,10 +1,8 @@
-import { NewsStatus } from "@prisma/client";
-
 import prisma from "@/lib/prisma";
 
 export async function getPublishedNewsPosts() {
   return prisma.newsPost.findMany({
-    where: { status: NewsStatus.PUBLISHED },
+    where: { status: "PUBLISHED" },
     orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
   });
 }
@@ -13,7 +11,7 @@ export async function getPublishedNewsPostBySlug(slug: string) {
   return prisma.newsPost.findFirst({
     where: {
       slug,
-      status: NewsStatus.PUBLISHED,
+      status: "PUBLISHED",
     },
   });
 }
@@ -21,7 +19,7 @@ export async function getPublishedNewsPostBySlug(slug: string) {
 export async function getHomepageRotatorPosts() {
   return prisma.newsPost.findMany({
     where: {
-      status: NewsStatus.PUBLISHED,
+      status: "PUBLISHED",
       rotatorEnabled: true,
       imageUrl: {
         not: null,

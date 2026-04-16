@@ -1,9 +1,10 @@
-import { NewsStatus } from "@prisma/client";
 import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureNewsAdmin, isNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
+
+type NewsStatus = "DRAFT" | "PUBLISHED";
 
 type RouteContext = {
   params: Promise<{ slug: string }>;
@@ -40,7 +41,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
-    if (!(await isNewsAdmin(request)) && post.status !== NewsStatus.PUBLISHED) {
+    if (!(await isNewsAdmin(request)) && post.status !== "PUBLISHED") {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
 
@@ -109,7 +110,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             ? body.publishedAt
               ? new Date(body.publishedAt)
               : null
-            : existing.publishedAt || nextStatus === NewsStatus.PUBLISHED
+            : existing.publishedAt || nextStatus === "PUBLISHED"
               ? existing.publishedAt || new Date()
               : null,
       },
