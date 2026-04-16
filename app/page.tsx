@@ -25,7 +25,16 @@ export default async function Home({
   const resolvedSearchParams = await searchParams;
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const regOpen = isRegistrationOpen();
-  const rotatorPosts = await getHomepageRotatorPosts();
+
+  let rotatorPosts: HomepageRotatorPost[] = [];
+  try {
+    rotatorPosts = (await getHomepageRotatorPosts()) as HomepageRotatorPost[];
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error ? err.message : "Unknown rotator loading error";
+    console.error(`Homepage rotator load failed: ${message}`);
+  }
+
   const heroRotatorItems = rotatorPosts
     .filter((post: HomepageRotatorPost) => Boolean(post.imageUrl))
     .map((post: HomepageRotatorPost) => ({
