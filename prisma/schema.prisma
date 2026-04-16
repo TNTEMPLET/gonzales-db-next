@@ -1,0 +1,93 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum NewsStatus {
+  DRAFT
+  PUBLISHED
+}
+
+enum AdminAuditAction {
+  PROMOTE
+  DEMOTE
+}
+
+model NewsPost {
+  id          String     @id @default(cuid())
+  title       String
+  slug        String     @unique
+  excerpt     String?
+  content     String
+  imageUrl    String?
+  author      String?
+  featured    Boolean    @default(false)
+  rotatorEnabled Boolean @default(false)
+  status      NewsStatus @default(DRAFT)
+  publishedAt DateTime?
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+
+  @@index([status, publishedAt])
+  @@index([slug])
+}
+
+model AdminUser {
+  id           String          @id @default(cuid())
+  email        String          @unique
+  name         String?
+  firstName    String?
+  lastName     String?
+  passwordHash String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  sessions     AdminSession[]
+  auditLogs    AdminAuditLog[] @relation("AdminActorLogs")
+}
+
+model RegisteredUser {
+  id        String   @id @default(cuid())
+  email     String   @unique
+  name      String?
+  firstName String?
+  lastName  String?
+  googleSub String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  auditLogs AdminAuditLog[]
+}
+
+model AdminSession {
+  id        String    @id @default(cuid())
+  tokenHash String    @unique
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  userId    String
+  user      AdminUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model AdminAuditLog {
+  id                     String            @id @default(cuid())
+  action                 AdminAuditAction
+  actorAdminId           String?
+  actorEmail             String
+  targetAdminId          String?
+  targetRegisteredUserId String?
+  targetEmail            String
+  targetName             String?
+  sourcePath             String?
+  requestIp              String?
+  createdAt              DateTime          @default(now())
+
+  actorAdmin            AdminUser?       @relation("AdminActorLogs", fields: [actorAdminId], references: [id], onDelete: SetNull)
+  targetRegisteredUser RegisteredUser? @relation(fields: [targetRegisteredUserId], references: [id], onDelete: SetNull)
+
+  @@index([createdAt])
+  @@index([action, createdAt])
+}

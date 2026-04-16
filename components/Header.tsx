@@ -15,7 +15,7 @@ export default function Header() {
     ...(regOpen ? [{ href: "#register", label: "Registration" }] : []),
     { href: "#teams", label: "Teams" },
     { href: "#fields", label: "Fields & Status" },
-    { href: "#news", label: "News" },
+    { href: "/news", label: "News" },
     { href: "#contact", label: "Contact" },
   ];
 

@@ -1,7 +1,9 @@
 // app/page.tsx
 import Image from "next/image";
 import ScheduleTable from "@/components/ScheduleTable";
+import HeroNewsRotator from "@/components/home/HeroNewsRotator";
 import { fetchGames, type Game } from "@/lib/fetchGames";
+import { getHomepageRotatorPosts } from "@/lib/news/queries";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
 import logo from "@/public/images/logo.png";
 
@@ -15,6 +17,16 @@ export default async function Home({
   const resolvedSearchParams = await searchParams;
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const regOpen = isRegistrationOpen();
+  const rotatorPosts = await getHomepageRotatorPosts();
+  const heroRotatorItems = rotatorPosts
+    .filter((post) => Boolean(post.imageUrl))
+    .map((post) => ({
+      id: post.id,
+      title: post.title,
+      slug: post.slug,
+      imageUrl: post.imageUrl || "",
+      excerpt: post.excerpt,
+    }));
 
   // Calculate date range based on view mode
   let startDate: string;
@@ -112,50 +124,54 @@ export default async function Home({
   return (
     <main className="min-h-screen">
       {/* Hero Section */}
-      <section className="relative h-[75vh] p-4 flex items-center justify-center bg-black overflow-hidden">
-        <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(245,158,11,0.18),transparent_50%),radial-gradient(circle_at_80%_80%,rgba(124,58,237,0.2),transparent_55%),linear-gradient(145deg,#09090b,#18181b)]" />
-        <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.12)_1px,transparent_1px)] bg-size-[48px_48px]" />
-        <Image
-          src={logo}
-          alt="Gonzales Diamond Baseball"
-          fill
-          priority
-          className="object-contain opacity-15 scale-[1.35] blur-[1px]"
-        />
-        <div className="absolute inset-0 bg-black/45" />
+      {heroRotatorItems.length > 0 ? (
+        <HeroNewsRotator items={heroRotatorItems} />
+      ) : (
+        <section className="relative h-[75vh] p-4 flex items-center justify-center bg-black overflow-hidden">
+          <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(245,158,11,0.18),transparent_50%),radial-gradient(circle_at_80%_80%,rgba(124,58,237,0.2),transparent_55%),linear-gradient(145deg,#09090b,#18181b)]" />
+          <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.12)_1px,transparent_1px)] bg-size-[48px_48px]" />
+          <Image
+            src={logo}
+            alt="Gonzales Diamond Baseball"
+            fill
+            priority
+            className="object-contain opacity-15 scale-[1.35] blur-[1px]"
+          />
+          <div className="absolute inset-0 bg-black/45" />
 
-        <div className="relative z-10 text-center px-6 max-w-5xl mx-auto">
-          <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-6">
-            SPRING 2026 SEASON
-          </div>
+          <div className="relative z-10 text-center px-6 max-w-5xl mx-auto">
+            <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-6">
+              SPRING 2026 SEASON
+            </div>
 
-          <h1 className="text-6xl md:text-7xl font-bold mb-6 tracking-tighter leading-none">
-            Gonzales Diamond Baseball
-          </h1>
+            <h1 className="text-6xl md:text-7xl font-bold mb-6 tracking-tighter leading-none">
+              Gonzales Diamond Baseball
+            </h1>
 
-          <p className="text-2xl md:text-3xl mb-10 text-brand-gold max-w-2xl mx-auto">
-            Fun, development, and competition for kids ages 9–17 in Ascension
-            Parish
-          </p>
+            <p className="text-2xl md:text-3xl mb-10 text-brand-gold max-w-2xl mx-auto">
+              Fun, development, and competition for kids ages 9–17 in Ascension
+              Parish
+            </p>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            {regOpen && (
+            <div className="flex flex-col sm:flex-row gap-4 justify-center">
+              {regOpen && (
+                <a
+                  href="#register"
+                  className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-xl px-12 py-5 rounded-xl transition-all active:scale-95"
+                >
+                  Register Now
+                </a>
+              )}
               <a
-                href="#register"
-                className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-xl px-12 py-5 rounded-xl transition-all active:scale-95"
+                href="#schedule"
+                className="border-2 border-white hover:bg-white hover:text-black font-semibold text-xl px-12 py-5 rounded-xl transition-all"
               >
-                Register Now
+                View Schedules
               </a>
-            )}
-            <a
-              href="#schedule"
-              className="border-2 border-white hover:bg-white hover:text-black font-semibold text-xl px-12 py-5 rounded-xl transition-all"
-            >
-              View Schedules
-            </a>
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Quick Stats */}
       <section className="py-16 bg-zinc-900 border-b border-zinc-800">
