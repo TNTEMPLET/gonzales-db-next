@@ -10,6 +10,7 @@ import {
   COACH_SESSION_COOKIE,
   getCoachUserFromCookieToken,
 } from "@/lib/auth/coachSession";
+import { listDugoutPosts } from "@/lib/dugout/posts";
 import prisma from "@/lib/prisma";
 
 export const metadata = {
@@ -25,9 +26,9 @@ export default async function DugoutPage() {
   const coach = await getCoachUserFromCookieToken(coachToken);
 
   const adminToken = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-  const admin = coach ? null : await getAdminUserByToken(adminToken);
+  const admin = await getAdminUserByToken(adminToken);
 
-  const authed = coach ?? admin;
+  const authed = admin ?? (coach?.isCoach ? coach : null);
 
   if (!authed) {
     return (
@@ -44,35 +45,28 @@ export default async function DugoutPage() {
     );
   }
 
-  const rawPosts = await prisma.dugoutPost.findMany({
-    orderBy: { createdAt: "desc" },
-    take: 120,
-    include: {
-      author: {
-        select: {
-          id: true,
-          name: true,
-          firstName: true,
-          lastName: true,
-          email: true,
-        },
-      },
-    },
-  });
+  const initialPosts = await listDugoutPosts(coach?.id);
 
-  const initialPosts = rawPosts.map((p) => ({
-    ...p,
-    createdAt: p.createdAt.toISOString(),
-    updatedAt: p.updatedAt.toISOString(),
-  }));
+  // If the user has an admin session but no coach session, look up their
+  // RegisteredUser by email so they get a proper currentUserId.
+  let currentUserId: string | null = coach?.id ?? null;
+  if (!currentUserId && admin) {
+    const reg = await prisma.registeredUser.findUnique({
+      where: { email: admin.email },
+      select: { id: true },
+    });
+    currentUserId = reg?.id ?? null;
+  }
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white">
-      <DugoutTimeline
-        initialPosts={initialPosts}
-        isAdmin={!!admin}
-        currentUserId={coach?.id ?? null}
-      />
+    <main className="flex h-[calc(100dvh-80px)] flex-col overflow-hidden bg-zinc-950 px-4 pt-6 pb-4 text-white sm:px-6 lg:px-10">
+      <div className="mx-auto flex h-full w-full max-w-6xl flex-col">
+        <DugoutTimeline
+          initialPosts={initialPosts}
+          isAdmin={!!admin}
+          currentUserId={currentUserId}
+        />
+      </div>
     </main>
   );
 }

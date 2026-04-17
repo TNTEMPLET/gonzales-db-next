@@ -16,6 +16,11 @@ enum AdminAuditAction {
   DEMOTE
 }
 
+enum DugoutMediaType {
+  IMAGE
+  GIF
+}
+
 model NewsPost {
   id          String     @id @default(cuid())
   title       String
@@ -64,6 +69,9 @@ model RegisteredUser {
   auditLogs    AdminAuditLog[]
   sessions     CoachSession[]
   dugoutPosts  DugoutPost[]
+  dugoutComments DugoutComment[]
+  dugoutLikes  DugoutPostLike[]
+  dugoutNotificationCursor DugoutNotificationCursor?
 }
 
 model CoachSession {
@@ -79,16 +87,65 @@ model CoachSession {
 }
 
 model DugoutPost {
-  id        String   @id @default(cuid())
+  id        String          @id @default(cuid())
   content   String
+  mediaUrl  String?
+  mediaType DugoutMediaType?
   authorId  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime        @default(now())
+  updatedAt DateTime        @updatedAt
 
-  author RegisteredUser @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author RegisteredUser   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  comments DugoutComment[]
+  likes  DugoutPostLike[]
 
   @@index([createdAt])
   @@index([authorId])
+}
+
+model DugoutComment {
+  id        String   @id @default(cuid())
+  content   String
+  postId    String
+  authorId  String
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  post    DugoutPost       @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author  RegisteredUser   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent  DugoutComment?   @relation("DugoutCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies DugoutComment[]  @relation("DugoutCommentReplies")
+
+  @@index([postId, createdAt])
+  @@index([authorId, createdAt])
+  @@index([parentId])
+}
+
+model DugoutPostLike {
+  id        String         @id @default(cuid())
+  postId    String
+  userId    String
+  reaction  String         @default("👍")
+  createdAt DateTime       @default(now())
+
+  post DugoutPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user RegisteredUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([postId, userId])
+  @@index([postId])
+  @@index([userId])
+}
+
+model DugoutNotificationCursor {
+  id         String   @id @default(cuid())
+  userId     String   @unique
+  lastSeenAt DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  user RegisteredUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([lastSeenAt])
 }
 
 model AdminSession {

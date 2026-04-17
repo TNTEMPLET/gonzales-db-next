@@ -5,6 +5,11 @@ import {
   createAdminSession,
   verifyAdminCredentials,
 } from "@/lib/auth/adminSession";
+import {
+  COACH_SESSION_COOKIE,
+  createCoachSession,
+} from "@/lib/auth/coachSession";
+import prisma from "@/lib/prisma";
 
 type LoginPayload = {
   email?: string;
@@ -48,6 +53,24 @@ export async function POST(request: NextRequest) {
       path: "/",
       expires: session.expiresAt,
     });
+
+    // If the admin also has a RegisteredUser account, issue a coach session so
+    // they can post, like, and comment in The Dugout without a separate login.
+    const registeredUser = await prisma.registeredUser.findUnique({
+      where: { email: adminUser.email },
+    });
+    if (registeredUser) {
+      const coachSession = await createCoachSession(registeredUser.id);
+      response.cookies.set({
+        name: COACH_SESSION_COOKIE,
+        value: coachSession.token,
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "lax",
+        path: "/",
+        expires: coachSession.expiresAt,
+      });
+    }
 
     return response;
   } catch (err: unknown) {

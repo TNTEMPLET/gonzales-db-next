@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
+import { getDugoutPostInclude, serializeDugoutPost } from "@/lib/dugout/posts";
 import { ensureCoach } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
 
@@ -22,6 +23,7 @@ export async function PATCH(
   const { id } = await params;
 
   try {
+    const coach = await getCoachUserFromRequest(request);
     const post = await prisma.dugoutPost.findUnique({ where: { id } });
     if (!post) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
@@ -30,16 +32,22 @@ export async function PATCH(
     // Admin can edit any post; coach can only edit their own
     const admin = await getAdminUserFromRequest(request);
     if (!admin) {
-      const coach = await getCoachUserFromRequest(request);
       if (!coach || coach.id !== post.authorId) {
         return NextResponse.json({ error: "Forbidden" }, { status: 403 });
       }
     }
 
-    const body = (await request.json()) as { content?: string };
+    const body = (await request.json()) as {
+      content?: string;
+      removeMedia?: boolean;
+    };
     const content = body.content?.trim() ?? "";
+    const removeMedia = body.removeMedia === true;
 
-    if (!content) {
+    // After removing media, content may still be empty — only require content
+    // if there will still be media attached.
+    const willHaveMedia = !removeMedia && Boolean(post.mediaUrl);
+    if (!content && !willHaveMedia) {
       return NextResponse.json(
         { error: "Content is required" },
         { status: 400 },
@@ -55,27 +63,14 @@ export async function PATCH(
 
     const updated = await prisma.dugoutPost.update({
       where: { id },
-      data: { content },
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
+      data: {
+        content,
+        ...(removeMedia ? { mediaUrl: null, mediaType: null } : {}),
       },
+      include: getDugoutPostInclude(coach?.id),
     });
 
-    return NextResponse.json({
-      data: {
-        ...updated,
-        createdAt: updated.createdAt.toISOString(),
-        updatedAt: updated.updatedAt.toISOString(),
-      },
-    });
+    return NextResponse.json({ data: serializeDugoutPost(updated) });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

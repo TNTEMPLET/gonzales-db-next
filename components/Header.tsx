@@ -69,8 +69,8 @@ export default function Header() {
     ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
     ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
     { href: "/#fields", label: "Fields & Status" },
-    { href: "/news", label: "News" },
     ...(canSeeDugout ? [{ href: "/dugout", label: "The Dugout" }] : []),
+    { href: "/news", label: "News" },
     { href: "/#contact", label: "Contact" },
   ];
 
@@ -154,6 +154,15 @@ export default function Header() {
                 className="bg-brand-purple hover:bg-brand-purple-dark py-3 text-center rounded-lg font-semibold mt-4"
               >
                 Register for Spring 2026
+              </Link>
+            )}
+            {canSeeDugout && (
+              <Link
+                href="/dugout"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center gap-2 hover:text-brand-gold"
+              >
+                The Dugout
               </Link>
             )}
             <div className="pt-2 border-t border-zinc-700 mt-2">

@@ -3,7 +3,10 @@ import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
 
 declare global {
   var prisma: PrismaClient | undefined;
+  var prismaSchemaVersion: string | undefined;
 }
+
+const PRISMA_SCHEMA_VERSION = "2026-04-17-dugout-like-reaction-v3";
 
 function createClient() {
   const adapter = new PrismaPostgresAdapter({
@@ -13,13 +16,24 @@ function createClient() {
 }
 
 const cached = global.prisma;
-const hasAdminDelegates =
-  cached && "adminUser" in (cached as unknown as Record<string, unknown>);
+const cachedDelegates = cached as unknown as
+  | Record<string, unknown>
+  | undefined;
+const hasRequiredDelegates =
+  !!cached &&
+  !!cachedDelegates &&
+  "adminUser" in cachedDelegates &&
+  "dugoutComment" in cachedDelegates &&
+  "dugoutNotificationCursor" in cachedDelegates;
+const schemaVersionMatches =
+  global.prismaSchemaVersion === PRISMA_SCHEMA_VERSION;
 
-const prisma = hasAdminDelegates ? cached : createClient();
+const prisma =
+  hasRequiredDelegates && schemaVersionMatches ? cached : createClient();
 
 if (process.env.NODE_ENV !== "production") {
   global.prisma = prisma;
+  global.prismaSchemaVersion = PRISMA_SCHEMA_VERSION;
 }
 
 export default prisma;

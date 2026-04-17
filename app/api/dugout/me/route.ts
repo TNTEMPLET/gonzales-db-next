@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
           name,
           firstName: adminUser.firstName ?? null,
           avatarUrl: adminUser.avatarUrl ?? null,
-          isCoach: Boolean(coachUser?.isCoach),
+          isCoach: true,
           isAdmin: true,
         },
       },

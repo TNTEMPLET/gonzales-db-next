@@ -1,11 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
+import {
+  listDugoutPosts,
+  serializeDugoutPost,
+  getDugoutPostInclude,
+} from "@/lib/dugout/posts";
 import { ensureCoach } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
 
 type CreatePostPayload = {
   content?: string;
+  mediaUrl?: string | null;
+  mediaType?: "IMAGE" | "GIF" | null;
 };
 
 const MAX_POST_LENGTH = 280;
@@ -20,21 +28,19 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const posts = await prisma.dugoutPost.findMany({
-      orderBy: { createdAt: "desc" },
-      take: 120,
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
-    });
+    const coachUser = await getCoachUserFromRequest(request);
+    const adminUser = !coachUser
+      ? await getAdminUserFromRequest(request)
+      : null;
+    let viewerId: string | undefined = coachUser?.id;
+    if (!viewerId && adminUser) {
+      const reg = await prisma.registeredUser.findUnique({
+        where: { email: adminUser.email },
+        select: { id: true },
+      });
+      viewerId = reg?.id;
+    }
+    const posts = await listDugoutPosts(viewerId);
 
     return NextResponse.json({ data: posts });
   } catch (err: unknown) {
@@ -57,19 +63,35 @@ export async function POST(request: NextRequest) {
 
   try {
     const coachUser = await getCoachUserFromRequest(request);
-    if (!coachUser) {
+    const adminUser = !coachUser
+      ? await getAdminUserFromRequest(request)
+      : null;
+
+    // Resolve the author's RegisteredUser id (required for DB foreign key)
+    let authorId: string | undefined = coachUser?.id;
+    if (!authorId && adminUser) {
+      const reg = await prisma.registeredUser.findUnique({
+        where: { email: adminUser.email },
+        select: { id: true },
+      });
+      authorId = reg?.id;
+    }
+
+    if (!authorId) {
       return NextResponse.json(
-        { error: "Coach access required" },
-        { status: 401 },
+        { error: "No linked user account found" },
+        { status: 403 },
       );
     }
 
     const body = (await request.json()) as CreatePostPayload;
     const content = body.content?.trim() || "";
+    const mediaUrl = body.mediaUrl?.trim() || null;
+    const mediaType = body.mediaType || null;
 
-    if (!content) {
+    if (!content && !mediaUrl) {
       return NextResponse.json(
-        { error: "Post content is required" },
+        { error: "Post content or media is required" },
         { status: 400 },
       );
     }
@@ -81,25 +103,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (mediaType && !["IMAGE", "GIF"].includes(mediaType)) {
+      return NextResponse.json(
+        { error: "Unsupported media type" },
+        { status: 400 },
+      );
+    }
+
     const post = await prisma.dugoutPost.create({
       data: {
         content,
-        authorId: coachUser.id,
+        mediaUrl,
+        mediaType,
+        authorId,
       },
-      include: {
-        author: {
-          select: {
-            id: true,
-            name: true,
-            firstName: true,
-            lastName: true,
-            email: true,
-          },
-        },
-      },
+      include: getDugoutPostInclude(authorId),
     });
 
-    return NextResponse.json({ data: post }, { status: 201 });
+    return NextResponse.json(
+      { data: serializeDugoutPost(post) },
+      { status: 201 },
+    );
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
