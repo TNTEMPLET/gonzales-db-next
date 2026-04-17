@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
 import { ensureCoach } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
@@ -10,9 +11,24 @@ async function getOrCreateCursor(userId: string) {
     update: {},
     create: {
       userId,
-      lastSeenAt: new Date(),
+      lastSeenAt: new Date(0), // epoch — treat all existing activity as unread on first load
     },
   });
+}
+
+async function resolveUserId(request: NextRequest): Promise<string | null> {
+  const coachUser = await getCoachUserFromRequest(request);
+  if (coachUser?.id) return coachUser.id;
+
+  const adminUser = await getAdminUserFromRequest(request);
+  if (!adminUser) return null;
+
+  const reg = await prisma.registeredUser.findUnique({
+    where: { email: adminUser.email },
+    select: { id: true },
+  });
+
+  return reg?.id ?? null;
 }
 
 export async function GET(request: NextRequest) {
@@ -24,8 +40,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const coachUser = await getCoachUserFromRequest(request);
-  if (!coachUser?.isCoach) {
+  const userId = await resolveUserId(request);
+  if (!userId) {
     return NextResponse.json({
       data: {
         unreadLikeCount: 0,
@@ -37,34 +53,23 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const cursor = await getOrCreateCursor(coachUser.id);
+    const cursor = await getOrCreateCursor(userId);
 
     const [unreadLikeCount, unreadReplyCount] = await Promise.all([
       prisma.dugoutPostLike.count({
         where: {
           createdAt: { gt: cursor.lastSeenAt },
-          userId: { not: coachUser.id },
+          userId: { not: userId },
           post: {
-            authorId: coachUser.id,
+            authorId: userId,
           },
         },
       }),
       prisma.dugoutComment.count({
         where: {
           createdAt: { gt: cursor.lastSeenAt },
-          authorId: { not: coachUser.id },
-          OR: [
-            {
-              post: {
-                authorId: coachUser.id,
-              },
-            },
-            {
-              parent: {
-                authorId: coachUser.id,
-              },
-            },
-          ],
+          authorId: { not: userId },
+          post: { authorId: userId },
         },
       }),
     ]);
@@ -97,18 +102,18 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const coachUser = await getCoachUserFromRequest(request);
-  if (!coachUser?.isCoach) {
+  const userId = await resolveUserId(request);
+  if (!userId) {
     return NextResponse.json({ ok: true });
   }
 
   try {
     const now = new Date();
     await prisma.dugoutNotificationCursor.upsert({
-      where: { userId: coachUser.id },
+      where: { userId },
       update: { lastSeenAt: now },
       create: {
-        userId: coachUser.id,
+        userId,
         lastSeenAt: now,
       },
     });

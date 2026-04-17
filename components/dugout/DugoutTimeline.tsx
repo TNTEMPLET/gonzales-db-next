@@ -933,8 +933,8 @@ export default function DugoutTimeline({
         {/* Tab content — full width */}
         {activityOpen && (
           <div className="border-t border-zinc-700 px-5 pb-4 pt-4">
-            <div className="ml-auto w-fit text-left">
-              <div className="flex items-center gap-5 text-sm text-zinc-300">
+            <div className="ml-auto w-fit text-right">
+              <div className="space-y-1 text-sm text-zinc-300">
                 <p>Likes on your posts: {notifications.unreadLikeCount}</p>
                 <p>
                   Replies/comments for you: {notifications.unreadReplyCount}
