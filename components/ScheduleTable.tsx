@@ -535,7 +535,7 @@ export default function ScheduleTable({
       <div className="max-w-6xl mx-auto px-6">
         <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
           <div>
-            <h2 className="text-4xl font-bold">Schedules & Standings</h2>
+            <h2 className="text-4xl font-bold">Schedules</h2>
             <p className="text-zinc-400">{getSubtitle()} • Live from Assignr</p>
           </div>
 

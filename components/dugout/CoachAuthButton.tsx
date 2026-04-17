@@ -134,7 +134,7 @@ export default function CoachAuthButton({
             await refreshUser();
             setOpen(false);
             notifyAuthChanged();
-            router.refresh();
+            router.push("/dugout");
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Sign-in failed");
           } finally {
@@ -225,7 +225,7 @@ export default function CoachAuthButton({
       setPassword("");
       setOpen(false);
       notifyAuthChanged();
-      router.refresh();
+      router.push("/dugout");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Local auth failed");
     } finally {

@@ -12,6 +12,8 @@ import {
   type KeyboardEvent,
 } from "react";
 
+import type { Game } from "@/lib/fetchGames";
+
 type DugoutAuthor = {
   id: string;
   name: string | null;
@@ -47,8 +49,12 @@ type DugoutPost = {
 
 type DugoutTimelineProps = {
   initialPosts: DugoutPost[];
+  initialScheduleGames?: Game[];
   isAdmin?: boolean;
   currentUserId?: string | null;
+  currentUserName?: string | null;
+  currentUserAvatarUrl?: string | null;
+  initialView?: "timeline" | "notifications" | "schedule";
 };
 
 type GifResult = {
@@ -94,6 +100,24 @@ function formatPostTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatScheduleTime(game: Game) {
+  if (game.start_time) {
+    return new Date(game.start_time).toLocaleString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  }
+
+  const date =
+    typeof game.localized_date === "string" ? game.localized_date : "Date TBD";
+  const time =
+    typeof game.localized_time === "string" ? game.localized_time : "TBD";
+  return `${date} ${time}`.trim();
 }
 
 async function uploadMedia(file: File) {
@@ -200,8 +224,12 @@ function removeCommentFromTree(
 
 export default function DugoutTimeline({
   initialPosts,
+  initialScheduleGames = [],
   isAdmin = false,
   currentUserId = null,
+  currentUserName = null,
+  currentUserAvatarUrl = null,
+  initialView = "timeline",
 }: DugoutTimelineProps) {
   const [posts, setPosts] = useState<DugoutPost[]>(initialPosts);
   const [content, setContent] = useState("");
@@ -255,11 +283,12 @@ export default function DugoutTimeline({
     totalUnreadCount: 0,
     lastSeenAt: null,
   });
-  const [activityOpen, setActivityOpen] = useState(false);
-  const [composeOpen, setComposeOpen] = useState(false);
+  const [composerExpanded, setComposerExpanded] = useState(false);
+  const [gifSearchOpen, setGifSearchOpen] = useState(false);
+  const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const topControlsRef = useRef<HTMLDivElement | null>(null);
+  const composerRef = useRef<HTMLDivElement | null>(null);
 
   function replacePreviewUrl(nextUrl: string | null) {
     setMediaPreviewUrl((prev) => {
@@ -447,21 +476,25 @@ export default function DugoutTimeline({
   }, [likePickerOpenId]);
 
   useEffect(() => {
-    if (!activityOpen && !composeOpen) return;
+    if (!composerExpanded) return;
 
     function handleOutside(event: MouseEvent) {
       if (
-        topControlsRef.current &&
-        !topControlsRef.current.contains(event.target as Node)
+        composerRef.current &&
+        !composerRef.current.contains(event.target as Node) &&
+        !content.trim() &&
+        !mediaFile &&
+        !selectedGif
       ) {
-        setActivityOpen(false);
-        setComposeOpen(false);
+        setComposerExpanded(false);
+        setGifSearchOpen(false);
+        setEmojiPickerOpen(false);
       }
     }
 
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
-  }, [activityOpen, composeOpen]);
+  }, [composerExpanded, content, mediaFile, selectedGif]);
 
   async function createPost(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -507,8 +540,8 @@ export default function DugoutTimeline({
       setGifOffset(0);
       setGifHasMore(false);
       setActiveGifQuery("");
+      setComposerExpanded(false);
       setPosts((prev) => [json.data as DugoutPost, ...prev]);
-      setComposeOpen(false);
       setNotice("Update posted");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to post update");
@@ -806,6 +839,8 @@ export default function DugoutTimeline({
     () => MAX_POST_LENGTH - editContent.length,
     [editContent],
   );
+  const showingNotificationsView = initialView === "notifications";
+  const showingScheduleView = initialView === "schedule";
 
   function renderComment(postId: string, comment: DugoutComment, depth = 0) {
     const canManageComment = isAdmin || comment.author.id === currentUserId;
@@ -865,616 +900,735 @@ export default function DugoutTimeline({
   }
 
   return (
-    <div className="flex h-full flex-col gap-4">
-      {/* ── Pill controls ── */}
-      <div
-        ref={topControlsRef}
-        className="rounded-2xl border border-zinc-800 bg-zinc-900/70"
-      >
-        {/* Pill buttons row */}
-        <div className="flex h-14 items-center px-3">
-          {/* Compose pill */}
-          <button
-            type="button"
-            onClick={() => {
-              setComposeOpen((o) => !o);
-              if (!composeOpen) setActivityOpen(false);
-            }}
-            className={`flex h-10 items-center justify-center gap-2 rounded-full border px-4 py-2 text-sm font-semibold leading-none transition ${
-              composeOpen
-                ? "border-zinc-600 bg-zinc-800 text-white"
-                : "border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-            }`}
-          >
-            Post an Update
-          </button>
-
-          {/* Activity pill */}
-          <button
-            type="button"
-            onClick={() => {
-              setActivityOpen((o) => !o);
-              if (!activityOpen) setComposeOpen(false);
-            }}
-            className={`relative ml-auto flex h-10 items-center justify-center rounded-full border px-4 py-2 text-sm font-semibold leading-none transition ${
-              activityOpen
-                ? "border-zinc-600 bg-zinc-800 text-white"
-                : "border-zinc-700 text-zinc-400 hover:bg-zinc-800 hover:text-zinc-200"
-            }`}
-            title="Dugout Activity"
-            aria-label="Toggle Dugout Activity"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="h-9 w-9 rotate-20"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={1.5}
-            >
-              <circle cx="12" cy="12" r="9" />
-              <path strokeLinecap="round" d="M9 4.5C7.5 7 7.5 17 9 19.5" />
-              <path strokeLinecap="round" d="M15 4.5C16.5 7 16.5 17 15 19.5" />
-              <path strokeLinecap="round" d="M9 8.5 L7 9" />
-              <path strokeLinecap="round" d="M9 12 L6.8 12" />
-              <path strokeLinecap="round" d="M9 15.5 L7 15" />
-              <path strokeLinecap="round" d="M15 8.5 L17 9" />
-              <path strokeLinecap="round" d="M15 12 L17.2 12" />
-              <path strokeLinecap="round" d="M15 15.5 L17 15" />
-            </svg>
-            {notifications.totalUnreadCount > 0 && (
-              <span className="absolute -right-1 -top-1 rounded-full border border-brand-gold bg-brand-gold/10 px-1.5 py-0.5 text-[10px] font-semibold text-brand-gold">
-                {notifications.totalUnreadCount}
-              </span>
-            )}
-          </button>
-        </div>
-
-        {/* Tab content — full width */}
-        {activityOpen && (
-          <div className="border-t border-zinc-700 px-5 pb-4 pt-4">
-            <div className="ml-auto w-fit text-right">
-              <div className="space-y-1 text-sm text-zinc-300">
-                <p>Likes on your posts: {notifications.unreadLikeCount}</p>
-                <p>
-                  Replies/comments for you: {notifications.unreadReplyCount}
-                </p>
-              </div>
-            </div>
+    <div className="flex h-full flex-col gap-0">
+      {/* ── Feed fills remaining space ── */}
+      {showingNotificationsView ? (
+        <section className="flex-1 overflow-y-auto border border-t-0 border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h3 className="text-base font-semibold">Notifications</h3>
             <button
               type="button"
               onClick={() => void markNotificationsSeen()}
               disabled={
                 notificationBusy || notifications.totalUnreadCount === 0
               }
-              className="mt-3 ml-auto block rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
             >
-              {notificationBusy ? "Updating..." : "Mark as read"}
+              {notificationBusy ? "Updating..." : "Mark all as read"}
             </button>
           </div>
-        )}
 
-        {composeOpen && (
-          <div className="border-t border-zinc-700 px-5 pb-4 pt-4">
-            <form onSubmit={createPost} className="space-y-3">
-              <div className="flex items-center justify-between gap-3">
-                <p className="text-xs text-zinc-500">
-                  {remaining} characters left
-                </p>
-                <button
-                  type="submit"
-                  disabled={
-                    busy || (!content.trim() && !mediaFile && !selectedGif)
-                  }
-                  className="rounded-lg bg-brand-purple px-4 py-2 text-sm font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
-                >
-                  {busy ? "Posting..." : "Post"}
-                </button>
-              </div>
-
-              <textarea
-                rows={3}
-                maxLength={MAX_POST_LENGTH}
-                placeholder="Share schedule changes, player updates, and dugout notes..."
-                value={content}
-                onChange={(event) => setContent(event.target.value)}
-                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-              />
-
-              <div className="flex flex-wrap gap-2">
-                {EMOJI_CHOICES.map((emoji) => (
-                  <button
-                    key={emoji}
-                    type="button"
-                    onClick={() => appendEmoji(emoji)}
-                    className="rounded-full border border-zinc-700 px-2.5 py-1 text-sm hover:bg-zinc-800"
-                  >
-                    {emoji}
-                  </button>
-                ))}
-              </div>
-
-              <div
-                onDrop={onDropMedia}
-                onDragOver={(event) => {
-                  event.preventDefault();
-                  setIsDragOver(true);
-                }}
-                onDragEnter={(event) => {
-                  event.preventDefault();
-                  setIsDragOver(true);
-                }}
-                onDragLeave={(event) => {
-                  event.preventDefault();
-                  if (
-                    !event.currentTarget.contains(event.relatedTarget as Node)
-                  ) {
-                    setIsDragOver(false);
-                  }
-                }}
-                className={`flex flex-wrap items-center gap-3 rounded-lg border bg-zinc-950/70 px-3 py-2 transition ${
-                  isDragOver
-                    ? "border-brand-gold ring-1 ring-brand-gold/60"
-                    : "border-zinc-800"
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept="image/jpeg,image/png,image/webp,image/gif"
-                  className="hidden"
-                  onChange={handleMediaChange}
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800"
-                >
-                  Add Photo / GIF
-                </button>
-                {mediaFile ? (
-                  <>
-                    <span className="text-xs text-zinc-400">
-                      {mediaFile.name}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={clearSelectedMedia}
-                      className="text-xs text-red-300 hover:text-red-200"
-                    >
-                      Remove
-                    </button>
-                  </>
-                ) : (
-                  <span className="text-xs text-zinc-500">
-                    Drag and drop an image/GIF, or click to browse
+          <div className="space-y-3">
+            <article className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                Unread Activity
+              </p>
+              <div className="mt-3 space-y-2 text-sm text-zinc-200">
+                <p>
+                  Likes on your posts:{" "}
+                  <span className="font-semibold">
+                    {notifications.unreadLikeCount}
                   </span>
-                )}
+                </p>
+                <p>
+                  Replies/comments for you:{" "}
+                  <span className="font-semibold">
+                    {notifications.unreadReplyCount}
+                  </span>
+                </p>
+                <p>
+                  Total unread:{" "}
+                  <span className="font-semibold text-brand-gold">
+                    {notifications.totalUnreadCount}
+                  </span>
+                </p>
               </div>
+            </article>
 
-              <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3">
-                <p className="mb-2 text-xs font-semibold text-zinc-400">
-                  Or pick a GIF
-                </p>
-                <div className="flex gap-2">
-                  <input
-                    value={gifQuery}
-                    onChange={(event) => setGifQuery(event.target.value)}
-                    onKeyDown={handleGifInputKeyDown}
-                    placeholder="Search GIFs"
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void searchGifs()}
-                    disabled={gifBusy || !gifQuery.trim()}
-                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+            <article className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-300">
+              <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+                Last Seen
+              </p>
+              <p className="mt-2">
+                {notifications.lastSeenAt
+                  ? formatPostTime(notifications.lastSeenAt)
+                  : "No notification read marker yet."}
+              </p>
+            </article>
+          </div>
+        </section>
+      ) : showingScheduleView ? (
+        <section className="flex-1 overflow-y-auto border border-t-0 border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
+          <div className="mb-4">
+            <h3 className="text-base font-semibold">Schedule</h3>
+            <p className="mt-1 text-sm text-zinc-400">
+              This week&apos;s Gonzales Diamond Baseball games.
+            </p>
+          </div>
+
+          {initialScheduleGames.length === 0 ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-5 text-sm text-zinc-400">
+              No games found for this week.
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {initialScheduleGames.map((game) => {
+                const venueName =
+                  (typeof game.subvenue === "string" ? game.subvenue : null) ||
+                  game._embedded?.venue?.name ||
+                  null;
+                const status =
+                  typeof game.status === "string" ? game.status : "Scheduled";
+                const isCancelled = status.toLowerCase().includes("cancel");
+
+                return (
+                  <article
+                    key={game.id}
+                    className={`rounded-xl border p-4 ${isCancelled ? "border-red-900 bg-red-950/40" : "border-zinc-800 bg-zinc-950/50"}`}
                   >
-                    {gifBusy ? "Searching..." : "Find"}
-                  </button>
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-zinc-100">
+                        {game.home_team || "Home Team"}{" "}
+                        <span className="text-zinc-500">vs</span>{" "}
+                        {game.away_team || "Away Team"}
+                      </p>
+                      <p className="mt-1 text-xs text-zinc-400">
+                        {formatScheduleTime(game)}
+                      </p>
+                      {game.age_group || venueName ? (
+                        <p className="mt-2 text-xs text-zinc-500">
+                          {[game.age_group, venueName]
+                            .filter(Boolean)
+                            .join(" • ")}
+                        </p>
+                      ) : null}
+                      {isCancelled && (
+                        <p className="mt-2 text-xs font-semibold text-red-400">
+                          Cancelled
+                        </p>
+                      )}
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      ) : (
+        <section className="flex-1 overflow-y-auto border border-t-0 border-zinc-800 bg-zinc-900/70">
+          <div
+            ref={composerRef}
+            className="border-b border-zinc-800 bg-zinc-900/70 px-4 py-4 sm:px-5"
+          >
+            <form onSubmit={createPost}>
+              <div className="flex gap-3">
+                <div className="mt-1 shrink-0">
+                  {currentUserAvatarUrl ? (
+                    <Image
+                      src={currentUserAvatarUrl}
+                      alt={currentUserName ?? "You"}
+                      width={48}
+                      height={48}
+                      className="h-12 w-12 rounded-full object-cover"
+                      unoptimized
+                    />
+                  ) : (
+                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-700 text-sm font-bold text-white">
+                      {(currentUserName ?? "?").charAt(0).toUpperCase()}
+                    </div>
+                  )}
                 </div>
-                <p className="mt-1 text-[11px] text-zinc-500">
-                  GIF search requires GIPHY_API_KEY in .env.local.
-                </p>
-                {gifResults.length > 0 ? (
-                  <>
-                    <div className="mt-3 grid grid-cols-3 gap-2">
-                      {gifResults.map((gif) => (
+
+                <div
+                  onDrop={onDropMedia}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    setIsDragOver(true);
+                  }}
+                  onDragEnter={(event) => {
+                    event.preventDefault();
+                    setIsDragOver(true);
+                  }}
+                  onDragLeave={(event) => {
+                    event.preventDefault();
+                    if (
+                      !event.currentTarget.contains(event.relatedTarget as Node)
+                    ) {
+                      setIsDragOver(false);
+                    }
+                  }}
+                  className={`flex-1 rounded-[1.75rem] px-5 pt-4 transition ${
+                    isDragOver
+                      ? "bg-zinc-900 ring-1 ring-brand-gold/60"
+                      : "bg-transparent"
+                  }`}
+                >
+                  <textarea
+                    rows={composerExpanded ? 4 : 1}
+                    maxLength={MAX_POST_LENGTH}
+                    placeholder="What's happening?"
+                    value={content}
+                    onChange={(event) => setContent(event.target.value)}
+                    onFocus={() => setComposerExpanded(true)}
+                    className={`w-full resize-none bg-transparent leading-tight text-white placeholder-zinc-500 outline-none ${
+                      composerExpanded
+                        ? "min-h-28 pt-1 text-2xl md:text-3xl"
+                        : "min-h-10 pt-0 text-xl md:text-2xl"
+                    }`}
+                  />
+
+                  {mediaPreviewUrl ? (
+                    <div className="relative mb-3 overflow-hidden rounded-2xl border border-zinc-700">
+                      <Image
+                        src={mediaPreviewUrl}
+                        alt="Selected media preview"
+                        width={1200}
+                        height={900}
+                        unoptimized
+                        className="h-auto max-h-72 w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={clearSelectedMedia}
+                        className="absolute right-2 top-2 rounded-full bg-zinc-900/80 px-2 py-0.5 text-xs text-red-300 hover:text-red-200"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {selectedGif ? (
+                    <div className="relative mb-3 overflow-hidden rounded-2xl border border-brand-gold">
+                      <Image
+                        src={selectedGif.previewUrl}
+                        alt={selectedGif.title}
+                        width={1200}
+                        height={900}
+                        unoptimized
+                        className="h-auto max-h-72 w-full object-cover"
+                      />
+                      <button
+                        type="button"
+                        onClick={clearSelectedGif}
+                        className="absolute right-2 top-2 rounded-full bg-zinc-900/80 px-2 py-0.5 text-xs text-red-300 hover:text-red-200"
+                      >
+                        ✕ Remove
+                      </button>
+                    </div>
+                  ) : null}
+
+                  {emojiPickerOpen && composerExpanded && (
+                    <div className="mb-3 flex flex-wrap gap-2">
+                      {EMOJI_CHOICES.map((emoji) => (
                         <button
-                          key={gif.id}
+                          key={emoji}
                           type="button"
                           onClick={() => {
-                            clearSelectedMedia();
-                            setSelectedGif(gif);
+                            appendEmoji(emoji);
+                            setEmojiPickerOpen(false);
                           }}
-                          className={`overflow-hidden rounded-lg border ${
-                            selectedGif?.id === gif.id
-                              ? "border-brand-gold"
-                              : "border-zinc-800"
-                          }`}
+                          className="rounded-full border border-zinc-700 px-2.5 py-1 text-base hover:bg-zinc-800"
                         >
-                          <Image
-                            src={gif.previewUrl}
-                            alt={gif.title}
-                            width={240}
-                            height={240}
-                            unoptimized
-                            className="h-16 w-full object-cover"
-                          />
+                          {emoji}
                         </button>
                       ))}
                     </div>
-                    {gifHasMore ? (
-                      <button
-                        type="button"
-                        onClick={() => void searchGifs({ append: true })}
-                        disabled={gifBusy}
-                        className="mt-2 w-full rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
-                      >
-                        {gifBusy ? "Loading..." : "Load more GIFs"}
-                      </button>
-                    ) : null}
-                  </>
-                ) : null}
-              </div>
+                  )}
 
-              {mediaPreviewUrl ? (
-                <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/70">
-                  <Image
-                    src={mediaPreviewUrl}
-                    alt="Selected media preview"
-                    width={1200}
-                    height={900}
-                    unoptimized
-                    className="h-auto max-h-80 w-full object-cover"
-                  />
-                </div>
-              ) : null}
-
-              {selectedGif ? (
-                <div className="overflow-hidden rounded-xl border border-brand-gold bg-zinc-950/70">
-                  <Image
-                    src={selectedGif.previewUrl}
-                    alt={selectedGif.title}
-                    width={1200}
-                    height={900}
-                    unoptimized
-                    className="h-auto max-h-80 w-full object-cover"
-                  />
-                  <div className="flex items-center justify-between px-3 py-2">
-                    <p className="text-xs text-zinc-300">GIF selected</p>
-                    <button
-                      type="button"
-                      onClick={clearSelectedGif}
-                      className="text-xs text-red-300 hover:text-red-200"
-                    >
-                      Remove
-                    </button>
-                  </div>
-                </div>
-              ) : null}
-            </form>
-          </div>
-        )}
-
-        {!activityOpen && !composeOpen && (
-          <div className="border-t border-zinc-800" />
-        )}
-      </div>
-
-      {/* Status messages */}
-      {error ? (
-        <p className="rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-300">
-          {error}
-        </p>
-      ) : null}
-      {notice ? (
-        <p className="rounded-lg border border-emerald-800 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300">
-          {notice}
-        </p>
-      ) : null}
-
-      {/* ── Feed fills remaining space ── */}
-      <section className="flex-1 overflow-y-auto rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
-        <h3 className="mb-4 text-base font-semibold">Timeline</h3>
-        {posts.length === 0 ? (
-          <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-5 text-sm text-zinc-400">
-            No updates yet. Be the first coach to post in The Dugout.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {posts.map((post) => {
-              const canManage = isAdmin || post.author.id === currentUserId;
-              const isEditing = editingId === post.id;
-              const canLike = Boolean(currentUserId);
-              const comments = commentsByPost[post.id] ?? [];
-              const commentsExpanded = Boolean(expandedCommentsByPost[post.id]);
-              const replyTarget = replyTargetByPost[post.id];
-              const commentInput = commentInputByPost[post.id] ?? "";
-
-              return (
-                <article
-                  key={post.id}
-                  className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4"
-                >
-                  <div className="mb-2 flex items-start justify-between gap-3">
-                    <p className="text-sm font-semibold text-zinc-100">
-                      {getDisplayName(post.author)}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <p className="text-xs text-zinc-500">
-                        {formatPostTime(post.createdAt)}
-                      </p>
-                      {canManage && !isEditing ? (
+                  {gifSearchOpen && composerExpanded && (
+                    <div className="mb-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
+                      <div className="flex gap-2">
+                        <input
+                          value={gifQuery}
+                          onChange={(event) => setGifQuery(event.target.value)}
+                          onKeyDown={handleGifInputKeyDown}
+                          placeholder="Search GIFs"
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void searchGifs()}
+                          disabled={gifBusy || !gifQuery.trim()}
+                          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+                        >
+                          {gifBusy ? "..." : "Find"}
+                        </button>
+                      </div>
+                      {gifResults.length > 0 ? (
                         <>
-                          <button
-                            type="button"
-                            onClick={() => startEdit(post)}
-                            className="text-xs text-zinc-400 transition hover:text-zinc-200"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => void deletePost(post.id)}
-                            className="text-xs text-red-400 transition hover:text-red-300"
-                          >
-                            Delete
-                          </button>
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            {gifResults.map((gif) => (
+                              <button
+                                key={gif.id}
+                                type="button"
+                                onClick={() => {
+                                  clearSelectedMedia();
+                                  setSelectedGif(gif);
+                                  setGifSearchOpen(false);
+                                }}
+                                className={`overflow-hidden rounded-lg border ${
+                                  selectedGif?.id === gif.id
+                                    ? "border-brand-gold"
+                                    : "border-zinc-800"
+                                }`}
+                              >
+                                <Image
+                                  src={gif.previewUrl}
+                                  alt={gif.title}
+                                  width={240}
+                                  height={240}
+                                  unoptimized
+                                  className="h-16 w-full object-cover"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                          {gifHasMore ? (
+                            <button
+                              type="button"
+                              onClick={() => void searchGifs({ append: true })}
+                              disabled={gifBusy}
+                              className="mt-2 w-full rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+                            >
+                              {gifBusy ? "Loading..." : "Load more"}
+                            </button>
+                          ) : null}
                         </>
                       ) : null}
                     </div>
-                  </div>
+                  )}
 
-                  {isEditing ? (
-                    <div className="space-y-2">
-                      <textarea
-                        rows={4}
-                        maxLength={MAX_POST_LENGTH}
-                        value={editContent}
-                        onChange={(event) => setEditContent(event.target.value)}
-                        className="w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm"
+                  <div className="flex items-center justify-between border-t border-zinc-800 py-3">
+                    <div className="flex items-center gap-1 text-brand-purple">
+                      <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        className="hidden"
+                        onChange={handleMediaChange}
                       />
-                      <div className="flex flex-wrap gap-2">
-                        {EMOJI_CHOICES.map((emoji) => (
-                          <button
-                            key={`${post.id}-${emoji}`}
-                            type="button"
-                            onClick={() => appendEmoji(emoji, true)}
-                            className="rounded-full border border-zinc-700 px-2.5 py-1 text-sm hover:bg-zinc-800"
-                          >
-                            {emoji}
-                          </button>
-                        ))}
-                      </div>
-                      {post.mediaUrl && !editRemoveMedia ? (
-                        <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/70">
-                          <Image
-                            src={post.mediaUrl}
-                            alt="Attached media"
-                            width={1200}
-                            height={900}
-                            unoptimized
-                            className="h-auto max-h-48 w-full object-cover"
+                      <button
+                        type="button"
+                        title="Add photo"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="rounded-full p-2 hover:bg-zinc-800"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                        >
+                          <rect x="3" y="5" width="18" height="14" rx="2" />
+                          <circle cx="8.5" cy="10.5" r="1.5" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M3 16l5-5 4 4 3-3 4 4"
                           />
-                          <div className="flex items-center justify-between px-3 py-2">
-                            <p className="text-xs text-zinc-400">
-                              Attached media
-                            </p>
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        title="Search GIFs"
+                        onClick={() => {
+                          setGifSearchOpen((o) => !o);
+                          setEmojiPickerOpen(false);
+                        }}
+                        className={`rounded-full p-2 hover:bg-zinc-800 ${gifSearchOpen ? "bg-zinc-800" : ""}`}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                        >
+                          <rect x="2" y="6" width="20" height="12" rx="2" />
+                          <path
+                            strokeLinecap="round"
+                            d="M7 12h2m0 0v2m0-2V10M13 10v4M17 10h-2v4h2M17 12h-1"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        title="Add emoji"
+                        onClick={() => {
+                          setEmojiPickerOpen((o) => !o);
+                          setGifSearchOpen(false);
+                        }}
+                        className={`rounded-full p-2 hover:bg-zinc-800 ${emojiPickerOpen ? "bg-zinc-800" : ""}`}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                        >
+                          <circle cx="12" cy="12" r="9" />
+                          <path
+                            strokeLinecap="round"
+                            d="M8.5 14.5s1 1.5 3.5 1.5 3.5-1.5 3.5-1.5"
+                          />
+                          <circle
+                            cx="9"
+                            cy="10"
+                            r="1"
+                            fill="currentColor"
+                            stroke="none"
+                          />
+                          <circle
+                            cx="15"
+                            cy="10"
+                            r="1"
+                            fill="currentColor"
+                            stroke="none"
+                          />
+                        </svg>
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-3">
+                      <button
+                        type="submit"
+                        disabled={
+                          busy ||
+                          (!content.trim() && !mediaFile && !selectedGif)
+                        }
+                        className="rounded-full bg-brand-purple px-5 py-1.5 text-sm font-bold hover:bg-brand-purple-dark disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        {busy ? "Posting..." : "Post"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </form>
+          </div>
+
+          {error ? (
+            <p className="mx-4 mt-4 rounded-lg border border-red-800 bg-red-950/40 px-3 py-2 text-sm text-red-300 sm:mx-5">
+              {error}
+            </p>
+          ) : null}
+          {notice ? (
+            <p className="mx-4 mt-4 rounded-lg border border-emerald-800 bg-emerald-950/30 px-3 py-2 text-sm text-emerald-300 sm:mx-5">
+              {notice}
+            </p>
+          ) : null}
+
+          {posts.length === 0 ? (
+            <div className="border-b border-zinc-800 bg-zinc-950/50 px-5 py-5 text-sm text-zinc-400">
+              No updates yet. Be the first coach to post in The Dugout.
+            </div>
+          ) : (
+            <div>
+              {posts.map((post) => {
+                const canManage = isAdmin || post.author.id === currentUserId;
+                const isEditing = editingId === post.id;
+                const canLike = Boolean(currentUserId);
+                const comments = commentsByPost[post.id] ?? [];
+                const commentsExpanded = Boolean(
+                  expandedCommentsByPost[post.id],
+                );
+                const replyTarget = replyTargetByPost[post.id];
+                const commentInput = commentInputByPost[post.id] ?? "";
+
+                return (
+                  <article
+                    key={post.id}
+                    className="border-b border-zinc-800 bg-zinc-950/30 px-5 py-4"
+                  >
+                    <div className="mb-2 flex items-start justify-between gap-3">
+                      <p className="text-sm font-semibold text-zinc-100">
+                        {getDisplayName(post.author)}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs text-zinc-500">
+                          {formatPostTime(post.createdAt)}
+                        </p>
+                        {canManage && !isEditing ? (
+                          <>
                             <button
                               type="button"
-                              onClick={() => setEditRemoveMedia(true)}
-                              className="text-xs text-red-300 hover:text-red-200"
+                              onClick={() => startEdit(post)}
+                              className="text-xs text-zinc-400 transition hover:text-zinc-200"
                             >
-                              Remove
+                              Edit
                             </button>
-                          </div>
-                        </div>
-                      ) : editRemoveMedia && post.mediaUrl ? (
-                        <div className="flex items-center justify-between rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2">
-                          <p className="text-xs text-red-300">
-                            Media will be removed on save
-                          </p>
-                          <button
-                            type="button"
-                            onClick={() => setEditRemoveMedia(false)}
-                            className="text-xs text-zinc-400 hover:text-zinc-200"
-                          >
-                            Undo
-                          </button>
-                        </div>
-                      ) : null}
-                      <div className="flex items-center justify-end gap-2">
-                        <p className="mr-auto text-xs text-zinc-500">
-                          {editRemaining} left
-                        </p>
-                        <button
-                          type="button"
-                          onClick={cancelEdit}
-                          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200"
-                        >
-                          Cancel
-                        </button>
-                        <button
-                          type="button"
-                          disabled={editBusy || !editContent.trim()}
-                          onClick={() => void saveEdit(post.id)}
-                          className="rounded-lg bg-brand-purple px-3 py-1.5 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
-                        >
-                          {editBusy ? "Saving..." : "Save"}
-                        </button>
+                            <button
+                              type="button"
+                              onClick={() => void deletePost(post.id)}
+                              className="text-xs text-red-400 transition hover:text-red-300"
+                            >
+                              Delete
+                            </button>
+                          </>
+                        ) : null}
                       </div>
                     </div>
-                  ) : (
-                    <>
-                      {post.content ? (
-                        <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-200">
-                          {post.content}
-                        </p>
-                      ) : null}
-                      <DugoutMedia
-                        post={post}
-                        alt={post.content || "Dugout media"}
-                      />
-                      <div className="mt-3 flex flex-wrap items-center gap-3">
-                        {/* Reaction picker */}
-                        <div
-                          className="relative"
-                          ref={
-                            likePickerOpenId === post.id ? likePickerRef : null
+
+                    {isEditing ? (
+                      <div className="space-y-2">
+                        <textarea
+                          rows={4}
+                          maxLength={MAX_POST_LENGTH}
+                          value={editContent}
+                          onChange={(event) =>
+                            setEditContent(event.target.value)
                           }
-                        >
-                          {/* Trigger button */}
-                          <button
-                            type="button"
-                            disabled={!canLike || likeBusyId === post.id}
-                            onClick={() =>
-                              setLikePickerOpenId((prev) =>
-                                prev === post.id ? null : post.id,
-                              )
-                            }
-                            className={`rounded-full border px-3 py-1 text-sm font-semibold transition disabled:opacity-50 ${
-                              post.likedByViewer
-                                ? "border-brand-gold text-brand-gold hover:bg-brand-gold/10"
-                                : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
-                            }`}
-                            title={
-                              post.likedByViewer ? "Change reaction" : "React"
-                            }
-                          >
-                            {post.likedByViewer && post.viewerReaction
-                              ? post.viewerReaction
-                              : "👍"}
-                          </button>
-
-                          {/* Popout picker */}
-                          {likePickerOpenId === post.id && (
-                            <div className="absolute bottom-full left-0 z-20 mb-2 flex gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1.5 shadow-xl">
-                              {["👍", ...EMOJI_CHOICES].map((emoji) => (
-                                <button
-                                  key={emoji}
-                                  type="button"
-                                  disabled={likeBusyId === post.id}
-                                  onClick={() => void toggleLike(post, emoji)}
-                                  className={`rounded-full p-1 text-lg transition hover:scale-125 hover:bg-zinc-700 disabled:opacity-50 ${
-                                    post.likedByViewer &&
-                                    post.viewerReaction === emoji
-                                      ? "bg-zinc-700 ring-1 ring-brand-gold"
-                                      : ""
-                                  }`}
-                                  title={emoji}
-                                >
-                                  {emoji}
-                                </button>
-                              ))}
-                            </div>
-                          )}
+                          className="w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm"
+                        />
+                        <div className="flex flex-wrap gap-2">
+                          {EMOJI_CHOICES.map((emoji) => (
+                            <button
+                              key={`${post.id}-${emoji}`}
+                              type="button"
+                              onClick={() => appendEmoji(emoji, true)}
+                              className="rounded-full border border-zinc-700 px-2.5 py-1 text-sm hover:bg-zinc-800"
+                            >
+                              {emoji}
+                            </button>
+                          ))}
                         </div>
-                        <span className="text-xs text-zinc-500">
-                          {post.likeCount}{" "}
-                          {post.likeCount === 1 ? "like" : "likes"}
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => void toggleComments(post.id)}
-                          className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
-                        >
-                          {commentsExpanded ? "Hide" : "Show"} replies (
-                          {post.commentCount})
-                        </button>
-                      </div>
-
-                      {commentsExpanded ? (
-                        <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                          {replyTarget ? (
-                            <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-zinc-700 bg-zinc-900/60 px-2 py-1.5 text-xs text-zinc-300">
-                              <span>
-                                Replying to {getDisplayName(replyTarget.author)}
-                              </span>
+                        {post.mediaUrl && !editRemoveMedia ? (
+                          <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/70">
+                            <Image
+                              src={post.mediaUrl}
+                              alt="Attached media"
+                              width={1200}
+                              height={900}
+                              unoptimized
+                              className="h-auto max-h-48 w-full object-cover"
+                            />
+                            <div className="flex items-center justify-between px-3 py-2">
+                              <p className="text-xs text-zinc-400">
+                                Attached media
+                              </p>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setReplyTargetByPost((prev) => ({
-                                    ...prev,
-                                    [post.id]: null,
-                                  }))
-                                }
-                                className="text-red-300 hover:text-red-200"
+                                onClick={() => setEditRemoveMedia(true)}
+                                className="text-xs text-red-300 hover:text-red-200"
                               >
-                                Cancel
+                                Remove
                               </button>
                             </div>
-                          ) : null}
-
-                          <div className="flex gap-2">
-                            <textarea
-                              rows={2}
-                              maxLength={MAX_COMMENT_LENGTH}
-                              value={commentInput}
-                              onChange={(event) =>
-                                setCommentInputByPost((prev) => ({
-                                  ...prev,
-                                  [post.id]: event.target.value,
-                                }))
-                              }
-                              placeholder={
-                                currentUserId
-                                  ? "Write a comment or reply..."
-                                  : "Sign in as a coach to reply"
-                              }
-                              disabled={!currentUserId}
-                              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
-                            />
+                          </div>
+                        ) : editRemoveMedia && post.mediaUrl ? (
+                          <div className="flex items-center justify-between rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2">
+                            <p className="text-xs text-red-300">
+                              Media will be removed on save
+                            </p>
                             <button
                               type="button"
-                              disabled={
-                                !currentUserId ||
-                                !commentInput.trim() ||
-                                commentBusyByPost[post.id]
-                              }
-                              onClick={() =>
-                                void submitComment(
-                                  post.id,
-                                  replyTarget?.id ?? null,
-                                )
-                              }
-                              className="h-fit rounded-lg bg-brand-purple px-3 py-2 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
+                              onClick={() => setEditRemoveMedia(false)}
+                              className="text-xs text-zinc-400 hover:text-zinc-200"
                             >
-                              {commentBusyByPost[post.id]
-                                ? "Sending..."
-                                : "Send"}
+                              Undo
                             </button>
                           </div>
-                          <p className="mt-1 text-[11px] text-zinc-500">
-                            {MAX_COMMENT_LENGTH - commentInput.length}{" "}
-                            characters left
+                        ) : null}
+                        <div className="flex items-center justify-end gap-2">
+                          <p className="mr-auto text-xs text-zinc-500">
+                            {editRemaining} left
                           </p>
-
-                          {commentsLoadingByPost[post.id] ? (
-                            <p className="mt-3 text-xs text-zinc-400">
-                              Loading replies...
-                            </p>
-                          ) : comments.length === 0 ? (
-                            <p className="mt-3 text-xs text-zinc-500">
-                              No replies yet.
-                            </p>
-                          ) : (
-                            <div className="mt-2">
-                              {comments.map((comment) =>
-                                renderComment(post.id, comment),
-                              )}
-                            </div>
-                          )}
+                          <button
+                            type="button"
+                            onClick={cancelEdit}
+                            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200"
+                          >
+                            Cancel
+                          </button>
+                          <button
+                            type="button"
+                            disabled={editBusy || !editContent.trim()}
+                            onClick={() => void saveEdit(post.id)}
+                            className="rounded-lg bg-brand-purple px-3 py-1.5 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
+                          >
+                            {editBusy ? "Saving..." : "Save"}
+                          </button>
                         </div>
-                      ) : null}
-                    </>
-                  )}
-                </article>
-              );
-            })}
-          </div>
-        )}
-      </section>
+                      </div>
+                    ) : (
+                      <>
+                        {post.content ? (
+                          <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-200">
+                            {post.content}
+                          </p>
+                        ) : null}
+                        <DugoutMedia
+                          post={post}
+                          alt={post.content || "Dugout media"}
+                        />
+                        <div className="mt-3 flex flex-wrap items-center gap-3">
+                          {/* Reaction picker */}
+                          <div
+                            className="relative"
+                            ref={
+                              likePickerOpenId === post.id
+                                ? likePickerRef
+                                : null
+                            }
+                          >
+                            {/* Trigger button */}
+                            <button
+                              type="button"
+                              disabled={!canLike || likeBusyId === post.id}
+                              onClick={() =>
+                                setLikePickerOpenId((prev) =>
+                                  prev === post.id ? null : post.id,
+                                )
+                              }
+                              className={`rounded-full border px-3 py-1 text-sm font-semibold transition disabled:opacity-50 ${
+                                post.likedByViewer
+                                  ? "border-brand-gold text-brand-gold hover:bg-brand-gold/10"
+                                  : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                              }`}
+                              title={
+                                post.likedByViewer ? "Change reaction" : "React"
+                              }
+                            >
+                              {post.likedByViewer && post.viewerReaction
+                                ? post.viewerReaction
+                                : "👍"}
+                            </button>
+
+                            {/* Popout picker */}
+                            {likePickerOpenId === post.id && (
+                              <div className="absolute bottom-full left-0 z-20 mb-2 flex gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1.5 shadow-xl">
+                                {["👍", ...EMOJI_CHOICES].map((emoji) => (
+                                  <button
+                                    key={emoji}
+                                    type="button"
+                                    disabled={likeBusyId === post.id}
+                                    onClick={() => void toggleLike(post, emoji)}
+                                    className={`rounded-full p-1 text-lg transition hover:scale-125 hover:bg-zinc-700 disabled:opacity-50 ${
+                                      post.likedByViewer &&
+                                      post.viewerReaction === emoji
+                                        ? "bg-zinc-700 ring-1 ring-brand-gold"
+                                        : ""
+                                    }`}
+                                    title={emoji}
+                                  >
+                                    {emoji}
+                                  </button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                          <span className="text-xs text-zinc-500">
+                            {post.likeCount}{" "}
+                            {post.likeCount === 1 ? "like" : "likes"}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void toggleComments(post.id)}
+                            className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
+                          >
+                            {commentsExpanded ? "Hide" : "Show"} replies (
+                            {post.commentCount})
+                          </button>
+                        </div>
+
+                        {commentsExpanded ? (
+                          <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                            {replyTarget ? (
+                              <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-zinc-700 bg-zinc-900/60 px-2 py-1.5 text-xs text-zinc-300">
+                                <span>
+                                  Replying to{" "}
+                                  {getDisplayName(replyTarget.author)}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setReplyTargetByPost((prev) => ({
+                                      ...prev,
+                                      [post.id]: null,
+                                    }))
+                                  }
+                                  className="text-red-300 hover:text-red-200"
+                                >
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : null}
+
+                            <div className="flex gap-2">
+                              <textarea
+                                rows={2}
+                                maxLength={MAX_COMMENT_LENGTH}
+                                value={commentInput}
+                                onChange={(event) =>
+                                  setCommentInputByPost((prev) => ({
+                                    ...prev,
+                                    [post.id]: event.target.value,
+                                  }))
+                                }
+                                placeholder={
+                                  currentUserId
+                                    ? "Write a comment or reply..."
+                                    : "Sign in as a coach to reply"
+                                }
+                                disabled={!currentUserId}
+                                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
+                              />
+                              <button
+                                type="button"
+                                disabled={
+                                  !currentUserId ||
+                                  !commentInput.trim() ||
+                                  commentBusyByPost[post.id]
+                                }
+                                onClick={() =>
+                                  void submitComment(
+                                    post.id,
+                                    replyTarget?.id ?? null,
+                                  )
+                                }
+                                className="h-fit rounded-lg bg-brand-purple px-3 py-2 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
+                              >
+                                {commentBusyByPost[post.id]
+                                  ? "Sending..."
+                                  : "Send"}
+                              </button>
+                            </div>
+                            <p className="mt-1 text-[11px] text-zinc-500">
+                              {MAX_COMMENT_LENGTH - commentInput.length}{" "}
+                              characters left
+                            </p>
+
+                            {commentsLoadingByPost[post.id] ? (
+                              <p className="mt-3 text-xs text-zinc-400">
+                                Loading replies...
+                              </p>
+                            ) : comments.length === 0 ? (
+                              <p className="mt-3 text-xs text-zinc-500">
+                                No replies yet.
+                              </p>
+                            ) : (
+                              <div className="mt-2">
+                                {comments.map((comment) =>
+                                  renderComment(post.id, comment),
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ) : null}
+                      </>
+                    )}
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
     </div>
   );
 }

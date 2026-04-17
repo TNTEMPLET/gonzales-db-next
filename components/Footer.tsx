@@ -1,8 +1,13 @@
-import Link from "next/link";
+"use client";
+
 import Image from "next/image";
+import { usePathname } from "next/navigation";
 import logo from "@/public/images/logo.png";
 
 export default function Footer() {
+  const pathname = usePathname();
+  if (pathname.startsWith("/dugout")) return null;
+
   return (
     <footer className="bg-zinc-950 border-t border-zinc-800 py-16">
       <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-4 gap-10">

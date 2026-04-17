@@ -64,8 +64,10 @@ export default function Header() {
     };
   }, [pathname]);
 
+  if (pathname.startsWith("/dugout")) return null;
+
   const navLinks = [
-    { href: "/#schedule", label: "Schedules & Standings" },
+    { href: "/schedule", label: "Schedules & Standings" },
     ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
     ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
     { href: "/#fields", label: "Fields & Status" },
