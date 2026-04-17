@@ -220,20 +220,6 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                     <path strokeLinecap="round" d="M8 3v4M16 3v4M3 10h18" />
                   </svg>
                 </span>
-              ) : item.icon === "news" ? (
-                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center text-zinc-300">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.8}
-                  >
-                    <rect x="4" y="5" width="16" height="14" rx="2" />
-                    <path strokeLinecap="round" d="M8 9h8M8 12h8M8 15h5" />
-                  </svg>
-                </span>
               ) : item.icon === "home" ? (
                 <span className="mr-2 inline-flex h-5 w-5 items-center justify-center text-zinc-300">
                   <svg
