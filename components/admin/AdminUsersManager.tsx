@@ -15,10 +15,11 @@ type RegisteredUser = {
   name: string | null;
   firstName: string | null;
   lastName: string | null;
-  googleSub: string;
+  googleSub: string | null;
   createdAt: string;
   updatedAt: string;
   isAdmin: boolean;
+  isCoach: boolean;
 };
 
 type AdminAuditLog = {
@@ -216,6 +217,40 @@ export default function AdminUsersManager() {
       await loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to promote user");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function toggleCoach(userId: string, currentIsCoach: boolean) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isCoach: !currentIsCoach }),
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          json && "error" in json
+            ? json.error
+            : "Failed to update coach access",
+        );
+      }
+
+      setNotice(
+        !currentIsCoach ? "Coach access granted." : "Coach access revoked.",
+      );
+      await loadData();
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update coach access",
+      );
     } finally {
       setBusy(false);
     }
@@ -423,20 +458,34 @@ export default function AdminUsersManager() {
                     </p>
                     <p className="text-xs text-zinc-500">{user.email}</p>
                   </div>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() =>
-                      setConfirmAction({
-                        kind: "promote",
-                        userId: user.id,
-                        label: `Promote ${user.email} to admin access?`,
-                      })
-                    }
-                    className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-3 py-1.5 disabled:opacity-60"
-                  >
-                    Promote
-                  </button>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void toggleCoach(user.id, user.isCoach)}
+                      className={`text-xs rounded-lg border px-3 py-1.5 disabled:opacity-60 ${
+                        user.isCoach
+                          ? "border-brand-purple text-brand-purple hover:bg-brand-purple/10"
+                          : "border-zinc-600 text-zinc-400 hover:bg-zinc-800"
+                      }`}
+                    >
+                      {user.isCoach ? "Revoke Coach" : "Grant Coach"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setConfirmAction({
+                          kind: "promote",
+                          userId: user.id,
+                          label: `Promote ${user.email} to admin access?`,
+                        })
+                      }
+                      className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-3 py-1.5 disabled:opacity-60"
+                    >
+                      Promote
+                    </button>
+                  </div>
                 </div>
               ))
             )}

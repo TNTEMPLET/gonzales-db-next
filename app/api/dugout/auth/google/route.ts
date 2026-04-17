@@ -5,8 +5,12 @@ import {
   ADMIN_SESSION_COOKIE,
   createAdminSession,
 } from "@/lib/auth/adminSession";
-import prisma from "@/lib/prisma";
+import {
+  COACH_SESSION_COOKIE,
+  createCoachSession,
+} from "@/lib/auth/coachSession";
 import { upsertRegisteredUserFromGoogle } from "@/lib/auth/registeredUserAuth";
+import prisma from "@/lib/prisma";
 
 type GoogleLoginPayload = {
   credential?: string;
@@ -57,7 +61,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await upsertRegisteredUserFromGoogle({
+    const user = await upsertRegisteredUserFromGoogle({
       email,
       sub,
       name,
@@ -70,19 +74,31 @@ export async function POST(request: NextRequest) {
     const response = NextResponse.json({
       success: true,
       isAdmin: Boolean(admin),
-      user: { email, name },
+      isCoach: Boolean(user.isCoach),
+      user: { email: user.email, name: user.name || name },
+    });
+
+    const session = await createCoachSession(user.id);
+    response.cookies.set({
+      name: COACH_SESSION_COOKIE,
+      value: session.token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      expires: session.expiresAt,
     });
 
     if (admin) {
-      const session = await createAdminSession(admin.id);
+      const adminSession = await createAdminSession(admin.id);
       response.cookies.set({
         name: ADMIN_SESSION_COOKIE,
-        value: session.token,
+        value: adminSession.token,
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
         sameSite: "lax",
         path: "/",
-        expires: session.expiresAt,
+        expires: adminSession.expiresAt,
       });
     }
 

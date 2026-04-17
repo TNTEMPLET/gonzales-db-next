@@ -1,9 +1,13 @@
 // app/page.tsx
 import Image from "next/image";
+import Link from "next/link";
 import ScheduleTable from "@/components/ScheduleTable";
 import HeroNewsRotator from "@/components/home/HeroNewsRotator";
 import { fetchGames, type Game } from "@/lib/fetchGames";
-import { getHomepageRotatorPosts } from "@/lib/news/queries";
+import {
+  getHomepageFeaturedNewsPosts,
+  getHomepageRotatorPosts,
+} from "@/lib/news/queries";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
 import logo from "@/public/images/logo.png";
 
@@ -17,6 +21,24 @@ type HomepageRotatorPost = {
   excerpt: string | null;
 };
 
+type HomepageFeaturedPost = {
+  id: string;
+  title: string;
+  slug: string;
+  excerpt: string | null;
+  imageUrl: string | null;
+  publishedAt: Date | null;
+};
+
+function formatPublishedDate(value: Date | null) {
+  if (!value) return "Draft";
+  return new Intl.DateTimeFormat("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  }).format(value);
+}
+
 export default async function Home({
   searchParams,
 }: {
@@ -27,12 +49,24 @@ export default async function Home({
   const regOpen = isRegistrationOpen();
 
   let rotatorPosts: HomepageRotatorPost[] = [];
+  let featuredPosts: HomepageFeaturedPost[] = [];
   try {
     rotatorPosts = (await getHomepageRotatorPosts()) as HomepageRotatorPost[];
   } catch (err: unknown) {
     const message =
       err instanceof Error ? err.message : "Unknown rotator loading error";
     console.error(`Homepage rotator load failed: ${message}`);
+  }
+
+  try {
+    featuredPosts =
+      (await getHomepageFeaturedNewsPosts()) as HomepageFeaturedPost[];
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Unknown featured news loading error";
+    console.error(`Homepage featured news load failed: ${message}`);
   }
 
   const heroRotatorItems = rotatorPosts
@@ -257,6 +291,71 @@ export default async function Home({
           </div>
         </div>
       </section>
+
+      {/* Schedule Table */}
+      {featuredPosts.length > 0 ? (
+        <section className="py-12 bg-zinc-950 border-b border-zinc-800">
+          <div className="max-w-6xl mx-auto px-6">
+            <div className="flex items-end justify-between gap-4 mb-6">
+              <div>
+                <div className="inline-block bg-brand-purple text-[11px] tracking-[2px] px-4 py-1.5 rounded-full mb-3">
+                  FEATURED NEWS
+                </div>
+                <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
+                  Top League Updates
+                </h2>
+              </div>
+              <Link
+                href="/news"
+                className="text-sm font-semibold text-brand-gold hover:text-brand-gold/80"
+              >
+                View All News
+              </Link>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              {featuredPosts.map((post) => (
+                <article
+                  key={post.id}
+                  className="rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden"
+                >
+                  {post.imageUrl ? (
+                    <Image
+                      src={post.imageUrl}
+                      alt={post.title}
+                      width={640}
+                      height={360}
+                      className="h-36 w-full object-cover"
+                    />
+                  ) : (
+                    <div className="h-36 w-full bg-zinc-800" />
+                  )}
+
+                  <div className="p-4">
+                    <p className="text-xs uppercase tracking-[0.14em] text-zinc-500 mb-2">
+                      {formatPublishedDate(post.publishedAt)}
+                    </p>
+                    <h3 className="text-lg font-semibold leading-snug mb-2">
+                      {post.title}
+                    </h3>
+                    {post.excerpt ? (
+                      <p className="text-sm text-zinc-300 line-clamp-3 mb-3">
+                        {post.excerpt}
+                      </p>
+                    ) : null}
+                    <Link
+                      href={`/news/${post.slug}`}
+                      className="text-sm font-semibold text-brand-gold hover:text-brand-gold/80"
+                    >
+                      Read More
+                    </Link>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </div>
+        </section>
+      ) : null}
 
       {/* Schedule Table */}
       <ScheduleTable

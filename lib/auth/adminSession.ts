@@ -14,6 +14,7 @@ export type AdminSessionUser = {
   name: string | null;
   firstName: string | null;
   lastName: string | null;
+  avatarUrl: string | null;
 };
 
 function hashToken(token: string): string {
@@ -93,6 +94,7 @@ export async function getAdminUserByToken(token: string | undefined) {
     name: session.user.name,
     firstName: session.user.firstName,
     lastName: session.user.lastName,
+    avatarUrl: session.user.avatarUrl ?? null,
   } satisfies AdminSessionUser;
 }
 

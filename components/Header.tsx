@@ -2,21 +2,76 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import logo from "@/public/images/logo.png";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
+import CoachAuthButton from "@/components/dugout/CoachAuthButton";
+
+type DugoutMeResponse = {
+  user: {
+    isCoach: boolean;
+    isAdmin: boolean;
+  } | null;
+};
 
 export default function Header() {
+  const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [canSeeDugout, setCanSeeDugout] = useState(false);
   const regOpen = isRegistrationOpen();
 
+  useEffect(() => {
+    let active = true;
+
+    async function loadDugoutAccess() {
+      try {
+        const res = await fetch("/api/dugout/me", { cache: "no-store" });
+        if (!res.ok) {
+          if (active) setIsLoggedIn(false);
+          if (active) setCanSeeDugout(false);
+          return;
+        }
+
+        const json = (await res.json()) as DugoutMeResponse;
+        if (active) setIsLoggedIn(Boolean(json.user));
+        if (active)
+          setCanSeeDugout(Boolean(json.user?.isCoach || json.user?.isAdmin));
+      } catch {
+        if (active) setIsLoggedIn(false);
+        if (active) setCanSeeDugout(false);
+      }
+    }
+
+    void loadDugoutAccess();
+
+    function handleAuthChanged() {
+      void loadDugoutAccess();
+    }
+
+    function handleWindowFocus() {
+      void loadDugoutAccess();
+    }
+
+    window.addEventListener("gdb-auth-changed", handleAuthChanged);
+    window.addEventListener("focus", handleWindowFocus);
+
+    return () => {
+      active = false;
+      window.removeEventListener("gdb-auth-changed", handleAuthChanged);
+      window.removeEventListener("focus", handleWindowFocus);
+    };
+  }, [pathname]);
+
   const navLinks = [
-    { href: "#schedule", label: "Schedules & Standings" },
-    ...(regOpen ? [{ href: "#register", label: "Registration" }] : []),
-    { href: "#teams", label: "Teams" },
-    { href: "#fields", label: "Fields & Status" },
+    { href: "/#schedule", label: "Schedules & Standings" },
+    ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
+    ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
+    { href: "/#fields", label: "Fields & Status" },
     { href: "/news", label: "News" },
-    { href: "#contact", label: "Contact" },
+    ...(canSeeDugout ? [{ href: "/dugout", label: "The Dugout" }] : []),
+    { href: "/#contact", label: "Contact" },
   ];
 
   return (
@@ -56,16 +111,17 @@ export default function Header() {
               {link.label}
             </Link>
           ))}
+          <CoachAuthButton />
         </nav>
 
         {/* Register Button */}
         {regOpen && (
-          <a
-            href="#register"
+          <Link
+            href="/#register"
             className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm transition"
           >
             Register Now
-          </a>
+          </Link>
         )}
 
         {/* Mobile Menu Button */}
@@ -92,14 +148,17 @@ export default function Header() {
               </Link>
             ))}
             {regOpen && (
-              <a
-                href="#register"
+              <Link
+                href="/#register"
                 onClick={() => setIsMenuOpen(false)}
                 className="bg-brand-purple hover:bg-brand-purple-dark py-3 text-center rounded-lg font-semibold mt-4"
               >
                 Register for Spring 2026
-              </a>
+              </Link>
             )}
+            <div className="pt-2 border-t border-zinc-700 mt-2">
+              <CoachAuthButton mobile />
+            </div>
           </div>
         </div>
       )}

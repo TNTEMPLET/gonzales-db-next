@@ -61,3 +61,31 @@ export async function getHomepageRotatorPosts() {
     return [];
   }
 }
+
+export async function getHomepageFeaturedNewsPosts() {
+  try {
+    return await prisma.newsPost.findMany({
+      where: {
+        status: "PUBLISHED",
+        featured: true,
+      },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        excerpt: true,
+        imageUrl: true,
+        publishedAt: true,
+      },
+      orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      take: 4,
+    });
+  } catch (err: unknown) {
+    const message =
+      err instanceof Error
+        ? err.message
+        : "Unknown featured news loading error";
+    console.error(`Failed to fetch homepage featured news posts: ${message}`);
+    return [];
+  }
+}

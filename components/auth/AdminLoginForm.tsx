@@ -15,6 +15,10 @@ export default function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
+  function notifyAuthChanged() {
+    window.dispatchEvent(new Event("gdb-auth-changed"));
+  }
+
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     if (!clientId) return;
@@ -47,6 +51,7 @@ export default function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
               return;
             }
 
+            notifyAuthChanged();
             router.push(nextPath || "/news/admin");
             router.refresh();
           } catch (err: unknown) {
@@ -102,6 +107,7 @@ export default function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
         throw new Error(json.error || "Login failed");
       }
 
+      notifyAuthChanged();
       router.push(nextPath || "/news/admin");
       router.refresh();
     } catch (err: unknown) {
@@ -149,7 +155,7 @@ export default function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
 
       {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
         <div className="space-y-2">
-          <div ref={googleButtonRef} className="min-h-[44px]" />
+          <div ref={googleButtonRef} className="min-h-11" />
           <p className="text-xs text-zinc-500">
             First-time Google sign-ins are registered automatically. Existing
             admins can then promote users to admin access.

@@ -42,6 +42,7 @@ model AdminUser {
   firstName    String?
   lastName     String?
   passwordHash String?
+  avatarUrl    String?
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   sessions     AdminSession[]
@@ -49,15 +50,45 @@ model AdminUser {
 }
 
 model RegisteredUser {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  name         String?
+  firstName    String?
+  lastName     String?
+  isCoach      Boolean  @default(false)
+  googleSub    String?  @unique
+  passwordHash String?
+  avatarUrl    String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  auditLogs    AdminAuditLog[]
+  sessions     CoachSession[]
+  dugoutPosts  DugoutPost[]
+}
+
+model CoachSession {
   id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
-  firstName String?
-  lastName  String?
-  googleSub String   @unique
+  tokenHash String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+  userId    String
+  user      RegisteredUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model DugoutPost {
+  id        String   @id @default(cuid())
+  content   String
+  authorId  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
-  auditLogs AdminAuditLog[]
+
+  author RegisteredUser @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([createdAt])
+  @@index([authorId])
 }
 
 model AdminSession {

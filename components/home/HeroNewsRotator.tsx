@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
@@ -35,18 +36,21 @@ export default function HeroNewsRotator({ items }: HeroNewsRotatorProps) {
 
   return (
     <section className="relative h-[75vh] bg-black overflow-hidden px-3 sm:px-4 md:px-6 lg:px-8 py-4 md:py-6">
-      <div className="relative mx-auto h-full w-full max-w-[1680px]">
+      <div className="relative mx-auto h-full w-full max-w-420">
         <Link
           href={`/news/${activeItem.slug}`}
           className="relative block h-full w-full rounded-2xl overflow-hidden border border-zinc-800"
           aria-label={`Read news article: ${activeItem.title}`}
         >
-          <img
+          <Image
             src={activeItem.imageUrl}
             alt={activeItem.title}
-            className="h-full w-full object-cover"
+            fill
+            sizes="(max-width: 768px) 100vw, 1600px"
+            className="object-cover"
+            priority
           />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/40 to-black/25" />
+          <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-black/25" />
 
           <div className="absolute left-0 right-0 bottom-0 p-6 md:p-8">
             <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-4 py-2 rounded-full mb-4">

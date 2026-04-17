@@ -2,25 +2,24 @@ import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import AdminUsersManager from "@/components/admin/AdminUsersManager";
+import DugoutModerationPanel from "@/components/admin/DugoutModerationPanel";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
 
 export const metadata = {
-  title: "Admin Users | Gonzales Diamond Baseball",
-  description:
-    "Promote and demote admin accounts for Gonzales Diamond Baseball.",
+  title: "Dugout Moderation | Gonzales Diamond Baseball",
+  description: "Edit and delete Dugout feed posts as an admin.",
 };
 
-export default async function AdminUsersPage() {
+export default async function AdminDugoutPage() {
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
 
   if (!adminUser) {
-    redirect("/admin/login?next=/admin/users");
+    redirect("/admin/login?next=/admin/dugout");
   }
 
   return (
@@ -29,33 +28,30 @@ export default async function AdminUsersPage() {
         <div className="mb-8">
           <div className="flex items-center justify-between gap-4 mb-4">
             <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full">
-              ACCESS CONTROL
+              FEED MODERATION
             </div>
             <div className="flex items-center gap-4 text-sm">
               <Link href="/admin" className="text-zinc-300 hover:text-white">
                 Admin Dashboard
               </Link>
               <Link
-                href="/news/admin"
+                href="/dugout"
                 className="text-brand-gold hover:text-brand-gold/80"
               >
-                Back to News Admin
-              </Link>
-              <Link href="/news" className="text-zinc-400 hover:text-zinc-300">
-                Public News
+                View Public Dugout
               </Link>
             </div>
           </div>
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
-            Admin User Management
+            Dugout Moderation
           </h1>
           <p className="text-zinc-400 max-w-2xl">
-            Promote registered Google users to admin access and demote admins as
-            needed.
+            Review, edit, and remove dugout posts to keep coach communication
+            clear and appropriate.
           </p>
         </div>
 
-        <AdminUsersManager />
+        <DugoutModerationPanel />
       </section>
     </main>
   );

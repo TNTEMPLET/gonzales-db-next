@@ -14,7 +14,7 @@ export const metadata = {
 export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;
   const nextPath =
-    params.next && params.next.startsWith("/") ? params.next : "/news/admin";
+    params.next && params.next.startsWith("/") ? params.next : "/admin";
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">

@@ -31,7 +31,7 @@ type RegisteredUser = {
   id: string;
   email: string;
   name: string | null;
-  googleSub: string;
+  googleSub: string | null;
   createdAt: string;
   updatedAt: string;
   isAdmin: boolean;
@@ -98,9 +98,11 @@ function fromLocalDateTimeInput(value: string): string | null {
 export default function NewsAdminPanel({
   adminEmail,
   adminName,
+  initialEditSlug,
 }: {
   adminEmail: string;
   adminName: string | null;
+  initialEditSlug?: string;
 }) {
   const router = useRouter();
   const defaultAuthor = adminName?.trim() || adminEmail;
@@ -110,7 +112,7 @@ export default function NewsAdminPanel({
   const [currentAdminEmail, setCurrentAdminEmail] = useState<string | null>(
     null,
   );
-  const [selectedSlug, setSelectedSlug] = useState("");
+  const [selectedSlug, setSelectedSlug] = useState(initialEditSlug ?? "");
   const [createPayload, setCreatePayload] = useState<PostPayload>(() =>
     createEmptyPayload(defaultAuthor),
   );
@@ -146,7 +148,8 @@ export default function NewsAdminPanel({
         throw new Error(json.error || "Failed to load posts");
       }
 
-      setPosts(json.data || []);
+      const loaded: NewsPost[] = json.data || [];
+      setPosts(loaded);
       setNotice("News posts loaded");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load posts");
@@ -234,7 +237,8 @@ export default function NewsAdminPanel({
     setBusy(true);
     try {
       await fetch("/api/admin/logout", { method: "POST" });
-      router.push("/admin/login?next=/news/admin");
+      window.dispatchEvent(new Event("gdb-auth-changed"));
+      router.push("/");
       router.refresh();
     } finally {
       setBusy(false);

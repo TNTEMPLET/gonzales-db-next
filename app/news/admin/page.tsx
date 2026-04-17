@@ -13,7 +13,11 @@ export const metadata = {
   description: "Create and manage Gonzales Diamond Baseball news posts.",
 };
 
-export default async function NewsAdminPage() {
+export default async function NewsAdminPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ edit?: string }>;
+}) {
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
@@ -21,6 +25,8 @@ export default async function NewsAdminPage() {
   if (!adminUser) {
     redirect("/admin/login?next=/news/admin");
   }
+
+  const { edit } = await searchParams;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
@@ -31,6 +37,15 @@ export default async function NewsAdminPage() {
               CONTENT MANAGEMENT
             </div>
             <div className="flex items-center gap-4 text-sm">
+              <Link href="/admin" className="text-zinc-300 hover:text-white">
+                Admin Dashboard
+              </Link>
+              <Link
+                href="/admin/dugout"
+                className="text-zinc-300 hover:text-white"
+              >
+                Moderate Dugout
+              </Link>
               <Link
                 href="/admin/users"
                 className="text-zinc-300 hover:text-white"
@@ -62,6 +77,7 @@ export default async function NewsAdminPage() {
                   .join(" ")
               : adminUser.name
           }
+          initialEditSlug={edit}
         />
       </section>
     </main>
