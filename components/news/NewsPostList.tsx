@@ -193,7 +193,10 @@ export default function NewsPostList({
                             checked={post.rotatorEnabled}
                             disabled={togglingRotatorSlug === post.slug}
                             onChange={(event) =>
-                              void handleRotatorToggle(post, event.target.checked)
+                              void handleRotatorToggle(
+                                post,
+                                event.target.checked,
+                              )
                             }
                             className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-brand-purple focus:ring-brand-purple"
                           />
