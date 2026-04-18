@@ -58,6 +58,61 @@ const NAV_ITEMS = [
   { key: "home", label: "Home", href: "/", icon: "home" },
 ] as const;
 
+function renderNavIcon(icon: (typeof NAV_ITEMS)[number]["icon"]) {
+  if (icon === "baseball") {
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-5 w-5 rotate-20"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.5}
+      >
+        <circle cx="12" cy="12" r="9" />
+        <path strokeLinecap="round" d="M9 4.5C7.5 7 7.5 17 9 19.5" />
+        <path strokeLinecap="round" d="M15 4.5C16.5 7 16.5 17 15 19.5" />
+        <path strokeLinecap="round" d="M9 8.5 L7 9" />
+        <path strokeLinecap="round" d="M9 12 L6.8 12" />
+        <path strokeLinecap="round" d="M9 15.5 L7 15" />
+        <path strokeLinecap="round" d="M15 8.5 L17 9" />
+        <path strokeLinecap="round" d="M15 12 L17.2 12" />
+        <path strokeLinecap="round" d="M15 15.5 L17 15" />
+      </svg>
+    );
+  }
+
+  if (icon === "calendar") {
+    return (
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        className="h-5 w-5"
+        fill="none"
+        viewBox="0 0 24 24"
+        stroke="currentColor"
+        strokeWidth={1.8}
+      >
+        <rect x="3" y="5" width="18" height="16" rx="2" />
+        <path strokeLinecap="round" d="M8 3v4M16 3v4M3 10h18" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className="h-5 w-5"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.8}
+    >
+      <path strokeLinecap="round" strokeLinejoin="round" d="M3 11l9-7 9 7" />
+      <path strokeLinecap="round" strokeLinejoin="round" d="M5 10v10h14V10" />
+    </svg>
+  );
+}
+
 type DugoutPageProps = {
   searchParams: Promise<{ view?: string }>;
 };
@@ -179,70 +234,9 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                   : "font-medium text-zinc-400 hover:text-zinc-100"
               }`}
             >
-              {item.icon === "baseball" ? (
-                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center text-zinc-300">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5 rotate-20"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.5}
-                  >
-                    <circle cx="12" cy="12" r="9" />
-                    <path
-                      strokeLinecap="round"
-                      d="M9 4.5C7.5 7 7.5 17 9 19.5"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      d="M15 4.5C16.5 7 16.5 17 15 19.5"
-                    />
-                    <path strokeLinecap="round" d="M9 8.5 L7 9" />
-                    <path strokeLinecap="round" d="M9 12 L6.8 12" />
-                    <path strokeLinecap="round" d="M9 15.5 L7 15" />
-                    <path strokeLinecap="round" d="M15 8.5 L17 9" />
-                    <path strokeLinecap="round" d="M15 12 L17.2 12" />
-                    <path strokeLinecap="round" d="M15 15.5 L17 15" />
-                  </svg>
-                </span>
-              ) : item.icon === "calendar" ? (
-                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center text-zinc-300">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.8}
-                  >
-                    <rect x="3" y="5" width="18" height="16" rx="2" />
-                    <path strokeLinecap="round" d="M8 3v4M16 3v4M3 10h18" />
-                  </svg>
-                </span>
-              ) : item.icon === "home" ? (
-                <span className="mr-2 inline-flex h-5 w-5 items-center justify-center text-zinc-300">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    className="h-5 w-5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    strokeWidth={1.8}
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M3 11l9-7 9 7"
-                    />
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M5 10v10h14V10"
-                    />
-                  </svg>
-                </span>
-              ) : null}
+              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center text-zinc-300">
+                {renderNavIcon(item.icon)}
+              </span>
               {item.label}
             </Link>
           ))}
@@ -277,7 +271,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
         </nav>
 
         {/* ── Center feed column ───────────────────────────────── */}
-        <div className="flex h-full flex-1 flex-col overflow-hidden border-r border-zinc-800 px-3 py-4 sm:px-4">
+        <div className="flex h-full flex-1 flex-col overflow-hidden border-r border-zinc-800 px-3 pb-24 pt-4 sm:px-4 lg:pb-4">
           <DugoutTimeline
             initialPosts={initialPosts}
             initialScheduleGames={scheduleGames}
@@ -425,6 +419,37 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
           </div>
         </aside>
       </div>
+
+      {/* Mobile bottom navigation */}
+      <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
+        <div className="mx-auto flex w-full max-w-330 items-center justify-around px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          {NAV_ITEMS.map((item) => {
+            const isActive =
+              (item.key === "notifications" &&
+                activeView === "notifications") ||
+              (item.key === "schedule" && activeView === "schedule");
+
+            return (
+              <Link
+                key={`mobile-${item.href}`}
+                href={item.href}
+                className={`inline-flex min-w-20 flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-medium transition ${
+                  isActive ? "text-white" : "text-zinc-400 hover:text-zinc-100"
+                }`}
+              >
+                <span
+                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full ${
+                    isActive ? "bg-zinc-800 text-white" : "text-zinc-300"
+                  }`}
+                >
+                  {renderNavIcon(item.icon)}
+                </span>
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      </nav>
     </div>
   );
 }
