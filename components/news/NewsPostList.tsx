@@ -12,6 +12,7 @@ type NewsListPost = {
   imageUrl: string | null;
   author: string | null;
   featured: boolean;
+  rotatorEnabled: boolean;
   publishedAt: Date | null;
 };
 
@@ -34,6 +35,9 @@ export default function NewsPostList({
   const router = useRouter();
   const [posts, setPosts] = useState<NewsListPost[]>(initialPosts);
   const [deletingSlug, setDeletingSlug] = useState<string | null>(null);
+  const [togglingRotatorSlug, setTogglingRotatorSlug] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState("");
 
   async function handleDelete(slug: string) {
@@ -52,6 +56,42 @@ export default function NewsPostList({
       setError(err instanceof Error ? err.message : "Failed to delete post");
     } finally {
       setDeletingSlug(null);
+    }
+  }
+
+  async function handleRotatorToggle(post: NewsListPost, enabled: boolean) {
+    setTogglingRotatorSlug(post.slug);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/news/${post.slug}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ rotatorEnabled: enabled }),
+      });
+
+      if (!response.ok) {
+        const json = await response.json();
+        throw new Error(json.error || "Failed to update rotator setting");
+      }
+
+      setPosts((prev) =>
+        prev.map((item) =>
+          item.slug === post.slug
+            ? {
+                ...item,
+                rotatorEnabled: enabled,
+              }
+            : item,
+        ),
+      );
+      router.refresh();
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update rotator setting",
+      );
+    } finally {
+      setTogglingRotatorSlug(null);
     }
   }
 
@@ -102,11 +142,13 @@ export default function NewsPostList({
                     <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">
                       {formatPublishedDate(post.publishedAt)}
                     </p>
-                    {post.featured ? (
-                      <span className="text-[11px] bg-brand-gold text-black px-2 py-1 rounded-full font-semibold tracking-wide">
-                        Featured
-                      </span>
-                    ) : null}
+                    <div className="flex items-center gap-3">
+                      {post.featured ? (
+                        <span className="text-[11px] bg-brand-gold text-black px-2 py-1 rounded-full font-semibold tracking-wide">
+                          Featured
+                        </span>
+                      ) : null}
+                    </div>
                   </div>
                   <h2 className="text-2xl font-semibold mb-2">{post.title}</h2>
                   {post.excerpt ? (
@@ -116,32 +158,48 @@ export default function NewsPostList({
                     <p className="text-zinc-500 text-sm">
                       By {post.author || "League Staff"}
                     </p>
-                    <div className="flex items-center gap-4">
+                    <div className="flex flex-col items-end gap-1">
+                      <div className="flex items-center gap-4">
+                        {isAdmin ? (
+                          <>
+                            <Link
+                              href={`/news/admin?edit=${post.slug}`}
+                              className="text-sm text-zinc-400 hover:text-zinc-200 transition"
+                            >
+                              Edit
+                            </Link>
+                            <button
+                              onClick={() => handleDelete(post.slug)}
+                              disabled={deletingSlug === post.slug}
+                              className="text-sm text-red-400 hover:text-red-300 transition disabled:opacity-50"
+                            >
+                              {deletingSlug === post.slug
+                                ? "Deleting..."
+                                : "Delete"}
+                            </button>
+                          </>
+                        ) : null}
+                        <Link
+                          href={`/news/${post.slug}`}
+                          className="text-brand-gold hover:text-brand-gold/80 text-sm font-semibold"
+                        >
+                          Read More
+                        </Link>
+                      </div>
                       {isAdmin ? (
-                        <>
-                          <Link
-                            href={`/news/admin?edit=${post.slug}`}
-                            className="text-sm text-zinc-400 hover:text-zinc-200 transition"
-                          >
-                            Edit
-                          </Link>
-                          <button
-                            onClick={() => handleDelete(post.slug)}
-                            disabled={deletingSlug === post.slug}
-                            className="text-sm text-red-400 hover:text-red-300 transition disabled:opacity-50"
-                          >
-                            {deletingSlug === post.slug
-                              ? "Deleting..."
-                              : "Delete"}
-                          </button>
-                        </>
+                        <label className="inline-flex items-center gap-2 text-sm text-zinc-400">
+                          <input
+                            type="checkbox"
+                            checked={post.rotatorEnabled}
+                            disabled={togglingRotatorSlug === post.slug}
+                            onChange={(event) =>
+                              void handleRotatorToggle(post, event.target.checked)
+                            }
+                            className="h-4 w-4 rounded border-zinc-600 bg-zinc-900 text-brand-purple focus:ring-brand-purple"
+                          />
+                          Rotator
+                        </label>
                       ) : null}
-                      <Link
-                        href={`/news/${post.slug}`}
-                        className="text-brand-gold hover:text-brand-gold/80 text-sm font-semibold"
-                      >
-                        Read More
-                      </Link>
                     </div>
                   </div>
                 </div>
