@@ -394,52 +394,130 @@ export default function ScheduleTable({
       format: "a4",
     });
 
-    // Add title
     doc.setFontSize(20);
     doc.text("Schedules & Standings", 20, 20);
-
-    // Add filters info
     doc.setFontSize(12);
-    const subtitle = getSubtitle();
-    doc.text(`${subtitle} • Live from Assignr`, 20, 35);
+    doc.text(`${getSubtitle()} • Live from Assignr`, 20, 35);
 
-    // Prepare table data
-    const headers = [
-      ["Date & Time", "Age Group", "Home Team", "Away Team", "Field", "Venue"],
-    ];
-    const rows = games.map((game) => [
-      game.localized_date
-        ? `${game.localized_date} • ${game.localized_time || "TBD"}`
-        : "TBD",
-      game.age_group || "—",
-      game.home_team || "TBD",
-      game.away_team || "TBD",
-      game.subvenue || "TBD",
-      game._embedded?.venue?.name || "TBD",
-    ]);
+    // Build grouped body using cell objects so Park/Day rows span all columns
+    type CellDef = {
+      content: string;
+      colSpan?: number;
+      styles?: Record<string, unknown>;
+    };
+    type RowInput = (string | CellDef)[];
+    const body: RowInput[] = [];
 
-    // Add table
+    const parkMap = new Map<
+      string,
+      Map<number, { dayLabel: string; games: Game[] }>
+    >();
+    for (const game of games) {
+      const park = game._embedded?.venue?.name || "Unknown Venue";
+      const src = game.start_time || game.localized_date;
+      let daySortVal = Number.POSITIVE_INFINITY;
+      let dayLabel = "Unknown Date";
+      if (src) {
+        const d = new Date(src);
+        if (!Number.isNaN(d.valueOf())) {
+          daySortVal = new Date(
+            d.getFullYear(),
+            d.getMonth(),
+            d.getDate(),
+          ).valueOf();
+          dayLabel = d.toLocaleDateString("en-US", {
+            weekday: "long",
+            month: "short",
+            day: "numeric",
+            year: "numeric",
+          });
+        } else {
+          dayLabel = game.localized_date || "Unknown Date";
+        }
+      }
+      if (!parkMap.has(park)) parkMap.set(park, new Map());
+      const dayMap = parkMap.get(park)!;
+      if (!dayMap.has(daySortVal))
+        dayMap.set(daySortVal, { dayLabel, games: [] });
+      dayMap.get(daySortVal)!.games.push(game);
+    }
+
+    Array.from(parkMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .forEach(([park, dayMap]) => {
+        body.push([
+          {
+            content: park,
+            colSpan: 5,
+            styles: {
+              fillColor: [39, 39, 42],
+              textColor: [161, 161, 170],
+              fontStyle: "bold",
+              fontSize: 9,
+            },
+          },
+        ]);
+        Array.from(dayMap.entries())
+          .sort(([a], [b]) => a - b)
+          .forEach(([, { dayLabel, games: dayGames }]) => {
+            body.push([
+              {
+                content: `    ${dayLabel}`,
+                colSpan: 5,
+                styles: {
+                  fillColor: [24, 24, 27],
+                  textColor: [202, 138, 4],
+                  fontStyle: "bold",
+                  fontSize: 8,
+                },
+              },
+            ]);
+            const sorted = [...dayGames].sort((a, b) => {
+              const ageDiff =
+                getAgeGroupSortValue(a.age_group) -
+                getAgeGroupSortValue(b.age_group);
+              if (ageDiff !== 0) return ageDiff;
+              return getGameSortDateValue(a) - getGameSortDateValue(b);
+            });
+            sorted.forEach((game) => {
+              body.push([
+                game.localized_time || "TBD",
+                game.age_group || "—",
+                game.home_team || "TBD",
+                game.away_team || "TBD",
+                game.subvenue || "TBD",
+              ]);
+            });
+          });
+      });
+
     autoTable(doc, {
-      head: headers,
-      body: rows,
+      head: [["Time", "Age Group", "Home Team", "Away Team", "Field"]],
+      body,
       startY: 45,
       styles: {
         fontSize: 8,
         cellPadding: 2,
-        lineColor: [200, 200, 200], // Light gray gridlines
+        lineColor: [80, 80, 80],
         lineWidth: 0.1,
       },
       headStyles: {
-        fillColor: [89, 2, 117], // brand-purple #590275
+        fillColor: [89, 2, 117],
         textColor: 255,
-        lineColor: [59, 130, 246], // Match header background
         lineWidth: 0.1,
       },
       alternateRowStyles: {
-        fillColor: [249, 250, 251], // gray-50
+        fillColor: [245, 245, 245],
       },
-      tableLineColor: [200, 200, 200], // Light gray table borders
+      tableLineColor: [200, 200, 200],
       tableLineWidth: 0.1,
+      columnStyles: {
+        0: { cellWidth: 22 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: "auto" },
+        3: { cellWidth: "auto" },
+        4: { cellWidth: 38 },
+      },
     });
 
     doc.save(`schedule-${new Date().toISOString().split("T")[0]}.pdf`);
