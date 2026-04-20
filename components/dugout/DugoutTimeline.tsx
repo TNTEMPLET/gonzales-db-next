@@ -121,6 +121,54 @@ function formatScheduleTime(game: Game) {
   return `${date} ${time}`.trim();
 }
 
+function formatScheduleDayLabel(game: Game) {
+  if (game.start_time) {
+    return new Date(game.start_time).toLocaleDateString("en-US", {
+      weekday: "long",
+      month: "short",
+      day: "numeric",
+    });
+  }
+
+  return typeof game.localized_date === "string"
+    ? game.localized_date
+    : "Date TBD";
+}
+
+function getScheduleDaySortValue(game: Game) {
+  if (game.start_time) {
+    return new Date(game.start_time).getTime();
+  }
+
+  if (typeof game.localized_date === "string") {
+    const parsed = new Date(game.localized_date).getTime();
+    if (!Number.isNaN(parsed)) return parsed;
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+}
+
+function getParkLabel(game: Game) {
+  return typeof game._embedded?.venue?.name === "string" &&
+    game._embedded.venue.name.trim()
+    ? game._embedded.venue.name.trim()
+    : "Other Parks";
+}
+
+function getFieldLabel(game: Game) {
+  return typeof game.subvenue === "string" && game.subvenue.trim()
+    ? game.subvenue.trim()
+    : "Other Fields";
+}
+
+function getGameTimeSortValue(game: Game) {
+  if (game.start_time) {
+    return new Date(game.start_time).getTime();
+  }
+
+  return Number.MAX_SAFE_INTEGER;
+}
+
 async function uploadMedia(file: File) {
   const formData = new FormData();
   formData.append("file", file);
@@ -842,6 +890,77 @@ export default function DugoutTimeline({
   );
   const showingNotificationsView = initialView === "notifications";
   const showingScheduleView = initialView === "schedule";
+  const groupedScheduleGames = useMemo(() => {
+    const sortedGames = [...initialScheduleGames].sort(
+      (leftGame, rightGame) => {
+        const dayDifference =
+          getScheduleDaySortValue(leftGame) -
+          getScheduleDaySortValue(rightGame);
+        if (dayDifference !== 0) return dayDifference;
+
+        const parkDifference = getParkLabel(leftGame).localeCompare(
+          getParkLabel(rightGame),
+        );
+        if (parkDifference !== 0) return parkDifference;
+
+        const fieldDifference = getFieldLabel(leftGame).localeCompare(
+          getFieldLabel(rightGame),
+        );
+        if (fieldDifference !== 0) return fieldDifference;
+
+        const timeDifference =
+          getGameTimeSortValue(leftGame) - getGameTimeSortValue(rightGame);
+        if (timeDifference !== 0) return timeDifference;
+
+        const leftName = `${leftGame.home_team || "Home Team"} vs ${leftGame.away_team || "Away Team"}`;
+        const rightName = `${rightGame.home_team || "Home Team"} vs ${rightGame.away_team || "Away Team"}`;
+        return leftName.localeCompare(rightName);
+      },
+    );
+
+    return sortedGames.reduce<
+      Array<{
+        dayLabel: string;
+        parks: Array<{
+          parkLabel: string;
+          fields: Array<{
+            fieldLabel: string;
+            games: Game[];
+          }>;
+        }>;
+      }>
+    >((groups, game) => {
+      const dayLabel = formatScheduleDayLabel(game);
+      const parkLabel = getParkLabel(game);
+      const fieldLabel = getFieldLabel(game);
+
+      let dayGroup = groups.find((group) => group.dayLabel === dayLabel);
+      if (!dayGroup) {
+        dayGroup = { dayLabel, parks: [] };
+        groups.push(dayGroup);
+      }
+
+      let parkGroup = dayGroup.parks.find(
+        (group) => group.parkLabel === parkLabel,
+      );
+      if (!parkGroup) {
+        parkGroup = { parkLabel, fields: [] };
+        dayGroup.parks.push(parkGroup);
+      }
+
+      let fieldGroup = parkGroup.fields.find(
+        (group) => group.fieldLabel === fieldLabel,
+      );
+      if (!fieldGroup) {
+        fieldGroup = { fieldLabel, games: [] };
+        parkGroup.fields.push(fieldGroup);
+      }
+
+      fieldGroup.games.push(game);
+
+      return groups;
+    }, []);
+  }, [initialScheduleGames]);
 
   function renderComment(postId: string, comment: DugoutComment, depth = 0) {
     const canManageComment = isAdmin || comment.author.id === currentUserId;
@@ -972,46 +1091,81 @@ export default function DugoutTimeline({
               No games found for this week.
             </div>
           ) : (
-            <div className="space-y-3">
-              {initialScheduleGames.map((game) => {
-                const venueName =
-                  (typeof game.subvenue === "string" ? game.subvenue : null) ||
-                  game._embedded?.venue?.name ||
-                  null;
-                const status =
-                  typeof game.status === "string" ? game.status : "Scheduled";
-                const isCancelled = status.toLowerCase().includes("cancel");
+            <div className="space-y-5">
+              {groupedScheduleGames.map((dayGroup) => (
+                <div key={dayGroup.dayLabel} className="space-y-3">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-gold/85">
+                      {dayGroup.dayLabel}
+                    </p>
+                  </div>
 
-                return (
-                  <article
-                    key={game.id}
-                    className={`rounded-xl border p-4 ${isCancelled ? "border-red-900 bg-red-950/40" : "border-zinc-800 bg-zinc-950/50"}`}
-                  >
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold text-zinc-100">
-                        {game.home_team || "Home Team"}{" "}
-                        <span className="text-zinc-500">vs</span>{" "}
-                        {game.away_team || "Away Team"}
-                      </p>
-                      <p className="mt-1 text-xs text-zinc-400">
-                        {formatScheduleTime(game)}
-                      </p>
-                      {game.age_group || venueName ? (
-                        <p className="mt-2 text-xs text-zinc-500">
-                          {[game.age_group, venueName]
-                            .filter(Boolean)
-                            .join(" • ")}
+                  <div className="space-y-4">
+                    {dayGroup.parks.map((parkGroup) => (
+                      <div key={parkGroup.parkLabel} className="space-y-3">
+                        <p className="text-sm font-semibold text-zinc-200">
+                          {parkGroup.parkLabel}
                         </p>
-                      ) : null}
-                      {isCancelled && (
-                        <p className="mt-2 text-xs font-semibold text-red-400">
-                          Cancelled
-                        </p>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
+
+                        <div className="space-y-3">
+                          {parkGroup.fields.map((fieldGroup) => (
+                            <div
+                              key={fieldGroup.fieldLabel}
+                              className="space-y-2"
+                            >
+                              <p className="text-xs font-medium uppercase tracking-[0.14em] text-zinc-500">
+                                {fieldGroup.fieldLabel}
+                              </p>
+
+                              <div className="space-y-3">
+                                {fieldGroup.games.map((game) => {
+                                  const status =
+                                    typeof game.status === "string"
+                                      ? game.status
+                                      : "Scheduled";
+                                  const isCancelled = status
+                                    .toLowerCase()
+                                    .includes("cancel");
+
+                                  return (
+                                    <article
+                                      key={game.id}
+                                      className={`rounded-xl border p-4 ${isCancelled ? "border-red-900 bg-red-950/40" : "border-zinc-800 bg-zinc-950/50"}`}
+                                    >
+                                      <div className="min-w-0">
+                                        <p className="text-sm font-semibold text-zinc-100">
+                                          {game.home_team || "Home Team"}{" "}
+                                          <span className="text-zinc-500">
+                                            vs
+                                          </span>{" "}
+                                          {game.away_team || "Away Team"}
+                                        </p>
+                                        <p className="mt-1 text-xs text-zinc-400">
+                                          {formatScheduleTime(game)}
+                                        </p>
+                                        {game.age_group ? (
+                                          <p className="mt-2 text-xs text-zinc-500">
+                                            {game.age_group}
+                                          </p>
+                                        ) : null}
+                                        {isCancelled && (
+                                          <p className="mt-2 text-xs font-semibold text-red-400">
+                                            Cancelled
+                                          </p>
+                                        )}
+                                      </div>
+                                    </article>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </section>

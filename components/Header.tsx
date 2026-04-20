@@ -168,7 +168,11 @@ export default function Header() {
               </Link>
             )}
             <div className="pt-2 border-t border-zinc-700 mt-2">
-              <CoachAuthButton mobile onNavigate={() => setIsMenuOpen(false)} />
+              <CoachAuthButton
+                mobile
+                onNavigate={() => setIsMenuOpen(false)}
+                onAuthenticated={() => setIsMenuOpen(false)}
+              />
             </div>
           </div>
         </div>

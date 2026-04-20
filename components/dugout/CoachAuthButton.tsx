@@ -21,15 +21,27 @@ type MeResponse = {
   user: CoachUser | null;
 };
 
+type LoginResponse = {
+  error?: string;
+  canRegister?: boolean;
+  isCoach?: boolean;
+  isAdmin?: boolean;
+};
+
 type CoachAuthButtonProps = {
   mobile?: boolean;
   onNavigate?: () => void;
+  onAuthenticated?: () => void;
   avatarOnly?: boolean;
   avatarSize?: number;
 };
 
 function getInitial(user: CoachUser): string {
   return (user.firstName?.[0] ?? user.name?.[0] ?? "?").toUpperCase();
+}
+
+function getPostLoginHref(loginResponse: LoginResponse): string {
+  return loginResponse.isCoach ? "/dugout" : "/";
 }
 
 function AvatarBubble({
@@ -64,6 +76,7 @@ function AvatarBubble({
 export default function CoachAuthButton({
   mobile = false,
   onNavigate,
+  onAuthenticated,
   avatarOnly = false,
   avatarSize = 48,
 }: CoachAuthButtonProps) {
@@ -131,16 +144,15 @@ export default function CoachAuthButton({
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({ credential: response.credential || "" }),
             });
-            const json = await apiResponse.json();
+            const json = (await apiResponse.json()) as LoginResponse;
             if (!apiResponse.ok) {
-              throw new Error(
-                (json as { error?: string }).error || "Sign-in failed",
-              );
+              throw new Error(json.error || "Sign-in failed");
             }
             await refreshUser();
             setOpen(false);
             notifyAuthChanged();
-            router.push("/dugout");
+            onAuthenticated?.();
+            router.push(getPostLoginHref(json));
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Sign-in failed");
           } finally {
@@ -208,10 +220,7 @@ export default function CoachAuthButton({
           lastName: requiresRegistration ? lastName : undefined,
         }),
       });
-      const json = (await response.json()) as {
-        error?: string;
-        canRegister?: boolean;
-      };
+      const json = (await response.json()) as LoginResponse;
 
       if (!response.ok) {
         if (json.canRegister) {
@@ -231,7 +240,8 @@ export default function CoachAuthButton({
       setPassword("");
       setOpen(false);
       notifyAuthChanged();
-      router.push("/dugout");
+      onAuthenticated?.();
+      router.push(getPostLoginHref(json));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Local auth failed");
     } finally {
