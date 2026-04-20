@@ -179,37 +179,71 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
   ]);
 
   const recentNews = allNews.slice(0, 6);
-  const groupedTodayGames = todayGames
-    .reduce<Array<{ ageGroup: string; games: Game[] }>>((groups, game) => {
-      const ageGroup =
-        typeof game.age_group === "string" && game.age_group.trim()
-          ? game.age_group.trim()
-          : "Other Games";
-      const existingGroup = groups.find((group) => group.ageGroup === ageGroup);
+  const groupedTodayGames = Object.entries(
+    todayGames.reduce<Record<string, Record<string, Game[]>>>(
+      (groups, game) => {
+        const parkLabel =
+          typeof game._embedded?.venue?.name === "string" &&
+          game._embedded.venue.name.trim()
+            ? game._embedded.venue.name.trim()
+            : "Other Parks";
+        const ageGroupLabel =
+          typeof game.age_group === "string" && game.age_group.trim()
+            ? game.age_group.trim()
+            : "Other Games";
 
-      if (existingGroup) {
-        existingGroup.games.push(game);
-      } else {
-        groups.push({ ageGroup, games: [game] });
-      }
+        if (!groups[parkLabel]) {
+          groups[parkLabel] = {};
+        }
+        if (!groups[parkLabel][ageGroupLabel]) {
+          groups[parkLabel][ageGroupLabel] = [];
+        }
 
-      return groups;
-    }, [])
-    .sort((leftGroup, rightGroup) => {
-      const leftAge = Number.parseInt(leftGroup.ageGroup, 10);
-      const rightAge = Number.parseInt(rightGroup.ageGroup, 10);
-      const leftHasAge = Number.isFinite(leftAge);
-      const rightHasAge = Number.isFinite(rightAge);
+        groups[parkLabel][ageGroupLabel].push(game);
+        return groups;
+      },
+      {},
+    ),
+  )
+    .sort(([leftPark], [rightPark]) => leftPark.localeCompare(rightPark))
+    .map(([parkLabel, ageGroupMap]) => ({
+      parkLabel,
+      ageGroups: Object.entries(ageGroupMap)
+        .sort(([leftAgeGroup], [rightAgeGroup]) => {
+          const leftAge = Number.parseInt(leftAgeGroup, 10);
+          const rightAge = Number.parseInt(rightAgeGroup, 10);
+          const leftHasAge = Number.isFinite(leftAge);
+          const rightHasAge = Number.isFinite(rightAge);
 
-      if (leftHasAge && rightHasAge) {
-        return leftAge - rightAge;
-      }
+          if (leftHasAge && rightHasAge) return leftAge - rightAge;
+          if (leftHasAge) return -1;
+          if (rightHasAge) return 1;
+          return leftAgeGroup.localeCompare(rightAgeGroup);
+        })
+        .map(([ageGroup, games]) => ({
+          ageGroup,
+          games: [...games].sort((leftGame, rightGame) => {
+            if (leftGame.start_time && rightGame.start_time) {
+              return (
+                new Date(leftGame.start_time).getTime() -
+                new Date(rightGame.start_time).getTime()
+              );
+            }
+            if (leftGame.start_time) return -1;
+            if (rightGame.start_time) return 1;
 
-      if (leftHasAge) return -1;
-      if (rightHasAge) return 1;
-
-      return leftGroup.ageGroup.localeCompare(rightGroup.ageGroup);
-    });
+            const leftTime =
+              typeof leftGame.localized_time === "string"
+                ? leftGame.localized_time
+                : "";
+            const rightTime =
+              typeof rightGame.localized_time === "string"
+                ? rightGame.localized_time
+                : "";
+            return leftTime.localeCompare(rightTime);
+          }),
+        })),
+    }));
 
   let currentUserId: string | null = coach?.id ?? null;
   if (!currentUserId && admin) {
@@ -311,37 +345,46 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
               <p className="text-sm text-zinc-400">No games scheduled today.</p>
             ) : (
               <div className="space-y-4">
-                {groupedTodayGames.map((group) => (
-                  <div key={group.ageGroup} className="space-y-2.5">
-                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-gold/85">
-                      {group.ageGroup}
+                {groupedTodayGames.map((parkGroup) => (
+                  <div key={parkGroup.parkLabel} className="space-y-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-400">
+                      {parkGroup.parkLabel.replace(/\s*Parks?$/i, "").trim() ||
+                        parkGroup.parkLabel}
                     </p>
-                    <div className="space-y-2.5">
-                      {group.games.map((game) => {
-                        const venueName =
-                          (game.subvenue as string | undefined) ||
-                          game._embedded?.venue?.name ||
-                          null;
 
-                        return (
-                          <div
-                            key={game.id}
-                            className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5"
-                          >
-                            <div className="min-w-0">
-                              <p className="truncate text-sm font-semibold text-white">
-                                {game.home_team || "Home"}{" "}
-                                <span className="text-zinc-500">vs</span>{" "}
-                                {game.away_team || "Away"}
-                              </p>
-                              <p className="mt-0.5 text-xs text-zinc-400">
-                                {formatGameTime(game)}
-                                {venueName ? ` · ${venueName}` : ""}
-                              </p>
-                            </div>
+                    <div className="space-y-3">
+                      {parkGroup.ageGroups.map((ageGroup) => (
+                        <div key={ageGroup.ageGroup} className="space-y-2.5">
+                          <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-gold/85">
+                            {ageGroup.ageGroup}
+                          </p>
+                          <div className="space-y-2.5">
+                            {ageGroup.games.map((game) => {
+                              const fieldName =
+                                (game.subvenue as string | undefined) || null;
+
+                              return (
+                                <div
+                                  key={game.id}
+                                  className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5"
+                                >
+                                  <div className="min-w-0">
+                                    <p className="truncate text-sm font-semibold text-white">
+                                      {game.home_team || "Home"}{" "}
+                                      <span className="text-zinc-500">vs</span>{" "}
+                                      {game.away_team || "Away"}
+                                    </p>
+                                    <p className="mt-0.5 text-xs text-zinc-400">
+                                      {formatGameTime(game)}
+                                      {fieldName ? ` · ${fieldName}` : ""}
+                                    </p>
+                                  </div>
+                                </div>
+                              );
+                            })}
                           </div>
-                        );
-                      })}
+                        </div>
+                      ))}
                     </div>
                   </div>
                 ))}
