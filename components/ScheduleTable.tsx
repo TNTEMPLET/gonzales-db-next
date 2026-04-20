@@ -77,56 +77,6 @@ const compareAgeGroup = (a: Game, b: Game) => {
   return compareStrings(a.age_group || "", b.age_group || "");
 };
 
-const compareGames = (
-  a: Game,
-  b: Game,
-  field: "date" | "age" | "home" | "away" | "field" | "venue",
-) => {
-  if (field === "date") {
-    return (
-      compareDateTime(a, b) ||
-      compareAgeGroup(a, b) ||
-      compareStrings(a.home_team, b.home_team)
-    );
-  }
-  if (field === "age") {
-    return (
-      compareAgeGroup(a, b) ||
-      compareDateTime(a, b) ||
-      compareStrings(a.home_team, b.home_team)
-    );
-  }
-  if (field === "home") {
-    return (
-      compareStrings(a.home_team, b.home_team) ||
-      compareDateTime(a, b) ||
-      compareAgeGroup(a, b)
-    );
-  }
-  if (field === "away") {
-    return (
-      compareStrings(a.away_team, b.away_team) ||
-      compareDateTime(a, b) ||
-      compareAgeGroup(a, b)
-    );
-  }
-  if (field === "field") {
-    return (
-      compareStrings(a.subvenue, b.subvenue) ||
-      compareDateTime(a, b) ||
-      compareAgeGroup(a, b)
-    );
-  }
-  if (field === "venue") {
-    return (
-      compareStrings(a._embedded?.venue?.name, b._embedded?.venue?.name) ||
-      compareDateTime(a, b) ||
-      compareAgeGroup(a, b)
-    );
-  }
-  return 0;
-};
-
 export default function ScheduleTable({
   initialGames,
   initialError,
@@ -137,12 +87,6 @@ export default function ScheduleTable({
   const previewRainout = searchParams.get("rainout") === "preview";
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<string[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<string[]>([]);
-  const [currentPage, setCurrentPage] = useState(1);
-  const [itemsPerPage, setItemsPerPage] = useState<number | "All">(10);
-  const [sortField, setSortField] = useState<
-    "date" | "age" | "home" | "away" | "field" | "venue"
-  >("date");
-  const [sortDirection, setSortDirection] = useState<"asc" | "desc">("asc");
   const [dayFilter, setDayFilter] = useState<DayFilter>("all");
   const [ageDropdownOpen, setAgeDropdownOpen] = useState(false);
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false);
@@ -150,23 +94,6 @@ export default function ScheduleTable({
   const teamDropdownRef = useRef<HTMLDivElement>(null);
 
   const lastUpdateTime = useMemo(() => new Date().toLocaleTimeString(), []);
-
-  const handleSort = (
-    field: "date" | "age" | "home" | "away" | "field" | "venue",
-  ) => {
-    setCurrentPage(1);
-    if (sortField === field) {
-      setSortDirection((prev) => (prev === "asc" ? "desc" : "asc"));
-      return;
-    }
-    setSortField(field);
-    setSortDirection("asc");
-  };
-
-  const getSortIndicator = (field: typeof sortField) => {
-    if (sortField !== field) return "↕";
-    return sortDirection === "asc" ? "▲" : "▼";
-  };
 
   const handleViewChange = (mode: "thisWeek" | "nextWeek" | "fullSeason") => {
     if (mode === "nextWeek") setDayFilter("all");
@@ -257,10 +184,54 @@ export default function ScheduleTable({
 
   const sortedGames = useMemo(() => {
     return [...filteredGames].sort((a, b) => {
-      const result = compareGames(a, b, sortField);
-      return sortDirection === "asc" ? result : -result;
+      const parkCmp = (a._embedded?.venue?.name || "").localeCompare(
+        b._embedded?.venue?.name || "",
+      );
+      if (parkCmp !== 0) return parkCmp;
+      const dayCmp = getGameSortDateValue(a) - getGameSortDateValue(b);
+      if (dayCmp !== 0) return dayCmp;
+      const ageCmp = compareAgeGroup(a, b);
+      if (ageCmp !== 0) return ageCmp;
+      return compareDateTime(a, b);
     });
-  }, [filteredGames, sortField, sortDirection]);
+  }, [filteredGames]);
+
+  const groupedGames = useMemo(() => {
+    const parkMap = new Map<
+      string,
+      Map<number, { dayLabel: string; games: Game[] }>
+    >();
+    for (const game of sortedGames) {
+      const park = game._embedded?.venue?.name || "Unknown Venue";
+      const daySortVal = getGameDayTime(game) ?? Number.POSITIVE_INFINITY;
+      const dayLabel = (() => {
+        const src = game.start_time || game.localized_date;
+        if (!src) return "Unknown Date";
+        const d = new Date(src);
+        if (Number.isNaN(d.valueOf()))
+          return game.localized_date || "Unknown Date";
+        return d.toLocaleDateString("en-US", {
+          weekday: "long",
+          month: "short",
+          day: "numeric",
+          year: "numeric",
+        });
+      })();
+      if (!parkMap.has(park)) parkMap.set(park, new Map());
+      const dayMap = parkMap.get(park)!;
+      if (!dayMap.has(daySortVal))
+        dayMap.set(daySortVal, { dayLabel, games: [] });
+      dayMap.get(daySortVal)!.games.push(game);
+    }
+    return Array.from(parkMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([park, dayMap]) => ({
+        park,
+        days: Array.from(dayMap.entries())
+          .sort(([a], [b]) => a - b)
+          .map(([, dayData]) => dayData),
+      }));
+  }, [sortedGames]);
 
   useEffect(() => {
     const statuses = sortedGames.map((g) => ({ id: g.id, status: g.status }));
@@ -306,20 +277,6 @@ export default function ScheduleTable({
     return { rainedOutVenues, allParksRainedOut };
   }, [initialGames]);
 
-  // Calculate pagination
-  const pageSize =
-    itemsPerPage === "All" ? sortedGames.length || 1 : itemsPerPage;
-  const totalPages =
-    itemsPerPage === "All"
-      ? 1
-      : Math.max(1, Math.ceil(sortedGames.length / itemsPerPage));
-  const startIndex = (currentPage - 1) * pageSize;
-  const paginatedGames =
-    itemsPerPage === "All"
-      ? sortedGames
-      : sortedGames.slice(startIndex, startIndex + pageSize);
-
-  // Reset to page 1 when filters change
   const toggleAgeSelection = (value: string) => {
     setSelectedAgeGroup((prev) => {
       const next = prev.includes(value)
@@ -328,7 +285,6 @@ export default function ScheduleTable({
       return next;
     });
     setSelectedTeam([]);
-    setCurrentPage(1);
   };
 
   const toggleTeamSelection = (value: string) => {
@@ -337,31 +293,19 @@ export default function ScheduleTable({
         ? prev.filter((item) => item !== value)
         : [...prev, value],
     );
-    setCurrentPage(1);
   };
 
   const resetAgeSelection = () => {
     setSelectedAgeGroup([]);
     setSelectedTeam([]);
-    setCurrentPage(1);
   };
 
   const resetTeamSelection = () => {
     setSelectedTeam([]);
-    setCurrentPage(1);
   };
 
   const handleDayFilterChange = (filter: Exclude<DayFilter, "all">) => {
     setDayFilter((current) => (current === filter ? "all" : filter));
-    setCurrentPage(1);
-  };
-
-  const handleItemsPerPageChange = (
-    e: React.ChangeEvent<HTMLSelectElement>,
-  ) => {
-    const value = e.target.value;
-    setItemsPerPage(value === "All" ? "All" : Number(value));
-    setCurrentPage(1);
   };
 
   useEffect(() => {
@@ -749,187 +693,94 @@ export default function ScheduleTable({
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-800">
+                  <th className="py-5 px-6 text-left font-semibold">Time</th>
                   <th className="py-5 px-6 text-left font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("date")}
-                      className="inline-flex items-center gap-2 text-left"
-                    >
-                      <span>Date & Time</span>
-                      <span className="text-zinc-400">
-                        {getSortIndicator("date")}
-                      </span>
-                    </button>
+                    Age Group
                   </th>
                   <th className="py-5 px-6 text-left font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("age")}
-                      className="inline-flex items-center gap-2 text-left"
-                    >
-                      <span>Age Group</span>
-                      <span className="text-zinc-400">
-                        {getSortIndicator("age")}
-                      </span>
-                    </button>
+                    Home Team
                   </th>
                   <th className="py-5 px-6 text-left font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("home")}
-                      className="inline-flex items-center gap-2 text-left"
-                    >
-                      <span>Home Team</span>
-                      <span className="text-zinc-400">
-                        {getSortIndicator("home")}
-                      </span>
-                    </button>
+                    Away Team
                   </th>
-                  <th className="py-5 px-6 text-left font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("away")}
-                      className="inline-flex items-center gap-2 text-left"
-                    >
-                      <span>Away Team</span>
-                      <span className="text-zinc-400">
-                        {getSortIndicator("away")}
-                      </span>
-                    </button>
-                  </th>
-                  <th className="py-5 px-6 text-left font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("field")}
-                      className="inline-flex items-center gap-2 text-left"
-                    >
-                      <span>Field</span>
-                      <span className="text-zinc-400">
-                        {getSortIndicator("field")}
-                      </span>
-                    </button>
-                  </th>
-                  <th className="py-5 px-6 text-left font-semibold">
-                    <button
-                      type="button"
-                      onClick={() => handleSort("venue")}
-                      className="inline-flex items-center gap-2 text-left"
-                    >
-                      <span>Venue</span>
-                      <span className="text-zinc-400">
-                        {getSortIndicator("venue")}
-                      </span>
-                    </button>
-                  </th>
+                  <th className="py-5 px-6 text-left font-semibold">Field</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
-                {paginatedGames.map((game: Game) => {
-                  const displayDate = game.localized_date
-                    ? `${game.localized_date} • ${game.localized_time || "TBD"}`
-                    : "TBD";
-
-                  const venueName = game._embedded?.venue?.name || "TBD";
-                  const fieldName = game.subvenue || "TBD";
-                  const isCancelled = game.status === "C";
-
-                  return (
-                    <tr
-                      key={game.id}
-                      className={`transition-colors ${
-                        isCancelled
-                          ? "bg-red-950/40 hover:bg-red-950/60"
-                          : "hover:bg-zinc-800/50"
-                      }`}
-                    >
+                {groupedGames.map(({ park, days }) => (
+                  <>
+                    <tr key={`park-${park}`}>
                       <td
-                        className={`py-5 px-6 font-medium whitespace-nowrap ${isCancelled ? "line-through text-red-400" : ""}`}
+                        colSpan={5}
+                        className="py-3 px-6 text-xs font-semibold uppercase tracking-widest text-zinc-400 bg-zinc-800/60"
                       >
-                        {displayDate}
-                        {isCancelled && (
-                          <span
-                            className="ml-2 text-xs font-bold uppercase tracking-wide text-red-400 no-underline"
-                            style={{ textDecoration: "none" }}
-                          >
-                            Cancelled
-                          </span>
-                        )}
-                      </td>
-                      <td
-                        className={`py-5 px-6 font-medium ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
-                      >
-                        {game.age_group || "—"}
-                      </td>
-                      <td
-                        className={`py-5 px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
-                      >
-                        {game.home_team || "TBD"}
-                      </td>
-                      <td
-                        className={`py-5 px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
-                      >
-                        {game.away_team || "TBD"}
-                      </td>
-                      <td
-                        className={`py-5 px-6 font-medium ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
-                      >
-                        {fieldName}
-                      </td>
-                      <td
-                        className={`py-5 px-6 ${isCancelled ? "line-through text-red-400" : "text-zinc-400"}`}
-                      >
-                        {venueName}
+                        {park.replace(/\s*Parks?$/i, "").trim() || park}
                       </td>
                     </tr>
-                  );
-                })}
+                    {days.map(({ dayLabel, games }) => (
+                      <>
+                        <tr key={`day-${park}-${dayLabel}`}>
+                          <td
+                            colSpan={5}
+                            className="py-2 px-8 text-xs font-semibold text-brand-gold/80 bg-zinc-900/80 tracking-wide"
+                          >
+                            {dayLabel}
+                          </td>
+                        </tr>
+                        {games.map((game) => {
+                          const fieldName = game.subvenue || "TBD";
+                          const isCancelled = game.status === "C";
+                          return (
+                            <tr
+                              key={game.id}
+                              className={`transition-colors ${
+                                isCancelled
+                                  ? "bg-red-950/40 hover:bg-red-950/60"
+                                  : "hover:bg-zinc-800/50"
+                              }`}
+                            >
+                              <td
+                                className={`py-4 px-6 font-medium whitespace-nowrap ${isCancelled ? "line-through text-red-400" : ""}`}
+                              >
+                                {game.localized_time || "TBD"}
+                                {isCancelled && (
+                                  <span
+                                    className="ml-2 text-xs font-bold uppercase tracking-wide text-red-400"
+                                    style={{ textDecoration: "none" }}
+                                  >
+                                    Cancelled
+                                  </span>
+                                )}
+                              </td>
+                              <td
+                                className={`py-4 px-6 font-medium ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
+                              >
+                                {game.age_group || "—"}
+                              </td>
+                              <td
+                                className={`py-4 px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
+                              >
+                                {game.home_team || "TBD"}
+                              </td>
+                              <td
+                                className={`py-4 px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
+                              >
+                                {game.away_team || "TBD"}
+                              </td>
+                              <td
+                                className={`py-4 px-6 font-medium ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
+                              >
+                                {fieldName}
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </>
+                    ))}
+                  </>
+                ))}
               </tbody>
             </table>
-          </div>
-        )}
-
-        {/* Pagination Controls */}
-        {filteredGames.length > 0 && (
-          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between mt-8">
-            <div className="flex items-center gap-4 justify-center md:justify-start">
-              <button
-                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
-                disabled={currentPage === 1}
-                className="px-4 py-2 rounded-lg bg-zinc-800 text-white hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                ← Previous
-              </button>
-
-              <span className="text-sm text-zinc-400">
-                Page {currentPage} of {totalPages}
-              </span>
-
-              <button
-                onClick={() =>
-                  setCurrentPage(Math.min(totalPages, currentPage + 1))
-                }
-                disabled={currentPage === totalPages}
-                className="px-4 py-2 rounded-lg bg-zinc-800 text-white hover:bg-zinc-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                Next →
-              </button>
-            </div>
-
-            <div className="flex items-center gap-3">
-              <label className="text-sm font-medium text-zinc-400">
-                Games per page
-              </label>
-              <select
-                value={`${itemsPerPage}`}
-                onChange={handleItemsPerPageChange}
-                className="px-4 py-2 rounded-lg bg-zinc-800 text-white border border-zinc-700 hover:border-zinc-600 transition-colors cursor-pointer"
-              >
-                <option value="10">10</option>
-                <option value="25">25</option>
-                <option value="50">50</option>
-                <option value="All">All</option>
-              </select>
-            </div>
           </div>
         )}
 
