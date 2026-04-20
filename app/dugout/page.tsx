@@ -5,6 +5,7 @@ import logo from "@/public/images/logo.png";
 
 import DugoutGate from "@/components/dugout/DugoutGate";
 import DugoutTimeline from "@/components/dugout/DugoutTimeline";
+import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserByToken,
@@ -244,20 +245,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
           {/* User profile pill at bottom */}
           <div className="mt-auto border-t border-zinc-800 pt-4">
             <div className="flex items-center gap-3 rounded-full px-3 py-2 hover:bg-zinc-800">
-              {currentUserAvatarUrl ? (
-                <Image
-                  src={currentUserAvatarUrl}
-                  alt={currentUserName ?? ""}
-                  width={36}
-                  height={36}
-                  className="h-9 w-9 shrink-0 rounded-full object-cover"
-                  unoptimized
-                />
-              ) : (
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-zinc-700 text-sm font-bold text-white">
-                  {(currentUserName ?? "?").charAt(0).toUpperCase()}
-                </div>
-              )}
+              <CoachAuthButton avatarOnly avatarSize={36} />
               <div className="min-w-0 flex-1">
                 <p className="truncate text-sm font-semibold">
                   {currentUserName}
@@ -423,6 +411,31 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
       {/* Mobile bottom navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
         <div className="mx-auto flex w-full max-w-330 items-center justify-around px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+          {/* Timeline / Dugout logo button */}
+          <Link
+            href="/dugout"
+            className={`inline-flex min-w-20 flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-medium transition ${
+              activeView === "timeline"
+                ? "text-white"
+                : "text-zinc-400 hover:text-zinc-100"
+            }`}
+          >
+            <span
+              className={`inline-flex h-9 w-9 items-center justify-center rounded-full ${
+                activeView === "timeline" ? "bg-zinc-800" : ""
+              }`}
+            >
+              <Image
+                src={logo}
+                alt="The Dugout"
+                width={28}
+                height={28}
+                className="object-contain"
+              />
+            </span>
+            Timeline
+          </Link>
+
           {NAV_ITEMS.map((item) => {
             const isActive =
               (item.key === "notifications" &&

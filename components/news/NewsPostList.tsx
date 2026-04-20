@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -128,11 +129,13 @@ export default function NewsPostList({
             >
               <div className="flex flex-col lg:flex-row lg:items-start gap-5">
                 {post.imageUrl ? (
-                  <div className="w-full lg:w-72 xl:w-80 lg:flex-shrink-0 rounded-xl border border-zinc-800 bg-zinc-950/60 p-1">
-                    <img
+                  <div className="w-full lg:w-72 xl:w-80 lg:shrink-0 rounded-xl border border-zinc-800 bg-zinc-950/60 p-1">
+                    <Image
                       src={post.imageUrl}
                       alt={post.title}
-                      className="w-full h-auto max-h-[32vh] sm:max-h-[38vh] lg:max-h-[260px] xl:max-h-[300px] rounded-lg object-contain"
+                      width={320}
+                      height={300}
+                      className="w-full h-auto max-h-[32vh] sm:max-h-[38vh] lg:max-h-65 xl:max-h-75 rounded-lg object-contain"
                     />
                   </div>
                 ) : null}

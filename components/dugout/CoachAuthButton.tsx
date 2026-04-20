@@ -23,6 +23,9 @@ type MeResponse = {
 
 type CoachAuthButtonProps = {
   mobile?: boolean;
+  onNavigate?: () => void;
+  avatarOnly?: boolean;
+  avatarSize?: number;
 };
 
 function getInitial(user: CoachUser): string {
@@ -60,6 +63,9 @@ function AvatarBubble({
 
 export default function CoachAuthButton({
   mobile = false,
+  onNavigate,
+  avatarOnly = false,
+  avatarSize = 48,
 }: CoachAuthButtonProps) {
   const router = useRouter();
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
@@ -299,14 +305,38 @@ export default function CoachAuthButton({
         type="button"
         disabled={user === undefined}
         onClick={openModal}
-        className={`${triggerClassName} disabled:opacity-60 inline-flex items-center gap-2`}
+        className={`${avatarOnly ? "" : triggerClassName} disabled:opacity-60 inline-flex items-center gap-2`}
       >
         {user ? (
-          <>
-            <AvatarBubble user={user} size="sm" />
-            <span>{displayLabel}</span>
-          </>
-        ) : (
+          avatarOnly ? (
+            user.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt={user.name}
+                width={avatarSize}
+                height={avatarSize}
+                style={{ width: avatarSize, height: avatarSize }}
+                className="rounded-full object-cover shrink-0"
+              />
+            ) : (
+              <div
+                style={{
+                  width: avatarSize,
+                  height: avatarSize,
+                  fontSize: avatarSize * 0.35,
+                }}
+                className="rounded-full bg-brand-purple flex items-center justify-center font-bold text-white shrink-0"
+              >
+                {getInitial(user)}
+              </div>
+            )
+          ) : (
+            <>
+              <AvatarBubble user={user} size="sm" />
+              <span>{displayLabel}</span>
+            </>
+          )
+        ) : avatarOnly ? null : (
           <span>{displayLabel}</span>
         )}
       </button>
@@ -381,7 +411,10 @@ export default function CoachAuthButton({
                     <div className="flex justify-center">
                       <Link
                         href="/admin"
-                        onClick={() => setOpen(false)}
+                        onClick={() => {
+                          setOpen(false);
+                          onNavigate?.();
+                        }}
                         className="text-sm text-brand-gold hover:text-brand-gold/80"
                       >
                         Open Admin Dashboard

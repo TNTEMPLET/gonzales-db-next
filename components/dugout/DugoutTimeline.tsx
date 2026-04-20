@@ -13,6 +13,7 @@ import {
 } from "react";
 
 import type { Game } from "@/lib/fetchGames";
+import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 
 type DugoutAuthor = {
   id: string;
@@ -1023,20 +1024,7 @@ export default function DugoutTimeline({
             <form onSubmit={createPost}>
               <div className="flex gap-3">
                 <div className="mt-1 shrink-0">
-                  {currentUserAvatarUrl ? (
-                    <Image
-                      src={currentUserAvatarUrl}
-                      alt={currentUserName ?? "You"}
-                      width={48}
-                      height={48}
-                      className="h-12 w-12 rounded-full object-cover"
-                      unoptimized
-                    />
-                  ) : (
-                    <div className="flex h-12 w-12 items-center justify-center rounded-full bg-zinc-700 text-sm font-bold text-white">
-                      {(currentUserName ?? "?").charAt(0).toUpperCase()}
-                    </div>
-                  )}
+                  <CoachAuthButton avatarOnly avatarSize={48} />
                 </div>
 
                 <div
