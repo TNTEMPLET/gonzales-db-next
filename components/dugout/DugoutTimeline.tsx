@@ -2404,7 +2404,7 @@ export default function DugoutTimeline({
             className="border-b border-zinc-800 bg-zinc-900/70 px-4 py-4 sm:px-5"
           >
             <form onSubmit={createPost}>
-              <div className="flex gap-3">
+              <div className="flex min-w-0 gap-3">
                 <div className="mt-1 shrink-0">
                   <CoachAuthButton avatarOnly avatarSize={48} />
                 </div>
@@ -2427,7 +2427,7 @@ export default function DugoutTimeline({
                       setIsDragOver(false);
                     }
                   }}
-                  className={`flex-1 rounded-[1.75rem] px-5 pt-4 transition ${
+                  className={`min-w-0 flex-1 rounded-[1.75rem] px-4 pt-4 sm:px-5 transition ${
                     isDragOver
                       ? "bg-zinc-900 ring-1 ring-brand-gold/60"
                       : "bg-transparent"
@@ -2622,8 +2622,8 @@ export default function DugoutTimeline({
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between border-t border-zinc-800 py-3">
-                    <div className="flex items-center gap-1 text-brand-purple">
+                  <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800 py-3">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1 text-brand-purple">
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -2752,7 +2752,7 @@ export default function DugoutTimeline({
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-3">
+                    <div className="ml-auto flex items-center gap-3 max-[420px]:w-full max-[420px]:justify-end">
                       <CharacterMeter
                         current={content.length}
                         max={MAX_POST_LENGTH}
