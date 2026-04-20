@@ -115,7 +115,7 @@ function renderNavIcon(icon: (typeof NAV_ITEMS)[number]["icon"]) {
 }
 
 type DugoutPageProps = {
-  searchParams: Promise<{ view?: string }>;
+  searchParams: Promise<{ view?: string; postId?: string }>;
 };
 
 export default async function DugoutPage({ searchParams }: DugoutPageProps) {
@@ -126,6 +126,10 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
       : params.view === "schedule"
         ? "schedule"
         : "timeline";
+  const focusPostId =
+    typeof params.postId === "string" && params.postId.trim()
+      ? params.postId.trim()
+      : null;
 
   const cookieStore = await cookies();
 
@@ -281,6 +285,8 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
               alt="Gonzales Diamond Baseball"
               width={64}
               height={64}
+              loading="eager"
+              priority
               className="object-contain"
             />
             <span className="text-lg font-black tracking-tight">
@@ -333,6 +339,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             currentUserName={currentUserName}
             currentUserAvatarUrl={currentUserAvatarUrl}
             initialView={activeView}
+            initialFocusPostId={focusPostId}
           />
         </div>
 
@@ -493,6 +500,8 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                 alt="The Dugout"
                 width={28}
                 height={28}
+                loading="eager"
+                priority
                 className="object-contain"
               />
             </span>

@@ -21,6 +21,11 @@ enum DugoutMediaType {
   GIF
 }
 
+enum DugoutNotificationEntityType {
+  POST_LIKE
+  COMMENT
+}
+
 model NewsPost {
   id          String     @id @default(cuid())
   title       String
@@ -72,6 +77,7 @@ model RegisteredUser {
   dugoutComments DugoutComment[]
   dugoutLikes  DugoutPostLike[]
   dugoutNotificationCursor DugoutNotificationCursor?
+  dugoutNotificationReads DugoutNotificationRead[]
 }
 
 model CoachSession {
@@ -122,6 +128,7 @@ model DugoutComment {
   author  RegisteredUser   @relation(fields: [authorId], references: [id], onDelete: Cascade)
   parent  DugoutComment?   @relation("DugoutCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
   replies DugoutComment[]  @relation("DugoutCommentReplies")
+  notificationReads DugoutNotificationRead[] @relation("NotificationReadComment")
 
   @@index([postId, createdAt])
   @@index([authorId, createdAt])
@@ -137,6 +144,7 @@ model DugoutPostLike {
 
   post DugoutPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
   user RegisteredUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  notificationReads DugoutNotificationRead[] @relation("NotificationReadLike")
 
   @@unique([postId, userId])
   @@index([postId])
@@ -152,6 +160,24 @@ model DugoutNotificationCursor {
   user RegisteredUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([lastSeenAt])
+}
+
+model DugoutNotificationRead {
+  id         String                        @id @default(cuid())
+  userId     String
+  entityType DugoutNotificationEntityType
+  postLikeId String?
+  commentId  String?
+  readAt     DateTime                      @default(now())
+
+  user     RegisteredUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  postLike DugoutPostLike? @relation("NotificationReadLike", fields: [postLikeId], references: [id], onDelete: Cascade)
+  comment  DugoutComment?  @relation("NotificationReadComment", fields: [commentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, postLikeId])
+  @@unique([userId, commentId])
+  @@index([userId, readAt])
+  @@index([entityType, readAt])
 }
 
 model AdminSession {

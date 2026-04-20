@@ -61,6 +61,7 @@ type DugoutTimelineProps = {
   currentUserName?: string | null;
   currentUserAvatarUrl?: string | null;
   initialView?: "timeline" | "notifications" | "schedule";
+  initialFocusPostId?: string | null;
 };
 
 type GifResult = {
@@ -85,6 +86,19 @@ type DugoutNotificationCounts = {
   unreadReplyCount: number;
   totalUnreadCount: number;
   lastSeenAt: string | null;
+  items: DugoutNotificationItem[];
+};
+
+type DugoutNotificationItem = {
+  id: string;
+  type: "LIKE" | "COMMENT" | "REPLY";
+  createdAt: string;
+  isUnread: boolean;
+  actor: DugoutAuthor;
+  postId: string;
+  postPreview: string;
+  commentPreview: string | null;
+  reaction: string | null;
 };
 
 type ThreadComposerEntry = {
@@ -203,6 +217,22 @@ function formatPostTime(value: string) {
     hour: "numeric",
     minute: "2-digit",
   }).format(new Date(value));
+}
+
+function formatRelativeTime(value: string) {
+  const then = new Date(value).getTime();
+  const now = Date.now();
+  const diffSeconds = Math.max(1, Math.floor((now - then) / 1000));
+
+  if (diffSeconds < 60) return `${diffSeconds}s`;
+  const diffMinutes = Math.floor(diffSeconds / 60);
+  if (diffMinutes < 60) return `${diffMinutes}m`;
+  const diffHours = Math.floor(diffMinutes / 60);
+  if (diffHours < 24) return `${diffHours}h`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 7) return `${diffDays}d`;
+
+  return formatPostTime(value);
 }
 
 function formatScheduleTime(game: Game) {
@@ -381,6 +411,7 @@ export default function DugoutTimeline({
   currentUserName = null,
   currentUserAvatarUrl = null,
   initialView = "timeline",
+  initialFocusPostId = null,
 }: DugoutTimelineProps) {
   const [posts, setPosts] = useState<DugoutPost[]>(initialPosts);
   const [content, setContent] = useState("");
@@ -410,6 +441,10 @@ export default function DugoutTimeline({
   const [likeBusyId, setLikeBusyId] = useState<string | null>(null);
   const [likePickerOpenId, setLikePickerOpenId] = useState<string | null>(null);
   const likePickerRef = useRef<HTMLDivElement | null>(null);
+  const postCardRefs = useRef<Record<string, HTMLElement | null>>({});
+  const [highlightedPostId, setHighlightedPostId] = useState<string | null>(
+    initialFocusPostId,
+  );
   const [expandedPostContentById, setExpandedPostContentById] = useState<
     Record<string, boolean>
   >({});
@@ -448,6 +483,7 @@ export default function DugoutTimeline({
     unreadReplyCount: 0,
     totalUnreadCount: 0,
     lastSeenAt: null,
+    items: [],
   });
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [gifSearchOpen, setGifSearchOpen] = useState(false);
@@ -717,6 +753,7 @@ export default function DugoutTimeline({
           unreadReplyCount: 0,
           totalUnreadCount: 0,
           lastSeenAt: new Date().toISOString(),
+          items: prev.items.map((item) => ({ ...item, isUnread: false })),
         }));
       }
     } finally {
@@ -734,6 +771,52 @@ export default function DugoutTimeline({
       window.clearInterval(id);
     };
   }, []);
+
+  useEffect(() => {
+    if (
+      initialView !== "timeline" ||
+      !initialFocusPostId ||
+      !posts.some((post) => post.id === initialFocusPostId)
+    ) {
+      return;
+    }
+
+    setHighlightedPostId(initialFocusPostId);
+    setExpandedCommentsByPost((prev) => ({
+      ...prev,
+      [initialFocusPostId]: true,
+    }));
+
+    if (
+      !commentsByPost[initialFocusPostId] &&
+      !commentsLoadingByPost[initialFocusPostId]
+    ) {
+      void loadComments(initialFocusPostId);
+    }
+
+    requestAnimationFrame(() => {
+      postCardRefs.current[initialFocusPostId]?.scrollIntoView({
+        behavior: "smooth",
+        block: "center",
+      });
+    });
+
+    const timerId = window.setTimeout(() => {
+      setHighlightedPostId((prev) =>
+        prev === initialFocusPostId ? null : prev,
+      );
+    }, 3500);
+
+    return () => {
+      window.clearTimeout(timerId);
+    };
+  }, [
+    commentsByPost,
+    commentsLoadingByPost,
+    initialFocusPostId,
+    initialView,
+    posts,
+  ]);
 
   // Close emoji reaction picker on outside click
   useEffect(() => {
@@ -1943,7 +2026,17 @@ export default function DugoutTimeline({
         .toUpperCase();
 
       return (
-        <article key={post.id} className="flex gap-0">
+        <article
+          key={post.id}
+          ref={(element) => {
+            postCardRefs.current[post.id] = element;
+          }}
+          className={`flex gap-0 transition ${
+            highlightedPostId === post.id
+              ? "bg-brand-gold/10 ring-1 ring-brand-gold/50"
+              : ""
+          }`}
+        >
           {/* Left column: avatar + connector line */}
           <div className="flex w-10 shrink-0 flex-col items-center pt-3">
             {/* Avatar circle */}
@@ -1987,11 +2080,78 @@ export default function DugoutTimeline({
     return (
       <article
         key={post.id}
-        className="border-b border-zinc-800 bg-zinc-950/30 px-5 py-4"
+        ref={(element) => {
+          postCardRefs.current[post.id] = element;
+        }}
+        className={`border-b border-zinc-800 bg-zinc-950/30 px-5 py-4 transition ${
+          highlightedPostId === post.id
+            ? "bg-brand-gold/10 ring-1 ring-brand-gold/50"
+            : ""
+        }`}
       >
         {renderPostBody(post, bodyProps)}
       </article>
     );
+  }
+
+  function applyLocalNotificationRead(notificationId: string) {
+    setNotifications((prev) => {
+      const target = prev.items.find((entry) => entry.id === notificationId);
+      if (!target || !target.isUnread) {
+        return prev;
+      }
+
+      const nextUnreadLikeCount =
+        target.type === "LIKE"
+          ? Math.max(0, prev.unreadLikeCount - 1)
+          : prev.unreadLikeCount;
+      const nextUnreadReplyCount =
+        target.type === "LIKE"
+          ? prev.unreadReplyCount
+          : Math.max(0, prev.unreadReplyCount - 1);
+
+      return {
+        ...prev,
+        unreadLikeCount: nextUnreadLikeCount,
+        unreadReplyCount: nextUnreadReplyCount,
+        totalUnreadCount: Math.max(0, prev.totalUnreadCount - 1),
+        items: prev.items.map((entry) =>
+          entry.id === notificationId ? { ...entry, isUnread: false } : entry,
+        ),
+      };
+    });
+  }
+
+  async function markNotificationRead(notificationId: string) {
+    try {
+      const response = await fetch("/api/dugout/notifications", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          notificationId,
+          markAll: false,
+        }),
+      });
+
+      if (!response.ok) {
+        return;
+      }
+
+      applyLocalNotificationRead(notificationId);
+    } catch {
+      // Ignore mark-read failures to keep navigation responsive.
+    }
+  }
+
+  async function openNotificationTarget(item: DugoutNotificationItem) {
+    if (item.isUnread) {
+      await markNotificationRead(item.id);
+    }
+
+    const params = new URLSearchParams();
+    params.set("view", "timeline");
+    params.set("postId", item.postId);
+    window.location.href = `/dugout?${params.toString()}`;
   }
 
   function renderPostGroup(group: (typeof postGroups)[number]) {
@@ -2034,44 +2194,116 @@ export default function DugoutTimeline({
             </button>
           </div>
 
-          <div className="space-y-3">
-            <article className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
-              <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
-                Unread Activity
+          <div className="mb-4 rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+            <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
+              Unread Activity
+            </p>
+            <div className="mt-3 flex flex-wrap gap-4 text-sm text-zinc-200">
+              <p>
+                Likes:{" "}
+                <span className="font-semibold">
+                  {notifications.unreadLikeCount}
+                </span>
               </p>
-              <div className="mt-3 space-y-2 text-sm text-zinc-200">
-                <p>
-                  Likes on your posts:{" "}
-                  <span className="font-semibold">
-                    {notifications.unreadLikeCount}
-                  </span>
-                </p>
-                <p>
-                  Replies/comments for you:{" "}
-                  <span className="font-semibold">
-                    {notifications.unreadReplyCount}
-                  </span>
-                </p>
-                <p>
-                  Total unread:{" "}
-                  <span className="font-semibold text-brand-gold">
-                    {notifications.totalUnreadCount}
-                  </span>
-                </p>
-              </div>
-            </article>
-
-            <article className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-300">
-              <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
-                Last Seen
+              <p>
+                Replies/comments:{" "}
+                <span className="font-semibold">
+                  {notifications.unreadReplyCount}
+                </span>
               </p>
-              <p className="mt-2">
-                {notifications.lastSeenAt
-                  ? formatPostTime(notifications.lastSeenAt)
-                  : "No notification read marker yet."}
+              <p>
+                Total unread:{" "}
+                <span className="font-semibold text-brand-gold">
+                  {notifications.totalUnreadCount}
+                </span>
               </p>
-            </article>
+            </div>
+            <p className="mt-3 text-xs text-zinc-500">
+              Last seen:{" "}
+              {notifications.lastSeenAt
+                ? formatPostTime(notifications.lastSeenAt)
+                : "Not set yet"}
+            </p>
           </div>
+
+          {notifications.items.length === 0 ? (
+            <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-5 text-sm text-zinc-400">
+              No notifications yet.
+            </div>
+          ) : (
+            <div className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950/40">
+              {notifications.items.map((item) => {
+                const actorName = getDisplayName(item.actor);
+                const icon =
+                  item.type === "LIKE"
+                    ? item.reaction || "❤️"
+                    : item.type === "REPLY"
+                      ? "↩"
+                      : "💬";
+                const headline =
+                  item.type === "LIKE"
+                    ? `${actorName} reacted to your post`
+                    : item.type === "REPLY"
+                      ? `${actorName} replied to your post`
+                      : `${actorName} commented on your post`;
+
+                return (
+                  <article
+                    key={item.id}
+                    onClick={() => {
+                      void openNotificationTarget(item);
+                    }}
+                    className={`border-b border-zinc-800 px-4 py-3 transition ${
+                      item.isUnread
+                        ? "cursor-pointer bg-brand-purple/10 hover:bg-brand-purple/15"
+                        : "cursor-pointer hover:bg-zinc-900/70"
+                    }`}
+                  >
+                    <div className="flex items-start gap-3">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-sm text-brand-gold">
+                        {icon}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-baseline justify-between gap-2">
+                          <p className="truncate text-sm text-zinc-100">
+                            {headline}
+                          </p>
+                          <span className="shrink-0 text-xs text-zinc-500">
+                            {formatRelativeTime(item.createdAt)}
+                          </span>
+                        </div>
+                        {item.commentPreview ? (
+                          <p className="mt-1 text-sm text-zinc-300 line-clamp-2">
+                            {item.commentPreview}
+                          </p>
+                        ) : null}
+                        <p className="mt-1 text-xs text-zinc-500 line-clamp-2">
+                          {item.postPreview}
+                        </p>
+                        <div className="mt-2 flex justify-end">
+                          <label
+                            onClick={(event) => event.stopPropagation()}
+                            className="inline-flex cursor-pointer items-center gap-2 text-[11px] text-zinc-400"
+                          >
+                            <span>Mark Read</span>
+                            <input
+                              type="checkbox"
+                              checked={!item.isUnread}
+                              onChange={() => {
+                                if (!item.isUnread) return;
+                                void markNotificationRead(item.id);
+                              }}
+                              className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900 text-brand-gold focus:ring-brand-gold"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          )}
         </section>
       ) : showingScheduleView ? (
         <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
