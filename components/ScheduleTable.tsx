@@ -2,7 +2,7 @@
 "use client";
 
 import { useRouter, useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -786,7 +786,7 @@ export default function ScheduleTable({
               </thead>
               <tbody className="divide-y divide-zinc-800">
                 {groupedGames.map(({ park, days }) => (
-                  <>
+                  <Fragment key={`park-group-${park}`}>
                     <tr key={`park-${park}`}>
                       <td
                         colSpan={5}
@@ -796,7 +796,7 @@ export default function ScheduleTable({
                       </td>
                     </tr>
                     {days.map(({ dayLabel, games }) => (
-                      <>
+                      <Fragment key={`day-group-${park}-${dayLabel}`}>
                         <tr key={`day-${park}-${dayLabel}`}>
                           <td
                             colSpan={5}
@@ -853,9 +853,9 @@ export default function ScheduleTable({
                             </tr>
                           );
                         })}
-                      </>
+                      </Fragment>
                     ))}
-                  </>
+                  </Fragment>
                 ))}
               </tbody>
             </table>

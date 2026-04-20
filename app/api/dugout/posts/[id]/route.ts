@@ -2,11 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
+import { MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import { getDugoutPostInclude, serializeDugoutPost } from "@/lib/dugout/posts";
 import { ensureCoach } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
-
-const MAX_POST_LENGTH = 280;
 
 export async function PATCH(
   request: NextRequest,
@@ -40,7 +39,46 @@ export async function PATCH(
     const body = (await request.json()) as {
       content?: string;
       removeMedia?: boolean;
+      isPinned?: boolean;
+      pinScope?: "post" | "thread";
     };
+    const isPinRequest = typeof body.isPinned === "boolean";
+    const pinScope = body.pinScope === "thread" ? "thread" : "post";
+
+    if (isPinRequest) {
+      if (!admin) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
+
+      const shouldPin = body.isPinned === true;
+      const pinData = shouldPin
+        ? { isPinned: true, pinnedAt: new Date() }
+        : { isPinned: false, pinnedAt: null };
+
+      if (pinScope === "thread" && post.threadId) {
+        await prisma.dugoutPost.updateMany({
+          where: { threadId: post.threadId },
+          data: pinData,
+        });
+      } else {
+        await prisma.dugoutPost.update({
+          where: { id },
+          data: pinData,
+        });
+      }
+
+      const refreshed = await prisma.dugoutPost.findUnique({
+        where: { id },
+        include: getDugoutPostInclude(coach?.id),
+      });
+
+      if (!refreshed) {
+        return NextResponse.json({ error: "Post not found" }, { status: 404 });
+      }
+
+      return NextResponse.json({ data: serializeDugoutPost(refreshed) });
+    }
+
     const content = body.content?.trim() ?? "";
     const removeMedia = body.removeMedia === true;
 

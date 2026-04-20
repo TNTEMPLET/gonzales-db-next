@@ -13,6 +13,10 @@ type DugoutPostWithRelations = {
   content: string;
   mediaUrl: string | null;
   mediaType: "IMAGE" | "GIF" | null;
+  threadId: string | null;
+  threadOrder: number | null;
+  isPinned: boolean;
+  pinnedAt: Date | null;
   createdAt: Date;
   updatedAt: Date;
   author: {
@@ -70,7 +74,11 @@ export function serializeDugoutPost(post: DugoutPostWithRelations) {
 
 export async function listDugoutPosts(viewerUserId?: string | null) {
   const posts = await prisma.dugoutPost.findMany({
-    orderBy: { createdAt: "desc" },
+    orderBy: [
+      { isPinned: "desc" },
+      { pinnedAt: "desc" },
+      { createdAt: "desc" },
+    ],
     take: 120,
     include: getDugoutPostInclude(viewerUserId),
   });

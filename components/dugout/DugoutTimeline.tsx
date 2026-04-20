@@ -14,6 +14,7 @@ import {
 
 import type { Game } from "@/lib/fetchGames";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
+import { MAX_COMMENT_LENGTH, MAX_POST_LENGTH } from "@/lib/dugout/constants";
 
 type DugoutAuthor = {
   id: string;
@@ -39,6 +40,10 @@ type DugoutPost = {
   content: string;
   mediaUrl: string | null;
   mediaType: "IMAGE" | "GIF" | null;
+  threadId: string | null;
+  threadOrder: number | null;
+  isPinned: boolean;
+  pinnedAt: string | null;
   createdAt: string;
   updatedAt: string;
   likeCount: number;
@@ -82,9 +87,79 @@ type DugoutNotificationCounts = {
   lastSeenAt: string | null;
 };
 
-const MAX_POST_LENGTH = 280;
-const MAX_COMMENT_LENGTH = 280;
+type ThreadComposerEntry = {
+  id: string;
+  content: string;
+};
+
+type ComposerTarget =
+  | { type: "main" }
+  | { type: "thread"; id: string }
+  | { type: "comment"; postId: string }
+  | { type: "edit" };
+
 const EMOJI_CHOICES = ["⚾", "🔥", "👏", "🎉", "💪", "🙌"];
+
+function createThreadComposerEntry(): ThreadComposerEntry {
+  return {
+    id: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+    content: "",
+  };
+}
+
+function CharacterMeter({ current, max }: { current: number; max: number }) {
+  const remaining = Math.max(0, max - current);
+  const showNumber = remaining <= 100;
+  const radius = 10;
+  const circumference = 2 * Math.PI * radius;
+  const progress = Math.min(current / max, 1);
+  const strokeDashoffset = circumference * (1 - progress);
+  const accentClass =
+    remaining <= 20
+      ? "text-red-400"
+      : remaining <= 100
+        ? "text-brand-gold"
+        : "text-brand-purple";
+
+  return (
+    <div className="flex items-center gap-2">
+      {showNumber ? (
+        <span className={`text-xs font-medium ${accentClass}`}>
+          {remaining}
+        </span>
+      ) : null}
+      <div className="relative h-6 w-6">
+        <svg
+          className="h-6 w-6 -rotate-90"
+          viewBox="0 0 24 24"
+          aria-hidden="true"
+        >
+          <circle
+            cx="12"
+            cy="12"
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            className="text-zinc-800"
+          />
+          <circle
+            cx="12"
+            cy="12"
+            r={radius}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeDasharray={circumference}
+            strokeDashoffset={strokeDashoffset}
+            className={accentClass}
+          />
+        </svg>
+      </div>
+    </div>
+  );
+}
 
 function getDisplayName(author: DugoutAuthor) {
   if (author.firstName || author.lastName) {
@@ -92,6 +167,33 @@ function getDisplayName(author: DugoutAuthor) {
   }
 
   return author.name || author.email;
+}
+
+function renderFormattedText(content: string) {
+  const lines = content.split("\n");
+
+  return lines.map((line, lineIndex) => {
+    const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
+
+    return (
+      <span key={`line-${lineIndex}`}>
+        {parts.map((part, partIndex) => {
+          const key = `${lineIndex}-${partIndex}`;
+
+          if (part.startsWith("**") && part.endsWith("**")) {
+            return <strong key={key}>{part.slice(2, -2)}</strong>;
+          }
+
+          if (part.startsWith("*") && part.endsWith("*")) {
+            return <em key={key}>{part.slice(1, -1)}</em>;
+          }
+
+          return <span key={key}>{part}</span>;
+        })}
+        {lineIndex < lines.length - 1 ? <br /> : null}
+      </span>
+    );
+  });
 }
 
 function formatPostTime(value: string) {
@@ -282,6 +384,7 @@ export default function DugoutTimeline({
 }: DugoutTimelineProps) {
   const [posts, setPosts] = useState<DugoutPost[]>(initialPosts);
   const [content, setContent] = useState("");
+  const [threadEntries, setThreadEntries] = useState<ThreadComposerEntry[]>([]);
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [mediaPreviewUrl, setMediaPreviewUrl] = useState<string | null>(null);
   const [selectedGif, setSelectedGif] = useState<GifResult | null>(null);
@@ -299,9 +402,23 @@ export default function DugoutTimeline({
   const [editContent, setEditContent] = useState("");
   const [editRemoveMedia, setEditRemoveMedia] = useState(false);
   const [editBusy, setEditBusy] = useState(false);
+  const [pinBusyKey, setPinBusyKey] = useState<string | null>(null);
+  const [activeComposerTarget, setActiveComposerTarget] =
+    useState<ComposerTarget>({
+      type: "main",
+    });
   const [likeBusyId, setLikeBusyId] = useState<string | null>(null);
   const [likePickerOpenId, setLikePickerOpenId] = useState<string | null>(null);
   const likePickerRef = useRef<HTMLDivElement | null>(null);
+  const [expandedPostContentById, setExpandedPostContentById] = useState<
+    Record<string, boolean>
+  >({});
+  const [overflowingPostContentById, setOverflowingPostContentById] = useState<
+    Record<string, boolean>
+  >({});
+  const postContentRefs = useRef<Record<string, HTMLParagraphElement | null>>(
+    {},
+  );
 
   const [expandedCommentsByPost, setExpandedCommentsByPost] = useState<
     Record<string, boolean>
@@ -338,6 +455,14 @@ export default function DugoutTimeline({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
+  const mainComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+  const threadTextareaRefs = useRef<Record<string, HTMLTextAreaElement | null>>(
+    {},
+  );
+  const commentTextareaRefs = useRef<
+    Record<string, HTMLTextAreaElement | null>
+  >({});
+  const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   function replacePreviewUrl(nextUrl: string | null) {
     setMediaPreviewUrl((prev) => {
@@ -362,12 +487,115 @@ export default function DugoutTimeline({
   }
 
   function appendEmoji(emoji: string, editing = false) {
-    if (editing) {
+    if (editing || activeComposerTarget.type === "edit") {
       setEditContent((prev) => `${prev}${emoji}`);
       return;
     }
 
+    if (activeComposerTarget.type === "thread") {
+      updateThreadEntry(
+        activeComposerTarget.id,
+        `${threadEntries.find((entry) => entry.id === activeComposerTarget.id)?.content || ""}${emoji}`,
+      );
+      return;
+    }
+
     setContent((prev) => `${prev}${emoji}`);
+  }
+
+  function updateThreadEntry(id: string, nextContent: string) {
+    setThreadEntries((prev) =>
+      prev.map((entry) =>
+        entry.id === id ? { ...entry, content: nextContent } : entry,
+      ),
+    );
+  }
+
+  function updateCommentInput(postId: string, nextContent: string) {
+    setCommentInputByPost((prev) => ({
+      ...prev,
+      [postId]: nextContent,
+    }));
+  }
+
+  function addThreadEntry() {
+    const nextEntry = createThreadComposerEntry();
+    setComposerExpanded(true);
+    setThreadEntries((prev) => [...prev, nextEntry]);
+    setActiveComposerTarget({ type: "thread", id: nextEntry.id });
+    requestAnimationFrame(() => {
+      threadTextareaRefs.current[nextEntry.id]?.focus();
+    });
+  }
+
+  function removeThreadEntry(id: string) {
+    setThreadEntries((prev) => prev.filter((entry) => entry.id !== id));
+    delete threadTextareaRefs.current[id];
+    setActiveComposerTarget((prev) =>
+      prev.type === "thread" && prev.id === id ? { type: "main" } : prev,
+    );
+  }
+
+  function applyInlineFormat(marker: "**" | "*") {
+    const target = (() => {
+      if (activeComposerTarget.type === "edit") {
+        return {
+          element: editTextareaRef.current,
+          value: editContent,
+          setValue: setEditContent,
+        };
+      }
+
+      if (activeComposerTarget.type === "thread") {
+        const entry = threadEntries.find(
+          (threadEntry) => threadEntry.id === activeComposerTarget.id,
+        );
+
+        return {
+          element: threadTextareaRefs.current[activeComposerTarget.id],
+          value: entry?.content ?? "",
+          setValue: (nextValue: string) =>
+            updateThreadEntry(activeComposerTarget.id, nextValue),
+        };
+      }
+
+      if (activeComposerTarget.type === "comment") {
+        return {
+          element: commentTextareaRefs.current[activeComposerTarget.postId],
+          value: commentInputByPost[activeComposerTarget.postId] ?? "",
+          setValue: (nextValue: string) =>
+            updateCommentInput(activeComposerTarget.postId, nextValue),
+        };
+      }
+
+      return {
+        element: mainComposerTextareaRef.current,
+        value: content,
+        setValue: setContent,
+      };
+    })();
+
+    if (!target.element) return;
+
+    const start = target.element.selectionStart ?? target.value.length;
+    const end = target.element.selectionEnd ?? target.value.length;
+    const selectedText = target.value.slice(start, end);
+    const insertion = selectedText
+      ? `${marker}${selectedText}${marker}`
+      : `${marker}${marker}`;
+    const nextValue =
+      target.value.slice(0, start) + insertion + target.value.slice(end);
+
+    target.setValue(nextValue);
+
+    requestAnimationFrame(() => {
+      target.element?.focus();
+      const selectionStart = start + marker.length;
+      const selectionEnd = selectedText
+        ? selectionStart + selectedText.length
+        : selectionStart;
+      target.element?.setSelectionRange(selectionStart, selectionEnd);
+    });
   }
 
   function selectMedia(file: File) {
@@ -527,11 +755,17 @@ export default function DugoutTimeline({
   useEffect(() => {
     if (!composerExpanded) return;
 
+    const hasThreadContent = threadEntries.some((entry) =>
+      entry.content.trim(),
+    );
+
     function handleOutside(event: MouseEvent) {
       if (
         composerRef.current &&
         !composerRef.current.contains(event.target as Node) &&
         !content.trim() &&
+        !hasThreadContent &&
+        threadEntries.length === 0 &&
         !mediaFile &&
         !selectedGif
       ) {
@@ -543,12 +777,160 @@ export default function DugoutTimeline({
 
     document.addEventListener("mousedown", handleOutside);
     return () => document.removeEventListener("mousedown", handleOutside);
-  }, [composerExpanded, content, mediaFile, selectedGif]);
+  }, [composerExpanded, content, mediaFile, selectedGif, threadEntries]);
+
+  useEffect(() => {
+    function measurePostOverflow() {
+      const nextOverflow: Record<string, boolean> = {};
+
+      posts.forEach((post) => {
+        const element = postContentRefs.current[post.id];
+        if (!element || !post.content) {
+          nextOverflow[post.id] = false;
+          return;
+        }
+
+        nextOverflow[post.id] = element.scrollHeight - element.clientHeight > 1;
+      });
+
+      setOverflowingPostContentById((prev) => {
+        const prevKeys = Object.keys(prev);
+        const nextKeys = Object.keys(nextOverflow);
+
+        if (prevKeys.length !== nextKeys.length) {
+          return nextOverflow;
+        }
+
+        for (const key of nextKeys) {
+          if (prev[key] !== nextOverflow[key]) {
+            return nextOverflow;
+          }
+        }
+
+        return prev;
+      });
+    }
+
+    measurePostOverflow();
+    window.addEventListener("resize", measurePostOverflow);
+
+    return () => window.removeEventListener("resize", measurePostOverflow);
+  }, [posts, expandedPostContentById]);
+
+  const postGroups = useMemo(() => {
+    const groups = new Map<
+      string,
+      {
+        key: string;
+        sortValue: number;
+        pinnedAtValue: number;
+        isPinned: boolean;
+        posts: DugoutPost[];
+      }
+    >();
+
+    posts.forEach((post) => {
+      const groupKey = post.threadId
+        ? `thread:${post.threadId}`
+        : `post:${post.id}`;
+      const createdAtValue = new Date(post.createdAt).getTime();
+
+      if (!groups.has(groupKey)) {
+        groups.set(groupKey, {
+          key: groupKey,
+          sortValue: createdAtValue,
+          pinnedAtValue: post.pinnedAt ? new Date(post.pinnedAt).getTime() : 0,
+          isPinned: post.isPinned,
+          posts: [],
+        });
+      }
+
+      const group = groups.get(groupKey)!;
+      group.posts.push(post);
+      group.sortValue = Math.max(group.sortValue, createdAtValue);
+      group.pinnedAtValue = Math.max(
+        group.pinnedAtValue,
+        post.pinnedAt ? new Date(post.pinnedAt).getTime() : 0,
+      );
+      group.isPinned = group.isPinned || post.isPinned;
+    });
+
+    return Array.from(groups.values())
+      .sort((leftGroup, rightGroup) => {
+        if (leftGroup.isPinned !== rightGroup.isPinned) {
+          return leftGroup.isPinned ? -1 : 1;
+        }
+
+        if (leftGroup.pinnedAtValue !== rightGroup.pinnedAtValue) {
+          return rightGroup.pinnedAtValue - leftGroup.pinnedAtValue;
+        }
+
+        return rightGroup.sortValue - leftGroup.sortValue;
+      })
+      .map((group) => ({
+        ...group,
+        posts: [...group.posts].sort((leftPost, rightPost) => {
+          if (
+            leftPost.threadOrder !== null &&
+            rightPost.threadOrder !== null &&
+            leftPost.threadId &&
+            rightPost.threadId &&
+            leftPost.threadId === rightPost.threadId
+          ) {
+            return leftPost.threadOrder - rightPost.threadOrder;
+          }
+
+          return (
+            new Date(rightPost.createdAt).getTime() -
+            new Date(leftPost.createdAt).getTime()
+          );
+        }),
+      }));
+  }, [posts]);
+
+  const pinnedPostGroups = useMemo(
+    () => postGroups.filter((group) => group.isPinned),
+    [postGroups],
+  );
+
+  const regularPostGroups = useMemo(
+    () => postGroups.filter((group) => !group.isPinned),
+    [postGroups],
+  );
 
   async function createPost(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const trimmed = content.trim();
-    if (!trimmed && !mediaFile && !selectedGif) return;
+    const preparedThreadEntries = threadEntries.map((entry) => ({
+      ...entry,
+      trimmed: entry.content.trim(),
+    }));
+    const hasThreadEntries = preparedThreadEntries.length > 0;
+
+    if (!trimmed && !mediaFile && !selectedGif && !hasThreadEntries) return;
+
+    if (trimmed.length > MAX_POST_LENGTH) {
+      setError(`Post must be ${MAX_POST_LENGTH} characters or fewer`);
+      return;
+    }
+
+    if (hasThreadEntries && !trimmed && !mediaFile && !selectedGif) {
+      setError("The first thread post needs content or media");
+      return;
+    }
+
+    const invalidThreadEntry = preparedThreadEntries.find(
+      (entry) => !entry.trimmed || entry.trimmed.length > MAX_POST_LENGTH,
+    );
+
+    if (invalidThreadEntry) {
+      setError(
+        !invalidThreadEntry.trimmed
+          ? "Each thread post needs content"
+          : `Each thread post must be ${MAX_POST_LENGTH} characters or fewer`,
+      );
+      return;
+    }
 
     setBusy(true);
     setError("");
@@ -565,23 +947,61 @@ export default function DugoutTimeline({
             }
           : null;
 
-      const response = await fetch("/api/dugout/posts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const segments = [
+        {
           content: trimmed,
           mediaUrl: attachedMedia?.mediaUrl,
           mediaType: attachedMedia?.mediaType,
-        }),
-      });
+        },
+        ...preparedThreadEntries.map((entry) => ({
+          content: entry.trimmed,
+          mediaUrl: null,
+          mediaType: null,
+        })),
+      ];
 
-      const json = await response.json();
+      const totalSegments = segments.length;
+      const threadId =
+        totalSegments > 1
+          ? (globalThis.crypto?.randomUUID?.() ??
+            createThreadComposerEntry().id)
+          : null;
+      const numberedSegments = segments.map((segment, index) => ({
+        ...segment,
+        threadId,
+        threadOrder: totalSegments > 1 ? index : null,
+        content:
+          totalSegments > 1
+            ? `${index + 1}/${totalSegments}${segment.content ? ` ${segment.content}` : ""}`
+            : segment.content,
+      }));
 
-      if (!response.ok) {
-        throw new Error(json.error || "Failed to post update");
+      const createdPosts: DugoutPost[] = [];
+
+      for (const segment of [...numberedSegments].reverse()) {
+        const response = await fetch("/api/dugout/posts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: segment.content,
+            mediaUrl: segment.mediaUrl,
+            mediaType: segment.mediaType,
+            threadId: segment.threadId,
+            threadOrder: segment.threadOrder,
+          }),
+        });
+
+        const json = await response.json();
+
+        if (!response.ok) {
+          throw new Error(json.error || "Failed to post update");
+        }
+
+        createdPosts.push(json.data as DugoutPost);
       }
 
       setContent("");
+      setThreadEntries([]);
       clearSelectedMedia();
       clearSelectedGif();
       setGifQuery("");
@@ -590,8 +1010,8 @@ export default function DugoutTimeline({
       setGifHasMore(false);
       setActiveGifQuery("");
       setComposerExpanded(false);
-      setPosts((prev) => [json.data as DugoutPost, ...prev]);
-      setNotice("Update posted");
+      setPosts((prev) => [...createdPosts.reverse(), ...prev]);
+      setNotice(totalSegments > 1 ? "Thread posted" : "Update posted");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to post update");
     } finally {
@@ -603,17 +1023,24 @@ export default function DugoutTimeline({
     setEditingId(post.id);
     setEditContent(post.content);
     setEditRemoveMedia(false);
+    setActiveComposerTarget({ type: "edit" });
   }
 
   function cancelEdit() {
     setEditingId(null);
     setEditContent("");
     setEditRemoveMedia(false);
+    setActiveComposerTarget({ type: "main" });
   }
 
   async function saveEdit(id: string) {
     const trimmed = editContent.trim();
     if (!trimmed) return;
+
+    if (trimmed.length > MAX_POST_LENGTH) {
+      setError(`Post must be ${MAX_POST_LENGTH} characters or fewer`);
+      return;
+    }
 
     setEditBusy(true);
     setError("");
@@ -639,6 +1066,7 @@ export default function DugoutTimeline({
       setEditingId(null);
       setEditContent("");
       setEditRemoveMedia(false);
+      setActiveComposerTarget({ type: "main" });
       setNotice("Post updated");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to save edit");
@@ -667,6 +1095,70 @@ export default function DugoutTimeline({
       setNotice("Post deleted");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to delete post");
+    }
+  }
+
+  async function togglePin(post: DugoutPost, scope: "post" | "thread") {
+    if (!isAdmin) return;
+
+    const nextPinned = !post.isPinned;
+    const busyKey = `${scope}:${post.id}`;
+    setPinBusyKey(busyKey);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/dugout/posts/${post.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          isPinned: nextPinned,
+          pinScope: scope,
+        }),
+      });
+
+      const json = (await response.json()) as {
+        error?: string;
+        data?: DugoutPost;
+      };
+
+      if (!response.ok || !json.data) {
+        throw new Error(json.error || "Failed to update pin state");
+      }
+
+      setPosts((prev) =>
+        prev.map((entry) => {
+          if (scope === "thread" && post.threadId) {
+            return entry.threadId === post.threadId
+              ? {
+                  ...entry,
+                  isPinned: json.data!.isPinned,
+                  pinnedAt: json.data!.pinnedAt,
+                }
+              : entry;
+          }
+
+          return entry.id === post.id
+            ? {
+                ...entry,
+                isPinned: json.data!.isPinned,
+                pinnedAt: json.data!.pinnedAt,
+              }
+            : entry;
+        }),
+      );
+
+      if (scope === "thread" && post.threadId) {
+        setNotice(nextPinned ? "Thread pinned" : "Thread unpinned");
+      } else {
+        setNotice(nextPinned ? "Post pinned" : "Post unpinned");
+      }
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update pin state",
+      );
+    } finally {
+      setPinBusyKey(null);
     }
   }
 
@@ -883,11 +1375,6 @@ export default function DugoutTimeline({
     }
   }
 
-  const remaining = useMemo(() => MAX_POST_LENGTH - content.length, [content]);
-  const editRemaining = useMemo(
-    () => MAX_POST_LENGTH - editContent.length,
-    [editContent],
-  );
   const showingNotificationsView = initialView === "notifications";
   const showingScheduleView = initialView === "schedule";
   const groupedScheduleGames = useMemo(() => {
@@ -980,8 +1467,8 @@ export default function DugoutTimeline({
             {formatPostTime(comment.createdAt)}
           </p>
         </div>
-        <p className="whitespace-pre-wrap text-sm text-zinc-200">
-          {comment.content}
+        <p className="whitespace-pre-wrap wrap-anywhere text-sm text-zinc-200">
+          {renderFormattedText(comment.content)}
         </p>
         <div className="mt-2 flex items-center gap-3">
           {currentUserId ? (
@@ -1016,6 +1503,515 @@ export default function DugoutTimeline({
             )
           : null}
       </div>
+    );
+  }
+
+  function renderPostBody(
+    post: DugoutPost,
+    {
+      canManage,
+      isEditing,
+      canLike,
+      comments,
+      postExpanded,
+      longPost,
+      commentsExpanded,
+      replyTarget,
+      commentInput,
+      isThreadGroup,
+      isThreadLead,
+    }: {
+      canManage: boolean;
+      isEditing: boolean;
+      canLike: boolean;
+      comments: DugoutComment[];
+      postExpanded: boolean;
+      longPost: boolean;
+      commentsExpanded: boolean;
+      replyTarget: DugoutComment | null | undefined;
+      commentInput: string;
+      isThreadGroup: boolean;
+      isThreadLead: boolean;
+    },
+  ) {
+    return (
+      <>
+        <div className="mb-1.5 flex items-start justify-between gap-3">
+          <div className="flex min-w-0 items-center gap-2">
+            <p className="truncate text-sm font-semibold leading-5 text-zinc-100">
+              {getDisplayName(post.author)}
+            </p>
+            {isAdmin && post.isPinned ? (
+              <span className="inline-flex items-center gap-1 rounded-full border border-brand-gold/40 bg-brand-gold/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-gold">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-3 w-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M16 12l1 7-5-3-5 3 1-7-4-4h7l1-4 1 4h7z"
+                  />
+                </svg>
+                Pinned
+              </span>
+            ) : null}
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <p className="text-xs text-zinc-500">
+              {formatPostTime(post.createdAt)}
+            </p>
+            {canManage && !isEditing ? (
+              <>
+                <button
+                  type="button"
+                  onClick={() => startEdit(post)}
+                  className="text-xs text-zinc-400 transition hover:text-zinc-200"
+                >
+                  Edit
+                </button>
+                {isAdmin ? (
+                  <>
+                    <button
+                      type="button"
+                      disabled={pinBusyKey === `post:${post.id}`}
+                      onClick={() => void togglePin(post, "post")}
+                      className="text-xs text-brand-gold transition hover:text-brand-gold/80 disabled:opacity-60"
+                    >
+                      {pinBusyKey === `post:${post.id}`
+                        ? "..."
+                        : post.isPinned
+                          ? "Unpin Post"
+                          : "Pin Post"}
+                    </button>
+                    {isThreadGroup && isThreadLead ? (
+                      <button
+                        type="button"
+                        disabled={pinBusyKey === `thread:${post.id}`}
+                        onClick={() => void togglePin(post, "thread")}
+                        className="text-xs text-brand-gold transition hover:text-brand-gold/80 disabled:opacity-60"
+                      >
+                        {pinBusyKey === `thread:${post.id}`
+                          ? "..."
+                          : post.isPinned
+                            ? "Unpin Thread"
+                            : "Pin Thread"}
+                      </button>
+                    ) : null}
+                  </>
+                ) : null}
+                <button
+                  type="button"
+                  onClick={() => void deletePost(post.id)}
+                  className="text-xs text-red-400 transition hover:text-red-300"
+                >
+                  Delete
+                </button>
+              </>
+            ) : null}
+          </div>
+        </div>
+
+        {isEditing ? (
+          <div className="space-y-2">
+            <textarea
+              ref={editTextareaRef}
+              rows={4}
+              maxLength={MAX_POST_LENGTH}
+              value={editContent}
+              onChange={(event) => setEditContent(event.target.value)}
+              onFocus={() => setActiveComposerTarget({ type: "edit" })}
+              className="w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm"
+            />
+            <div className="flex flex-wrap gap-2">
+              {EMOJI_CHOICES.map((emoji) => (
+                <button
+                  key={`${post.id}-${emoji}`}
+                  type="button"
+                  onClick={() => appendEmoji(emoji, true)}
+                  className="rounded-full border border-zinc-700 px-2.5 py-1 text-sm hover:bg-zinc-800"
+                >
+                  {emoji}
+                </button>
+              ))}
+            </div>
+            {post.mediaUrl && !editRemoveMedia ? (
+              <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/70">
+                <Image
+                  src={post.mediaUrl}
+                  alt="Attached media"
+                  width={1200}
+                  height={900}
+                  unoptimized
+                  className="h-auto max-h-48 w-full object-cover"
+                />
+                <div className="flex items-center justify-between px-3 py-2">
+                  <p className="text-xs text-zinc-400">Attached media</p>
+                  <button
+                    type="button"
+                    onClick={() => setEditRemoveMedia(true)}
+                    className="text-xs text-red-300 hover:text-red-200"
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+            ) : editRemoveMedia && post.mediaUrl ? (
+              <div className="flex items-center justify-between rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2">
+                <p className="text-xs text-red-300">
+                  Media will be removed on save
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setEditRemoveMedia(false)}
+                  className="text-xs text-zinc-400 hover:text-zinc-200"
+                >
+                  Undo
+                </button>
+              </div>
+            ) : null}
+            <div className="flex items-center justify-end gap-2">
+              <div className="mr-auto">
+                <CharacterMeter
+                  current={editContent.length}
+                  max={MAX_POST_LENGTH}
+                />
+              </div>
+              <button
+                type="button"
+                onClick={cancelEdit}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={editBusy || !editContent.trim()}
+                onClick={() => void saveEdit(post.id)}
+                className="rounded-lg bg-brand-purple px-3 py-1.5 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
+              >
+                {editBusy ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {post.content ? (
+              <div>
+                <p
+                  ref={(element) => {
+                    postContentRefs.current[post.id] = element;
+                  }}
+                  className={`whitespace-pre-wrap wrap-anywhere text-sm leading-6 text-zinc-200 ${
+                    postExpanded ? "" : "line-clamp-4"
+                  }`}
+                >
+                  {renderFormattedText(post.content)}
+                </p>
+                {longPost ? (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setExpandedPostContentById((prev) => ({
+                        ...prev,
+                        [post.id]: !postExpanded,
+                      }))
+                    }
+                    className="mt-2 text-sm font-semibold text-brand-purple transition hover:text-brand-gold"
+                  >
+                    {postExpanded ? "Show less" : "+More"}
+                  </button>
+                ) : null}
+              </div>
+            ) : null}
+            <DugoutMedia post={post} alt={post.content || "Dugout media"} />
+            <div className="mt-3 flex flex-wrap items-center gap-3">
+              <div
+                className="relative"
+                ref={likePickerOpenId === post.id ? likePickerRef : null}
+              >
+                <button
+                  type="button"
+                  disabled={!canLike || likeBusyId === post.id}
+                  onClick={() =>
+                    setLikePickerOpenId((prev) =>
+                      prev === post.id ? null : post.id,
+                    )
+                  }
+                  className={`rounded-full border px-3 py-1 text-sm font-semibold transition disabled:opacity-50 ${
+                    post.likedByViewer
+                      ? "border-brand-gold text-brand-gold hover:bg-brand-gold/10"
+                      : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+                  }`}
+                  title={post.likedByViewer ? "Change reaction" : "React"}
+                >
+                  {post.likedByViewer && post.viewerReaction
+                    ? post.viewerReaction
+                    : "👍"}
+                </button>
+
+                {likePickerOpenId === post.id ? (
+                  <div className="absolute bottom-full left-0 z-20 mb-2 flex gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1.5 shadow-xl">
+                    {["👍", ...EMOJI_CHOICES].map((emoji) => (
+                      <button
+                        key={emoji}
+                        type="button"
+                        disabled={likeBusyId === post.id}
+                        onClick={() => void toggleLike(post, emoji)}
+                        className={`rounded-full p-1 text-lg transition hover:scale-125 hover:bg-zinc-700 disabled:opacity-50 ${
+                          post.likedByViewer && post.viewerReaction === emoji
+                            ? "bg-zinc-700 ring-1 ring-brand-gold"
+                            : ""
+                        }`}
+                        title={emoji}
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+              <span className="text-xs text-zinc-500">
+                {post.likeCount} {post.likeCount === 1 ? "like" : "likes"}
+              </span>
+              <button
+                type="button"
+                onClick={() => void toggleComments(post.id)}
+                className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
+              >
+                {commentsExpanded ? "Hide" : "Show"} replies (
+                {post.commentCount})
+              </button>
+            </div>
+
+            {commentsExpanded ? (
+              <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
+                {replyTarget ? (
+                  <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-zinc-700 bg-zinc-900/60 px-2 py-1.5 text-xs text-zinc-300">
+                    <span>
+                      Replying to {getDisplayName(replyTarget.author)}
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setReplyTargetByPost((prev) => ({
+                          ...prev,
+                          [post.id]: null,
+                        }))
+                      }
+                      className="text-red-300 hover:text-red-200"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : null}
+
+                <div className="mb-2 flex items-center gap-2 text-brand-purple">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveComposerTarget({
+                        type: "comment",
+                        postId: post.id,
+                      });
+                      applyInlineFormat("**");
+                    }}
+                    className="rounded-full px-2.5 py-1 text-sm font-bold hover:bg-zinc-800"
+                  >
+                    B
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setActiveComposerTarget({
+                        type: "comment",
+                        postId: post.id,
+                      });
+                      applyInlineFormat("*");
+                    }}
+                    className="rounded-full px-2.5 py-1 text-sm italic hover:bg-zinc-800"
+                  >
+                    I
+                  </button>
+                </div>
+
+                <div className="flex gap-2">
+                  <textarea
+                    ref={(element) => {
+                      commentTextareaRefs.current[post.id] = element;
+                    }}
+                    rows={2}
+                    maxLength={MAX_COMMENT_LENGTH}
+                    value={commentInput}
+                    onChange={(event) =>
+                      updateCommentInput(post.id, event.target.value)
+                    }
+                    onFocus={() =>
+                      setActiveComposerTarget({
+                        type: "comment",
+                        postId: post.id,
+                      })
+                    }
+                    placeholder={
+                      currentUserId
+                        ? "Write a comment or reply..."
+                        : "Sign in as a coach to reply"
+                    }
+                    disabled={!currentUserId}
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
+                  />
+                  <div className="flex shrink-0 flex-col items-end gap-2">
+                    <CharacterMeter
+                      current={commentInput.length}
+                      max={MAX_COMMENT_LENGTH}
+                    />
+                    <button
+                      type="button"
+                      disabled={
+                        !currentUserId ||
+                        !commentInput.trim() ||
+                        commentBusyByPost[post.id]
+                      }
+                      onClick={() =>
+                        void submitComment(post.id, replyTarget?.id ?? null)
+                      }
+                      className="h-fit rounded-lg bg-brand-purple px-3 py-2 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
+                    >
+                      {commentBusyByPost[post.id] ? "Sending..." : "Send"}
+                    </button>
+                  </div>
+                </div>
+
+                {commentsLoadingByPost[post.id] ? (
+                  <p className="mt-3 text-xs text-zinc-400">
+                    Loading replies...
+                  </p>
+                ) : comments.length === 0 ? (
+                  <p className="mt-3 text-xs text-zinc-500">No replies yet.</p>
+                ) : (
+                  <div className="mt-2">
+                    {comments.map((comment) => renderComment(post.id, comment))}
+                  </div>
+                )}
+              </div>
+            ) : null}
+          </>
+        )}
+      </>
+    );
+  }
+
+  function renderTimelinePost(
+    post: DugoutPost,
+    options: { threadIndex: number; threadSize: number },
+  ) {
+    const canManage = isAdmin || post.author.id === currentUserId;
+    const isEditing = editingId === post.id;
+    const canLike = Boolean(currentUserId);
+    const comments = commentsByPost[post.id] ?? [];
+    const postExpanded = Boolean(expandedPostContentById[post.id]);
+    const longPost = Boolean(overflowingPostContentById[post.id]);
+    const commentsExpanded = Boolean(expandedCommentsByPost[post.id]);
+    const replyTarget = replyTargetByPost[post.id];
+    const commentInput = commentInputByPost[post.id] ?? "";
+    const isThreadGroup = options.threadSize > 1;
+    const isLast = options.threadIndex === options.threadSize - 1;
+
+    const bodyProps = {
+      canManage,
+      isEditing,
+      canLike,
+      comments,
+      postExpanded,
+      longPost,
+      commentsExpanded,
+      replyTarget,
+      commentInput,
+      isThreadGroup,
+      isThreadLead: options.threadIndex === 0,
+    };
+
+    // ── Twitter-style thread layout ──────────────────────────────────────────
+    if (isThreadGroup) {
+      const initial = getDisplayName(post.author)
+        .trim()
+        .charAt(0)
+        .toUpperCase();
+
+      return (
+        <article key={post.id} className="flex gap-0">
+          {/* Left column: avatar + connector line */}
+          <div className="flex w-10 shrink-0 flex-col items-center pt-3">
+            {/* Avatar circle */}
+            <div className="z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-xs font-bold text-white ring-2 ring-zinc-950">
+              {initial}
+            </div>
+            {/* Connector line — grows to fill remaining height, hidden on last post */}
+            {!isLast ? (
+              <div className="mt-1 w-0.5 flex-1 bg-zinc-700/60" />
+            ) : null}
+          </div>
+
+          {/* Right column: header badge (first post only) + body */}
+          <div className="min-w-0 flex-1 pb-4 pl-3 pt-3">
+            {options.threadIndex === 0 ? (
+              <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-brand-gold/40 bg-brand-gold/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-brand-gold">
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-3 w-3"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={2}
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M4 6h16M4 12h16M4 18h7"
+                  />
+                </svg>
+                Thread · {options.threadSize} posts
+              </div>
+            ) : null}
+            {renderPostBody(post, bodyProps)}
+          </div>
+        </article>
+      );
+    }
+
+    // ── Standard single-post layout ──────────────────────────────────────────
+    return (
+      <article
+        key={post.id}
+        className="border-b border-zinc-800 bg-zinc-950/30 px-5 py-4"
+      >
+        {renderPostBody(post, bodyProps)}
+      </article>
+    );
+  }
+
+  function renderPostGroup(group: (typeof postGroups)[number]) {
+    return group.posts.length > 1 ? (
+      <section
+        key={group.key}
+        className="border-b border-zinc-800 bg-zinc-950/30 px-3 py-1"
+      >
+        {group.posts.map((post, index) =>
+          renderTimelinePost(post, {
+            threadIndex: index,
+            threadSize: group.posts.length,
+          }),
+        )}
+      </section>
+    ) : (
+      renderTimelinePost(group.posts[0]!, {
+        threadIndex: 0,
+        threadSize: 1,
+      })
     );
   }
 
@@ -1206,18 +2202,72 @@ export default function DugoutTimeline({
                   }`}
                 >
                   <textarea
+                    ref={mainComposerTextareaRef}
                     rows={composerExpanded ? 4 : 1}
                     maxLength={MAX_POST_LENGTH}
                     placeholder="What's happening?"
                     value={content}
                     onChange={(event) => setContent(event.target.value)}
-                    onFocus={() => setComposerExpanded(true)}
+                    onFocus={() => {
+                      setComposerExpanded(true);
+                      setActiveComposerTarget({ type: "main" });
+                    }}
                     className={`w-full resize-none bg-transparent leading-tight text-white placeholder-zinc-500 outline-none ${
                       composerExpanded
-                        ? "min-h-28 pt-1 text-2xl md:text-3xl"
-                        : "min-h-10 pt-0 text-xl md:text-2xl"
+                        ? "min-h-28 pt-1 text-base md:text-lg"
+                        : "min-h-10 pt-0 text-base md:text-lg"
                     }`}
                   />
+
+                  {threadEntries.length > 0 ? (
+                    <div className="mb-4 space-y-3 border-t border-zinc-800/80 pt-4">
+                      {threadEntries.map((entry, index) => (
+                        <div
+                          key={entry.id}
+                          className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-3"
+                        >
+                          <div className="mb-2 flex items-center justify-between gap-2">
+                            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+                              Post {index + 2}
+                            </p>
+                            <button
+                              type="button"
+                              onClick={() => removeThreadEntry(entry.id)}
+                              className="text-xs font-semibold text-red-300 transition hover:text-red-200"
+                            >
+                              Remove
+                            </button>
+                          </div>
+                          <textarea
+                            ref={(element) => {
+                              threadTextareaRefs.current[entry.id] = element;
+                            }}
+                            rows={3}
+                            maxLength={MAX_POST_LENGTH}
+                            placeholder="Add another post in this thread"
+                            value={entry.content}
+                            onChange={(event) =>
+                              updateThreadEntry(entry.id, event.target.value)
+                            }
+                            onFocus={() => {
+                              setComposerExpanded(true);
+                              setActiveComposerTarget({
+                                type: "thread",
+                                id: entry.id,
+                              });
+                            }}
+                            className="w-full resize-none bg-transparent text-sm leading-6 text-white placeholder-zinc-500 outline-none"
+                          />
+                          <div className="mt-3 flex justify-end">
+                            <CharacterMeter
+                              current={entry.content.length}
+                              max={MAX_POST_LENGTH}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  ) : null}
 
                   {mediaPreviewUrl ? (
                     <div className="relative mb-3 overflow-hidden rounded-2xl border border-zinc-700">
@@ -1434,18 +2484,67 @@ export default function DugoutTimeline({
                           />
                         </svg>
                       </button>
+                      <button
+                        type="button"
+                        title="Bold"
+                        onClick={() => applyInlineFormat("**")}
+                        className="rounded-full px-3 py-2 text-lg font-bold hover:bg-zinc-800"
+                      >
+                        B
+                      </button>
+                      <button
+                        type="button"
+                        title="Italic"
+                        onClick={() => applyInlineFormat("*")}
+                        className="rounded-full px-3 py-2 text-lg italic hover:bg-zinc-800"
+                      >
+                        I
+                      </button>
+                      <button
+                        type="button"
+                        title="Add to thread"
+                        onClick={addThreadEntry}
+                        className="rounded-full p-2 hover:bg-zinc-800"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-5 w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                        >
+                          <circle cx="12" cy="12" r="9" />
+                          <path strokeLinecap="round" d="M12 8v8M8 12h8" />
+                        </svg>
+                      </button>
                     </div>
 
                     <div className="flex items-center gap-3">
+                      <CharacterMeter
+                        current={content.length}
+                        max={MAX_POST_LENGTH}
+                      />
                       <button
                         type="submit"
                         disabled={
                           busy ||
-                          (!content.trim() && !mediaFile && !selectedGif)
+                          (!content.trim() &&
+                            !threadEntries.some((entry) =>
+                              entry.content.trim(),
+                            ) &&
+                            !mediaFile &&
+                            !selectedGif)
                         }
                         className="rounded-full bg-brand-purple px-5 py-1.5 text-sm font-bold hover:bg-brand-purple-dark disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        {busy ? "Posting..." : "Post"}
+                        {busy
+                          ? threadEntries.length > 0
+                            ? "Posting thread..."
+                            : "Posting..."
+                          : threadEntries.length > 0
+                            ? "Post thread"
+                            : "Post"}
                       </button>
                     </div>
                   </div>
@@ -1471,302 +2570,8 @@ export default function DugoutTimeline({
             </div>
           ) : (
             <div>
-              {posts.map((post) => {
-                const canManage = isAdmin || post.author.id === currentUserId;
-                const isEditing = editingId === post.id;
-                const canLike = Boolean(currentUserId);
-                const comments = commentsByPost[post.id] ?? [];
-                const commentsExpanded = Boolean(
-                  expandedCommentsByPost[post.id],
-                );
-                const replyTarget = replyTargetByPost[post.id];
-                const commentInput = commentInputByPost[post.id] ?? "";
-
-                return (
-                  <article
-                    key={post.id}
-                    className="border-b border-zinc-800 bg-zinc-950/30 px-5 py-4"
-                  >
-                    <div className="mb-2 flex items-start justify-between gap-3">
-                      <p className="text-sm font-semibold text-zinc-100">
-                        {getDisplayName(post.author)}
-                      </p>
-                      <div className="flex items-center gap-2">
-                        <p className="text-xs text-zinc-500">
-                          {formatPostTime(post.createdAt)}
-                        </p>
-                        {canManage && !isEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              onClick={() => startEdit(post)}
-                              className="text-xs text-zinc-400 transition hover:text-zinc-200"
-                            >
-                              Edit
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => void deletePost(post.id)}
-                              className="text-xs text-red-400 transition hover:text-red-300"
-                            >
-                              Delete
-                            </button>
-                          </>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    {isEditing ? (
-                      <div className="space-y-2">
-                        <textarea
-                          rows={4}
-                          maxLength={MAX_POST_LENGTH}
-                          value={editContent}
-                          onChange={(event) =>
-                            setEditContent(event.target.value)
-                          }
-                          className="w-full rounded-lg border border-zinc-600 bg-zinc-900 px-3 py-2 text-sm"
-                        />
-                        <div className="flex flex-wrap gap-2">
-                          {EMOJI_CHOICES.map((emoji) => (
-                            <button
-                              key={`${post.id}-${emoji}`}
-                              type="button"
-                              onClick={() => appendEmoji(emoji, true)}
-                              className="rounded-full border border-zinc-700 px-2.5 py-1 text-sm hover:bg-zinc-800"
-                            >
-                              {emoji}
-                            </button>
-                          ))}
-                        </div>
-                        {post.mediaUrl && !editRemoveMedia ? (
-                          <div className="overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950/70">
-                            <Image
-                              src={post.mediaUrl}
-                              alt="Attached media"
-                              width={1200}
-                              height={900}
-                              unoptimized
-                              className="h-auto max-h-48 w-full object-cover"
-                            />
-                            <div className="flex items-center justify-between px-3 py-2">
-                              <p className="text-xs text-zinc-400">
-                                Attached media
-                              </p>
-                              <button
-                                type="button"
-                                onClick={() => setEditRemoveMedia(true)}
-                                className="text-xs text-red-300 hover:text-red-200"
-                              >
-                                Remove
-                              </button>
-                            </div>
-                          </div>
-                        ) : editRemoveMedia && post.mediaUrl ? (
-                          <div className="flex items-center justify-between rounded-lg border border-red-900/50 bg-red-950/30 px-3 py-2">
-                            <p className="text-xs text-red-300">
-                              Media will be removed on save
-                            </p>
-                            <button
-                              type="button"
-                              onClick={() => setEditRemoveMedia(false)}
-                              className="text-xs text-zinc-400 hover:text-zinc-200"
-                            >
-                              Undo
-                            </button>
-                          </div>
-                        ) : null}
-                        <div className="flex items-center justify-end gap-2">
-                          <p className="mr-auto text-xs text-zinc-500">
-                            {editRemaining} left
-                          </p>
-                          <button
-                            type="button"
-                            onClick={cancelEdit}
-                            className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 transition hover:text-zinc-200"
-                          >
-                            Cancel
-                          </button>
-                          <button
-                            type="button"
-                            disabled={editBusy || !editContent.trim()}
-                            onClick={() => void saveEdit(post.id)}
-                            className="rounded-lg bg-brand-purple px-3 py-1.5 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
-                          >
-                            {editBusy ? "Saving..." : "Save"}
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <>
-                        {post.content ? (
-                          <p className="whitespace-pre-wrap text-sm leading-6 text-zinc-200">
-                            {post.content}
-                          </p>
-                        ) : null}
-                        <DugoutMedia
-                          post={post}
-                          alt={post.content || "Dugout media"}
-                        />
-                        <div className="mt-3 flex flex-wrap items-center gap-3">
-                          {/* Reaction picker */}
-                          <div
-                            className="relative"
-                            ref={
-                              likePickerOpenId === post.id
-                                ? likePickerRef
-                                : null
-                            }
-                          >
-                            {/* Trigger button */}
-                            <button
-                              type="button"
-                              disabled={!canLike || likeBusyId === post.id}
-                              onClick={() =>
-                                setLikePickerOpenId((prev) =>
-                                  prev === post.id ? null : post.id,
-                                )
-                              }
-                              className={`rounded-full border px-3 py-1 text-sm font-semibold transition disabled:opacity-50 ${
-                                post.likedByViewer
-                                  ? "border-brand-gold text-brand-gold hover:bg-brand-gold/10"
-                                  : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
-                              }`}
-                              title={
-                                post.likedByViewer ? "Change reaction" : "React"
-                              }
-                            >
-                              {post.likedByViewer && post.viewerReaction
-                                ? post.viewerReaction
-                                : "👍"}
-                            </button>
-
-                            {/* Popout picker */}
-                            {likePickerOpenId === post.id && (
-                              <div className="absolute bottom-full left-0 z-20 mb-2 flex gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1.5 shadow-xl">
-                                {["👍", ...EMOJI_CHOICES].map((emoji) => (
-                                  <button
-                                    key={emoji}
-                                    type="button"
-                                    disabled={likeBusyId === post.id}
-                                    onClick={() => void toggleLike(post, emoji)}
-                                    className={`rounded-full p-1 text-lg transition hover:scale-125 hover:bg-zinc-700 disabled:opacity-50 ${
-                                      post.likedByViewer &&
-                                      post.viewerReaction === emoji
-                                        ? "bg-zinc-700 ring-1 ring-brand-gold"
-                                        : ""
-                                    }`}
-                                    title={emoji}
-                                  >
-                                    {emoji}
-                                  </button>
-                                ))}
-                              </div>
-                            )}
-                          </div>
-                          <span className="text-xs text-zinc-500">
-                            {post.likeCount}{" "}
-                            {post.likeCount === 1 ? "like" : "likes"}
-                          </span>
-                          <button
-                            type="button"
-                            onClick={() => void toggleComments(post.id)}
-                            className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
-                          >
-                            {commentsExpanded ? "Hide" : "Show"} replies (
-                            {post.commentCount})
-                          </button>
-                        </div>
-
-                        {commentsExpanded ? (
-                          <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                            {replyTarget ? (
-                              <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-zinc-700 bg-zinc-900/60 px-2 py-1.5 text-xs text-zinc-300">
-                                <span>
-                                  Replying to{" "}
-                                  {getDisplayName(replyTarget.author)}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setReplyTargetByPost((prev) => ({
-                                      ...prev,
-                                      [post.id]: null,
-                                    }))
-                                  }
-                                  className="text-red-300 hover:text-red-200"
-                                >
-                                  Cancel
-                                </button>
-                              </div>
-                            ) : null}
-
-                            <div className="flex gap-2">
-                              <textarea
-                                rows={2}
-                                maxLength={MAX_COMMENT_LENGTH}
-                                value={commentInput}
-                                onChange={(event) =>
-                                  setCommentInputByPost((prev) => ({
-                                    ...prev,
-                                    [post.id]: event.target.value,
-                                  }))
-                                }
-                                placeholder={
-                                  currentUserId
-                                    ? "Write a comment or reply..."
-                                    : "Sign in as a coach to reply"
-                                }
-                                disabled={!currentUserId}
-                                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
-                              />
-                              <button
-                                type="button"
-                                disabled={
-                                  !currentUserId ||
-                                  !commentInput.trim() ||
-                                  commentBusyByPost[post.id]
-                                }
-                                onClick={() =>
-                                  void submitComment(
-                                    post.id,
-                                    replyTarget?.id ?? null,
-                                  )
-                                }
-                                className="h-fit rounded-lg bg-brand-purple px-3 py-2 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
-                              >
-                                {commentBusyByPost[post.id]
-                                  ? "Sending..."
-                                  : "Send"}
-                              </button>
-                            </div>
-                            <p className="mt-1 text-[11px] text-zinc-500">
-                              {MAX_COMMENT_LENGTH - commentInput.length}{" "}
-                              characters left
-                            </p>
-
-                            {commentsLoadingByPost[post.id] ? (
-                              <p className="mt-3 text-xs text-zinc-400">
-                                Loading replies...
-                              </p>
-                            ) : comments.length === 0 ? (
-                              <p className="mt-3 text-xs text-zinc-500">
-                                No replies yet.
-                              </p>
-                            ) : (
-                              <div className="mt-2">
-                                {comments.map((comment) =>
-                                  renderComment(post.id, comment),
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ) : null}
-                      </>
-                    )}
-                  </article>
-                );
-              })}
+              {pinnedPostGroups.map((group) => renderPostGroup(group))}
+              {regularPostGroups.map((group) => renderPostGroup(group))}
             </div>
           )}
         </section>

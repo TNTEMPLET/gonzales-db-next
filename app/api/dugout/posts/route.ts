@@ -8,15 +8,16 @@ import {
   getDugoutPostInclude,
 } from "@/lib/dugout/posts";
 import { ensureCoach } from "@/lib/dugout/auth";
+import { MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import prisma from "@/lib/prisma";
 
 type CreatePostPayload = {
   content?: string;
   mediaUrl?: string | null;
   mediaType?: "IMAGE" | "GIF" | null;
+  threadId?: string | null;
+  threadOrder?: number | null;
 };
-
-const MAX_POST_LENGTH = 280;
 
 export async function GET(request: NextRequest) {
   const auth = await ensureCoach(request);
@@ -88,6 +89,9 @@ export async function POST(request: NextRequest) {
     const content = body.content?.trim() || "";
     const mediaUrl = body.mediaUrl?.trim() || null;
     const mediaType = body.mediaType || null;
+    const threadId = body.threadId?.trim() || null;
+    const threadOrder =
+      typeof body.threadOrder === "number" ? body.threadOrder : null;
 
     if (!content && !mediaUrl) {
       return NextResponse.json(
@@ -110,11 +114,33 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (
+      (threadId && threadOrder === null) ||
+      (!threadId && threadOrder !== null)
+    ) {
+      return NextResponse.json(
+        { error: "Thread posts must include both threadId and threadOrder" },
+        { status: 400 },
+      );
+    }
+
+    if (
+      threadOrder !== null &&
+      (!Number.isInteger(threadOrder) || threadOrder < 0)
+    ) {
+      return NextResponse.json(
+        { error: "Thread order must be a non-negative integer" },
+        { status: 400 },
+      );
+    }
+
     const post = await prisma.dugoutPost.create({
       data: {
         content,
         mediaUrl,
         mediaType,
+        threadId,
+        threadOrder,
         authorId,
       },
       include: getDugoutPostInclude(authorId),

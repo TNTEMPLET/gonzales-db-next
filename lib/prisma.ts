@@ -6,7 +6,7 @@ declare global {
   var prismaSchemaVersion: string | undefined;
 }
 
-const PRISMA_SCHEMA_VERSION = "2026-04-17-dugout-like-reaction-v3";
+const PRISMA_SCHEMA_VERSION = "2026-04-20-dugout-pin-fields-v1";
 
 function createClient() {
   const adapter = new PrismaPostgresAdapter({

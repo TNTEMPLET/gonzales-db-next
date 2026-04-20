@@ -91,6 +91,10 @@ model DugoutPost {
   content   String
   mediaUrl  String?
   mediaType DugoutMediaType?
+  threadId  String?
+  threadOrder Int?
+  isPinned  Boolean         @default(false)
+  pinnedAt  DateTime?
   authorId  String
   createdAt DateTime        @default(now())
   updatedAt DateTime        @updatedAt
@@ -101,6 +105,8 @@ model DugoutPost {
 
   @@index([createdAt])
   @@index([authorId])
+  @@index([threadId, threadOrder])
+  @@index([isPinned, pinnedAt])
 }
 
 model DugoutComment {
