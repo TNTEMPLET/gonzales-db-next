@@ -121,24 +121,45 @@ function createThreadComposerEntry(): ThreadComposerEntry {
   };
 }
 
-function CharacterMeter({ current, max }: { current: number; max: number }) {
-  const remaining = Math.max(0, max - current);
-  const showNumber = remaining <= 100;
+function CharacterMeter({
+  current,
+  max,
+  standard,
+}: {
+  current: number;
+  max: number;
+  standard?: number;
+}) {
+  const isExtended = standard !== undefined && current > standard;
+  // Phase 1: filling toward standard limit
+  // Phase 2: filling toward max once standard is exceeded
+  const phase1Limit = standard ?? max;
   const radius = 10;
   const circumference = 2 * Math.PI * radius;
-  const progress = Math.min(current / max, 1);
+
+  let progress: number;
+  let remaining: number;
+  let showNumber: boolean;
+  let accentClass: string;
+
+  if (!isExtended) {
+    remaining = Math.max(0, phase1Limit - current);
+    progress = Math.min(current / phase1Limit, 1);
+    showNumber = remaining <= 20;
+    accentClass = remaining <= 20 ? "text-red-400" : "text-violet-400";
+  } else {
+    remaining = Math.max(0, max - current);
+    progress = Math.min(current / max, 1);
+    showNumber = true;
+    accentClass = remaining <= 20 ? "text-red-400" : "text-amber-400";
+  }
+
   const strokeDashoffset = circumference * (1 - progress);
-  const accentClass =
-    remaining <= 20
-      ? "text-red-400"
-      : remaining <= 100
-        ? "text-brand-gold"
-        : "text-brand-purple";
 
   return (
     <div className="flex items-center gap-2">
       {showNumber ? (
-        <span className={`text-xs font-medium ${accentClass}`}>
+        <span className={`text-xs font-medium tabular-nums ${accentClass}`}>
           {remaining}
         </span>
       ) : null}
@@ -488,7 +509,6 @@ export default function DugoutTimeline({
   const [composerExpanded, setComposerExpanded] = useState(false);
   const [gifSearchOpen, setGifSearchOpen] = useState(false);
   const [emojiPickerOpen, setEmojiPickerOpen] = useState(false);
-
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const composerRef = useRef<HTMLDivElement | null>(null);
   const mainComposerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
@@ -1625,7 +1645,7 @@ export default function DugoutTimeline({
               {getDisplayName(post.author)}
             </p>
             {isAdmin && post.isPinned ? (
-              <span className="inline-flex items-center gap-1 rounded-full border border-brand-gold/40 bg-brand-gold/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-brand-gold">
+              <span className="inline-flex items-center gap-1 rounded-full border border-brand-gold/40 bg-violet-500/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-violet-400">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   className="h-3 w-3"
@@ -1663,7 +1683,7 @@ export default function DugoutTimeline({
                       type="button"
                       disabled={pinBusyKey === `post:${post.id}`}
                       onClick={() => void togglePin(post, "post")}
-                      className="text-xs text-brand-gold transition hover:text-brand-gold/80 disabled:opacity-60"
+                      className="text-xs text-violet-400 transition hover:text-violet-300 disabled:opacity-60"
                     >
                       {pinBusyKey === `post:${post.id}`
                         ? "..."
@@ -1676,7 +1696,7 @@ export default function DugoutTimeline({
                         type="button"
                         disabled={pinBusyKey === `thread:${post.id}`}
                         onClick={() => void togglePin(post, "thread")}
-                        className="text-xs text-brand-gold transition hover:text-brand-gold/80 disabled:opacity-60"
+                        className="text-xs text-violet-400 transition hover:text-violet-300 disabled:opacity-60"
                       >
                         {pinBusyKey === `thread:${post.id}`
                           ? "..."
@@ -1758,12 +1778,6 @@ export default function DugoutTimeline({
               </div>
             ) : null}
             <div className="flex items-center justify-end gap-2">
-              <div className="mr-auto">
-                <CharacterMeter
-                  current={editContent.length}
-                  max={MAX_POST_LENGTH}
-                />
-              </div>
               <button
                 type="button"
                 onClick={cancelEdit}
@@ -1775,7 +1789,7 @@ export default function DugoutTimeline({
                 type="button"
                 disabled={editBusy || !editContent.trim()}
                 onClick={() => void saveEdit(post.id)}
-                className="rounded-lg bg-brand-purple px-3 py-1.5 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
+                className="rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-violet-400 disabled:opacity-60 disabled:text-zinc-700"
               >
                 {editBusy ? "Saving..." : "Save"}
               </button>
@@ -1804,7 +1818,7 @@ export default function DugoutTimeline({
                         [post.id]: !postExpanded,
                       }))
                     }
-                    className="mt-2 text-sm font-semibold text-brand-purple transition hover:text-brand-gold"
+                    className="mt-2 text-sm font-semibold text-violet-400 transition hover:text-violet-300"
                   >
                     {postExpanded ? "Show less" : "+More"}
                   </button>
@@ -1827,7 +1841,7 @@ export default function DugoutTimeline({
                   }
                   className={`rounded-full border px-3 py-1 text-sm font-semibold transition disabled:opacity-50 ${
                     post.likedByViewer
-                      ? "border-brand-gold text-brand-gold hover:bg-brand-gold/10"
+                      ? "border-brand-gold text-violet-400 hover:bg-violet-500/10"
                       : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
                   }`}
                   title={post.likedByViewer ? "Change reaction" : "React"}
@@ -1893,7 +1907,7 @@ export default function DugoutTimeline({
                   </div>
                 ) : null}
 
-                <div className="mb-2 flex items-center gap-2 text-brand-purple">
+                <div className="mb-2 flex items-center gap-2 text-violet-400">
                   <button
                     type="button"
                     onClick={() => {
@@ -1948,10 +1962,14 @@ export default function DugoutTimeline({
                     className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
                   />
                   <div className="flex shrink-0 flex-col items-end gap-2">
-                    <CharacterMeter
-                      current={commentInput.length}
-                      max={MAX_COMMENT_LENGTH}
-                    />
+                    {(commentInput.length > 0 ||
+                      (activeComposerTarget.type === "comment" &&
+                        activeComposerTarget.postId === post.id)) && (
+                      <CharacterMeter
+                        current={commentInput.length}
+                        max={MAX_COMMENT_LENGTH}
+                      />
+                    )}
                     <button
                       type="button"
                       disabled={
@@ -1962,7 +1980,7 @@ export default function DugoutTimeline({
                       onClick={() =>
                         void submitComment(post.id, replyTarget?.id ?? null)
                       }
-                      className="h-fit rounded-lg bg-brand-purple px-3 py-2 text-xs font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
+                      className="h-fit rounded-lg bg-violet-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-violet-400 disabled:opacity-60 disabled:text-zinc-700"
                     >
                       {commentBusyByPost[post.id] ? "Sending..." : "Send"}
                     </button>
@@ -2033,7 +2051,7 @@ export default function DugoutTimeline({
           }}
           className={`flex gap-0 transition ${
             highlightedPostId === post.id
-              ? "bg-brand-gold/10 ring-1 ring-brand-gold/50"
+              ? "bg-violet-500/10 ring-1 ring-brand-gold/50"
               : ""
           }`}
         >
@@ -2052,7 +2070,7 @@ export default function DugoutTimeline({
           {/* Right column: header badge (first post only) + body */}
           <div className="min-w-0 flex-1 pb-4 pl-3 pt-3">
             {options.threadIndex === 0 ? (
-              <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-brand-gold/40 bg-brand-gold/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-brand-gold">
+              <div className="mb-2 inline-flex items-center gap-1.5 rounded-full border border-brand-gold/40 bg-violet-500/10 px-2.5 py-0.5 text-[10px] font-semibold uppercase tracking-widest text-violet-400">
                 <svg
                   xmlns="http://www.w3.org/2000/svg"
                   className="h-3 w-3"
@@ -2085,7 +2103,7 @@ export default function DugoutTimeline({
         }}
         className={`border-b border-zinc-800 bg-zinc-950/30 px-5 py-4 transition ${
           highlightedPostId === post.id
-            ? "bg-brand-gold/10 ring-1 ring-brand-gold/50"
+            ? "bg-violet-500/10 ring-1 ring-brand-gold/50"
             : ""
         }`}
       >
@@ -2213,7 +2231,7 @@ export default function DugoutTimeline({
               </p>
               <p>
                 Total unread:{" "}
-                <span className="font-semibold text-brand-gold">
+                <span className="font-semibold text-violet-400">
                   {notifications.totalUnreadCount}
                 </span>
               </p>
@@ -2260,7 +2278,7 @@ export default function DugoutTimeline({
                     }`}
                   >
                     <div className="flex items-start gap-3">
-                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-sm text-brand-gold">
+                      <div className="mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-zinc-900 text-sm text-violet-400">
                         {icon}
                       </div>
                       <div className="min-w-0 flex-1">
@@ -2293,7 +2311,7 @@ export default function DugoutTimeline({
                                 if (!item.isUnread) return;
                                 void markNotificationRead(item.id);
                               }}
-                              className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900 text-brand-gold focus:ring-brand-gold"
+                              className="h-3.5 w-3.5 rounded border-zinc-600 bg-zinc-900 text-violet-400 focus:ring-brand-gold"
                             />
                           </label>
                         </div>
@@ -2323,7 +2341,7 @@ export default function DugoutTimeline({
               {groupedScheduleGames.map((dayGroup) => (
                 <div key={dayGroup.dayLabel} className="space-y-3">
                   <div>
-                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-brand-gold/85">
+                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-violet-400/85">
                       {dayGroup.dayLabel}
                     </p>
                   </div>
@@ -2401,12 +2419,17 @@ export default function DugoutTimeline({
         <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70">
           <div
             ref={composerRef}
-            className="border-b border-zinc-800 bg-zinc-900/70 px-4 py-4 sm:px-5"
+            className="relative z-30 overflow-visible border-b border-zinc-800 bg-zinc-900/70 px-3 py-3 sm:px-5 sm:py-4"
           >
             <form onSubmit={createPost}>
-              <div className="flex min-w-0 gap-3">
-                <div className="mt-1 shrink-0">
-                  <CoachAuthButton avatarOnly avatarSize={48} />
+              <div className="flex min-w-0 gap-2 sm:gap-3">
+                <div className="shrink-0">
+                  <div className="sm:hidden">
+                    <CoachAuthButton avatarOnly avatarSize={40} />
+                  </div>
+                  <div className="hidden sm:block">
+                    <CoachAuthButton avatarOnly avatarSize={44} />
+                  </div>
                 </div>
 
                 <div
@@ -2427,7 +2450,7 @@ export default function DugoutTimeline({
                       setIsDragOver(false);
                     }
                   }}
-                  className={`min-w-0 flex-1 rounded-[1.75rem] px-4 pt-4 sm:px-5 transition ${
+                  className={`min-w-0 flex-1 rounded-none px-2.5 pt-1.5 sm:rounded-[1.75rem] sm:px-5 sm:pt-4 transition ${
                     isDragOver
                       ? "bg-zinc-900 ring-1 ring-brand-gold/60"
                       : "bg-transparent"
@@ -2446,8 +2469,8 @@ export default function DugoutTimeline({
                     }}
                     className={`w-full resize-none bg-transparent leading-tight text-white placeholder-zinc-500 outline-none ${
                       composerExpanded
-                        ? "min-h-28 pt-1 text-base md:text-lg"
-                        : "min-h-10 pt-0 text-base md:text-lg"
+                        ? "min-h-22 pt-0 text-[18px] md:min-h-28 md:pt-1 md:text-lg"
+                        : "min-h-10 pt-0 text-[18px] md:text-lg"
                     }`}
                   />
 
@@ -2490,12 +2513,6 @@ export default function DugoutTimeline({
                             }}
                             className="w-full resize-none bg-transparent text-sm leading-6 text-white placeholder-zinc-500 outline-none"
                           />
-                          <div className="mt-3 flex justify-end">
-                            <CharacterMeter
-                              current={entry.content.length}
-                              max={MAX_POST_LENGTH}
-                            />
-                          </div>
                         </div>
                       ))}
                     </div>
@@ -2622,8 +2639,8 @@ export default function DugoutTimeline({
                     </div>
                   )}
 
-                  <div className="flex flex-wrap items-center gap-3 border-t border-zinc-800 py-3">
-                    <div className="flex min-w-0 flex-wrap items-center gap-1 text-brand-purple">
+                  <div className="relative z-10 flex items-center gap-1.5 border-t border-zinc-800 py-2 sm:gap-3 sm:py-3">
+                    <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto text-violet-400 scrollbar-hide sm:gap-1">
                       <input
                         ref={fileInputRef}
                         type="file"
@@ -2635,11 +2652,11 @@ export default function DugoutTimeline({
                         type="button"
                         title="Add photo"
                         onClick={() => fileInputRef.current?.click()}
-                        className="rounded-full p-2 hover:bg-zinc-800"
+                        className="rounded-full p-1.5 hover:bg-zinc-800 sm:p-2"
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
-                          className="h-5 w-5"
+                          className="h-4.5 w-4.5 sm:h-5 sm:w-5"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -2661,11 +2678,11 @@ export default function DugoutTimeline({
                           setGifSearchOpen((o) => !o);
                           setEmojiPickerOpen(false);
                         }}
-                        className={`rounded-full p-2 hover:bg-zinc-800 ${gifSearchOpen ? "bg-zinc-800" : ""}`}
+                        className={`rounded-full p-1.5 hover:bg-zinc-800 sm:p-2 ${gifSearchOpen ? "bg-zinc-800" : ""}`}
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
-                          className="h-5 w-5"
+                          className="h-4.5 w-4.5 sm:h-5 sm:w-5"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -2685,11 +2702,11 @@ export default function DugoutTimeline({
                           setEmojiPickerOpen((o) => !o);
                           setGifSearchOpen(false);
                         }}
-                        className={`rounded-full p-2 hover:bg-zinc-800 ${emojiPickerOpen ? "bg-zinc-800" : ""}`}
+                        className={`rounded-full p-1.5 hover:bg-zinc-800 sm:p-2 ${emojiPickerOpen ? "bg-zinc-800" : ""}`}
                       >
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
-                          className="h-5 w-5"
+                          className="h-4.5 w-4.5 sm:h-5 sm:w-5"
                           fill="none"
                           viewBox="0 0 24 24"
                           stroke="currentColor"
@@ -2716,47 +2733,52 @@ export default function DugoutTimeline({
                           />
                         </svg>
                       </button>
-                      <button
-                        type="button"
-                        title="Bold"
-                        onClick={() => applyInlineFormat("**")}
-                        className="rounded-full px-3 py-2 text-lg font-bold hover:bg-zinc-800"
-                      >
-                        B
-                      </button>
-                      <button
-                        type="button"
-                        title="Italic"
-                        onClick={() => applyInlineFormat("*")}
-                        className="rounded-full px-3 py-2 text-lg italic hover:bg-zinc-800"
-                      >
-                        I
-                      </button>
-                      <button
-                        type="button"
-                        title="Add to thread"
-                        onClick={addThreadEntry}
-                        className="rounded-full p-2 hover:bg-zinc-800"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-5 w-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={1.8}
+                      <div className="flex items-center gap-0.5 sm:gap-1">
+                        <button
+                          type="button"
+                          title="Bold"
+                          onClick={() => applyInlineFormat("**")}
+                          className="rounded-full px-2 py-1.5 text-base font-bold hover:bg-zinc-800 sm:px-3 sm:py-2 sm:text-lg"
                         >
-                          <circle cx="12" cy="12" r="9" />
-                          <path strokeLinecap="round" d="M12 8v8M8 12h8" />
-                        </svg>
-                      </button>
+                          B
+                        </button>
+                        <button
+                          type="button"
+                          title="Italic"
+                          onClick={() => applyInlineFormat("*")}
+                          className="rounded-full px-2 py-1.5 text-base italic hover:bg-zinc-800 sm:px-3 sm:py-2 sm:text-lg"
+                        >
+                          I
+                        </button>
+                        <button
+                          type="button"
+                          title="Add to thread"
+                          onClick={addThreadEntry}
+                          className="rounded-full p-1.5 hover:bg-zinc-800 sm:p-2"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4.5 w-4.5 sm:h-5 sm:w-5"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            strokeWidth={1.8}
+                          >
+                            <circle cx="12" cy="12" r="9" />
+                            <path strokeLinecap="round" d="M12 8v8M8 12h8" />
+                          </svg>
+                        </button>
+                      </div>
                     </div>
 
-                    <div className="ml-auto flex items-center gap-3 max-[420px]:w-full max-[420px]:justify-end">
-                      <CharacterMeter
-                        current={content.length}
-                        max={MAX_POST_LENGTH}
-                      />
+                    <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+                      {composerExpanded && (
+                        <CharacterMeter
+                          current={content.length}
+                          max={MAX_POST_LENGTH}
+                          standard={280}
+                        />
+                      )}
                       <button
                         type="submit"
                         disabled={
@@ -2768,15 +2790,19 @@ export default function DugoutTimeline({
                             !mediaFile &&
                             !selectedGif)
                         }
-                        className="rounded-full bg-brand-purple px-5 py-1.5 text-sm font-bold hover:bg-brand-purple-dark disabled:cursor-not-allowed disabled:opacity-50"
+                        className="rounded-full bg-violet-500 px-4 py-1.5 text-[15px] font-bold leading-5 text-zinc-950 hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-50 sm:px-5 sm:text-sm"
                       >
                         {busy
                           ? threadEntries.length > 0
                             ? "Posting thread..."
                             : "Posting..."
                           : threadEntries.length > 0
-                            ? "Post thread"
-                            : "Post"}
+                            ? content.length > 280
+                              ? "Post extended thread"
+                              : "Post thread"
+                            : content.length > 280
+                              ? "Post extended"
+                              : "Post"}
                       </button>
                     </div>
                   </div>

@@ -59,6 +59,16 @@ const NAV_ITEMS = [
   { key: "home", label: "Home", href: "/", icon: "home" },
 ] as const;
 
+const MOBILE_FEED_TABS = [
+  { key: "timeline", label: "For you", href: "/dugout" },
+  {
+    key: "notifications",
+    label: "Activity",
+    href: "/dugout?view=notifications",
+  },
+  { key: "schedule", label: "Schedule", href: "/dugout?view=schedule" },
+] as const;
+
 function renderNavIcon(icon: (typeof NAV_ITEMS)[number]["icon"]) {
   if (icon === "baseball") {
     return (
@@ -330,7 +340,58 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
         </nav>
 
         {/* ── Center feed column ───────────────────────────────── */}
-        <div className="flex h-full flex-1 flex-col overflow-hidden border-r border-zinc-800 px-3 pb-24 pt-4 sm:px-4 lg:pb-4">
+        <div className="flex h-full flex-1 flex-col overflow-hidden border-r border-zinc-800 px-0 pb-24 pt-0 sm:px-4 sm:pt-4 lg:pb-4">
+          <div className="shrink-0 border-x border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
+            <div className="grid grid-cols-[auto_1fr_auto] items-center px-4 py-3">
+              <CoachAuthButton avatarOnly avatarSize={32} />
+              <div className="flex justify-center">
+                <Link
+                  href="/dugout"
+                  className="inline-flex rounded-full p-1 transition hover:bg-zinc-900"
+                  aria-label="The Dugout"
+                >
+                  <Image
+                    src={logo}
+                    alt="The Dugout"
+                    width={28}
+                    height={28}
+                    loading="eager"
+                    priority
+                    className="object-contain"
+                  />
+                </Link>
+              </div>
+              <div className="h-8 w-8" aria-hidden="true" />
+            </div>
+
+            <div className="grid grid-cols-3 border-t border-zinc-800">
+              {MOBILE_FEED_TABS.map((item) => {
+                const isActive =
+                  (item.key === "timeline" && activeView === "timeline") ||
+                  (item.key === "notifications" &&
+                    activeView === "notifications") ||
+                  (item.key === "schedule" && activeView === "schedule");
+
+                return (
+                  <Link
+                    key={`mobile-feed-${item.key}`}
+                    href={item.href}
+                    className={`relative flex items-center justify-center px-2 py-3 text-sm font-semibold transition ${
+                      isActive
+                        ? "text-white"
+                        : "text-zinc-500 hover:text-zinc-200"
+                    }`}
+                  >
+                    <span className="truncate">{item.label}</span>
+                    {isActive ? (
+                      <span className="absolute inset-x-6 bottom-0 h-1 rounded-full bg-sky-500" />
+                    ) : null}
+                  </Link>
+                );
+              })}
+            </div>
+          </div>
+
           <DugoutTimeline
             initialPosts={initialPosts}
             initialScheduleGames={scheduleGames}
@@ -480,32 +541,29 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
 
       {/* Mobile bottom navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
-        <div className="mx-auto flex w-full max-w-330 items-center justify-around px-2 py-2 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="mx-auto flex w-full max-w-330 items-center justify-between px-5 py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
           {/* Timeline / Dugout logo button */}
           <Link
             href="/dugout"
-            className={`inline-flex min-w-20 flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-medium transition ${
+            aria-label="Timeline"
+            className={`inline-flex h-12 w-12 items-center justify-center rounded-full transition ${
               activeView === "timeline"
                 ? "text-white"
-                : "text-zinc-400 hover:text-zinc-100"
+                : "text-zinc-500 hover:text-zinc-100"
             }`}
           >
-            <span
-              className={`inline-flex h-9 w-9 items-center justify-center rounded-full ${
-                activeView === "timeline" ? "bg-zinc-800" : ""
+            <Image
+              src={logo}
+              alt="The Dugout"
+              width={27}
+              height={27}
+              loading="eager"
+              priority
+              className={`object-contain transition ${
+                activeView === "timeline" ? "opacity-100" : "opacity-70"
               }`}
-            >
-              <Image
-                src={logo}
-                alt="The Dugout"
-                width={28}
-                height={28}
-                loading="eager"
-                priority
-                className="object-contain"
-              />
-            </span>
-            Timeline
+            />
+            <span className="sr-only">Timeline</span>
           </Link>
 
           {NAV_ITEMS.map((item) => {
@@ -518,18 +576,15 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
               <Link
                 key={`mobile-${item.href}`}
                 href={item.href}
-                className={`inline-flex min-w-20 flex-col items-center gap-1 rounded-xl px-2 py-1.5 text-xs font-medium transition ${
-                  isActive ? "text-white" : "text-zinc-400 hover:text-zinc-100"
+                aria-label={item.label}
+                className={`inline-flex h-12 w-12 items-center justify-center rounded-full transition ${
+                  isActive ? "text-white" : "text-zinc-500 hover:text-zinc-100"
                 }`}
               >
-                <span
-                  className={`inline-flex h-9 w-9 items-center justify-center rounded-full ${
-                    isActive ? "bg-zinc-800 text-white" : "text-zinc-300"
-                  }`}
-                >
+                <span className={isActive ? "text-white" : "text-zinc-500"}>
                   {renderNavIcon(item.icon)}
                 </span>
-                {item.label}
+                <span className="sr-only">{item.label}</span>
               </Link>
             );
           })}
