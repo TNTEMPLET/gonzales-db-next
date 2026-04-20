@@ -904,7 +904,7 @@ export default function DugoutTimeline({
     <div className="flex h-full flex-col gap-0">
       {/* ── Feed fills remaining space ── */}
       {showingNotificationsView ? (
-        <section className="flex-1 overflow-y-auto border border-t-0 border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
+        <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h3 className="text-base font-semibold">Notifications</h3>
             <button
@@ -959,7 +959,7 @@ export default function DugoutTimeline({
           </div>
         </section>
       ) : showingScheduleView ? (
-        <section className="flex-1 overflow-y-auto border border-t-0 border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
+        <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
           <div className="mb-4">
             <h3 className="text-base font-semibold">Schedule</h3>
             <p className="mt-1 text-sm text-zinc-400">
@@ -1016,7 +1016,7 @@ export default function DugoutTimeline({
           )}
         </section>
       ) : (
-        <section className="flex-1 overflow-y-auto border border-t-0 border-zinc-800 bg-zinc-900/70">
+        <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70">
           <div
             ref={composerRef}
             className="border-b border-zinc-800 bg-zinc-900/70 px-4 py-4 sm:px-5"

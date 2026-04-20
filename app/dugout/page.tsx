@@ -179,6 +179,37 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
   ]);
 
   const recentNews = allNews.slice(0, 6);
+  const groupedTodayGames = todayGames
+    .reduce<Array<{ ageGroup: string; games: Game[] }>>((groups, game) => {
+      const ageGroup =
+        typeof game.age_group === "string" && game.age_group.trim()
+          ? game.age_group.trim()
+          : "Other Games";
+      const existingGroup = groups.find((group) => group.ageGroup === ageGroup);
+
+      if (existingGroup) {
+        existingGroup.games.push(game);
+      } else {
+        groups.push({ ageGroup, games: [game] });
+      }
+
+      return groups;
+    }, [])
+    .sort((leftGroup, rightGroup) => {
+      const leftAge = Number.parseInt(leftGroup.ageGroup, 10);
+      const rightAge = Number.parseInt(rightGroup.ageGroup, 10);
+      const leftHasAge = Number.isFinite(leftAge);
+      const rightHasAge = Number.isFinite(rightAge);
+
+      if (leftHasAge && rightHasAge) {
+        return leftAge - rightAge;
+      }
+
+      if (leftHasAge) return -1;
+      if (rightHasAge) return 1;
+
+      return leftGroup.ageGroup.localeCompare(rightGroup.ageGroup);
+    });
 
   let currentUserId: string | null = coach?.id ?? null;
   if (!currentUserId && admin) {
@@ -205,7 +236,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     <div className="flex h-dvh w-full overflow-hidden bg-zinc-950 text-white">
       <div className="mx-auto flex h-full w-full max-w-330">
         {/* ── Left navigation sidebar ─────────────────────────── */}
-        <nav className="hidden lg:flex w-55 xl:w-65 shrink-0 flex-col gap-0.5 border-r border-zinc-800 overflow-y-auto px-3 py-6">
+        <nav className="hidden lg:flex w-55 xl:w-65 shrink-0 flex-col gap-0.5 border-r border-zinc-800 overflow-y-auto scrollbar-hide px-3 py-6">
           {/* Brand */}
           <Link
             href="/dugout"
@@ -272,59 +303,48 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
         </div>
 
         {/* ── Right sidebar ────────────────────────────────────── */}
-        <aside className="hidden xl:flex w-[320px] shrink-0 flex-col gap-5 overflow-y-auto px-4 py-6 pb-6">
+        <aside className="hidden xl:flex w-[320px] shrink-0 flex-col gap-5 overflow-y-auto scrollbar-hide px-4 py-6 pb-6">
           {/* Today's Games */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
             <h3 className="mb-3 text-lg font-bold">Today&apos;s Games</h3>
             {todayGames.length === 0 ? (
               <p className="text-sm text-zinc-400">No games scheduled today.</p>
             ) : (
-              <div className="space-y-2.5">
-                {todayGames.map((game) => {
-                  const isCancelled =
-                    typeof game.status === "string" &&
-                    game.status.toLowerCase().includes("cancel");
-                  const venueName =
-                    (game.subvenue as string | undefined) ||
-                    game._embedded?.venue?.name ||
-                    null;
-                  return (
-                    <div
-                      key={game.id}
-                      className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5"
-                    >
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-white">
-                            {game.home_team || "Home"}{" "}
-                            <span className="text-zinc-500">vs</span>{" "}
-                            {game.away_team || "Away"}
-                          </p>
-                          {game.age_group ? (
-                            <p className="text-[11px] text-zinc-500">
-                              {game.age_group as string}
-                            </p>
-                          ) : null}
-                          <p className="mt-0.5 text-xs text-zinc-400">
-                            {formatGameTime(game)}
-                            {venueName ? ` · ${venueName}` : ""}
-                          </p>
-                        </div>
-                        {game.status ? (
-                          <span
-                            className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-medium ${
-                              isCancelled
-                                ? "bg-red-950/50 text-red-400"
-                                : "bg-zinc-800 text-zinc-400"
-                            }`}
+              <div className="space-y-4">
+                {groupedTodayGames.map((group) => (
+                  <div key={group.ageGroup} className="space-y-2.5">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-gold/85">
+                      {group.ageGroup}
+                    </p>
+                    <div className="space-y-2.5">
+                      {group.games.map((game) => {
+                        const venueName =
+                          (game.subvenue as string | undefined) ||
+                          game._embedded?.venue?.name ||
+                          null;
+
+                        return (
+                          <div
+                            key={game.id}
+                            className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5"
                           >
-                            {game.status as string}
-                          </span>
-                        ) : null}
-                      </div>
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-white">
+                                {game.home_team || "Home"}{" "}
+                                <span className="text-zinc-500">vs</span>{" "}
+                                {game.away_team || "Away"}
+                              </p>
+                              <p className="mt-0.5 text-xs text-zinc-400">
+                                {formatGameTime(game)}
+                                {venueName ? ` · ${venueName}` : ""}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  </div>
+                ))}
               </div>
             )}
             <Link
