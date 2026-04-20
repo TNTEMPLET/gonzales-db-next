@@ -8,6 +8,7 @@ export const dynamic = "force-dynamic";
 export async function GET(request: NextRequest) {
   const coachUser = await getCoachUserFromRequest(request);
   const adminUser = await getAdminUserFromRequest(request);
+
   if (adminUser) {
     const name =
       [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") ||
@@ -23,7 +24,9 @@ export async function GET(request: NextRequest) {
           isAdmin: true,
         },
       },
-      { headers: { "Cache-Control": "no-store, max-age=0" } },
+      {
+        headers: { "Cache-Control": "no-store, max-age=0" },
+      },
     );
   }
 
@@ -42,7 +45,9 @@ export async function GET(request: NextRequest) {
           isAdmin: false,
         },
       },
-      { headers: { "Cache-Control": "no-store, max-age=0" } },
+      {
+        headers: { "Cache-Control": "no-store, max-age=0" },
+      },
     );
   }
 

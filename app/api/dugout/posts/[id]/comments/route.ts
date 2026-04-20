@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
 import { ensureCoach } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
@@ -111,10 +112,22 @@ export async function POST(
   }
 
   const coachUser = await getCoachUserFromRequest(request);
-  if (!coachUser?.isCoach) {
+  const adminUser = await getAdminUserFromRequest(request);
+
+  // authorId must be a RegisteredUser.id (FK constraint)
+  let authorId: string | undefined = coachUser?.id;
+  if (!authorId && adminUser) {
+    const reg = await prisma.registeredUser.findUnique({
+      where: { email: adminUser.email },
+      select: { id: true },
+    });
+    authorId = reg?.id;
+  }
+
+  if (!authorId) {
     return NextResponse.json(
-      { error: "Coach session required to comment" },
-      { status: 401 },
+      { error: "No linked user account found" },
+      { status: 403 },
     );
   }
 
@@ -168,7 +181,7 @@ export async function POST(
         content,
         postId,
         parentId,
-        authorId: coachUser.id,
+        authorId,
       },
       include: {
         author: {

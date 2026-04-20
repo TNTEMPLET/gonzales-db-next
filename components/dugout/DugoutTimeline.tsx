@@ -208,12 +208,26 @@ function renderFormattedText(content: string) {
   const lines = content.split("\n");
 
   return lines.map((line, lineIndex) => {
-    const parts = line.split(/(\*\*[^*]+\*\*|\*[^*]+\*)/g).filter(Boolean);
+    // Split by formatting markers and @mentions
+    const parts = line
+      .split(/(@Admins|\*\*[^*]+\*\*|\*[^*]+\*)/g)
+      .filter(Boolean);
 
     return (
       <span key={`line-${lineIndex}`}>
         {parts.map((part, partIndex) => {
           const key = `${lineIndex}-${partIndex}`;
+
+          if (part === "@Admins") {
+            return (
+              <span
+                key={key}
+                className="inline-block rounded bg-violet-500/20 px-1.5 py-0.5 font-semibold text-violet-400"
+              >
+                {part}
+              </span>
+            );
+          }
 
           if (part.startsWith("**") && part.endsWith("**")) {
             return <strong key={key}>{part.slice(2, -2)}</strong>;
@@ -2425,10 +2439,18 @@ export default function DugoutTimeline({
               <div className="flex min-w-0 gap-2 sm:gap-3">
                 <div className="shrink-0">
                   <div className="sm:hidden">
-                    <CoachAuthButton avatarOnly avatarSize={40} />
+                    <CoachAuthButton
+                      avatarOnly
+                      avatarSize={40}
+                      onOpen={() => setError("")}
+                    />
                   </div>
                   <div className="hidden sm:block">
-                    <CoachAuthButton avatarOnly avatarSize={44} />
+                    <CoachAuthButton
+                      avatarOnly
+                      avatarSize={44}
+                      onOpen={() => setError("")}
+                    />
                   </div>
                 </div>
 

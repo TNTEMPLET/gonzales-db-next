@@ -332,7 +332,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                   {currentUserName}
                 </p>
                 <p className="truncate text-xs text-zinc-500">
-                  {admin && !coach ? "Admin" : "Coach"}
+                  {admin ? "Admin" : "Coach"}
                 </p>
               </div>
             </div>

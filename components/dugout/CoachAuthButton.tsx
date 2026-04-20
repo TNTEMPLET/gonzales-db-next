@@ -7,6 +7,7 @@ import {
   type ChangeEvent,
   type FormEvent,
 } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
@@ -32,6 +33,7 @@ type CoachAuthButtonProps = {
   mobile?: boolean;
   onNavigate?: () => void;
   onAuthenticated?: () => void;
+  onOpen?: () => void;
   avatarOnly?: boolean;
   avatarSize?: number;
 };
@@ -77,6 +79,7 @@ export default function CoachAuthButton({
   mobile = false,
   onNavigate,
   onAuthenticated,
+  onOpen,
   avatarOnly = false,
   avatarSize = 48,
 }: CoachAuthButtonProps) {
@@ -88,6 +91,11 @@ export default function CoachAuthButton({
   const [busy, setBusy] = useState(false);
   const [avatarBusy, setAvatarBusy] = useState(false);
   const [error, setError] = useState("");
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
   const [requiresRegistration, setRequiresRegistration] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -195,6 +203,7 @@ export default function CoachAuthButton({
     setNotice("");
     setRequiresRegistration(false);
     setOpen(true);
+    onOpen?.();
   }
 
   function closeModal() {
@@ -351,175 +360,182 @@ export default function CoachAuthButton({
         )}
       </button>
 
-      {open ? (
-        <div
-          className="fixed inset-0 z-100 bg-black/70 p-4 flex items-center justify-center"
-          onClick={closeModal}
-        >
-          <div
-            className="w-full max-w-xl rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
-              <h3 className="text-lg font-semibold">
-                {user ? "Your Account" : "Login"}
-              </h3>
-              <button
-                type="button"
-                onClick={closeModal}
-                className="rounded-md border border-zinc-700 px-2 py-1 text-sm hover:bg-zinc-800"
+      {open && mounted
+        ? createPortal(
+            <div
+              className="fixed inset-0 z-9999 bg-black/70 p-4 flex items-center justify-center"
+              onClick={closeModal}
+            >
+              <div
+                className="w-full max-w-xl rounded-2xl border border-zinc-700 bg-zinc-900 shadow-2xl"
+                onClick={(event) => event.stopPropagation()}
               >
-                Close
-              </button>
-            </div>
+                <div className="flex items-center justify-between px-5 py-4 border-b border-zinc-800">
+                  <h3 className="text-lg font-semibold">
+                    {user ? "Your Account" : "Login"}
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={closeModal}
+                    className="rounded-md border border-zinc-700 px-2 py-1 text-sm hover:bg-zinc-800"
+                  >
+                    Close
+                  </button>
+                </div>
 
-            <div className="p-5">
-              {user ? (
-                <div className="space-y-4">
-                  {/* Avatar + name */}
-                  <div className="flex flex-col items-center gap-3 py-2">
-                    <AvatarBubble user={user} size="lg" />
-                    <div className="text-center">
-                      <p className="text-base font-semibold">{user.name}</p>
-                      <p className="text-xs text-zinc-500">
-                        {user.isAdmin ? "Admin" : "Coach"}
+                <div className="p-5">
+                  {user ? (
+                    <div className="space-y-4">
+                      {/* Avatar + name */}
+                      <div className="flex flex-col items-center gap-3 py-2">
+                        <AvatarBubble user={user} size="lg" />
+                        <div className="text-center">
+                          <p className="text-base font-semibold">{user.name}</p>
+                          <p className="text-xs text-zinc-500">
+                            {user.isAdmin ? "Admin" : "Coach"}
+                          </p>
+                        </div>
+                        <input
+                          ref={avatarInputRef}
+                          type="file"
+                          accept="image/jpeg,image/png,image/webp,image/gif"
+                          className="hidden"
+                          onChange={handleAvatarChange}
+                        />
+                        <button
+                          type="button"
+                          disabled={avatarBusy}
+                          onClick={() => avatarInputRef.current?.click()}
+                          className="text-xs text-zinc-400 hover:text-zinc-200 transition border border-zinc-700 rounded-lg px-3 py-1.5 disabled:opacity-50"
+                        >
+                          {avatarBusy
+                            ? "Uploading..."
+                            : user.avatarUrl
+                              ? "Change Photo"
+                              : "Upload Photo"}
+                        </button>
+                      </div>
+
+                      <div className="flex justify-center pt-1">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={signOut}
+                          className="text-sm rounded-lg border border-zinc-700 px-6 py-2 hover:bg-zinc-800 disabled:opacity-60"
+                        >
+                          {busy ? "Signing out..." : "Sign Out"}
+                        </button>
+                      </div>
+
+                      {user.isAdmin ? (
+                        <div className="flex justify-center">
+                          <Link
+                            href="/admin"
+                            onClick={() => {
+                              setOpen(false);
+                              onNavigate?.();
+                            }}
+                            className="text-sm text-brand-gold hover:text-brand-gold/80"
+                          >
+                            Open Admin Dashboard
+                          </Link>
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <div className="space-y-4">
+                      <p className="text-sm text-zinc-400">
+                        {requiresRegistration
+                          ? "Register this email for local login"
+                          : "Sign in with your local account"}
                       </p>
-                    </div>
-                    <input
-                      ref={avatarInputRef}
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp,image/gif"
-                      className="hidden"
-                      onChange={handleAvatarChange}
-                    />
-                    <button
-                      type="button"
-                      disabled={avatarBusy}
-                      onClick={() => avatarInputRef.current?.click()}
-                      className="text-xs text-zinc-400 hover:text-zinc-200 transition border border-zinc-700 rounded-lg px-3 py-1.5 disabled:opacity-50"
-                    >
-                      {avatarBusy
-                        ? "Uploading..."
-                        : user.avatarUrl
-                          ? "Change Photo"
-                          : "Upload Photo"}
-                    </button>
-                  </div>
 
-                  <div className="flex justify-center pt-1">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={signOut}
-                      className="text-sm rounded-lg border border-zinc-700 px-6 py-2 hover:bg-zinc-800 disabled:opacity-60"
-                    >
-                      {busy ? "Signing out..." : "Sign Out"}
-                    </button>
-                  </div>
+                      <form onSubmit={submitLocalAuth} className="space-y-3">
+                        <input
+                          type="email"
+                          autoComplete="email"
+                          placeholder="Email"
+                          value={email}
+                          onChange={(event) => setEmail(event.target.value)}
+                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                          required
+                        />
+                        <input
+                          type="password"
+                          autoComplete={
+                            requiresRegistration
+                              ? "new-password"
+                              : "current-password"
+                          }
+                          placeholder="Password"
+                          value={password}
+                          onChange={(event) => setPassword(event.target.value)}
+                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                          required
+                          minLength={8}
+                        />
+                        {requiresRegistration ? (
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                            <input
+                              type="text"
+                              autoComplete="given-name"
+                              placeholder="First name"
+                              value={firstName}
+                              onChange={(event) =>
+                                setFirstName(event.target.value)
+                              }
+                              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                            />
+                            <input
+                              type="text"
+                              autoComplete="family-name"
+                              placeholder="Last name"
+                              value={lastName}
+                              onChange={(event) =>
+                                setLastName(event.target.value)
+                              }
+                              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                            />
+                          </div>
+                        ) : null}
+                        <button
+                          type="submit"
+                          disabled={busy}
+                          className="w-full text-sm rounded-lg border border-zinc-700 px-3 py-2 hover:bg-zinc-800 disabled:opacity-60"
+                        >
+                          {busy
+                            ? "Working..."
+                            : requiresRegistration
+                              ? "Register"
+                              : "Sign In"}
+                        </button>
+                      </form>
 
-                  {user.isAdmin ? (
-                    <div className="flex justify-center">
-                      <Link
-                        href="/admin"
-                        onClick={() => {
-                          setOpen(false);
-                          onNavigate?.();
-                        }}
-                        className="text-sm text-brand-gold hover:text-brand-gold/80"
-                      >
-                        Open Admin Dashboard
-                      </Link>
+                      <div className="pt-3 border-t border-zinc-800 space-y-2">
+                        <p className="text-xs text-zinc-500">
+                          or continue with Google
+                        </p>
+                        {busy ? (
+                          <p className="text-xs text-zinc-500">Signing in...</p>
+                        ) : (
+                          <div ref={googleButtonRef} />
+                        )}
+                      </div>
                     </div>
+                  )}
+
+                  {notice ? (
+                    <p className="text-sm text-emerald-400 mt-3">{notice}</p>
+                  ) : null}
+                  {error ? (
+                    <p className="text-sm text-red-400 mt-3">{error}</p>
                   ) : null}
                 </div>
-              ) : (
-                <div className="space-y-4">
-                  <p className="text-sm text-zinc-400">
-                    {requiresRegistration
-                      ? "Register this email for local login"
-                      : "Sign in with your local account"}
-                  </p>
-
-                  <form onSubmit={submitLocalAuth} className="space-y-3">
-                    <input
-                      type="email"
-                      autoComplete="email"
-                      placeholder="Email"
-                      value={email}
-                      onChange={(event) => setEmail(event.target.value)}
-                      className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-                      required
-                    />
-                    <input
-                      type="password"
-                      autoComplete={
-                        requiresRegistration
-                          ? "new-password"
-                          : "current-password"
-                      }
-                      placeholder="Password"
-                      value={password}
-                      onChange={(event) => setPassword(event.target.value)}
-                      className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-                      required
-                      minLength={8}
-                    />
-                    {requiresRegistration ? (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                        <input
-                          type="text"
-                          autoComplete="given-name"
-                          placeholder="First name"
-                          value={firstName}
-                          onChange={(event) => setFirstName(event.target.value)}
-                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-                        />
-                        <input
-                          type="text"
-                          autoComplete="family-name"
-                          placeholder="Last name"
-                          value={lastName}
-                          onChange={(event) => setLastName(event.target.value)}
-                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-                        />
-                      </div>
-                    ) : null}
-                    <button
-                      type="submit"
-                      disabled={busy}
-                      className="w-full text-sm rounded-lg border border-zinc-700 px-3 py-2 hover:bg-zinc-800 disabled:opacity-60"
-                    >
-                      {busy
-                        ? "Working..."
-                        : requiresRegistration
-                          ? "Register"
-                          : "Sign In"}
-                    </button>
-                  </form>
-
-                  <div className="pt-3 border-t border-zinc-800 space-y-2">
-                    <p className="text-xs text-zinc-500">
-                      or continue with Google
-                    </p>
-                    {busy ? (
-                      <p className="text-xs text-zinc-500">Signing in...</p>
-                    ) : (
-                      <div ref={googleButtonRef} />
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {notice ? (
-                <p className="text-sm text-emerald-400 mt-3">{notice}</p>
-              ) : null}
-              {error ? (
-                <p className="text-sm text-red-400 mt-3">{error}</p>
-              ) : null}
-            </div>
-          </div>
-        </div>
-      ) : null}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null}
     </>
   );
 }

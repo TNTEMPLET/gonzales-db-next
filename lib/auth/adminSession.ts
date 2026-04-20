@@ -74,6 +74,7 @@ export async function getAdminUserByToken(token: string | undefined) {
   if (!token) return null;
 
   const tokenHash = hashToken(token);
+
   const session = await prisma.adminSession.findUnique({
     where: { tokenHash },
     include: { user: true },
