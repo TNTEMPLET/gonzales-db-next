@@ -63,6 +63,7 @@ export function getDugoutPostInclude(viewerUserId?: string | null) {
 export function serializeDugoutPost(post: DugoutPostWithRelations) {
   return {
     ...post,
+    pinnedAt: post.pinnedAt ? post.pinnedAt.toISOString() : null,
     createdAt: post.createdAt.toISOString(),
     updatedAt: post.updatedAt.toISOString(),
     likeCount: post._count?.likes ?? 0,
