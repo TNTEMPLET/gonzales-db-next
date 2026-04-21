@@ -72,6 +72,17 @@ export async function POST(request: NextRequest) {
       lastName,
     });
 
+    // Check if user is blocked
+    if (user.isBlocked) {
+      return NextResponse.json(
+        {
+          error:
+            "This account has been blocked and cannot access the application",
+        },
+        { status: 403 },
+      );
+    }
+
     const admin = await prisma.adminUser.findUnique({ where: { email } });
 
     const response = NextResponse.json({

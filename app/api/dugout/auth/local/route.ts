@@ -86,6 +86,17 @@ export async function POST(request: NextRequest) {
 
       const admin = await prisma.adminUser.findUnique({ where: { email } });
 
+      // Check if user is blocked
+      if (user.isBlocked) {
+        return NextResponse.json(
+          {
+            error:
+              "This account has been blocked and cannot access the application",
+          },
+          { status: 403 },
+        );
+      }
+
       const response = NextResponse.json({
         success: true,
         isAdmin: Boolean(admin),
@@ -163,6 +174,17 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Invalid email or password" },
         { status: 401 },
+      );
+    }
+
+    // Check if user is blocked
+    if (user.isBlocked) {
+      return NextResponse.json(
+        {
+          error:
+            "This account has been blocked and cannot access the application",
+        },
+        { status: 403 },
       );
     }
 

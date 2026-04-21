@@ -15,6 +15,7 @@ type CoachUser = {
   name: string;
   firstName: string | null;
   avatarUrl: string | null;
+  isCoach: boolean;
   isAdmin: boolean;
 };
 
@@ -392,7 +393,11 @@ export default function CoachAuthButton({
                         <div className="text-center">
                           <p className="text-base font-semibold">{user.name}</p>
                           <p className="text-xs text-zinc-500">
-                            {user.isAdmin ? "Admin" : "Coach"}
+                            {user.isAdmin
+                              ? "Admin"
+                              : user.isCoach
+                                ? "Coach"
+                                : "User"}
                           </p>
                         </div>
                         <input

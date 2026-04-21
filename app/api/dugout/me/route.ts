@@ -31,6 +31,17 @@ export async function GET(request: NextRequest) {
   }
 
   if (coachUser) {
+    // Check if user is blocked
+    if (coachUser.isBlocked) {
+      return NextResponse.json(
+        { user: null },
+        {
+          status: 401,
+          headers: { "Cache-Control": "no-store, max-age=0" },
+        },
+      );
+    }
+
     const name =
       [coachUser.firstName, coachUser.lastName].filter(Boolean).join(" ") ||
       coachUser.name ||

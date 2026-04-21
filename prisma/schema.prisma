@@ -14,6 +14,9 @@ enum NewsStatus {
 enum AdminAuditAction {
   PROMOTE
   DEMOTE
+  BLOCK
+  UNBLOCK
+  REMOVE
 }
 
 enum DugoutMediaType {
@@ -66,6 +69,7 @@ model RegisteredUser {
   firstName    String?
   lastName     String?
   isCoach      Boolean  @default(false)
+  isBlocked    Boolean  @default(false)
   googleSub    String?  @unique
   passwordHash String?
   avatarUrl    String?

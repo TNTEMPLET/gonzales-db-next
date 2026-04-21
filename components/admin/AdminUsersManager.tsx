@@ -20,6 +20,7 @@ type RegisteredUser = {
   updatedAt: string;
   isAdmin: boolean;
   isCoach: boolean;
+  isBlocked: boolean;
 };
 
 type AdminAuditLog = {
@@ -60,6 +61,24 @@ type ConfirmAction =
   | {
       kind: "demote";
       adminId: string;
+      email: string;
+      label: string;
+    }
+  | {
+      kind: "block";
+      userId: string;
+      email: string;
+      label: string;
+    }
+  | {
+      kind: "unblock";
+      userId: string;
+      email: string;
+      label: string;
+    }
+  | {
+      kind: "remove";
+      userId: string;
       email: string;
       label: string;
     }
@@ -285,13 +304,100 @@ export default function AdminUsersManager() {
     }
   }
 
+  async function blockUser(userId: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isBlocked: true }),
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          json && "error" in json ? json.error : "Failed to block user",
+        );
+      }
+
+      setNotice("User account blocked.");
+      await loadData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to block user");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function unblockUser(userId: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ isBlocked: false }),
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          json && "error" in json ? json.error : "Failed to unblock user",
+        );
+      }
+
+      setNotice("User account unblocked.");
+      await loadData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to unblock user");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeUser(userId: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.error || "Failed to remove user");
+      }
+
+      setNotice(`Removed ${json.removed?.email || "user"} account.`);
+      await loadData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to remove user");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function confirmAndRunAction() {
     if (!confirmAction) return;
 
     if (confirmAction.kind === "promote") {
       await promoteUser(confirmAction.userId);
-    } else {
+    } else if (confirmAction.kind === "demote") {
       await demoteAdmin(confirmAction.adminId, confirmAction.email);
+    } else if (confirmAction.kind === "block") {
+      await blockUser(confirmAction.userId);
+    } else if (confirmAction.kind === "unblock") {
+      await unblockUser(confirmAction.userId);
+    } else if (confirmAction.kind === "remove") {
+      await removeUser(confirmAction.userId);
     }
 
     setConfirmAction(null);
@@ -448,7 +554,7 @@ export default function AdminUsersManager() {
                   key={user.id}
                   className="flex items-center justify-between gap-3 px-3 py-3 border-b border-zinc-800 last:border-b-0"
                 >
-                  <div>
+                  <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">
                       {user.firstName || user.lastName
                         ? [user.firstName, user.lastName]
@@ -457,13 +563,16 @@ export default function AdminUsersManager() {
                         : user.name || "Unnamed User"}
                     </p>
                     <p className="text-xs text-zinc-500">{user.email}</p>
+                    {user.isBlocked && (
+                      <p className="text-xs text-red-400 mt-1">🚫 Blocked</p>
+                    )}
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
                     <button
                       type="button"
                       disabled={busy}
                       onClick={() => void toggleCoach(user.id, user.isCoach)}
-                      className={`text-xs rounded-lg border px-3 py-1.5 disabled:opacity-60 ${
+                      className={`text-xs rounded-lg border px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap ${
                         user.isCoach
                           ? "border-brand-purple text-brand-purple hover:bg-brand-purple/10"
                           : "border-zinc-600 text-zinc-400 hover:bg-zinc-800"
@@ -471,6 +580,39 @@ export default function AdminUsersManager() {
                     >
                       {user.isCoach ? "Revoke Coach" : "Grant Coach"}
                     </button>
+                    {user.isBlocked ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          setConfirmAction({
+                            kind: "unblock",
+                            userId: user.id,
+                            email: user.email,
+                            label: `Unblock ${user.email}?`,
+                          })
+                        }
+                        className="text-xs rounded-lg border border-emerald-700 text-emerald-300 hover:bg-emerald-950/40 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                      >
+                        Unblock
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          setConfirmAction({
+                            kind: "block",
+                            userId: user.id,
+                            email: user.email,
+                            label: `Block ${user.email}?`,
+                          })
+                        }
+                        className="text-xs rounded-lg border border-red-700 text-red-300 hover:bg-red-950/40 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                      >
+                        Block
+                      </button>
+                    )}
                     <button
                       type="button"
                       disabled={busy}
@@ -481,9 +623,24 @@ export default function AdminUsersManager() {
                           label: `Promote ${user.email} to admin access?`,
                         })
                       }
-                      className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-3 py-1.5 disabled:opacity-60"
+                      className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
                     >
                       Promote
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setConfirmAction({
+                          kind: "remove",
+                          userId: user.id,
+                          email: user.email,
+                          label: `Permanently remove ${user.email}? This will delete all posts and comments.`,
+                        })
+                      }
+                      className="text-xs rounded-lg border border-red-900 text-red-400 hover:bg-red-950/60 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                    >
+                      Remove
                     </button>
                   </div>
                 </div>
@@ -642,7 +799,17 @@ export default function AdminUsersManager() {
                 type="button"
                 disabled={busy}
                 onClick={confirmAndRunAction}
-                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                className={`rounded-lg px-4 py-2 text-sm font-semibold disabled:opacity-60 ${
+                  confirmAction.kind === "promote"
+                    ? "bg-brand-gold hover:bg-brand-gold/90 text-black"
+                    : confirmAction.kind === "demote"
+                      ? "bg-brand-purple hover:bg-brand-purple-dark"
+                      : confirmAction.kind === "block"
+                        ? "bg-red-700 hover:bg-red-800"
+                        : confirmAction.kind === "unblock"
+                          ? "bg-emerald-700 hover:bg-emerald-800"
+                          : "bg-red-900 hover:bg-red-950"
+                }`}
               >
                 Confirm
               </button>
