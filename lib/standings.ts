@@ -11,6 +11,7 @@ export type TeamStanding = {
   team: string;
   wins: number;
   losses: number;
+  ties: number;
   runsScored: number;
   runsAllowed: number;
   runDifferential: number;
@@ -36,10 +37,14 @@ function sortAgeGroups(a: string, b: string): number {
   return a.localeCompare(b);
 }
 
-function getWinningPercentage(wins: number, losses: number): number {
-  const gamesDecided = wins + losses;
-  if (gamesDecided === 0) return 0;
-  return wins / gamesDecided;
+function getWinningPercentage(
+  wins: number,
+  losses: number,
+  ties: number,
+): number {
+  const totalGames = wins + losses + ties;
+  if (totalGames === 0) return 0;
+  return (wins + ties * 0.5) / totalGames;
 }
 
 export function computeStandingsByAgeGroup(
@@ -61,6 +66,7 @@ export function computeStandingsByAgeGroup(
           team: teamName,
           wins: 0,
           losses: 0,
+          ties: 0,
           runsScored: 0,
           runsAllowed: 0,
           runDifferential: 0,
@@ -85,6 +91,9 @@ export function computeStandingsByAgeGroup(
     } else if (record.awayScore > record.homeScore) {
       away.wins += 1;
       home.losses += 1;
+    } else {
+      home.ties += 1;
+      away.ties += 1;
     }
   }
 
@@ -94,7 +103,11 @@ export function computeStandingsByAgeGroup(
       const rows = Array.from(teamMap.values())
         .map((row) => {
           const runDifferential = row.runsScored - row.runsAllowed;
-          const winningPercentage = getWinningPercentage(row.wins, row.losses);
+          const winningPercentage = getWinningPercentage(
+            row.wins,
+            row.losses,
+            row.ties,
+          );
           return {
             ...row,
             runDifferential,
