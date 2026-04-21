@@ -513,6 +513,7 @@ export default function DugoutTimeline({
   );
 
   const [notificationBusy, setNotificationBusy] = useState(false);
+  const [isClientMounted, setIsClientMounted] = useState(false);
   const [notifications, setNotifications] = useState<DugoutNotificationCounts>({
     unreadLikeCount: 0,
     unreadReplyCount: 0,
@@ -533,6 +534,10 @@ export default function DugoutTimeline({
     Record<string, HTMLTextAreaElement | null>
   >({});
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  useEffect(() => {
+    setIsClientMounted(true);
+  }, []);
 
   function replacePreviewUrl(nextUrl: string | null) {
     setMediaPreviewUrl((prev) => {
@@ -2300,8 +2305,13 @@ export default function DugoutTimeline({
                           <p className="truncate text-sm text-zinc-100">
                             {headline}
                           </p>
-                          <span className="shrink-0 text-xs text-zinc-500">
-                            {formatRelativeTime(item.createdAt)}
+                          <span
+                            className="shrink-0 text-xs text-zinc-500"
+                            suppressHydrationWarning
+                          >
+                            {isClientMounted
+                              ? formatRelativeTime(item.createdAt)
+                              : ""}
                           </span>
                         </div>
                         {item.commentPreview ? (
