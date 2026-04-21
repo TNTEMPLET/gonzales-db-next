@@ -237,9 +237,9 @@ export default async function Home({
                     venue.todayGames === 0
                       ? "No games today"
                       : venue.cancelledTodayGames === venue.todayGames
-                        ? "Rainout today"
+                        ? "Rained-Out today"
                         : venue.cancelledTodayGames > 0
-                          ? `${venue.cancelledTodayGames}/${venue.todayGames} cancelled`
+                          ? `${venue.cancelledTodayGames}/${venue.todayGames} Rained-Out`
                           : "Games today";
 
                   const statusClass =
@@ -362,6 +362,7 @@ export default async function Home({
         initialGames={games}
         initialError={error}
         currentViewMode={viewMode}
+        standings={[]}
       />
     </main>
   );

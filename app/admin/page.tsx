@@ -35,6 +35,13 @@ export default async function AdminDashboardPage() {
       action: "Open Users",
     },
     {
+      href: "/admin/scores",
+      title: "Scores & Standings",
+      description:
+        "Enter game scores and automatically power standings by age group.",
+      action: "Open Score Entry",
+    },
+    {
       href: "/news/admin",
       title: "News Management",
       description: "Create, edit, publish, and delete site news posts.",

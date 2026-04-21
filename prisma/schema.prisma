@@ -60,6 +60,7 @@ model AdminUser {
   updatedAt    DateTime        @updatedAt
   sessions     AdminSession[]
   auditLogs    AdminAuditLog[] @relation("AdminActorLogs")
+  enteredScores GameScore[]
 }
 
 model RegisteredUser {
@@ -214,4 +215,23 @@ model AdminAuditLog {
 
   @@index([createdAt])
   @@index([action, createdAt])
+}
+
+model GameScore {
+  id             String    @id @default(cuid())
+  gameExternalId String    @unique
+  ageGroup       String?
+  homeTeam       String
+  awayTeam       String
+  gameDate       DateTime?
+  homeScore      Int
+  awayScore      Int
+  enteredByAdminId String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  enteredByAdmin AdminUser? @relation(fields: [enteredByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([ageGroup])
+  @@index([gameDate])
 }

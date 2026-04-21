@@ -7,6 +7,8 @@ import * as XLSX from "xlsx";
 import jsPDF from "jspdf";
 import autoTable from "jspdf-autotable";
 import RainoutPopup from "./RainoutPopup";
+import StandingsTabs from "@/components/standings/StandingsTabs";
+import type { AgeGroupStandings } from "@/lib/standings";
 
 type Game = {
   id?: string | number;
@@ -25,6 +27,7 @@ type Props = {
   initialGames: Game[];
   initialError: string | null;
   currentViewMode: "thisWeek" | "nextWeek" | "fullSeason";
+  standings: AgeGroupStandings[];
 };
 
 type DayFilter = "all" | "yesterday" | "today" | "tomorrow";
@@ -81,6 +84,7 @@ export default function ScheduleTable({
   initialGames,
   initialError,
   currentViewMode,
+  standings,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -826,7 +830,7 @@ export default function ScheduleTable({
                                     className="ml-2 text-xs font-bold uppercase tracking-wide text-red-400"
                                     style={{ textDecoration: "none" }}
                                   >
-                                    Cancelled
+                                    Rained-Out
                                   </span>
                                 )}
                               </td>
@@ -868,6 +872,14 @@ export default function ScheduleTable({
         >
           Data refreshes every 5 minutes • Last updated: {lastUpdateTime}
         </p>
+
+        <div className="mt-14">
+          <h2 className="text-4xl font-bold mb-2">Standings</h2>
+          <p className="text-zinc-400 mb-6">
+            League standings by age group from scored games.
+          </p>
+          <StandingsTabs standings={standings} />
+        </div>
       </div>
     </section>
   );
