@@ -41,14 +41,26 @@ export async function PATCH(
   const body = (await request.json()) as {
     isCoach?: boolean;
     isBlocked?: boolean;
+    firstName?: string;
+    lastName?: string;
   };
 
+  const hasCoachUpdate = typeof body.isCoach === "boolean";
+  const hasBlockedUpdate = typeof body.isBlocked === "boolean";
+  const hasFirstNameUpdate = typeof body.firstName === "string";
+  const hasLastNameUpdate = typeof body.lastName === "string";
+
   if (
-    typeof body.isCoach !== "boolean" &&
-    typeof body.isBlocked !== "boolean"
+    !hasCoachUpdate &&
+    !hasBlockedUpdate &&
+    !hasFirstNameUpdate &&
+    !hasLastNameUpdate
   ) {
     return NextResponse.json(
-      { error: "isCoach or isBlocked (boolean) required" },
+      {
+        error:
+          "At least one updatable field is required: isCoach, isBlocked, firstName, or lastName",
+      },
       { status: 400 },
     );
   }
@@ -58,12 +70,35 @@ export async function PATCH(
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
-  const updateData: { isCoach?: boolean; isBlocked?: boolean } = {};
-  if (typeof body.isCoach === "boolean") {
+  const updateData: {
+    isCoach?: boolean;
+    isBlocked?: boolean;
+    firstName?: string | null;
+    lastName?: string | null;
+    name?: string | null;
+  } = {};
+
+  if (hasCoachUpdate) {
     updateData.isCoach = body.isCoach;
   }
-  if (typeof body.isBlocked === "boolean") {
+  if (hasBlockedUpdate) {
     updateData.isBlocked = body.isBlocked;
+  }
+
+  if (hasFirstNameUpdate || hasLastNameUpdate) {
+    const nextFirstName = hasFirstNameUpdate
+      ? body.firstName?.trim() || null
+      : user.firstName;
+    const nextLastName = hasLastNameUpdate
+      ? body.lastName?.trim() || null
+      : user.lastName;
+    const composedName = [nextFirstName, nextLastName]
+      .filter(Boolean)
+      .join(" ");
+
+    updateData.firstName = nextFirstName;
+    updateData.lastName = nextLastName;
+    updateData.name = composedName || null;
   }
 
   const updated = await prisma.registeredUser.update({
@@ -72,7 +107,7 @@ export async function PATCH(
   });
 
   // Log block/unblock action to audit log
-  if (typeof body.isBlocked === "boolean") {
+  if (hasBlockedUpdate) {
     const sourcePath = getSourcePath(request);
     const requestIp = getRequestIp(request);
 

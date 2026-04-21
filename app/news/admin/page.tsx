@@ -1,7 +1,7 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import NewsAdminPanel from "@/components/news/NewsAdminPanel";
 import {
   ADMIN_SESSION_COOKIE,
@@ -32,34 +32,7 @@ export default async function NewsAdminPage({
     <main className="min-h-screen bg-zinc-950 text-white py-14">
       <section className="max-w-6xl mx-auto px-6">
         <div className="mb-8">
-          <div className="flex items-center justify-between gap-4 mb-4">
-            <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full">
-              CONTENT MANAGEMENT
-            </div>
-            <div className="flex items-center gap-4 text-sm">
-              <Link href="/admin" className="text-zinc-300 hover:text-white">
-                Admin Dashboard
-              </Link>
-              <Link
-                href="/admin/dugout"
-                className="text-zinc-300 hover:text-white"
-              >
-                Moderate Dugout
-              </Link>
-              <Link
-                href="/admin/users"
-                className="text-zinc-300 hover:text-white"
-              >
-                Manage Admin Users
-              </Link>
-              <Link
-                href="/news"
-                className="text-brand-gold hover:text-brand-gold/80"
-              >
-                View Public News
-              </Link>
-            </div>
-          </div>
+          <AdminSectionHeader badge="CONTENT MANAGEMENT" />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             News Admin
           </h1>

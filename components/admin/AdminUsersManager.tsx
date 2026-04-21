@@ -25,7 +25,7 @@ type RegisteredUser = {
 
 type AdminAuditLog = {
   id: string;
-  action: "PROMOTE" | "DEMOTE";
+  action: "PROMOTE" | "DEMOTE" | "BLOCK" | "UNBLOCK" | "REMOVE";
   actorEmail: string;
   targetEmail: string;
   targetName: string | null;
@@ -134,6 +134,9 @@ export default function AdminUsersManager() {
   const [logPage, setLogPage] = useState(1);
   const [logPageSize, setLogPageSize] = useState(25);
   const [confirmAction, setConfirmAction] = useState<ConfirmAction>(null);
+  const [editingUser, setEditingUser] = useState<RegisteredUser | null>(null);
+  const [editFirstName, setEditFirstName] = useState("");
+  const [editLastName, setEditLastName] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -385,6 +388,59 @@ export default function AdminUsersManager() {
     }
   }
 
+  function openEditName(user: RegisteredUser) {
+    setError("");
+    setNotice("");
+    setEditingUser(user);
+    setEditFirstName(user.firstName || "");
+    setEditLastName(user.lastName || "");
+  }
+
+  function closeEditName() {
+    if (busy) return;
+    setEditingUser(null);
+    setEditFirstName("");
+    setEditLastName("");
+  }
+
+  async function saveUserName() {
+    if (!editingUser) return;
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/admin/users/${editingUser.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          firstName: editFirstName,
+          lastName: editLastName,
+        }),
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          json && "error" in json ? json.error : "Failed to update user name",
+        );
+      }
+
+      setNotice(`Updated name for ${editingUser.email}.`);
+      setEditingUser(null);
+      setEditFirstName("");
+      setEditLastName("");
+      await loadData();
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update user name",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function confirmAndRunAction() {
     if (!confirmAction) return;
 
@@ -578,7 +634,29 @@ export default function AdminUsersManager() {
                           : "border-zinc-600 text-zinc-400 hover:bg-zinc-800"
                       }`}
                     >
-                      {user.isCoach ? "Revoke Coach" : "Grant Coach"}
+                      {user.isCoach ? "Revoke Coach" : "Coach"}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => openEditName(user)}
+                      className="text-xs rounded-lg border border-blue-700 text-blue-300 hover:bg-blue-950/40 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                    >
+                      Edit
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setConfirmAction({
+                          kind: "promote",
+                          userId: user.id,
+                          label: `Promote ${user.email} to admin access?`,
+                        })
+                      }
+                      className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                    >
+                      Admin
                     </button>
                     {user.isBlocked ? (
                       <button
@@ -592,9 +670,11 @@ export default function AdminUsersManager() {
                             label: `Unblock ${user.email}?`,
                           })
                         }
-                        className="text-xs rounded-lg border border-emerald-700 text-emerald-300 hover:bg-emerald-950/40 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                        aria-label="Unblock"
+                        title="Unblock"
+                        className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-2.5 py-1.5 disabled:opacity-60"
                       >
-                        Unblock
+                        🛡
                       </button>
                     ) : (
                       <button
@@ -608,25 +688,13 @@ export default function AdminUsersManager() {
                             label: `Block ${user.email}?`,
                           })
                         }
-                        className="text-xs rounded-lg border border-red-700 text-red-300 hover:bg-red-950/40 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                        aria-label="Block"
+                        title="Block"
+                        className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-2.5 py-1.5 disabled:opacity-60"
                       >
-                        Block
+                        🛡
                       </button>
                     )}
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        setConfirmAction({
-                          kind: "promote",
-                          userId: user.id,
-                          label: `Promote ${user.email} to admin access?`,
-                        })
-                      }
-                      className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
-                    >
-                      Promote
-                    </button>
                     <button
                       type="button"
                       disabled={busy}
@@ -638,9 +706,11 @@ export default function AdminUsersManager() {
                           label: `Permanently remove ${user.email}? This will delete all posts and comments.`,
                         })
                       }
-                      className="text-xs rounded-lg border border-red-900 text-red-400 hover:bg-red-950/60 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                      aria-label="Remove"
+                      title="Remove"
+                      className="text-xs rounded-lg border border-red-700 text-red-300 hover:bg-red-950/60 px-2.5 py-1.5 disabled:opacity-60"
                     >
-                      Remove
+                      x
                     </button>
                   </div>
                 </div>
@@ -812,6 +882,48 @@ export default function AdminUsersManager() {
                 }`}
               >
                 Confirm
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {editingUser ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
+            <h3 className="text-lg font-semibold">Edit User Name</h3>
+            <p className="text-sm text-zinc-400">{editingUser.email}</p>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <input
+                type="text"
+                value={editFirstName}
+                onChange={(event) => setEditFirstName(event.target.value)}
+                placeholder="First name"
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
+              <input
+                type="text"
+                value={editLastName}
+                onChange={(event) => setEditLastName(event.target.value)}
+                placeholder="Last name"
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeEditName}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => void saveUserName()}
+                className="rounded-lg bg-blue-700 hover:bg-blue-800 px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                Save
               </button>
             </div>
           </div>
