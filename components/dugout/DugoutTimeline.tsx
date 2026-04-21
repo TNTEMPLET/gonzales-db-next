@@ -14,6 +14,8 @@ import {
 
 import type { Game } from "@/lib/fetchGames";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
+import StandingsTabs from "@/components/standings/StandingsTabs";
+import type { AgeGroupStandings } from "@/lib/standings";
 import { MAX_COMMENT_LENGTH, MAX_POST_LENGTH } from "@/lib/dugout/constants";
 
 type DugoutAuthor = {
@@ -56,6 +58,7 @@ type DugoutPost = {
 type DugoutTimelineProps = {
   initialPosts: DugoutPost[];
   initialScheduleGames?: Game[];
+  initialStandings?: AgeGroupStandings[];
   isAdmin?: boolean;
   currentUserId?: string | null;
   currentUserName?: string | null;
@@ -441,6 +444,7 @@ function removeCommentFromTree(
 export default function DugoutTimeline({
   initialPosts,
   initialScheduleGames = [],
+  initialStandings = [],
   isAdmin = false,
   currentUserId = null,
   currentUserName = null,
@@ -2438,6 +2442,18 @@ export default function DugoutTimeline({
               ))}
             </div>
           )}
+
+          <div className="mt-7 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-300">
+                Standings Snapshot
+              </h4>
+              <span className="text-[11px] text-zinc-500">
+                Live from saved scores
+              </span>
+            </div>
+            <StandingsTabs standings={initialStandings} />
+          </div>
         </section>
       ) : (
         <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70">

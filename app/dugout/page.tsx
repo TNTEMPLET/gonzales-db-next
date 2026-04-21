@@ -4,8 +4,10 @@ import Link from "next/link";
 import logo from "@/public/images/logo.png";
 
 import DugoutGate from "@/components/dugout/DugoutGate";
+import DugoutNav from "@/components/dugout/DugoutNav";
 import DugoutTimeline from "@/components/dugout/DugoutTimeline";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
+import StandingsTabs from "@/components/standings/StandingsTabs";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserByToken,
@@ -18,6 +20,7 @@ import { listDugoutPosts } from "@/lib/dugout/posts";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import { getPublishedNewsPosts } from "@/lib/news/queries";
 import prisma from "@/lib/prisma";
+import { computeStandingsByAgeGroup } from "@/lib/standings";
 
 export const metadata = {
   title: "The Dugout | Gonzales Diamond Baseball",
@@ -177,7 +180,14 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
   const scheduleStartDate = startOfWeek.toISOString().split("T")[0]!;
   const scheduleEndDate = endOfWeek.toISOString().split("T")[0]!;
 
-  const [initialPosts, todayGames, scheduleGames, allNews] = await Promise.all([
+  const [
+    initialPosts,
+    todayGames,
+    scheduleGames,
+    allNews,
+    scores,
+    allSeasonGames,
+  ] = await Promise.all([
     listDugoutPosts(coach?.id),
     fetchGames({
       startDate: todayStr,
@@ -190,9 +200,34 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
       leagueId: 515712,
     }).catch(() => [] as Game[]),
     getPublishedNewsPosts(),
+    prisma.gameScore.findMany({
+      orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
+      select: {
+        gameExternalId: true,
+        ageGroup: true,
+        homeTeam: true,
+        awayTeam: true,
+        homeScore: true,
+        awayScore: true,
+      },
+    }),
+    fetchGames({
+      startDate: "2026-03-01",
+      endDate: "2026-06-30",
+      leagueId: 515712,
+    }).catch(() => [] as Game[]),
   ]);
 
   const recentNews = allNews.slice(0, 6);
+  const activeGameIds = new Set(
+    allSeasonGames
+      .filter((game) => game.status?.trim().toUpperCase() === "A")
+      .map((game) => String(game.id)),
+  );
+  const standings = computeStandingsByAgeGroup(
+    scores.filter((score) => activeGameIds.has(score.gameExternalId)),
+  );
+
   const groupedTodayGames = Object.entries(
     todayGames.reduce<Record<string, Record<string, Game[]>>>(
       (groups, game) => {
@@ -284,60 +319,11 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     <div className="flex h-dvh w-full overflow-hidden bg-zinc-950 text-white">
       <div className="mx-auto flex h-full w-full max-w-330">
         {/* ── Left navigation sidebar ─────────────────────────── */}
-        <nav className="hidden lg:flex w-55 xl:w-65 shrink-0 flex-col gap-0.5 border-r border-zinc-800 overflow-y-auto scrollbar-hide px-3 py-6">
-          {/* Brand */}
-          <Link
-            href="/dugout"
-            className="mb-5 flex items-center gap-2 rounded-full px-3 py-2 transition hover:bg-zinc-800"
-          >
-            <Image
-              src={logo}
-              alt="Gonzales Diamond Baseball"
-              width={64}
-              height={64}
-              loading="eager"
-              priority
-              className="object-contain"
-            />
-            <span className="text-lg font-black tracking-tight">
-              The Dugout
-            </span>
-          </Link>
-
-          {NAV_ITEMS.map((item) => (
-            <Link
-              key={item.href}
-              href={item.href}
-              className={`flex items-center rounded-full px-4 py-3 text-[15px] transition hover:bg-zinc-800 ${
-                (item.key === "notifications" &&
-                  activeView === "notifications") ||
-                (item.key === "schedule" && activeView === "schedule")
-                  ? "font-bold text-white"
-                  : "font-medium text-zinc-400 hover:text-zinc-100"
-              }`}
-            >
-              <span className="mr-2 inline-flex h-5 w-5 items-center justify-center text-zinc-300">
-                {renderNavIcon(item.icon)}
-              </span>
-              {item.label}
-            </Link>
-          ))}
-
-          {/* User profile pill at bottom */}
-          <div className="mt-auto border-t border-zinc-800 pt-4">
-            <div className="flex items-center gap-3 rounded-full px-3 py-2 hover:bg-zinc-800">
-              <CoachAuthButton avatarOnly avatarSize={36} />
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">
-                  {currentUserName}
-                </p>
-                <p className="truncate text-xs text-zinc-500">
-                  {admin ? "Admin" : "Coach"}
-                </p>
-              </div>
-            </div>
-          </div>
-        </nav>
+        <DugoutNav
+          activeView={activeView}
+          currentUserName={currentUserName}
+          isAdmin={!!admin}
+        />
 
         {/* ── Center feed column ───────────────────────────────── */}
         <div className="flex h-full flex-1 flex-col overflow-hidden border-r border-zinc-800 px-0 pb-24 pt-0 sm:px-4 sm:pt-4 lg:pb-4">
@@ -395,6 +381,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
           <DugoutTimeline
             initialPosts={initialPosts}
             initialScheduleGames={scheduleGames}
+            initialStandings={standings}
             isAdmin={!!admin}
             currentUserId={currentUserId}
             currentUserName={currentUserName}
@@ -405,10 +392,10 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
         </div>
 
         {/* ── Right sidebar ────────────────────────────────────── */}
-        <aside className="hidden xl:flex w-[320px] shrink-0 flex-col gap-5 overflow-y-auto scrollbar-hide px-4 py-6 pb-6">
+        <aside className="hidden xl:flex w-110 shrink-0 flex-col gap-6 overflow-y-auto scrollbar-hide px-5 py-6 pb-6">
           {/* Today's Games */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-            <h3 className="mb-3 text-lg font-bold">Today&apos;s Games</h3>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+            <h3 className="mb-4 text-lg font-bold">Today&apos;s Games</h3>
             {todayGames.length === 0 ? (
               <p className="text-sm text-zinc-400">No games scheduled today.</p>
             ) : (
@@ -426,7 +413,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                           <p className="text-[11px] font-semibold uppercase tracking-[0.18em] text-brand-gold/85">
                             {ageGroup.ageGroup}
                           </p>
-                          <div className="space-y-2.5">
+                          <div className="space-y-3">
                             {ageGroup.games.map((game) => {
                               const fieldName =
                                 (game.subvenue as string | undefined) || null;
@@ -434,7 +421,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                               return (
                                 <div
                                   key={game.id}
-                                  className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-3 py-2.5"
+                                  className="rounded-xl border border-zinc-800 bg-zinc-950/60 px-4 py-3"
                                 >
                                   <div className="min-w-0">
                                     <p className="truncate text-sm font-semibold text-white">
@@ -466,15 +453,30 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             </Link>
           </div>
 
+          {/* Standings */}
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h3 className="text-lg font-bold">Standings</h3>
+              <span className="text-[11px] text-zinc-500">Saved scores</span>
+            </div>
+            <StandingsTabs standings={standings} />
+            <Link
+              href="/standings"
+              className="mt-3 block text-sm font-semibold text-brand-gold hover:text-brand-gold/80 transition"
+            >
+              Full standings →
+            </Link>
+          </div>
+
           {/* News */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-            <h3 className="mb-3 text-lg font-bold">News</h3>
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+            <h3 className="mb-4 text-lg font-bold">News</h3>
             {recentNews.length === 0 ? (
               <p className="text-sm text-zinc-400">No announcements yet.</p>
             ) : (
               <div className="divide-y divide-zinc-800">
                 {recentNews.map((post) => (
-                  <div key={post.id} className="py-2.5 first:pt-0 last:pb-0">
+                  <div key={post.id} className="py-3 first:pt-0 last:pb-0">
                     {post.publishedAt ? (
                       <p className="mb-0.5 text-[11px] text-zinc-500">
                         {formatSidebarDate(post.publishedAt)}

@@ -63,10 +63,10 @@ export default function StandingsTabs({ standings }: Props) {
               <th className="text-right px-4 py-3 font-semibold">W</th>
               <th className="text-right px-4 py-3 font-semibold">L</th>
               <th className="text-right px-4 py-3 font-semibold">T</th>
+              <th className="text-right px-4 py-3 font-semibold">PCT</th>
               <th className="text-right px-4 py-3 font-semibold">RS</th>
               <th className="text-right px-4 py-3 font-semibold">RA</th>
               <th className="text-right px-4 py-3 font-semibold">RD</th>
-              <th className="text-right px-4 py-3 font-semibold">PCT</th>
             </tr>
           </thead>
           <tbody>
@@ -76,12 +76,12 @@ export default function StandingsTabs({ standings }: Props) {
                 <td className="px-4 py-3 text-right">{row.wins}</td>
                 <td className="px-4 py-3 text-right">{row.losses}</td>
                 <td className="px-4 py-3 text-right">{row.ties}</td>
-                <td className="px-4 py-3 text-right">{row.runsScored}</td>
-                <td className="px-4 py-3 text-right">{row.runsAllowed}</td>
-                <td className="px-4 py-3 text-right">{row.runDifferential}</td>
                 <td className="px-4 py-3 text-right">
                   {formatPct(row.winningPercentage)}
                 </td>
+                <td className="px-4 py-3 text-right">{row.runsScored}</td>
+                <td className="px-4 py-3 text-right">{row.runsAllowed}</td>
+                <td className="px-4 py-3 text-right">{row.runDifferential}</td>
               </tr>
             ))}
           </tbody>
