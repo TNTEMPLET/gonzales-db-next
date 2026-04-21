@@ -14,6 +14,7 @@ export type CoachSessionUser = {
   firstName: string | null;
   lastName: string | null;
   isCoach: boolean;
+  isBlocked: boolean;
   avatarUrl: string | null;
 };
 
@@ -75,6 +76,7 @@ export async function getCoachUserByToken(token: string | undefined) {
     firstName: session.user.firstName,
     lastName: session.user.lastName,
     isCoach: session.user.isCoach,
+    isBlocked: session.user.isBlocked,
     avatarUrl: session.user.avatarUrl ?? null,
   } satisfies CoachSessionUser;
 }
