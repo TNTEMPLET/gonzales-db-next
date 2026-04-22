@@ -10,6 +10,7 @@ function createClient() {
 }
 
 const prisma = createClient();
+const orgId = process.env.SITE_ORG ?? "gonzales";
 
 async function main() {
   const posts = [
@@ -41,9 +42,15 @@ async function main() {
 
   for (const post of posts) {
     await prisma.newsPost.upsert({
-      where: { slug: post.slug },
-      create: post,
+      where: {
+        organizationId_slug: { organizationId: orgId, slug: post.slug },
+      },
+      create: {
+        organizationId: orgId,
+        ...post,
+      },
       update: {
+        organizationId: orgId,
         title: post.title,
         excerpt: post.excerpt,
         content: post.content,
