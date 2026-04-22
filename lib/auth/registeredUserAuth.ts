@@ -23,6 +23,20 @@ export async function upsertRegisteredUserFromGoogle(
     );
   }
 
+  // Reuse the already linked Google account to avoid global googleSub unique
+  // collisions when the same person signs in across multiple org deployments.
+  if (existingBySub) {
+    return prisma.registeredUser.update({
+      where: { id: existingBySub.id },
+      data: {
+        organizationId: orgId,
+        name: input.name,
+        firstName: input.firstName,
+        lastName: input.lastName,
+      },
+    });
+  }
+
   const existingByEmail = await prisma.registeredUser.findFirst({
     where: { organizationId: orgId, email: input.email },
   });
