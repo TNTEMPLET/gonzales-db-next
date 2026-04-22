@@ -79,10 +79,14 @@ export async function POST(request: NextRequest) {
         : await prisma.registeredUser.create({
             data: {
               organizationId: orgId,
-          },
-          { status: 403 },
-        );
-      }
+              email,
+              firstName,
+              lastName,
+              name: displayName(firstName, lastName),
+              passwordHash,
+            },
+          });
+    }
 
       const response = NextResponse.json({
         success: true,
