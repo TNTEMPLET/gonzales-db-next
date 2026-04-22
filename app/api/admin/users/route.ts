@@ -275,8 +275,8 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const linkedRegisteredUser = await prisma.registeredUser.findUnique({
-      where: { email: targetAdmin.email },
+    const linkedRegisteredUser = await prisma.registeredUser.findFirst({
+      where: { organizationId: orgId, email: targetAdmin.email },
     });
 
     await prisma.adminAuditLog.create({
