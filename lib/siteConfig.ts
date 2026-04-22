@@ -5,8 +5,11 @@ export interface SiteConfig {
   orgId: OrgId;
   name: string;
   shortName: string;
+  displayNameLine1: string;
+  displayNameLine2: string;
   description: string;
   siteUrl: string;
+  logoPath: string;
   /** Tailwind/CSS: maps to --org-primary */
   colorPrimary: string;
   /** Tailwind/CSS: maps to --org-primary-dark */
@@ -24,9 +27,12 @@ const configs: Record<OrgId, SiteConfig> = {
     orgId: "gonzales",
     name: "Gonzales Diamond Baseball",
     shortName: "Gonzales DYB",
+    displayNameLine1: "Gonzales",
+    displayNameLine2: "DIAMOND BASEBALL",
     description:
       "Official home of Gonzales Diamond Baseball (DYB) in Ascension Parish.",
     siteUrl: "https://dyb.apbaseball.com",
+    logoPath: "/images/dyb-logo.png",
     colorPrimary: "#590275",
     colorPrimaryDark: "#4a0163",
     colorAccent: "#ffcb29",
@@ -37,9 +43,12 @@ const configs: Record<OrgId, SiteConfig> = {
     orgId: "ascension",
     name: "Ascension Little League",
     shortName: "Ascension LL",
+    displayNameLine1: "Ascension",
+    displayNameLine2: "LITTLE LEAGUE",
     description:
       "Official home of Ascension Little League Baseball in Ascension Parish.",
     siteUrl: "https://llb.apbaseball.com",
+    logoPath: "/images/llb-logo.png",
     colorPrimary: "#09306a",
     colorPrimaryDark: "#072550",
     colorAccent: "#b10807",
@@ -50,8 +59,11 @@ const configs: Record<OrgId, SiteConfig> = {
     orgId: "master",
     name: "AP Baseball — Master Admin",
     shortName: "AP Baseball",
+    displayNameLine1: "AP Baseball",
+    displayNameLine2: "MASTER ADMIN",
     description: "Master admin dashboard for all AP Baseball organizations.",
     siteUrl: "https://admin.apbaseball.com",
+    logoPath: "/images/logo.png",
     colorPrimary: "#1a1a2e",
     colorPrimaryDark: "#12121f",
     colorAccent: "#ffcb29",

@@ -2,10 +2,13 @@
 
 import Image from "next/image";
 import { usePathname } from "next/navigation";
-import logo from "@/public/images/logo.png";
+import { useState } from "react";
+import { getSiteConfig } from "@/lib/siteConfig";
 
 export default function Footer() {
+  const site = getSiteConfig();
   const pathname = usePathname();
+  const [logoSrc, setLogoSrc] = useState(site.logoPath);
   if (pathname.startsWith("/dugout")) return null;
 
   return (
@@ -16,14 +19,19 @@ export default function Footer() {
           <div className="flex items-center gap-3 mb-4">
             <div className="relative w-10 h-10">
               <Image
-                src={logo}
-                alt="Gonzales Diamond Baseball"
+                src={logoSrc}
+                alt={site.name}
                 className="object-contain"
+                width={40}
+                height={40}
+                onError={() => setLogoSrc("/images/logo.png")}
               />
             </div>
             <div>
-              <div className="font-bold text-xl">Gonzales DB</div>
-              <div className="text-xs text-brand-gold">DIAMOND BASEBALL</div>
+              <div className="font-bold text-xl">{site.shortName}</div>
+              <div className="text-xs text-brand-gold">
+                {site.displayNameLine2}
+              </div>
             </div>
           </div>
           <p className="text-sm text-zinc-400 max-w-xs">
@@ -107,7 +115,7 @@ export default function Footer() {
           </div>
 
           <div className="text-xs text-zinc-500">
-            © {new Date().getFullYear()} Gonzales Diamond Baseball
+            © {new Date().getFullYear()} {site.name}
             <br />
             Powered by Next.js • All Rights Reserved
           </div>

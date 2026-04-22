@@ -4,8 +4,8 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import logo from "@/public/images/logo.png";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getSiteConfig } from "@/lib/siteConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 
 type DugoutMeResponse = {
@@ -16,10 +16,12 @@ type DugoutMeResponse = {
 };
 
 export default function Header() {
+  const site = getSiteConfig();
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
+  const [logoSrc, setLogoSrc] = useState(site.logoPath);
   const regOpen = isRegistrationOpen();
 
   useEffect(() => {
@@ -85,20 +87,21 @@ export default function Header() {
             {" "}
             {/* Adjust size as needed */}
             <Image
-              src={logo}
-              alt="Gonzales Diamond Baseball Logo"
+              src={logoSrc}
+              alt={`${site.name} Logo`}
               fill
               sizes="64px"
               className="object-contain"
               priority
+              onError={() => setLogoSrc("/images/logo.png")}
             />
           </div>
           <div className="hidden sm:block">
             <div className="font-bold text-2xl tracking-tight text-white uppercase">
-              Gonzales
+              {site.displayNameLine1}
             </div>
             <div className="text-[10px] text-brand-gold -mt-1">
-              DIAMOND BASEBALL
+              {site.displayNameLine2}
             </div>
           </div>
         </Link>

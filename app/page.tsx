@@ -9,8 +9,7 @@ import {
   getHomepageRotatorPosts,
 } from "@/lib/news/queries";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
-import { getAssignrLeagueId } from "@/lib/siteConfig";
-import logo from "@/public/images/logo.png";
+import { getAssignrLeagueId, getSiteConfig } from "@/lib/siteConfig";
 
 type ViewMode = "thisWeek" | "nextWeek" | "fullSeason";
 
@@ -49,6 +48,7 @@ export default async function Home({
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const regOpen = isRegistrationOpen();
   const defaultLeagueId = getAssignrLeagueId();
+  const site = getSiteConfig();
 
   let rotatorPosts: HomepageRotatorPost[] = [];
   let featuredPosts: HomepageFeaturedPost[] = [];
@@ -184,8 +184,8 @@ export default async function Home({
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(245,158,11,0.18),transparent_50%),radial-gradient(circle_at_80%_80%,rgba(124,58,237,0.2),transparent_55%),linear-gradient(145deg,#09090b,#18181b)]" />
           <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.12)_1px,transparent_1px)] bg-size-[48px_48px]" />
           <Image
-            src={logo}
-            alt="Gonzales Diamond Baseball"
+            src={site.logoPath}
+            alt={site.name}
             fill
             priority
             className="object-contain opacity-15 scale-[1.35] blur-[1px]"
@@ -198,7 +198,7 @@ export default async function Home({
             </div>
 
             <h1 className="text-6xl md:text-7xl font-bold mb-6 tracking-tighter leading-none">
-              Gonzales Diamond Baseball
+              {site.name}
             </h1>
 
             <p className="text-2xl md:text-3xl mb-10 text-brand-gold max-w-2xl mx-auto">
