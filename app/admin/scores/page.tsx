@@ -22,6 +22,8 @@ type ScoreEntryGame = {
   awayTeam: string;
   gameDate: string | null;
   status: string;
+  venue: string | null;
+  subvenue: string | null;
 };
 
 function toIsoDate(source?: string) {
@@ -67,6 +69,11 @@ export default async function AdminScoresPage() {
         awayTeam: game.away_team?.trim() || "Away Team",
         gameDate,
         status: game.status?.trim() || "Scheduled",
+        venue:
+          game._embedded?.venue?.name ??
+          (game.venue as string | undefined) ??
+          null,
+        subvenue: game.subvenue ?? null,
       };
     })
     .filter((game) => {

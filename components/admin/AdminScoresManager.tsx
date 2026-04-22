@@ -10,6 +10,8 @@ type GameRow = {
   awayTeam: string;
   gameDate: string | null;
   status: string;
+  venue: string | null;
+  subvenue: string | null;
 };
 
 type ExistingScore = {
@@ -398,7 +400,9 @@ export default function AdminScoresManager({ games, existingScores }: Props) {
                           {formatGameDate(game.gameDate)}
                         </p>
                         <p className="text-xs text-zinc-500">
-                          Status: {game.status || "Unknown"}
+                          {[game.venue, game.subvenue]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
                           {isCancelled ? (
                             <span className="ml-2 text-red-400 font-semibold uppercase tracking-wide">
                               Rained-Out
@@ -509,7 +513,9 @@ export default function AdminScoresManager({ games, existingScores }: Props) {
                           {formatGameDate(game.gameDate)}
                         </p>
                         <p className="text-xs text-zinc-500">
-                          Status: {game.status || "Unknown"}
+                          {[game.venue, game.subvenue]
+                            .filter(Boolean)
+                            .join(" · ") || "—"}
                           {isCancelled ? (
                             <span className="ml-2 text-red-400 font-semibold uppercase tracking-wide">
                               Rained-Out

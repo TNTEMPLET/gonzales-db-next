@@ -81,7 +81,7 @@ export default function DugoutGate() {
 
       {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
         <div className="space-y-3">
-          <div ref={googleButtonRef} className="min-h-[44px]" />
+          <div ref={googleButtonRef} className="min-h-11" />
           <p className="text-xs text-zinc-500">
             Sign in with Google using your registered coach account.
           </p>

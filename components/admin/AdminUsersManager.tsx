@@ -627,22 +627,90 @@ export default function AdminUsersManager() {
                     <button
                       type="button"
                       disabled={busy}
+                      onClick={() => openEditName(user)}
+                      title="Edit name"
+                      aria-label="Edit name"
+                      className="rounded-lg border border-blue-700 text-blue-300 hover:bg-blue-950/40 px-2.5 py-1.5 disabled:opacity-60"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={1.8}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 0 1 2.828 2.828L11.828 15.828a2 2 0 0 1-1.414.586H8v-2.414a2 2 0 0 1 .586-1.414Z"
+                        />
+                        <path strokeLinecap="round" d="M3 21h18" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
                       onClick={() => void toggleCoach(user.id, user.isCoach)}
-                      className={`text-xs rounded-lg border px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap ${
+                      title={user.isCoach ? "Revoke Coach" : "Grant Coach"}
+                      aria-label={user.isCoach ? "Revoke Coach" : "Grant Coach"}
+                      className={`rounded-lg border px-2.5 py-1.5 disabled:opacity-60 ${
                         user.isCoach
                           ? "border-brand-purple text-brand-purple hover:bg-brand-purple/10"
                           : "border-zinc-600 text-zinc-400 hover:bg-zinc-800"
                       }`}
                     >
-                      {user.isCoach ? "Revoke Coach" : "Coach"}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => openEditName(user)}
-                      className="text-xs rounded-lg border border-blue-700 text-blue-300 hover:bg-blue-950/40 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
-                    >
-                      Edit
+                      {user.isCoach ? (
+                        /* Baseball cap with strikethrough line */
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M3 14h14a1 1 0 0 0 1-1V9a7 7 0 0 0-7-7H9a6 6 0 0 0-6 6v6Z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            d="M3 14v1a2 2 0 0 0 2 2h12"
+                          />
+                          <path strokeLinecap="round" d="M10 7v4" />
+                          <line
+                            x1="3"
+                            y1="3"
+                            x2="21"
+                            y2="21"
+                            strokeLinecap="round"
+                            strokeWidth={1.8}
+                          />
+                        </svg>
+                      ) : (
+                        /* Baseball cap */
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4 w-4"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M3 14h14a1 1 0 0 0 1-1V9a7 7 0 0 0-7-7H9a6 6 0 0 0-6 6v6Z"
+                          />
+                          <path
+                            strokeLinecap="round"
+                            d="M3 14v1a2 2 0 0 0 2 2h12"
+                          />
+                          <path strokeLinecap="round" d="M10 7v4" />
+                        </svg>
+                      )}
                     </button>
                     <button
                       type="button"
@@ -654,10 +722,36 @@ export default function AdminUsersManager() {
                           label: `Promote ${user.email} to admin access?`,
                         })
                       }
-                      className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60 whitespace-nowrap"
+                      title="Promote to Admin"
+                      aria-label="Promote to Admin"
+                      className="rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60"
                     >
-                      Admin
+                      {/* Avengers-style "A" */}
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 3 L5 20 M12 3 L19 20"
+                        />
+                        <path strokeLinecap="round" d="M7.5 14.5 h9" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 3 L10 7 L14 7 Z"
+                        />
+                      </svg>
                     </button>
+                    <span
+                      className="w-px self-stretch bg-zinc-700 mx-1"
+                      aria-hidden="true"
+                    />
                     {user.isBlocked ? (
                       <button
                         type="button"
