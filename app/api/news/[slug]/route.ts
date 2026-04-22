@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureNewsAdmin, isNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 
+const orgId = process.env.SITE_ORG ?? "gonzales";
+
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
 type RouteContext = {
