@@ -22,6 +22,8 @@ import { getPublishedNewsPosts } from "@/lib/news/queries";
 import prisma from "@/lib/prisma";
 import { computeStandingsByAgeGroup } from "@/lib/standings";
 
+const orgId = process.env.SITE_ORG ?? "gonzales";
+
 export const metadata = {
   title: "The Dugout | Gonzales Diamond Baseball",
   description: "Coaches-only discussion feed.",
@@ -296,8 +298,8 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
 
   let currentUserId: string | null = coach?.id ?? null;
   if (!currentUserId && admin) {
-    const reg = await prisma.registeredUser.findUnique({
-      where: { email: admin.email },
+    const reg = await prisma.registeredUser.findFirst({
+      where: { organizationId: orgId, email: admin.email },
       select: { id: true },
     });
     currentUserId = reg?.id ?? null;
