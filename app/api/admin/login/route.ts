@@ -10,6 +10,10 @@ import {
   createCoachSession,
 } from "@/lib/auth/coachSession";
 import prisma from "@/lib/prisma";
+import {
+  isMasterAdminEmailAllowed,
+  isMasterDeployment,
+} from "@/lib/siteConfig";
 
 type LoginPayload = {
   email?: string;
@@ -26,6 +30,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "email and password are required" },
         { status: 400 },
+      );
+    }
+
+    if (isMasterDeployment() && !isMasterAdminEmailAllowed(email)) {
+      return NextResponse.json(
+        { error: "This account is not allowlisted for master admin access" },
+        { status: 403 },
       );
     }
 

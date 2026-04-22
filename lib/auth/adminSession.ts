@@ -4,6 +4,7 @@ import bcrypt from "bcryptjs";
 import { NextRequest } from "next/server";
 
 import prisma from "@/lib/prisma";
+import { isMasterAdminEmailAllowed } from "@/lib/siteConfig";
 
 export const ADMIN_SESSION_COOKIE = "gdb_admin_session";
 const SESSION_TTL_DAYS = 7;
@@ -29,6 +30,10 @@ function getExpiryDate() {
 
 export async function verifyAdminCredentials(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
+  if (!isMasterAdminEmailAllowed(normalizedEmail)) {
+    return null;
+  }
+
   const user = await prisma.adminUser.findUnique({
     where: { email: normalizedEmail },
   });
@@ -83,6 +88,13 @@ export async function getAdminUserByToken(token: string | undefined) {
   if (!session) return null;
 
   if (session.expiresAt <= new Date()) {
+    await prisma.adminSession
+      .delete({ where: { tokenHash } })
+      .catch(() => null);
+    return null;
+  }
+
+  if (!isMasterAdminEmailAllowed(session.user.email)) {
     await prisma.adminSession
       .delete({ where: { tokenHash } })
       .catch(() => null);
