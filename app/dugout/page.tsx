@@ -1,7 +1,6 @@
 import { cookies } from "next/headers";
 import Image from "next/image";
 import Link from "next/link";
-import logo from "@/public/images/logo.png";
 
 import DugoutGate from "@/components/dugout/DugoutGate";
 import DugoutNav from "@/components/dugout/DugoutNav";
@@ -20,14 +19,15 @@ import { listDugoutPosts } from "@/lib/dugout/posts";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import { getPublishedNewsPosts } from "@/lib/news/queries";
 import prisma from "@/lib/prisma";
-import { getAssignrLeagueId } from "@/lib/siteConfig";
+import { getAssignrLeagueId, getSiteConfig } from "@/lib/siteConfig";
 import { computeStandingsByAgeGroup } from "@/lib/standings";
 
-const orgId = process.env.SITE_ORG ?? "gonzales";
+const site = getSiteConfig();
+const orgId = site.orgId === "ascension" ? "ascension" : "gonzales";
 const defaultLeagueId = getAssignrLeagueId();
 
 export const metadata = {
-  title: "The Dugout | Gonzales Diamond Baseball",
+  title: `The Dugout | ${site.name}`,
   description: "Coaches-only discussion feed.",
 };
 
@@ -328,6 +328,10 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
           activeView={activeView}
           currentUserName={currentUserName}
           isAdmin={!!admin}
+          brand={{
+            name: site.name,
+            logoPath: site.logoPath,
+          }}
         />
 
         {/* ── Center feed column ───────────────────────────────── */}
@@ -342,7 +346,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                   aria-label="The Dugout"
                 >
                   <Image
-                    src={logo}
+                    src={site.logoPath}
                     alt="The Dugout"
                     width={28}
                     height={28}
@@ -393,6 +397,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             currentUserAvatarUrl={currentUserAvatarUrl}
             initialView={activeView}
             initialFocusPostId={focusPostId}
+            leagueName={site.name}
           />
         </div>
 
@@ -514,14 +519,14 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
           <div className="mt-auto pt-4 border-t border-zinc-800 space-y-1">
             <div className="flex items-center gap-2 mb-2">
               <Image
-                src={logo}
-                alt="Gonzales Diamond Baseball"
+                src={site.logoPath}
+                alt={site.name}
                 width={22}
                 height={22}
                 className="object-contain opacity-60"
               />
               <span className="text-xs font-bold text-zinc-500">
-                Gonzales DB
+                {site.shortName}
               </span>
             </div>
             <p className="text-[11px] text-zinc-600">
@@ -540,7 +545,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
               info@apbaseball.com
             </a>
             <p className="text-[11px] text-zinc-700 pt-1">
-              © {new Date().getFullYear()} Gonzales Diamond Baseball
+              © {new Date().getFullYear()} {site.name}
             </p>
           </div>
         </aside>
@@ -560,7 +565,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             }`}
           >
             <Image
-              src={logo}
+              src={site.logoPath}
               alt="The Dugout"
               width={27}
               height={27}

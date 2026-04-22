@@ -59,6 +59,7 @@ type DugoutTimelineProps = {
   initialPosts: DugoutPost[];
   initialScheduleGames?: Game[];
   initialStandings?: AgeGroupStandings[];
+  leagueName?: string;
   isAdmin?: boolean;
   currentUserId?: string | null;
   currentUserName?: string | null;
@@ -445,6 +446,7 @@ export default function DugoutTimeline({
   initialPosts,
   initialScheduleGames = [],
   initialStandings = [],
+  leagueName = "the league",
   isAdmin = false,
   currentUserId = null,
   currentUserName = null,
@@ -2356,7 +2358,7 @@ export default function DugoutTimeline({
           <div className="mb-4">
             <h3 className="text-base font-semibold">Schedule</h3>
             <p className="mt-1 text-sm text-zinc-400">
-              This week&apos;s Gonzales Diamond Baseball games.
+              {`This week's ${leagueName} games.`}
             </p>
           </div>
 

@@ -4,7 +4,6 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 
-import logo from "@/public/images/logo.png";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 
 const NAV_ITEMS = [
@@ -82,14 +81,20 @@ type Props = {
   activeView: "timeline" | "notifications" | "schedule";
   currentUserName: string | null;
   isAdmin: boolean;
+  brand: {
+    name: string;
+    logoPath: string;
+  };
 };
 
 export default function DugoutNav({
   activeView,
   currentUserName,
   isAdmin,
+  brand,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
+  const [logoSrc, setLogoSrc] = useState(brand.logoPath);
 
   return (
     <nav
@@ -107,13 +112,14 @@ export default function DugoutNav({
           aria-label="The Dugout"
         >
           <Image
-            src={logo}
-            alt="Gonzales Diamond Baseball"
+            src={logoSrc}
+            alt={brand.name}
             width={collapsed ? 32 : 40}
             height={collapsed ? 32 : 40}
             loading="eager"
             priority
             className="object-contain"
+            onError={() => setLogoSrc("/images/logo.png")}
           />
         </Link>
         {!collapsed && (
