@@ -296,9 +296,16 @@ export async function POST(request: NextRequest) {
           ? parsedDateFromGame
           : null;
 
+      const importOrgId = process.env.SITE_ORG ?? "gonzales";
       await prisma.gameScore.upsert({
-        where: { gameExternalId },
+        where: {
+          organizationId_gameExternalId: {
+            organizationId: importOrgId,
+            gameExternalId,
+          },
+        },
         create: {
+          organizationId: importOrgId,
           gameExternalId,
           ageGroup: (game.age_group || csvGroup || "Unassigned").trim() || null,
           homeTeam: (game.home_team || csvHomeTeam || "Home Team").trim(),

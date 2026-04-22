@@ -1,9 +1,10 @@
 import prisma from "@/lib/prisma";
+import { getOrgId } from "@/lib/siteConfig";
 
 export async function getPublishedNewsPosts() {
   try {
     return await prisma.newsPost.findMany({
-      where: { status: "PUBLISHED" },
+      where: { organizationId: getOrgId(), status: "PUBLISHED" },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
     });
   } catch (err: unknown) {
@@ -18,6 +19,7 @@ export async function getPublishedNewsPostBySlug(slug: string) {
   try {
     return await prisma.newsPost.findFirst({
       where: {
+        organizationId: getOrgId(),
         slug,
         status: "PUBLISHED",
       },
@@ -34,6 +36,7 @@ export async function getHomepageRotatorPosts() {
   try {
     return await prisma.newsPost.findMany({
       where: {
+        organizationId: getOrgId(),
         status: "PUBLISHED",
         rotatorEnabled: true,
         imageUrl: {
@@ -66,6 +69,7 @@ export async function getHomepageFeaturedNewsPosts() {
   try {
     return await prisma.newsPost.findMany({
       where: {
+        organizationId: getOrgId(),
         status: "PUBLISHED",
         featured: true,
       },

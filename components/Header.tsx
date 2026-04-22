@@ -88,6 +88,7 @@ export default function Header() {
               src={logo}
               alt="Gonzales Diamond Baseball Logo"
               fill
+              sizes="64px"
               className="object-contain"
               priority
             />

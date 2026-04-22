@@ -4,6 +4,8 @@ import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 
+const orgId = process.env.SITE_ORG ?? "gonzales";
+
 type PromotePayload = {
   userId?: string;
 };
@@ -103,6 +105,7 @@ export async function GET(request: NextRequest) {
     const [users, admins, currentAdmin, auditLogs, totalAuditLogs] =
       await Promise.all([
         prisma.registeredUser.findMany({
+          where: { organizationId: orgId },
           orderBy: { createdAt: "desc" },
         }),
         prisma.adminUser.findMany({

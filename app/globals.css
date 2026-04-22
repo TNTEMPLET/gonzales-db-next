@@ -5,12 +5,20 @@
   --foreground: #171717;
 }
 
+/* Org-specific brand color defaults (overridden per deployment via layout.tsx <style>) */
+:root {
+  --org-primary: #590275;
+  --org-primary-dark: #4a0163;
+  --org-accent: #ffcb29;
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --color-brand-purple: #590275;
-  --color-brand-purple-dark: #4a0163;
-  --color-brand-gold: #ffcb29;
+  /* brand-purple / brand-gold map to org CSS vars so they theme correctly per deployment */
+  --color-brand-purple: var(--org-primary);
+  --color-brand-purple-dark: var(--org-primary-dark);
+  --color-brand-gold: var(--org-accent);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }

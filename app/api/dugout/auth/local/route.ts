@@ -12,6 +12,8 @@ import {
 } from "@/lib/auth/coachSession";
 import prisma from "@/lib/prisma";
 
+const orgId = process.env.SITE_ORG ?? "gonzales";
+
 type LocalAuthPayload = {
   mode?: "login" | "signup";
   email?: string;
@@ -55,8 +57,8 @@ export async function POST(request: NextRequest) {
 
     if (mode === "signup") {
       const passwordHash = await bcrypt.hash(password, 10);
-      const existing = await prisma.registeredUser.findUnique({
-        where: { email },
+      const existing = await prisma.registeredUser.findFirst({
+        where: { organizationId: orgId, email },
       });
 
       const user = existing
@@ -76,22 +78,7 @@ export async function POST(request: NextRequest) {
           })
         : await prisma.registeredUser.create({
             data: {
-              email,
-              firstName,
-              lastName,
-              name: displayName(firstName, lastName),
-              passwordHash,
-            },
-          });
-
-      const admin = await prisma.adminUser.findUnique({ where: { email } });
-
-      // Check if user is blocked
-      if (user.isBlocked) {
-        return NextResponse.json(
-          {
-            error:
-              "This account has been blocked and cannot access the application",
+              organizationId: orgId,
           },
           { status: 403 },
         );
@@ -132,7 +119,7 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
-    const user = await prisma.registeredUser.findUnique({ where: { email } });
+    const user = await prisma.registeredUser.findFirst({ where: { organizationId: orgId, email } });
 
     // Allow admin-local sign in even when there's no linked RegisteredUser local password.
     const adminAuth = await verifyAdminCredentials(email, password);

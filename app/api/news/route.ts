@@ -4,6 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { isNewsAdmin, ensureNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 
+const orgId = process.env.SITE_ORG ?? "gonzales";
+
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
 type CreateNewsPayload = {
@@ -41,7 +43,9 @@ async function ensureUniqueSlug(baseSlug: string): Promise<string> {
   let i = 2;
 
   while (true) {
-    const existing = await prisma.newsPost.findUnique({ where: { slug } });
+    const existing = await prisma.newsPost.findFirst({
+      where: { organizationId: orgId, slug },
+    });
     if (!existing) return slug;
     slug = `${baseSlug}-${i}`;
     i += 1;
@@ -65,6 +69,7 @@ export async function GET(request: NextRequest) {
 
     const admin = await isNewsAdmin(request);
     const where = {
+      organizationId: orgId,
       status: requestedStatus || (admin ? undefined : "PUBLISHED"),
     };
 
@@ -128,6 +133,7 @@ export async function POST(request: NextRequest) {
 
     const post = await prisma.newsPost.create({
       data: {
+        organizationId: orgId,
         title: body.title.trim(),
         slug,
         excerpt: body.excerpt?.trim() || null,

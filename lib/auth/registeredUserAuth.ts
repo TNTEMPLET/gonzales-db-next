@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma";
 
+const orgId = process.env.SITE_ORG ?? "gonzales";
+
 type GoogleProfileInput = {
   email: string;
   sub: string;
@@ -21,8 +23,8 @@ export async function upsertRegisteredUserFromGoogle(
     );
   }
 
-  const existingByEmail = await prisma.registeredUser.findUnique({
-    where: { email: input.email },
+  const existingByEmail = await prisma.registeredUser.findFirst({
+    where: { organizationId: orgId, email: input.email },
   });
 
   if (existingByEmail) {
@@ -45,6 +47,7 @@ export async function upsertRegisteredUserFromGoogle(
 
   return prisma.registeredUser.create({
     data: {
+      organizationId: orgId,
       email: input.email,
       googleSub: input.sub,
       name: input.name,

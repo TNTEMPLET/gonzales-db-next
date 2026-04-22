@@ -4,20 +4,15 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import { getSiteConfig } from "@/lib/siteConfig";
 
 const inter = Inter({ subsets: ["latin"] });
 
+const site = getSiteConfig();
+
 export const metadata: Metadata = {
-  title: "Gonzales Diamond Baseball | Youth Baseball League in Gonzales, LA",
-  description:
-    "Official home of Gonzales Diamond Baseball (DYB) in Ascension Parish. Spring 2026 registration, schedules, standings, field status, and live GameChanger scores for ages 3–12.",
-  keywords: [
-    "Gonzales youth baseball",
-    "Gonzales Diamond Baseball",
-    "Ascension Parish baseball",
-    "DYB Gonzales LA",
-    "Tee-Joe Gonzales Park baseball",
-  ],
+  title: site.name,
+  description: site.description,
   icons: {
     icon: "/favicon.ico",
   },
@@ -28,8 +23,20 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const orgCss = `
+    :root {
+      --org-primary: ${site.colorPrimary};
+      --org-primary-dark: ${site.colorPrimaryDark};
+      --org-accent: ${site.colorAccent};
+    }
+  `;
+
   return (
     <html lang="en">
+      <head>
+        {/* Inject org brand colors before any other styles */}
+        <style dangerouslySetInnerHTML={{ __html: orgCss }} />
+      </head>
       <SpeedInsights />
       <body className={`${inter.className} bg-zinc-950 text-white antialiased`}>
         <Header />

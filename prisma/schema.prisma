@@ -30,22 +30,24 @@ enum DugoutNotificationEntityType {
 }
 
 model NewsPost {
-  id          String     @id @default(cuid())
-  title       String
-  slug        String     @unique
-  excerpt     String?
-  content     String
-  imageUrl    String?
-  author      String?
-  featured    Boolean    @default(false)
-  rotatorEnabled Boolean @default(false)
-  status      NewsStatus @default(DRAFT)
-  publishedAt DateTime?
-  createdAt   DateTime   @default(now())
-  updatedAt   DateTime   @updatedAt
+  id             String     @id @default(cuid())
+  organizationId String     @default("gonzales")
+  title          String
+  slug           String
+  excerpt        String?
+  content        String
+  imageUrl       String?
+  author         String?
+  featured       Boolean    @default(false)
+  rotatorEnabled Boolean    @default(false)
+  status         NewsStatus @default(DRAFT)
+  publishedAt    DateTime?
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
 
-  @@index([status, publishedAt])
-  @@index([slug])
+  @@unique([organizationId, slug])
+  @@index([organizationId, status, publishedAt])
+  @@index([organizationId, slug])
 }
 
 model AdminUser {
@@ -64,16 +66,17 @@ model AdminUser {
 }
 
 model RegisteredUser {
-  id           String   @id @default(cuid())
-  email        String   @unique
-  name         String?
-  firstName    String?
-  lastName     String?
-  isCoach      Boolean  @default(false)
-  isBlocked    Boolean  @default(false)
-  googleSub    String?  @unique
-  passwordHash String?
-  avatarUrl    String?
+  id             String   @id @default(cuid())
+  organizationId String   @default("gonzales")
+  email          String
+  name           String?
+  firstName      String?
+  lastName       String?
+  isCoach        Boolean  @default(false)
+  isBlocked      Boolean  @default(false)
+  googleSub      String?  @unique
+  passwordHash   String?
+  avatarUrl      String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   auditLogs    AdminAuditLog[]
@@ -83,6 +86,9 @@ model RegisteredUser {
   dugoutLikes  DugoutPostLike[]
   dugoutNotificationCursor DugoutNotificationCursor?
   dugoutNotificationReads DugoutNotificationRead[]
+
+  @@unique([organizationId, email])
+  @@index([organizationId])
 }
 
 model CoachSession {
@@ -98,23 +104,24 @@ model CoachSession {
 }
 
 model DugoutPost {
-  id        String          @id @default(cuid())
-  content   String
-  mediaUrl  String?
-  mediaType DugoutMediaType?
-  threadId  String?
-  threadOrder Int?
-  isPinned  Boolean         @default(false)
-  pinnedAt  DateTime?
-  authorId  String
-  createdAt DateTime        @default(now())
-  updatedAt DateTime        @updatedAt
+  id             String          @id @default(cuid())
+  organizationId String          @default("gonzales")
+  content        String
+  mediaUrl       String?
+  mediaType      DugoutMediaType?
+  threadId       String?
+  threadOrder    Int?
+  isPinned       Boolean         @default(false)
+  pinnedAt       DateTime?
+  authorId       String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
 
   author RegisteredUser   @relation(fields: [authorId], references: [id], onDelete: Cascade)
   comments DugoutComment[]
   likes  DugoutPostLike[]
 
-  @@index([createdAt])
+  @@index([organizationId, createdAt])
   @@index([authorId])
   @@index([threadId, threadOrder])
   @@index([isPinned, pinnedAt])
@@ -219,7 +226,8 @@ model AdminAuditLog {
 
 model GameScore {
   id             String    @id @default(cuid())
-  gameExternalId String    @unique
+  organizationId String    @default("gonzales")
+  gameExternalId String
   ageGroup       String?
   homeTeam       String
   awayTeam       String
@@ -232,6 +240,7 @@ model GameScore {
 
   enteredByAdmin AdminUser? @relation(fields: [enteredByAdminId], references: [id], onDelete: SetNull)
 
-  @@index([ageGroup])
-  @@index([gameDate])
+  @@unique([organizationId, gameExternalId])
+  @@index([organizationId, ageGroup])
+  @@index([organizationId, gameDate])
 }

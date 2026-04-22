@@ -36,7 +36,9 @@ export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
 
-    const post = await prisma.newsPost.findUnique({ where: { slug } });
+    const post = await prisma.newsPost.findFirst({
+      where: { organizationId: orgId, slug },
+    });
     if (!post) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -66,7 +68,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const { slug } = await context.params;
-    const existing = await prisma.newsPost.findUnique({ where: { slug } });
+    const existing = await prisma.newsPost.findFirst({
+      where: { organizationId: orgId, slug },
+    });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -77,8 +81,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     const normalizedSlug = body.slug ? slugify(body.slug) : undefined;
 
     if (normalizedSlug) {
-      const collision = await prisma.newsPost.findUnique({
-        where: { slug: normalizedSlug },
+      const collision = await prisma.newsPost.findFirst({
+        where: { organizationId: orgId, slug: normalizedSlug },
       });
       if (collision && collision.id !== existing.id) {
         return NextResponse.json(
@@ -143,7 +147,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
 
-    const existing = await prisma.newsPost.findUnique({ where: { slug } });
+    const existing = await prisma.newsPost.findFirst({
+      where: { organizationId: orgId, slug },
+    });
     if (!existing) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }

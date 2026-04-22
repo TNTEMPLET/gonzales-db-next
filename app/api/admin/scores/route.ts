@@ -30,7 +30,9 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const orgId = process.env.SITE_ORG ?? "gonzales";
   const scores = await prisma.gameScore.findMany({
+    where: { organizationId: orgId },
     orderBy: [{ gameDate: "asc" }, { updatedAt: "desc" }],
   });
 
@@ -87,9 +89,16 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const orgId = process.env.SITE_ORG ?? "gonzales";
     const score = await prisma.gameScore.upsert({
-      where: { gameExternalId },
+      where: {
+        organizationId_gameExternalId: {
+          organizationId: orgId,
+          gameExternalId,
+        },
+      },
       create: {
+        organizationId: orgId,
         gameExternalId,
         ageGroup,
         homeTeam,
