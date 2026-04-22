@@ -56,8 +56,11 @@ export async function POST(request: NextRequest) {
 
     // If the admin also has a RegisteredUser account, issue a coach session so
     // they can post, like, and comment in The Dugout without a separate login.
-    const registeredUser = await prisma.registeredUser.findUnique({
-      where: { email: adminUser.email },
+    const registeredUser = await prisma.registeredUser.findFirst({
+      where: {
+        organizationId: process.env.SITE_ORG ?? "gonzales",
+        email: adminUser.email,
+      },
     });
     if (registeredUser) {
       const coachSession = await createCoachSession(registeredUser.id);
