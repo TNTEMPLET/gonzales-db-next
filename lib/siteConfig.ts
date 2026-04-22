@@ -42,15 +42,8 @@ const configs: Record<OrgId, SiteConfig> = {
     colorPrimary: "#09306a",
     colorPrimaryDark: "#072550",
     colorAccent: "#b10807",
-    // Prefer generic ASSIGNR_* vars so each deployment can be configured independently.
-    assignrSiteId:
-      process.env.ASSIGNR_SITE_ID ??
-      process.env.ASCENSION_ASSIGNR_SITE_ID ??
-      "",
-    assignrLeagueId:
-      process.env.ASSIGNR_LEAGUE_ID ??
-      process.env.ASCENSION_ASSIGNR_LEAGUE_ID ??
-      "",
+    assignrSiteId: process.env.ASSIGNR_SITE_ID ?? "",
+    assignrLeagueId: process.env.ASSIGNR_LEAGUE_ID ?? "430676",
   },
   master: {
     orgId: "master",
