@@ -5,6 +5,8 @@ import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
 import { ensureCoach } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
 
+const orgId = process.env.SITE_ORG ?? "gonzales";
+
 type CreateCommentPayload = {
   content?: string;
   parentId?: string | null;
@@ -117,8 +119,8 @@ export async function POST(
   // authorId must be a RegisteredUser.id (FK constraint)
   let authorId: string | undefined = coachUser?.id;
   if (!authorId && adminUser) {
-    const reg = await prisma.registeredUser.findUnique({
-      where: { email: adminUser.email },
+    const reg = await prisma.registeredUser.findFirst({
+      where: { organizationId: orgId, email: adminUser.email },
       select: { id: true },
     });
     authorId = reg?.id;

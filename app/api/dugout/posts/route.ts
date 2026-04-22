@@ -11,6 +11,8 @@ import { ensureCoach } from "@/lib/dugout/auth";
 import { MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import prisma from "@/lib/prisma";
 
+const orgId = process.env.SITE_ORG ?? "gonzales";
+
 type CreatePostPayload = {
   content?: string;
   mediaUrl?: string | null;
@@ -35,8 +37,8 @@ export async function GET(request: NextRequest) {
       : null;
     let viewerId: string | undefined = coachUser?.id;
     if (!viewerId && adminUser) {
-      const reg = await prisma.registeredUser.findUnique({
-        where: { email: adminUser.email },
+      const reg = await prisma.registeredUser.findFirst({
+        where: { organizationId: orgId, email: adminUser.email },
         select: { id: true },
       });
       viewerId = reg?.id;
@@ -71,8 +73,8 @@ export async function POST(request: NextRequest) {
     // Resolve the author's RegisteredUser id (required for DB foreign key)
     let authorId: string | undefined = coachUser?.id;
     if (!authorId && adminUser) {
-      const reg = await prisma.registeredUser.findUnique({
-        where: { email: adminUser.email },
+      const reg = await prisma.registeredUser.findFirst({
+        where: { organizationId: orgId, email: adminUser.email },
         select: { id: true },
       });
       authorId = reg?.id;

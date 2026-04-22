@@ -5,6 +5,8 @@ import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
 import { ensureCoach } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
 
+const orgId = process.env.SITE_ORG ?? "gonzales";
+
 type DugoutNotificationItem = {
   id: string;
   type: "LIKE" | "COMMENT" | "REPLY";
@@ -66,8 +68,8 @@ async function resolveUserId(request: NextRequest): Promise<string | null> {
   const adminUser = await getAdminUserFromRequest(request);
   if (!adminUser) return null;
 
-  const reg = await prisma.registeredUser.findUnique({
-    where: { email: adminUser.email },
+  const reg = await prisma.registeredUser.findFirst({
+    where: { organizationId: orgId, email: adminUser.email },
     select: { id: true },
   });
 
