@@ -1,4 +1,5 @@
 export type OrgId = "gonzales" | "ascension" | "master";
+export type ContentOrgId = "gonzales" | "ascension";
 
 export interface SiteConfig {
   orgId: OrgId;
@@ -59,6 +60,12 @@ const configs: Record<OrgId, SiteConfig> = {
   },
 };
 
+function isContentOrgId(
+  value: string | null | undefined,
+): value is ContentOrgId {
+  return value === "gonzales" || value === "ascension";
+}
+
 export function getSiteConfig(): SiteConfig {
   const orgId = (process.env.SITE_ORG ?? "gonzales") as OrgId;
   return configs[orgId] ?? configs.gonzales;
@@ -68,9 +75,33 @@ export function getOrgId(): OrgId {
   return getSiteConfig().orgId;
 }
 
-export function getAssignrLeagueId(): string {
+export function isMasterDeployment(): boolean {
+  return getOrgId() === "master";
+}
+
+export function getDefaultContentOrg(): ContentOrgId {
+  return getOrgId() === "ascension" ? "ascension" : "gonzales";
+}
+
+export function resolveAdminTargetOrg(
+  requestedOrg?: string | null,
+): ContentOrgId {
+  if (isMasterDeployment() && isContentOrgId(requestedOrg)) {
+    return requestedOrg;
+  }
+  return getDefaultContentOrg();
+}
+
+export function getSiteConfigForOrg(org: ContentOrgId): SiteConfig {
+  return configs[org];
+}
+
+export function getAssignrLeagueId(org?: ContentOrgId): string {
+  if (org) {
+    return getSiteConfigForOrg(org).assignrLeagueId || "515712";
+  }
   return getSiteConfig().assignrLeagueId || "515712";
 }
 
 /** All org IDs except master — used by master admin to enumerate orgs */
-export const CONTENT_ORGS: OrgId[] = ["gonzales", "ascension"];
+export const CONTENT_ORGS: ContentOrgId[] = ["gonzales", "ascension"];

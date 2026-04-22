@@ -7,13 +7,21 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export const metadata = {
   title: "Dugout Moderation | Gonzales Diamond Baseball",
   description: "Edit and delete Dugout feed posts as an admin.",
 };
 
-export default async function AdminDugoutPage() {
+export default async function AdminDugoutPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ org?: string }>;
+}) {
+  const { org } = await searchParams;
+  const currentOrg = resolveAdminTargetOrg(org);
+
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
@@ -26,7 +34,11 @@ export default async function AdminDugoutPage() {
     <main className="min-h-screen bg-zinc-950 text-white py-14">
       <section className="max-w-6xl mx-auto px-6">
         <div className="mb-8">
-          <AdminSectionHeader badge="FEED MODERATION" />
+          <AdminSectionHeader
+            badge="FEED MODERATION"
+            currentOrg={currentOrg}
+            currentPath="/admin/dugout"
+          />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Dugout Moderation
           </h1>
@@ -36,7 +48,7 @@ export default async function AdminDugoutPage() {
           </p>
         </div>
 
-        <DugoutModerationPanel />
+        <DugoutModerationPanel targetOrg={currentOrg} />
       </section>
     </main>
   );

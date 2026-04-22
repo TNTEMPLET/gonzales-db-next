@@ -2,6 +2,7 @@
 
 import { useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 type GameRow = {
   gameExternalId: string;
@@ -23,6 +24,7 @@ type ExistingScore = {
 type Props = {
   games: GameRow[];
   existingScores: ExistingScore[];
+  targetOrg: ContentOrgId;
 };
 
 type ScoreState = {
@@ -57,8 +59,13 @@ function sortAgeGroups(a: string, b: string) {
   return a.localeCompare(b);
 }
 
-export default function AdminScoresManager({ games, existingScores }: Props) {
+export default function AdminScoresManager({
+  games,
+  existingScores,
+  targetOrg,
+}: Props) {
   const router = useRouter();
+  const orgQuery = `org=${targetOrg}`;
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const initialScoresMap = useMemo(() => {
     const map = new Map<string, ScoreState>();
@@ -204,7 +211,7 @@ export default function AdminScoresManager({ games, existingScores }: Props) {
     setNotice("");
 
     try {
-      const response = await fetch("/api/admin/scores", {
+      const response = await fetch(`/api/admin/scores?${orgQuery}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -257,7 +264,7 @@ export default function AdminScoresManager({ games, existingScores }: Props) {
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch("/api/admin/scores/import", {
+      const response = await fetch(`/api/admin/scores/import?${orgQuery}`, {
         method: "POST",
         body: formData,
       });

@@ -5,7 +5,7 @@ import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import { ensureNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { getAssignrLeagueId } from "@/lib/siteConfig";
+import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 type CsvRow = Record<string, string | number | boolean | null | undefined>;
 
@@ -119,7 +119,10 @@ function buildFallbackKeyWithTime(
 }
 
 export async function POST(request: NextRequest) {
-  const leagueId = getAssignrLeagueId();
+  const targetOrg = resolveAdminTargetOrg(
+    request.nextUrl.searchParams.get("org"),
+  );
+  const leagueId = getAssignrLeagueId(targetOrg);
   const auth = await ensureNewsAdmin(request);
   if (!auth.ok) {
     return NextResponse.json(
@@ -298,16 +301,15 @@ export async function POST(request: NextRequest) {
           ? parsedDateFromGame
           : null;
 
-      const importOrgId = process.env.SITE_ORG ?? "gonzales";
       await prisma.gameScore.upsert({
         where: {
           organizationId_gameExternalId: {
-            organizationId: importOrgId,
+            organizationId: targetOrg,
             gameExternalId,
           },
         },
         create: {
-          organizationId: importOrgId,
+          organizationId: targetOrg,
           gameExternalId,
           ageGroup: (game.age_group || csvGroup || "Unassigned").trim() || null,
           homeTeam: (game.home_team || csvHomeTeam || "Home Team").trim(),

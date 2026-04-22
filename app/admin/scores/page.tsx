@@ -9,7 +9,7 @@ import {
 } from "@/lib/auth/adminSession";
 import { fetchGames } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
-import { getAssignrLeagueId, getOrgId } from "@/lib/siteConfig";
+import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export const metadata = {
   title: "Game Scores | Gonzales Diamond Baseball",
@@ -34,9 +34,14 @@ function toIsoDate(source?: string) {
   return parsed.toISOString();
 }
 
-export default async function AdminScoresPage() {
-  const leagueId = getAssignrLeagueId();
-  const orgId = getOrgId();
+export default async function AdminScoresPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ org?: string }>;
+}) {
+  const { org } = await searchParams;
+  const orgId = resolveAdminTargetOrg(org);
+  const leagueId = getAssignrLeagueId(orgId);
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
@@ -91,7 +96,11 @@ export default async function AdminScoresPage() {
     <main className="min-h-screen bg-zinc-950 text-white py-14">
       <section className="max-w-6xl mx-auto px-6">
         <div className="mb-8">
-          <AdminSectionHeader badge="SCORE ENTRY" />
+          <AdminSectionHeader
+            badge="SCORE ENTRY"
+            currentOrg={orgId}
+            currentPath="/admin/scores"
+          />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Enter Game Scores
           </h1>
@@ -101,7 +110,11 @@ export default async function AdminScoresPage() {
           </p>
         </div>
 
-        <AdminScoresManager games={scoreEntryGames} existingScores={scores} />
+        <AdminScoresManager
+          games={scoreEntryGames}
+          existingScores={scores}
+          targetOrg={orgId}
+        />
       </section>
     </main>
   );

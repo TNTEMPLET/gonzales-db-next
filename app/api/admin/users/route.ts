@@ -3,8 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-
-const orgId = process.env.SITE_ORG ?? "gonzales";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 type PromotePayload = {
   userId?: string;
@@ -66,6 +65,7 @@ export async function GET(request: NextRequest) {
 
   try {
     const query = request.nextUrl.searchParams;
+    const targetOrg = resolveAdminTargetOrg(query.get("org"));
     const logPage = toPositiveInt(query.get("logPage"), 1);
     const logPageSize = Math.min(
       toPositiveInt(query.get("logPageSize"), 25),
@@ -105,7 +105,7 @@ export async function GET(request: NextRequest) {
     const [users, admins, currentAdmin, auditLogs, totalAuditLogs] =
       await Promise.all([
         prisma.registeredUser.findMany({
-          where: { organizationId: orgId },
+          where: { organizationId: targetOrg },
           orderBy: { createdAt: "desc" },
         }),
         prisma.adminUser.findMany({
@@ -139,6 +139,7 @@ export async function GET(request: NextRequest) {
         to: logTo?.toISOString() || null,
       },
       currentAdminEmail: currentAdmin?.email || null,
+      targetOrg,
       data: users.map((user: { email: string }) => ({
         ...user,
         isAdmin: adminEmailSet.has(user.email),
@@ -166,6 +167,9 @@ export async function POST(request: NextRequest) {
     const currentAdmin = await getAdminUserFromRequest(request);
     const sourcePath = getSourcePath(request);
     const requestIp = getRequestIp(request);
+    const targetOrg = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
 
     const body = (await request.json()) as PromotePayload;
     if (!body.userId) {
@@ -181,6 +185,13 @@ export async function POST(request: NextRequest) {
 
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    if (user.organizationId !== targetOrg) {
+      return NextResponse.json(
+        { error: "User not found for selected org" },
+        { status: 404 },
+      );
     }
 
     const fullName =
@@ -248,6 +259,9 @@ export async function DELETE(request: NextRequest) {
     const body = (await request.json()) as DemotePayload;
     const sourcePath = getSourcePath(request);
     const requestIp = getRequestIp(request);
+    const targetOrg = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
 
     if (!body.adminId && !body.email) {
       return NextResponse.json(
@@ -276,7 +290,7 @@ export async function DELETE(request: NextRequest) {
     }
 
     const linkedRegisteredUser = await prisma.registeredUser.findFirst({
-      where: { organizationId: orgId, email: targetAdmin.email },
+      where: { organizationId: targetOrg, email: targetAdmin.email },
     });
 
     await prisma.adminAuditLog.create({

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 type DugoutAuthor = {
   id: string;
@@ -35,7 +36,12 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-export default function DugoutModerationPanel() {
+export default function DugoutModerationPanel({
+  targetOrg,
+}: {
+  targetOrg: ContentOrgId;
+}) {
+  const orgQuery = `org=${targetOrg}`;
   const [posts, setPosts] = useState<DugoutPost[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editValue, setEditValue] = useState("");
@@ -46,14 +52,16 @@ export default function DugoutModerationPanel() {
 
   useEffect(() => {
     void loadPosts();
-  }, []);
+  }, [targetOrg]);
 
   async function loadPosts() {
     setBusy(true);
     setError("");
 
     try {
-      const response = await fetch("/api/dugout/posts", { cache: "no-store" });
+      const response = await fetch(`/api/dugout/posts?${orgQuery}`, {
+        cache: "no-store",
+      });
       const json = (await response.json()) as {
         error?: string;
         data?: DugoutPost[];
@@ -90,7 +98,7 @@ export default function DugoutModerationPanel() {
     setNotice("");
 
     try {
-      const response = await fetch(`/api/dugout/posts/${postId}`, {
+      const response = await fetch(`/api/dugout/posts/${postId}?${orgQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ content }),
@@ -127,7 +135,7 @@ export default function DugoutModerationPanel() {
     setNotice("");
 
     try {
-      const response = await fetch(`/api/dugout/posts/${postId}`, {
+      const response = await fetch(`/api/dugout/posts/${postId}?${orgQuery}`, {
         method: "DELETE",
       });
       const json = (await response.json()) as { error?: string };

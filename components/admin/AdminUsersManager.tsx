@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 type AdminUser = {
   id: string;
@@ -109,7 +110,12 @@ function csvEscape(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
-export default function AdminUsersManager() {
+export default function AdminUsersManager({
+  targetOrg,
+}: {
+  targetOrg: ContentOrgId;
+}) {
+  const orgQuery = `org=${targetOrg}`;
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
   const [auditMeta, setAuditMeta] = useState<AuditLogsMeta>({
@@ -144,7 +150,7 @@ export default function AdminUsersManager() {
   useEffect(() => {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [logPage, logPageSize, logQuery, logFromDate, logToDate]);
+  }, [targetOrg, logPage, logPageSize, logQuery, logFromDate, logToDate]);
 
   const nonAdminRegisteredUsers = useMemo(
     () => registeredUsers.filter((user) => !user.isAdmin),
@@ -183,6 +189,7 @@ export default function AdminUsersManager() {
       if (logFromDate) params.set("logFrom", toIsoFromDateInput(logFromDate));
       if (logToDate) params.set("logTo", toIsoFromDateInput(logToDate, true));
 
+      params.set("org", targetOrg);
       const response = await fetch(`/api/admin/users?${params.toString()}`);
       const json = (await response.json()) as ApiResponse | { error?: string };
 
@@ -221,7 +228,7 @@ export default function AdminUsersManager() {
     setNotice("");
 
     try {
-      const response = await fetch("/api/admin/users", {
+      const response = await fetch(`/api/admin/users?${orgQuery}`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -250,7 +257,7 @@ export default function AdminUsersManager() {
     setNotice("");
 
     try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
+      const response = await fetch(`/api/admin/users/${userId}?${orgQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isCoach: !currentIsCoach }),
@@ -284,7 +291,7 @@ export default function AdminUsersManager() {
     setNotice("");
 
     try {
-      const response = await fetch("/api/admin/users", {
+      const response = await fetch(`/api/admin/users?${orgQuery}`, {
         method: "DELETE",
         headers: {
           "Content-Type": "application/json",
@@ -313,7 +320,7 @@ export default function AdminUsersManager() {
     setNotice("");
 
     try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
+      const response = await fetch(`/api/admin/users/${userId}?${orgQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isBlocked: true }),
@@ -341,7 +348,7 @@ export default function AdminUsersManager() {
     setNotice("");
 
     try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
+      const response = await fetch(`/api/admin/users/${userId}?${orgQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ isBlocked: false }),
@@ -369,7 +376,7 @@ export default function AdminUsersManager() {
     setNotice("");
 
     try {
-      const response = await fetch(`/api/admin/users/${userId}`, {
+      const response = await fetch(`/api/admin/users/${userId}?${orgQuery}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
       });
@@ -411,14 +418,17 @@ export default function AdminUsersManager() {
     setNotice("");
 
     try {
-      const response = await fetch(`/api/admin/users/${editingUser.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          firstName: editFirstName,
-          lastName: editLastName,
-        }),
-      });
+      const response = await fetch(
+        `/api/admin/users/${editingUser.id}?${orgQuery}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            firstName: editFirstName,
+            lastName: editLastName,
+          }),
+        },
+      );
       const json = await response.json();
 
       if (!response.ok) {

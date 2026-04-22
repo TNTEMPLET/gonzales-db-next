@@ -6,6 +6,8 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
+import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export const metadata = {
   title: "Admin Dashboard | Gonzales Diamond Baseball",
@@ -13,7 +15,14 @@ export const metadata = {
     "Central admin dashboard for users, news posts, and dugout moderation.",
 };
 
-export default async function AdminDashboardPage() {
+export default async function AdminDashboardPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ org?: string }>;
+}) {
+  const { org } = await searchParams;
+  const currentOrg = resolveAdminTargetOrg(org);
+
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
@@ -27,28 +36,29 @@ export default async function AdminDashboardPage() {
     adminUser.name ||
     adminUser.email;
 
+  const orgQuery = `?org=${currentOrg}`;
   const cards = [
     {
-      href: "/admin/users",
+      href: `/admin/users${orgQuery}`,
       title: "User Management",
       description: "Promote/demote admins and manage user access roles.",
       action: "Open Users",
     },
     {
-      href: "/admin/scores",
+      href: `/admin/scores${orgQuery}`,
       title: "Scores & Standings",
       description:
         "Enter game scores and automatically power standings by age group.",
       action: "Open Score Entry",
     },
     {
-      href: "/news/admin",
+      href: `/news/admin${orgQuery}`,
       title: "News Management",
       description: "Create, edit, publish, and delete site news posts.",
       action: "Open News Admin",
     },
     {
-      href: "/admin/dugout",
+      href: `/admin/dugout${orgQuery}`,
       title: "Dugout Moderation",
       description: "Edit or remove any post in The Dugout feed.",
       action: "Open Dugout Moderation",
@@ -61,6 +71,9 @@ export default async function AdminDashboardPage() {
         <div className="mb-8">
           <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-4">
             ADMIN DASHBOARD
+          </div>
+          <div className="mb-4">
+            <AdminOrgSwitcher currentOrg={currentOrg} currentPath="/admin" />
           </div>
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Welcome, {displayName}

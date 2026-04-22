@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 function getSourcePath(request: NextRequest) {
   const explicitPath = request.headers.get("x-source-path")?.trim();
@@ -38,6 +39,9 @@ export async function PATCH(
   }
 
   const { id } = await params;
+  const targetOrg = resolveAdminTargetOrg(
+    request.nextUrl.searchParams.get("org"),
+  );
   const body = (await request.json()) as {
     isCoach?: boolean;
     isBlocked?: boolean;
@@ -66,7 +70,7 @@ export async function PATCH(
   }
 
   const user = await prisma.registeredUser.findUnique({ where: { id } });
-  if (!user) {
+  if (!user || user.organizationId !== targetOrg) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
@@ -139,9 +143,12 @@ export async function DELETE(
   }
 
   const { id } = await params;
+  const targetOrg = resolveAdminTargetOrg(
+    request.nextUrl.searchParams.get("org"),
+  );
   const user = await prisma.registeredUser.findUnique({ where: { id } });
 
-  if (!user) {
+  if (!user || user.organizationId !== targetOrg) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 

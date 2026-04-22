@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { getDefaultContentOrg, type ContentOrgId } from "@/lib/siteConfig";
 
 const dugoutAuthorSelect = {
   id: true,
@@ -73,10 +74,12 @@ export function serializeDugoutPost(post: DugoutPostWithRelations) {
   };
 }
 
-export async function listDugoutPosts(viewerUserId?: string | null) {
-  const { getOrgId } = await import("@/lib/siteConfig");
+export async function listDugoutPosts(
+  viewerUserId?: string | null,
+  targetOrg?: ContentOrgId,
+) {
   const posts = await prisma.dugoutPost.findMany({
-    where: { organizationId: getOrgId() },
+    where: { organizationId: targetOrg ?? getDefaultContentOrg() },
     orderBy: [
       { isPinned: "desc" },
       { pinnedAt: "desc" },

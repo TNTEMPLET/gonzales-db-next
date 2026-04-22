@@ -10,8 +10,7 @@ import {
 import { ensureCoach } from "@/lib/dugout/auth";
 import { MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import prisma from "@/lib/prisma";
-
-const orgId = process.env.SITE_ORG ?? "gonzales";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 type CreatePostPayload = {
   content?: string;
@@ -31,6 +30,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
+    const targetOrg = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
     const coachUser = await getCoachUserFromRequest(request);
     const adminUser = !coachUser
       ? await getAdminUserFromRequest(request)
@@ -38,12 +40,12 @@ export async function GET(request: NextRequest) {
     let viewerId: string | undefined = coachUser?.id;
     if (!viewerId && adminUser) {
       const reg = await prisma.registeredUser.findFirst({
-        where: { organizationId: orgId, email: adminUser.email },
+        where: { organizationId: targetOrg, email: adminUser.email },
         select: { id: true },
       });
       viewerId = reg?.id;
     }
-    const posts = await listDugoutPosts(viewerId);
+    const posts = await listDugoutPosts(viewerId, targetOrg);
 
     return NextResponse.json({ data: posts });
   } catch (err: unknown) {
@@ -65,6 +67,9 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const targetOrg = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
     const coachUser = await getCoachUserFromRequest(request);
     const adminUser = !coachUser
       ? await getAdminUserFromRequest(request)
@@ -74,7 +79,7 @@ export async function POST(request: NextRequest) {
     let authorId: string | undefined = coachUser?.id;
     if (!authorId && adminUser) {
       const reg = await prisma.registeredUser.findFirst({
-        where: { organizationId: orgId, email: adminUser.email },
+        where: { organizationId: targetOrg, email: adminUser.email },
         select: { id: true },
       });
       authorId = reg?.id;
@@ -138,6 +143,7 @@ export async function POST(request: NextRequest) {
 
     const post = await prisma.dugoutPost.create({
       data: {
+        organizationId: targetOrg,
         content,
         mediaUrl,
         mediaType,

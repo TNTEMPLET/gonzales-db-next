@@ -7,6 +7,7 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export const metadata = {
   title: "Admin Users | Gonzales Diamond Baseball",
@@ -14,7 +15,14 @@ export const metadata = {
     "Promote and demote admin accounts for Gonzales Diamond Baseball.",
 };
 
-export default async function AdminUsersPage() {
+export default async function AdminUsersPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ org?: string }>;
+}) {
+  const { org } = await searchParams;
+  const currentOrg = resolveAdminTargetOrg(org);
+
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
@@ -27,7 +35,11 @@ export default async function AdminUsersPage() {
     <main className="min-h-screen bg-zinc-950 text-white py-14">
       <section className="max-w-6xl mx-auto px-6">
         <div className="mb-8">
-          <AdminSectionHeader badge="ACCESS CONTROL" />
+          <AdminSectionHeader
+            badge="ACCESS CONTROL"
+            currentOrg={currentOrg}
+            currentPath="/admin/users"
+          />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Admin User Management
           </h1>
@@ -37,7 +49,7 @@ export default async function AdminUsersPage() {
           </p>
         </div>
 
-        <AdminUsersManager />
+        <AdminUsersManager targetOrg={currentOrg} />
       </section>
     </main>
   );

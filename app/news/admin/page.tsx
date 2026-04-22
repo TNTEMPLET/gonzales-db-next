@@ -7,6 +7,7 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export const metadata = {
   title: "News Admin | Gonzales Diamond Baseball",
@@ -16,7 +17,7 @@ export const metadata = {
 export default async function NewsAdminPage({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string }>;
+  searchParams: Promise<{ edit?: string; org?: string }>;
 }) {
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
@@ -26,13 +27,18 @@ export default async function NewsAdminPage({
     redirect("/admin/login?next=/news/admin");
   }
 
-  const { edit } = await searchParams;
+  const { edit, org } = await searchParams;
+  const currentOrg = resolveAdminTargetOrg(org);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
       <section className="max-w-6xl mx-auto px-6">
         <div className="mb-8">
-          <AdminSectionHeader badge="CONTENT MANAGEMENT" />
+          <AdminSectionHeader
+            badge="CONTENT MANAGEMENT"
+            currentOrg={currentOrg}
+            currentPath="/news/admin"
+          />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             News Admin
           </h1>
@@ -51,6 +57,7 @@ export default async function NewsAdminPage({
               : adminUser.name
           }
           initialEditSlug={edit}
+          targetOrg={currentOrg}
         />
       </section>
     </main>

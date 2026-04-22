@@ -8,6 +8,7 @@ import {
   type FormEvent,
 } from "react";
 import { useRouter } from "next/navigation";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
@@ -99,12 +100,15 @@ export default function NewsAdminPanel({
   adminEmail,
   adminName,
   initialEditSlug,
+  targetOrg,
 }: {
   adminEmail: string;
   adminName: string | null;
   initialEditSlug?: string;
+  targetOrg: ContentOrgId;
 }) {
   const router = useRouter();
+  const orgQuery = `org=${targetOrg}`;
   const defaultAuthor = adminName?.trim() || adminEmail;
   const [posts, setPosts] = useState<NewsPost[]>([]);
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUser[]>([]);
@@ -141,7 +145,7 @@ export default function NewsAdminPanel({
     setNotice("");
 
     try {
-      const response = await fetch("/api/news?limit=50");
+      const response = await fetch(`/api/news?limit=50&${orgQuery}`);
       const json = await response.json();
 
       if (!response.ok) {
@@ -160,7 +164,9 @@ export default function NewsAdminPanel({
 
   async function loadRegisteredUsers() {
     try {
-      const response = await fetch("/api/admin/users", { method: "GET" });
+      const response = await fetch(`/api/admin/users?${orgQuery}`, {
+        method: "GET",
+      });
       const json = (await response.json()) as
         | AdminUsersApiResponse
         | { error?: string };
@@ -187,7 +193,7 @@ export default function NewsAdminPanel({
     setNotice("");
 
     try {
-      const response = await fetch("/api/admin/users", {
+      const response = await fetch(`/api/admin/users?${orgQuery}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId }),
@@ -213,7 +219,7 @@ export default function NewsAdminPanel({
     setNotice("");
 
     try {
-      const response = await fetch("/api/admin/users", {
+      const response = await fetch(`/api/admin/users?${orgQuery}`, {
         method: "DELETE",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email }),
@@ -252,7 +258,7 @@ export default function NewsAdminPanel({
     setNotice("");
 
     try {
-      const response = await fetch("/api/news", {
+      const response = await fetch(`/api/news?${orgQuery}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -393,7 +399,7 @@ export default function NewsAdminPanel({
     setNotice("");
 
     try {
-      const response = await fetch(`/api/news/${selectedSlug}`, {
+      const response = await fetch(`/api/news/${selectedSlug}?${orgQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
@@ -451,7 +457,7 @@ export default function NewsAdminPanel({
     setNotice("");
 
     try {
-      const response = await fetch(`/api/news/${selectedSlug}`, {
+      const response = await fetch(`/api/news/${selectedSlug}?${orgQuery}`, {
         method: "DELETE",
       });
       const json = await response.json();

@@ -3,8 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureNewsAdmin, isNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-
-const orgId = process.env.SITE_ORG ?? "gonzales";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
@@ -37,6 +36,9 @@ function slugify(input: string): string {
 export async function GET(request: NextRequest, context: RouteContext) {
   try {
     const { slug } = await context.params;
+    const orgId = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
 
     const post = await prisma.newsPost.findFirst({
       where: { organizationId: orgId, slug },
@@ -70,6 +72,9 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const { slug } = await context.params;
+    const orgId = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
     const existing = await prisma.newsPost.findFirst({
       where: { organizationId: orgId, slug },
     });
@@ -148,6 +153,9 @@ export async function DELETE(request: NextRequest, context: RouteContext) {
 
   try {
     const { slug } = await context.params;
+    const orgId = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
 
     const existing = await prisma.newsPost.findFirst({
       where: { organizationId: orgId, slug },

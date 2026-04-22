@@ -3,8 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { isNewsAdmin, ensureNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-
-const orgId = process.env.SITE_ORG ?? "gonzales";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
@@ -38,13 +37,16 @@ function slugify(input: string): string {
     .replace(/-+/g, "-");
 }
 
-async function ensureUniqueSlug(baseSlug: string): Promise<string> {
+async function ensureUniqueSlug(
+  organizationId: string,
+  baseSlug: string,
+): Promise<string> {
   let slug = baseSlug;
   let i = 2;
 
   while (true) {
     const existing = await prisma.newsPost.findFirst({
-      where: { organizationId: orgId, slug },
+      where: { organizationId, slug },
     });
     if (!existing) return slug;
     slug = `${baseSlug}-${i}`;
@@ -55,6 +57,7 @@ async function ensureUniqueSlug(baseSlug: string): Promise<string> {
 export async function GET(request: NextRequest) {
   try {
     const searchParams = request.nextUrl.searchParams;
+    const orgId = resolveAdminTargetOrg(searchParams.get("org"));
     const page = Math.max(1, Number(searchParams.get("page") || "1") || 1);
     const limitRaw = Number(searchParams.get("limit") || "10") || 10;
     const limit = Math.min(MAX_PAGE_SIZE, Math.max(1, limitRaw));
@@ -120,6 +123,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const orgId = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
     const status = body.status || "DRAFT";
     const requestedSlug = body.slug ? slugify(body.slug) : slugify(body.title);
     if (!requestedSlug) {
@@ -129,7 +135,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const slug = await ensureUniqueSlug(requestedSlug);
+    const slug = await ensureUniqueSlug(orgId, requestedSlug);
 
     const post = await prisma.newsPost.create({
       data: {

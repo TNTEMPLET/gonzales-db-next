@@ -6,6 +6,7 @@ import { MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import { getDugoutPostInclude, serializeDugoutPost } from "@/lib/dugout/posts";
 import { ensureCoach } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export async function PATCH(
   request: NextRequest,
@@ -22,9 +23,12 @@ export async function PATCH(
   const { id } = await params;
 
   try {
+    const targetOrg = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
     const coach = await getCoachUserFromRequest(request);
     const post = await prisma.dugoutPost.findUnique({ where: { id } });
-    if (!post) {
+    if (!post || post.organizationId !== targetOrg) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
@@ -57,7 +61,7 @@ export async function PATCH(
 
       if (pinScope === "thread" && post.threadId) {
         await prisma.dugoutPost.updateMany({
-          where: { threadId: post.threadId },
+          where: { organizationId: targetOrg, threadId: post.threadId },
           data: pinData,
         });
       } else {
@@ -133,8 +137,11 @@ export async function DELETE(
   const { id } = await params;
 
   try {
+    const targetOrg = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
     const post = await prisma.dugoutPost.findUnique({ where: { id } });
-    if (!post) {
+    if (!post || post.organizationId !== targetOrg) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
