@@ -5,6 +5,7 @@ import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import { ensureNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
+import { getAssignrLeagueId } from "@/lib/siteConfig";
 
 type CsvRow = Record<string, string | number | boolean | null | undefined>;
 
@@ -118,6 +119,7 @@ function buildFallbackKeyWithTime(
 }
 
 export async function POST(request: NextRequest) {
+  const leagueId = getAssignrLeagueId();
   const auth = await ensureNewsAdmin(request);
   if (!auth.ok) {
     return NextResponse.json(
@@ -165,7 +167,7 @@ export async function POST(request: NextRequest) {
     const allSeasonGames = await fetchGames({
       startDate: "2026-03-01",
       endDate: "2026-06-30",
-      leagueId: 515712,
+      leagueId,
     });
 
     const gameById = new Map<string, Game>();

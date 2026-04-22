@@ -20,9 +20,11 @@ import { listDugoutPosts } from "@/lib/dugout/posts";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import { getPublishedNewsPosts } from "@/lib/news/queries";
 import prisma from "@/lib/prisma";
+import { getAssignrLeagueId } from "@/lib/siteConfig";
 import { computeStandingsByAgeGroup } from "@/lib/standings";
 
 const orgId = process.env.SITE_ORG ?? "gonzales";
+const defaultLeagueId = getAssignrLeagueId();
 
 export const metadata = {
   title: "The Dugout | Gonzales Diamond Baseball",
@@ -194,15 +196,16 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     fetchGames({
       startDate: todayStr,
       endDate: todayStr,
-      leagueId: 515712,
+      leagueId: defaultLeagueId,
     }).catch(() => [] as Game[]),
     fetchGames({
       startDate: scheduleStartDate,
       endDate: scheduleEndDate,
-      leagueId: 515712,
+      leagueId: defaultLeagueId,
     }).catch(() => [] as Game[]),
     getPublishedNewsPosts(),
     prisma.gameScore.findMany({
+      where: { organizationId: orgId },
       orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
       select: {
         gameExternalId: true,
@@ -216,7 +219,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     fetchGames({
       startDate: "2026-03-01",
       endDate: "2026-06-30",
-      leagueId: 515712,
+      leagueId: defaultLeagueId,
     }).catch(() => [] as Game[]),
   ]);
 

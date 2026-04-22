@@ -1,4 +1,6 @@
 // lib/fetchGames.ts
+import { getSiteConfig } from "@/lib/siteConfig";
+
 export type Game = {
   id: string | number;
   start_time?: string;
@@ -70,8 +72,10 @@ export async function fetchGames({
   limit = 50,
 }: FetchGamesOptions): Promise<Game[]> {
   const token = await getAssignrToken();
-  const siteId = process.env.ASSIGNR_SITE_ID;
+  const site = getSiteConfig();
+  const siteId = site.assignrSiteId || process.env.ASSIGNR_SITE_ID;
   const baseUrl = process.env.ASSIGNR_API_BASE || "https://api.assignr.com";
+  const effectiveLeagueId = leagueId ?? site.assignrLeagueId;
 
   if (!siteId) {
     throw new Error("Missing ASSIGNR_SITE_ID in .env.local");
@@ -90,8 +94,8 @@ export async function fetchGames({
     });
 
     // Filter by league if provided
-    if (leagueId !== undefined) {
-      params.append("search[league_id]", leagueId.toString());
+    if (effectiveLeagueId !== undefined && effectiveLeagueId !== "") {
+      params.append("search[league_id]", effectiveLeagueId.toString());
     }
 
     const response = await fetch(

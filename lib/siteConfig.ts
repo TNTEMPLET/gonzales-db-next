@@ -30,7 +30,7 @@ const configs: Record<OrgId, SiteConfig> = {
     colorPrimaryDark: "#4a0163",
     colorAccent: "#ffcb29",
     assignrSiteId: process.env.ASSIGNR_SITE_ID ?? "",
-    assignrLeagueId: "515712",
+    assignrLeagueId: process.env.ASSIGNR_LEAGUE_ID ?? "515712",
   },
   ascension: {
     orgId: "ascension",
@@ -42,9 +42,15 @@ const configs: Record<OrgId, SiteConfig> = {
     colorPrimary: "#09306a",
     colorPrimaryDark: "#072550",
     colorAccent: "#b10807",
-    // TODO: Replace with Ascension LL Assignr credentials once available
-    assignrSiteId: process.env.ASCENSION_ASSIGNR_SITE_ID ?? "",
-    assignrLeagueId: process.env.ASCENSION_ASSIGNR_LEAGUE_ID ?? "",
+    // Prefer generic ASSIGNR_* vars so each deployment can be configured independently.
+    assignrSiteId:
+      process.env.ASSIGNR_SITE_ID ??
+      process.env.ASCENSION_ASSIGNR_SITE_ID ??
+      "",
+    assignrLeagueId:
+      process.env.ASSIGNR_LEAGUE_ID ??
+      process.env.ASCENSION_ASSIGNR_LEAGUE_ID ??
+      "",
   },
   master: {
     orgId: "master",
@@ -67,6 +73,10 @@ export function getSiteConfig(): SiteConfig {
 
 export function getOrgId(): OrgId {
   return getSiteConfig().orgId;
+}
+
+export function getAssignrLeagueId(): string {
+  return getSiteConfig().assignrLeagueId || "515712";
 }
 
 /** All org IDs except master — used by master admin to enumerate orgs */

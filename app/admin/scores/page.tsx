@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth/adminSession";
 import { fetchGames } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
+import { getAssignrLeagueId, getOrgId } from "@/lib/siteConfig";
 
 export const metadata = {
   title: "Game Scores | Gonzales Diamond Baseball",
@@ -34,6 +35,9 @@ function toIsoDate(source?: string) {
 }
 
 export default async function AdminScoresPage() {
+  const leagueId = getAssignrLeagueId();
+  const orgId = getOrgId();
+
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
@@ -44,6 +48,7 @@ export default async function AdminScoresPage() {
 
   const [scores, games] = await Promise.all([
     prisma.gameScore.findMany({
+      where: { organizationId: orgId },
       select: {
         gameExternalId: true,
         homeScore: true,
@@ -54,7 +59,7 @@ export default async function AdminScoresPage() {
     fetchGames({
       startDate: "2026-03-01",
       endDate: "2026-06-30",
-      leagueId: 515712,
+      leagueId,
     }),
   ]);
 

@@ -1,6 +1,7 @@
 import ScheduleTable from "@/components/ScheduleTable";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
+import { getAssignrLeagueId, getOrgId } from "@/lib/siteConfig";
 import {
   computeStandingsByAgeGroup,
   type AgeGroupStandings,
@@ -21,6 +22,8 @@ export default async function SchedulePage({
 }) {
   const resolvedSearchParams = await searchParams;
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
+  const leagueId = getAssignrLeagueId();
+  const orgId = getOrgId();
 
   const now = new Date();
   let startDate: string;
@@ -54,7 +57,7 @@ export default async function SchedulePage({
   let standings: AgeGroupStandings[] = [];
 
   try {
-    games = await fetchGames({ startDate, endDate, leagueId: 515712 });
+    games = await fetchGames({ startDate, endDate, leagueId });
   } catch (err: unknown) {
     error = err instanceof Error ? err.message : "Failed to load game data";
   }
@@ -62,6 +65,7 @@ export default async function SchedulePage({
   try {
     const [scores, allSeasonGames] = await Promise.all([
       prisma.gameScore.findMany({
+        where: { organizationId: orgId },
         orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
         select: {
           gameExternalId: true,
@@ -75,7 +79,7 @@ export default async function SchedulePage({
       fetchGames({
         startDate: "2026-03-01",
         endDate: "2026-06-30",
-        leagueId: 515712,
+        leagueId,
       }),
     ]);
 

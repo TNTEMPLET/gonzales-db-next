@@ -3,6 +3,7 @@ import Link from "next/link";
 import StandingsTabs from "@/components/standings/StandingsTabs";
 import { fetchGames } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
+import { getAssignrLeagueId, getOrgId } from "@/lib/siteConfig";
 import { computeStandingsByAgeGroup } from "@/lib/standings";
 
 export const metadata = {
@@ -11,8 +12,12 @@ export const metadata = {
 };
 
 export default async function StandingsPage() {
+  const leagueId = getAssignrLeagueId();
+  const orgId = getOrgId();
+
   const [scores, allSeasonGames] = await Promise.all([
     prisma.gameScore.findMany({
+      where: { organizationId: orgId },
       orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
       select: {
         gameExternalId: true,
@@ -26,7 +31,7 @@ export default async function StandingsPage() {
     fetchGames({
       startDate: "2026-03-01",
       endDate: "2026-06-30",
-      leagueId: 515712,
+      leagueId,
     }),
   ]);
 

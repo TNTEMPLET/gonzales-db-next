@@ -9,6 +9,7 @@ import {
   getHomepageRotatorPosts,
 } from "@/lib/news/queries";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getAssignrLeagueId } from "@/lib/siteConfig";
 import logo from "@/public/images/logo.png";
 
 type ViewMode = "thisWeek" | "nextWeek" | "fullSeason";
@@ -47,6 +48,7 @@ export default async function Home({
   const resolvedSearchParams = await searchParams;
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const regOpen = isRegistrationOpen();
+  const defaultLeagueId = getAssignrLeagueId();
 
   let rotatorPosts: HomepageRotatorPost[] = [];
   let featuredPosts: HomepageFeaturedPost[] = [];
@@ -115,7 +117,7 @@ export default async function Home({
     games = await fetchGames({
       startDate,
       endDate,
-      leagueId: 515712,
+      leagueId: defaultLeagueId,
     });
   } catch (err: unknown) {
     error = err instanceof Error ? err.message : "Failed to load game data";
