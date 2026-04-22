@@ -23,6 +23,14 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  const brand = {
+    name: site.name,
+    shortName: site.shortName,
+    displayNameLine1: site.displayNameLine1,
+    displayNameLine2: site.displayNameLine2,
+    logoPath: site.logoPath,
+  };
+
   const orgCss = `
     :root {
       --org-primary: ${site.colorPrimary};
@@ -39,9 +47,9 @@ export default function RootLayout({
       </head>
       <SpeedInsights />
       <body className={`${inter.className} bg-zinc-950 text-white antialiased`}>
-        <Header />
+        <Header brand={brand} />
         {children}
-        <Footer />
+        <Footer brand={brand} />
       </body>
     </html>
   );

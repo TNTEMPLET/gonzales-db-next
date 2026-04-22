@@ -5,7 +5,6 @@ import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
-import { getSiteConfig } from "@/lib/siteConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 
 type DugoutMeResponse = {
@@ -15,13 +14,21 @@ type DugoutMeResponse = {
   } | null;
 };
 
-export default function Header() {
-  const site = getSiteConfig();
+type HeaderProps = {
+  brand: {
+    name: string;
+    displayNameLine1: string;
+    displayNameLine2: string;
+    logoPath: string;
+  };
+};
+
+export default function Header({ brand }: HeaderProps) {
   const pathname = usePathname();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
-  const [logoSrc, setLogoSrc] = useState(site.logoPath);
+  const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   const regOpen = isRegistrationOpen();
 
   useEffect(() => {
@@ -88,7 +95,7 @@ export default function Header() {
             {/* Adjust size as needed */}
             <Image
               src={logoSrc}
-              alt={`${site.name} Logo`}
+              alt={`${brand.name} Logo`}
               fill
               sizes="64px"
               className="object-contain"
@@ -98,10 +105,10 @@ export default function Header() {
           </div>
           <div className="hidden sm:block">
             <div className="font-bold text-2xl tracking-tight text-white uppercase">
-              {site.displayNameLine1}
+              {brand.displayNameLine1}
             </div>
             <div className="text-[10px] text-brand-gold -mt-1">
-              {site.displayNameLine2}
+              {brand.displayNameLine2}
             </div>
           </div>
         </Link>

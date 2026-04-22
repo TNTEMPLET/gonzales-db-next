@@ -3,12 +3,19 @@
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
-import { getSiteConfig } from "@/lib/siteConfig";
 
-export default function Footer() {
-  const site = getSiteConfig();
+type FooterProps = {
+  brand: {
+    name: string;
+    shortName: string;
+    displayNameLine2: string;
+    logoPath: string;
+  };
+};
+
+export default function Footer({ brand }: FooterProps) {
   const pathname = usePathname();
-  const [logoSrc, setLogoSrc] = useState(site.logoPath);
+  const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   if (pathname.startsWith("/dugout")) return null;
 
   return (
@@ -20,7 +27,7 @@ export default function Footer() {
             <div className="relative w-10 h-10">
               <Image
                 src={logoSrc}
-                alt={site.name}
+                alt={brand.name}
                 className="object-contain"
                 width={40}
                 height={40}
@@ -28,9 +35,9 @@ export default function Footer() {
               />
             </div>
             <div>
-              <div className="font-bold text-xl">{site.shortName}</div>
+              <div className="font-bold text-xl">{brand.shortName}</div>
               <div className="text-xs text-brand-gold">
-                {site.displayNameLine2}
+                {brand.displayNameLine2}
               </div>
             </div>
           </div>
@@ -115,7 +122,7 @@ export default function Footer() {
           </div>
 
           <div className="text-xs text-zinc-500">
-            © {new Date().getFullYear()} {site.name}
+            © {new Date().getFullYear()} {brand.name}
             <br />
             Powered by Next.js • All Rights Reserved
           </div>
