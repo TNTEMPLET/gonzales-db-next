@@ -401,20 +401,38 @@ export default function AdminReportsManager({ targetOrg }: Props) {
       );
 
       let currentY = 88;
+      const pageHeight = doc.internal.pageSize.getHeight();
+      const marginTop = 32;
+      const marginBottom = 32;
+      const parkHeaderHeight = 30;
+      const dayHeaderHeight = 16;
+      const tableSpacing = 10;
+      const dayFooterHeight = 16;
+
       if (mode === "main") {
         mainReportGroups.forEach((parkGroup, parkIdx) => {
-          if (parkIdx > 0) {
+          // Estimate total height for this park
+          let parkContentHeight = parkHeaderHeight;
+          parkGroup.days.forEach((day) => {
+            // Estimate table height: header + rows + footer
+            const rowCount = day.games.length;
+            const tableHeight = 24 + rowCount * 24; // rough estimate
+            parkContentHeight +=
+              dayHeaderHeight + tableHeight + dayFooterHeight + tableSpacing;
+          });
+          // If not enough space, add a page break before the park
+          if (currentY + parkContentHeight + marginBottom > pageHeight) {
             doc.addPage();
-            currentY = 40;
+            currentY = marginTop;
           }
-          // Draw Park section outline
+          // Draw Park section outline (wraps all days)
           doc.setDrawColor(170, 20, 20);
           doc.setLineWidth(1.2);
           doc.roundedRect(
             32,
             currentY - 18,
             doc.internal.pageSize.getWidth() - 64,
-            30,
+            parkContentHeight,
             8,
             8,
             "S",
@@ -425,11 +443,12 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             40,
             currentY,
           );
-          currentY += 18;
+          currentY += parkHeaderHeight;
           parkGroup.days.forEach((day, dayIdx) => {
-            if (dayIdx > 0) {
+            // If not enough space for this day, add a page break (but keep border logic simple)
+            if (currentY + 100 > pageHeight - marginBottom) {
               doc.addPage();
-              currentY = 40;
+              currentY = marginTop + parkHeaderHeight;
             }
             doc.setFontSize(10);
             doc.text(
@@ -437,7 +456,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               60,
               currentY,
             );
-            currentY += 16;
+            currentY += dayHeaderHeight;
             const tableBody = day.games.map((game) => {
               const u0 = game.umpires[0];
               const u1 = game.umpires[1];
@@ -487,31 +506,37 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               margin: { left: 40, right: 40 },
               theme: "grid",
             });
-            currentY = (doc as any).lastAutoTable.finalY + 10;
+            currentY = (doc as any).lastAutoTable.finalY + tableSpacing;
             doc.setFontSize(9);
             doc.text(
               `Total Pay for ${day.date}: ${formatMoney(day.totalPay)}`,
               60,
               currentY,
             );
-            currentY += 16;
+            currentY += dayFooterHeight;
           });
           currentY += 10;
         });
       } else {
         umpireGroups.forEach((parkGroup, parkIdx) => {
-          if (parkIdx > 0) {
+          // Estimate total height for this park
+          let parkContentHeight = parkHeaderHeight;
+          parkGroup.days.forEach((day) => {
+            const rowCount = day.entries.length;
+            const tableHeight = 24 + rowCount * 24;
+            parkContentHeight += dayHeaderHeight + tableHeight + tableSpacing;
+          });
+          if (currentY + parkContentHeight + marginBottom > pageHeight) {
             doc.addPage();
-            currentY = 40;
+            currentY = marginTop;
           }
-          // Draw Park section outline
           doc.setDrawColor(170, 20, 20);
           doc.setLineWidth(1.2);
           doc.roundedRect(
             32,
             currentY - 18,
             doc.internal.pageSize.getWidth() - 64,
-            30,
+            parkContentHeight,
             8,
             8,
             "S",
@@ -522,11 +547,11 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             40,
             currentY,
           );
-          currentY += 18;
+          currentY += parkHeaderHeight;
           parkGroup.days.forEach((day, dayIdx) => {
-            if (dayIdx > 0) {
+            if (currentY + 100 > pageHeight - marginBottom) {
               doc.addPage();
-              currentY = 40;
+              currentY = marginTop + parkHeaderHeight;
             }
             doc.setFontSize(10);
             doc.text(
@@ -534,7 +559,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               60,
               currentY,
             );
-            currentY += 16;
+            currentY += dayHeaderHeight;
             const tableBody = day.entries.map((entry) => [
               entry.umpireName,
               formatMoney(entry.totalPay),
@@ -553,7 +578,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               margin: { left: 60, right: 40 },
               theme: "grid",
             });
-            currentY = (doc as any).lastAutoTable.finalY + 10;
+            currentY = (doc as any).lastAutoTable.finalY + tableSpacing;
           });
           currentY += 10;
         });
