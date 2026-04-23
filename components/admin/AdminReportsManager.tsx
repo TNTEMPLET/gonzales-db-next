@@ -449,19 +449,25 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               type="button"
               disabled={busy}
               onClick={() => runReport("main")}
-              className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-60 ${
+                mode === "main"
+                  ? "border-red-500/50 bg-red-500/15 text-red-100 ring-1 ring-red-500/40"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+              }`}
             >
-              {busy && mode === "main" ? "Working..." : "Generate Main Report"}
+              {busy && mode === "main" ? "Working..." : "Games Report"}
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => runReport("umpire")}
-              className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-800 disabled:opacity-60"
+              className={`rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-60 ${
+                mode === "umpire"
+                  ? "border-red-500/50 bg-red-500/15 text-red-100 ring-1 ring-red-500/40"
+                  : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
+              }`}
             >
-              {busy && mode === "umpire"
-                ? "Working..."
-                : "Generate Report by Umpire"}
+              {busy && mode === "umpire" ? "Working..." : "Umpire Reports"}
             </button>
             <button
               type="button"
