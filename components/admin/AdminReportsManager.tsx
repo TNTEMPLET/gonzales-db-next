@@ -400,53 +400,124 @@ export default function AdminReportsManager({ targetOrg }: Props) {
         72,
       );
 
-      const head =
-        mode === "main"
-          ? [
-              [
-                "Date",
-                "Time",
-                "Age",
-                "Matchup",
-                "Venue",
-                "Status",
-                "Assignment(s)",
-                "Pay",
+      let currentY = 88;
+      if (mode === "main") {
+        for (const parkGroup of mainReportGroups) {
+          doc.setFontSize(12);
+          doc.text(
+            `${parkGroup.park} (Total Pay: ${formatMoney(parkGroup.totalPay)})`,
+            40,
+            currentY,
+          );
+          currentY += 18;
+          for (const day of parkGroup.days) {
+            doc.setFontSize(10);
+            doc.text(
+              `${day.dayName} — ${day.date} (Total Pay: ${formatMoney(day.totalPay)})`,
+              60,
+              currentY,
+            );
+            currentY += 16;
+            const tableBody = day.games.map((game) => {
+              const u0 = game.umpires[0];
+              const u1 = game.umpires[1];
+              let assignments = "";
+              if (game.status === "Cancelled") {
+                assignments = "Cancelled — $0";
+              } else if (game.umpires.length === 0) {
+                assignments = "No Assignment";
+              } else if (game.umpires.length === 1) {
+                assignments = `${u0.name} — $${u0.pay}`;
+              } else {
+                assignments = `${u0.name} — $${u0.pay}; ${u1.name} — $${u1.pay}`;
+              }
+              return [
+                game.date,
+                game.time,
+                game.homeTeam,
+                game.awayTeam,
+                game.venue,
+                game.subvenue,
+                game.ageGroup,
+                assignments,
+              ];
+            });
+            autoTable(doc, {
+              startY: currentY,
+              head: [
+                [
+                  "Date",
+                  "Time",
+                  "Home Team",
+                  "Away Team",
+                  "Park",
+                  "Field",
+                  "Age Group",
+                  "Assignment(s)",
+                ],
               ],
-            ]
-          : [["Park", "Date", "Umpire Name", "Pay"]];
-
-      const body =
-        mode === "main"
-          ? (rows as MainReportRow[]).map((row) => [
-              row.date,
-              row.time,
-              row.ageGroup,
-              `${row.awayTeam} @ ${row.homeTeam}`,
-              row.subvenue ? `${row.venue} (${row.subvenue})` : row.venue,
-              row.status,
-              row.umpires.map((u) => `${u.name} - $${u.pay}`).join(", "),
-              formatMoney(row.gamePayTotal),
-            ])
-          : (rows as UmpireReportRow[]).map((row) => [
-              row.park,
-              row.date,
-              row.umpireName,
-              formatMoney(row.totalPay),
+              body: tableBody,
+              styles: {
+                fontSize: 9,
+                cellPadding: 4,
+              },
+              headStyles: {
+                fillColor: [170, 20, 20],
+              },
+              margin: { left: 40, right: 40 },
+              theme: "grid",
+            });
+            currentY = doc.lastAutoTable.finalY + 10;
+            doc.setFontSize(9);
+            doc.text(
+              `Total Pay for ${day.date}: ${formatMoney(day.totalPay)}`,
+              60,
+              currentY,
+            );
+            currentY += 16;
+          }
+          currentY += 10;
+        }
+      } else {
+        for (const parkGroup of umpireGroups) {
+          doc.setFontSize(12);
+          doc.text(
+            `${parkGroup.park} (Total Pay: ${formatMoney(parkGroup.totalPay)})`,
+            40,
+            currentY,
+          );
+          currentY += 18;
+          for (const day of parkGroup.days) {
+            doc.setFontSize(10);
+            doc.text(
+              `${getDayName(day.date)} — ${day.date} (Total Pay: ${formatMoney(day.totalPay)})`,
+              60,
+              currentY,
+            );
+            currentY += 16;
+            const tableBody = day.entries.map((entry) => [
+              entry.umpireName,
+              formatMoney(entry.totalPay),
             ]);
-
-      autoTable(doc, {
-        startY: 88,
-        head,
-        body,
-        styles: {
-          fontSize: 9,
-          cellPadding: 4,
-        },
-        headStyles: {
-          fillColor: [170, 20, 20],
-        },
-      });
+            autoTable(doc, {
+              startY: currentY,
+              head: [["Umpire Name", "Pay"]],
+              body: tableBody,
+              styles: {
+                fontSize: 9,
+                cellPadding: 4,
+              },
+              headStyles: {
+                fillColor: [170, 20, 20],
+              },
+              margin: { left: 60, right: 40 },
+              theme: "grid",
+            });
+            currentY = doc.lastAutoTable.finalY + 10;
+          }
+          currentY += 10;
+        }
+      }
 
       doc.save(`umpire-report-${mode}-${startDate}-to-${endDate}.pdf`);
     } catch (err: unknown) {
