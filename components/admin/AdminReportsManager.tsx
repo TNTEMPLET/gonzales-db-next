@@ -530,19 +530,6 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               currentY += 10;
             });
           }
-                cellPadding: 4,
-              },
-              headStyles: {
-                fillColor: [170, 20, 20],
-              },
-              margin: { left: 60, right: 40 },
-              theme: "grid",
-            });
-            currentY = (doc as any).lastAutoTable.finalY + 10;
-          }
-          currentY += 10;
-        }
-      }
 
       doc.save(`umpire-report-${mode}-${startDate}-to-${endDate}.pdf`);
     } catch (err: unknown) {
