@@ -400,7 +400,8 @@ export default function AdminReportsManager({ targetOrg }: Props) {
         72,
       );
 
-      let currentY = 88;
+      // Add extra margin after totals
+      let currentY = 108;
       const pageHeight = doc.internal.pageSize.getHeight();
       const marginTop = 32;
       const marginBottom = 32;
@@ -408,6 +409,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
       const dayHeaderHeight = 16;
       const tableSpacing = 10;
       const dayFooterHeight = 16;
+      const dayBorderPad = 8;
 
       if (mode === "main") {
         mainReportGroups.forEach((parkGroup, parkIdx) => {
@@ -560,183 +562,225 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               currentY,
             );
             currentY += dayHeaderHeight;
-            const tableBody = day.entries.map((entry) => [
-              entry.umpireName,
-              formatMoney(entry.totalPay),
-            ]);
-            autoTable(doc, {
-              startY: currentY,
-              head: [["Umpire Name", "Pay"]],
-              body: tableBody,
-              styles: {
-                fontSize: 9,
-                cellPadding: 4,
-              },
-              headStyles: {
-                fillColor: [170, 20, 20],
-              },
-              margin: { left: 60, right: 40 },
-              theme: "grid",
-            });
-            currentY = (doc as any).lastAutoTable.finalY + tableSpacing;
-          });
-          currentY += 10;
-        });
-      }
-
-      doc.save(`umpire-report-${mode}-${startDate}-to-${endDate}.pdf`);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to export PDF");
-      setNotice("");
-    } finally {
-      setExportBusy(false);
-    }
-  }
-
-  return (
-    <section className="space-y-6">
-      <div className="rounded-3xl border border-zinc-800 bg-[linear-gradient(180deg,rgba(24,24,27,0.94),rgba(9,9,11,0.98))] p-5 shadow-[0_18px_60px_rgba(0,0,0,0.28)]">
-        <div className="grid gap-3 xl:grid-cols-[1fr_1fr_180px_auto]">
-          <label className="space-y-1 text-sm text-zinc-300">
-            <span className="text-xs uppercase tracking-[0.22em] text-zinc-500">
-              Start Date
-            </span>
-            <input
-              type="date"
-              value={startDate}
-              onChange={(event) => setStartDate(event.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
-            />
-          </label>
-
-          <label className="space-y-1 text-sm text-zinc-300">
-            <span className="text-xs uppercase tracking-[0.22em] text-zinc-500">
-              End Date
-            </span>
-            <input
-              type="date"
-              value={endDate}
-              onChange={(event) => setEndDate(event.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
-            />
-          </label>
-
-          <label className="space-y-1 text-sm text-zinc-300">
-            <span className="text-xs uppercase tracking-[0.22em] text-zinc-500">
-              League
-            </span>
-            <select
-              value={league}
-              onChange={(event) =>
-                setLeague(event.target.value as LeagueFilter)
-              }
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
-            >
-              <option value="all">All Leagues</option>
-              <option value="littleleague">Ascension LL</option>
-              <option value="diamond">Gonzales DB</option>
-            </select>
-          </label>
-
-          <div className="flex flex-wrap items-end gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => runReport("main")}
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-60 ${
-                activeMode === "main"
-                  ? "border-red-500/50 bg-red-500/15 text-red-100 ring-1 ring-red-500/40"
-                  : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
-              }`}
-            >
-              {busy && generatingMode === "main"
-                ? "Working..."
-                : "Games Report"}
-            </button>
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => runReport("umpire")}
-              className={`rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-60 ${
-                activeMode === "umpire"
-                  ? "border-red-500/50 bg-red-500/15 text-red-100 ring-1 ring-red-500/40"
-                  : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
-              }`}
-            >
-              {busy && generatingMode === "umpire"
-                ? "Working..."
-                : "Umpire Reports"}
-            </button>
+            if (mode === "main") {
+              mainReportGroups.forEach((parkGroup, parkIdx) => {
+                // Estimate total height for this park
+                let parkContentHeight = parkHeaderHeight;
+                parkGroup.days.forEach((day) => {
+                  const rowCount = day.games.length;
+                  const tableHeight = 24 + rowCount * 24;
+                  parkContentHeight += dayHeaderHeight + tableHeight + dayFooterHeight + tableSpacing + dayBorderPad * 2;
+                });
+                if (currentY + parkContentHeight + marginBottom > pageHeight) {
+                  doc.addPage();
+                  currentY = marginTop;
+                }
+                // Draw Park section outline (wraps all days)
+                doc.setDrawColor(170, 20, 20);
+                doc.setLineWidth(1.2);
+                doc.roundedRect(
+                  32,
+                  currentY - 18,
+                  doc.internal.pageSize.getWidth() - 64,
+                  parkContentHeight,
+                  8,
+                  8,
+                  "S",
+                );
+                doc.setFontSize(12);
+                doc.text(
+                  `${parkGroup.park} (Total Pay: ${formatMoney(parkGroup.totalPay)})`,
+                  40,
+                  currentY,
+                );
+                currentY += parkHeaderHeight;
+                parkGroup.days.forEach((day, dayIdx) => {
+                  // If not enough space for this day, add a page break (but keep border logic simple)
+                  if (currentY + 100 > pageHeight - marginBottom) {
+                    doc.addPage();
+                    currentY = marginTop + parkHeaderHeight;
+                  }
+                  // Draw border for the day group
+                  doc.setDrawColor(200, 40, 40);
+                  doc.setLineWidth(0.8);
+                  const dayBoxY = currentY - dayBorderPad;
+                  const dayBoxHeight = dayHeaderHeight + 24 + day.games.length * 24 + dayFooterHeight + tableSpacing + dayBorderPad * 2 - 8;
+                  doc.roundedRect(
+                    48,
+                    dayBoxY,
+                    doc.internal.pageSize.getWidth() - 96,
+                    dayBoxHeight,
+                    5,
+                    5,
+                    "S",
+                  );
+                  doc.setFontSize(10);
+                  doc.text(
+                    `${day.dayName} — ${day.date} (Total Pay: ${formatMoney(day.totalPay)})`,
+                    60,
+                    currentY,
+                  );
+                  currentY += dayHeaderHeight;
+                  const tableBody = day.games.map((game) => {
+                    const u0 = game.umpires[0];
+                    const u1 = game.umpires[1];
+                    let assignments = "";
+                    if (game.status === "Cancelled") {
+                      assignments = "Cancelled — $0";
+                    } else if (game.umpires.length === 0) {
+                      assignments = "No Assignment";
+                    } else if (game.umpires.length === 1) {
+                      assignments = `${u0.name} — $${u0.pay}`;
+                    } else {
+                      assignments = `${u0.name} — $${u0.pay}; ${u1.name} — $${u1.pay}`;
+                    }
+                    return [
+                      game.date,
+                      game.time,
+                      game.homeTeam,
+                      game.awayTeam,
+                      game.venue,
+                      game.subvenue,
+                      game.ageGroup,
+                      assignments,
+                    ];
+                  });
+                  autoTable(doc, {
+                    startY: currentY,
+                    head: [
+                      [
+                        "Date",
+                        "Time",
+                        "Home Team",
+                        "Away Team",
+                        "Park",
+                        "Field",
+                        "Age Group",
+                        "Assignment(s)",
+                      ],
+                    ],
+                    body: tableBody,
+                    styles: {
+                      fontSize: 9,
+                      cellPadding: 4,
+                    },
+                    headStyles: {
+                      fillColor: [170, 20, 20],
+                    },
+                    margin: { left: 40, right: 40 },
+                    theme: "grid",
+                  });
+                  currentY = (doc as any).lastAutoTable.finalY + tableSpacing;
+                  // Highlight Total Pay for the day
+                  doc.setFontSize(10);
+                  doc.setTextColor(255, 255, 255);
+                  doc.setFillColor(170, 20, 20);
+                  const payText = `Total Pay for ${day.date}: ${formatMoney(day.totalPay)}`;
+                  const payX = 60;
+                  const payY = currentY;
+                  const payWidth = doc.getTextWidth(payText) + 12;
+                  doc.roundedRect(payX - 6, payY - 12, payWidth, 18, 4, 4, 'F');
+                  doc.text(payText, payX, payY);
+                  doc.setTextColor(30, 30, 30);
+                  currentY += dayFooterHeight;
+                });
+                currentY += 10;
+              });
             <button
               type="button"
               onClick={() => window.print()}
               title="Print Report"
-              aria-label="Print Report"
-              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-            >
-              <PrinterIcon />
-            </button>
-            <details className="relative">
-              <summary
-                title="Download Report"
-                className="flex h-10 cursor-pointer list-none items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-zinc-200 hover:bg-zinc-800"
-              >
-                <DownloadIcon />
-                <ChevronDownIcon />
-                <span className="sr-only">Download Report</span>
-              </summary>
-              <div className="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl">
-                <button
-                  type="button"
-                  onClick={downloadCsv}
-                  className="block w-full px-3 py-2 text-left text-sm font-semibold text-zinc-100 hover:bg-zinc-800"
-                >
-                  Download CSV
-                </button>
-                <button
-                  type="button"
-                  disabled={exportBusy}
-                  onClick={downloadPdf}
-                  className="block w-full px-3 py-2 text-left text-sm font-semibold text-zinc-100 hover:bg-zinc-800 disabled:opacity-60"
-                >
-                  {exportBusy ? "Preparing PDF..." : "Download PDF"}
-                </button>
-              </div>
-            </details>
-          </div>
-        </div>
-
-        {error ? (
-          <div className="mt-4 rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
-            {error}
-          </div>
-        ) : null}
-        {notice ? (
-          <div className="mt-4 rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">
-            {notice}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">
-            Games
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-white">
-            {totals.games}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">
-            Assignments
-          </p>
-          <p className="mt-2 text-2xl font-semibold text-white">
-            {totals.assignments}
-          </p>
-        </div>
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4">
-          <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">
+              } else {
+                umpireGroups.forEach((parkGroup, parkIdx) => {
+                  let parkContentHeight = parkHeaderHeight;
+                  parkGroup.days.forEach((day) => {
+                    const rowCount = day.entries.length;
+                    const tableHeight = 24 + rowCount * 24;
+                    parkContentHeight += dayHeaderHeight + tableHeight + tableSpacing + dayBorderPad * 2;
+                  });
+                  if (currentY + parkContentHeight + marginBottom > pageHeight) {
+                    doc.addPage();
+                    currentY = marginTop;
+                  }
+                  doc.setDrawColor(170, 20, 20);
+                  doc.setLineWidth(1.2);
+                  doc.roundedRect(
+                    32,
+                    currentY - 18,
+                    doc.internal.pageSize.getWidth() - 64,
+                    parkContentHeight,
+                    8,
+                    8,
+                    "S",
+                  );
+                  doc.setFontSize(12);
+                  doc.text(
+                    `${parkGroup.park} (Total Pay: ${formatMoney(parkGroup.totalPay)})`,
+                    40,
+                    currentY,
+                  );
+                  currentY += parkHeaderHeight;
+                  parkGroup.days.forEach((day, dayIdx) => {
+                    if (currentY + 100 > pageHeight - marginBottom) {
+                      doc.addPage();
+                      currentY = marginTop + parkHeaderHeight;
+                    }
+                    // Draw border for the day group
+                    doc.setDrawColor(200, 40, 40);
+                    doc.setLineWidth(0.8);
+                    const dayBoxY = currentY - dayBorderPad;
+                    const dayBoxHeight = dayHeaderHeight + 24 + day.entries.length * 24 + tableSpacing + dayBorderPad * 2 - 8;
+                    doc.roundedRect(
+                      48,
+                      dayBoxY,
+                      doc.internal.pageSize.getWidth() - 96,
+                      dayBoxHeight,
+                      5,
+                      5,
+                      "S",
+                    );
+                    doc.setFontSize(10);
+                    doc.text(
+                      `${getDayName(day.date)} — ${day.date} (Total Pay: ${formatMoney(day.totalPay)})`,
+                      60,
+                      currentY,
+                    );
+                    currentY += dayHeaderHeight;
+                    const tableBody = day.entries.map((entry) => [
+                      entry.umpireName,
+                      formatMoney(entry.totalPay),
+                    ]);
+                    autoTable(doc, {
+                      startY: currentY,
+                      head: [["Umpire Name", "Pay"]],
+                      body: tableBody,
+                      styles: {
+                        fontSize: 9,
+                        cellPadding: 4,
+                      },
+                      headStyles: {
+                        fillColor: [170, 20, 20],
+                      },
+                      margin: { left: 60, right: 40 },
+                      theme: "grid",
+                    });
+                    currentY = (doc as any).lastAutoTable.finalY + tableSpacing;
+                    // Highlight Total Pay for the day
+                    doc.setFontSize(10);
+                    doc.setTextColor(255, 255, 255);
+                    doc.setFillColor(170, 20, 20);
+                    const payText = `Total Pay for ${day.date}: ${formatMoney(day.totalPay)}`;
+                    const payX = 60;
+                    const payY = currentY;
+                    const payWidth = doc.getTextWidth(payText) + 12;
+                    doc.roundedRect(payX - 6, payY - 12, payWidth, 18, 4, 4, 'F');
+                    doc.text(payText, payX, payY);
+                    doc.setTextColor(30, 30, 30);
+                    currentY += dayFooterHeight;
+                  });
+                  currentY += 10;
+                });
+              }
             Estimated Pay
           </p>
           <p className="mt-2 text-2xl font-semibold text-white">
