@@ -328,7 +328,7 @@ export async function GET(request: NextRequest) {
       startDate,
       endDate,
       leagueId,
-      limit: 100,
+      limit: 50,
     });
 
     const filteredGames = games.filter((game) => {
