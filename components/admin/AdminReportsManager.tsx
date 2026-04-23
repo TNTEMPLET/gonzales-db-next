@@ -534,7 +534,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             <details className="relative">
               <summary
                 title="Download Report"
-                className="flex h-10 cursor-pointer list-none items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 text-red-100 hover:bg-red-500/20"
+                className="flex h-10 cursor-pointer list-none items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2 text-zinc-200 hover:bg-zinc-800"
               >
                 <DownloadIcon />
                 <ChevronDownIcon />
