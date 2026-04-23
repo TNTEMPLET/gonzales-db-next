@@ -81,6 +81,14 @@ export default async function AdminDashboardPage({
         : "Edit or remove any post in The Dugout feed.",
       action: masterMode ? "Open Dugout Watch" : "Open Dugout Moderation",
     },
+    {
+      href: `/admin/reports${orgQuery}`,
+      title: "Reporting",
+      description: masterMode
+        ? "Run umpire payout reports and operational summaries from the AP Baseball reporting desk."
+        : "Generate umpire reports and payout summaries.",
+      action: masterMode ? "Open Reporting Desk" : "Open Reports",
+    },
   ];
 
   const statusChips = [
