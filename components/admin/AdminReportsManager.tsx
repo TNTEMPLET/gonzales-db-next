@@ -530,6 +530,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               currentY += 10;
             });
           }
+        }
 
       doc.save(`umpire-report-${mode}-${startDate}-to-${endDate}.pdf`);
     } catch (err: unknown) {
