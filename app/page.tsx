@@ -1,4 +1,5 @@
 // app/page.tsx
+import { redirect } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import ScheduleTable from "@/components/ScheduleTable";
@@ -9,7 +10,11 @@ import {
   getHomepageRotatorPosts,
 } from "@/lib/news/queries";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
-import { getAssignrLeagueId, getSiteConfig } from "@/lib/siteConfig";
+import {
+  getAssignrLeagueId,
+  getSiteConfig,
+  isMasterDeployment,
+} from "@/lib/siteConfig";
 
 type ViewMode = "thisWeek" | "nextWeek" | "fullSeason";
 
@@ -45,6 +50,11 @@ export default async function Home({
   searchParams: Promise<{ view?: string }>;
 }) {
   const resolvedSearchParams = await searchParams;
+
+  if (isMasterDeployment()) {
+    redirect("/admin");
+  }
+
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const regOpen = isRegistrationOpen();
   const defaultLeagueId = getAssignrLeagueId();

@@ -121,7 +121,7 @@ export default async function AdminDashboardPage({
     <main
       className={`min-h-screen text-white py-14 ${
         masterMode
-          ? "bg-[radial-gradient(circle_at_top_left,rgba(34,211,238,0.10),transparent_22%),radial-gradient(circle_at_top_right,rgba(251,191,36,0.10),transparent_24%),linear-gradient(180deg,#09090b,#111827_45%,#09090b)]"
+          ? "bg-[radial-gradient(circle_at_top_left,rgba(239,68,68,0.14),transparent_22%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.06),transparent_24%),linear-gradient(180deg,#09090b,#111827_45%,#09090b)]"
           : "bg-zinc-950"
       }`}
     >
@@ -144,12 +144,12 @@ export default async function AdminDashboardPage({
               <div
                 className={`inline-flex items-center gap-2 rounded-full px-6 py-2 text-xs tracking-[3px] mb-4 ${
                   masterMode
-                    ? "border border-cyan-400/30 bg-cyan-400/10 text-cyan-100"
+                    ? "border border-red-500/30 bg-red-500/10 text-red-100"
                     : "bg-brand-purple"
                 }`}
               >
                 {masterMode ? (
-                  <span className="h-2 w-2 rounded-full bg-cyan-300" />
+                  <span className="h-2 w-2 rounded-full bg-red-400" />
                 ) : null}
                 {masterMode ? "AP BASEBALL CONTROL CENTER" : "ADMIN DASHBOARD"}
               </div>
@@ -240,7 +240,7 @@ export default async function AdminDashboardPage({
                 href={card.href}
                 className={`inline-block text-sm font-semibold ${
                   masterMode
-                    ? "text-cyan-200 hover:text-cyan-100"
+                    ? "text-red-100 hover:text-red-50"
                     : "text-brand-gold hover:text-brand-gold/80"
                 }`}
               >
