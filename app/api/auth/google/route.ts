@@ -7,6 +7,10 @@ import {
 } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
 import { upsertRegisteredUserFromGoogle } from "@/lib/auth/registeredUserAuth";
+import {
+  isMasterAdminEmailAllowed,
+  isMasterDeployment,
+} from "@/lib/siteConfig";
 
 type GoogleLoginPayload = {
   credential?: string;
@@ -37,10 +41,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const ticket = await client.verifyIdToken({
-      idToken: credential,
-      audience: googleClientId,
-    });
+    let ticket;
+    try {
+      ticket = await client.verifyIdToken({
+        idToken: credential,
+        audience: googleClientId,
+      });
+    } catch {
+      return NextResponse.json(
+        {
+          error:
+            "Google token validation failed. Verify GOOGLE_CLIENT_ID/NEXT_PUBLIC_GOOGLE_CLIENT_ID and Google authorized origins for this domain.",
+        },
+        { status: 401 },
+      );
+    }
 
     const payload = ticket.getPayload();
     const email = payload?.email?.trim().toLowerCase();
@@ -57,6 +72,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         { error: "Google account email is not verified" },
         { status: 401 },
+      );
+    }
+
+    if (isMasterDeployment() && !isMasterAdminEmailAllowed(email)) {
+      return NextResponse.json(
+        { error: "This account is not allowlisted for master admin access" },
+        { status: 403 },
       );
     }
 
