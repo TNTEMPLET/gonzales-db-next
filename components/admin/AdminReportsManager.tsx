@@ -530,7 +530,51 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               currentY += 10;
             });
           }
-        }
+        });
+      } else {
+        umpireGroups.forEach((parkGroup, parkIdx) => {
+          if (parkIdx > 0) {
+            doc.addPage();
+            currentY = 40;
+          }
+          // Draw Park section outline
+          doc.setDrawColor(170, 20, 20);
+          doc.setLineWidth(1.2);
+          doc.roundedRect(32, currentY - 18, doc.internal.pageSize.getWidth() - 64, 30, 8, 8, 'S');
+          doc.setFontSize(12);
+          doc.text(`${parkGroup.park} (Total Pay: ${formatMoney(parkGroup.totalPay)})`, 40, currentY);
+          currentY += 18;
+          parkGroup.days.forEach((day, dayIdx) => {
+            if (dayIdx > 0) {
+              doc.addPage();
+              currentY = 40;
+            }
+            doc.setFontSize(10);
+            doc.text(`${getDayName(day.date)} — ${day.date} (Total Pay: ${formatMoney(day.totalPay)})`, 60, currentY);
+            currentY += 16;
+            const tableBody = day.entries.map((entry) => [
+              entry.umpireName,
+              formatMoney(entry.totalPay),
+            ]);
+            autoTable(doc, {
+              startY: currentY,
+              head: [["Umpire Name", "Pay"]],
+              body: tableBody,
+              styles: {
+                fontSize: 9,
+                cellPadding: 4,
+              },
+              headStyles: {
+                fillColor: [170, 20, 20],
+              },
+              margin: { left: 60, right: 40 },
+              theme: "grid",
+            });
+            currentY = (doc as any).lastAutoTable.finalY + 10;
+          });
+          currentY += 10;
+        });
+      }
 
       doc.save(`umpire-report-${mode}-${startDate}-to-${endDate}.pdf`);
     } catch (err: unknown) {
