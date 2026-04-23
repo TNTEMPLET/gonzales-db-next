@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 
 import { getPublishedNewsPostBySlug } from "@/lib/news/queries";
+import { getSiteConfig } from "@/lib/siteConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -22,14 +23,16 @@ export async function generateMetadata({ params }: PageProps) {
   const { slug } = await params;
   const post = await getPublishedNewsPostBySlug(slug);
 
+  const site = getSiteConfig();
+
   if (!post) {
     return {
-      title: "News Article Not Found | Gonzales Diamond Baseball",
+      title: `News Article Not Found | ${site.name}`,
     };
   }
 
   return {
-    title: `${post.title} | Gonzales Diamond Baseball`,
+    title: `${post.title} | ${site.name}`,
     description: post.excerpt || "League news update",
   };
 }

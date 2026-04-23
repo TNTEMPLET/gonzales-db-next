@@ -7,12 +7,15 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
-export const metadata = {
-  title: "News Admin | Gonzales Diamond Baseball",
-  description: "Create and manage Gonzales Diamond Baseball news posts.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `News Admin | ${site.name}`,
+    description: `Create and manage ${site.name} news posts.`,
+  };
+}
 
 export default async function NewsAdminPage({
   searchParams,

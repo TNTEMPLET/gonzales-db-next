@@ -9,16 +9,20 @@ import {
 import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
 import {
   getOrgDisplayName,
+  getSiteConfig,
   getSiteConfigForOrg,
   isMasterDeployment,
   resolveAdminTargetOrg,
 } from "@/lib/siteConfig";
 
-export const metadata = {
-  title: "Admin Dashboard | Gonzales Diamond Baseball",
-  description:
-    "Central admin dashboard for users, news posts, and dugout moderation.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `Admin Dashboard | ${site.name}`,
+    description:
+      "Central admin dashboard for users, news posts, and dugout moderation.",
+  };
+}
 
 export default async function AdminDashboardPage({
   searchParams,

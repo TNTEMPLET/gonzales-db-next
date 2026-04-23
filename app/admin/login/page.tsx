@@ -1,15 +1,19 @@
 import Link from "next/link";
 
 import AdminLoginForm from "@/components/auth/AdminLoginForm";
+import { getSiteConfig } from "@/lib/siteConfig";
 
 type LoginPageProps = {
   searchParams: Promise<{ next?: string }>;
 };
 
-export const metadata = {
-  title: "Admin Login | Gonzales Diamond Baseball",
-  description: "Sign in to access Gonzales Diamond Baseball admin tools.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `Admin Login | ${site.name}`,
+    description: `Sign in to access ${site.name} admin tools.`,
+  };
+}
 
 export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
   const params = await searchParams;

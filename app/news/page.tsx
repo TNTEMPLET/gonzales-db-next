@@ -8,13 +8,17 @@ import {
 } from "@/lib/auth/adminSession";
 import { getPublishedNewsPosts } from "@/lib/news/queries";
 
+import { getSiteConfig } from "@/lib/siteConfig";
+
 export const dynamic = "force-dynamic";
 
-export const metadata = {
-  title: "News | Gonzales Diamond Baseball",
-  description:
-    "Latest announcements, rainout alerts, and league updates from Gonzales Diamond Baseball.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `News | ${site.name}`,
+    description: `Latest announcements, rainout alerts, and league updates from ${site.name}.`,
+  };
+}
 
 export default async function NewsPage() {
   const cookieStore = await cookies();

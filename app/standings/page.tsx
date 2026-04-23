@@ -3,13 +3,16 @@ import Link from "next/link";
 import StandingsTabs from "@/components/standings/StandingsTabs";
 import { fetchGames } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
-import { getAssignrLeagueId, getOrgId } from "@/lib/siteConfig";
+import { getAssignrLeagueId, getOrgId, getSiteConfig } from "@/lib/siteConfig";
 import { computeStandingsByAgeGroup } from "@/lib/standings";
 
-export const metadata = {
-  title: "Standings | Gonzales Diamond Baseball",
-  description: "League standings by age group.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `Standings | ${site.name}`,
+    description: `League standings by age group for ${site.name}.`,
+  };
+}
 
 export default async function StandingsPage() {
   const leagueId = getAssignrLeagueId();

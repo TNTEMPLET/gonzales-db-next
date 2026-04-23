@@ -7,12 +7,15 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
-export const metadata = {
-  title: "Dugout Moderation | Gonzales Diamond Baseball",
-  description: "Edit and delete Dugout feed posts as an admin.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `Dugout Moderation | ${site.name}`,
+    description: "Edit and delete Dugout feed posts as an admin.",
+  };
+}
 
 export default async function AdminDugoutPage({
   searchParams,

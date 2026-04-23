@@ -1,11 +1,14 @@
 import Link from "next/link";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getSiteConfig } from "@/lib/siteConfig";
 
-export const metadata = {
-  title: "Registration | Gonzales Diamond Baseball",
-  description:
-    "Register your player for the Gonzales Diamond Youth Baseball League Spring 2026 Season.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `Registration | ${site.name}`,
+    description: `Register your player for the ${site.name} Spring 2026 Season.`,
+  };
+}
 
 export default function RegistrationPage() {
   const regOpen = isRegistrationOpen();
@@ -20,7 +23,7 @@ export default function RegistrationPage() {
           </h1>
           <p className="text-zinc-300 text-xl mb-8">
             Registration for the Spring 2026 season is now closed. Thank you for
-            your interest in Gonzales Diamond Baseball!
+            your interest in {getSiteConfig().name}!
           </p>
           <Link
             href="/"

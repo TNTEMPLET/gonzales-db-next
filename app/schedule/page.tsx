@@ -1,7 +1,7 @@
 import ScheduleTable from "@/components/ScheduleTable";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
-import { getAssignrLeagueId, getOrgId } from "@/lib/siteConfig";
+import { getAssignrLeagueId, getOrgId, getSiteConfig } from "@/lib/siteConfig";
 import {
   computeStandingsByAgeGroup,
   type AgeGroupStandings,
@@ -9,11 +9,13 @@ import {
 
 type ViewMode = "thisWeek" | "nextWeek" | "fullSeason";
 
-export const metadata = {
-  title: "Schedule & Standings | Gonzales Diamond Baseball",
-  description:
-    "Full game schedule and standings for Gonzales Diamond Baseball.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `Schedule & Standings | ${site.name}`,
+    description: `Full game schedule and standings for ${site.name}.`,
+  };
+}
 
 export default async function SchedulePage({
   searchParams,

@@ -7,13 +7,15 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
-export const metadata = {
-  title: "Admin Users | Gonzales Diamond Baseball",
-  description:
-    "Promote and demote admin accounts for Gonzales Diamond Baseball.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `Admin Users | ${site.name}`,
+    description: `Promote and demote admin accounts for ${site.name}.`,
+  };
+}
 
 export default async function AdminUsersPage({
   searchParams,

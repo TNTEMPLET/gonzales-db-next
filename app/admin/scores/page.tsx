@@ -9,12 +9,19 @@ import {
 } from "@/lib/auth/adminSession";
 import { fetchGames } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
-import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getAssignrLeagueId,
+  getSiteConfig,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
-export const metadata = {
-  title: "Game Scores | Gonzales Diamond Baseball",
-  description: "Enter game scores and keep league standings current.",
-};
+export function generateMetadata() {
+  const site = getSiteConfig();
+  return {
+    title: `Game Scores | ${site.name}`,
+    description: "Enter game scores and keep league standings current.",
+  };
+}
 
 type ScoreEntryGame = {
   gameExternalId: string;
