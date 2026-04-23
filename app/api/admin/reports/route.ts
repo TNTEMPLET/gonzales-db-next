@@ -78,6 +78,20 @@ function getGameStatusLabel(status: string | undefined): string {
 
 function toDateLabel(value: string | undefined): string {
   if (!value) return "Date TBD";
+  // Assignr localized_date is "YYYY-MM-DD" — parse as local time to avoid UTC date shift
+  const isoMatch = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) {
+    const d = new Date(
+      Number(isoMatch[1]),
+      Number(isoMatch[2]) - 1,
+      Number(isoMatch[3]),
+    );
+    return d.toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    });
+  }
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf())) return "Date TBD";
   return parsed.toLocaleDateString("en-US", {
@@ -88,13 +102,7 @@ function toDateLabel(value: string | undefined): string {
 }
 
 function toTimeLabel(value: string | undefined): string {
-  if (!value) return "TBD";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.valueOf())) return "TBD";
-  return parsed.toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-  });
+  return value?.trim() || "TBD";
 }
 
 function isLittleLeagueAgeGroup(ageGroup: string): boolean {
@@ -222,8 +230,8 @@ function buildMainReportRows(games: Game[]): MainReportRow[] {
 
     return {
       gameId: String(game.id),
-      date: toDateLabel(game.start_time as string | undefined),
-      time: toTimeLabel(game.start_time as string | undefined),
+      date: toDateLabel(game.localized_date as string | undefined),
+      time: toTimeLabel(game.localized_time as string | undefined),
       ageGroup,
       homeTeam: (game.home_team as string | undefined)?.trim() || "Home Team",
       awayTeam: (game.away_team as string | undefined)?.trim() || "Away Team",
@@ -268,7 +276,7 @@ function buildUmpireReportRows(games: Game[]): UmpireReportRow[] {
         ((game._embedded as { venue?: { name?: string } } | undefined)?.venue
           ?.name || game.venue) as string | undefined
       )?.trim() || "Unknown Venue";
-    const date = toDateLabel(game.start_time as string | undefined);
+    const date = toDateLabel(game.localized_date as string | undefined);
 
     for (const [index, assignment] of assignments.entries()) {
       const assignmentPay =
