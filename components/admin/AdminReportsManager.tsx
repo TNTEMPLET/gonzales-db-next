@@ -29,6 +29,18 @@ type UmpireReportRow = {
   totalPay: number;
 };
 
+type UmpireDayGroup = {
+  date: string;
+  totalPay: number;
+  entries: UmpireReportRow[];
+};
+
+type UmpireParkGroup = {
+  park: string;
+  totalPay: number;
+  days: UmpireDayGroup[];
+};
+
 type ReportResponse = {
   data?: {
     mode: ReportMode;
@@ -64,6 +76,11 @@ function startOfMonthIsoDate() {
   return date.toISOString().slice(0, 10);
 }
 
+function dateLabelSortValue(label: string) {
+  const parsed = new Date(label);
+  return Number.isNaN(parsed.valueOf()) ? 0 : parsed.valueOf();
+}
+
 export default function AdminReportsManager({ targetOrg }: Props) {
   const [startDate, setStartDate] = useState(startOfMonthIsoDate());
   const [endDate, setEndDate] = useState(todayIsoDate());
@@ -77,6 +94,43 @@ export default function AdminReportsManager({ targetOrg }: Props) {
   const [notice, setNotice] = useState("");
 
   const orgQuery = useMemo(() => `org=${targetOrg}`, [targetOrg]);
+  const umpireGroups = useMemo(() => {
+    if (mode !== "umpire") return [] as UmpireParkGroup[];
+
+    const byPark = new Map<string, Map<string, UmpireReportRow[]>>();
+    for (const row of rows as UmpireReportRow[]) {
+      if (!byPark.has(row.park)) {
+        byPark.set(row.park, new Map<string, UmpireReportRow[]>());
+      }
+      const byDate = byPark.get(row.park)!;
+      if (!byDate.has(row.date)) {
+        byDate.set(row.date, []);
+      }
+      byDate.get(row.date)!.push(row);
+    }
+
+    return Array.from(byPark.entries())
+      .map(([park, byDate]) => {
+        const days: UmpireDayGroup[] = Array.from(byDate.entries())
+          .map(([date, entries]) => ({
+            date,
+            totalPay: entries.reduce((sum, entry) => sum + entry.totalPay, 0),
+            entries: [...entries].sort((a, b) =>
+              a.umpireName.localeCompare(b.umpireName),
+            ),
+          }))
+          .sort(
+            (a, b) => dateLabelSortValue(a.date) - dateLabelSortValue(b.date),
+          );
+
+        return {
+          park,
+          days,
+          totalPay: days.reduce((sum, day) => sum + day.totalPay, 0),
+        };
+      })
+      .sort((a, b) => a.park.localeCompare(b.park));
+  }, [mode, rows]);
 
   async function runReport(nextMode: ReportMode) {
     if (!startDate || !endDate) {
@@ -459,33 +513,64 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             </tbody>
           </table>
         ) : (
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-300">
-              <tr>
-                <th className="px-3 py-2 text-left">Park</th>
-                <th className="px-3 py-2 text-left">Date</th>
-                <th className="px-3 py-2 text-left">Umpire</th>
-                <th className="px-3 py-2 text-right">Games</th>
-                <th className="px-3 py-2 text-right">Est. Pay</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(rows as UmpireReportRow[]).map((row) => (
-                <tr
-                  key={`${row.park}-${row.date}-${row.umpireId}`}
-                  className="border-b border-zinc-900/80 text-zinc-200"
-                >
-                  <td className="px-3 py-2">{row.park}</td>
-                  <td className="px-3 py-2">{row.date}</td>
-                  <td className="px-3 py-2">{row.umpireName}</td>
-                  <td className="px-3 py-2 text-right">{row.games}</td>
-                  <td className="px-3 py-2 text-right">
-                    {formatMoney(row.totalPay)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="space-y-4 p-4">
+            {umpireGroups.map((parkGroup) => (
+              <section
+                key={parkGroup.park}
+                className="rounded-xl border border-zinc-800 bg-zinc-900/40"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+                  <h3 className="text-sm font-semibold text-zinc-100">
+                    {parkGroup.park}
+                  </h3>
+                  <span className="text-sm font-semibold text-emerald-300">
+                    {formatMoney(parkGroup.totalPay)}
+                  </span>
+                </div>
+
+                <div className="space-y-3 p-3">
+                  {parkGroup.days.map((day) => (
+                    <div
+                      key={`${parkGroup.park}-${day.date}`}
+                      className="overflow-hidden rounded-lg border border-zinc-800"
+                    >
+                      <div className="flex items-center justify-between bg-zinc-900/80 px-3 py-2 text-xs text-zinc-300">
+                        <span className="font-semibold">{day.date}</span>
+                        <span className="font-semibold text-zinc-100">
+                          {formatMoney(day.totalPay)}
+                        </span>
+                      </div>
+                      <table className="min-w-full text-sm">
+                        <thead className="border-y border-zinc-800 bg-zinc-950/70 text-zinc-400">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Umpire</th>
+                            <th className="px-3 py-2 text-right">Games</th>
+                            <th className="px-3 py-2 text-right">Pay</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {day.entries.map((entry) => (
+                            <tr
+                              key={`${entry.park}-${entry.date}-${entry.umpireId}`}
+                              className="border-b border-zinc-900/80 text-zinc-200 last:border-b-0"
+                            >
+                              <td className="px-3 py-2">{entry.umpireName}</td>
+                              <td className="px-3 py-2 text-right">
+                                {entry.games}
+                              </td>
+                              <td className="px-3 py-2 text-right">
+                                {formatMoney(entry.totalPay)}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         )}
       </div>
     </section>
