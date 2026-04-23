@@ -3,7 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureNewsAdmin, isNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  CONTENT_ORGS,
+  isMasterDeployment,
+  resolveAdminTargetOrg,
+  type ContentOrgId,
+} from "@/lib/siteConfig";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
@@ -22,6 +27,8 @@ type UpdateNewsPayload = {
   rotatorEnabled?: boolean;
   status?: NewsStatus;
   publishedAt?: string | null;
+  syncToOrgs?: ContentOrgId[];
+  createMissing?: boolean;
 };
 
 function slugify(input: string): string {
@@ -31,6 +38,24 @@ function slugify(input: string): string {
     .replace(/[^a-z0-9\s-]/g, "")
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-");
+}
+
+async function ensureUniqueSlug(
+  organizationId: string,
+  baseSlug: string,
+  excludeId?: string,
+): Promise<string> {
+  let slug = baseSlug;
+  let i = 2;
+
+  while (true) {
+    const existing = await prisma.newsPost.findFirst({
+      where: { organizationId, slug },
+    });
+    if (!existing || existing.id === excludeId) return slug;
+    slug = `${baseSlug}-${i}`;
+    i += 1;
+  }
 }
 
 export async function GET(request: NextRequest, context: RouteContext) {
@@ -127,12 +152,90 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       },
     });
 
+    const syncRequestedTargets = Array.isArray(body.syncToOrgs)
+      ? body.syncToOrgs.filter((org): org is ContentOrgId =>
+          CONTENT_ORGS.includes(org),
+        )
+      : [];
+    const shouldSync = isMasterDeployment() && syncRequestedTargets.length > 0;
+    const createMissing = Boolean(body.createMissing);
+
+    const syncResults: Array<{
+      org: ContentOrgId;
+      action: "updated" | "created" | "skipped";
+      slug?: string;
+    }> = [];
+
+    if (shouldSync) {
+      for (const org of syncRequestedTargets) {
+        if (org === orgId) continue;
+
+        const targetExisting = await prisma.newsPost.findFirst({
+          where: {
+            organizationId: org,
+            OR: [{ slug }, { slug: updated.slug }],
+          },
+        });
+
+        if (!targetExisting && !createMissing) {
+          syncResults.push({ org, action: "skipped" });
+          continue;
+        }
+
+        if (targetExisting) {
+          const nextTargetSlug = await ensureUniqueSlug(
+            org,
+            updated.slug,
+            targetExisting.id,
+          );
+
+          const synced = await prisma.newsPost.update({
+            where: { id: targetExisting.id },
+            data: {
+              title: updated.title,
+              slug: nextTargetSlug,
+              excerpt: updated.excerpt,
+              content: updated.content,
+              imageUrl: updated.imageUrl,
+              author: updated.author,
+              featured: updated.featured,
+              rotatorEnabled: updated.rotatorEnabled,
+              status: updated.status,
+              publishedAt: updated.publishedAt,
+            },
+          });
+
+          syncResults.push({ org, action: "updated", slug: synced.slug });
+          continue;
+        }
+
+        const createdSlug = await ensureUniqueSlug(org, updated.slug);
+        const created = await prisma.newsPost.create({
+          data: {
+            organizationId: org,
+            title: updated.title,
+            slug: createdSlug,
+            excerpt: updated.excerpt,
+            content: updated.content,
+            imageUrl: updated.imageUrl,
+            author: updated.author,
+            featured: updated.featured,
+            rotatorEnabled: updated.rotatorEnabled,
+            status: updated.status,
+            publishedAt: updated.publishedAt,
+          },
+        });
+
+        syncResults.push({ org, action: "created", slug: created.slug });
+      }
+    }
+
     revalidatePath("/");
     revalidatePath("/news");
     revalidatePath(`/news/${slug}`);
     revalidatePath(`/news/${updated.slug}`);
 
-    return NextResponse.json({ data: updated });
+    return NextResponse.json({ data: updated, syncResults });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

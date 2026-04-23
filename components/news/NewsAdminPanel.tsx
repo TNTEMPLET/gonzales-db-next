@@ -69,6 +69,12 @@ type PostPayload = {
   publishedAt: string;
 };
 
+type SyncResult = {
+  org: ContentOrgId;
+  action: "updated" | "created" | "skipped";
+  slug?: string;
+};
+
 function createEmptyPayload(defaultAuthor: string): PostPayload {
   return {
     title: "",
@@ -425,7 +431,10 @@ export default function NewsAdminPanel({
     });
   }
 
-  async function saveEditedPost(closeAfterSave: boolean) {
+  async function saveEditedPost(
+    closeAfterSave: boolean,
+    syncToBothSites = false,
+  ) {
     if (!selectedSlug) return;
 
     setBusy(true);
@@ -433,19 +442,27 @@ export default function NewsAdminPanel({
     setNotice("");
 
     try {
+      const patchBody = editPayload.publishedAt
+        ? {
+            ...editPayload,
+            publishedAt: fromLocalDateTimeInput(editPayload.publishedAt),
+          }
+        : {
+            ...editPayload,
+            publishedAt: editPayload.status === "DRAFT" ? null : undefined,
+          };
+
       const response = await fetch(`/api/news/${selectedSlug}?${orgQuery}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(
-          editPayload.publishedAt
+          syncToBothSites
             ? {
-                ...editPayload,
-                publishedAt: fromLocalDateTimeInput(editPayload.publishedAt),
+                ...patchBody,
+                syncToOrgs: CONTENT_ORGS,
+                createMissing: true,
               }
-            : {
-                ...editPayload,
-                publishedAt: editPayload.status === "DRAFT" ? null : undefined,
-              },
+            : patchBody,
         ),
       });
 
@@ -461,7 +478,25 @@ export default function NewsAdminPanel({
       } else {
         setSelectedSlug(json.data.slug);
       }
-      setNotice("Post updated");
+
+      if (syncToBothSites) {
+        const syncResults = (json.syncResults || []) as SyncResult[];
+        const updatedCount = syncResults.filter(
+          (item) => item.action === "updated",
+        ).length;
+        const createdCount = syncResults.filter(
+          (item) => item.action === "created",
+        ).length;
+        const skippedCount = syncResults.filter(
+          (item) => item.action === "skipped",
+        ).length;
+
+        setNotice(
+          `Post updated. Sync results: ${updatedCount} updated, ${createdCount} created, ${skippedCount} skipped.`,
+        );
+      } else {
+        setNotice("Post updated");
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update post");
     } finally {
@@ -476,6 +511,10 @@ export default function NewsAdminPanel({
 
   async function saveAndClosePost() {
     await saveEditedPost(true);
+  }
+
+  async function saveAndSyncPost() {
+    await saveEditedPost(false, true);
   }
 
   async function deletePost() {
@@ -928,7 +967,7 @@ export default function NewsAdminPanel({
                 Rotator requires a published post with an uploaded image.
               </p>
 
-              <div className="flex gap-3">
+              <div className="flex flex-wrap gap-3">
                 <button
                   disabled={busy || editImageBusy}
                   type="submit"
@@ -936,6 +975,18 @@ export default function NewsAdminPanel({
                 >
                   {busy || editImageBusy ? "Working..." : "Save"}
                 </button>
+                {isMasterMode ? (
+                  <button
+                    disabled={busy || editImageBusy}
+                    type="button"
+                    onClick={saveAndSyncPost}
+                    className="rounded-lg border border-red-600/70 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
+                  >
+                    {busy || editImageBusy
+                      ? "Working..."
+                      : "Save + Sync to Both Sites"}
+                  </button>
+                ) : null}
                 <button
                   disabled={busy || editImageBusy}
                   type="button"
