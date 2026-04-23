@@ -72,6 +72,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
   const [rows, setRows] = useState<MainReportRow[] | UmpireReportRow[]>([]);
   const [totals, setTotals] = useState({ games: 0, assignments: 0, pay: 0 });
   const [busy, setBusy] = useState(false);
+  const [exportBusy, setExportBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -114,6 +115,170 @@ export default function AdminReportsManager({ targetOrg }: Props) {
       setTotals({ games: 0, assignments: 0, pay: 0 });
     } finally {
       setBusy(false);
+    }
+  }
+
+  function escapeCsv(value: string | number) {
+    const source = String(value ?? "");
+    const escaped = source.replaceAll('"', '""');
+    return `"${escaped}"`;
+  }
+
+  function downloadCsv() {
+    if (rows.length === 0) {
+      setError("Generate a report before exporting CSV.");
+      setNotice("");
+      return;
+    }
+
+    const header =
+      mode === "main"
+        ? [
+            "Date",
+            "Time",
+            "Age Group",
+            "Away Team",
+            "Home Team",
+            "Venue",
+            "Subvenue",
+            "Status",
+            "Umpires",
+            "Estimated Pay",
+          ]
+        : ["Park", "Date", "Umpire", "Games", "Estimated Pay"];
+
+    const lines = [header.map(escapeCsv).join(",")];
+
+    if (mode === "main") {
+      for (const row of rows as MainReportRow[]) {
+        lines.push(
+          [
+            row.date,
+            row.time,
+            row.ageGroup,
+            row.awayTeam,
+            row.homeTeam,
+            row.venue,
+            row.subvenue,
+            row.status,
+            row.umpireCount,
+            row.gamePayTotal,
+          ]
+            .map(escapeCsv)
+            .join(","),
+        );
+      }
+    } else {
+      for (const row of rows as UmpireReportRow[]) {
+        lines.push(
+          [row.park, row.date, row.umpireName, row.games, row.totalPay]
+            .map(escapeCsv)
+            .join(","),
+        );
+      }
+    }
+
+    const csv = `${lines.join("\n")}\n`;
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `umpire-report-${mode}-${startDate}-to-${endDate}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  async function downloadPdf() {
+    if (rows.length === 0) {
+      setError("Generate a report before exporting PDF.");
+      setNotice("");
+      return;
+    }
+
+    setExportBusy(true);
+    setError("");
+
+    try {
+      const [{ jsPDF }, autoTableModule] = await Promise.all([
+        import("jspdf"),
+        import("jspdf-autotable"),
+      ]);
+
+      const autoTable = autoTableModule.default;
+      const doc = new jsPDF({ orientation: "landscape", unit: "pt" });
+
+      const title =
+        mode === "main"
+          ? "AP Baseball Umpire Main Report"
+          : "AP Baseball Umpire Report by Umpire";
+
+      doc.setFontSize(14);
+      doc.text(title, 40, 38);
+      doc.setFontSize(10);
+      doc.text(`Range: ${startDate} to ${endDate}`, 40, 56);
+      doc.text(
+        `Totals: Games ${totals.games} | Assignments ${totals.assignments} | Estimated Pay ${formatMoney(totals.pay)}`,
+        40,
+        72,
+      );
+
+      const head =
+        mode === "main"
+          ? [
+              [
+                "Date",
+                "Time",
+                "Age",
+                "Matchup",
+                "Venue",
+                "Status",
+                "Umpires",
+                "Pay",
+              ],
+            ]
+          : [["Park", "Date", "Umpire", "Games", "Pay"]];
+
+      const body =
+        mode === "main"
+          ? (rows as MainReportRow[]).map((row) => [
+              row.date,
+              row.time,
+              row.ageGroup,
+              `${row.awayTeam} @ ${row.homeTeam}`,
+              row.subvenue ? `${row.venue} (${row.subvenue})` : row.venue,
+              row.status,
+              String(row.umpireCount),
+              formatMoney(row.gamePayTotal),
+            ])
+          : (rows as UmpireReportRow[]).map((row) => [
+              row.park,
+              row.date,
+              row.umpireName,
+              String(row.games),
+              formatMoney(row.totalPay),
+            ]);
+
+      autoTable(doc, {
+        startY: 88,
+        head,
+        body,
+        styles: {
+          fontSize: 9,
+          cellPadding: 4,
+        },
+        headStyles: {
+          fillColor: [170, 20, 20],
+        },
+      });
+
+      doc.save(`umpire-report-${mode}-${startDate}-to-${endDate}.pdf`);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to export PDF");
+      setNotice("");
+    } finally {
+      setExportBusy(false);
     }
   }
 
@@ -187,6 +352,21 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800"
             >
               Print Report
+            </button>
+            <button
+              type="button"
+              onClick={downloadCsv}
+              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800"
+            >
+              Download CSV
+            </button>
+            <button
+              type="button"
+              disabled={exportBusy}
+              onClick={downloadPdf}
+              className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
+            >
+              {exportBusy ? "Preparing PDF..." : "Download PDF"}
             </button>
           </div>
         </div>

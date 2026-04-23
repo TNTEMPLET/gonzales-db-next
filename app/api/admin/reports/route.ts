@@ -35,20 +35,21 @@ type UmpireReportRow = {
   totalPay: number;
 };
 
-const PAY_RATE_BY_AGE: Record<number, number> = {
-  6: 40,
-  7: 40,
-  8: 40,
-  9: 50,
-  10: 50,
-  11: 60,
-  12: 60,
-  13: 70,
-  14: 70,
-  15: 80,
-  16: 80,
-  17: 80,
+const LEGACY_PAY_RATES: Record<string, number> = {
+  "6U LLB": 40,
+  "7U LLB": 40,
+  "8U LLB": 40,
+  "8U MAJ LLB": 40,
+  "9U DYB": 60,
+  "10U DYB": 60,
+  "10U LLB": 50,
+  "12U DYB": 60,
+  "12U LLB": 50,
+  "15U DBB": 80,
+  "17U DPM": 60,
 };
+
+const SPLIT_50_AGE_PREFIXES = ["9U", "10U", "12U"];
 
 function parseLeagueFilter(value: string | null): LeagueFilter {
   if (value === "littleleague" || value === "diamond") return value;
@@ -62,6 +63,10 @@ function parseReportMode(value: string | null): ReportMode {
 
 function normalizeAgeGroup(value: string | undefined): string {
   return (value || "Unassigned").trim() || "Unassigned";
+}
+
+function normalizeAgeGroupKey(value: string): string {
+  return value.trim().replace(/\s+/g, " ").toUpperCase();
 }
 
 function getGameStatusLabel(status: string | undefined): string {
@@ -162,44 +167,57 @@ function extractAssignments(game: Game): Assignment[] {
   return assignments;
 }
 
-function getPayRatePerAssignment(
-  ageGroup: string,
-  umpireCount: number,
-): number {
-  const normalized = ageGroup.toUpperCase();
-
-  if (normalized.includes("17U") && umpireCount === 1) {
-    return 80;
+function getBasePayRate(ageGroup: string): number {
+  const normalized = normalizeAgeGroupKey(ageGroup);
+  if (LEGACY_PAY_RATES[normalized]) {
+    return LEGACY_PAY_RATES[normalized];
   }
 
-  if (
-    normalized.includes("MAJOR") &&
-    !normalized.includes("17U") &&
-    umpireCount === 1
-  ) {
+  if (normalized.includes("MAJ") || normalized.includes("MAJOR")) {
     return 50;
   }
 
-  const numericMatch =
-    normalized.match(/(\d+)\s*U/) || normalized.match(/^(\d+)/);
-  if (numericMatch) {
-    const age = Number(numericMatch[1]);
-    if (!Number.isNaN(age) && PAY_RATE_BY_AGE[age]) {
-      return PAY_RATE_BY_AGE[age];
-    }
+  return 60;
+}
+
+function computeAssignmentPays(
+  ageGroup: string,
+  status: string | undefined,
+  assignmentCount: number,
+): number[] {
+  if (assignmentCount <= 0) return [];
+
+  const normalized = normalizeAgeGroupKey(ageGroup);
+  const normalizedStatus = (status || "").trim().toUpperCase();
+  if (normalizedStatus === "C") {
+    return Array.from({ length: assignmentCount }, () => 0);
   }
 
-  if (normalized.includes("MAJOR")) return 50;
-  return 60;
+  const baseRate = getBasePayRate(ageGroup);
+
+  if (assignmentCount === 1) {
+    if (normalized === "17U DPM") return [80];
+    if (normalized.includes("MAJ") || normalized.includes("MAJOR")) {
+      return [50];
+    }
+    return [baseRate];
+  }
+
+  if (SPLIT_50_AGE_PREFIXES.some((prefix) => normalized.startsWith(prefix))) {
+    return Array.from({ length: assignmentCount }, () => 50);
+  }
+
+  return Array.from({ length: assignmentCount }, () => baseRate);
 }
 
 function buildMainReportRows(games: Game[]): MainReportRow[] {
   const rows = games.map((game) => {
     const ageGroup = normalizeAgeGroup(game.age_group as string | undefined);
     const assignments = extractAssignments(game);
-    const payPerAssignment = getPayRatePerAssignment(
+    const assignmentPays = computeAssignmentPays(
       ageGroup,
-      assignments.length || 1,
+      game.status as string | undefined,
+      assignments.length,
     );
 
     return {
@@ -217,7 +235,7 @@ function buildMainReportRows(games: Game[]): MainReportRow[] {
       subvenue: (game.subvenue as string | undefined)?.trim() || "",
       status: getGameStatusLabel(game.status as string | undefined),
       umpireCount: assignments.length,
-      gamePayTotal: assignments.length * payPerAssignment,
+      gamePayTotal: assignmentPays.reduce((sum, pay) => sum + pay, 0),
     };
   });
 
@@ -236,8 +254,9 @@ function buildUmpireReportRows(games: Game[]): UmpireReportRow[] {
     const assignments = extractAssignments(game);
     if (assignments.length === 0) continue;
 
-    const payPerAssignment = getPayRatePerAssignment(
+    const assignmentPays = computeAssignmentPays(
       ageGroup,
+      game.status as string | undefined,
       assignments.length,
     );
     const park =
@@ -247,7 +266,9 @@ function buildUmpireReportRows(games: Game[]): UmpireReportRow[] {
       )?.trim() || "Unknown Venue";
     const date = toDateLabel(game.start_time as string | undefined);
 
-    for (const assignment of assignments) {
+    for (const [index, assignment] of assignments.entries()) {
+      const assignmentPay =
+        assignmentPays[index] ?? assignmentPays[assignmentPays.length - 1] ?? 0;
       const key = `${park}::${date}::${assignment.officialId}`;
       const existing = byKey.get(key);
       if (!existing) {
@@ -257,11 +278,11 @@ function buildUmpireReportRows(games: Game[]): UmpireReportRow[] {
           umpireId: assignment.officialId,
           umpireName: assignment.name,
           games: 1,
-          totalPay: payPerAssignment,
+          totalPay: assignmentPay,
         });
       } else {
         existing.games += 1;
-        existing.totalPay += payPerAssignment;
+        existing.totalPay += assignmentPay;
       }
     }
   }
