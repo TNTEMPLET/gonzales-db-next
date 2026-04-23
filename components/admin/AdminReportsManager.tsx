@@ -530,7 +530,6 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               currentY += 10;
             });
           }
-        });
       } else {
         umpireGroups.forEach((parkGroup, parkIdx) => {
           if (parkIdx > 0) {
