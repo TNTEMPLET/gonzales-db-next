@@ -108,6 +108,10 @@ export function getSiteConfigForOrg(org: ContentOrgId): SiteConfig {
   return configs[org];
 }
 
+export function getOrgDisplayName(org: ContentOrgId): string {
+  return getSiteConfigForOrg(org).shortName;
+}
+
 function parseMasterAdminAllowlist(): Set<string> {
   const raw = process.env.MASTER_ADMIN_ALLOWLIST ?? "";
   return new Set(
