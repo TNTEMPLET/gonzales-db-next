@@ -22,7 +22,7 @@ type MainReportRow = {
   venue: string;
   subvenue: string;
   status: string;
-  umpireCount: number;
+  umpires: { name: string; pay: number }[];
   gamePayTotal: number;
 };
 
@@ -234,7 +234,11 @@ function buildMainReportRows(games: Game[]): MainReportRow[] {
         )?.trim() || "Unknown Venue",
       subvenue: (game.subvenue as string | undefined)?.trim() || "",
       status: getGameStatusLabel(game.status as string | undefined),
-      umpireCount: assignments.length,
+      umpires: assignments.map((a, i) => ({
+        name: a.name,
+        pay:
+          assignmentPays[i] ?? assignmentPays[assignmentPays.length - 1] ?? 0,
+      })),
       gamePayTotal: assignmentPays.reduce((sum, pay) => sum + pay, 0),
     };
   });
@@ -367,7 +371,7 @@ export async function GET(request: NextRequest) {
         rows,
         totals: {
           games: rows.length,
-          assignments: rows.reduce((sum, row) => sum + row.umpireCount, 0),
+          assignments: rows.reduce((sum, row) => sum + row.umpires.length, 0),
           pay: totalPay,
         },
       },

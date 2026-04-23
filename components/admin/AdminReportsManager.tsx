@@ -16,7 +16,7 @@ type MainReportRow = {
   venue: string;
   subvenue: string;
   status: string;
-  umpireCount: number;
+  umpires: { name: string; pay: number }[];
   gamePayTotal: number;
 };
 
@@ -39,6 +39,19 @@ type UmpireParkGroup = {
   park: string;
   totalPay: number;
   days: UmpireDayGroup[];
+};
+
+type MainDayGroup = {
+  date: string;
+  dayName: string;
+  totalPay: number;
+  games: MainReportRow[];
+};
+
+type MainParkGroup = {
+  park: string;
+  totalPay: number;
+  days: MainDayGroup[];
 };
 
 type ReportResponse = {
@@ -79,6 +92,21 @@ function startOfMonthIsoDate() {
 function dateLabelSortValue(label: string) {
   const parsed = new Date(label);
   return Number.isNaN(parsed.valueOf()) ? 0 : parsed.valueOf();
+}
+
+function getDayName(dateLabel: string): string {
+  const parsed = new Date(dateLabel);
+  if (Number.isNaN(parsed.valueOf())) return "";
+  const days = [
+    "Sunday",
+    "Monday",
+    "Tuesday",
+    "Wednesday",
+    "Thursday",
+    "Friday",
+    "Saturday",
+  ];
+  return days[parsed.getDay()];
 }
 
 export default function AdminReportsManager({ targetOrg }: Props) {
@@ -127,6 +155,42 @@ export default function AdminReportsManager({ targetOrg }: Props) {
           park,
           days,
           totalPay: days.reduce((sum, day) => sum + day.totalPay, 0),
+        };
+      })
+      .sort((a, b) => a.park.localeCompare(b.park));
+  }, [mode, rows]);
+
+  const mainReportGroups = useMemo(() => {
+    if (mode !== "main") return [] as MainParkGroup[];
+
+    const byPark = new Map<string, Map<string, MainReportRow[]>>();
+    for (const row of rows as MainReportRow[]) {
+      if (!byPark.has(row.venue)) {
+        byPark.set(row.venue, new Map<string, MainReportRow[]>());
+      }
+      const byDate = byPark.get(row.venue)!;
+      if (!byDate.has(row.date)) {
+        byDate.set(row.date, []);
+      }
+      byDate.get(row.date)!.push(row);
+    }
+
+    return Array.from(byPark.entries())
+      .map(([park, byDate]) => {
+        const days: MainDayGroup[] = Array.from(byDate.entries())
+          .map(([date, games]) => ({
+            date,
+            dayName: getDayName(date),
+            totalPay: games.reduce((sum, g) => sum + g.gamePayTotal, 0),
+            games,
+          }))
+          .sort(
+            (a, b) => dateLabelSortValue(a.date) - dateLabelSortValue(b.date),
+          );
+        return {
+          park,
+          days,
+          totalPay: days.reduce((sum, d) => sum + d.totalPay, 0),
         };
       })
       .sort((a, b) => a.park.localeCompare(b.park));
@@ -196,10 +260,10 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             "Venue",
             "Subvenue",
             "Status",
-            "Umpires",
+            "Assignment(s)",
             "Estimated Pay",
           ]
-        : ["Park", "Date", "Umpire", "Games", "Estimated Pay"];
+        : ["Park", "Date", "Umpire Name", "Estimated Pay"];
 
     const lines = [header.map(escapeCsv).join(",")];
 
@@ -215,7 +279,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             row.venue,
             row.subvenue,
             row.status,
-            row.umpireCount,
+            row.umpires.map((u) => `${u.name} - $${u.pay}`).join("; "),
             row.gamePayTotal,
           ]
             .map(escapeCsv)
@@ -225,7 +289,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
     } else {
       for (const row of rows as UmpireReportRow[]) {
         lines.push(
-          [row.park, row.date, row.umpireName, row.games, row.totalPay]
+          [row.park, row.date, row.umpireName, row.totalPay]
             .map(escapeCsv)
             .join(","),
         );
@@ -288,11 +352,11 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                 "Matchup",
                 "Venue",
                 "Status",
-                "Umpires",
+                "Assignment(s)",
                 "Pay",
               ],
             ]
-          : [["Park", "Date", "Umpire", "Games", "Pay"]];
+          : [["Park", "Date", "Umpire Name", "Pay"]];
 
       const body =
         mode === "main"
@@ -303,14 +367,13 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               `${row.awayTeam} @ ${row.homeTeam}`,
               row.subvenue ? `${row.venue} (${row.subvenue})` : row.venue,
               row.status,
-              String(row.umpireCount),
+              row.umpires.map((u) => `${u.name} - $${u.pay}`).join(", "),
               formatMoney(row.gamePayTotal),
             ])
           : (rows as UmpireReportRow[]).map((row) => [
               row.park,
               row.date,
               row.umpireName,
-              String(row.games),
               formatMoney(row.totalPay),
             ]);
 
@@ -470,48 +533,116 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             No report rows yet. Choose dates and generate a report.
           </p>
         ) : mode === "main" ? (
-          <table className="min-w-full text-sm">
-            <thead className="border-b border-zinc-800 bg-zinc-900/80 text-zinc-300">
-              <tr>
-                <th className="px-3 py-2 text-left">Date</th>
-                <th className="px-3 py-2 text-left">Time</th>
-                <th className="px-3 py-2 text-left">Age Group</th>
-                <th className="px-3 py-2 text-left">Matchup</th>
-                <th className="px-3 py-2 text-left">Venue</th>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-right">Umpires</th>
-                <th className="px-3 py-2 text-right">Est. Pay</th>
-              </tr>
-            </thead>
-            <tbody>
-              {(rows as MainReportRow[]).map((row) => (
-                <tr
-                  key={row.gameId}
-                  className="border-b border-zinc-900/80 text-zinc-200"
-                >
-                  <td className="px-3 py-2">{row.date}</td>
-                  <td className="px-3 py-2">{row.time}</td>
-                  <td className="px-3 py-2">{row.ageGroup}</td>
-                  <td className="px-3 py-2">
-                    {row.awayTeam} @ {row.homeTeam}
-                  </td>
-                  <td className="px-3 py-2">
-                    {row.venue}
-                    {row.subvenue ? (
-                      <span className="block text-xs text-zinc-500">
-                        {row.subvenue}
-                      </span>
-                    ) : null}
-                  </td>
-                  <td className="px-3 py-2">{row.status}</td>
-                  <td className="px-3 py-2 text-right">{row.umpireCount}</td>
-                  <td className="px-3 py-2 text-right">
-                    {formatMoney(row.gamePayTotal)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="space-y-4 p-4">
+            {mainReportGroups.map((parkGroup) => (
+              <section
+                key={parkGroup.park}
+                className="rounded-xl border border-zinc-800 bg-zinc-900/40"
+              >
+                <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+                  <h3 className="text-sm font-semibold text-zinc-100">
+                    {parkGroup.park}
+                  </h3>
+                  <span className="text-sm font-semibold text-emerald-300">
+                    Total Pay = {formatMoney(parkGroup.totalPay)}
+                  </span>
+                </div>
+                <p className="px-4 py-1 text-xs text-zinc-500">
+                  From: {startDate} To: {endDate}
+                </p>
+                <div className="space-y-3 px-3 pb-3">
+                  {parkGroup.days.map((day) => (
+                    <div
+                      key={`${parkGroup.park}-${day.date}`}
+                      className="overflow-hidden rounded-lg border border-zinc-800"
+                    >
+                      <div className="bg-zinc-900/80 px-3 py-2 text-xs font-semibold text-zinc-200">
+                        {day.dayName}
+                      </div>
+                      <table className="min-w-full text-sm">
+                        <thead className="border-y border-zinc-800 bg-zinc-950/70 text-zinc-400">
+                          <tr>
+                            <th className="px-3 py-2 text-left">Date</th>
+                            <th className="px-3 py-2 text-left">Time</th>
+                            <th className="px-3 py-2 text-left">Home Team</th>
+                            <th className="px-3 py-2 text-left">Away Team</th>
+                            <th className="px-3 py-2 text-left">Park</th>
+                            <th className="px-3 py-2 text-left">Field</th>
+                            <th className="px-3 py-2 text-left">Age Group</th>
+                            <th className="px-3 py-2 text-center" colSpan={2}>
+                              Assignment(s)
+                            </th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {day.games.map((game) => {
+                            const u0 = game.umpires[0];
+                            const u1 = game.umpires[1];
+                            return (
+                              <tr
+                                key={game.gameId}
+                                className="border-b border-zinc-900/80 text-zinc-200 last:border-b-0"
+                              >
+                                <td className="px-3 py-2">{game.date}</td>
+                                <td className="px-3 py-2">{game.time}</td>
+                                <td className="px-3 py-2">{game.homeTeam}</td>
+                                <td className="px-3 py-2">{game.awayTeam}</td>
+                                <td className="px-3 py-2">{game.venue}</td>
+                                <td className="px-3 py-2">{game.subvenue}</td>
+                                <td className="px-3 py-2">{game.ageGroup}</td>
+                                {game.status === "Cancelled" ? (
+                                  <td
+                                    colSpan={2}
+                                    className="px-3 py-2 text-center text-zinc-500"
+                                  >
+                                    Cancelled — $0
+                                  </td>
+                                ) : game.umpires.length === 0 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="px-3 py-2 text-center text-zinc-500"
+                                  >
+                                    No Assignment
+                                  </td>
+                                ) : game.umpires.length === 1 ? (
+                                  <td
+                                    colSpan={2}
+                                    className="px-3 py-2 text-center"
+                                  >
+                                    {u0!.name} — ${u0!.pay}
+                                  </td>
+                                ) : (
+                                  <>
+                                    <td className="px-3 py-2 text-center">
+                                      {u0!.name} — ${u0!.pay}
+                                    </td>
+                                    <td className="px-3 py-2 text-center">
+                                      {u1!.name} — ${u1!.pay}
+                                    </td>
+                                  </>
+                                )}
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="border-t border-zinc-700 bg-zinc-900/60">
+                            <td
+                              colSpan={8}
+                              className="px-3 py-2 text-sm font-semibold text-zinc-200"
+                            >
+                              Total Pay for {day.date} ={" "}
+                              {formatMoney(day.totalPay)}
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ))}
+          </div>
         ) : (
           <div className="space-y-4 p-4">
             {umpireGroups.map((parkGroup) => (
@@ -534,17 +665,14 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                       key={`${parkGroup.park}-${day.date}`}
                       className="overflow-hidden rounded-lg border border-zinc-800"
                     >
-                      <div className="flex items-center justify-between bg-zinc-900/80 px-3 py-2 text-xs text-zinc-300">
-                        <span className="font-semibold">{day.date}</span>
-                        <span className="font-semibold text-zinc-100">
-                          {formatMoney(day.totalPay)}
-                        </span>
+                      <div className="bg-zinc-900/80 px-3 py-2 text-xs font-semibold text-zinc-200">
+                        {getDayName(day.date)} — {day.date} —{" "}
+                        {formatMoney(day.totalPay)}
                       </div>
                       <table className="min-w-full text-sm">
                         <thead className="border-y border-zinc-800 bg-zinc-950/70 text-zinc-400">
                           <tr>
-                            <th className="px-3 py-2 text-left">Umpire</th>
-                            <th className="px-3 py-2 text-right">Games</th>
+                            <th className="px-3 py-2 text-left">Umpire Name</th>
                             <th className="px-3 py-2 text-right">Pay</th>
                           </tr>
                         </thead>
@@ -555,9 +683,6 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                               className="border-b border-zinc-900/80 text-zinc-200 last:border-b-0"
                             >
                               <td className="px-3 py-2">{entry.umpireName}</td>
-                              <td className="px-3 py-2 text-right">
-                                {entry.games}
-                              </td>
                               <td className="px-3 py-2 text-right">
                                 {formatMoney(entry.totalPay)}
                               </td>
