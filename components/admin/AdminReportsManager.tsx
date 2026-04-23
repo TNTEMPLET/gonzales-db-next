@@ -467,7 +467,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               margin: { left: 40, right: 40 },
               theme: "grid",
             });
-            currentY = doc.lastAutoTable.finalY + 10;
+            currentY = (doc as any).lastAutoTable.finalY + 10;
             doc.setFontSize(9);
             doc.text(
               `Total Pay for ${day.date}: ${formatMoney(day.totalPay)}`,
@@ -513,7 +513,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               margin: { left: 60, right: 40 },
               theme: "grid",
             });
-            currentY = doc.lastAutoTable.finalY + 10;
+            currentY = (doc as any).lastAutoTable.finalY + 10;
           }
           currentY += 10;
         }
