@@ -409,102 +409,127 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             40,
             currentY,
           );
-          currentY += 18;
-          for (const day of parkGroup.days) {
-            doc.setFontSize(10);
-            doc.text(
-              `${day.dayName} — ${day.date} (Total Pay: ${formatMoney(day.totalPay)})`,
-              60,
-              currentY,
-            );
-            currentY += 16;
-            const tableBody = day.games.map((game) => {
-              const u0 = game.umpires[0];
-              const u1 = game.umpires[1];
-              let assignments = "";
-              if (game.status === "Cancelled") {
-                assignments = "Cancelled — $0";
-              } else if (game.umpires.length === 0) {
-                assignments = "No Assignment";
-              } else if (game.umpires.length === 1) {
-                assignments = `${u0.name} — $${u0.pay}`;
-              } else {
-                assignments = `${u0.name} — $${u0.pay}; ${u1.name} — $${u1.pay}`;
+
+          let currentY = 88;
+          if (mode === "main") {
+            mainReportGroups.forEach((parkGroup, parkIdx) => {
+              if (parkIdx > 0) {
+                doc.addPage();
+                currentY = 40;
               }
-              return [
-                game.date,
-                game.time,
-                game.homeTeam,
-                game.awayTeam,
-                game.venue,
-                game.subvenue,
-                game.ageGroup,
-                assignments,
-              ];
+              // Draw Park section outline
+              doc.setDrawColor(170, 20, 20);
+              doc.setLineWidth(1.2);
+              doc.roundedRect(32, currentY - 18, doc.internal.pageSize.getWidth() - 64, 30, 8, 8, 'S');
+              doc.setFontSize(12);
+              doc.text(`${parkGroup.park} (Total Pay: ${formatMoney(parkGroup.totalPay)})`, 40, currentY);
+              currentY += 18;
+              parkGroup.days.forEach((day, dayIdx) => {
+                if (dayIdx > 0) {
+                  doc.addPage();
+                  currentY = 40;
+                }
+                doc.setFontSize(10);
+                doc.text(`${day.dayName} — ${day.date} (Total Pay: ${formatMoney(day.totalPay)})`, 60, currentY);
+                currentY += 16;
+                const tableBody = day.games.map((game) => {
+                  const u0 = game.umpires[0];
+                  const u1 = game.umpires[1];
+                  let assignments = "";
+                  if (game.status === "Cancelled") {
+                    assignments = "Cancelled — $0";
+                  } else if (game.umpires.length === 0) {
+                    assignments = "No Assignment";
+                  } else if (game.umpires.length === 1) {
+                    assignments = `${u0.name} — $${u0.pay}`;
+                  } else {
+                    assignments = `${u0.name} — $${u0.pay}; ${u1.name} — $${u1.pay}`;
+                  }
+                  return [
+                    game.date,
+                    game.time,
+                    game.homeTeam,
+                    game.awayTeam,
+                    game.venue,
+                    game.subvenue,
+                    game.ageGroup,
+                    assignments,
+                  ];
+                });
+                autoTable(doc, {
+                  startY: currentY,
+                  head: [[
+                    "Date",
+                    "Time",
+                    "Home Team",
+                    "Away Team",
+                    "Park",
+                    "Field",
+                    "Age Group",
+                    "Assignment(s)",
+                  ]],
+                  body: tableBody,
+                  styles: {
+                    fontSize: 9,
+                    cellPadding: 4,
+                  },
+                  headStyles: {
+                    fillColor: [170, 20, 20],
+                  },
+                  margin: { left: 40, right: 40 },
+                  theme: "grid",
+                });
+                currentY = (doc as any).lastAutoTable.finalY + 10;
+                doc.setFontSize(9);
+                doc.text(`Total Pay for ${day.date}: ${formatMoney(day.totalPay)}`, 60, currentY);
+                currentY += 16;
+              });
+              currentY += 10;
             });
-            autoTable(doc, {
-              startY: currentY,
-              head: [
-                [
-                  "Date",
-                  "Time",
-                  "Home Team",
-                  "Away Team",
-                  "Park",
-                  "Field",
-                  "Age Group",
-                  "Assignment(s)",
-                ],
-              ],
-              body: tableBody,
-              styles: {
-                fontSize: 9,
-                cellPadding: 4,
-              },
-              headStyles: {
-                fillColor: [170, 20, 20],
-              },
-              margin: { left: 40, right: 40 },
-              theme: "grid",
+          } else {
+            umpireGroups.forEach((parkGroup, parkIdx) => {
+              if (parkIdx > 0) {
+                doc.addPage();
+                currentY = 40;
+              }
+              // Draw Park section outline
+              doc.setDrawColor(170, 20, 20);
+              doc.setLineWidth(1.2);
+              doc.roundedRect(32, currentY - 18, doc.internal.pageSize.getWidth() - 64, 30, 8, 8, 'S');
+              doc.setFontSize(12);
+              doc.text(`${parkGroup.park} (Total Pay: ${formatMoney(parkGroup.totalPay)})`, 40, currentY);
+              currentY += 18;
+              parkGroup.days.forEach((day, dayIdx) => {
+                if (dayIdx > 0) {
+                  doc.addPage();
+                  currentY = 40;
+                }
+                doc.setFontSize(10);
+                doc.text(`${getDayName(day.date)} — ${day.date} (Total Pay: ${formatMoney(day.totalPay)})`, 60, currentY);
+                currentY += 16;
+                const tableBody = day.entries.map((entry) => [
+                  entry.umpireName,
+                  formatMoney(entry.totalPay),
+                ]);
+                autoTable(doc, {
+                  startY: currentY,
+                  head: [["Umpire Name", "Pay"]],
+                  body: tableBody,
+                  styles: {
+                    fontSize: 9,
+                    cellPadding: 4,
+                  },
+                  headStyles: {
+                    fillColor: [170, 20, 20],
+                  },
+                  margin: { left: 60, right: 40 },
+                  theme: "grid",
+                });
+                currentY = (doc as any).lastAutoTable.finalY + 10;
+              });
+              currentY += 10;
             });
-            currentY = (doc as any).lastAutoTable.finalY + 10;
-            doc.setFontSize(9);
-            doc.text(
-              `Total Pay for ${day.date}: ${formatMoney(day.totalPay)}`,
-              60,
-              currentY,
-            );
-            currentY += 16;
           }
-          currentY += 10;
-        }
-      } else {
-        for (const parkGroup of umpireGroups) {
-          doc.setFontSize(12);
-          doc.text(
-            `${parkGroup.park} (Total Pay: ${formatMoney(parkGroup.totalPay)})`,
-            40,
-            currentY,
-          );
-          currentY += 18;
-          for (const day of parkGroup.days) {
-            doc.setFontSize(10);
-            doc.text(
-              `${getDayName(day.date)} — ${day.date} (Total Pay: ${formatMoney(day.totalPay)})`,
-              60,
-              currentY,
-            );
-            currentY += 16;
-            const tableBody = day.entries.map((entry) => [
-              entry.umpireName,
-              formatMoney(entry.totalPay),
-            ]);
-            autoTable(doc, {
-              startY: currentY,
-              head: [["Umpire Name", "Pay"]],
-              body: tableBody,
-              styles: {
-                fontSize: 9,
                 cellPadding: 4,
               },
               headStyles: {
