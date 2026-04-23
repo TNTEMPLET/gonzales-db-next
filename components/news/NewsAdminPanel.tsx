@@ -138,6 +138,8 @@ export default function NewsAdminPanel({
   const [editPayload, setEditPayload] = useState<PostPayload>(
     createEmptyPayload(""),
   );
+  const [editSyncTargets, setEditSyncTargets] = useState<ContentOrgId[]>([]);
+  const [editOrgPresence, setEditOrgPresence] = useState<ContentOrgId[]>([]);
   const [busy, setBusy] = useState(false);
   const [createImageBusy, setCreateImageBusy] = useState(false);
   const [editImageBusy, setEditImageBusy] = useState(false);
@@ -412,6 +414,22 @@ export default function NewsAdminPanel({
     }
   }
 
+  async function checkOrgPresence(slug: string) {
+    const presence: ContentOrgId[] = [];
+    await Promise.all(
+      CONTENT_ORGS.map(async (org) => {
+        try {
+          const resp = await fetch(`/api/news/${slug}?org=${org}`);
+          if (resp.ok) presence.push(org);
+        } catch {
+          // ignore network errors per org
+        }
+      }),
+    );
+    setEditOrgPresence(presence);
+    setEditSyncTargets(presence);
+  }
+
   function startEdit(slug: string) {
     const post = posts.find((item) => item.slug === slug);
     if (!post) return;
@@ -429,12 +447,15 @@ export default function NewsAdminPanel({
       status: post.status,
       publishedAt: toLocalDateTimeInput(post.publishedAt),
     });
+
+    if (isMasterMode) {
+      setEditSyncTargets([targetOrg]);
+      setEditOrgPresence([targetOrg]);
+      void checkOrgPresence(slug);
+    }
   }
 
-  async function saveEditedPost(
-    closeAfterSave: boolean,
-    syncToBothSites = false,
-  ) {
+  async function saveEditedPost(closeAfterSave: boolean) {
     if (!selectedSlug) return;
 
     setBusy(true);
@@ -452,49 +473,105 @@ export default function NewsAdminPanel({
             publishedAt: editPayload.status === "DRAFT" ? null : undefined,
           };
 
-      const response = await fetch(`/api/news/${selectedSlug}?${orgQuery}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(
-          syncToBothSites
-            ? {
-                ...patchBody,
-                syncToOrgs: CONTENT_ORGS,
-                createMissing: true,
-              }
-            : patchBody,
-        ),
-      });
+      if (isMasterMode) {
+        const orgsToSave = editSyncTargets;
+        const orgsToRemove = editOrgPresence.filter(
+          (org) => !editSyncTargets.includes(org),
+        );
+        const syncResults: SyncResult[] = [];
 
-      const json = await response.json();
-      if (!response.ok) {
-        throw new Error(json.error || "Failed to update post");
-      }
+        for (const org of orgsToSave) {
+          const resp = await fetch(`/api/news/${selectedSlug}?org=${org}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(patchBody),
+          });
+          const json = await resp.json();
 
-      await loadPosts();
-      if (closeAfterSave) {
-        setSelectedSlug("");
-        setEditPayload(createEmptyPayload(""));
-      } else {
-        setSelectedSlug(json.data.slug);
-      }
+          if (resp.status === 404) {
+            // Post doesn't exist on this org yet — create it
+            const createResp = await fetch(`/api/news?org=${org}`, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ ...patchBody, targetOrgs: [org] }),
+            });
+            const createJson = await createResp.json();
+            if (!createResp.ok) {
+              throw new Error(
+                createJson.error ||
+                  `Failed to create on ${getOrgDisplayName(org)}`,
+              );
+            }
+            const created = Array.isArray(createJson.data)
+              ? createJson.data[0]
+              : createJson.data;
+            syncResults.push({ org, action: "created", slug: created?.slug });
+          } else if (!resp.ok) {
+            throw new Error(
+              json.error || `Failed to update on ${getOrgDisplayName(org)}`,
+            );
+          } else {
+            syncResults.push({ org, action: "updated", slug: json.data?.slug });
+          }
+        }
 
-      if (syncToBothSites) {
-        const syncResults = (json.syncResults || []) as SyncResult[];
+        for (const org of orgsToRemove) {
+          const resp = await fetch(`/api/news/${selectedSlug}?org=${org}`, {
+            method: "DELETE",
+          });
+          if (!resp.ok && resp.status !== 404) {
+            const json = await resp.json();
+            throw new Error(
+              json.error || `Failed to remove from ${getOrgDisplayName(org)}`,
+            );
+          }
+        }
+
+        setEditOrgPresence(orgsToSave);
+        await loadPosts();
+
+        const primaryUpdated = syncResults.find((r) => r.org === targetOrg);
+        if (!orgsToSave.includes(targetOrg) || closeAfterSave) {
+          setSelectedSlug("");
+          setEditPayload(createEmptyPayload(""));
+          setEditSyncTargets([]);
+          setEditOrgPresence([]);
+        } else if (primaryUpdated?.slug) {
+          setSelectedSlug(primaryUpdated.slug);
+        }
+
         const updatedCount = syncResults.filter(
-          (item) => item.action === "updated",
+          (r) => r.action === "updated",
         ).length;
         const createdCount = syncResults.filter(
-          (item) => item.action === "created",
+          (r) => r.action === "created",
         ).length;
-        const skippedCount = syncResults.filter(
-          (item) => item.action === "skipped",
-        ).length;
-
-        setNotice(
-          `Post updated. Sync results: ${updatedCount} updated, ${createdCount} created, ${skippedCount} skipped.`,
-        );
+        const parts: string[] = [];
+        if (updatedCount > 0) parts.push(`${updatedCount} updated`);
+        if (createdCount > 0) parts.push(`${createdCount} created`);
+        if (orgsToRemove.length > 0)
+          parts.push(
+            `removed from ${orgsToRemove.map(getOrgDisplayName).join(", ")}`,
+          );
+        setNotice(`Post saved. ${parts.join(", ")}.`);
       } else {
+        const response = await fetch(`/api/news/${selectedSlug}?${orgQuery}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(patchBody),
+        });
+        const json = await response.json();
+        if (!response.ok) {
+          throw new Error(json.error || "Failed to update post");
+        }
+
+        await loadPosts();
+        if (closeAfterSave) {
+          setSelectedSlug("");
+          setEditPayload(createEmptyPayload(""));
+        } else {
+          setSelectedSlug(json.data.slug);
+        }
         setNotice("Post updated");
       }
     } catch (err: unknown) {
@@ -513,15 +590,13 @@ export default function NewsAdminPanel({
     await saveEditedPost(true);
   }
 
-  async function saveAndSyncPost() {
-    await saveEditedPost(false, true);
-  }
-
   async function deletePost() {
     if (!selectedSlug) return;
 
     const confirmed = window.confirm(
-      "Delete this post? This action cannot be undone.",
+      isMasterMode
+        ? "Delete this post from ALL sites? This cannot be undone."
+        : "Delete this post? This action cannot be undone.",
     );
     if (!confirmed) return;
 
@@ -530,19 +605,26 @@ export default function NewsAdminPanel({
     setNotice("");
 
     try {
-      const response = await fetch(`/api/news/${selectedSlug}?${orgQuery}`, {
-        method: "DELETE",
-      });
-      const json = await response.json();
+      const orgsToDelete = isMasterMode ? editOrgPresence : [targetOrg];
 
-      if (!response.ok) {
-        throw new Error(json.error || "Failed to delete post");
+      for (const org of orgsToDelete) {
+        const resp = await fetch(`/api/news/${selectedSlug}?org=${org}`, {
+          method: "DELETE",
+        });
+        if (!resp.ok && resp.status !== 404) {
+          const json = await resp.json();
+          throw new Error(
+            json.error || `Failed to delete from ${getOrgDisplayName(org)}`,
+          );
+        }
       }
 
       setSelectedSlug("");
       setEditPayload(createEmptyPayload(""));
+      setEditSyncTargets([]);
+      setEditOrgPresence([]);
       await loadPosts();
-      setNotice("Post deleted");
+      setNotice(isMasterMode ? "Post deleted from all sites" : "Post deleted");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to delete post");
     } finally {
@@ -967,6 +1049,40 @@ export default function NewsAdminPanel({
                 Rotator requires a published post with an uploaded image.
               </p>
 
+              {isMasterMode ? (
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3 space-y-2">
+                  <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-400">
+                    Site Presence
+                  </p>
+                  <div className="flex flex-wrap gap-3">
+                    {CONTENT_ORGS.map((org) => (
+                      <label
+                        key={org}
+                        className="inline-flex items-center gap-2 text-sm text-zinc-300"
+                      >
+                        <input
+                          type="checkbox"
+                          checked={editSyncTargets.includes(org)}
+                          onChange={(event) => {
+                            setEditSyncTargets((prev) => {
+                              if (event.target.checked) {
+                                return Array.from(new Set([...prev, org]));
+                              }
+                              return prev.filter((item) => item !== org);
+                            });
+                          }}
+                        />
+                        {getOrgDisplayName(org)}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-zinc-500">
+                    Checked sites will receive this post when saved. Uncheck to
+                    remove from a site.
+                  </p>
+                </div>
+              ) : null}
+
               <div className="flex flex-wrap gap-3">
                 <button
                   disabled={busy || editImageBusy}
@@ -975,18 +1091,6 @@ export default function NewsAdminPanel({
                 >
                   {busy || editImageBusy ? "Working..." : "Save"}
                 </button>
-                {isMasterMode ? (
-                  <button
-                    disabled={busy || editImageBusy}
-                    type="button"
-                    onClick={saveAndSyncPost}
-                    className="rounded-lg border border-red-600/70 bg-red-500/10 px-4 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
-                  >
-                    {busy || editImageBusy
-                      ? "Working..."
-                      : "Save + Sync to Both Sites"}
-                  </button>
-                ) : null}
                 <button
                   disabled={busy || editImageBusy}
                   type="button"
