@@ -3,7 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { isNewsAdmin, ensureNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  CONTENT_ORGS,
+  resolveAdminTargetOrg,
+  isMasterDeployment,
+  type ContentOrgId,
+} from "@/lib/siteConfig";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
@@ -18,6 +23,7 @@ type CreateNewsPayload = {
   rotatorEnabled?: boolean;
   status?: NewsStatus;
   publishedAt?: string;
+  targetOrgs?: ContentOrgId[];
 };
 
 const MAX_PAGE_SIZE = 50;
@@ -123,9 +129,20 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const orgId = resolveAdminTargetOrg(
-      request.nextUrl.searchParams.get("org"),
-    );
+    const queryOrg = request.nextUrl.searchParams.get("org");
+    const defaultOrg = resolveAdminTargetOrg(queryOrg);
+    const requestedTargets = Array.isArray(body.targetOrgs)
+      ? body.targetOrgs.filter((org): org is ContentOrgId =>
+          CONTENT_ORGS.includes(org),
+        )
+      : [];
+
+    const targetOrgs: ContentOrgId[] = isMasterDeployment()
+      ? requestedTargets.length > 0
+        ? Array.from(new Set(requestedTargets))
+        : [defaultOrg]
+      : [defaultOrg];
+
     const status = body.status || "DRAFT";
     const requestedSlug = body.slug ? slugify(body.slug) : slugify(body.title);
     if (!requestedSlug) {
@@ -135,33 +152,37 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const slug = await ensureUniqueSlug(orgId, requestedSlug);
+    const createdPosts = [];
+    for (const orgId of targetOrgs) {
+      const slug = await ensureUniqueSlug(orgId, requestedSlug);
 
-    const post = await prisma.newsPost.create({
-      data: {
-        organizationId: orgId,
-        title: body.title.trim(),
-        slug,
-        excerpt: body.excerpt?.trim() || null,
-        content: body.content.trim(),
-        imageUrl: body.imageUrl?.trim() || null,
-        author: body.author?.trim() || null,
-        featured: Boolean(body.featured),
-        rotatorEnabled: Boolean(body.rotatorEnabled),
-        status,
-        publishedAt: body.publishedAt
-          ? new Date(body.publishedAt)
-          : status === "PUBLISHED"
-            ? new Date()
-            : null,
-      },
-    });
+      const post = await prisma.newsPost.create({
+        data: {
+          organizationId: orgId,
+          title: body.title.trim(),
+          slug,
+          excerpt: body.excerpt?.trim() || null,
+          content: body.content.trim(),
+          imageUrl: body.imageUrl?.trim() || null,
+          author: body.author?.trim() || null,
+          featured: Boolean(body.featured),
+          rotatorEnabled: Boolean(body.rotatorEnabled),
+          status,
+          publishedAt: body.publishedAt
+            ? new Date(body.publishedAt)
+            : status === "PUBLISHED"
+              ? new Date()
+              : null,
+        },
+      });
 
-    revalidatePath("/");
-    revalidatePath("/news");
-    revalidatePath(`/news/${post.slug}`);
+      createdPosts.push(post);
+      revalidatePath("/");
+      revalidatePath("/news");
+      revalidatePath(`/news/${post.slug}`);
+    }
 
-    return NextResponse.json({ data: post }, { status: 201 });
+    return NextResponse.json({ data: createdPosts }, { status: 201 });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(

@@ -8,7 +8,11 @@ import {
   type FormEvent,
 } from "react";
 import { useRouter } from "next/navigation";
-import type { ContentOrgId } from "@/lib/siteConfig";
+import {
+  CONTENT_ORGS,
+  getOrgDisplayName,
+  type ContentOrgId,
+} from "@/lib/siteConfig";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
@@ -101,11 +105,13 @@ export default function NewsAdminPanel({
   adminName,
   initialEditSlug,
   targetOrg,
+  isMasterMode,
 }: {
   adminEmail: string;
   adminName: string | null;
   initialEditSlug?: string;
   targetOrg: ContentOrgId;
+  isMasterMode: boolean;
 }) {
   const router = useRouter();
   const orgQuery = `org=${targetOrg}`;
@@ -120,6 +126,9 @@ export default function NewsAdminPanel({
   const [createPayload, setCreatePayload] = useState<PostPayload>(() =>
     createEmptyPayload(defaultAuthor),
   );
+  const [createTargets, setCreateTargets] = useState<ContentOrgId[]>([
+    targetOrg,
+  ]);
   const [editPayload, setEditPayload] = useState<PostPayload>(
     createEmptyPayload(""),
   );
@@ -133,6 +142,10 @@ export default function NewsAdminPanel({
     void loadPosts();
     void loadRegisteredUsers();
   }, []);
+
+  useEffect(() => {
+    setCreateTargets([targetOrg]);
+  }, [targetOrg]);
 
   const selectedPost = useMemo(
     () => posts.find((post) => post.slug === selectedSlug),
@@ -257,6 +270,18 @@ export default function NewsAdminPanel({
     setError("");
     setNotice("");
 
+    const effectiveTargets = isMasterMode
+      ? createTargets.filter((org): org is ContentOrgId =>
+          CONTENT_ORGS.includes(org),
+        )
+      : [targetOrg];
+
+    if (effectiveTargets.length === 0) {
+      setBusy(false);
+      setError("Choose at least one target site");
+      return;
+    }
+
     try {
       const response = await fetch(`/api/news?${orgQuery}`, {
         method: "POST",
@@ -266,8 +291,12 @@ export default function NewsAdminPanel({
             ? {
                 ...createPayload,
                 publishedAt: fromLocalDateTimeInput(createPayload.publishedAt),
+                targetOrgs: effectiveTargets,
               }
-            : createPayload,
+            : {
+                ...createPayload,
+                targetOrgs: effectiveTargets,
+              },
         ),
       });
 
@@ -277,8 +306,13 @@ export default function NewsAdminPanel({
       }
 
       setCreatePayload(createEmptyPayload(defaultAuthor));
+      setCreateTargets([targetOrg]);
       await loadPosts();
-      setNotice("Post created");
+      setNotice(
+        effectiveTargets.length > 1
+          ? "Post created for multiple sites"
+          : `Post created for ${getOrgDisplayName(effectiveTargets[0])}`,
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create post");
     } finally {
@@ -646,6 +680,35 @@ export default function NewsAdminPanel({
             <span className="text-zinc-300">Published</span> appear on the
             public news feed.
           </p>
+          {isMasterMode ? (
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3 space-y-2">
+              <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-400">
+                Publish Targets
+              </p>
+              <div className="flex flex-wrap gap-3">
+                {CONTENT_ORGS.map((org) => (
+                  <label
+                    key={org}
+                    className="inline-flex items-center gap-2 text-sm text-zinc-300"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={createTargets.includes(org)}
+                      onChange={(event) => {
+                        setCreateTargets((prev) => {
+                          if (event.target.checked) {
+                            return Array.from(new Set([...prev, org]));
+                          }
+                          return prev.filter((item) => item !== org);
+                        });
+                      }}
+                    />
+                    {getOrgDisplayName(org)}
+                  </label>
+                ))}
+              </div>
+            </div>
+          ) : null}
           <label className="flex items-center gap-2 text-sm text-zinc-300">
             <input
               type="checkbox"
