@@ -109,6 +109,59 @@ function getDayName(dateLabel: string): string {
   return days[parsed.getDay()];
 }
 
+function PrinterIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="M6 9V3h12v6" />
+      <rect x="6" y="14" width="12" height="7" rx="1" />
+      <path d="M6 18H4a2 2 0 0 1-2-2v-5a4 4 0 0 1 4-4h12a4 4 0 0 1 4 4v5a2 2 0 0 1-2 2h-2" />
+      <circle cx="18" cy="11" r="1" />
+    </svg>
+  );
+}
+
+function DownloadIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="M12 3v11" />
+      <path d="m7.5 10.5 4.5 4.5 4.5-4.5" />
+      <path d="M4 20h16" />
+    </svg>
+  );
+}
+
+function ChevronDownIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className="h-4 w-4"
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
+  );
+}
+
 export default function AdminReportsManager({ targetOrg }: Props) {
   const [startDate, setStartDate] = useState(startOfMonthIsoDate());
   const [endDate, setEndDate] = useState(todayIsoDate());
@@ -472,25 +525,39 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             <button
               type="button"
               onClick={() => window.print()}
-              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800"
+              title="Print Report"
+              aria-label="Print Report"
+              className="inline-flex h-10 w-10 items-center justify-center rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
             >
-              Print Report
+              <PrinterIcon />
             </button>
-            <button
-              type="button"
-              onClick={downloadCsv}
-              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800"
-            >
-              Download CSV
-            </button>
-            <button
-              type="button"
-              disabled={exportBusy}
-              onClick={downloadPdf}
-              className="rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2 text-sm font-semibold text-red-100 hover:bg-red-500/20 disabled:opacity-60"
-            >
-              {exportBusy ? "Preparing PDF..." : "Download PDF"}
-            </button>
+            <details className="relative">
+              <summary
+                title="Download Report"
+                className="flex h-10 cursor-pointer list-none items-center gap-1 rounded-lg border border-red-500/40 bg-red-500/10 px-2 text-red-100 hover:bg-red-500/20"
+              >
+                <DownloadIcon />
+                <ChevronDownIcon />
+                <span className="sr-only">Download Report</span>
+              </summary>
+              <div className="absolute right-0 z-20 mt-2 w-40 overflow-hidden rounded-lg border border-zinc-700 bg-zinc-900 shadow-2xl">
+                <button
+                  type="button"
+                  onClick={downloadCsv}
+                  className="block w-full px-3 py-2 text-left text-sm font-semibold text-zinc-100 hover:bg-zinc-800"
+                >
+                  Download CSV
+                </button>
+                <button
+                  type="button"
+                  disabled={exportBusy}
+                  onClick={downloadPdf}
+                  className="block w-full px-3 py-2 text-left text-sm font-semibold text-zinc-100 hover:bg-zinc-800 disabled:opacity-60"
+                >
+                  {exportBusy ? "Preparing PDF..." : "Download PDF"}
+                </button>
+              </div>
+            </details>
           </div>
         </div>
 
