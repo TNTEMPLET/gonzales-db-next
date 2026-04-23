@@ -167,6 +167,8 @@ export default function AdminReportsManager({ targetOrg }: Props) {
   const [endDate, setEndDate] = useState(todayIsoDate());
   const [league, setLeague] = useState<LeagueFilter>("all");
   const [mode, setMode] = useState<ReportMode>("main");
+  const [activeMode, setActiveMode] = useState<ReportMode | null>(null);
+  const [generatingMode, setGeneratingMode] = useState<ReportMode | null>(null);
   const [rows, setRows] = useState<MainReportRow[] | UmpireReportRow[]>([]);
   const [totals, setTotals] = useState({ games: 0, assignments: 0, pay: 0 });
   const [busy, setBusy] = useState(false);
@@ -256,6 +258,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
       return;
     }
 
+    setGeneratingMode(nextMode);
     setBusy(true);
     setError("");
     setNotice("");
@@ -271,6 +274,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
       }
 
       setMode(nextMode);
+      setActiveMode(nextMode);
       setRows(json.data.rows);
       setTotals(json.data.totals);
       setNotice(
@@ -285,6 +289,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
       setRows([]);
       setTotals({ games: 0, assignments: 0, pay: 0 });
     } finally {
+      setGeneratingMode(null);
       setBusy(false);
     }
   }
@@ -503,24 +508,28 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               disabled={busy}
               onClick={() => runReport("main")}
               className={`rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-60 ${
-                mode === "main"
+                activeMode === "main"
                   ? "border-red-500/50 bg-red-500/15 text-red-100 ring-1 ring-red-500/40"
                   : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
               }`}
             >
-              {busy && mode === "main" ? "Working..." : "Games Report"}
+              {busy && generatingMode === "main"
+                ? "Working..."
+                : "Games Report"}
             </button>
             <button
               type="button"
               disabled={busy}
               onClick={() => runReport("umpire")}
               className={`rounded-lg border px-3 py-2 text-sm font-semibold disabled:opacity-60 ${
-                mode === "umpire"
+                activeMode === "umpire"
                   ? "border-red-500/50 bg-red-500/15 text-red-100 ring-1 ring-red-500/40"
                   : "border-zinc-700 bg-zinc-900 text-zinc-200 hover:bg-zinc-800"
               }`}
             >
-              {busy && mode === "umpire" ? "Working..." : "Umpire Reports"}
+              {busy && generatingMode === "umpire"
+                ? "Working..."
+                : "Umpire Reports"}
             </button>
             <button
               type="button"
