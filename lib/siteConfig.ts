@@ -63,7 +63,7 @@ const configs: Record<OrgId, SiteConfig> = {
     displayNameLine2: "MASTER ADMIN",
     description: "Master admin dashboard for all AP Baseball organizations.",
     siteUrl: "https://admin.apbaseball.com",
-    logoPath: "/images/ap-logo.png",
+    logoPath: "/images/ap-logo.webp",
     colorPrimary: "#cc0000",
     colorPrimaryDark: "#9b0000",
     colorAccent: "#f5f5f5",

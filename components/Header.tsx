@@ -90,17 +90,21 @@ export default function Header({ brand }: HeaderProps) {
       <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
         {/* Logo */}
         <Link href="/#" className="flex items-center gap-3">
-          <div className="relative w-12 h-12 md:w-14 md:h-14">
-            {" "}
-            {/* Adjust size as needed */}
+          <div className="relative h-12 w-12 overflow-hidden rounded-full border border-zinc-700 bg-zinc-900/40 md:h-14 md:w-14">
             <Image
               src={logoSrc}
               alt={`${brand.name} Logo`}
               fill
               sizes="64px"
-              className="object-contain"
+              className="rounded-full object-cover"
               priority
-              onError={() => setLogoSrc("/images/logo.png")}
+              onError={() => {
+                if (logoSrc.endsWith(".webp")) {
+                  setLogoSrc(logoSrc.replace(/\.webp$/i, ".png"));
+                  return;
+                }
+                setLogoSrc("/images/logo.png");
+              }}
             />
           </div>
           <div className="hidden sm:block">
