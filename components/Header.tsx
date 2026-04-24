@@ -30,6 +30,56 @@ export default function Header({ brand }: HeaderProps) {
   const [canSeeDugout, setCanSeeDugout] = useState(false);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   const regOpen = isRegistrationOpen();
+  const isMasterHeader =
+    brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
+
+  const headerClassName = isMasterHeader
+    ? "sticky top-0 z-50 border-b border-red-900/60 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 shadow-[0_6px_24px_rgba(0,0,0,0.3)]"
+    : "sticky top-0 z-50 bg-zinc-950 border-b border-zinc-800";
+
+  const headerInnerClassName = isMasterHeader
+    ? "mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4"
+    : "max-w-7xl mx-auto px-6 py-4 flex items-center justify-between";
+
+  const logoFrameClassName = isMasterHeader
+    ? "relative h-12 w-12 overflow-hidden rounded-full border-2 border-red-500/70 bg-zinc-900/60 ring-2 ring-red-900/50 md:h-14 md:w-14"
+    : "relative h-12 w-12 overflow-hidden rounded-full border border-zinc-700 bg-zinc-900/40 md:h-14 md:w-14";
+
+  const subLabelClassName = isMasterHeader
+    ? "-mt-1 inline-flex rounded-full border border-red-700/60 bg-red-950/40 px-2 py-0.5 text-[10px] font-semibold tracking-[0.12em] text-red-200"
+    : "text-[10px] text-brand-gold -mt-1";
+
+  const brandTitleClassName = isMasterHeader
+    ? "font-bold text-2xl tracking-[0.06em] text-white uppercase"
+    : "font-bold text-2xl tracking-tight text-white uppercase";
+
+  const desktopNavClassName = isMasterHeader
+    ? "hidden md:flex items-center gap-6 text-[13px] font-semibold tracking-wide"
+    : "hidden md:flex items-center gap-8 text-sm font-medium";
+
+  const mobileMenuClassName = isMasterHeader
+    ? "md:hidden border-t border-red-900/60 bg-zinc-900/95"
+    : "md:hidden border-t border-zinc-800 bg-zinc-900";
+
+  function desktopLinkClassName(href: string) {
+    if (!isMasterHeader) return "hover:text-brand-gold transition-colors";
+
+    const isRouteLink = !href.includes("#");
+    const isActive = isRouteLink && pathname.startsWith(href);
+    return isActive
+      ? "relative text-red-200 transition-colors after:absolute after:-bottom-1 after:left-0 after:h-[2px] after:w-full after:rounded-full after:bg-red-400"
+      : "relative text-zinc-200/90 transition-colors hover:text-red-200 after:absolute after:-bottom-1 after:left-0 after:h-[2px] after:w-0 after:rounded-full after:bg-red-400 after:transition-all hover:after:w-full";
+  }
+
+  function mobileLinkClassName(href: string) {
+    if (!isMasterHeader) return "hover:text-brand-gold";
+
+    const isRouteLink = !href.includes("#");
+    const isActive = isRouteLink && pathname.startsWith(href);
+    return isActive
+      ? "rounded-md border border-red-800/70 bg-red-950/40 px-3 py-2 text-red-200"
+      : "rounded-md px-3 py-2 text-zinc-200 hover:bg-red-950/30 hover:text-red-200";
+  }
 
   useEffect(() => {
     let active = true;
@@ -86,11 +136,11 @@ export default function Header({ brand }: HeaderProps) {
   ];
 
   return (
-    <header className="sticky top-0 z-50 bg-zinc-950 border-b border-zinc-800">
-      <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
+    <header className={headerClassName}>
+      <div className={headerInnerClassName}>
         {/* Logo */}
         <Link href="/#" className="flex items-center gap-3">
-          <div className="relative h-12 w-12 overflow-hidden rounded-full border border-zinc-700 bg-zinc-900/40 md:h-14 md:w-14">
+          <div className={logoFrameClassName}>
             <Image
               src={logoSrc}
               alt={`${brand.name} Logo`}
@@ -108,22 +158,18 @@ export default function Header({ brand }: HeaderProps) {
             />
           </div>
           <div className="hidden sm:block">
-            <div className="font-bold text-2xl tracking-tight text-white uppercase">
-              {brand.displayNameLine1}
-            </div>
-            <div className="text-[10px] text-brand-gold -mt-1">
-              {brand.displayNameLine2}
-            </div>
+            <div className={brandTitleClassName}>{brand.displayNameLine1}</div>
+            <div className={subLabelClassName}>{brand.displayNameLine2}</div>
           </div>
         </Link>
 
         {/* Desktop Navigation */}
-        <nav className="hidden md:flex items-center gap-8 text-sm font-medium">
+        <nav className={desktopNavClassName}>
           {navLinks.map((link) => (
             <Link
               key={link.href}
               href={link.href}
-              className="hover:text-brand-gold transition-colors"
+              className={desktopLinkClassName(link.href)}
             >
               {link.label}
             </Link>
@@ -152,14 +198,14 @@ export default function Header({ brand }: HeaderProps) {
 
       {/* Mobile Menu */}
       {isMenuOpen && (
-        <div className="md:hidden border-t border-zinc-800 bg-zinc-900">
+        <div className={mobileMenuClassName}>
           <div className="px-6 py-8 flex flex-col gap-6 text-lg">
             {navLinks.map((link) => (
               <Link
                 key={link.href}
                 href={link.href}
                 onClick={() => setIsMenuOpen(false)}
-                className="hover:text-brand-gold"
+                className={mobileLinkClassName(link.href)}
               >
                 {link.label}
               </Link>
