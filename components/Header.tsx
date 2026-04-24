@@ -65,7 +65,11 @@ export default function Header({ brand }: HeaderProps) {
     if (!isMasterHeader) return "hover:text-brand-gold transition-colors";
 
     const isRouteLink = !href.includes("#");
-    const isActive = isRouteLink && pathname.startsWith(href);
+    const isActive = isRouteLink
+      ? href === "/admin"
+        ? pathname === "/admin"
+        : pathname.startsWith(href)
+      : false;
     return isActive
       ? "relative text-red-200 transition-colors after:absolute after:-bottom-1 after:left-0 after:h-[2px] after:w-full after:rounded-full after:bg-red-400"
       : "relative text-zinc-200/90 transition-colors hover:text-red-200 after:absolute after:-bottom-1 after:left-0 after:h-[2px] after:w-0 after:rounded-full after:bg-red-400 after:transition-all hover:after:w-full";
@@ -75,7 +79,11 @@ export default function Header({ brand }: HeaderProps) {
     if (!isMasterHeader) return "hover:text-brand-gold";
 
     const isRouteLink = !href.includes("#");
-    const isActive = isRouteLink && pathname.startsWith(href);
+    const isActive = isRouteLink
+      ? href === "/admin"
+        ? pathname === "/admin"
+        : pathname.startsWith(href)
+      : false;
     return isActive
       ? "rounded-md border border-red-800/70 bg-red-950/40 px-3 py-2 text-red-200"
       : "rounded-md px-3 py-2 text-zinc-200 hover:bg-red-950/30 hover:text-red-200";
@@ -125,15 +133,25 @@ export default function Header({ brand }: HeaderProps) {
 
   if (pathname.startsWith("/dugout")) return null;
 
-  const navLinks = [
-    { href: "/schedule", label: "Schedules & Standings" },
-    ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
-    ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
-    { href: "/#fields", label: "Fields & Status" },
-    ...(canSeeDugout ? [{ href: "/dugout", label: "The Dugout" }] : []),
-    { href: "/news", label: "News" },
-    { href: "/#contact", label: "Contact" },
-  ];
+  const navLinks = isMasterHeader
+    ? [
+        { href: "/admin", label: "Dashboard" },
+        { href: "/admin/users", label: "Users" },
+        { href: "/admin/reports", label: "Reports" },
+        { href: "/admin/scores", label: "Scores" },
+        ...(canSeeDugout
+          ? [{ href: "/admin/dugout", label: "Board Room" }]
+          : []),
+      ]
+    : [
+        { href: "/schedule", label: "Schedules & Standings" },
+        ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
+        ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
+        { href: "/#fields", label: "Fields & Status" },
+        ...(canSeeDugout ? [{ href: "/dugout", label: "The Dugout" }] : []),
+        { href: "/news", label: "News" },
+        { href: "/#contact", label: "Contact" },
+      ];
 
   return (
     <header className={headerClassName}>
@@ -178,7 +196,7 @@ export default function Header({ brand }: HeaderProps) {
         </nav>
 
         {/* Register Button */}
-        {regOpen && (
+        {!isMasterHeader && regOpen && (
           <Link
             href="/#register"
             className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm transition"
@@ -210,7 +228,7 @@ export default function Header({ brand }: HeaderProps) {
                 {link.label}
               </Link>
             ))}
-            {regOpen && (
+            {!isMasterHeader && regOpen && (
               <Link
                 href="/#register"
                 onClick={() => setIsMenuOpen(false)}
@@ -219,7 +237,7 @@ export default function Header({ brand }: HeaderProps) {
                 Register for Spring 2026
               </Link>
             )}
-            {canSeeDugout && (
+            {!isMasterHeader && canSeeDugout && (
               <Link
                 href="/dugout"
                 onClick={() => setIsMenuOpen(false)}
