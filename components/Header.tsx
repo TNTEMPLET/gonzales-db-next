@@ -139,9 +139,8 @@ export default function Header({ brand }: HeaderProps) {
         { href: "/admin/users", label: "Users" },
         { href: "/admin/reports", label: "Reports" },
         { href: "/admin/scores", label: "Scores" },
-        ...(canSeeDugout
-          ? [{ href: "/admin/dugout", label: "Board Room" }]
-          : []),
+        { href: "/admin/dugout", label: "Dugout" },
+        ...(canSeeDugout ? [{ href: "/dugout", label: "Board Room" }] : []),
       ]
     : [
         { href: "/schedule", label: "Schedules & Standings" },
