@@ -4,6 +4,12 @@ import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
+import {
+  canAccessAdminModule,
+  isAdminRole,
+  toAdminRole,
+  type AdminRole,
+} from "@/lib/auth/adminRoles";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 
@@ -12,6 +18,14 @@ type DugoutMeResponse = {
     isCoach: boolean;
     isAdmin: boolean;
   } | null;
+};
+
+type AdminMeResponse = {
+  authenticated: boolean;
+  user?: {
+    role?: string;
+    isMaster?: boolean;
+  };
 };
 
 type HeaderProps = {
@@ -28,6 +42,7 @@ export default function Header({ brand }: HeaderProps) {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
+  const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   const regOpen = isRegistrationOpen();
   const isMasterHeader =
@@ -94,20 +109,41 @@ export default function Header({ brand }: HeaderProps) {
 
     async function loadDugoutAccess() {
       try {
-        const res = await fetch("/api/dugout/me", { cache: "no-store" });
-        if (!res.ok) {
+        const [dugoutRes, adminRes] = await Promise.all([
+          fetch("/api/dugout/me", { cache: "no-store" }),
+          fetch("/api/admin/me", { cache: "no-store" }),
+        ]);
+
+        if (!dugoutRes.ok) {
           if (active) setIsLoggedIn(false);
           if (active) setCanSeeDugout(false);
-          return;
+        } else {
+          const json = (await dugoutRes.json()) as DugoutMeResponse;
+          if (active) setIsLoggedIn(Boolean(json.user));
+          if (active)
+            setCanSeeDugout(Boolean(json.user?.isCoach || json.user?.isAdmin));
         }
 
-        const json = (await res.json()) as DugoutMeResponse;
-        if (active) setIsLoggedIn(Boolean(json.user));
-        if (active)
-          setCanSeeDugout(Boolean(json.user?.isCoach || json.user?.isAdmin));
+        if (!adminRes.ok) {
+          if (active) setAdminRole(null);
+        } else {
+          const adminJson = (await adminRes.json()) as AdminMeResponse;
+          const roleValue = adminJson.user?.role;
+          const isMaster = Boolean(adminJson.user?.isMaster);
+          if (active) {
+            setAdminRole(
+              isMaster
+                ? "MASTER_ADMIN"
+                : isAdminRole(roleValue)
+                  ? roleValue
+                  : null,
+            );
+          }
+        }
       } catch {
         if (active) setIsLoggedIn(false);
         if (active) setCanSeeDugout(false);
+        if (active) setAdminRole(null);
       }
     }
 
@@ -133,13 +169,29 @@ export default function Header({ brand }: HeaderProps) {
 
   if (pathname.startsWith("/dugout")) return null;
 
+  const masterRole = adminRole ? toAdminRole(adminRole) : null;
+  const allowModule = (
+    module: "USERS" | "REPORTS" | "SCORES" | "DUGOUT_MODERATION",
+  ) => {
+    if (!masterRole) return true;
+    return canAccessAdminModule(masterRole, module);
+  };
+
   const navLinks = isMasterHeader
     ? [
         { href: "/admin", label: "Dashboard" },
-        { href: "/admin/users", label: "Users" },
-        { href: "/admin/reports", label: "Reports" },
-        { href: "/admin/scores", label: "Scores" },
-        { href: "/admin/dugout", label: "Dugout" },
+        ...(allowModule("USERS")
+          ? [{ href: "/admin/users", label: "Users" }]
+          : []),
+        ...(allowModule("REPORTS")
+          ? [{ href: "/admin/reports", label: "Reports" }]
+          : []),
+        ...(allowModule("SCORES")
+          ? [{ href: "/admin/scores", label: "Scores" }]
+          : []),
+        ...(allowModule("DUGOUT_MODERATION")
+          ? [{ href: "/admin/dugout", label: "Dugout" }]
+          : []),
         ...(canSeeDugout ? [{ href: "/dugout", label: "The Board Room" }] : []),
       ]
     : [

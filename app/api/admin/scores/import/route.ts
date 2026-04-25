@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { fetchGames, type Game } from "@/lib/fetchGames";
-import { ensureNewsAdmin } from "@/lib/news/auth";
+import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
@@ -123,7 +123,7 @@ export async function POST(request: NextRequest) {
     request.nextUrl.searchParams.get("org"),
   );
   const leagueId = getAssignrLeagueId(targetOrg);
-  const auth = await ensureNewsAdmin(request);
+  const auth = await ensureAdminModule(request, "SCORES");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },

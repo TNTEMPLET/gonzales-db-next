@@ -1,7 +1,9 @@
 import type { NextRequest } from "next/server";
 
 import {
+  canAccessAdminModule,
   hasAdminRoleAtLeast,
+  type AdminModule,
   toAdminRole,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
@@ -17,11 +19,32 @@ export async function ensureNewsAdmin(request: NextRequest): Promise<{
   status: number;
   message?: string;
 }> {
-  if (!(await isNewsAdmin(request))) {
+  return ensureAdminModule(request, "NEWS_ADMIN");
+}
+
+export async function ensureAdminModule(
+  request: NextRequest,
+  module: AdminModule,
+): Promise<{
+  ok: boolean;
+  status: number;
+  message?: string;
+}> {
+  const adminUser = await getAdminUserFromRequest(request);
+  if (!adminUser) {
     return {
       ok: false,
       status: 401,
       message: "Unauthorized",
+    };
+  }
+
+  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  if (!canAccessAdminModule(role, module)) {
+    return {
+      ok: false,
+      status: 403,
+      message: "Forbidden",
     };
   }
 

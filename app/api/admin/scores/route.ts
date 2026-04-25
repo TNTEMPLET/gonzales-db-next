@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { ensureNewsAdmin } from "@/lib/news/auth";
+import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
@@ -23,7 +23,7 @@ function toValidScore(value: unknown): number | null {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureNewsAdmin(request);
+  const auth = await ensureAdminModule(request, "SCORES");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await ensureNewsAdmin(request);
+  const auth = await ensureAdminModule(request, "SCORES");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },

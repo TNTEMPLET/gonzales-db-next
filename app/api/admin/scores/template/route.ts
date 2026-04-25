@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureNewsAdmin } from "@/lib/news/auth";
+import { ensureAdminModule } from "@/lib/news/auth";
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureNewsAdmin(request);
+  const auth = await ensureAdminModule(request, "SCORES");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },

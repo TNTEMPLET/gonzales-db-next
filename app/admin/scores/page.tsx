@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
 import AdminScoresManager from "@/components/admin/AdminScoresManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import {
@@ -56,6 +57,11 @@ export default async function AdminScoresPage({
 
   if (!adminUser) {
     redirect("/admin/login?next=/admin/scores");
+  }
+
+  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  if (!canAccessAdminModule(role, "SCORES")) {
+    redirect("/admin?denied=scores");
   }
 
   const [scores, games] = await Promise.all([

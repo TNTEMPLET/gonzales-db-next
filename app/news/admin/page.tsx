@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import NewsAdminPanel from "@/components/news/NewsAdminPanel";
 import {
@@ -32,6 +33,11 @@ export default async function NewsAdminPage({
 
   if (!adminUser) {
     redirect("/admin/login?next=/news/admin");
+  }
+
+  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  if (!canAccessAdminModule(role, "NEWS_ADMIN")) {
+    redirect("/admin?denied=news");
   }
 
   const { edit, org } = await searchParams;

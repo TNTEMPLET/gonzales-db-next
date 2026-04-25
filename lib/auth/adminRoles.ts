@@ -7,11 +7,31 @@ export const ADMIN_ROLES = [
 
 export type AdminRole = (typeof ADMIN_ROLES)[number];
 
+export const ADMIN_MODULES = [
+  "DASHBOARD",
+  "USERS",
+  "REPORTS",
+  "SCORES",
+  "DUGOUT_MODERATION",
+  "NEWS_ADMIN",
+] as const;
+
+export type AdminModule = (typeof ADMIN_MODULES)[number];
+
 const roleRank: Record<AdminRole, number> = {
   MASTER_ADMIN: 5,
   ADMIN: 4,
   BOARD_MEMBER: 3,
   PARK_DIRECTOR: 2,
+};
+
+const moduleMinimumRole: Record<AdminModule, AdminRole> = {
+  DASHBOARD: "PARK_DIRECTOR",
+  USERS: "ADMIN",
+  REPORTS: "PARK_DIRECTOR",
+  SCORES: "BOARD_MEMBER",
+  DUGOUT_MODERATION: "BOARD_MEMBER",
+  NEWS_ADMIN: "BOARD_MEMBER",
 };
 
 export function isAdminRole(
@@ -35,6 +55,17 @@ export function hasAdminRoleAtLeast(
   minimum: AdminRole,
 ): boolean {
   return roleRank[role] >= roleRank[minimum];
+}
+
+export function getMinimumRoleForModule(module: AdminModule): AdminRole {
+  return moduleMinimumRole[module];
+}
+
+export function canAccessAdminModule(
+  role: AdminRole,
+  module: AdminModule,
+): boolean {
+  return hasAdminRoleAtLeast(role, getMinimumRoleForModule(module));
 }
 
 export function getAdminRoleLabel(role: AdminRole): string {

@@ -3,6 +3,11 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import {
+  canAccessAdminModule,
+  toAdminRole,
+  type AdminModule,
+} from "@/lib/auth/adminRoles";
+import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
@@ -44,12 +49,14 @@ export default async function AdminDashboardPage({
     [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") ||
     adminUser.name ||
     adminUser.email;
+  const adminRole = toAdminRole(adminUser.role, adminUser.isMaster);
 
   const orgQuery = `?org=${currentOrg}`;
   const masterMode = isMasterDeployment();
   const currentSite = getSiteConfigForOrg(currentOrg);
   const cards = [
     {
+      module: "USERS" as AdminModule,
       href: `/admin/users${orgQuery}`,
       title: "User Management",
       description: masterMode
@@ -58,6 +65,7 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open Access Console" : "Open Users",
     },
     {
+      module: "SCORES" as AdminModule,
       href: `/admin/scores${orgQuery}`,
       title: "Scores & Standings",
       description: masterMode
@@ -66,6 +74,7 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open Game Ops" : "Open Score Entry",
     },
     {
+      module: "NEWS_ADMIN" as AdminModule,
       href: `/news/admin${orgQuery}`,
       title: "News Management",
       description: masterMode
@@ -74,6 +83,7 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open Content Desk" : "Open News Admin",
     },
     {
+      module: "DUGOUT_MODERATION" as AdminModule,
       href: `/admin/dugout${orgQuery}`,
       title: "Dugout Moderation",
       description: masterMode
@@ -82,6 +92,7 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open Dugout Watch" : "Open Dugout Moderation",
     },
     {
+      module: "REPORTS" as AdminModule,
       href: `/admin/reports${orgQuery}`,
       title: "Reporting",
       description: masterMode
@@ -89,7 +100,7 @@ export default async function AdminDashboardPage({
         : "Generate umpire reports and payout summaries.",
       action: masterMode ? "Open Reporting Desk" : "Open Reports",
     },
-  ];
+  ].filter((card) => canAccessAdminModule(adminRole, card.module));
 
   const statusChips = [
     {

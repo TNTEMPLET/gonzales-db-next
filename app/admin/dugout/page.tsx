@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import DugoutModerationPanel from "@/components/admin/DugoutModerationPanel";
 import {
@@ -31,6 +32,11 @@ export default async function AdminDugoutPage({
 
   if (!adminUser) {
     redirect("/admin/login?next=/admin/dugout");
+  }
+
+  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  if (!canAccessAdminModule(role, "DUGOUT_MODERATION")) {
+    redirect("/admin?denied=dugout");
   }
 
   return (

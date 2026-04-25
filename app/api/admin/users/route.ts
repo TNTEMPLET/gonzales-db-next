@@ -6,7 +6,7 @@ import {
   toAdminRole,
 } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { ensureNewsAdmin } from "@/lib/news/auth";
+import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
@@ -66,7 +66,7 @@ function getRequestIp(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureNewsAdmin(request);
+  const auth = await ensureAdminModule(request, "USERS");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },
@@ -171,7 +171,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await ensureNewsAdmin(request);
+  const auth = await ensureAdminModule(request, "USERS");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },
@@ -310,7 +310,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const auth = await ensureNewsAdmin(request);
+  const auth = await ensureAdminModule(request, "USERS");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },
@@ -422,7 +422,7 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await ensureNewsAdmin(request);
+  const auth = await ensureAdminModule(request, "USERS");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },

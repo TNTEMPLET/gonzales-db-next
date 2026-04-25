@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
+import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
@@ -33,6 +34,14 @@ export async function PATCH(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await ensureAdminModule(request, "USERS");
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.message || "Unauthorized" },
+      { status: auth.status },
+    );
+  }
+
   const admin = await getAdminUserFromRequest(request);
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -137,6 +146,14 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  const auth = await ensureAdminModule(request, "USERS");
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.message || "Unauthorized" },
+      { status: auth.status },
+    );
+  }
+
   const admin = await getAdminUserFromRequest(request);
   if (!admin) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

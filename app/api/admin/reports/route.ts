@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAdminRole } from "@/lib/news/auth";
+import { ensureAdminModule } from "@/lib/news/auth";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
@@ -309,7 +309,7 @@ function buildUmpireReportRows(games: Game[]): UmpireReportRow[] {
 }
 
 export async function GET(request: NextRequest) {
-  const admin = await ensureAdminRole(request, "PARK_DIRECTOR");
+  const admin = await ensureAdminModule(request, "REPORTS");
   if (!admin.ok) {
     return NextResponse.json(
       { error: admin.message || "Unauthorized" },

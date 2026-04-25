@@ -1,6 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AdminUsersManager from "@/components/admin/AdminUsersManager";
 import {
@@ -31,6 +32,11 @@ export default async function AdminUsersPage({
 
   if (!adminUser) {
     redirect("/admin/login?next=/admin/users");
+  }
+
+  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  if (!canAccessAdminModule(role, "USERS")) {
+    redirect("/admin?denied=users");
   }
 
   return (
