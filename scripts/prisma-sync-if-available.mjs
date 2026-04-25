@@ -34,10 +34,12 @@ try {
     create: {
       email,
       name: "Trent Templet",
+      role: "MASTER_ADMIN",
       isMaster: true,
       passwordHash: null,
     },
     update: {
+      role: "MASTER_ADMIN",
       isMaster: true,
     },
   });

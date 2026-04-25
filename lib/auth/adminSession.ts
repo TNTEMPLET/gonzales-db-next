@@ -3,8 +3,8 @@ import crypto from "node:crypto";
 import bcrypt from "bcryptjs";
 import { NextRequest } from "next/server";
 
+import { toAdminRole, type AdminRole } from "@/lib/auth/adminRoles";
 import prisma from "@/lib/prisma";
-import { isMasterDeployment } from "@/lib/siteConfig";
 
 export const ADMIN_SESSION_COOKIE = "gdb_admin_session";
 const SESSION_TTL_DAYS = 7;
@@ -16,6 +16,7 @@ export type AdminSessionUser = {
   firstName: string | null;
   lastName: string | null;
   avatarUrl: string | null;
+  role: AdminRole;
   isMaster: boolean;
 };
 
@@ -36,7 +37,6 @@ export async function verifyAdminCredentials(email: string, password: string) {
     where: { email: normalizedEmail },
   });
   if (!user) return null;
-  if (isMasterDeployment() && !user.isMaster) return null;
   if (!user.passwordHash) return null;
 
   const isMatch = await bcrypt.compare(password, user.passwordHash);
@@ -48,6 +48,7 @@ export async function verifyAdminCredentials(email: string, password: string) {
     name: user.name,
     firstName: user.firstName,
     lastName: user.lastName,
+    role: toAdminRole(user.role, user.isMaster),
     isMaster: user.isMaster,
   };
 }
@@ -94,13 +95,6 @@ export async function getAdminUserByToken(token: string | undefined) {
     return null;
   }
 
-  if (isMasterDeployment() && !session.user.isMaster) {
-    await prisma.adminSession
-      .delete({ where: { tokenHash } })
-      .catch(() => null);
-    return null;
-  }
-
   return {
     id: session.user.id,
     email: session.user.email,
@@ -108,6 +102,7 @@ export async function getAdminUserByToken(token: string | undefined) {
     firstName: session.user.firstName,
     lastName: session.user.lastName,
     avatarUrl: session.user.avatarUrl ?? null,
+    role: toAdminRole(session.user.role, session.user.isMaster),
     isMaster: session.user.isMaster,
   } satisfies AdminSessionUser;
 }

@@ -3,10 +3,13 @@
 import { useEffect, useMemo, useState } from "react";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
+type AdminRole = "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR";
+
 type AdminUser = {
   id: string;
   email: string;
   name: string | null;
+  role: AdminRole;
   isMaster: boolean;
   createdAt: string;
 };
@@ -58,8 +61,8 @@ type ApiResponse = {
   auditLogs: AdminAuditLog[];
   auditLogsMeta: AuditLogsMeta;
   currentAdminEmail: string | null;
+  currentAdminRole: AdminRole | null;
   currentAdminIsMaster: boolean;
-  isMasterDeployment: boolean;
   data: RegisteredUser[];
 };
 
@@ -76,15 +79,10 @@ type ConfirmAction =
       label: string;
     }
   | {
-      kind: "grantMaster";
+      kind: "setRole";
       adminId: string;
       email: string;
-      label: string;
-    }
-  | {
-      kind: "revokeMaster";
-      adminId: string;
-      email: string;
+      role: AdminRole;
       label: string;
     }
   | {
@@ -153,8 +151,10 @@ export default function AdminUsersManager({
   const [currentAdminEmail, setCurrentAdminEmail] = useState<string | null>(
     null,
   );
+  const [currentAdminRole, setCurrentAdminRole] = useState<AdminRole | null>(
+    null,
+  );
   const [currentAdminIsMaster, setCurrentAdminIsMaster] = useState(false);
-  const [isMasterDeployment, setIsMasterDeployment] = useState(false);
   const [adminSearch, setAdminSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [logSearchInput, setLogSearchInput] = useState("");
@@ -239,8 +239,8 @@ export default function AdminUsersManager({
       );
       setRegisteredUsers(payload.data || []);
       setCurrentAdminEmail(payload.currentAdminEmail || null);
+      setCurrentAdminRole(payload.currentAdminRole || null);
       setCurrentAdminIsMaster(Boolean(payload.currentAdminIsMaster));
-      setIsMasterDeployment(Boolean(payload.isMasterDeployment));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load users");
     } finally {
@@ -340,10 +340,10 @@ export default function AdminUsersManager({
     }
   }
 
-  async function setMasterAdmin(
+  async function setAdminRole(
     adminId: string,
     adminEmail: string,
-    nextIsMaster: boolean,
+    role: AdminRole,
   ) {
     setBusy(true);
     setError("");
@@ -356,7 +356,7 @@ export default function AdminUsersManager({
           "Content-Type": "application/json",
           "x-source-path": window.location.pathname,
         },
-        body: JSON.stringify({ adminId, isMaster: nextIsMaster }),
+        body: JSON.stringify({ adminId, role }),
       });
       const json = await response.json();
 
@@ -364,16 +364,10 @@ export default function AdminUsersManager({
         throw new Error(json.error || "Failed to update master admin");
       }
 
-      setNotice(
-        nextIsMaster
-          ? `Granted master admin access to ${adminEmail}.`
-          : `Revoked master admin access from ${adminEmail}.`,
-      );
+      setNotice(`Updated role for ${adminEmail}.`);
       await loadData();
     } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "Failed to update master admin",
-      );
+      setError(err instanceof Error ? err.message : "Failed to update role");
     } finally {
       setBusy(false);
     }
@@ -523,10 +517,12 @@ export default function AdminUsersManager({
       await promoteUser(confirmAction.userId);
     } else if (confirmAction.kind === "demote") {
       await demoteAdmin(confirmAction.adminId, confirmAction.email);
-    } else if (confirmAction.kind === "grantMaster") {
-      await setMasterAdmin(confirmAction.adminId, confirmAction.email, true);
-    } else if (confirmAction.kind === "revokeMaster") {
-      await setMasterAdmin(confirmAction.adminId, confirmAction.email, false);
+    } else if (confirmAction.kind === "setRole") {
+      await setAdminRole(
+        confirmAction.adminId,
+        confirmAction.email,
+        confirmAction.role,
+      );
     } else if (confirmAction.kind === "block") {
       await blockUser(confirmAction.userId);
     } else if (confirmAction.kind === "unblock") {
@@ -624,8 +620,16 @@ export default function AdminUsersManager({
             ) : (
               filteredAdmins.map((admin) => {
                 const isCurrent = currentAdminEmail === admin.email;
-                const canManageMaster =
-                  isMasterDeployment && currentAdminIsMaster;
+                const canManageRoles =
+                  currentAdminRole === "MASTER_ADMIN" || currentAdminIsMaster;
+                const roleLabel =
+                  admin.role === "MASTER_ADMIN"
+                    ? "Master Admin"
+                    : admin.role === "BOARD_MEMBER"
+                      ? "Board Member"
+                      : admin.role === "PARK_DIRECTOR"
+                        ? "Park Director"
+                        : "Admin";
                 return (
                   <div
                     key={admin.id}
@@ -634,7 +638,7 @@ export default function AdminUsersManager({
                     <div>
                       <p className="text-sm font-medium flex items-center gap-2">
                         {admin.name || "Unnamed Admin"}
-                        {admin.isMaster ? (
+                        {admin.role === "MASTER_ADMIN" ? (
                           <span
                             className="inline-flex items-center justify-center h-5 w-5 rounded-md border border-red-500/80 bg-amber-300 text-red-700"
                             title="Master Admin"
@@ -654,42 +658,33 @@ export default function AdminUsersManager({
                         ) : null}
                       </p>
                       <p className="text-xs text-zinc-500">{admin.email}</p>
+                      <p className="text-[11px] text-zinc-400 mt-0.5">
+                        Role: {roleLabel}
+                      </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {canManageMaster ? (
-                        admin.isMaster ? (
-                          <button
-                            type="button"
-                            disabled={busy || isCurrent}
-                            onClick={() =>
-                              setConfirmAction({
-                                kind: "revokeMaster",
-                                adminId: admin.id,
-                                email: admin.email,
-                                label: `Remove master admin access from ${admin.email}?`,
-                              })
-                            }
-                            className="text-xs rounded-lg border border-amber-700 text-amber-300 hover:bg-amber-950/40 px-3 py-1.5 disabled:opacity-60"
-                          >
-                            Revoke Master
-                          </button>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() =>
-                              setConfirmAction({
-                                kind: "grantMaster",
-                                adminId: admin.id,
-                                email: admin.email,
-                                label: `Grant master admin access to ${admin.email}?`,
-                              })
-                            }
-                            className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-3 py-1.5 disabled:opacity-60"
-                          >
-                            Make Master
-                          </button>
-                        )
+                      {canManageRoles ? (
+                        <select
+                          value={admin.role}
+                          disabled={busy}
+                          onChange={(event) => {
+                            const nextRole = event.target.value as AdminRole;
+                            if (nextRole === admin.role) return;
+                            setConfirmAction({
+                              kind: "setRole",
+                              adminId: admin.id,
+                              email: admin.email,
+                              role: nextRole,
+                              label: `Set ${admin.email} to ${nextRole.replaceAll("_", " ")}?`,
+                            });
+                          }}
+                          className="text-xs rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-zinc-200 disabled:opacity-60"
+                        >
+                          <option value="MASTER_ADMIN">Master Admin</option>
+                          <option value="ADMIN">Admin</option>
+                          <option value="BOARD_MEMBER">Board Member</option>
+                          <option value="PARK_DIRECTOR">Park Director</option>
+                        </select>
                       ) : null}
                       {isCurrent ? (
                         <span className="text-[11px] rounded-full px-2 py-1 border border-zinc-700 text-zinc-400">

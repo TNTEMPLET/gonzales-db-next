@@ -21,6 +21,13 @@ enum AdminAuditAction {
   REVOKE_MASTER
 }
 
+enum AdminRole {
+  MASTER_ADMIN
+  ADMIN
+  BOARD_MEMBER
+  PARK_DIRECTOR
+}
+
 enum DugoutMediaType {
   IMAGE
   GIF
@@ -58,6 +65,7 @@ model AdminUser {
   name         String?
   firstName    String?
   lastName     String?
+  role         AdminRole       @default(ADMIN)
   isMaster     Boolean         @default(false)
   passwordHash String?
   avatarUrl    String?

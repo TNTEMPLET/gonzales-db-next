@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import AdminReportsManager from "@/components/admin/AdminReportsManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
@@ -31,6 +32,11 @@ export default async function AdminReportsPage({
 
   if (!adminUser) {
     redirect("/admin/login?next=/admin/reports");
+  }
+
+  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  if (!hasAdminRoleAtLeast(role, "PARK_DIRECTOR")) {
+    redirect("/admin?denied=reports");
   }
 
   return (

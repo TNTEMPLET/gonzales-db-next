@@ -1,0 +1,13 @@
+DO $$
+BEGIN
+  CREATE TYPE "AdminRole" AS ENUM ('MASTER_ADMIN', 'ADMIN', 'BOARD_MEMBER', 'PARK_DIRECTOR');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
+
+ALTER TABLE "AdminUser"
+ADD COLUMN IF NOT EXISTS "role" "AdminRole" NOT NULL DEFAULT 'ADMIN';
+
+UPDATE "AdminUser"
+SET "role" = 'MASTER_ADMIN'
+WHERE "isMaster" = true;
