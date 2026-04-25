@@ -5,6 +5,8 @@ export const ADMIN_ROLES = [
   "PARK_DIRECTOR",
 ] as const;
 
+export const PROTECTED_MASTER_ADMIN_EMAIL = "trent@apbaseball.com";
+
 export type AdminRole = (typeof ADMIN_ROLES)[number];
 
 export const ADMIN_MODULES = [

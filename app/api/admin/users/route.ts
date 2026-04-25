@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import {
   hasAdminRoleAtLeast,
   isAdminRole,
+  PROTECTED_MASTER_ADMIN_EMAIL,
   toAdminRole,
 } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
@@ -153,6 +154,7 @@ export async function GET(request: NextRequest) {
       currentAdminRole: currentAdmin
         ? toAdminRole(currentAdmin.role, currentAdmin.isMaster)
         : null,
+      protectedMasterAdminEmail: PROTECTED_MASTER_ADMIN_EMAIL,
       currentAdminIsMaster: currentAdmin?.isMaster || false,
       isMasterDeployment: isMasterDeployment(),
       targetOrg,
@@ -237,10 +239,23 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const isProtectedTargetEmail =
+      user.email.trim().toLowerCase() === PROTECTED_MASTER_ADMIN_EMAIL;
+    const actorEmail = currentAdmin?.email?.trim().toLowerCase() || "";
+    if (isProtectedTargetEmail && actorEmail !== PROTECTED_MASTER_ADMIN_EMAIL) {
+      return NextResponse.json(
+        { error: "This protected account can only be managed by itself" },
+        { status: 403 },
+      );
+    }
+
     const fullName =
       user.firstName || user.lastName
         ? [user.firstName, user.lastName].filter(Boolean).join(" ")
         : user.name;
+
+    const effectiveRole = isProtectedTargetEmail ? "MASTER_ADMIN" : requestedRole;
+    const effectiveIsMasterRole = effectiveRole === "MASTER_ADMIN";
 
     const admin = await prisma.adminUser.upsert({
       where: { email: user.email },
@@ -249,16 +264,16 @@ export async function POST(request: NextRequest) {
         name: fullName,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: requestedRole,
-        isMaster: isMasterRole,
+        role: effectiveRole,
+        isMaster: effectiveIsMasterRole,
         passwordHash: null,
       },
       update: {
         name: fullName,
         firstName: user.firstName,
         lastName: user.lastName,
-        role: requestedRole,
-        isMaster: isMasterRole,
+        role: effectiveRole,
+        isMaster: effectiveIsMasterRole,
       },
     });
 
@@ -276,7 +291,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    if (isMasterRole) {
+    if (effectiveIsMasterRole) {
       await prisma.adminAuditLog.create({
         data: {
           action: "GRANT_MASTER",
@@ -350,6 +365,24 @@ export async function PATCH(request: NextRequest) {
     });
     if (!targetAdmin) {
       return NextResponse.json({ error: "Admin not found" }, { status: 404 });
+    }
+
+    const targetEmail = targetAdmin.email.trim().toLowerCase();
+    const actorEmail = currentAdmin.email.trim().toLowerCase();
+    if (targetEmail === PROTECTED_MASTER_ADMIN_EMAIL) {
+      if (actorEmail !== PROTECTED_MASTER_ADMIN_EMAIL) {
+        return NextResponse.json(
+          { error: "This protected account can only be managed by itself" },
+          { status: 403 },
+        );
+      }
+
+      if (nextRole !== "MASTER_ADMIN" || !nextIsMaster) {
+        return NextResponse.json(
+          { error: "This protected account is locked as Master Admin" },
+          { status: 400 },
+        );
+      }
     }
 
     if (targetAdmin.id === currentAdmin.id && !nextIsMaster) {
@@ -455,6 +488,15 @@ export async function DELETE(request: NextRequest) {
 
     if (!targetAdmin) {
       return NextResponse.json({ error: "Admin not found" }, { status: 404 });
+    }
+
+    if (
+      targetAdmin.email.trim().toLowerCase() === PROTECTED_MASTER_ADMIN_EMAIL
+    ) {
+      return NextResponse.json(
+        { error: "This protected account is locked as Master Admin" },
+        { status: 400 },
+      );
     }
 
     if (currentAdmin && targetAdmin.email === currentAdmin.email) {

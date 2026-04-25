@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { PROTECTED_MASTER_ADMIN_EMAIL } from "@/lib/auth/adminRoles";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type AdminRole = "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR";
@@ -62,6 +63,7 @@ type ApiResponse = {
   auditLogsMeta: AuditLogsMeta;
   currentAdminEmail: string | null;
   currentAdminRole: AdminRole | null;
+  protectedMasterAdminEmail?: string;
   currentAdminIsMaster: boolean;
   data: RegisteredUser[];
 };
@@ -154,6 +156,9 @@ export default function AdminUsersManager({
   const [currentAdminRole, setCurrentAdminRole] = useState<AdminRole | null>(
     null,
   );
+  const [protectedMasterAdminEmail, setProtectedMasterAdminEmail] = useState(
+    PROTECTED_MASTER_ADMIN_EMAIL,
+  );
   const [currentAdminIsMaster, setCurrentAdminIsMaster] = useState(false);
   const [adminSearch, setAdminSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
@@ -240,6 +245,9 @@ export default function AdminUsersManager({
       setRegisteredUsers(payload.data || []);
       setCurrentAdminEmail(payload.currentAdminEmail || null);
       setCurrentAdminRole(payload.currentAdminRole || null);
+      setProtectedMasterAdminEmail(
+        payload.protectedMasterAdminEmail || PROTECTED_MASTER_ADMIN_EMAIL,
+      );
       setCurrentAdminIsMaster(Boolean(payload.currentAdminIsMaster));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load users");
@@ -620,8 +628,12 @@ export default function AdminUsersManager({
             ) : (
               filteredAdmins.map((admin) => {
                 const isCurrent = currentAdminEmail === admin.email;
+                const isProtectedMaster =
+                  admin.email.trim().toLowerCase() ===
+                  protectedMasterAdminEmail.trim().toLowerCase();
                 const canManageRoles =
-                  currentAdminRole === "MASTER_ADMIN" || currentAdminIsMaster;
+                  (currentAdminRole === "MASTER_ADMIN" || currentAdminIsMaster) &&
+                  !isProtectedMaster;
                 const roleLabel =
                   admin.role === "MASTER_ADMIN"
                     ? "Master Admin"
@@ -689,6 +701,10 @@ export default function AdminUsersManager({
                       {isCurrent ? (
                         <span className="text-[11px] rounded-full px-2 py-1 border border-zinc-700 text-zinc-400">
                           You
+                        </span>
+                      ) : isProtectedMaster ? (
+                        <span className="text-[11px] rounded-full px-2 py-1 border border-amber-600/70 text-amber-300 bg-amber-950/30">
+                          Locked
                         </span>
                       ) : (
                         <button
