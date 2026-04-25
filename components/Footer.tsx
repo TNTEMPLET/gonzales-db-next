@@ -98,7 +98,7 @@ export default function Footer({ brand }: FooterProps) {
                     href="/dugout"
                     className="hover:text-brand-gold transition"
                   >
-                    Board Room
+                    The Board Room
                   </a>
                 </li>
               </>

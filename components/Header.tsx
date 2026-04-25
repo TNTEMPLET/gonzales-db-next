@@ -140,7 +140,7 @@ export default function Header({ brand }: HeaderProps) {
         { href: "/admin/reports", label: "Reports" },
         { href: "/admin/scores", label: "Scores" },
         { href: "/admin/dugout", label: "Dugout" },
-        ...(canSeeDugout ? [{ href: "/dugout", label: "Board Room" }] : []),
+        ...(canSeeDugout ? [{ href: "/dugout", label: "The Board Room" }] : []),
       ]
     : [
         { href: "/schedule", label: "Schedules & Standings" },
