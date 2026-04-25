@@ -132,27 +132,6 @@ export function getOrgDisplayName(org: ContentOrgId): string {
   return getSiteConfigForOrg(org).shortName;
 }
 
-function parseMasterAdminAllowlist(): Set<string> {
-  const raw = process.env.MASTER_ADMIN_ALLOWLIST ?? "";
-  return new Set(
-    raw
-      .split(",")
-      .map((entry) => entry.trim().toLowerCase())
-      .filter(Boolean),
-  );
-}
-
-export function isMasterAdminEmailAllowed(email: string): boolean {
-  if (!isMasterDeployment()) return true;
-
-  const normalized = email.trim().toLowerCase();
-  const allowlist = parseMasterAdminAllowlist();
-
-  // Fail closed on master if no allowlist is configured.
-  if (allowlist.size === 0) return false;
-  return allowlist.has(normalized);
-}
-
 export function getAssignrLeagueId(org?: ContentOrgId): string {
   if (org) {
     return getSiteConfigForOrg(org).assignrLeagueId || "515712";

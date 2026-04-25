@@ -17,6 +17,8 @@ enum AdminAuditAction {
   BLOCK
   UNBLOCK
   REMOVE
+  GRANT_MASTER
+  REVOKE_MASTER
 }
 
 enum DugoutMediaType {
@@ -56,6 +58,7 @@ model AdminUser {
   name         String?
   firstName    String?
   lastName     String?
+  isMaster     Boolean         @default(false)
   passwordHash String?
   avatarUrl    String?
   createdAt    DateTime        @default(now())

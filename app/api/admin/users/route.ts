@@ -3,15 +3,21 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureNewsAdmin } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 type PromotePayload = {
   userId?: string;
+  isMaster?: boolean;
 };
 
 type DemotePayload = {
   adminId?: string;
   email?: string;
+};
+
+type MasterTogglePayload = {
+  adminId?: string;
+  isMaster?: boolean;
 };
 
 type AuditAction = "PROMOTE" | "DEMOTE";
@@ -139,6 +145,8 @@ export async function GET(request: NextRequest) {
         to: logTo?.toISOString() || null,
       },
       currentAdminEmail: currentAdmin?.email || null,
+      currentAdminIsMaster: currentAdmin?.isMaster || false,
+      isMasterDeployment: isMasterDeployment(),
       targetOrg,
       data: users.map((user: { email: string }) => ({
         ...user,
@@ -164,14 +172,25 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const body = (await request.json()) as PromotePayload;
     const currentAdmin = await getAdminUserFromRequest(request);
+    const wantsMasterAccess = body.isMaster === true;
+    if (
+      wantsMasterAccess &&
+      (!isMasterDeployment() || !currentAdmin?.isMaster)
+    ) {
+      return NextResponse.json(
+        { error: "Only a current master admin can grant master access" },
+        { status: 403 },
+      );
+    }
+
     const sourcePath = getSourcePath(request);
     const requestIp = getRequestIp(request);
     const targetOrg = resolveAdminTargetOrg(
       request.nextUrl.searchParams.get("org"),
     );
 
-    const body = (await request.json()) as PromotePayload;
     if (!body.userId) {
       return NextResponse.json(
         { error: "userId is required" },
@@ -206,12 +225,14 @@ export async function POST(request: NextRequest) {
         name: fullName,
         firstName: user.firstName,
         lastName: user.lastName,
+        isMaster: wantsMasterAccess,
         passwordHash: null,
       },
       update: {
         name: fullName,
         firstName: user.firstName,
         lastName: user.lastName,
+        isMaster: wantsMasterAccess ? true : undefined,
       },
     });
 
@@ -229,6 +250,22 @@ export async function POST(request: NextRequest) {
       },
     });
 
+    if (wantsMasterAccess) {
+      await prisma.adminAuditLog.create({
+        data: {
+          action: "GRANT_MASTER",
+          actorAdminId: currentAdmin?.id || null,
+          actorEmail: currentAdmin?.email || "unknown",
+          targetAdminId: admin.id,
+          targetRegisteredUserId: user.id,
+          targetEmail: user.email,
+          targetName: user.name,
+          sourcePath,
+          requestIp,
+        },
+      });
+    }
+
     return NextResponse.json({
       success: true,
       admin: {
@@ -241,6 +278,105 @@ export async function POST(request: NextRequest) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
       { error: `Failed to promote user: ${message}` },
+      { status: 500 },
+    );
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const auth = await ensureNewsAdmin(request);
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.message || "Unauthorized" },
+      { status: auth.status },
+    );
+  }
+
+  if (!isMasterDeployment()) {
+    return NextResponse.json(
+      { error: "Master admin roles can only be managed on master deployment" },
+      { status: 403 },
+    );
+  }
+
+  try {
+    const currentAdmin = await getAdminUserFromRequest(request);
+    if (!currentAdmin?.isMaster) {
+      return NextResponse.json(
+        { error: "Only a master admin can manage master access" },
+        { status: 403 },
+      );
+    }
+
+    const body = (await request.json()) as MasterTogglePayload;
+    if (!body.adminId || typeof body.isMaster !== "boolean") {
+      return NextResponse.json(
+        { error: "adminId and isMaster are required" },
+        { status: 400 },
+      );
+    }
+
+    const targetAdmin = await prisma.adminUser.findUnique({
+      where: { id: body.adminId },
+    });
+    if (!targetAdmin) {
+      return NextResponse.json({ error: "Admin not found" }, { status: 404 });
+    }
+
+    if (targetAdmin.id === currentAdmin.id && !body.isMaster) {
+      return NextResponse.json(
+        { error: "You cannot remove your own master access" },
+        { status: 400 },
+      );
+    }
+
+    if (targetAdmin.isMaster === body.isMaster) {
+      return NextResponse.json({
+        success: true,
+        admin: {
+          id: targetAdmin.id,
+          email: targetAdmin.email,
+          isMaster: targetAdmin.isMaster,
+        },
+      });
+    }
+
+    const updatedAdmin = await prisma.adminUser.update({
+      where: { id: targetAdmin.id },
+      data: { isMaster: body.isMaster },
+    });
+
+    await prisma.adminAuditLog.create({
+      data: {
+        action: body.isMaster ? "GRANT_MASTER" : "REVOKE_MASTER",
+        actorAdminId: currentAdmin.id,
+        actorEmail: currentAdmin.email,
+        targetAdminId: updatedAdmin.id,
+        targetEmail: updatedAdmin.email,
+        targetName: updatedAdmin.name,
+        sourcePath: getSourcePath(request),
+        requestIp: getRequestIp(request),
+      },
+    });
+
+    if (!body.isMaster) {
+      await prisma.adminSession.deleteMany({
+        where: { userId: updatedAdmin.id },
+      });
+    }
+
+    return NextResponse.json({
+      success: true,
+      admin: {
+        id: updatedAdmin.id,
+        email: updatedAdmin.email,
+        isMaster: updatedAdmin.isMaster,
+      },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    return NextResponse.json(
+      { error: `Failed to update master access: ${message}` },
       { status: 500 },
     );
   }

@@ -7,10 +7,7 @@ import {
 } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
 import { upsertRegisteredUserFromGoogle } from "@/lib/auth/registeredUserAuth";
-import {
-  isMasterAdminEmailAllowed,
-  isMasterDeployment,
-} from "@/lib/siteConfig";
+import { isMasterDeployment } from "@/lib/siteConfig";
 
 type GoogleLoginPayload = {
   credential?: string;
@@ -75,13 +72,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (isMasterDeployment() && !isMasterAdminEmailAllowed(email)) {
-      return NextResponse.json(
-        { error: "This account is not allowlisted for master admin access" },
-        { status: 403 },
-      );
-    }
-
     await upsertRegisteredUserFromGoogle({
       email,
       sub,
@@ -92,13 +82,17 @@ export async function POST(request: NextRequest) {
 
     const admin = await prisma.adminUser.findUnique({ where: { email } });
 
+    const canCreateAdminSession = Boolean(
+      admin && (!isMasterDeployment() || admin.isMaster),
+    );
+
     const response = NextResponse.json({
       success: true,
-      isAdmin: Boolean(admin),
+      isAdmin: canCreateAdminSession,
       user: { email, name },
     });
 
-    if (admin) {
+    if (admin && canCreateAdminSession) {
       const session = await createAdminSession(admin.id);
       response.cookies.set({
         name: ADMIN_SESSION_COOKIE,

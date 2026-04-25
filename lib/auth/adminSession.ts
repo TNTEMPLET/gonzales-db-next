@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs";
 import { NextRequest } from "next/server";
 
 import prisma from "@/lib/prisma";
-import { isMasterAdminEmailAllowed } from "@/lib/siteConfig";
+import { isMasterDeployment } from "@/lib/siteConfig";
 
 export const ADMIN_SESSION_COOKIE = "gdb_admin_session";
 const SESSION_TTL_DAYS = 7;
@@ -16,6 +16,7 @@ export type AdminSessionUser = {
   firstName: string | null;
   lastName: string | null;
   avatarUrl: string | null;
+  isMaster: boolean;
 };
 
 function hashToken(token: string): string {
@@ -30,14 +31,12 @@ function getExpiryDate() {
 
 export async function verifyAdminCredentials(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
-  if (!isMasterAdminEmailAllowed(normalizedEmail)) {
-    return null;
-  }
 
   const user = await prisma.adminUser.findUnique({
     where: { email: normalizedEmail },
   });
   if (!user) return null;
+  if (isMasterDeployment() && !user.isMaster) return null;
   if (!user.passwordHash) return null;
 
   const isMatch = await bcrypt.compare(password, user.passwordHash);
@@ -49,6 +48,7 @@ export async function verifyAdminCredentials(email: string, password: string) {
     name: user.name,
     firstName: user.firstName,
     lastName: user.lastName,
+    isMaster: user.isMaster,
   };
 }
 
@@ -94,7 +94,7 @@ export async function getAdminUserByToken(token: string | undefined) {
     return null;
   }
 
-  if (!isMasterAdminEmailAllowed(session.user.email)) {
+  if (isMasterDeployment() && !session.user.isMaster) {
     await prisma.adminSession
       .delete({ where: { tokenHash } })
       .catch(() => null);
@@ -108,6 +108,7 @@ export async function getAdminUserByToken(token: string | undefined) {
     firstName: session.user.firstName,
     lastName: session.user.lastName,
     avatarUrl: session.user.avatarUrl ?? null,
+    isMaster: session.user.isMaster,
   } satisfies AdminSessionUser;
 }
 

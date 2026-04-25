@@ -7,6 +7,7 @@ type AdminUser = {
   id: string;
   email: string;
   name: string | null;
+  isMaster: boolean;
   createdAt: string;
 };
 
@@ -26,7 +27,14 @@ type RegisteredUser = {
 
 type AdminAuditLog = {
   id: string;
-  action: "PROMOTE" | "DEMOTE" | "BLOCK" | "UNBLOCK" | "REMOVE";
+  action:
+    | "PROMOTE"
+    | "DEMOTE"
+    | "BLOCK"
+    | "UNBLOCK"
+    | "REMOVE"
+    | "GRANT_MASTER"
+    | "REVOKE_MASTER";
   actorEmail: string;
   targetEmail: string;
   targetName: string | null;
@@ -50,6 +58,8 @@ type ApiResponse = {
   auditLogs: AdminAuditLog[];
   auditLogsMeta: AuditLogsMeta;
   currentAdminEmail: string | null;
+  currentAdminIsMaster: boolean;
+  isMasterDeployment: boolean;
   data: RegisteredUser[];
 };
 
@@ -61,6 +71,18 @@ type ConfirmAction =
     }
   | {
       kind: "demote";
+      adminId: string;
+      email: string;
+      label: string;
+    }
+  | {
+      kind: "grantMaster";
+      adminId: string;
+      email: string;
+      label: string;
+    }
+  | {
+      kind: "revokeMaster";
       adminId: string;
       email: string;
       label: string;
@@ -131,6 +153,8 @@ export default function AdminUsersManager({
   const [currentAdminEmail, setCurrentAdminEmail] = useState<string | null>(
     null,
   );
+  const [currentAdminIsMaster, setCurrentAdminIsMaster] = useState(false);
+  const [isMasterDeployment, setIsMasterDeployment] = useState(false);
   const [adminSearch, setAdminSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
   const [logSearchInput, setLogSearchInput] = useState("");
@@ -215,6 +239,8 @@ export default function AdminUsersManager({
       );
       setRegisteredUsers(payload.data || []);
       setCurrentAdminEmail(payload.currentAdminEmail || null);
+      setCurrentAdminIsMaster(Boolean(payload.currentAdminIsMaster));
+      setIsMasterDeployment(Boolean(payload.isMasterDeployment));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load users");
     } finally {
@@ -309,6 +335,45 @@ export default function AdminUsersManager({
       await loadData();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to demote admin");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function setMasterAdmin(
+    adminId: string,
+    adminEmail: string,
+    nextIsMaster: boolean,
+  ) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const response = await fetch(`/api/admin/users?${orgQuery}`, {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+          "x-source-path": window.location.pathname,
+        },
+        body: JSON.stringify({ adminId, isMaster: nextIsMaster }),
+      });
+      const json = await response.json();
+
+      if (!response.ok) {
+        throw new Error(json.error || "Failed to update master admin");
+      }
+
+      setNotice(
+        nextIsMaster
+          ? `Granted master admin access to ${adminEmail}.`
+          : `Revoked master admin access from ${adminEmail}.`,
+      );
+      await loadData();
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to update master admin",
+      );
     } finally {
       setBusy(false);
     }
@@ -458,6 +523,10 @@ export default function AdminUsersManager({
       await promoteUser(confirmAction.userId);
     } else if (confirmAction.kind === "demote") {
       await demoteAdmin(confirmAction.adminId, confirmAction.email);
+    } else if (confirmAction.kind === "grantMaster") {
+      await setMasterAdmin(confirmAction.adminId, confirmAction.email, true);
+    } else if (confirmAction.kind === "revokeMaster") {
+      await setMasterAdmin(confirmAction.adminId, confirmAction.email, false);
     } else if (confirmAction.kind === "block") {
       await blockUser(confirmAction.userId);
     } else if (confirmAction.kind === "unblock") {
@@ -555,38 +624,95 @@ export default function AdminUsersManager({
             ) : (
               filteredAdmins.map((admin) => {
                 const isCurrent = currentAdminEmail === admin.email;
+                const canManageMaster =
+                  isMasterDeployment && currentAdminIsMaster;
                 return (
                   <div
                     key={admin.id}
                     className="flex items-center justify-between gap-3 px-3 py-3 border-b border-zinc-800 last:border-b-0"
                   >
                     <div>
-                      <p className="text-sm font-medium">
+                      <p className="text-sm font-medium flex items-center gap-2">
                         {admin.name || "Unnamed Admin"}
+                        {admin.isMaster ? (
+                          <span
+                            className="inline-flex items-center justify-center h-5 w-5 rounded-md border border-red-500/80 bg-amber-300 text-red-700"
+                            title="Master Admin"
+                            aria-label="Master Admin"
+                          >
+                            <svg
+                              xmlns="http://www.w3.org/2000/svg"
+                              viewBox="0 0 24 24"
+                              className="h-3.5 w-3.5"
+                              fill="currentColor"
+                              aria-hidden="true"
+                            >
+                              <path d="M12 2 4 5.5l1.4 8.1L12 22l6.6-8.4L20 5.5 12 2Zm0 2.3 5.5 2.4-1 6.1L12 18.6l-4.5-5.8-1-6.1L12 4.3Z" />
+                              <path d="M15.7 8.7c-.7-.5-1.7-.8-2.8-.8-2 0-3.4.9-3.4 2.4 0 1.3 1 1.9 2.6 2.2l1 .2c.9.2 1.3.4 1.3.8 0 .5-.6.8-1.5.8-1 0-2-.4-2.7-1l-1 1.4c.9.8 2.2 1.2 3.7 1.2 2.1 0 3.5-.9 3.5-2.5 0-1.2-.8-1.9-2.4-2.2l-1.1-.2c-.9-.2-1.3-.4-1.3-.8 0-.5.6-.8 1.4-.8.9 0 1.6.3 2.1.7l.6-1.4Z" />
+                            </svg>
+                          </span>
+                        ) : null}
                       </p>
                       <p className="text-xs text-zinc-500">{admin.email}</p>
                     </div>
-                    {isCurrent ? (
-                      <span className="text-[11px] rounded-full px-2 py-1 border border-zinc-700 text-zinc-400">
-                        You
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          setConfirmAction({
-                            kind: "demote",
-                            adminId: admin.id,
-                            email: admin.email,
-                            label: `Demote ${admin.email} from admin access?`,
-                          })
-                        }
-                        className="text-xs rounded-lg border border-red-700 text-red-300 hover:bg-red-950/40 px-3 py-1.5 disabled:opacity-60"
-                      >
-                        Demote
-                      </button>
-                    )}
+                    <div className="flex items-center gap-2">
+                      {canManageMaster ? (
+                        admin.isMaster ? (
+                          <button
+                            type="button"
+                            disabled={busy || isCurrent}
+                            onClick={() =>
+                              setConfirmAction({
+                                kind: "revokeMaster",
+                                adminId: admin.id,
+                                email: admin.email,
+                                label: `Remove master admin access from ${admin.email}?`,
+                              })
+                            }
+                            className="text-xs rounded-lg border border-amber-700 text-amber-300 hover:bg-amber-950/40 px-3 py-1.5 disabled:opacity-60"
+                          >
+                            Revoke Master
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              setConfirmAction({
+                                kind: "grantMaster",
+                                adminId: admin.id,
+                                email: admin.email,
+                                label: `Grant master admin access to ${admin.email}?`,
+                              })
+                            }
+                            className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-3 py-1.5 disabled:opacity-60"
+                          >
+                            Make Master
+                          </button>
+                        )
+                      ) : null}
+                      {isCurrent ? (
+                        <span className="text-[11px] rounded-full px-2 py-1 border border-zinc-700 text-zinc-400">
+                          You
+                        </span>
+                      ) : (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            setConfirmAction({
+                              kind: "demote",
+                              adminId: admin.id,
+                              email: admin.email,
+                              label: `Demote ${admin.email} from admin access?`,
+                            })
+                          }
+                          className="text-xs rounded-lg border border-red-700 text-red-300 hover:bg-red-950/40 px-3 py-1.5 disabled:opacity-60"
+                        >
+                          Demote
+                        </button>
+                      )}
+                    </div>
                   </div>
                 );
               })
