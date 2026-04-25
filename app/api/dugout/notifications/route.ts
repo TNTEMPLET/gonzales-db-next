@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureCoach, resolveAuthorId } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { resolveDugoutApiOrg } from "@/lib/siteConfig";
 
 type DugoutNotificationItem = {
   id: string;
@@ -67,7 +67,7 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const targetOrg = resolveAdminTargetOrg(
+  const targetOrg = resolveDugoutApiOrg(
     request.nextUrl.searchParams.get("org"),
   );
   const userId = await resolveAuthorId(request, targetOrg);
@@ -259,7 +259,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const targetOrg = resolveAdminTargetOrg(
+  const targetOrg = resolveDugoutApiOrg(
     request.nextUrl.searchParams.get("org"),
   );
   const userId = await resolveAuthorId(request, targetOrg);

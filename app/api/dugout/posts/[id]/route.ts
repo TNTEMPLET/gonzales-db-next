@@ -6,7 +6,7 @@ import { MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import { getDugoutPostInclude, serializeDugoutPost } from "@/lib/dugout/posts";
 import { ensureCoach } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { resolveDugoutApiOrg } from "@/lib/siteConfig";
 
 export async function PATCH(
   request: NextRequest,
@@ -23,7 +23,7 @@ export async function PATCH(
   const { id } = await params;
 
   try {
-    const targetOrg = resolveAdminTargetOrg(
+    const targetOrg = resolveDugoutApiOrg(
       request.nextUrl.searchParams.get("org"),
     );
     const coach = await getCoachUserFromRequest(request);
@@ -137,7 +137,7 @@ export async function DELETE(
   const { id } = await params;
 
   try {
-    const targetOrg = resolveAdminTargetOrg(
+    const targetOrg = resolveDugoutApiOrg(
       request.nextUrl.searchParams.get("org"),
     );
     const post = await prisma.dugoutPost.findUnique({ where: { id } });

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureCoach, resolveAuthorId } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { resolveDugoutApiOrg } from "@/lib/siteConfig";
 
 const ALLOWED_REACTIONS = ["👍", "⚾", "🔥", "👏", "🎉", "💪", "🙌"];
 
@@ -18,7 +18,7 @@ export async function POST(
     );
   }
 
-  const targetOrg = resolveAdminTargetOrg(
+  const targetOrg = resolveDugoutApiOrg(
     request.nextUrl.searchParams.get("org"),
   );
   const userId = await resolveAuthorId(request, targetOrg);
@@ -85,7 +85,7 @@ export async function DELETE(
     );
   }
 
-  const targetOrg = resolveAdminTargetOrg(
+  const targetOrg = resolveDugoutApiOrg(
     request.nextUrl.searchParams.get("org"),
   );
   const userId = await resolveAuthorId(request, targetOrg);

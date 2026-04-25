@@ -8,7 +8,7 @@ import {
 import { ensureCoach, resolveAuthorId } from "@/lib/dugout/auth";
 import { MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { resolveDugoutApiOrg } from "@/lib/siteConfig";
 
 type CreatePostPayload = {
   content?: string;
@@ -28,7 +28,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const targetOrg = resolveAdminTargetOrg(
+    const targetOrg = resolveDugoutApiOrg(
       request.nextUrl.searchParams.get("org"),
     );
     const viewerId = await resolveAuthorId(request, targetOrg);
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const targetOrg = resolveAdminTargetOrg(
+    const targetOrg = resolveDugoutApiOrg(
       request.nextUrl.searchParams.get("org"),
     );
 

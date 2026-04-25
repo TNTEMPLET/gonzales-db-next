@@ -95,14 +95,33 @@ export function getDefaultContentOrg(): ContentOrgId {
   return getOrgId() === "ascension" ? "ascension" : "gonzales";
 }
 
-export function resolveAdminTargetOrg(requestedOrg?: string | null): string {
-  if (isMasterDeployment()) {
-    // Allow explicit override to a real content org (e.g. admin viewing gonzales posts)
-    if (isContentOrgId(requestedOrg)) return requestedOrg;
-    // Default Board Room posts to the "master" org bucket
-    return "master";
+export function resolveAdminTargetOrg(
+  requestedOrg?: string | null,
+): ContentOrgId {
+  if (isMasterDeployment() && isContentOrgId(requestedOrg)) {
+    return requestedOrg;
   }
   return getDefaultContentOrg();
+}
+
+/**
+ * Returns the org bucket to use for Board Room (master Dugout) posts.
+ * On the master deployment this is "master"; on other deployments it
+ * falls back to the site's default content org.
+ */
+export function resolveBoardRoomOrg(): string {
+  return isMasterDeployment() ? "master" : getDefaultContentOrg();
+}
+
+/**
+ * Resolves the org for dugout API routes that serve both the site Dugout
+ * and the master Board Room. If the caller explicitly passes "master" as
+ * the org param (sent by DugoutTimeline on the Board Room), return "master".
+ * Otherwise fall back to resolveAdminTargetOrg for the content-org switcher.
+ */
+export function resolveDugoutApiOrg(requestedOrg?: string | null): string {
+  if (requestedOrg === "master") return "master";
+  return resolveAdminTargetOrg(requestedOrg);
 }
 
 export function getSiteConfigForOrg(org: ContentOrgId): SiteConfig {
