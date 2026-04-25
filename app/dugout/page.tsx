@@ -19,16 +19,23 @@ import { listDugoutPosts } from "@/lib/dugout/posts";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import { getPublishedNewsPosts } from "@/lib/news/queries";
 import prisma from "@/lib/prisma";
-import { getAssignrLeagueId, getSiteConfig } from "@/lib/siteConfig";
+import {
+  getAssignrLeagueId,
+  getSiteConfig,
+  isMasterDeployment,
+} from "@/lib/siteConfig";
 import { computeStandingsByAgeGroup } from "@/lib/standings";
 
 const site = getSiteConfig();
 const orgId = site.orgId === "ascension" ? "ascension" : "gonzales";
 const defaultLeagueId = getAssignrLeagueId();
+const isMaster = isMasterDeployment();
 
 export const metadata = {
-  title: `The Dugout | ${site.name}`,
-  description: "Coaches-only discussion feed.",
+  title: `${isMaster ? "The Board Room" : "The Dugout"} | ${site.name}`,
+  description: isMaster
+    ? "Board members-only discussion feed."
+    : "Coaches-only discussion feed.",
 };
 
 function formatGameTime(game: Game): string {
@@ -48,6 +55,18 @@ function formatSidebarDate(value: Date | null): string {
     month: "short",
     day: "numeric",
   }).format(new Date(value));
+}
+
+async function fetchGamesForOrgs(
+  options: { startDate: string; endDate: string },
+  leagueIds: string[],
+): Promise<Game[]> {
+  const results = await Promise.all(
+    leagueIds.map((id) =>
+      fetchGames({ ...options, leagueId: id }).catch(() => [] as Game[]),
+    ),
+  );
+  return results.flat();
 }
 
 const NAV_ITEMS = [
@@ -162,10 +181,13 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     return (
       <main className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-md space-y-4 text-center">
-          <h1 className="text-3xl font-bold">The Dugout</h1>
+          <h1 className="text-3xl font-bold">
+            {isMaster ? "The Board Room" : "The Dugout"}
+          </h1>
           <p className="text-zinc-400">
-            Coaches-only. Sign in with the Google account associated with your
-            coach profile to continue.
+            {isMaster
+              ? "Board members only. Sign in with your AP Baseball board member account to continue."
+              : "Coaches-only. Sign in with the Google account associated with your coach profile to continue."}
           </p>
           <DugoutGate />
         </div>
@@ -184,6 +206,10 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
   const scheduleStartDate = startOfWeek.toISOString().split("T")[0]!;
   const scheduleEndDate = endOfWeek.toISOString().split("T")[0]!;
 
+  const gameLeagueIds = isMaster
+    ? [getAssignrLeagueId("gonzales"), getAssignrLeagueId("ascension")]
+    : [defaultLeagueId];
+
   const [
     initialPosts,
     todayGames,
@@ -193,16 +219,14 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     allSeasonGames,
   ] = await Promise.all([
     listDugoutPosts(coach?.id),
-    fetchGames({
-      startDate: todayStr,
-      endDate: todayStr,
-      leagueId: defaultLeagueId,
-    }).catch(() => [] as Game[]),
-    fetchGames({
-      startDate: scheduleStartDate,
-      endDate: scheduleEndDate,
-      leagueId: defaultLeagueId,
-    }).catch(() => [] as Game[]),
+    fetchGamesForOrgs(
+      { startDate: todayStr, endDate: todayStr },
+      gameLeagueIds,
+    ),
+    fetchGamesForOrgs(
+      { startDate: scheduleStartDate, endDate: scheduleEndDate },
+      gameLeagueIds,
+    ),
     getPublishedNewsPosts(),
     prisma.gameScore.findMany({
       where: { organizationId: orgId },
@@ -216,11 +240,10 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
         awayScore: true,
       },
     }),
-    fetchGames({
-      startDate: "2026-03-01",
-      endDate: "2026-06-30",
-      leagueId: defaultLeagueId,
-    }).catch(() => [] as Game[]),
+    fetchGamesForOrgs(
+      { startDate: "2026-03-01", endDate: "2026-06-30" },
+      gameLeagueIds,
+    ),
   ]);
 
   const recentNews = allNews.slice(0, 6);
@@ -328,6 +351,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
           activeView={activeView}
           currentUserName={currentUserName}
           isAdmin={!!admin}
+          isMaster={isMaster}
           brand={{
             name: site.name,
             logoPath: site.logoPath,
@@ -463,20 +487,22 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             </Link>
           </div>
 
-          {/* Standings */}
-          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
-            <div className="mb-4 flex items-center justify-between gap-3">
-              <h3 className="text-lg font-bold">Standings</h3>
-              <span className="text-[11px] text-zinc-500">Saved scores</span>
+          {/* Standings — hidden on Master Admin */}
+          {!isMaster && (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="text-lg font-bold">Standings</h3>
+                <span className="text-[11px] text-zinc-500">Saved scores</span>
+              </div>
+              <StandingsTabs standings={standings} />
+              <Link
+                href="/standings"
+                className="mt-3 block text-sm font-semibold text-brand-gold hover:text-brand-gold/80 transition"
+              >
+                Full standings →
+              </Link>
             </div>
-            <StandingsTabs standings={standings} />
-            <Link
-              href="/standings"
-              className="mt-3 block text-sm font-semibold text-brand-gold hover:text-brand-gold/80 transition"
-            >
-              Full standings →
-            </Link>
-          </div>
+          )}
 
           {/* News */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">

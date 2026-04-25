@@ -81,6 +81,7 @@ type Props = {
   activeView: "timeline" | "notifications" | "schedule";
   currentUserName: string | null;
   isAdmin: boolean;
+  isMaster?: boolean;
   brand: {
     name: string;
     logoPath: string;
@@ -91,6 +92,7 @@ export default function DugoutNav({
   activeView,
   currentUserName,
   isAdmin,
+  isMaster,
   brand,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
@@ -124,7 +126,7 @@ export default function DugoutNav({
         </Link>
         {!collapsed && (
           <span className="text-base font-black tracking-tight leading-tight">
-            The Dugout
+            {isMaster ? "The Board Room" : "The Dugout"}
           </span>
         )}
       </div>
