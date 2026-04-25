@@ -632,7 +632,8 @@ export default function AdminUsersManager({
                   admin.email.trim().toLowerCase() ===
                   protectedMasterAdminEmail.trim().toLowerCase();
                 const canManageRoles =
-                  (currentAdminRole === "MASTER_ADMIN" || currentAdminIsMaster) &&
+                  (currentAdminRole === "MASTER_ADMIN" ||
+                    currentAdminIsMaster) &&
                   !isProtectedMaster;
                 const roleLabel =
                   admin.role === "MASTER_ADMIN"

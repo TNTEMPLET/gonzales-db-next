@@ -254,7 +254,9 @@ export async function POST(request: NextRequest) {
         ? [user.firstName, user.lastName].filter(Boolean).join(" ")
         : user.name;
 
-    const effectiveRole = isProtectedTargetEmail ? "MASTER_ADMIN" : requestedRole;
+    const effectiveRole = isProtectedTargetEmail
+      ? "MASTER_ADMIN"
+      : requestedRole;
     const effectiveIsMasterRole = effectiveRole === "MASTER_ADMIN";
 
     const admin = await prisma.adminUser.upsert({
