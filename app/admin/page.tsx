@@ -111,6 +111,7 @@ export default async function AdminDashboardPage({
     {
       label: "Endpoint",
       value: currentSite.siteUrl.replace("https://", ""),
+      href: currentSite.siteUrl,
     },
   ];
 
@@ -232,9 +233,20 @@ export default async function AdminDashboardPage({
                 <span className="mr-2 text-[10px] uppercase tracking-[0.24em] text-zinc-500">
                   {item.label}
                 </span>
-                <span className="text-sm font-semibold text-zinc-200">
-                  {item.value}
-                </span>
+                {item.href ? (
+                  <a
+                    href={item.href}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sm font-semibold text-zinc-200"
+                  >
+                    {item.value}
+                  </a>
+                ) : (
+                  <span className="text-sm font-semibold text-zinc-200">
+                    {item.value}
+                  </span>
+                )}
               </div>
             ))}
           </div>
