@@ -18,6 +18,8 @@ export default function Footer({ brand }: FooterProps) {
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   if (pathname.startsWith("/dugout")) return null;
 
+  const isMaster = brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
+
   return (
     <footer className="bg-zinc-950 border-t border-zinc-800 py-16">
       <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-4 gap-10">
@@ -52,31 +54,92 @@ export default function Footer({ brand }: FooterProps) {
         <div>
           <h4 className="font-semibold mb-4 text-brand-gold">Quick Links</h4>
           <ul className="space-y-2 text-sm">
-            <li>
-              <a href="#schedule" className="hover:text-brand-gold transition">
-                Schedules & Standings
-              </a>
-            </li>
-            <li>
-              <a href="#register" className="hover:text-brand-gold transition">
-                Player Registration
-              </a>
-            </li>
-            <li>
-              <a href="#teams" className="hover:text-brand-gold transition">
-                Teams & Rosters
-              </a>
-            </li>
-            <li>
-              <a href="#fields" className="hover:text-brand-gold transition">
-                Field Status
-              </a>
-            </li>
-            <li>
-              <a href="#news" className="hover:text-brand-gold transition">
-                News & Announcements
-              </a>
-            </li>
+            {isMaster ? (
+              <>
+                <li>
+                  <a href="/admin" className="hover:text-brand-gold transition">
+                    Dashboard
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/admin/users"
+                    className="hover:text-brand-gold transition"
+                  >
+                    Users
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/admin/reports"
+                    className="hover:text-brand-gold transition"
+                  >
+                    Reports
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/admin/scores"
+                    className="hover:text-brand-gold transition"
+                  >
+                    Scores
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/admin/dugout"
+                    className="hover:text-brand-gold transition"
+                  >
+                    Dugout
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/dugout"
+                    className="hover:text-brand-gold transition"
+                  >
+                    Board Room
+                  </a>
+                </li>
+              </>
+            ) : (
+              <>
+                <li>
+                  <a
+                    href="#schedule"
+                    className="hover:text-brand-gold transition"
+                  >
+                    Schedules &amp; Standings
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#register"
+                    className="hover:text-brand-gold transition"
+                  >
+                    Player Registration
+                  </a>
+                </li>
+                <li>
+                  <a href="#teams" className="hover:text-brand-gold transition">
+                    Teams &amp; Rosters
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="#fields"
+                    className="hover:text-brand-gold transition"
+                  >
+                    Field Status
+                  </a>
+                </li>
+                <li>
+                  <a href="#news" className="hover:text-brand-gold transition">
+                    News &amp; Announcements
+                  </a>
+                </li>
+              </>
+            )}
           </ul>
         </div>
 
@@ -85,7 +148,8 @@ export default function Footer({ brand }: FooterProps) {
           <h4 className="font-semibold mb-4 text-brand-gold">Contact Us</h4>
           <div className="space-y-3 text-sm text-zinc-400">
             <p>
-              AP Baseball / Gonzales Diamond Baseball
+              AP Baseball
+              {!isMaster && <> / Gonzales Diamond Baseball</>}
               <br />
               1943 S. Burnside Ave.
               <br />
