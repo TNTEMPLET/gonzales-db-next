@@ -218,7 +218,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     scores,
     allSeasonGames,
   ] = await Promise.all([
-    listDugoutPosts(coach?.id),
+    listDugoutPosts(coach?.id, isMaster ? "master" : undefined),
     fetchGamesForOrgs(
       { startDate: todayStr, endDate: todayStr },
       gameLeagueIds,
@@ -416,6 +416,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             initialScheduleGames={scheduleGames}
             initialStandings={standings}
             isAdmin={!!admin}
+            orgId={isMaster ? "master" : undefined}
             currentUserId={currentUserId}
             currentUserName={currentUserName}
             currentUserAvatarUrl={currentUserAvatarUrl}

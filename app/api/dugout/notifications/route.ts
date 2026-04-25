@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
-import { ensureCoach } from "@/lib/dugout/auth";
+import { ensureCoach, resolveAuthorId } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
-
-const orgId = process.env.SITE_ORG ?? "gonzales";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 type DugoutNotificationItem = {
   id: string;
@@ -61,21 +58,6 @@ async function getOrCreateCursor(userId: string) {
   });
 }
 
-async function resolveUserId(request: NextRequest): Promise<string | null> {
-  const coachUser = await getCoachUserFromRequest(request);
-  if (coachUser?.id) return coachUser.id;
-
-  const adminUser = await getAdminUserFromRequest(request);
-  if (!adminUser) return null;
-
-  const reg = await prisma.registeredUser.findFirst({
-    where: { organizationId: orgId, email: adminUser.email },
-    select: { id: true },
-  });
-
-  return reg?.id ?? null;
-}
-
 export async function GET(request: NextRequest) {
   const auth = await ensureCoach(request);
   if (!auth.ok) {
@@ -85,7 +67,10 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const userId = await resolveUserId(request);
+  const targetOrg = resolveAdminTargetOrg(
+    request.nextUrl.searchParams.get("org"),
+  );
+  const userId = await resolveAuthorId(request, targetOrg);
   if (!userId) {
     return NextResponse.json({
       data: {
@@ -274,7 +259,10 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const userId = await resolveUserId(request);
+  const targetOrg = resolveAdminTargetOrg(
+    request.nextUrl.searchParams.get("org"),
+  );
+  const userId = await resolveAuthorId(request, targetOrg);
   if (!userId) {
     return NextResponse.json({ ok: true });
   }

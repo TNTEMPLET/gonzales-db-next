@@ -76,7 +76,7 @@ export function serializeDugoutPost(post: DugoutPostWithRelations) {
 
 export async function listDugoutPosts(
   viewerUserId?: string | null,
-  targetOrg?: ContentOrgId,
+  targetOrg?: string,
 ) {
   const posts = await prisma.dugoutPost.findMany({
     where: { organizationId: targetOrg ?? getDefaultContentOrg() },

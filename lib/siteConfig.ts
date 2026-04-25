@@ -95,11 +95,12 @@ export function getDefaultContentOrg(): ContentOrgId {
   return getOrgId() === "ascension" ? "ascension" : "gonzales";
 }
 
-export function resolveAdminTargetOrg(
-  requestedOrg?: string | null,
-): ContentOrgId {
-  if (isMasterDeployment() && isContentOrgId(requestedOrg)) {
-    return requestedOrg;
+export function resolveAdminTargetOrg(requestedOrg?: string | null): string {
+  if (isMasterDeployment()) {
+    // Allow explicit override to a real content org (e.g. admin viewing gonzales posts)
+    if (isContentOrgId(requestedOrg)) return requestedOrg;
+    // Default Board Room posts to the "master" org bucket
+    return "master";
   }
   return getDefaultContentOrg();
 }

@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
 import {
   listDugoutPosts,
   serializeDugoutPost,
   getDugoutPostInclude,
 } from "@/lib/dugout/posts";
-import { ensureCoach } from "@/lib/dugout/auth";
+import { ensureCoach, resolveAuthorId } from "@/lib/dugout/auth";
 import { MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
@@ -33,19 +31,8 @@ export async function GET(request: NextRequest) {
     const targetOrg = resolveAdminTargetOrg(
       request.nextUrl.searchParams.get("org"),
     );
-    const coachUser = await getCoachUserFromRequest(request);
-    const adminUser = !coachUser
-      ? await getAdminUserFromRequest(request)
-      : null;
-    let viewerId: string | undefined = coachUser?.id;
-    if (!viewerId && adminUser) {
-      const reg = await prisma.registeredUser.findFirst({
-        where: { organizationId: targetOrg, email: adminUser.email },
-        select: { id: true },
-      });
-      viewerId = reg?.id;
-    }
-    const posts = await listDugoutPosts(viewerId, targetOrg);
+    const viewerId = await resolveAuthorId(request, targetOrg);
+    const posts = await listDugoutPosts(viewerId ?? undefined, targetOrg);
 
     return NextResponse.json({ data: posts });
   } catch (err: unknown) {
@@ -70,21 +57,9 @@ export async function POST(request: NextRequest) {
     const targetOrg = resolveAdminTargetOrg(
       request.nextUrl.searchParams.get("org"),
     );
-    const coachUser = await getCoachUserFromRequest(request);
-    const adminUser = !coachUser
-      ? await getAdminUserFromRequest(request)
-      : null;
 
     // Resolve the author's RegisteredUser id (required for DB foreign key)
-    let authorId: string | undefined = coachUser?.id;
-    if (!authorId && adminUser) {
-      const reg = await prisma.registeredUser.findFirst({
-        where: { organizationId: targetOrg, email: adminUser.email },
-        select: { id: true },
-      });
-      authorId = reg?.id;
-    }
-
+    const authorId = await resolveAuthorId(request, targetOrg);
     if (!authorId) {
       return NextResponse.json(
         { error: "No linked user account found" },

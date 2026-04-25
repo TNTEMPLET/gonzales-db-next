@@ -60,6 +60,7 @@ type DugoutTimelineProps = {
   initialScheduleGames?: Game[];
   initialStandings?: AgeGroupStandings[];
   leagueName?: string;
+  orgId?: string;
   isAdmin?: boolean;
   currentUserId?: string | null;
   currentUserName?: string | null;
@@ -447,6 +448,7 @@ export default function DugoutTimeline({
   initialScheduleGames = [],
   initialStandings = [],
   leagueName = "the league",
+  orgId,
   isAdmin = false,
   currentUserId = null,
   currentUserName = null,
@@ -454,6 +456,7 @@ export default function DugoutTimeline({
   initialView = "timeline",
   initialFocusPostId = null,
 }: DugoutTimelineProps) {
+  const orgParam = orgId ? `?org=${encodeURIComponent(orgId)}` : "";
   const [posts, setPosts] = useState<DugoutPost[]>(initialPosts);
   const [content, setContent] = useState("");
   const [threadEntries, setThreadEntries] = useState<ThreadComposerEntry[]>([]);
@@ -770,9 +773,7 @@ export default function DugoutTimeline({
 
   async function fetchNotifications() {
     try {
-      const response = await fetch("/api/dugout/notifications", {
-        cache: "no-store",
-      });
+      const response = await fetch("/api/dugout/notifications" + orgParam, {});
       const json = (await response.json()) as {
         data?: DugoutNotificationCounts;
       };
@@ -788,7 +789,7 @@ export default function DugoutTimeline({
   async function markNotificationsSeen() {
     setNotificationBusy(true);
     try {
-      const response = await fetch("/api/dugout/notifications", {
+      const response = await fetch("/api/dugout/notifications" + orgParam, {
         method: "POST",
       });
       if (response.ok) {
@@ -1107,7 +1108,7 @@ export default function DugoutTimeline({
       const createdPosts: DugoutPost[] = [];
 
       for (const segment of [...numberedSegments].reverse()) {
-        const response = await fetch("/api/dugout/posts", {
+        const response = await fetch("/api/dugout/posts" + orgParam, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -1174,7 +1175,7 @@ export default function DugoutTimeline({
     setError("");
 
     try {
-      const response = await fetch(`/api/dugout/posts/${id}`, {
+      const response = await fetch(`/api/dugout/posts/${id}${orgParam}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1210,7 +1211,7 @@ export default function DugoutTimeline({
     setNotice("");
 
     try {
-      const response = await fetch(`/api/dugout/posts/${id}`, {
+      const response = await fetch(`/api/dugout/posts/${id}${orgParam}`, {
         method: "DELETE",
       });
 
@@ -1236,7 +1237,7 @@ export default function DugoutTimeline({
     setNotice("");
 
     try {
-      const response = await fetch(`/api/dugout/posts/${post.id}`, {
+      const response = await fetch(`/api/dugout/posts/${post.id}${orgParam}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -1299,15 +1300,18 @@ export default function DugoutTimeline({
     try {
       // If already liked with same reaction, toggle off; otherwise apply new reaction
       const isUnlike = post.likedByViewer && post.viewerReaction === reaction;
-      const response = await fetch(`/api/dugout/posts/${post.id}/like`, {
-        method: isUnlike ? "DELETE" : "POST",
-        ...(isUnlike
-          ? {}
-          : {
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({ reaction }),
-            }),
-      });
+      const response = await fetch(
+        `/api/dugout/posts/${post.id}/like${orgParam}`,
+        {
+          method: isUnlike ? "DELETE" : "POST",
+          ...(isUnlike
+            ? {}
+            : {
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ reaction }),
+              }),
+        },
+      );
 
       const json = (await response.json()) as {
         error?: string;
@@ -1349,9 +1353,12 @@ export default function DugoutTimeline({
     }));
 
     try {
-      const response = await fetch(`/api/dugout/posts/${postId}/comments`, {
-        cache: "no-store",
-      });
+      const response = await fetch(
+        `/api/dugout/posts/${postId}/comments${orgParam}`,
+        {
+          cache: "no-store",
+        },
+      );
       const json = (await response.json()) as {
         error?: string;
         data?: DugoutComment[];
@@ -1405,14 +1412,17 @@ export default function DugoutTimeline({
     setError("");
 
     try {
-      const response = await fetch(`/api/dugout/posts/${postId}/comments`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: text,
-          parentId,
-        }),
-      });
+      const response = await fetch(
+        `/api/dugout/posts/${postId}/comments${orgParam}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: text,
+            parentId,
+          }),
+        },
+      );
 
       const json = (await response.json()) as {
         error?: string;
@@ -2167,7 +2177,7 @@ export default function DugoutTimeline({
 
   async function markNotificationRead(notificationId: string) {
     try {
-      const response = await fetch("/api/dugout/notifications", {
+      const response = await fetch("/api/dugout/notifications" + orgParam, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

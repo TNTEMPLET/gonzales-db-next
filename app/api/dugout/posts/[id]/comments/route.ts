@@ -1,11 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
-import { ensureCoach } from "@/lib/dugout/auth";
+import { ensureCoach, resolveAuthorId } from "@/lib/dugout/auth";
 import prisma from "@/lib/prisma";
-
-const orgId = process.env.SITE_ORG ?? "gonzales";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 type CreateCommentPayload = {
   content?: string;
@@ -113,18 +110,12 @@ export async function POST(
     );
   }
 
-  const coachUser = await getCoachUserFromRequest(request);
-  const adminUser = await getAdminUserFromRequest(request);
+  const targetOrg = resolveAdminTargetOrg(
+    request.nextUrl.searchParams.get("org"),
+  );
 
   // authorId must be a RegisteredUser.id (FK constraint)
-  let authorId: string | undefined = coachUser?.id;
-  if (!authorId && adminUser) {
-    const reg = await prisma.registeredUser.findFirst({
-      where: { organizationId: orgId, email: adminUser.email },
-      select: { id: true },
-    });
-    authorId = reg?.id;
-  }
+  const authorId = await resolveAuthorId(request, targetOrg);
 
   if (!authorId) {
     return NextResponse.json(
