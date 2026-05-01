@@ -3,6 +3,39 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { ContentOrgId } from "@/lib/siteConfig";
+import { getOrgDisplayName } from "@/lib/siteConfig";
+
+function IconGlobe(props: { className?: string }) {
+  return (
+    <svg className={props.className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-1 17.93c-3.95-.49-7-3.85-7-7.93 0-.62.08-1.21.21-1.79L9 15v1c0 1.1.9 2 2 2v1.93zm6.9-2.54c-.26-.81-1-1.39-1.9-1.39h-1v-3c0-.55-.45-1-1-1H8v-2h2c.55 0 1-.45 1-1V7h2c1.1 0 2-.9 2-2v-.41c2.93 1.19 5 4.06 5 7.41 0 2.08-.8 3.97-2.1 5.39z" />
+    </svg>
+  );
+}
+
+function IconPhoto(props: { className?: string }) {
+  return (
+    <svg className={props.className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
+    </svg>
+  );
+}
+
+function IconLink(props: { className?: string }) {
+  return (
+    <svg className={props.className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M3.9 12c0-1.71 1.39-3.1 3.1-3.1h4V7H7c-2.76 0-5 2.24-5 5s2.24 5 5 5h4v-1.9H7c-1.71 0-3.1-1.39-3.1-3.1zM8 13h8v-2H8v2zm9-6h-4v1.9h4c1.71 0 3.1 1.39 3.1 3.1s-1.39 3.1-3.1 3.1h-4V17h4c2.76 0 5-2.24 5-5s-2.24-5-5-5z" />
+    </svg>
+  );
+}
+
+function IconSmile(props: { className?: string }) {
+  return (
+    <svg className={props.className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M11.99 2C6.47 2 2 6.48 2 12s4.47 10 9.99 10C17.52 22 22 17.52 22 12S17.52 2 11.99 2zM12 20c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3.5-9c.83 0 1.5-.67 1.5-1.5S16.33 8 15.5 8 14 8.67 14 9.5s.67 1.5 1.5 1.5zm-7 0c.83 0 1.5-.67 1.5-1.5S9.33 8 8.5 8 7 8.67 7 9.5 7.67 11 8.5 11zm3.5 6.5c2.33 0 4.31-1.46 5.11-3.5H6.89c.8 2.04 2.78 3.5 5.11 3.5z" />
+    </svg>
+  );
+}
 
 type SocialPostStatus = "DRAFT" | "PUBLISHING" | "PUBLISHED" | "FAILED";
 
@@ -56,9 +89,12 @@ export default function AdminSocialManager({
   const [notice, setNotice] = useState("");
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [attachmentOpen, setAttachmentOpen] = useState({ link: false, image: false });
   const orgQuery = `org=${targetOrg}`;
+  const pageLabel = getOrgDisplayName(targetOrg);
 
   const charCount = useMemo(() => form.body.length, [form.body]);
+  const canSave = Boolean(form.body.trim() || form.imageUrl.trim());
 
   useEffect(() => {
     void loadPosts();
@@ -90,6 +126,7 @@ export default function AdminSocialManager({
   function resetForm() {
     setEditingId(null);
     setForm(EMPTY_FORM);
+    setAttachmentOpen({ link: false, image: false });
   }
 
   async function savePost() {
@@ -178,10 +215,16 @@ export default function AdminSocialManager({
 
   function startEdit(post: SocialPostRecord) {
     setEditingId(post.id);
+    const linkUrl = post.linkUrl || "";
+    const imageUrl = post.imageUrl || "";
     setForm({
       body: post.body === "(Image post)" ? "" : post.body,
-      linkUrl: post.linkUrl || "",
-      imageUrl: post.imageUrl || "",
+      linkUrl,
+      imageUrl,
+    });
+    setAttachmentOpen({
+      link: Boolean(linkUrl.trim()),
+      image: Boolean(imageUrl.trim()),
     });
     setNotice("");
     setError("");
@@ -200,67 +243,154 @@ export default function AdminSocialManager({
         </div>
       ) : null}
 
-      <div className="grid gap-8 lg:grid-cols-[1fr_280px]">
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-          <h2 className="text-lg font-semibold">
-            {editingId ? "Edit draft" : "New post"}
-          </h2>
-          <label className="block text-xs font-medium text-zinc-400">
-            Message
-            <textarea
-              value={form.body}
-              onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
-              rows={6}
-              placeholder="What do you want to say on Facebook?"
-              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white placeholder:text-zinc-600"
-            />
-          </label>
-          <p className="text-xs text-zinc-500">{charCount} characters</p>
-          <label className="block text-xs font-medium text-zinc-400">
-            Link (optional)
-            <input
-              value={form.linkUrl}
-              onChange={(e) => setForm((f) => ({ ...f, linkUrl: e.target.value }))}
-              placeholder="https://…"
-              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-            />
-          </label>
-          <p className="text-xs text-zinc-500">
-            If you also add an image URL, Facebook will use a photo post and the link
-            field is ignored for the primary attachment.
-          </p>
-          <label className="block text-xs font-medium text-zinc-400">
-            Image URL (optional)
-            <input
-              value={form.imageUrl}
-              onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
-              placeholder="Public HTTPS image URL"
-              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void savePost()}
-              className="rounded-lg bg-brand-purple px-4 py-2 text-sm font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
-            >
-              {busy ? "Saving…" : editingId ? "Save draft" : "Create draft"}
-            </button>
+      <div className="grid gap-8 lg:grid-cols-[minmax(280px,28rem)_minmax(240px,1fr)] lg:items-start">
+        <div className="w-full max-w-lg overflow-hidden rounded-xl border border-zinc-700/90 bg-[#242526] shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
+          <div className="relative flex items-center justify-center border-b border-zinc-600/80 px-4 py-3">
             {editingId ? (
               <button
                 type="button"
-                disabled={busy}
                 onClick={resetForm}
-                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm"
+                disabled={busy}
+                className="absolute left-3 flex h-9 w-9 items-center justify-center rounded-full text-zinc-400 hover:bg-zinc-700/80 hover:text-white disabled:opacity-50"
+                aria-label="Cancel edit"
               >
-                Cancel edit
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z" />
+                </svg>
               </button>
             ) : null}
+            <h2 className="text-lg font-bold text-zinc-100">
+              {editingId ? "Edit post" : "Create post"}
+            </h2>
+          </div>
+
+          <div className="flex gap-3 px-4 pt-4">
+            <div
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-linear-to-br from-[#0866FF] to-[#5B8CFF] text-sm font-bold text-white shadow-inner"
+              aria-hidden
+            >
+              {pageLabel.slice(0, 1)}
+            </div>
+            <div className="min-w-0 pt-0.5">
+              <p className="truncate font-semibold text-zinc-100">{pageLabel}</p>
+              <div className="mt-1 inline-flex cursor-default items-center gap-1 rounded-full bg-zinc-700/90 px-2.5 py-0.5 text-xs font-semibold text-zinc-200">
+                <IconGlobe className="h-3.5 w-3.5 text-zinc-300" />
+                Public
+                <svg className="h-3 w-3 text-zinc-400" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+                  <path d="M7 10l5 5 5-5z" />
+                </svg>
+              </div>
+            </div>
+          </div>
+
+          <div className="px-4 pt-3">
+            <textarea
+              value={form.body}
+              onChange={(e) => setForm((f) => ({ ...f, body: e.target.value }))}
+              rows={5}
+              placeholder={`What's on your mind, ${pageLabel.split(/\s+/)[0]}?`}
+              className="min-h-[120px] w-full resize-none border-0 bg-transparent text-xl leading-snug text-zinc-100 placeholder:text-zinc-500 focus:outline-none focus:ring-0"
+            />
+            <div className="flex items-center justify-between pb-1 pt-1">
+              <span
+                className="flex h-9 w-9 cursor-default items-center justify-center rounded-lg bg-linear-to-br from-teal-500 via-pink-500 to-orange-400 p-0.5"
+                aria-hidden
+                title="Text backgrounds not available in this composer"
+              >
+                <span className="flex h-full w-full items-center justify-center rounded-md bg-[#242526] text-xs font-bold text-white">
+                  Aa
+                </span>
+              </span>
+              <button
+                type="button"
+                className="flex h-9 w-9 items-center justify-center rounded-full text-zinc-500 hover:bg-zinc-700/60 hover:text-zinc-200"
+                aria-label="Emoji — use your keyboard or system picker"
+              >
+                <IconSmile className="h-7 w-7" />
+              </button>
+            </div>
+          </div>
+
+          <div className="mx-4 mb-2 flex items-center justify-between rounded-lg border border-zinc-600/80 px-3 py-2.5">
+            <span className="text-sm font-medium text-zinc-300">Add to your post</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setAttachmentOpen((a) => ({ ...a, image: !a.image }))}
+                className={`rounded-full p-1 transition-colors hover:bg-zinc-700/50 ${
+                  attachmentOpen.image || form.imageUrl.trim() ? "ring-2 ring-emerald-500/50" : ""
+                }`}
+                aria-label={attachmentOpen.image ? "Hide photo URL field" : "Add photo URL"}
+                title="Photo"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#31A24C] text-white">
+                  <IconPhoto className="h-5 w-5" />
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setAttachmentOpen((a) => ({ ...a, link: !a.link }))}
+                className={`rounded-full p-1 transition-colors hover:bg-zinc-700/50 ${
+                  attachmentOpen.link || form.linkUrl.trim() ? "ring-2 ring-[#2374E1]/50" : ""
+                }`}
+                aria-label={attachmentOpen.link ? "Hide link field" : "Add link"}
+                title="Link"
+              >
+                <span className="flex h-9 w-9 items-center justify-center rounded-full bg-[#2374E1] text-white">
+                  <IconLink className="h-5 w-5" />
+                </span>
+              </button>
+            </div>
+          </div>
+
+          {attachmentOpen.link || attachmentOpen.image ? (
+            <div className="mx-4 mb-3 space-y-3 rounded-lg border border-zinc-700/60 bg-zinc-900/50 px-3 py-3">
+              {attachmentOpen.link ? (
+                <label className="block">
+                  <span className="text-xs font-medium text-zinc-400">Link</span>
+                  <input
+                    value={form.linkUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, linkUrl: e.target.value }))}
+                    placeholder="https://…"
+                    className="mt-1 w-full rounded-lg border border-zinc-600 bg-[#242526] px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-[#2374E1] focus:outline-none"
+                  />
+                </label>
+              ) : null}
+              {attachmentOpen.image ? (
+                <label className="block">
+                  <span className="text-xs font-medium text-zinc-400">
+                    Image URL <span className="font-normal text-zinc-500">(HTTPS, public)</span>
+                  </span>
+                  <input
+                    value={form.imageUrl}
+                    onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
+                    placeholder="https://…"
+                    className="mt-1 w-full rounded-lg border border-zinc-600 bg-[#242526] px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-[#2374E1] focus:outline-none"
+                  />
+                </label>
+              ) : null}
+              <p className="text-xs text-zinc-500">
+                With an image URL, Facebook posts as a photo; the link field is not used as the
+                primary attachment.
+              </p>
+            </div>
+          ) : null}
+
+          <p className="px-4 pb-1 text-xs text-zinc-500">{charCount} characters</p>
+
+          <div className="p-3 pt-1">
+            <button
+              type="button"
+              disabled={busy || !canSave}
+              onClick={() => void savePost()}
+              className="w-full rounded-lg py-2 text-center text-[15px] font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-500 enabled:bg-[#2374E1] enabled:hover:bg-[#1864D7]"
+            >
+              {busy ? "Saving…" : editingId ? "Save draft" : "Create draft"}
+            </button>
           </div>
         </div>
 
-        <aside className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-300 space-y-3">
+        <aside className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4 text-sm text-zinc-300 space-y-3 lg:sticky lg:top-24">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
             Facebook tips
           </p>
