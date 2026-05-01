@@ -188,6 +188,8 @@ export default function Header({ brand }: HeaderProps) {
   const navLinks = isMasterHeader
     ? [
         { href: "/admin", label: "Dashboard" },
+          { href: `/admin/teams${masterOrgSuffix}`, label: "Teams" },
+          { href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" },
         ...(allowModule("USERS")
           ? [{ href: "/admin/users", label: "Users" }]
           : []),
