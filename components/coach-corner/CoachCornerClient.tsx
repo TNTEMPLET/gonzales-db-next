@@ -175,6 +175,26 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
   }, []);
 
   useEffect(() => {
+    setError("");
+    setNotice("");
+    setTeams([]);
+    setSelectedTeamId("");
+    setTeamFilterSeasonYear("");
+    setTeamFilterAgeGroup("");
+    setTeamContactNotes("");
+    setTeamPracticePlan("");
+    setScheduleGames([]);
+    setGameNotes({});
+    setAvailabilityNotes({});
+    setIsEditingTeamProfile(false);
+    setIsEditingRoster(false);
+    setActiveProfilePlayerId(null);
+    setActiveProfileSummaryPlayerId(null);
+    void loadTeams();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetOrg]);
+
+  useEffect(() => {
     if (!selectedTeamId) {
       setScheduleGames([]);
       setGameNotes({});
