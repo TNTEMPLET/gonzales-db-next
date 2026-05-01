@@ -32,12 +32,41 @@ function getExpiryDate() {
 
 export async function verifyAdminCredentials(email: string, password: string) {
   const normalizedEmail = email.trim().toLowerCase();
+  const bootstrapMasterEmail = (
+    process.env.INITIAL_MASTER_ADMIN_EMAIL || "trent@apbaseball.com"
+  )
+    .trim()
+    .toLowerCase();
+  const bootstrapMasterPassword = process.env.INITIAL_MASTER_ADMIN_PASSWORD || "";
 
   const user = await prisma.adminUser.findUnique({
     where: { email: normalizedEmail },
   });
   if (!user) return null;
-  if (!user.passwordHash) return null;
+  if (!user.passwordHash) {
+    if (
+      user.isMaster &&
+      normalizedEmail === bootstrapMasterEmail &&
+      bootstrapMasterPassword &&
+      password === bootstrapMasterPassword
+    ) {
+      const newHash = await bcrypt.hash(password, 12);
+      await prisma.adminUser.update({
+        where: { id: user.id },
+        data: { passwordHash: newHash },
+      });
+      return {
+        id: user.id,
+        email: user.email,
+        name: user.name,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: toAdminRole(user.role, user.isMaster),
+        isMaster: user.isMaster,
+      };
+    }
+    return null;
+  }
 
   const isMatch = await bcrypt.compare(password, user.passwordHash);
   if (!isMatch) return null;
