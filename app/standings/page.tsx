@@ -18,34 +18,39 @@ export default async function StandingsPage() {
   const leagueId = getAssignrLeagueId();
   const orgId = getOrgId();
 
-  const [scores, allSeasonGames] = await Promise.all([
-    prisma.gameScore.findMany({
-      where: { organizationId: orgId },
-      orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
-      select: {
-        gameExternalId: true,
-        ageGroup: true,
-        homeTeam: true,
-        awayTeam: true,
-        homeScore: true,
-        awayScore: true,
-      },
-    }),
-    fetchGames({
+  const scores = await prisma.gameScore.findMany({
+    where: { organizationId: orgId },
+    orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
+    select: {
+      gameExternalId: true,
+      ageGroup: true,
+      homeTeam: true,
+      awayTeam: true,
+      homeScore: true,
+      awayScore: true,
+    },
+  });
+
+  let activeGameIds: Set<string> | null = null;
+  let scheduleUnavailable = false;
+  try {
+    const allSeasonGames = await fetchGames({
       startDate: "2026-03-01",
       endDate: "2026-06-30",
       leagueId,
-    }),
-  ]);
-
-  const activeGameIds = new Set(
-    allSeasonGames
-      .filter((game) => game.status?.trim().toUpperCase() === "A")
-      .map((game) => String(game.id)),
-  );
+    });
+    activeGameIds = new Set(
+      allSeasonGames
+        .filter((game) => game.status?.trim().toUpperCase() === "A")
+        .map((game) => String(game.id)),
+    );
+  } catch {
+    // Fail-soft: keep standings renderable when schedule API credentials expire.
+    scheduleUnavailable = true;
+  }
 
   const standings = computeStandingsByAgeGroup(
-    scores.filter((score) => activeGameIds.has(score.gameExternalId)),
+    activeGameIds ? scores.filter((score) => activeGameIds.has(score.gameExternalId)) : scores,
   );
 
   return (
@@ -67,6 +72,12 @@ export default async function StandingsPage() {
             View Schedule
           </Link>
         </div>
+
+        {scheduleUnavailable ? (
+          <div className="rounded-lg border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
+            Live schedule sync is temporarily unavailable. Showing standings from scored games only.
+          </div>
+        ) : null}
 
         <StandingsTabs standings={standings} />
       </section>
