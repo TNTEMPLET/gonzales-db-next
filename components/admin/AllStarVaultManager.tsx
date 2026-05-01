@@ -129,6 +129,7 @@ export default function AllStarVaultManager({
   const [candidateJerseyNumber, setCandidateJerseyNumber] = useState("");
   const [candidateSearch, setCandidateSearch] = useState("");
   const [selectedCoachUserId, setSelectedCoachUserId] = useState("");
+  const [selectedInviteCoachIds, setSelectedInviteCoachIds] = useState<string[]>([]);
   const [vaultUserId, setVaultUserId] = useState("");
   const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "VIEW_ONLY">("VIEW_ONLY");
   const [inviteEmails, setInviteEmails] = useState("");
@@ -183,6 +184,7 @@ export default function AllStarVaultManager({
       setVoteSummary([]);
       setVoteSummarySubmissionCount(0);
       setSelectedCoachUserId("");
+      setSelectedInviteCoachIds([]);
       setCycleOpenAt("");
       setCycleCloseAt("");
     }
@@ -837,10 +839,16 @@ export default function AllStarVaultManager({
 
   async function createInvites() {
     if (!selectedCycleId) return;
-    const emails = inviteEmails
+    const selectedCoachEmails = cycleCoachOptions
+      .filter((coach) => selectedInviteCoachIds.includes(coach.id))
+      .map((coach) => coach.email.trim().toLowerCase())
+      .filter(Boolean);
+    const manualEmails = inviteEmails
       .split(/[,\n]/)
       .map((item) => item.trim())
-      .filter(Boolean);
+      .filter(Boolean)
+      .map((email) => email.toLowerCase());
+    const emails = Array.from(new Set([...selectedCoachEmails, ...manualEmails]));
     if (!emails.length) return;
     setBusy(true);
     setError("");
@@ -855,6 +863,8 @@ export default function AllStarVaultManager({
       if (!response.ok) throw new Error(json.error || "Failed to create invites");
       setNotice("Invite links generated.");
       setInviteLinks(json.invites || []);
+      setInviteEmails("");
+      setSelectedInviteCoachIds([]);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create invites");
     } finally {
@@ -885,6 +895,7 @@ export default function AllStarVaultManager({
   ).sort((a, b) => b - a);
   const selectedCycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
   const canRefreshVoteSummary = isCycleOpenAndPublished(selectedCycle);
+  const isInviteListCycle = selectedCycle?.accessMode === "INVITE_LIST";
 
   return (
     <section className="space-y-6">
@@ -1214,6 +1225,47 @@ export default function AllStarVaultManager({
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Invites And Exports</h2>
+        {isInviteListCycle ? (
+          <div className="space-y-2">
+            <p className="text-xs text-zinc-400">
+              Select coaches to invite for this invite-list cycle.
+            </p>
+            <div className="max-h-44 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950/30 divide-y divide-zinc-800">
+              {cycleCoachOptions.length === 0 ? (
+                <p className="text-zinc-500 text-sm p-3">No coaches available for this cycle.</p>
+              ) : (
+                cycleCoachOptions.map((coach) => {
+                  const label =
+                    (coach.firstName || coach.lastName
+                      ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
+                      : coach.name) || coach.email;
+                  const checked = selectedInviteCoachIds.includes(coach.id);
+                  return (
+                    <label
+                      key={coach.id}
+                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-zinc-900/50"
+                    >
+                      <span className="min-w-0 truncate">
+                        {label} <span className="text-zinc-400">({coach.email})</span>
+                      </span>
+                      <input
+                        type="checkbox"
+                        checked={checked}
+                        onChange={(event) =>
+                          setSelectedInviteCoachIds((current) =>
+                            event.target.checked
+                              ? Array.from(new Set([...current, coach.id]))
+                              : current.filter((id) => id !== coach.id),
+                          )
+                        }
+                      />
+                    </label>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : null}
         <textarea value={inviteEmails} onChange={(e) => setInviteEmails(e.target.value)} placeholder="coach1@email.com, coach2@email.com" rows={3} className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm" />
         <div className="flex flex-wrap gap-3">
           <button type="button" disabled={busy || !selectedCycleId} onClick={() => void createInvites()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Generate Invite Links</button>
