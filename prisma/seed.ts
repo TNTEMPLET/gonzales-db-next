@@ -64,6 +64,64 @@ async function main() {
 
   console.log(`Seeded ${posts.length} news posts`);
 
+  const dicksName = "DICK'S Sporting Goods";
+  const existingDicks = await prisma.sponsor.findFirst({
+    where: { businessName: dicksName },
+    select: { id: true },
+  });
+  if (!existingDicks) {
+    await prisma.sponsor.create({
+      data: {
+        businessName: dicksName,
+        contactName: "TBD",
+        contactEmail: "tbd@example.com",
+        contactPhone: "TBD",
+        websiteUrl: "https://www.dickssportinggoods.com",
+        logoUrl: "/sponsors/dicks-wordmark.svg",
+        logoMimeType: "image/svg+xml",
+        logoAlt: "DICK'S Sporting Goods",
+        notes:
+          "Team sponsorship seed. Official retail site: https://www.dickssportinggoods.com — replace placeholder contact fields and optionally upload a higher-resolution logo in admin.",
+        isActive: true,
+        packageEnrollment: {
+          create: {
+            packageType: "TEAM_SPONSORSHIPS",
+            packageLabel: "Team Sponsorships",
+            minimumCommitmentCents: 50_000,
+            amountCents: 50_000,
+            additionalTeamAmountCents: 45_000,
+            twoYearCommitmentAmountCents: null,
+            includesWebsiteLogo: true,
+            includesSocialRecognition: true,
+            includesUniformName: true,
+            includesFieldSignage: false,
+            includesSeasonScheduleName: false,
+            includesAllStarMention: false,
+          },
+        },
+        placements: {
+          create: [
+            {
+              organizationId: "gonzales",
+              showInFooterScroller: true,
+              sortOrder: 40,
+            },
+            {
+              organizationId: "ascension",
+              showInFooterScroller: true,
+              sortOrder: 40,
+            },
+          ],
+        },
+      },
+    });
+    console.log(
+      "Seeded DICK'S Sporting Goods (team sponsorship, gonzales + ascension)",
+    );
+  } else {
+    console.log("DICK'S Sporting Goods sponsor already present; skip create");
+  }
+
   const bootstrapEmail =
     process.env.ADMIN_BOOTSTRAP_EMAIL?.trim().toLowerCase();
   const bootstrapPassword = process.env.ADMIN_BOOTSTRAP_PASSWORD;
