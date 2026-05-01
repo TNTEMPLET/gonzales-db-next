@@ -14,7 +14,8 @@ export function generateMetadata() {
   const site = getSiteConfig();
   return {
     title: `Social media | ${site.name}`,
-    description: "Draft and publish Facebook Page posts for your organization.",
+    description:
+      "Draft and publish Facebook Page posts for your organization. Pulls recent posts from your Page when you sync.",
   };
 }
 
