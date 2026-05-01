@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { usePathname, useSearchParams } from "next/navigation";
+import { usePathname } from "next/navigation";
 import {
   canAccessAdminModule,
   isAdminRole,
@@ -39,12 +39,12 @@ type HeaderProps = {
 
 export default function Header({ brand }: HeaderProps) {
   const pathname = usePathname();
-  const searchParams = useSearchParams();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
+  const [currentOrgParam, setCurrentOrgParam] = useState<string | null>(null);
   const regOpen = isRegistrationOpen();
   const isMasterHeader =
     brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
@@ -168,10 +168,14 @@ export default function Header({ brand }: HeaderProps) {
     };
   }, [pathname]);
 
+  useEffect(() => {
+    const current = new URLSearchParams(window.location.search).get("org");
+    setCurrentOrgParam(current);
+  }, [pathname]);
+
   if (pathname.startsWith("/dugout")) return null;
 
   const masterRole = adminRole ? toAdminRole(adminRole) : null;
-  const currentOrgParam = searchParams.get("org");
   const masterOrgSuffix =
     isMasterHeader && currentOrgParam ? `?org=${encodeURIComponent(currentOrgParam)}` : "";
   const allowModule = (

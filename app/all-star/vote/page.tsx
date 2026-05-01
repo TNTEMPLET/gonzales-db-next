@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useSearchParams } from "next/navigation";
 
 type Candidate = {
   id: string;
@@ -26,9 +25,8 @@ type OpenResponse = {
 };
 
 export default function AllStarVotePage() {
-  const params = useSearchParams();
-  const cycleId = params.get("cycleId") || "";
-  const token = params.get("token") || "";
+  const [cycleId, setCycleId] = useState("");
+  const [token, setToken] = useState("");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -39,6 +37,12 @@ export default function AllStarVotePage() {
 
   const isLocked = Boolean(data?.hasSubmitted);
   const canRender = Boolean(cycleId);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    setCycleId(params.get("cycleId") || "");
+    setToken(params.get("token") || "");
+  }, []);
 
   const loadBallot = useCallback(async () => {
     setLoading(true);

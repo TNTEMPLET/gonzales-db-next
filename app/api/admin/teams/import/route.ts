@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { Prisma } from "@prisma/client";
 
 import { parseSeasonYear } from "@/lib/allStar/server";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
@@ -98,6 +99,10 @@ function shouldSkipDivisionImport(divisionName: string) {
 
 function emptyUndoPayload(): UndoSnapshot {
   return { createdTeamIds: [], createdPlayerIds: [], updatedPlayers: [] };
+}
+
+function toInputJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
 async function applyImportRows(params: {
@@ -377,7 +382,7 @@ async function applyImportRows(params: {
       createdPlayers: { increment: createdPlayers },
       updatedPlayers: { increment: updatedPlayers },
       skippedRows: { increment: skipped },
-      undoPayload,
+      undoPayload: toInputJson(undoPayload),
     },
     select: {
       id: true,
@@ -508,7 +513,7 @@ export async function POST(request: NextRequest) {
           status: "RUNNING",
           totalRows:
             typeof body.totalRows === "number" && body.totalRows > 0 ? body.totalRows : 0,
-          undoPayload: emptyUndoPayload(),
+          undoPayload: toInputJson(emptyUndoPayload()),
         },
       });
       return NextResponse.json({ success: true, batch: created });
@@ -597,7 +602,7 @@ export async function POST(request: NextRequest) {
       createdByAdminId: admin?.id || null,
       status: "RUNNING",
       totalRows: rows.length,
-      undoPayload: emptyUndoPayload(),
+      undoPayload: toInputJson(emptyUndoPayload()),
     },
   });
   const batch = await applyImportRows({

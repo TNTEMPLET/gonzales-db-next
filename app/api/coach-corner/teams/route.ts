@@ -12,8 +12,8 @@ export async function GET(request: NextRequest) {
   }
 
   const seasonYearParam = request.nextUrl.searchParams.get("seasonYear");
-  const seasonYear = seasonYearParam ? Number(seasonYearParam) : null;
-  const seasonFilter = Number.isFinite(seasonYear) ? seasonYear : undefined;
+  const parsedSeasonYear = seasonYearParam ? Number(seasonYearParam) : Number.NaN;
+  const seasonFilter = Number.isFinite(parsedSeasonYear) ? parsedSeasonYear : undefined;
 
   const teams = actor.isAdmin
     ? await prisma.team.findMany({
