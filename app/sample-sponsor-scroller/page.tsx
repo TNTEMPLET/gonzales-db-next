@@ -64,8 +64,8 @@ export default function SampleSponsorScrollerPage() {
         <p className="mt-2 max-w-2xl text-sm text-zinc-400">
           Preview of the footer marquee animation and pill styling. Real sponsors
           use uploaded logos from admin; this page uses placeholder SVGs from{" "}
-          <code className="text-zinc-300">/public</code>. Live site shows the same
-          strip below the homepage hero.
+          <code className="text-zinc-300">/public</code>. On the live site the same
+          strip is fixed to the bottom of the viewport (except admin and dugout).
         </p>
         <p className="mt-3 text-xs text-zinc-500">
           Path: <code className="text-zinc-400">/sample-sponsor-scroller</code>

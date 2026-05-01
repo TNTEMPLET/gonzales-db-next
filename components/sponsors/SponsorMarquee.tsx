@@ -12,12 +12,23 @@ export type SponsorScrollerItem = {
   sortOrder: number;
 };
 
-export function SponsorMarquee({ items }: { items: SponsorScrollerItem[] }) {
+export function SponsorMarquee({
+  items,
+  dock = false,
+}: {
+  items: SponsorScrollerItem[];
+  /** Fixed to viewport bottom (border + shadow on top edge). */
+  dock?: boolean;
+}) {
   const railItems = useMemo(() => [...items, ...items], [items]);
   if (items.length === 0) return null;
 
+  const stripClass = dock
+    ? "sponsor-strip sponsor-strip--dock border-t border-zinc-800 bg-zinc-950/95 shadow-[0_-4px_24px_rgba(0,0,0,0.5)]"
+    : "sponsor-strip border-b border-zinc-800 bg-zinc-950/85";
+
   return (
-    <div className="sponsor-strip border-b border-zinc-800 bg-zinc-950/85">
+    <div className={stripClass}>
       <div className="sponsor-strip-mask">
         <div className="sponsor-marquee-track">
           {railItems.map((entry, index) => {

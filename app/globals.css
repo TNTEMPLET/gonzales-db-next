@@ -58,6 +58,12 @@ body {
   overflow: hidden;
 }
 
+/* Viewport-fixed bar: no extra layout margin */
+.sponsor-strip--dock {
+  margin: 0;
+  backdrop-filter: blur(8px);
+}
+
 .sponsor-strip-mask {
   position: relative;
   overflow: hidden;
@@ -112,4 +118,9 @@ body {
     mask-image: none;
     overflow-x: auto;
   }
+}
+
+/* Reserve space when sponsor bar is docked so footer/content can scroll clear */
+body.has-sponsor-dock {
+  padding-bottom: calc(3.25rem + env(safe-area-inset-bottom, 0px));
 }

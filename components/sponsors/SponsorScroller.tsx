@@ -13,13 +13,25 @@ type ApiResponse = {
   error?: string;
 };
 
+function hideScrollerPath(pathname: string | null) {
+  if (!pathname) return true;
+  if (pathname.startsWith("/dugout")) return true;
+  if (pathname.startsWith("/admin")) return true;
+  return false;
+}
+
 export default function SponsorScroller() {
   const pathname = usePathname();
   const [items, setItems] = useState<SponsorScrollerItem[]>([]);
+  const hidden = hideScrollerPath(pathname);
 
   useEffect(() => {
     let active = true;
     async function load() {
+      if (hideScrollerPath(pathname)) {
+        if (active) setItems([]);
+        return;
+      }
       try {
         const currentOrg = new URLSearchParams(window.location.search).get("org");
         const query = currentOrg ? `?org=${encodeURIComponent(currentOrg)}` : "";
@@ -40,5 +52,23 @@ export default function SponsorScroller() {
     };
   }, [pathname]);
 
-  return <SponsorMarquee items={items} />;
+  useEffect(() => {
+    if (hidden || items.length === 0) {
+      document.body.classList.remove("has-sponsor-dock");
+      return;
+    }
+    document.body.classList.add("has-sponsor-dock");
+    return () => {
+      document.body.classList.remove("has-sponsor-dock");
+    };
+  }, [hidden, items.length]);
+
+  if (hidden) return null;
+  if (items.length === 0) return null;
+
+  return (
+    <div className="fixed bottom-0 left-0 right-0 z-[100] pb-[env(safe-area-inset-bottom,0px)]">
+      <SponsorMarquee items={items} dock />
+    </div>
+  );
 }
