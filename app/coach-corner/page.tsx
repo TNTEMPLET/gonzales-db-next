@@ -2,6 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import CoachCornerClient from "@/components/coach-corner/CoachCornerClient";
+import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
+import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserByToken,
@@ -40,6 +42,10 @@ export default async function CoachCornerPage({
     redirect("/");
   }
 
+  const canSwitchTargetOrg = admin
+    ? hasAdminRoleAtLeast(toAdminRole(admin.role, admin.isMaster), "ADMIN")
+    : false;
+
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
       <section className="max-w-6xl mx-auto px-6">
@@ -55,6 +61,11 @@ export default async function CoachCornerPage({
             game-specific notes from one page.
           </p>
         </div>
+        {canSwitchTargetOrg ? (
+          <div className="mb-6">
+            <AdminOrgSwitcher currentOrg={targetOrg as ContentOrgId} currentPath="/coach-corner" />
+          </div>
+        ) : null}
         <CoachCornerClient targetOrg={targetOrg as ContentOrgId} />
       </section>
     </main>
