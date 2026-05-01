@@ -65,10 +65,10 @@ type SponsorFormState = {
   endAt: string;
   packageType: SponsorPackageTypeValue;
   packageLabel: string;
-  minimumCommitmentCents: string;
-  amountCents: string;
-  additionalTeamAmountCents: string;
-  twoYearCommitmentAmountCents: string;
+  minimumCommitmentCents: number | null;
+  amountCents: number | null;
+  additionalTeamAmountCents: number | null;
+  twoYearCommitmentAmountCents: number | null;
   includesWebsiteLogo: boolean;
   includesSocialRecognition: boolean;
   includesUniformName: boolean;
@@ -96,10 +96,10 @@ const EMPTY_FORM: SponsorFormState = {
   endAt: "",
   packageType: "BALLPARK_FENCE_SIGNS",
   packageLabel: "Ballpark Fence Signs",
-  minimumCommitmentCents: "50000",
-  amountCents: "50000",
-  additionalTeamAmountCents: "",
-  twoYearCommitmentAmountCents: "",
+  minimumCommitmentCents: 50000,
+  amountCents: 50000,
+  additionalTeamAmountCents: null,
+  twoYearCommitmentAmountCents: null,
   includesWebsiteLogo: true,
   includesSocialRecognition: true,
   includesUniformName: false,
@@ -112,9 +112,92 @@ const EMPTY_FORM: SponsorFormState = {
   sortOrder: "100",
 };
 
+const usdFormatter = new Intl.NumberFormat("en-US", {
+  style: "currency",
+  currency: "USD",
+  minimumFractionDigits: 2,
+  maximumFractionDigits: 2,
+});
+
 function centsDisplay(value: number | null | undefined) {
   if (value === null || value === undefined) return "—";
-  return `$${(value / 100).toLocaleString()}`;
+  return usdFormatter.format(value / 100);
+}
+
+function UsdCentsField({
+  valueCents,
+  onValueCentsChange,
+  placeholder,
+  className,
+}: {
+  valueCents: number | null;
+  onValueCentsChange: (cents: number | null) => void;
+  placeholder?: string;
+  className?: string;
+}) {
+  const [focused, setFocused] = useState(false);
+  const [editText, setEditText] = useState("");
+
+  const blurredDisplay =
+    valueCents === null ? "" : usdFormatter.format(valueCents / 100);
+
+  return (
+    <input
+      type="text"
+      inputMode="decimal"
+      autoComplete="off"
+      className={className}
+      placeholder={placeholder}
+      value={focused ? editText : blurredDisplay}
+      onFocus={() => {
+        setFocused(true);
+        setEditText(
+          valueCents === null ? "" : usdFormatter.format(valueCents / 100),
+        );
+      }}
+      onBlur={() => {
+        setFocused(false);
+        const cleaned = editText.replace(/[^0-9.]/g, "").trim();
+        if (cleaned === "" || cleaned === ".") {
+          onValueCentsChange(null);
+          setEditText("");
+          return;
+        }
+        const n = Number.parseFloat(cleaned);
+        if (!Number.isFinite(n) || n < 0) {
+          onValueCentsChange(null);
+          setEditText("");
+          return;
+        }
+        onValueCentsChange(Math.round(n * 100));
+        setEditText("");
+      }}
+      onChange={(e) => {
+        if (!focused) return;
+        let s = e.target.value.replace(/[^0-9.]/g, "");
+        if (s.startsWith(".")) s = `0${s}`;
+        if (s === "") {
+          setEditText("");
+          return;
+        }
+        const parts = s.split(".");
+        const whole = parts[0] ?? "";
+        const frac =
+          parts.length > 1
+            ? parts.slice(1).join("").replace(/\./g, "").slice(0, 2)
+            : "";
+        const hasDot = s.includes(".");
+        const wNum = whole === "" ? 0 : Number.parseInt(whole, 10);
+        if (whole !== "" && Number.isNaN(wNum)) return;
+        const wFmt = wNum.toLocaleString("en-US");
+        let out: string;
+        if (!hasDot) out = `$${wFmt}`;
+        else if (frac === "") out = `$${wFmt}.`;
+        else out = `$${wFmt}.${frac}`;
+        setEditText(out);
+      }}
+    />
+  );
 }
 
 function mapSponsorToForm(sponsor: SponsorRecord): SponsorFormState {
@@ -134,13 +217,11 @@ function mapSponsorToForm(sponsor: SponsorRecord): SponsorFormState {
     endAt: sponsor.endAt ? sponsor.endAt.slice(0, 10) : "",
     packageType: enrollment?.packageType || "CUSTOM",
     packageLabel: enrollment?.packageLabel || "Custom",
-    minimumCommitmentCents:
-      enrollment?.minimumCommitmentCents?.toString() || "",
-    amountCents: enrollment?.amountCents?.toString() || "",
-    additionalTeamAmountCents:
-      enrollment?.additionalTeamAmountCents?.toString() || "",
+    minimumCommitmentCents: enrollment?.minimumCommitmentCents ?? null,
+    amountCents: enrollment?.amountCents ?? null,
+    additionalTeamAmountCents: enrollment?.additionalTeamAmountCents ?? null,
     twoYearCommitmentAmountCents:
-      enrollment?.twoYearCommitmentAmountCents?.toString() || "",
+      enrollment?.twoYearCommitmentAmountCents ?? null,
     includesWebsiteLogo: enrollment?.includesWebsiteLogo ?? true,
     includesSocialRecognition: enrollment?.includesSocialRecognition ?? false,
     includesUniformName: enrollment?.includesUniformName ?? false,
@@ -221,18 +302,11 @@ export default function AdminSponsorsManager({
       ...prev,
       packageType,
       packageLabel: template?.label || "Custom",
-      minimumCommitmentCents: template?.minimumCommitmentCents
-        ? String(template.minimumCommitmentCents)
-        : "",
-      amountCents: template?.defaultAmountCents
-        ? String(template.defaultAmountCents)
-        : "",
-      additionalTeamAmountCents: template?.additionalTeamAmountCents
-        ? String(template.additionalTeamAmountCents)
-        : "",
-      twoYearCommitmentAmountCents: template?.twoYearCommitmentAmountCents
-        ? String(template.twoYearCommitmentAmountCents)
-        : "",
+      minimumCommitmentCents: template?.minimumCommitmentCents ?? null,
+      amountCents: template?.defaultAmountCents ?? null,
+      additionalTeamAmountCents: template?.additionalTeamAmountCents ?? null,
+      twoYearCommitmentAmountCents:
+        template?.twoYearCommitmentAmountCents ?? null,
       includesWebsiteLogo: template?.includesWebsiteLogo ?? true,
       includesSocialRecognition: template?.includesSocialRecognition ?? false,
       includesUniformName: template?.includesUniformName ?? false,
@@ -302,16 +376,10 @@ export default function AdminSponsorsManager({
       const payload = {
         ...form,
         orgTargets: form.orgTargets,
-        minimumCommitmentCents: form.minimumCommitmentCents
-          ? Number(form.minimumCommitmentCents)
-          : null,
-        amountCents: form.amountCents ? Number(form.amountCents) : null,
-        additionalTeamAmountCents: form.additionalTeamAmountCents
-          ? Number(form.additionalTeamAmountCents)
-          : null,
-        twoYearCommitmentAmountCents: form.twoYearCommitmentAmountCents
-          ? Number(form.twoYearCommitmentAmountCents)
-          : null,
+        minimumCommitmentCents: form.minimumCommitmentCents,
+        amountCents: form.amountCents,
+        additionalTeamAmountCents: form.additionalTeamAmountCents,
+        twoYearCommitmentAmountCents: form.twoYearCommitmentAmountCents,
         sortOrder: form.sortOrder ? Number(form.sortOrder) : 100,
       };
 
@@ -554,45 +622,39 @@ export default function AdminSponsorsManager({
             placeholder="Scroller order"
             className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
           />
-          <input
-            value={form.minimumCommitmentCents}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                minimumCommitmentCents: event.target.value,
-              }))
+          <UsdCentsField
+            valueCents={form.minimumCommitmentCents}
+            onValueCentsChange={(cents) =>
+              setForm((prev) => ({ ...prev, minimumCommitmentCents: cents }))
             }
-            placeholder="Minimum commitment (cents)"
+            placeholder="Minimum commitment"
             className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
           />
-          <input
-            value={form.amountCents}
-            onChange={(event) =>
-              setForm((prev) => ({ ...prev, amountCents: event.target.value }))
+          <UsdCentsField
+            valueCents={form.amountCents}
+            onValueCentsChange={(cents) =>
+              setForm((prev) => ({ ...prev, amountCents: cents }))
             }
-            placeholder="Package amount (cents)"
+            placeholder="Package amount"
             className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
           />
-          <input
-            value={form.additionalTeamAmountCents}
-            onChange={(event) =>
-              setForm((prev) => ({
-                ...prev,
-                additionalTeamAmountCents: event.target.value,
-              }))
+          <UsdCentsField
+            valueCents={form.additionalTeamAmountCents}
+            onValueCentsChange={(cents) =>
+              setForm((prev) => ({ ...prev, additionalTeamAmountCents: cents }))
             }
-            placeholder="Additional team amount (cents)"
+            placeholder="Additional team amount (optional)"
             className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
           />
-          <input
-            value={form.twoYearCommitmentAmountCents}
-            onChange={(event) =>
+          <UsdCentsField
+            valueCents={form.twoYearCommitmentAmountCents}
+            onValueCentsChange={(cents) =>
               setForm((prev) => ({
                 ...prev,
-                twoYearCommitmentAmountCents: event.target.value,
+                twoYearCommitmentAmountCents: cents,
               }))
             }
-            placeholder="2-year commitment amount (cents)"
+            placeholder="2-year commitment (optional)"
             className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
           />
           <input
