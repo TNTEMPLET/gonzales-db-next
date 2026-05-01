@@ -6,7 +6,6 @@ import { resolveDugoutApiOrg } from "@/lib/siteConfig";
 
 type CreateCommentPayload = {
   content?: string;
-  parentId?: string | null;
 };
 
 const MAX_COMMENT_LENGTH = 280;
@@ -70,25 +69,8 @@ export async function GET(
       ...serializeComment(comment),
       replies: [] as ReturnType<typeof serializeComment>[],
     }));
-
-    const byId = new Map(serialized.map((comment) => [comment.id, comment]));
-    const roots: typeof serialized = [];
-
-    for (const comment of serialized) {
-      if (!comment.parentId) {
-        roots.push(comment);
-        continue;
-      }
-
-      const parent = byId.get(comment.parentId);
-      if (parent) {
-        parent.replies.push(comment);
-      } else {
-        roots.push(comment);
-      }
-    }
-
-    return NextResponse.json({ data: roots });
+    // Replies are now intentionally flat (no nested threading).
+    return NextResponse.json({ data: serialized });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
@@ -129,7 +111,6 @@ export async function POST(
   try {
     const body = (await request.json()) as CreateCommentPayload;
     const content = body.content?.trim() || "";
-    const parentId = body.parentId || null;
 
     if (!content) {
       return NextResponse.json(
@@ -155,25 +136,11 @@ export async function POST(
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
     }
 
-    if (parentId) {
-      const parent = await prisma.dugoutComment.findUnique({
-        where: { id: parentId },
-        select: { id: true, postId: true },
-      });
-
-      if (!parent || parent.postId !== postId) {
-        return NextResponse.json(
-          { error: "Reply target is invalid" },
-          { status: 400 },
-        );
-      }
-    }
-
     const comment = await prisma.dugoutComment.create({
       data: {
         content,
         postId,
-        parentId,
+        parentId: null,
         authorId,
       },
       include: {

@@ -511,15 +511,15 @@ export default function DugoutTimeline({
   const [commentInputByPost, setCommentInputByPost] = useState<
     Record<string, string>
   >({});
-  const [replyTargetByPost, setReplyTargetByPost] = useState<
-    Record<string, DugoutComment | null>
-  >({});
   const [commentBusyByPost, setCommentBusyByPost] = useState<
     Record<string, boolean>
   >({});
   const [commentDeleteBusyId, setCommentDeleteBusyId] = useState<string | null>(
     null,
   );
+  const [commentEditingId, setCommentEditingId] = useState<string | null>(null);
+  const [commentEditContent, setCommentEditContent] = useState("");
+  const [commentEditBusy, setCommentEditBusy] = useState(false);
 
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [isClientMounted, setIsClientMounted] = useState(false);
@@ -1394,7 +1394,7 @@ export default function DugoutTimeline({
     }
   }
 
-  async function submitComment(postId: string, parentId: string | null) {
+  async function submitComment(postId: string) {
     if (!currentUserId) return;
 
     const text = (commentInputByPost[postId] || "").trim();
@@ -1419,7 +1419,6 @@ export default function DugoutTimeline({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             content: text,
-            parentId,
           }),
         },
       );
@@ -1445,10 +1444,6 @@ export default function DugoutTimeline({
       setCommentInputByPost((prev) => ({
         ...prev,
         [postId]: "",
-      }));
-      setReplyTargetByPost((prev) => ({
-        ...prev,
-        [postId]: null,
       }));
       setPosts((prev) =>
         prev.map((post) =>
@@ -1510,6 +1505,57 @@ export default function DugoutTimeline({
       setError(err instanceof Error ? err.message : "Failed to delete comment");
     } finally {
       setCommentDeleteBusyId(null);
+    }
+  }
+
+  function startCommentEdit(comment: DugoutComment) {
+    setCommentEditingId(comment.id);
+    setCommentEditContent(comment.content);
+  }
+
+  function cancelCommentEdit() {
+    setCommentEditingId(null);
+    setCommentEditContent("");
+  }
+
+  async function saveCommentEdit(postId: string, commentId: string) {
+    const trimmed = commentEditContent.trim();
+    if (!trimmed) return;
+    if (trimmed.length > MAX_COMMENT_LENGTH) {
+      setError(`Comment must be ${MAX_COMMENT_LENGTH} characters or fewer`);
+      return;
+    }
+
+    setCommentEditBusy(true);
+    setError("");
+
+    try {
+      const response = await fetch(`/api/dugout/comments/${commentId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: trimmed }),
+      });
+      const json = (await response.json()) as {
+        error?: string;
+        data?: DugoutComment;
+      };
+      if (!response.ok || !json.data) {
+        throw new Error(json.error || "Failed to update comment");
+      }
+
+      setCommentsByPost((prev) => ({
+        ...prev,
+        [postId]: (prev[postId] ?? []).map((entry) =>
+          entry.id === commentId
+            ? { ...entry, content: json.data!.content, updatedAt: json.data!.updatedAt }
+            : entry,
+        ),
+      }));
+      cancelCommentEdit();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update comment");
+    } finally {
+      setCommentEditBusy(false);
     }
   }
 
@@ -1587,15 +1633,14 @@ export default function DugoutTimeline({
     }, []);
   }, [initialScheduleGames]);
 
-  function renderComment(postId: string, comment: DugoutComment, depth = 0) {
+  function renderComment(postId: string, comment: DugoutComment) {
     const canManageComment = isAdmin || comment.author.id === currentUserId;
+    const isEditingComment = commentEditingId === comment.id;
 
     return (
       <div
         key={comment.id}
-        className={`rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 ${
-          depth > 0 ? "ml-5 mt-2" : "mt-2"
-        }`}
+        className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3"
       >
         <div className="mb-1 flex items-center justify-between gap-2">
           <p className="text-xs font-semibold text-zinc-200">
@@ -1605,22 +1650,46 @@ export default function DugoutTimeline({
             {formatPostTime(comment.createdAt)}
           </p>
         </div>
-        <p className="whitespace-pre-wrap wrap-anywhere text-sm text-zinc-200">
-          {renderFormattedText(comment.content)}
-        </p>
+        {isEditingComment ? (
+          <div className="space-y-2">
+            <textarea
+              rows={3}
+              maxLength={MAX_COMMENT_LENGTH}
+              value={commentEditContent}
+              onChange={(event) => setCommentEditContent(event.target.value)}
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
+            />
+            <div className="flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={cancelCommentEdit}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={commentEditBusy || !commentEditContent.trim()}
+                onClick={() => void saveCommentEdit(postId, comment.id)}
+                className="rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-violet-400 disabled:opacity-60"
+              >
+                {commentEditBusy ? "Saving..." : "Save"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <p className="whitespace-pre-wrap wrap-anywhere text-sm text-zinc-200">
+            {renderFormattedText(comment.content)}
+          </p>
+        )}
         <div className="mt-2 flex items-center gap-3">
-          {currentUserId ? (
+          {canManageComment ? (
             <button
               type="button"
-              onClick={() => {
-                setReplyTargetByPost((prev) => ({
-                  ...prev,
-                  [postId]: comment,
-                }));
-              }}
+              onClick={() => startCommentEdit(comment)}
               className="text-xs text-zinc-400 hover:text-zinc-200"
             >
-              Reply
+              Edit
             </button>
           ) : null}
           {canManageComment ? (
@@ -1634,12 +1703,6 @@ export default function DugoutTimeline({
             </button>
           ) : null}
         </div>
-
-        {comment.replies.length > 0
-          ? comment.replies.map((reply) =>
-              renderComment(postId, reply, depth + 1),
-            )
-          : null}
       </div>
     );
   }
@@ -1654,7 +1717,6 @@ export default function DugoutTimeline({
       postExpanded,
       longPost,
       commentsExpanded,
-      replyTarget,
       commentInput,
       isThreadGroup,
       isThreadLead,
@@ -1666,7 +1728,6 @@ export default function DugoutTimeline({
       postExpanded: boolean;
       longPost: boolean;
       commentsExpanded: boolean;
-      replyTarget: DugoutComment | null | undefined;
       commentInput: string;
       isThreadGroup: boolean;
       isThreadLead: boolean;
@@ -1922,26 +1983,6 @@ export default function DugoutTimeline({
 
             {commentsExpanded ? (
               <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                {replyTarget ? (
-                  <div className="mb-2 flex items-center justify-between gap-2 rounded-md border border-zinc-700 bg-zinc-900/60 px-2 py-1.5 text-xs text-zinc-300">
-                    <span>
-                      Replying to {getDisplayName(replyTarget.author)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() =>
-                        setReplyTargetByPost((prev) => ({
-                          ...prev,
-                          [post.id]: null,
-                        }))
-                      }
-                      className="text-red-300 hover:text-red-200"
-                    >
-                      Cancel
-                    </button>
-                  </div>
-                ) : null}
-
                 <div className="mb-2 flex items-center gap-2 text-violet-400">
                   <button
                     type="button"
@@ -1969,6 +2010,20 @@ export default function DugoutTimeline({
                   >
                     I
                   </button>
+                  <div className="ml-1 flex items-center gap-1">
+                    {EMOJI_CHOICES.map((emoji) => (
+                      <button
+                        key={`${post.id}-comment-${emoji}`}
+                        type="button"
+                        onClick={() =>
+                          updateCommentInput(post.id, `${commentInput}${emoji}`)
+                        }
+                        className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs hover:bg-zinc-800"
+                      >
+                        {emoji}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="flex gap-2">
@@ -2013,7 +2068,7 @@ export default function DugoutTimeline({
                         commentBusyByPost[post.id]
                       }
                       onClick={() =>
-                        void submitComment(post.id, replyTarget?.id ?? null)
+                        void submitComment(post.id)
                       }
                       className="h-fit rounded-lg bg-violet-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-violet-400 disabled:opacity-60 disabled:text-zinc-700"
                     >
@@ -2052,7 +2107,6 @@ export default function DugoutTimeline({
     const postExpanded = Boolean(expandedPostContentById[post.id]);
     const longPost = Boolean(overflowingPostContentById[post.id]);
     const commentsExpanded = Boolean(expandedCommentsByPost[post.id]);
-    const replyTarget = replyTargetByPost[post.id];
     const commentInput = commentInputByPost[post.id] ?? "";
     const isThreadGroup = options.threadSize > 1;
     const isLast = options.threadIndex === options.threadSize - 1;
@@ -2065,7 +2119,6 @@ export default function DugoutTimeline({
       postExpanded,
       longPost,
       commentsExpanded,
-      replyTarget,
       commentInput,
       isThreadGroup,
       isThreadLead: options.threadIndex === 0,
