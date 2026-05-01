@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   canAccessAdminModule,
@@ -37,10 +37,16 @@ type HeaderProps = {
   };
 };
 
+type MasterNavLink = { href: string; label: string };
+
+type MasterNavGroup = { id: string; label: string; items: MasterNavLink[] };
+
 export default function Header({ brand }: HeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [openMasterMenu, setOpenMasterMenu] = useState<string | null>(null);
+  const masterMenuRef = useRef<HTMLDivElement | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
@@ -55,7 +61,7 @@ export default function Header({ brand }: HeaderProps) {
     : "sticky top-0 z-50 bg-zinc-950 border-b border-zinc-800";
 
   const headerInnerClassName = isMasterHeader
-    ? "mx-auto flex w-full max-w-7xl items-center justify-between px-6 py-4"
+    ? "mx-auto grid w-full max-w-7xl grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center md:gap-4 lg:gap-6"
     : "max-w-7xl mx-auto px-6 py-4 flex items-center justify-between";
 
   const logoFrameClassName = isMasterHeader
@@ -71,39 +77,58 @@ export default function Header({ brand }: HeaderProps) {
     : "font-bold text-2xl tracking-tight text-white uppercase";
 
   const desktopNavClassName = isMasterHeader
-    ? "hidden md:flex items-center gap-6 text-[13px] font-semibold tracking-wide"
+    ? "hidden md:flex flex-1 min-w-0 items-center justify-center gap-1 lg:gap-2 text-[12px] font-semibold tracking-wide xl:text-[13px]"
     : "hidden md:flex items-center gap-8 text-sm font-medium";
 
   const mobileMenuClassName = isMasterHeader
     ? "md:hidden border-t border-red-900/60 bg-zinc-900/95"
     : "md:hidden border-t border-zinc-800 bg-zinc-900";
 
+  function masterNavTriggerClass(isActive: boolean) {
+    return isActive
+      ? "relative whitespace-nowrap px-2 py-1.5 text-red-200 transition-colors after:absolute after:-bottom-0.5 after:left-2 after:right-2 after:h-[2px] after:rounded-full after:bg-red-400"
+      : "relative whitespace-nowrap px-2 py-1.5 text-zinc-200/90 transition-colors hover:text-red-200 after:absolute after:-bottom-0.5 after:left-2 after:h-[2px] after:w-0 after:rounded-full after:bg-red-400 after:transition-all hover:after:w-[calc(100%-1rem)]";
+  }
+
   function desktopLinkClassName(href: string) {
     if (!isMasterHeader) return "hover:text-brand-gold transition-colors";
 
     const isRouteLink = !href.includes("#");
+    const pathKey = href.split("?")[0] ?? href;
     const isActive = isRouteLink
-      ? href === "/admin"
+      ? pathKey === "/admin"
         ? pathname === "/admin"
-        : pathname.startsWith(href)
+        : pathname.startsWith(pathKey)
       : false;
     return isActive
-      ? "relative text-red-200 transition-colors after:absolute after:-bottom-1 after:left-0 after:h-[2px] after:w-full after:rounded-full after:bg-red-400"
-      : "relative text-zinc-200/90 transition-colors hover:text-red-200 after:absolute after:-bottom-1 after:left-0 after:h-[2px] after:w-0 after:rounded-full after:bg-red-400 after:transition-all hover:after:w-full";
+      ? "relative whitespace-nowrap px-2 py-1.5 text-red-200 transition-colors after:absolute after:-bottom-0.5 after:left-2 after:right-2 after:h-[2px] after:rounded-full after:bg-red-400"
+      : "relative whitespace-nowrap px-2 py-1.5 text-zinc-200/90 transition-colors hover:text-red-200 after:absolute after:-bottom-0.5 after:left-2 after:h-[2px] after:w-0 after:rounded-full after:bg-red-400 after:transition-all hover:after:w-[calc(100%-1rem)]";
   }
 
   function mobileLinkClassName(href: string) {
     if (!isMasterHeader) return "hover:text-brand-gold";
 
     const isRouteLink = !href.includes("#");
+    const pathKey = href.split("?")[0] ?? href;
     const isActive = isRouteLink
-      ? href === "/admin"
+      ? pathKey === "/admin"
         ? pathname === "/admin"
-        : pathname.startsWith(href)
+        : pathname.startsWith(pathKey)
       : false;
     return isActive
       ? "rounded-md border border-red-800/70 bg-red-950/40 px-3 py-2 text-red-200"
       : "rounded-md px-3 py-2 text-zinc-200 hover:bg-red-950/30 hover:text-red-200";
+  }
+
+  function masterDropdownItemClass(href: string) {
+    const pathKey = href.split("?")[0] ?? href;
+    const isActive =
+      pathKey === "/admin"
+        ? pathname === "/admin"
+        : pathname.startsWith(pathKey);
+    return isActive
+      ? "block px-3 py-2 text-left text-sm text-red-200 bg-red-950/35"
+      : "block px-3 py-2 text-left text-sm text-zinc-200 hover:bg-red-950/25 hover:text-red-100";
   }
 
   useEffect(() => {
@@ -169,6 +194,23 @@ export default function Header({ brand }: HeaderProps) {
     };
   }, [pathname]);
 
+  useEffect(() => {
+    if (!openMasterMenu) return;
+    function onDocMouseDown(e: MouseEvent) {
+      const el = masterMenuRef.current;
+      if (el && !el.contains(e.target as Node)) setOpenMasterMenu(null);
+    }
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") setOpenMasterMenu(null);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onDocMouseDown);
+      document.removeEventListener("keydown", onKey);
+    };
+  }, [openMasterMenu]);
+
   if (pathname.startsWith("/dugout")) return null;
 
   const masterRole = adminRole ? toAdminRole(adminRole) : null;
@@ -187,52 +229,74 @@ export default function Header({ brand }: HeaderProps) {
     return canAccessAdminModule(masterRole, module);
   };
 
-  const navLinks = isMasterHeader
+  const masterNavGroups: MasterNavGroup[] = isMasterHeader
     ? [
-        { href: "/admin", label: "Dashboard" },
-          { href: `/admin/teams${masterOrgSuffix}`, label: "Teams" },
-          ...(allowModule("SPONSORS")
-            ? [{ href: `/admin/sponsors${masterOrgSuffix}`, label: "Sponsors" }]
-            : []),
-          ...(allowModule("SOCIAL_MEDIA")
-            ? [{ href: `/admin/social${masterOrgSuffix}`, label: "Social" }]
-            : []),
-          { href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" },
-        ...(allowModule("USERS")
-          ? [{ href: "/admin/users", label: "Users" }]
-          : []),
-        ...(allowModule("REPORTS")
-          ? [{ href: "/admin/reports", label: "Reports" }]
-          : []),
-        ...(allowModule("SCORES")
-          ? [{ href: "/admin/scores", label: "Scores" }]
-          : []),
-        ...(allowModule("DUGOUT_MODERATION")
-          ? [{ href: "/admin/dugout", label: "Dugout" }]
-          : []),
+        {
+          id: "program",
+          label: "Program",
+          items: [
+            { href: `/admin/teams${masterOrgSuffix}`, label: "Teams" },
+            ...(allowModule("SPONSORS")
+              ? [{ href: `/admin/sponsors${masterOrgSuffix}`, label: "Sponsors" }]
+              : []),
+            ...(allowModule("SOCIAL_MEDIA")
+              ? [{ href: `/admin/social${masterOrgSuffix}`, label: "Social" }]
+              : []),
+            { href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" },
+          ],
+        },
+        {
+          id: "operations",
+          label: "Operations",
+          items: [
+            ...(allowModule("USERS")
+              ? [{ href: "/admin/users", label: "Users" }]
+              : []),
+            ...(allowModule("REPORTS")
+              ? [{ href: "/admin/reports", label: "Reports" }]
+              : []),
+            ...(allowModule("SCORES")
+              ? [{ href: "/admin/scores", label: "Scores" }]
+              : []),
+            ...(allowModule("DUGOUT_MODERATION")
+              ? [{ href: "/admin/dugout", label: "Dugout" }]
+              : []),
+          ],
+        },
         ...(canSeeDugout
-          ? [{ href: `/coach-corner${masterOrgSuffix}`, label: "Coach's Corner" }]
+          ? [
+              {
+                id: "coaching",
+                label: "Coaching",
+                items: [
+                  { href: `/coach-corner${masterOrgSuffix}`, label: "Coach's Corner" },
+                  { href: `/dugout${masterOrgSuffix}`, label: "The Board Room" },
+                ],
+              },
+            ]
           : []),
-        ...(canSeeDugout
-          ? [{ href: `/dugout${masterOrgSuffix}`, label: "The Board Room" }]
-          : []),
-      ]
-    : [
-        { href: "/schedule", label: "Schedules & Standings" },
-        ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
-        ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
-        { href: "/#fields", label: "Fields & Status" },
-        ...(canSeeDugout ? [{ href: "/coach-corner", label: "Coach's Corner" }] : []),
-        ...(canSeeDugout ? [{ href: "/dugout", label: "The Dugout" }] : []),
-        { href: "/news", label: "News" },
-        { href: "/#contact", label: "Contact" },
-      ];
+      ].filter((g) => g.items.length > 0)
+    : [];
+
+  const publicNavLinks = [
+    { href: "/schedule", label: "Schedules & Standings" },
+    ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
+    ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
+    { href: "/#fields", label: "Fields & Status" },
+    ...(canSeeDugout ? [{ href: "/coach-corner", label: "Coach's Corner" }] : []),
+    ...(canSeeDugout ? [{ href: "/dugout", label: "The Dugout" }] : []),
+    { href: "/news", label: "News" },
+    { href: "/#contact", label: "Contact" },
+  ];
 
   return (
     <header className={headerClassName}>
       <div className={headerInnerClassName}>
         {/* Logo */}
-        <Link href="/#" className="flex items-center gap-3">
+        <Link
+          href="/#"
+          className={`flex min-w-0 items-center gap-3 ${isMasterHeader ? "justify-self-start md:col-start-1 md:row-start-1" : ""}`}
+        >
           <div className={logoFrameClassName}>
             <Image
               src={logoSrc}
@@ -257,18 +321,82 @@ export default function Header({ brand }: HeaderProps) {
         </Link>
 
         {/* Desktop Navigation */}
-        <nav className={desktopNavClassName}>
-          {navLinks.map((link) => (
-            <Link
-              key={link.href}
-              href={link.href}
-              className={desktopLinkClassName(link.href)}
+        {isMasterHeader ? (
+          <>
+            <nav
+              ref={masterMenuRef}
+              className={`${desktopNavClassName} md:col-start-2 md:row-start-1`}
             >
-              {link.label}
-            </Link>
-          ))}
-          <CoachAuthButton />
-        </nav>
+              <Link href="/admin" className={desktopLinkClassName("/admin")}>
+                Dashboard
+              </Link>
+              {masterNavGroups.map((group) => {
+                const groupActive = group.items.some((item) => {
+                  const pathKey = item.href.split("?")[0] ?? item.href;
+                  return pathname.startsWith(pathKey);
+                });
+                const open = openMasterMenu === group.id;
+                return (
+                  <div key={group.id} className="relative">
+                    <button
+                      type="button"
+                      aria-expanded={open}
+                      aria-haspopup="true"
+                      className={`inline-flex items-center gap-0.5 rounded-md ${masterNavTriggerClass(groupActive)}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenMasterMenu(open ? null : group.id);
+                      }}
+                    >
+                      {group.label}
+                      <svg
+                        className={`h-3.5 w-3.5 shrink-0 opacity-70 transition-transform ${open ? "rotate-180" : ""}`}
+                        viewBox="0 0 24 24"
+                        fill="currentColor"
+                        aria-hidden
+                      >
+                        <path d="M7 10l5 5 5-5z" />
+                      </svg>
+                    </button>
+                    {open ? (
+                      <div
+                        className="absolute left-0 top-full z-50 mt-1 min-w-50 rounded-lg border border-red-900/50 bg-zinc-900/98 py-1 shadow-xl backdrop-blur-sm"
+                        onClick={(e) => e.stopPropagation()}
+                      >
+                        {group.items.map((item) => (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            className={masterDropdownItemClass(item.href)}
+                            onClick={() => setOpenMasterMenu(null)}
+                          >
+                            {item.label}
+                          </Link>
+                        ))}
+                      </div>
+                    ) : null}
+                  </div>
+                );
+              })}
+            </nav>
+            <div className="hidden items-center justify-end md:col-start-3 md:row-start-1 md:flex">
+              <CoachAuthButton />
+            </div>
+          </>
+        ) : (
+          <nav className={desktopNavClassName}>
+            {publicNavLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                className={desktopLinkClassName(link.href)}
+              >
+                {link.label}
+              </Link>
+            ))}
+            <CoachAuthButton />
+          </nav>
+        )}
 
         {/* Register Button */}
         {!isMasterHeader && regOpen && (
@@ -282,8 +410,11 @@ export default function Header({ brand }: HeaderProps) {
 
         {/* Mobile Menu Button */}
         <button
+          type="button"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="md:hidden text-2xl"
+          className={`justify-self-end text-2xl md:hidden ${isMasterHeader ? "col-start-2 row-start-1" : ""}`}
+          aria-expanded={isMenuOpen}
+          aria-label={isMenuOpen ? "Close menu" : "Open menu"}
         >
           {isMenuOpen ? "✕" : "☰"}
         </button>
@@ -292,17 +423,50 @@ export default function Header({ brand }: HeaderProps) {
       {/* Mobile Menu */}
       {isMenuOpen && (
         <div className={mobileMenuClassName}>
-          <div className="px-6 py-8 flex flex-col gap-6 text-lg">
-            {navLinks.map((link) => (
-              <Link
-                key={link.href}
-                href={link.href}
-                onClick={() => setIsMenuOpen(false)}
-                className={mobileLinkClassName(link.href)}
-              >
-                {link.label}
-              </Link>
-            ))}
+          <div
+            className={`flex flex-col px-6 py-8 ${isMasterHeader ? "gap-5 text-base" : "gap-6 text-lg"}`}
+          >
+            {isMasterHeader ? (
+              <>
+                <Link
+                  href="/admin"
+                  onClick={() => setIsMenuOpen(false)}
+                  className={mobileLinkClassName("/admin")}
+                >
+                  Dashboard
+                </Link>
+                {masterNavGroups.map((group) => (
+                  <div key={group.id} className="flex flex-col gap-2">
+                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-red-400/90">
+                      {group.label}
+                    </p>
+                    <div className="flex flex-col gap-1 border-l border-red-900/40 pl-3">
+                      {group.items.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setIsMenuOpen(false)}
+                          className={mobileLinkClassName(item.href)}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </>
+            ) : (
+              publicNavLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  onClick={() => setIsMenuOpen(false)}
+                  className={mobileLinkClassName(link.href)}
+                >
+                  {link.label}
+                </Link>
+              ))
+            )}
             {!isMasterHeader && regOpen && (
               <Link
                 href="/#register"
