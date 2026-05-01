@@ -1973,11 +1973,62 @@ export default function DugoutTimeline({
               </span>
               <button
                 type="button"
-                onClick={() => void toggleComments(post.id)}
-                className="rounded-full border border-zinc-700 px-3 py-1 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
+                disabled={!currentUserId}
+                onClick={() => {
+                  void toggleComments(post.id);
+                  requestAnimationFrame(() => {
+                    commentTextareaRefs.current[post.id]?.focus();
+                  });
+                }}
+                className="rounded-full border border-zinc-700 p-2 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+                aria-label="Reply to post"
+                title="Reply"
               >
-                {commentsExpanded ? "Hide" : "Show"} replies (
-                {post.commentCount})
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  className="h-4 w-4"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M10 8 6 12l4 4M6 12h9a4 4 0 0 1 4 4v0"
+                  />
+                </svg>
+              </button>
+              <button
+                type="button"
+                onClick={() => void toggleComments(post.id)}
+                className="rounded-full border border-zinc-700 p-2 text-zinc-300 hover:bg-zinc-800"
+                aria-label={
+                  commentsExpanded
+                    ? `Hide replies (${post.commentCount})`
+                    : `Show replies (${post.commentCount})`
+                }
+                title={commentsExpanded ? "Hide replies" : "Show replies"}
+              >
+                <span className="inline-flex items-center gap-1.5">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth={1.8}
+                    className="h-4 w-4"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M21 12a8.5 8.5 0 0 1-8.5 8.5c-1.4 0-2.72-.33-3.88-.92L3 21l1.42-5.07A8.46 8.46 0 0 1 4 12a8.5 8.5 0 1 1 17 0Z"
+                    />
+                  </svg>
+                  <span className="text-xs font-semibold tabular-nums">
+                    {post.commentCount}
+                  </span>
+                </span>
               </button>
             </div>
 
