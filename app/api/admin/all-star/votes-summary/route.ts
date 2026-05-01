@@ -67,6 +67,7 @@ export async function GET(request: NextRequest) {
         averageRating: Number(averageRating.toFixed(3)),
       };
     })
+    .filter((row) => row.voteCount > 0)
     .sort((a, b) => {
       if (b.voteCount !== a.voteCount) return b.voteCount - a.voteCount;
       if (b.averageRating !== a.averageRating) return b.averageRating - a.averageRating;
@@ -76,7 +77,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     data: summary,
     meta: {
-      candidateCount: cycle.candidates.length,
+      candidateCount: summary.length,
       submissionCount: cycle.voteSubmissions.length,
     },
   });

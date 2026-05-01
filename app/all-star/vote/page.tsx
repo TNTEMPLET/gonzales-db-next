@@ -24,6 +24,8 @@ type OpenResponse = {
   hasSubmitted: boolean;
 };
 
+const REQUIRED_VOTES = 12;
+
 export default function AllStarVotePage() {
   const [cycleId, setCycleId] = useState("");
   const [token, setToken] = useState("");
@@ -96,6 +98,10 @@ export default function AllStarVotePage() {
 
   async function submitBallot() {
     if (!data) return;
+    if (ratedCount !== REQUIRED_VOTES) {
+      setError(`You must rate exactly ${REQUIRED_VOTES} candidates before submitting.`);
+      return;
+    }
     setBusy(true);
     setError("");
     setNotice("");
@@ -135,6 +141,15 @@ export default function AllStarVotePage() {
       );
     });
   }, [candidateSearch, data]);
+  const votedCandidates = useMemo(
+    () => filteredCandidates.filter((candidate) => (ratings[candidate.id] || 0) >= 1),
+    [filteredCandidates, ratings],
+  );
+  const unvotedCandidates = useMemo(
+    () => filteredCandidates.filter((candidate) => !((ratings[candidate.id] || 0) >= 1)),
+    [filteredCandidates, ratings],
+  );
+  const isVoteCountValid = ratedCount === REQUIRED_VOTES;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-10">
@@ -167,6 +182,14 @@ export default function AllStarVotePage() {
               <p className="text-xs text-zinc-500 mt-1">
                 Rated {ratedCount} of {data.candidates.length} players.
               </p>
+              <p
+                className={`text-xs mt-2 ${
+                  isVoteCountValid ? "text-emerald-300" : "text-amber-300"
+                }`}
+              >
+                Vote Status: {ratedCount}/{REQUIRED_VOTES} selected
+                {isVoteCountValid ? " (ready to submit)" : " (select exactly 12)"}
+              </p>
               {isLocked ? (
                 <p className="text-xs text-amber-300 mt-2">This ballot has already been submitted and is locked.</p>
               ) : null}
@@ -178,42 +201,107 @@ export default function AllStarVotePage() {
               className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
             />
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
-              {filteredCandidates.length === 0 ? (
-                <p className="px-4 py-3 text-sm text-zinc-500">No candidates match your search.</p>
-              ) : (
-                filteredCandidates.map((candidate) => (
-                <div key={candidate.id} className="px-4 py-3 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium">
-                      {candidate.playerFullName} · {candidate.team}
-                      {candidate.jerseyNumber?.trim() &&
-                      !["tbd", "n/a", "na"].includes(candidate.jerseyNumber.trim().toLowerCase())
-                        ? ` · #${candidate.jerseyNumber}`
-                        : ""}
-                      {candidate.showcaseBibNumber ? ` · Bib ${candidate.showcaseBibNumber}` : ""}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {[1, 2, 3, 4, 5].map((value) => (
-                      <button
-                        key={value}
-                        type="button"
-                        disabled={busy || isLocked}
-                        onClick={() => setRatings((prev) => ({ ...prev, [candidate.id]: value }))}
-                        className={`h-8 w-8 rounded-md border text-sm ${
-                          ratings[candidate.id] === value
-                            ? "border-brand-purple bg-brand-purple/20 text-brand-purple"
-                            : "border-zinc-700 text-zinc-300"
-                        } disabled:opacity-50`}
-                      >
-                        {value}
-                      </button>
-                    ))}
-                  </div>
+            <div className="grid lg:grid-cols-2 gap-4">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                <div className="px-4 py-2 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-400">
+                  Available Candidates ({unvotedCandidates.length})
                 </div>
-                ))
-              )}
+                {unvotedCandidates.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-zinc-500">
+                    {filteredCandidates.length === 0
+                      ? "No candidates match your search."
+                      : "All visible candidates are selected."}
+                  </p>
+                ) : (
+                  unvotedCandidates.map((candidate) => (
+                    <div
+                      key={candidate.id}
+                      className="px-4 py-3 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-center justify-between gap-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">
+                          {candidate.playerFullName} · {candidate.team}
+                          {candidate.jerseyNumber?.trim() &&
+                          !["tbd", "n/a", "na"].includes(candidate.jerseyNumber.trim().toLowerCase())
+                            ? ` · #${candidate.jerseyNumber}`
+                            : ""}
+                          {candidate.showcaseBibNumber ? ` · Bib ${candidate.showcaseBibNumber}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            disabled={busy || isLocked}
+                            onClick={() => setRatings((prev) => ({ ...prev, [candidate.id]: value }))}
+                            className="h-8 w-8 rounded-md border text-sm border-zinc-700 text-zinc-300 disabled:opacity-50"
+                          >
+                            {value}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
+                <div className="px-4 py-2 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-400">
+                  Selected Candidates ({votedCandidates.length})
+                </div>
+                {votedCandidates.length === 0 ? (
+                  <p className="px-4 py-3 text-sm text-zinc-500">No selected candidates yet.</p>
+                ) : (
+                  votedCandidates.map((candidate) => (
+                    <div
+                      key={candidate.id}
+                      className="px-4 py-3 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-center justify-between gap-3"
+                    >
+                      <div>
+                        <p className="text-sm font-medium">
+                          {candidate.playerFullName} · {candidate.team}
+                          {candidate.jerseyNumber?.trim() &&
+                          !["tbd", "n/a", "na"].includes(candidate.jerseyNumber.trim().toLowerCase())
+                            ? ` · #${candidate.jerseyNumber}`
+                            : ""}
+                          {candidate.showcaseBibNumber ? ` · Bib ${candidate.showcaseBibNumber}` : ""}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        {[1, 2, 3, 4, 5].map((value) => (
+                          <button
+                            key={value}
+                            type="button"
+                            disabled={busy || isLocked}
+                            onClick={() => setRatings((prev) => ({ ...prev, [candidate.id]: value }))}
+                            className={`h-8 w-8 rounded-md border text-sm ${
+                              ratings[candidate.id] === value
+                                ? "border-brand-purple bg-brand-purple/20 text-brand-purple"
+                                : "border-zinc-700 text-zinc-300"
+                            } disabled:opacity-50`}
+                          >
+                            {value}
+                          </button>
+                        ))}
+                        <button
+                          type="button"
+                          disabled={busy || isLocked}
+                          onClick={() =>
+                            setRatings((prev) => {
+                              const next = { ...prev };
+                              delete next[candidate.id];
+                              return next;
+                            })
+                          }
+                          className="ml-1 rounded-md border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+                        >
+                          Clear
+                        </button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
             </div>
 
             <div className="flex flex-wrap gap-3">
@@ -227,7 +315,7 @@ export default function AllStarVotePage() {
               </button>
               <button
                 type="button"
-                disabled={busy || isLocked}
+                disabled={busy || isLocked || !isVoteCountValid}
                 onClick={() => void submitBallot()}
                 className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
