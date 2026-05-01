@@ -50,6 +50,13 @@ enum TeamCoachRole {
   ASSISTANT_COACH
 }
 
+enum SponsorPackageType {
+  BALLPARK_FENCE_SIGNS
+  TEAM_SPONSORSHIPS
+  FIELD_SPONSORSHIPS
+  CUSTOM
+}
+
 enum DugoutMediaType {
   IMAGE
   GIF
@@ -582,4 +589,65 @@ model TeamPlayerImportBatch {
 
   @@index([organizationId, createdAt])
   @@index([organizationId, status, createdAt])
+}
+
+model Sponsor {
+  id             String   @id @default(cuid())
+  businessName   String
+  contactName    String?
+  contactEmail   String?
+  contactPhone   String?
+  websiteUrl     String?
+  logoUrl        String?
+  logoMimeType   String?
+  logoAlt        String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  startAt        DateTime?
+  endAt          DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  packageEnrollment SponsorPackageEnrollment?
+  placements        SponsorPlacement[]
+
+  @@index([businessName])
+  @@index([isActive, startAt, endAt])
+}
+
+model SponsorPackageEnrollment {
+  id                             String            @id @default(cuid())
+  sponsorId                      String            @unique
+  packageType                    SponsorPackageType
+  packageLabel                   String
+  minimumCommitmentCents         Int?
+  amountCents                    Int?
+  additionalTeamAmountCents      Int?
+  twoYearCommitmentAmountCents   Int?
+  includesWebsiteLogo            Boolean           @default(true)
+  includesSocialRecognition      Boolean           @default(false)
+  includesUniformName            Boolean           @default(false)
+  includesFieldSignage           Boolean           @default(false)
+  includesSeasonScheduleName     Boolean           @default(false)
+  includesAllStarMention         Boolean           @default(false)
+  notes                          String?
+  createdAt                      DateTime          @default(now())
+  updatedAt                      DateTime          @updatedAt
+
+  sponsor Sponsor @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+}
+
+model SponsorPlacement {
+  id                  String   @id @default(cuid())
+  sponsorId           String
+  organizationId      String
+  showInFooterScroller Boolean @default(true)
+  sortOrder           Int      @default(100)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  sponsor Sponsor @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
+
+  @@unique([sponsorId, organizationId])
+  @@index([organizationId, showInFooterScroller, sortOrder])
 }

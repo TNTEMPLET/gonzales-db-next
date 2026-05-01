@@ -15,6 +15,7 @@ import {
   getSiteConfig,
   resolveAdminTargetOrg,
 } from "@/lib/siteConfig";
+import { buildScoreEntryGames } from "@/lib/admin/scoreEntryGames";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -22,24 +23,6 @@ export function generateMetadata() {
     title: `Game Scores | ${site.name}`,
     description: "Enter game scores and keep league standings current.",
   };
-}
-
-type ScoreEntryGame = {
-  gameExternalId: string;
-  ageGroup: string;
-  homeTeam: string;
-  awayTeam: string;
-  gameDate: string | null;
-  status: string;
-  venue: string | null;
-  subvenue: string | null;
-};
-
-function toIsoDate(source?: string) {
-  if (!source) return null;
-  const parsed = new Date(source);
-  if (Number.isNaN(parsed.valueOf())) return null;
-  return parsed.toISOString();
 }
 
 export default async function AdminScoresPage({
@@ -81,29 +64,7 @@ export default async function AdminScoresPage({
     }),
   ]);
 
-  const now = Date.now();
-  const scoreEntryGames: ScoreEntryGame[] = games
-    .map((game) => {
-      const gameDate = toIsoDate(game.start_time || game.localized_date);
-      return {
-        gameExternalId: String(game.id),
-        ageGroup: (game.age_group || "Unassigned").trim() || "Unassigned",
-        homeTeam: game.home_team?.trim() || "Home Team",
-        awayTeam: game.away_team?.trim() || "Away Team",
-        gameDate,
-        status: game.status?.trim() || "Scheduled",
-        venue:
-          game._embedded?.venue?.name ??
-          (game.venue as string | undefined) ??
-          null,
-        subvenue: game.subvenue ?? null,
-      };
-    })
-    .filter((game) => {
-      if (!game.gameDate) return false;
-      if (new Date(game.gameDate).valueOf() > now) return false;
-      return game.status === "A" || game.status === "C";
-    });
+  const scoreEntryGames = buildScoreEntryGames(games);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">

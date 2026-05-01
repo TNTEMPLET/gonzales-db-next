@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import SponsorScroller from "@/components/sponsors/SponsorScroller";
 
 type FooterProps = {
   brand: {
@@ -22,6 +23,7 @@ export default function Footer({ brand }: FooterProps) {
 
   return (
     <footer className="bg-zinc-950 border-t border-zinc-800 py-16">
+      <SponsorScroller />
       <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-4 gap-10">
         {/* Column 1: Logo & About */}
         <div>

@@ -74,6 +74,15 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open Teams Console" : "Open Teams",
     },
     {
+      module: "SPONSORS" as AdminModule,
+      href: `/admin/sponsors${orgQuery}`,
+      title: "Sponsors",
+      description: masterMode
+        ? "Manage sponsorship packages, logo assets, and site placements for footer sponsorship visibility."
+        : "Manage sponsors, package enrollments, and footer logo display.",
+      action: masterMode ? "Open Sponsors Console" : "Open Sponsors",
+    },
+    {
       module: "SCORES" as AdminModule,
       href: `/admin/scores${orgQuery}`,
       title: "Scores & Standings",

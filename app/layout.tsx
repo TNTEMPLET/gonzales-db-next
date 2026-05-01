@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { Inter } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
@@ -49,7 +50,9 @@ export default function RootLayout({
       </head>
       <SpeedInsights />
       <body className={`${inter.className} bg-zinc-950 text-white antialiased`}>
-        <Header brand={brand} />
+        <Suspense fallback={<div className="h-16 border-b border-zinc-800 bg-zinc-950" aria-hidden />}>
+          <Header brand={brand} />
+        </Suspense>
         {children}
         <Footer brand={brand} />
       </body>

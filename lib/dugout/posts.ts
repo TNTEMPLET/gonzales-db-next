@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import { getDefaultContentOrg, type ContentOrgId } from "@/lib/siteConfig";
+import { getDefaultContentOrg } from "@/lib/siteConfig";
 
 const dugoutAuthorSelect = {
   id: true,

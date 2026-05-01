@@ -1,0 +1,116 @@
+import crypto from "node:crypto";
+import path from "node:path";
+import { mkdir, writeFile } from "node:fs/promises";
+
+import { put } from "@vercel/blob";
+import { NextRequest, NextResponse } from "next/server";
+
+import { ensureAdminModule } from "@/lib/news/auth";
+
+const MAX_UPLOAD_BYTES = 5 * 1024 * 1024;
+const MIME_EXTENSION_MAP: Record<string, string> = {
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+  "image/gif": "gif",
+  "image/svg+xml": "svg",
+};
+
+export const runtime = "nodejs";
+
+export async function POST(request: NextRequest) {
+  const auth = await ensureAdminModule(request, "SPONSORS");
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.message || "Unauthorized" },
+      { status: auth.status },
+    );
+  }
+
+  try {
+    const formData = await request.formData();
+    const file = formData.get("logo");
+    if (!(file instanceof File)) {
+      return NextResponse.json(
+        { error: "Logo file is required" },
+        { status: 400 },
+      );
+    }
+
+    if (!file.type.startsWith("image/")) {
+      return NextResponse.json(
+        { error: "Only image files are allowed" },
+        { status: 400 },
+      );
+    }
+    if (file.size > MAX_UPLOAD_BYTES) {
+      return NextResponse.json(
+        { error: "Image must be 5MB or smaller" },
+        { status: 400 },
+      );
+    }
+
+    const extension =
+      MIME_EXTENSION_MAP[file.type] ||
+      (file.name.includes(".") ? file.name.split(".").pop() : null);
+    if (!extension) {
+      return NextResponse.json(
+        { error: "Unsupported image type" },
+        { status: 400 },
+      );
+    }
+    const safeExt = extension.toLowerCase().replace(/[^a-z0-9]/g, "");
+    if (!safeExt) {
+      return NextResponse.json(
+        { error: "Unsupported image extension" },
+        { status: 400 },
+      );
+    }
+
+    const uniqueName = `${Date.now()}-${crypto.randomBytes(8).toString("hex")}.${safeExt}`;
+    const arrayBuffer = await file.arrayBuffer();
+
+    if (process.env.NODE_ENV === "production") {
+      const blob = await put(`sponsors/${uniqueName}`, Buffer.from(arrayBuffer), {
+        access: "public",
+        addRandomSuffix: false,
+        contentType: file.type,
+      });
+      return NextResponse.json({
+        data: {
+          logoUrl: blob.url,
+          logoMimeType: file.type,
+        },
+      });
+    }
+
+    const uploadDir = path.join(process.cwd(), "public", "uploads", "sponsors");
+    await mkdir(uploadDir, { recursive: true });
+    await writeFile(path.join(uploadDir, uniqueName), Buffer.from(arrayBuffer));
+
+    return NextResponse.json({
+      data: {
+        logoUrl: `/uploads/sponsors/${uniqueName}`,
+        logoMimeType: file.type,
+      },
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : "Unknown error";
+    if (
+      message.includes("BLOB_READ_WRITE_TOKEN") ||
+      message.includes("Vercel Blob")
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Logo uploads require Vercel Blob in production. Connect Blob storage and set BLOB_READ_WRITE_TOKEN.",
+        },
+        { status: 500 },
+      );
+    }
+    return NextResponse.json(
+      { error: `Failed to upload logo: ${message}` },
+      { status: 500 },
+    );
+  }
+}
