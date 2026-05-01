@@ -1,6 +1,11 @@
 import prisma from "@/lib/prisma";
+import { getDefaultContentOrg, getOrgId } from "@/lib/siteConfig";
 
-const orgId = process.env.SITE_ORG ?? "gonzales";
+function getRegisteredUserOrgId() {
+  const siteOrg = getOrgId();
+  // Master deployment promotes users from content-org user pools.
+  return siteOrg === "master" ? getDefaultContentOrg() : siteOrg;
+}
 
 type GoogleProfileInput = {
   email: string;
@@ -13,6 +18,7 @@ type GoogleProfileInput = {
 export async function upsertRegisteredUserFromGoogle(
   input: GoogleProfileInput,
 ) {
+  const orgId = getRegisteredUserOrgId();
   const existingBySub = await prisma.registeredUser.findUnique({
     where: { googleSub: input.sub },
   });

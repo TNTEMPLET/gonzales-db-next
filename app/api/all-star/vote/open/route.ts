@@ -62,6 +62,7 @@ export async function GET(request: NextRequest) {
       seasonYear: cycle.seasonYear,
       ageGroup: cycle.ageGroup,
       title: cycle.title,
+      hasShowcase: cycle.hasShowcase,
       status: cycle.status,
       accessMode: cycle.accessMode,
     },

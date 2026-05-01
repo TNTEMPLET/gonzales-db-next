@@ -28,6 +28,7 @@ export function mapAllStarCycle(row: {
   seasonYear: number;
   ageGroup: string;
   title: string | null;
+  hasShowcase: boolean;
   status: string;
   accessMode: string;
   publishedAt: Date | null;

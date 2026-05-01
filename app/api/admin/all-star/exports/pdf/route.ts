@@ -46,20 +46,27 @@ export async function GET(request: NextRequest) {
 
   autoTable(doc, {
     startY: 76,
-    head: [["Player", "Team", "Jersey", "Showcase Bib #", "Avg Rating", "Votes"]],
+    head: [
+      cycle.hasShowcase
+        ? ["Player", "Team", "Jersey", "Showcase Bib #", "Avg Rating", "Votes"]
+        : ["Player", "Team", "Jersey", "Avg Rating", "Votes"],
+    ],
     body: cycle.candidates.map((candidate) => {
       const ratings = ratingMap.get(candidate.id) || [];
       const avg = ratings.length
         ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(2)
         : "0.00";
-      return [
+      const row = [
         candidate.playerFullName,
         candidate.team,
         candidate.jerseyNumber,
-        candidate.showcaseBibNumber || "",
         avg,
         String(ratings.length),
       ];
+      if (cycle.hasShowcase) {
+        row.splice(3, 0, candidate.showcaseBibNumber || "");
+      }
+      return row;
     }),
     styles: { fontSize: 9 },
   });

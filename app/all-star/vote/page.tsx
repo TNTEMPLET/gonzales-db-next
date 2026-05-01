@@ -17,6 +17,7 @@ type OpenResponse = {
     seasonYear: number;
     ageGroup: string;
     title: string | null;
+    hasShowcase: boolean;
     status: string;
   };
   candidates: Candidate[];
@@ -225,7 +226,9 @@ export default function AllStarVotePage() {
                           !["tbd", "n/a", "na"].includes(candidate.jerseyNumber.trim().toLowerCase())
                             ? ` · #${candidate.jerseyNumber}`
                             : ""}
-                          {candidate.showcaseBibNumber ? ` · Bib ${candidate.showcaseBibNumber}` : ""}
+                          {data.cycle.hasShowcase && candidate.showcaseBibNumber
+                            ? ` · Bib ${candidate.showcaseBibNumber}`
+                            : ""}
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
@@ -264,7 +267,9 @@ export default function AllStarVotePage() {
                           !["tbd", "n/a", "na"].includes(candidate.jerseyNumber.trim().toLowerCase())
                             ? ` · #${candidate.jerseyNumber}`
                             : ""}
-                          {candidate.showcaseBibNumber ? ` · Bib ${candidate.showcaseBibNumber}` : ""}
+                          {data.cycle.hasShowcase && candidate.showcaseBibNumber
+                            ? ` · Bib ${candidate.showcaseBibNumber}`
+                            : ""}
                         </p>
                       </div>
                       <div className="flex items-center gap-1">

@@ -37,10 +37,12 @@ export async function GET(request: NextRequest) {
     "Player Full Name",
     "Team",
     "Jersey Number",
-    "Showcase Bib #",
     "Average Rating",
     "Total Ratings",
   ];
+  if (cycle.hasShowcase) {
+    header.splice(6, 0, "Showcase Bib #");
+  }
 
   const ratingMap = new Map<string, number[]>();
   for (const submission of cycle.voteSubmissions) {
@@ -56,17 +58,20 @@ export async function GET(request: NextRequest) {
     const avg = ratings.length
       ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(2)
       : "0.00";
-    return [
+    const row = [
       cycle.organizationId,
       String(cycle.seasonYear),
       cycle.ageGroup,
       candidate.playerFullName,
       candidate.team,
       candidate.jerseyNumber,
-      candidate.showcaseBibNumber || "",
       avg,
       String(ratings.length),
     ];
+    if (cycle.hasShowcase) {
+      row.splice(6, 0, candidate.showcaseBibNumber || "");
+    }
+    return row;
   });
 
   const csv = [header, ...rows]

@@ -83,6 +83,7 @@ export async function POST(request: NextRequest) {
     ageGroup?: string;
     title?: string;
     accessMode?: "INVITE_LIST" | "AGE_GROUP_COACHES";
+    hasShowcase?: boolean;
   };
 
   const organizationId = parseContentOrg(body.organizationId);
@@ -108,6 +109,8 @@ export async function POST(request: NextRequest) {
       data: {
         title: body.title?.trim() || null,
         accessMode: body.accessMode || "AGE_GROUP_COACHES",
+        hasShowcase:
+          typeof body.hasShowcase === "boolean" ? body.hasShowcase : undefined,
       },
     });
     return NextResponse.json({
@@ -124,6 +127,7 @@ export async function POST(request: NextRequest) {
       ageGroup,
       title: body.title?.trim() || null,
       accessMode: body.accessMode || "AGE_GROUP_COACHES",
+      hasShowcase: typeof body.hasShowcase === "boolean" ? body.hasShowcase : true,
       createdByAdminId: admin?.id || null,
     },
   });
@@ -152,6 +156,7 @@ export async function PATCH(request: NextRequest) {
     cycleId?: string;
     status?: "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
     accessMode?: "INVITE_LIST" | "AGE_GROUP_COACHES";
+    hasShowcase?: boolean;
     title?: string | null;
     publishedAt?: string | null;
     closedAt?: string | null;
@@ -222,6 +227,7 @@ export async function PATCH(request: NextRequest) {
     data: {
       status: body.status,
       accessMode: body.accessMode,
+      hasShowcase: body.hasShowcase,
       title: body.title === undefined ? undefined : body.title?.trim() || null,
       publishedAt: effectivePublishedAt,
       closedAt: effectiveClosedAt,

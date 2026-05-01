@@ -8,6 +8,7 @@ type Cycle = {
   seasonYear: number;
   ageGroup: string;
   title: string | null;
+  hasShowcase: boolean;
   status: "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
   accessMode: "INVITE_LIST" | "AGE_GROUP_COACHES";
   publishedAt: string | null;
@@ -120,6 +121,7 @@ export default function AllStarVaultManager({
   const [newCycleAgeGroup, setNewCycleAgeGroup] = useState("12U LLB");
   const [ageGroupOptions, setAgeGroupOptions] = useState<string[]>([]);
   const [newCycleAccessMode, setNewCycleAccessMode] = useState<"INVITE_LIST" | "AGE_GROUP_COACHES">("AGE_GROUP_COACHES");
+  const [newCycleHasShowcase, setNewCycleHasShowcase] = useState(true);
   const [cycleOpenAt, setCycleOpenAt] = useState("");
   const [cycleCloseAt, setCycleCloseAt] = useState("");
 
@@ -197,6 +199,9 @@ export default function AllStarVaultManager({
     const cycle = cycles.find((entry) => entry.id === selectedCycleId);
     setCycleOpenAt(toDateTimeLocalValue(cycle?.publishedAt || null));
     setCycleCloseAt(toDateTimeLocalValue(cycle?.closedAt || null));
+    if (cycle) {
+      setNewCycleHasShowcase(Boolean(cycle.hasShowcase));
+    }
   }, [cycles, selectedCycleId]);
 
   useEffect(() => {
@@ -391,6 +396,7 @@ export default function AllStarVaultManager({
           seasonYear,
           ageGroup: newCycleAgeGroup,
           accessMode: newCycleAccessMode,
+          hasShowcase: newCycleHasShowcase,
         }),
       });
       const json = await safeJson(response);
@@ -960,6 +966,14 @@ export default function AllStarVaultManager({
             <option value="AGE_GROUP_COACHES">Age-group coaches only</option>
             <option value="INVITE_LIST">Invite-list only</option>
           </select>
+          <select
+            value={newCycleHasShowcase ? "yes" : "no"}
+            onChange={(e) => setNewCycleHasShowcase(e.target.value === "yes")}
+            className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[150px]"
+          >
+            <option value="yes">Showcase: Yes</option>
+            <option value="no">Showcase: No</option>
+          </select>
           <button type="button" disabled={busy || !newCycleAgeGroup} onClick={() => void createCycle()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save Cycle</button>
         </div>
         <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
@@ -1068,7 +1082,9 @@ export default function AllStarVaultManager({
                   !["tbd", "n/a", "na"].includes(candidate.jerseyNumber.trim().toLowerCase())
                     ? ` · #${candidate.jerseyNumber}`
                     : ""}
-                  {candidate.showcaseBibNumber ? ` · Bib ${candidate.showcaseBibNumber}` : ""}
+                  {selectedCycle?.hasShowcase && candidate.showcaseBibNumber
+                    ? ` · Bib ${candidate.showcaseBibNumber}`
+                    : ""}
                 </p>
                 <button
                   type="button"
@@ -1206,7 +1222,9 @@ export default function AllStarVaultManager({
                 <p className="min-w-0 truncate">
                   <span className="text-zinc-500 mr-2">#{index + 1}</span>
                   <span className="font-medium">{row.playerFullName}</span> · {row.team} · #{row.jerseyNumber}
-                  {row.showcaseBibNumber ? ` · Bib ${row.showcaseBibNumber}` : ""}
+                  {selectedCycle?.hasShowcase && row.showcaseBibNumber
+                    ? ` · Bib ${row.showcaseBibNumber}`
+                    : ""}
                 </p>
                 <p className="text-xs text-zinc-300 whitespace-nowrap">
                   Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}

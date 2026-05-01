@@ -321,6 +321,7 @@ model AllStarBallotCycle {
   seasonYear    Int
   ageGroup      String
   title         String?
+  hasShowcase   Boolean           @default(true)
   status        AllStarCycleStatus @default(DRAFT)
   accessMode    AllStarAccessMode  @default(AGE_GROUP_COACHES)
   publishedAt   DateTime?

@@ -1,0 +1,2 @@
+ALTER TABLE "AllStarBallotCycle"
+ADD COLUMN "hasShowcase" BOOLEAN NOT NULL DEFAULT true;
