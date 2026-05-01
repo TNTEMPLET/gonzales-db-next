@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import ScheduleTable from "@/components/ScheduleTable";
 import HeroNewsRotator from "@/components/home/HeroNewsRotator";
+import SponsorScroller from "@/components/sponsors/SponsorScroller";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import {
   getHomepageFeaturedNewsPosts,
@@ -235,6 +236,8 @@ export default async function Home({
           </div>
         </section>
       )}
+
+      <SponsorScroller />
 
       {/* Quick Stats */}
       <section className="py-16 bg-zinc-900 border-b border-zinc-800">

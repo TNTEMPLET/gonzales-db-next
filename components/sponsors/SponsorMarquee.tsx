@@ -23,13 +23,13 @@ export function SponsorMarquee({ items }: { items: SponsorScrollerItem[] }) {
           {railItems.map((entry, index) => {
             const key = `${entry.sponsorId}-${index}`;
             const logo = (
-              <div className="sponsor-pill h-12 min-w-[140px] px-4">
+              <div className="sponsor-pill h-9 min-w-[104px] px-2.5">
                 <Image
                   src={entry.logoUrl}
                   alt={entry.logoAlt || `${entry.businessName} logo`}
-                  width={180}
-                  height={48}
-                  className="max-h-9 w-auto object-contain"
+                  width={132}
+                  height={36}
+                  className="max-h-7 w-auto object-contain"
                 />
               </div>
             );
