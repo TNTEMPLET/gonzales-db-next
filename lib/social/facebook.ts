@@ -26,6 +26,114 @@ export function isFacebookPublishConfigured(): boolean {
   return Boolean(pageId && accessToken);
 }
 
+export type PageFeedPostNormalized = {
+  facebookPostId: string;
+  body: string;
+  linkUrl: string | null;
+  imageUrl: string | null;
+  publishedAt: Date;
+  permalinkUrl: string | null;
+};
+
+type GraphPaging = { next?: string };
+type GraphPostsResponse = {
+  data?: unknown[];
+  paging?: GraphPaging;
+  error?: { message?: string };
+};
+
+const POST_FIELDS =
+  "id,message,story,created_time,permalink_url,full_picture,link,status_type";
+
+function normalizeFeedEntry(raw: Record<string, unknown>): PageFeedPostNormalized | null {
+  const id = raw.id;
+  if (typeof id !== "string" || !id.trim()) return null;
+
+  const message = typeof raw.message === "string" ? raw.message.trim() : "";
+  const story = typeof raw.story === "string" ? raw.story.trim() : "";
+  const body = message || story || "(Facebook post)";
+
+  const linkRaw = typeof raw.link === "string" ? raw.link.trim() : "";
+  const linkUrl = linkRaw.startsWith("http") ? linkRaw : null;
+
+  const pic = typeof raw.full_picture === "string" ? raw.full_picture.trim() : "";
+  const imageUrl = pic.startsWith("http") ? pic : null;
+
+  const createdRaw = raw.created_time;
+  if (typeof createdRaw !== "string" || !createdRaw) return null;
+  const publishedAt = new Date(createdRaw);
+  if (Number.isNaN(publishedAt.getTime())) return null;
+
+  const permalink =
+    typeof raw.permalink_url === "string" && raw.permalink_url.startsWith("http")
+      ? raw.permalink_url.trim()
+      : null;
+
+  return {
+    facebookPostId: id.trim(),
+    body,
+    linkUrl,
+    imageUrl,
+    publishedAt,
+    permalinkUrl: permalink,
+  };
+}
+
+/**
+ * Lists recent posts published by the Page (Graph `/{page-id}/posts`).
+ * Requires the same Page token used for publishing (pages_read_engagement, etc.).
+ */
+export async function fetchPageFeedPosts(options?: {
+  maxPosts?: number;
+  perPage?: number;
+}): Promise<
+  { ok: true; posts: PageFeedPostNormalized[] } | { ok: false; error: string }
+> {
+  const { pageId, accessToken } = getPageCredentials();
+  if (!pageId || !accessToken) {
+    return {
+      ok: false,
+      error:
+        "Facebook is not configured. Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN.",
+    };
+  }
+
+  const maxPosts = Math.min(Math.max(options?.maxPosts ?? 200, 1), 500);
+  const perPage = Math.min(Math.max(options?.perPage ?? 50, 1), 100);
+
+  const collected: PageFeedPostNormalized[] = [];
+  let nextUrl: string | null =
+    `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(pageId)}/posts?fields=${encodeURIComponent(POST_FIELDS)}&limit=${perPage}&access_token=${encodeURIComponent(accessToken)}`;
+
+  try {
+    while (nextUrl && collected.length < maxPosts) {
+      const response = await fetch(nextUrl);
+      const json = (await response.json()) as GraphPostsResponse;
+
+      if (!response.ok || json.error) {
+        return { ok: false, error: graphErrorMessage(json) };
+      }
+
+      const rows = Array.isArray(json.data) ? json.data : [];
+      for (const row of rows) {
+        if (collected.length >= maxPosts) break;
+        if (!row || typeof row !== "object") continue;
+        const normalized = normalizeFeedEntry(row as Record<string, unknown>);
+        if (normalized) collected.push(normalized);
+      }
+
+      const next = json.paging?.next;
+      nextUrl = typeof next === "string" && next.startsWith("http") ? next : null;
+      if (rows.length === 0) break;
+    }
+
+    return { ok: true, posts: collected };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Network error calling Facebook";
+    return { ok: false, error: msg };
+  }
+}
+
 function graphErrorMessage(payload: unknown): string {
   if (!payload || typeof payload !== "object") return "Unknown Facebook API error";
   const err = (payload as { error?: { message?: string; type?: string; code?: number } })

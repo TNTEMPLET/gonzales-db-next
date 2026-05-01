@@ -4,31 +4,8 @@ import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { isFacebookPublishConfigured, publishPageFeedPost } from "@/lib/social/facebook";
+import { serializeSocialPost } from "@/lib/social/socialPostSerialize";
 import { unknownErrorMessage } from "@/lib/unknownErrorMessage";
-
-function serializePost(post: {
-  id: string;
-  organizationId: string;
-  status: string;
-  body: string;
-  linkUrl: string | null;
-  imageUrl: string | null;
-  facebookPostId: string | null;
-  publishError: string | null;
-  publishedAt: Date | null;
-  scheduledFor: Date | null;
-  createdByAdminId: string | null;
-  createdAt: Date;
-  updatedAt: Date;
-}) {
-  return {
-    ...post,
-    publishedAt: post.publishedAt?.toISOString() ?? null,
-    scheduledFor: post.scheduledFor?.toISOString() ?? null,
-    createdAt: post.createdAt.toISOString(),
-    updatedAt: post.updatedAt.toISOString(),
-  };
-}
 
 export async function POST(
   request: NextRequest,
@@ -95,7 +72,7 @@ export async function POST(
         },
       });
       return NextResponse.json(
-        { error: result.error, data: serializePost(failed) },
+        { error: result.error, data: serializeSocialPost(failed) },
         { status: 422 },
       );
     }
@@ -110,7 +87,7 @@ export async function POST(
       },
     });
 
-    return NextResponse.json({ data: serializePost(published) });
+    return NextResponse.json({ data: serializeSocialPost(published) });
   } catch (err: unknown) {
     const message = unknownErrorMessage(err);
     try {

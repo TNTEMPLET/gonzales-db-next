@@ -661,21 +661,24 @@ model SponsorPlacement {
 }
 
 model SocialPost {
-  id               String           @id @default(cuid())
-  organizationId   String           @default("gonzales")
-  status           SocialPostStatus @default(DRAFT)
-  body             String
-  linkUrl          String?
-  imageUrl         String?
-  facebookPostId   String?
-  publishError     String?
-  publishedAt      DateTime?
-  scheduledFor     DateTime?
-  createdByAdminId String?
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
+  id                   String           @id @default(cuid())
+  organizationId     String           @default("gonzales")
+  status               SocialPostStatus @default(DRAFT)
+  body                 String
+  linkUrl              String?
+  imageUrl             String?
+  facebookPostId       String?
+  publishError         String?
+  publishedAt          DateTime?
+  scheduledFor         DateTime?
+  createdByAdminId     String?
+  /** True when this row was first created from a Facebook Page feed sync (not composed in admin). */
+  syncedFromFacebook   Boolean          @default(false)
+  createdAt            DateTime         @default(now())
+  updatedAt            DateTime         @updatedAt
 
   createdByAdmin AdminUser? @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
+  @@unique([organizationId, facebookPostId])
   @@index([organizationId, status, updatedAt])
 }
