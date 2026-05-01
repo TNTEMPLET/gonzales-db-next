@@ -16,7 +16,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
-    "admin:create": "tsx scripts/createAdmin.ts"
+    "admin:create": "tsx scripts/createAdmin.ts",
+    "facebook:exchange-tokens": "node scripts/exchange-facebook-token.mjs"
   },
   "dependencies": {
     "@prisma/adapter-ppg": "^7.7.0",

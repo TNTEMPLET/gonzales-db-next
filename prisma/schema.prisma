@@ -67,6 +67,13 @@ enum DugoutNotificationEntityType {
   COMMENT
 }
 
+enum SocialPostStatus {
+  DRAFT
+  PUBLISHING
+  PUBLISHED
+  FAILED
+}
+
 model NewsPost {
   id             String     @id @default(cuid())
   organizationId String     @default("gonzales")
@@ -110,6 +117,7 @@ model AdminUser {
   allStarVaultAccessGrants AllStarVaultAccess[] @relation("AllStarVaultAccessGrantedByAdmin")
   teamsCreated Team[]
   teamPlayerImportBatches TeamPlayerImportBatch[]
+  socialPostsCreated      SocialPost[]
 }
 
 model RegisteredUser {
@@ -650,4 +658,24 @@ model SponsorPlacement {
 
   @@unique([sponsorId, organizationId])
   @@index([organizationId, showInFooterScroller, sortOrder])
+}
+
+model SocialPost {
+  id               String           @id @default(cuid())
+  organizationId   String           @default("gonzales")
+  status           SocialPostStatus @default(DRAFT)
+  body             String
+  linkUrl          String?
+  imageUrl         String?
+  facebookPostId   String?
+  publishError     String?
+  publishedAt      DateTime?
+  scheduledFor     DateTime?
+  createdByAdminId String?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+
+  createdByAdmin AdminUser? @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, status, updatedAt])
 }

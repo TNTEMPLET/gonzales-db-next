@@ -180,7 +180,8 @@ export default function Header({ brand }: HeaderProps) {
       | "SPONSORS"
       | "REPORTS"
       | "SCORES"
-      | "DUGOUT_MODERATION",
+      | "DUGOUT_MODERATION"
+      | "SOCIAL_MEDIA",
   ) => {
     if (!masterRole) return true;
     return canAccessAdminModule(masterRole, module);
@@ -192,6 +193,9 @@ export default function Header({ brand }: HeaderProps) {
           { href: `/admin/teams${masterOrgSuffix}`, label: "Teams" },
           ...(allowModule("SPONSORS")
             ? [{ href: `/admin/sponsors${masterOrgSuffix}`, label: "Sponsors" }]
+            : []),
+          ...(allowModule("SOCIAL_MEDIA")
+            ? [{ href: `/admin/social${masterOrgSuffix}`, label: "Social" }]
             : []),
           { href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" },
         ...(allowModule("USERS")
