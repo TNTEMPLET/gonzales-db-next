@@ -29,6 +29,7 @@ type CycleCoachOption = {
   firstName: string | null;
   lastName: string | null;
   assignedTeam: string | null;
+  coachRole: "HEAD_COACH" | "ASSISTANT_COACH" | null;
 };
 
 type VaultAccess = {
@@ -130,6 +131,7 @@ export default function AllStarVaultManager({
   const [candidateSearch, setCandidateSearch] = useState("");
   const [selectedCoachUserId, setSelectedCoachUserId] = useState("");
   const [selectedInviteCoachIds, setSelectedInviteCoachIds] = useState<string[]>([]);
+  const [inviteCoachSearch, setInviteCoachSearch] = useState("");
   const [vaultUserId, setVaultUserId] = useState("");
   const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "VIEW_ONLY">("VIEW_ONLY");
   const [inviteEmails, setInviteEmails] = useState("");
@@ -896,6 +898,25 @@ export default function AllStarVaultManager({
   const selectedCycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
   const canRefreshVoteSummary = isCycleOpenAndPublished(selectedCycle);
   const isInviteListCycle = selectedCycle?.accessMode === "INVITE_LIST";
+  const filteredInviteCoachOptions = cycleCoachOptions.filter((coach) => {
+    const query = inviteCoachSearch.trim().toLowerCase();
+    if (!query) return true;
+    const label =
+      (coach.firstName || coach.lastName
+        ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
+        : coach.name) || coach.email;
+    const roleLabel =
+      coach.coachRole === "HEAD_COACH"
+        ? "head coach"
+        : coach.coachRole === "ASSISTANT_COACH"
+          ? "assistant coach"
+          : "";
+    return (
+      label.toLowerCase().includes(query) ||
+      coach.email.toLowerCase().includes(query) ||
+      roleLabel.includes(query)
+    );
+  });
 
   return (
     <section className="space-y-6">
@@ -1077,10 +1098,16 @@ export default function AllStarVaultManager({
                 (coach.firstName || coach.lastName
                   ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
                   : coach.name) || coach.email;
+              const roleLabel =
+                coach.coachRole === "HEAD_COACH"
+                  ? "Head Coach"
+                  : coach.coachRole === "ASSISTANT_COACH"
+                    ? "Assistant Coach"
+                    : "Coach";
               const teamLabel = coach.assignedTeam ? ` - ${coach.assignedTeam}` : "";
               return (
                 <option key={coach.id} value={coach.id}>
-                  {label} ({coach.email}){teamLabel}
+                  {label} ({coach.email}) · {roleLabel}{teamLabel}
                 </option>
               );
             })}
@@ -1230,15 +1257,31 @@ export default function AllStarVaultManager({
             <p className="text-xs text-zinc-400">
               Select coaches to invite for this invite-list cycle.
             </p>
+            <input
+              value={inviteCoachSearch}
+              onChange={(event) => setInviteCoachSearch(event.target.value)}
+              placeholder="Filter coaches by name, email, or role"
+              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+            />
             <div className="max-h-44 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950/30 divide-y divide-zinc-800">
-              {cycleCoachOptions.length === 0 ? (
-                <p className="text-zinc-500 text-sm p-3">No coaches available for this cycle.</p>
+              {filteredInviteCoachOptions.length === 0 ? (
+                <p className="text-zinc-500 text-sm p-3">
+                  {cycleCoachOptions.length === 0
+                    ? "No coaches available for this cycle."
+                    : "No coaches match your filter."}
+                </p>
               ) : (
-                cycleCoachOptions.map((coach) => {
+                filteredInviteCoachOptions.map((coach) => {
                   const label =
                     (coach.firstName || coach.lastName
                       ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
                       : coach.name) || coach.email;
+                  const roleLabel =
+                    coach.coachRole === "HEAD_COACH"
+                      ? "Head Coach"
+                      : coach.coachRole === "ASSISTANT_COACH"
+                        ? "Assistant Coach"
+                        : "Coach";
                   const checked = selectedInviteCoachIds.includes(coach.id);
                   return (
                     <label
@@ -1246,7 +1289,10 @@ export default function AllStarVaultManager({
                       className="flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-zinc-900/50"
                     >
                       <span className="min-w-0 truncate">
-                        {label} <span className="text-zinc-400">({coach.email})</span>
+                        {label}{" "}
+                        <span className="text-zinc-400">
+                          ({coach.email}) · {roleLabel}
+                        </span>
                       </span>
                       <input
                         type="checkbox"

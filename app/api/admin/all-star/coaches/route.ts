@@ -25,7 +25,7 @@ export async function GET(request: NextRequest) {
 
   const cycle = await prisma.allStarBallotCycle.findUnique({
     where: { id: cycleId },
-    select: { organizationId: true, ageGroup: true },
+    select: { organizationId: true, ageGroup: true, seasonYear: true },
   });
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
@@ -47,5 +47,35 @@ export async function GET(request: NextRequest) {
     orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { email: "asc" }],
   });
 
-  return NextResponse.json({ data: coaches });
+  const assignmentRows =
+    coaches.length === 0
+      ? []
+      : await prisma.teamCoachAssignment.findMany({
+          where: {
+            registeredUserId: { in: coaches.map((coach) => coach.id) },
+            team: {
+              organizationId: cycle.organizationId,
+              ageGroup: cycle.ageGroup,
+              seasonYear: cycle.seasonYear,
+            },
+          },
+          select: {
+            registeredUserId: true,
+            role: true,
+            createdAt: true,
+          },
+          orderBy: [{ createdAt: "desc" }],
+        });
+  const roleByCoachId = new Map<string, "HEAD_COACH" | "ASSISTANT_COACH">();
+  for (const row of assignmentRows) {
+    if (roleByCoachId.has(row.registeredUserId)) continue;
+    roleByCoachId.set(row.registeredUserId, row.role);
+  }
+
+  return NextResponse.json({
+    data: coaches.map((coach) => ({
+      ...coach,
+      coachRole: roleByCoachId.get(coach.id) || null,
+    })),
+  });
 }
