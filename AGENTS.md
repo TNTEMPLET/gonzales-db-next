@@ -6,4 +6,5 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Git
 
-Push changes to **`preview`** first (`git push origin preview`) so CI / preview deploy can be verified. Push or merge to **`main`** only after the user confirms the build.
+1. Push work to **`preview`** first (`git push origin preview`) so CI / the preview deploy can run.
+2. **Do not** push or merge to **`main`** until the user confirms a good preview build. Wait for explicit approval before updating **`main`**.
