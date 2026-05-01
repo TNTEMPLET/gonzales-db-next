@@ -114,7 +114,7 @@ export async function GET(request: NextRequest) {
         : undefined,
     };
 
-    const [users, admins, currentAdmin, auditLogs, totalAuditLogs] =
+    const [users, admins, currentAdmin, auditLogs, totalAuditLogs, latestImportBatch] =
       await Promise.all([
         prisma.registeredUser.findMany({
           where: { organizationId: targetOrg },
@@ -131,7 +131,47 @@ export async function GET(request: NextRequest) {
           take: logPageSize,
         }),
         prisma.adminAuditLog.count({ where: auditWhere }),
+        prisma.coachImportBatch.findFirst({
+          where: { organizationId: targetOrg, undoneAt: null },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            createdAt: true,
+            createdCount: true,
+            updatedCount: true,
+            processedCount: true,
+            skippedCount: true,
+            createdByEmail: true,
+          },
+        }),
       ]);
+
+    const userIds = users.map((user) => user.id);
+    const coachAssignments =
+      userIds.length === 0
+        ? []
+        : await prisma.teamCoachAssignment.findMany({
+            where: {
+              registeredUserId: { in: userIds },
+              team: { organizationId: targetOrg },
+            },
+            include: {
+              team: {
+                select: {
+                  teamName: true,
+                  ageGroup: true,
+                  seasonYear: true,
+                },
+              },
+            },
+            orderBy: [{ team: { seasonYear: "desc" } }, { createdAt: "desc" }],
+          });
+
+    const assignmentByUserId = new Map<string, string>();
+    for (const assignment of coachAssignments) {
+      if (assignmentByUserId.has(assignment.registeredUserId)) continue;
+      assignmentByUserId.set(assignment.registeredUserId, assignment.role);
+    }
 
     const adminEmailSet = new Set(
       admins.map((admin: { email: string }) => admin.email),
@@ -158,9 +198,11 @@ export async function GET(request: NextRequest) {
       currentAdminIsMaster: currentAdmin?.isMaster || false,
       isMasterDeployment: isMasterDeployment(),
       targetOrg,
-      data: users.map((user: { email: string }) => ({
+      latestImportBatch,
+      data: users.map((user: { id: string; email: string }) => ({
         ...user,
         isAdmin: adminEmailSet.has(user.email),
+        coachRole: assignmentByUserId.get(user.id) || null,
       })),
     });
   } catch (err: unknown) {
@@ -508,9 +550,28 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const linkedRegisteredUser = await prisma.registeredUser.findFirst({
-      where: { organizationId: targetOrg, email: targetAdmin.email },
+    let linkedRegisteredUser = await prisma.registeredUser.findFirst({
+      where: {
+        organizationId: targetOrg,
+        email: { equals: targetAdmin.email, mode: "insensitive" },
+      },
     });
+
+    if (!linkedRegisteredUser) {
+      linkedRegisteredUser = await prisma.registeredUser.create({
+        data: {
+          organizationId: targetOrg,
+          email: targetAdmin.email.trim().toLowerCase(),
+          name: targetAdmin.name,
+          firstName: targetAdmin.firstName,
+          lastName: targetAdmin.lastName,
+          isCoach: false,
+          isBlocked: false,
+          ageGroup: null,
+          assignedTeam: null,
+        },
+      });
+    }
 
     await prisma.adminAuditLog.create({
       data: {

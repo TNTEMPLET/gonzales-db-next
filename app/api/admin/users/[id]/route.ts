@@ -56,23 +56,32 @@ export async function PATCH(
     isBlocked?: boolean;
     firstName?: string;
     lastName?: string;
+    contactPhone?: string | null;
+    ageGroup?: string | null;
+    assignedTeam?: string | null;
   };
 
   const hasCoachUpdate = typeof body.isCoach === "boolean";
   const hasBlockedUpdate = typeof body.isBlocked === "boolean";
   const hasFirstNameUpdate = typeof body.firstName === "string";
   const hasLastNameUpdate = typeof body.lastName === "string";
+  const hasContactPhoneUpdate = "contactPhone" in body;
+  const hasAgeGroupUpdate = "ageGroup" in body;
+  const hasAssignedTeamUpdate = "assignedTeam" in body;
 
   if (
     !hasCoachUpdate &&
     !hasBlockedUpdate &&
     !hasFirstNameUpdate &&
-    !hasLastNameUpdate
+    !hasLastNameUpdate &&
+    !hasContactPhoneUpdate &&
+    !hasAgeGroupUpdate &&
+    !hasAssignedTeamUpdate
   ) {
     return NextResponse.json(
       {
         error:
-          "At least one updatable field is required: isCoach, isBlocked, firstName, or lastName",
+          "At least one updatable field is required: isCoach, isBlocked, firstName, lastName, contactPhone, ageGroup, or assignedTeam",
       },
       { status: 400 },
     );
@@ -89,6 +98,9 @@ export async function PATCH(
     firstName?: string | null;
     lastName?: string | null;
     name?: string | null;
+    contactPhone?: string | null;
+    ageGroup?: string | null;
+    assignedTeam?: string | null;
   } = {};
 
   if (hasCoachUpdate) {
@@ -96,6 +108,25 @@ export async function PATCH(
   }
   if (hasBlockedUpdate) {
     updateData.isBlocked = body.isBlocked;
+  }
+
+  if (hasAgeGroupUpdate) {
+    updateData.ageGroup =
+      typeof body.ageGroup === "string" ? body.ageGroup.trim() || null : null;
+  }
+
+  if (hasAssignedTeamUpdate) {
+    updateData.assignedTeam =
+      typeof body.assignedTeam === "string"
+        ? body.assignedTeam.trim() || null
+        : null;
+  }
+
+  if (hasContactPhoneUpdate) {
+    updateData.contactPhone =
+      typeof body.contactPhone === "string"
+        ? body.contactPhone.trim() || null
+        : null;
   }
 
   if (hasFirstNameUpdate || hasLastNameUpdate) {

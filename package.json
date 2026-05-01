@@ -4,6 +4,9 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:master": "SITE_ORG=master next dev",
+    "dev:gonzales": "SITE_ORG=gonzales next dev",
+    "dev:ascension": "SITE_ORG=ascension next dev",
     "build": "node scripts/prisma-sync-if-available.mjs && prisma generate && next build",
     "postinstall": "prisma generate",
     "start": "next start",

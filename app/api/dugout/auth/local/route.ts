@@ -20,6 +20,9 @@ type LocalAuthPayload = {
   password?: string;
   firstName?: string;
   lastName?: string;
+  contactPhone?: string;
+  ageGroup?: string;
+  assignedTeam?: string;
 };
 
 function normalizeEmail(value: string) {
@@ -40,6 +43,9 @@ export async function POST(request: NextRequest) {
     const password = body.password || "";
     const firstName = body.firstName?.trim() || null;
     const lastName = body.lastName?.trim() || null;
+    const contactPhone = body.contactPhone?.trim() || null;
+    const ageGroup = body.ageGroup?.trim() || null;
+    const assignedTeam = body.assignedTeam?.trim() || null;
 
     if (!email || !password) {
       return NextResponse.json(
@@ -66,14 +72,12 @@ export async function POST(request: NextRequest) {
             where: { id: existing.id },
             data: {
               passwordHash,
-              firstName: existing.firstName || firstName,
-              lastName: existing.lastName || lastName,
-              name:
-                existing.name ||
-                displayName(
-                  existing.firstName || firstName,
-                  existing.lastName || lastName,
-                ),
+              firstName,
+              lastName,
+              name: displayName(firstName, lastName),
+              contactPhone,
+              ageGroup,
+              assignedTeam,
             },
           })
         : await prisma.registeredUser.create({
@@ -84,6 +88,9 @@ export async function POST(request: NextRequest) {
               lastName,
               name: displayName(firstName, lastName),
               passwordHash,
+              contactPhone,
+              ageGroup,
+              assignedTeam,
             },
           });
 
@@ -166,9 +173,19 @@ export async function POST(request: NextRequest) {
     if (!user || !user.passwordHash) {
       return NextResponse.json(
         {
-          error:
-            "No local login found for this email. Use Google sign-in or create a local password.",
+          error: user
+            ? "Finish account setup to create your password and confirm your profile."
+            : "No local login found for this email. Use Google sign-in or create a local password.",
           canRegister: true,
+          setupProfile: user
+            ? {
+                firstName: user.firstName || "",
+                lastName: user.lastName || "",
+                contactPhone: user.contactPhone || "",
+                ageGroup: user.ageGroup || "",
+                assignedTeam: user.assignedTeam || "",
+              }
+            : null,
         },
         { status: 404 },
       );

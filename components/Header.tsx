@@ -3,7 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useEffect, useState } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useSearchParams } from "next/navigation";
 import {
   canAccessAdminModule,
   isAdminRole,
@@ -39,6 +39,7 @@ type HeaderProps = {
 
 export default function Header({ brand }: HeaderProps) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
@@ -170,6 +171,9 @@ export default function Header({ brand }: HeaderProps) {
   if (pathname.startsWith("/dugout")) return null;
 
   const masterRole = adminRole ? toAdminRole(adminRole) : null;
+  const currentOrgParam = searchParams.get("org");
+  const masterOrgSuffix =
+    isMasterHeader && currentOrgParam ? `?org=${encodeURIComponent(currentOrgParam)}` : "";
   const allowModule = (
     module: "USERS" | "REPORTS" | "SCORES" | "DUGOUT_MODERATION",
   ) => {
@@ -192,13 +196,19 @@ export default function Header({ brand }: HeaderProps) {
         ...(allowModule("DUGOUT_MODERATION")
           ? [{ href: "/admin/dugout", label: "Dugout" }]
           : []),
-        ...(canSeeDugout ? [{ href: "/dugout", label: "The Board Room" }] : []),
+        ...(canSeeDugout
+          ? [{ href: `/coach-corner${masterOrgSuffix}`, label: "Coach's Corner" }]
+          : []),
+        ...(canSeeDugout
+          ? [{ href: `/dugout${masterOrgSuffix}`, label: "The Board Room" }]
+          : []),
       ]
     : [
         { href: "/schedule", label: "Schedules & Standings" },
         ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
         ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
         { href: "/#fields", label: "Fields & Status" },
+        ...(canSeeDugout ? [{ href: "/coach-corner", label: "Coach's Corner" }] : []),
         ...(canSeeDugout ? [{ href: "/dugout", label: "The Dugout" }] : []),
         { href: "/news", label: "News" },
         { href: "/#contact", label: "Contact" },
@@ -286,6 +296,15 @@ export default function Header({ brand }: HeaderProps) {
                 className="bg-brand-purple hover:bg-brand-purple-dark py-3 text-center rounded-lg font-semibold mt-4"
               >
                 Register for Spring 2026
+              </Link>
+            )}
+            {!isMasterHeader && canSeeDugout && (
+              <Link
+                href="/coach-corner"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center gap-2 hover:text-brand-gold"
+              >
+                Coach&apos;s Corner
               </Link>
             )}
             {!isMasterHeader && canSeeDugout && (

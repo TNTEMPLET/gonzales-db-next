@@ -65,6 +65,15 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open Access Console" : "Open Users",
     },
     {
+      module: "TEAMS" as AdminModule,
+      href: `/admin/teams${orgQuery}`,
+      title: "Teams Management",
+      description: masterMode
+        ? "Import players, build rosters, assign coaches, and maintain team operations by site."
+        : "Manage team rosters, coach assignments, and season setup.",
+      action: masterMode ? "Open Teams Console" : "Open Teams",
+    },
+    {
       module: "SCORES" as AdminModule,
       href: `/admin/scores${orgQuery}`,
       title: "Scores & Standings",
@@ -99,6 +108,15 @@ export default async function AdminDashboardPage({
         ? "Run umpire payout reports and operational summaries from the AP Baseball reporting desk."
         : "Generate umpire reports and payout summaries.",
       action: masterMode ? "Open Reporting Desk" : "Open Reports",
+    },
+    {
+      module: "ALL_STAR_VAULT" as AdminModule,
+      href: `/admin/all-star${orgQuery}`,
+      title: "All-Star Vault",
+      description: masterMode
+        ? "Manage All-Star voting cycles, invitations, and exports for both organizations."
+        : "Manage All-Star voting cycles and ballot administration.",
+      action: masterMode ? "Open All-Star Vault" : "Open All-Star",
     },
   ].filter((card) => canAccessAdminModule(adminRole, card.module));
 

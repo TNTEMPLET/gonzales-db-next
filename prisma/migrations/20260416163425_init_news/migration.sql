@@ -9,9 +9,9 @@ CREATE TABLE "NewsPost" (
     "author" TEXT,
     "featured" BOOLEAN NOT NULL DEFAULT false,
     "status" TEXT NOT NULL DEFAULT 'DRAFT',
-    "publishedAt" DATETIME,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "publishedAt" TIMESTAMP(3),
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );
 
 -- CreateIndex

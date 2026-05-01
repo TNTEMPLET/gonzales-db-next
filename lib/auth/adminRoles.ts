@@ -12,10 +12,12 @@ export type AdminRole = (typeof ADMIN_ROLES)[number];
 export const ADMIN_MODULES = [
   "DASHBOARD",
   "USERS",
+  "TEAMS",
   "REPORTS",
   "SCORES",
   "DUGOUT_MODERATION",
   "NEWS_ADMIN",
+  "ALL_STAR_VAULT",
 ] as const;
 
 export type AdminModule = (typeof ADMIN_MODULES)[number];
@@ -30,10 +32,12 @@ const roleRank: Record<AdminRole, number> = {
 const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   DASHBOARD: "PARK_DIRECTOR",
   USERS: "ADMIN",
+  TEAMS: "ADMIN",
   REPORTS: "PARK_DIRECTOR",
   SCORES: "BOARD_MEMBER",
   DUGOUT_MODERATION: "BOARD_MEMBER",
   NEWS_ADMIN: "BOARD_MEMBER",
+  ALL_STAR_VAULT: "ADMIN",
 };
 
 export function isAdminRole(

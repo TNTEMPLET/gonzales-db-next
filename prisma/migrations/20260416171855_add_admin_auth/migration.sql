@@ -4,16 +4,16 @@ CREATE TABLE "AdminUser" (
     "email" TEXT NOT NULL,
     "name" TEXT,
     "passwordHash" TEXT NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    "updatedAt" DATETIME NOT NULL
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "updatedAt" TIMESTAMP(3) NOT NULL
 );
 
 -- CreateTable
 CREATE TABLE "AdminSession" (
     "id" TEXT NOT NULL PRIMARY KEY,
     "tokenHash" TEXT NOT NULL,
-    "expiresAt" DATETIME NOT NULL,
-    "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "expiresAt" TIMESTAMP(3) NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "userId" TEXT NOT NULL,
     CONSTRAINT "AdminSession_userId_fkey" FOREIGN KEY ("userId") REFERENCES "AdminUser" ("id") ON DELETE CASCADE ON UPDATE CASCADE
 );

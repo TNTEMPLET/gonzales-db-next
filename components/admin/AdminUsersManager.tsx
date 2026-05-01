@@ -21,12 +21,16 @@ type RegisteredUser = {
   name: string | null;
   firstName: string | null;
   lastName: string | null;
+  contactPhone: string | null;
   googleSub: string | null;
   createdAt: string;
   updatedAt: string;
   isAdmin: boolean;
   isCoach: boolean;
   isBlocked: boolean;
+  ageGroup: string | null;
+  assignedTeam: string | null;
+  coachRole: "HEAD_COACH" | "ASSISTANT_COACH" | null;
 };
 
 type AdminAuditLog = {
@@ -65,6 +69,15 @@ type ApiResponse = {
   currentAdminRole: AdminRole | null;
   protectedMasterAdminEmail?: string;
   currentAdminIsMaster: boolean;
+  latestImportBatch?: {
+    id: string;
+    createdAt: string;
+    createdCount: number;
+    updatedCount: number;
+    processedCount: number;
+    skippedCount: number;
+    createdByEmail: string | null;
+  } | null;
   data: RegisteredUser[];
 };
 
@@ -117,11 +130,6 @@ function formatDateTime(value: string) {
   }).format(new Date(value));
 }
 
-function isoToDateInput(value: string | null) {
-  if (!value) return "";
-  return value.slice(0, 10);
-}
-
 function toIsoFromDateInput(value: string, endOfDay = false) {
   if (!value) return "";
   const suffix = endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z";
@@ -130,6 +138,16 @@ function toIsoFromDateInput(value: string, endOfDay = false) {
 
 function csvEscape(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
+}
+
+function ageGroupSortRank(label: string) {
+  const normalized = label.trim().toLowerCase();
+  if (normalized === "tee-ball" || normalized === "teeball") return -1;
+
+  const match = normalized.match(/(\d{1,2})\s*u/);
+  if (match) return Number.parseInt(match[1] || "0", 10);
+
+  return 0;
 }
 
 export default function AdminUsersManager({
@@ -162,6 +180,12 @@ export default function AdminUsersManager({
   const [currentAdminIsMaster, setCurrentAdminIsMaster] = useState(false);
   const [adminSearch, setAdminSearch] = useState("");
   const [userSearch, setUserSearch] = useState("");
+  const [userPage, setUserPage] = useState(1);
+  const [userPageSize, setUserPageSize] = useState(10);
+  const [coachSearch, setCoachSearch] = useState("");
+  const [coachAgeGroupFilter, setCoachAgeGroupFilter] = useState("ALL");
+  const [coachPage, setCoachPage] = useState(1);
+  const [coachPageSize, setCoachPageSize] = useState(10);
   const [logSearchInput, setLogSearchInput] = useState("");
   const [logQuery, setLogQuery] = useState("");
   const [logFromDate, setLogFromDate] = useState("");
@@ -172,17 +196,27 @@ export default function AdminUsersManager({
   const [editingUser, setEditingUser] = useState<RegisteredUser | null>(null);
   const [editFirstName, setEditFirstName] = useState("");
   const [editLastName, setEditLastName] = useState("");
+  const [editContactPhone, setEditContactPhone] = useState("");
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  const [assignmentUser, setAssignmentUser] = useState<RegisteredUser | null>(null);
+  const [assignmentAgeGroup, setAssignmentAgeGroup] = useState("");
+  const [assignmentTeam, setAssignmentTeam] = useState("");
+  const [assignmentAgeGroups, setAssignmentAgeGroups] = useState<string[]>([]);
+  const [assignmentTeamsByAgeGroup, setAssignmentTeamsByAgeGroup] = useState<Record<string, string[]>>({});
+  const [assignmentLoading, setAssignmentLoading] = useState(false);
+  const [assignmentBusy, setAssignmentBusy] = useState(false);
+  const [assignmentError, setAssignmentError] = useState("");
 
   useEffect(() => {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetOrg, logPage, logPageSize, logQuery, logFromDate, logToDate]);
 
-  const nonAdminRegisteredUsers = useMemo(
-    () => registeredUsers.filter((user) => !user.isAdmin),
+  const registeredOnlyUsers = useMemo(
+    () => registeredUsers.filter((user) => !user.isAdmin && !user.isCoach),
     [registeredUsers],
   );
 
@@ -197,12 +231,159 @@ export default function AdminUsersManager({
 
   const filteredRegisteredUsers = useMemo(() => {
     const term = userSearch.trim().toLowerCase();
-    if (!term) return nonAdminRegisteredUsers;
-    return nonAdminRegisteredUsers.filter((user) => {
+    if (!term) return registeredOnlyUsers;
+    return registeredOnlyUsers.filter((user) => {
       const haystack = `${user.name || ""} ${user.email}`.toLowerCase();
       return haystack.includes(term);
     });
-  }, [nonAdminRegisteredUsers, userSearch]);
+  }, [registeredOnlyUsers, userSearch]);
+
+  const registeredUsersTotalPages = useMemo(
+    () =>
+      userPageSize === -1
+        ? 1
+        : Math.max(1, Math.ceil(filteredRegisteredUsers.length / userPageSize)),
+    [filteredRegisteredUsers.length, userPageSize],
+  );
+
+  const paginatedRegisteredUsers = useMemo(() => {
+    if (userPageSize === -1) return filteredRegisteredUsers;
+    const start = (userPage - 1) * userPageSize;
+    return filteredRegisteredUsers.slice(start, start + userPageSize);
+  }, [filteredRegisteredUsers, userPage, userPageSize]);
+
+  const coachUsers = useMemo(
+    () => registeredUsers.filter((user) => user.isCoach && !user.isAdmin),
+    [registeredUsers],
+  );
+
+  const coachAgeGroupOptions = useMemo(() => {
+    const set = new Set<string>();
+    for (const user of coachUsers) {
+      set.add(user.ageGroup?.trim() || "UNASSIGNED");
+    }
+    return Array.from(set).sort((a, b) => {
+      if (a === "UNASSIGNED") return 1;
+      if (b === "UNASSIGNED") return -1;
+
+      const labelA = a === "UNASSIGNED" ? "Unassigned" : a;
+      const labelB = b === "UNASSIGNED" ? "Unassigned" : b;
+      const rankA = ageGroupSortRank(labelA);
+      const rankB = ageGroupSortRank(labelB);
+      if (rankA !== rankB) return rankB - rankA;
+
+      return labelA.localeCompare(labelB);
+    });
+  }, [coachUsers]);
+
+  const filteredCoachUsers = useMemo(() => {
+    const term = coachSearch.trim().toLowerCase();
+    let users = coachUsers;
+    if (term) {
+      users = users.filter((user) =>
+        `${user.name || ""} ${user.email}`.toLowerCase().includes(term),
+      );
+    }
+    if (coachAgeGroupFilter !== "ALL") {
+      users = users.filter(
+        (user) => (user.ageGroup?.trim() || "UNASSIGNED") === coachAgeGroupFilter,
+      );
+    }
+    return users;
+  }, [coachUsers, coachSearch, coachAgeGroupFilter]);
+
+  const sortedFilteredCoachUsers = useMemo(() => {
+    const users = [...filteredCoachUsers];
+    users.sort((a, b) => {
+      const groupA = a.ageGroup?.trim() || "Unassigned";
+      const groupB = b.ageGroup?.trim() || "Unassigned";
+
+      if (groupA === "Unassigned" && groupB !== "Unassigned") return 1;
+      if (groupB === "Unassigned" && groupA !== "Unassigned") return -1;
+
+      const rankA = ageGroupSortRank(groupA);
+      const rankB = ageGroupSortRank(groupB);
+      if (rankA !== rankB) return rankB - rankA;
+
+      if (groupA !== groupB) return groupA.localeCompare(groupB);
+
+      const nameA =
+        (a.firstName || a.lastName
+          ? [a.firstName, a.lastName].filter(Boolean).join(" ")
+          : a.name || a.email).toLowerCase();
+      const nameB =
+        (b.firstName || b.lastName
+          ? [b.firstName, b.lastName].filter(Boolean).join(" ")
+          : b.name || b.email).toLowerCase();
+      return nameA.localeCompare(nameB);
+    });
+    return users;
+  }, [filteredCoachUsers]);
+
+  const coachTotalPages = useMemo(
+    () =>
+      coachPageSize === -1
+        ? 1
+        : Math.max(1, Math.ceil(sortedFilteredCoachUsers.length / coachPageSize)),
+    [sortedFilteredCoachUsers.length, coachPageSize],
+  );
+
+  const paginatedCoachUsers = useMemo(() => {
+    if (coachPageSize === -1) return sortedFilteredCoachUsers;
+    const start = (coachPage - 1) * coachPageSize;
+    return sortedFilteredCoachUsers.slice(start, start + coachPageSize);
+  }, [sortedFilteredCoachUsers, coachPage, coachPageSize]);
+
+  const coachGroupCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    for (const user of sortedFilteredCoachUsers) {
+      const key = user.ageGroup?.trim() || "Unassigned";
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+    return counts;
+  }, [sortedFilteredCoachUsers]);
+
+  const coachesByAgeGroup = useMemo(() => {
+    const groups = new Map<string, RegisteredUser[]>();
+    for (const user of paginatedCoachUsers) {
+      const key = user.ageGroup?.trim() || "Unassigned";
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key)!.push(user);
+    }
+
+    return Array.from(groups.entries()).sort(([a, usersA], [b, usersB]) => {
+      if (a === "Unassigned") return 1;
+      if (b === "Unassigned") return -1;
+
+      const rankA = ageGroupSortRank(a);
+      const rankB = ageGroupSortRank(b);
+      if (rankA !== rankB) return rankB - rankA;
+
+      if (usersA.length !== usersB.length) return usersB.length - usersA.length;
+
+      return a.localeCompare(b);
+    });
+  }, [paginatedCoachUsers]);
+
+  useEffect(() => {
+    setUserPage(1);
+  }, [userSearch, userPageSize, targetOrg]);
+
+  useEffect(() => {
+    setCoachPage(1);
+  }, [coachSearch, coachAgeGroupFilter, coachPageSize, targetOrg]);
+
+  useEffect(() => {
+    if (userPage > registeredUsersTotalPages) {
+      setUserPage(registeredUsersTotalPages);
+    }
+  }, [userPage, registeredUsersTotalPages]);
+
+  useEffect(() => {
+    if (coachPage > coachTotalPages) {
+      setCoachPage(coachTotalPages);
+    }
+  }, [coachPage, coachTotalPages]);
 
   async function loadData() {
     setBusy(true);
@@ -219,7 +400,9 @@ export default function AdminUsersManager({
       if (logToDate) params.set("logTo", toIsoFromDateInput(logToDate, true));
 
       params.set("org", targetOrg);
-      const response = await fetch(`/api/admin/users?${params.toString()}`);
+      const response = await fetch(`/api/admin/users?${params.toString()}`, {
+        cache: "no-store",
+      });
       const json = (await response.json()) as ApiResponse | { error?: string };
 
       if (!response.ok) {
@@ -468,6 +651,7 @@ export default function AdminUsersManager({
     setEditingUser(user);
     setEditFirstName(user.firstName || "");
     setEditLastName(user.lastName || "");
+    setEditContactPhone(user.contactPhone || "");
   }
 
   function closeEditName() {
@@ -475,6 +659,7 @@ export default function AdminUsersManager({
     setEditingUser(null);
     setEditFirstName("");
     setEditLastName("");
+    setEditContactPhone("");
   }
 
   async function saveUserName() {
@@ -493,6 +678,7 @@ export default function AdminUsersManager({
           body: JSON.stringify({
             firstName: editFirstName,
             lastName: editLastName,
+            contactPhone: editContactPhone,
           }),
         },
       );
@@ -508,6 +694,7 @@ export default function AdminUsersManager({
       setEditingUser(null);
       setEditFirstName("");
       setEditLastName("");
+      setEditContactPhone("");
       await loadData();
     } catch (err: unknown) {
       setError(
@@ -593,6 +780,67 @@ export default function AdminUsersManager({
     URL.revokeObjectURL(url);
   }
 
+  async function openAssignment(user: RegisteredUser) {
+    setAssignmentUser(user);
+    setAssignmentAgeGroup(user.ageGroup ?? "");
+    setAssignmentTeam(user.assignedTeam ?? "");
+    setAssignmentError("");
+    setAssignmentAgeGroups([]);
+    setAssignmentTeamsByAgeGroup({});
+    setAssignmentLoading(true);
+
+    try {
+      const response = await fetch(`/api/admin/age-groups?${orgQuery}`);
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Failed to load age groups");
+      setAssignmentAgeGroups(json.ageGroups ?? []);
+      setAssignmentTeamsByAgeGroup(json.teamsByAgeGroup ?? {});
+    } catch (err: unknown) {
+      setAssignmentError(err instanceof Error ? err.message : "Failed to load age groups");
+    } finally {
+      setAssignmentLoading(false);
+    }
+  }
+
+  function closeAssignment() {
+    if (assignmentBusy) return;
+    setAssignmentUser(null);
+    setAssignmentAgeGroup("");
+    setAssignmentTeam("");
+    setAssignmentError("");
+  }
+
+  async function saveAssignment() {
+    if (!assignmentUser) return;
+    setAssignmentBusy(true);
+    setAssignmentError("");
+
+    try {
+      const response = await fetch(
+        `/api/admin/users/${assignmentUser.id}?${orgQuery}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ageGroup: assignmentAgeGroup || null,
+            assignedTeam: assignmentTeam || null,
+          }),
+        },
+      );
+      const json = await response.json();
+      if (!response.ok) {
+        throw new Error(json && "error" in json ? json.error : "Failed to save assignment");
+      }
+      setNotice(`Updated assignment for ${assignmentUser.email}.`);
+      setAssignmentUser(null);
+      await loadData();
+    } catch (err: unknown) {
+      setAssignmentError(err instanceof Error ? err.message : "Failed to save assignment");
+    } finally {
+      setAssignmentBusy(false);
+    }
+  }
+
   return (
     <section className="space-y-6">
       {error ? (
@@ -606,7 +854,504 @@ export default function AdminUsersManager({
         </div>
       ) : null}
 
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 gap-6">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+          <div>
+            <h2 className="font-semibold text-lg">Registered Users</h2>
+            <p className="text-zinc-400 text-sm mt-1">
+              Users are listed here after successful Google sign-in.
+            </p>
+          </div>
+
+          <input
+            value={userSearch}
+            onChange={(event) => setUserSearch(event.target.value)}
+            placeholder="Search users by name or email"
+            className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+          />
+
+          <div className="max-h-80 overflow-auto rounded-lg border border-zinc-800">
+            {filteredRegisteredUsers.length === 0 ? (
+              <p className="text-zinc-500 text-sm p-3">
+                No users waiting for promotion.
+              </p>
+            ) : (
+              paginatedRegisteredUsers.map((user) => (
+                <div
+                  key={user.id}
+                  className="flex items-center justify-between gap-3 px-3 py-3 border-b border-zinc-800 last:border-b-0"
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium">
+                      {user.firstName || user.lastName
+                        ? [user.firstName, user.lastName]
+                            .filter(Boolean)
+                            .join(" ")
+                        : user.name || "Unnamed User"}
+                    </p>
+                    <p className="text-xs text-zinc-500">{user.email}</p>
+                    {user.contactPhone ? (
+                      <p className="text-xs text-zinc-500">{user.contactPhone}</p>
+                    ) : null}
+                    {user.isBlocked && (
+                      <p className="text-xs text-red-400 mt-1">🚫 Blocked</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => openEditName(user)}
+                      title="Edit name"
+                      aria-label="Edit name"
+                      className="rounded-lg border border-blue-700 text-blue-300 hover:bg-blue-950/40 px-2.5 py-1.5 disabled:opacity-60"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={1.8}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 0 1 2.828 2.828L11.828 15.828a2 2 0 0 1-1.414.586H8v-2.414a2 2 0 0 1 .586-1.414Z"
+                        />
+                        <path strokeLinecap="round" d="M3 21h18" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void toggleCoach(user.id, user.isCoach)}
+                      title="Grant Coach"
+                      aria-label="Grant Coach"
+                      className="rounded-lg border border-zinc-600 text-zinc-400 hover:bg-zinc-800 px-2.5 py-1.5 disabled:opacity-60"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={1.8}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M3 14h14a1 1 0 0 0 1-1V9a7 7 0 0 0-7-7H9a6 6 0 0 0-6 6v6Z"
+                        />
+                        <path strokeLinecap="round" d="M3 14v1a2 2 0 0 0 2 2h12" />
+                        <path strokeLinecap="round" d="M10 7v4" />
+                      </svg>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setConfirmAction({
+                          kind: "promote",
+                          userId: user.id,
+                          label: `Promote ${user.email} to admin access?`,
+                        })
+                      }
+                      title="Promote to Admin"
+                      aria-label="Promote to Admin"
+                      className="rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60"
+                    >
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        className="h-4 w-4"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth={2}
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 3 L5 20 M12 3 L19 20"
+                        />
+                        <path strokeLinecap="round" d="M7.5 14.5 h9" />
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          d="M12 3 L10 7 L14 7 Z"
+                        />
+                      </svg>
+                    </button>
+                    <span
+                      className="w-px self-stretch bg-zinc-700 mx-1"
+                      aria-hidden="true"
+                    />
+                    {user.isBlocked ? (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          setConfirmAction({
+                            kind: "unblock",
+                            userId: user.id,
+                            email: user.email,
+                            label: `Unblock ${user.email}?`,
+                          })
+                        }
+                        aria-label="Unblock"
+                        title="Unblock"
+                        className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-2.5 py-1.5 disabled:opacity-60"
+                      >
+                        🛡
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        disabled={busy}
+                        onClick={() =>
+                          setConfirmAction({
+                            kind: "block",
+                            userId: user.id,
+                            email: user.email,
+                            label: `Block ${user.email}?`,
+                          })
+                        }
+                        aria-label="Block"
+                        title="Block"
+                        className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-2.5 py-1.5 disabled:opacity-60"
+                      >
+                        🛡
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        setConfirmAction({
+                          kind: "remove",
+                          userId: user.id,
+                          email: user.email,
+                          label: `Permanently remove ${user.email}? This will delete all posts and comments.`,
+                        })
+                      }
+                      aria-label="Remove"
+                      title="Remove"
+                      className="text-xs rounded-lg border border-red-700 text-red-300 hover:bg-red-950/60 px-2.5 py-1.5 disabled:opacity-60"
+                    >
+                      x
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">
+              Showing page {userPage} of {registeredUsersTotalPages} (
+              {filteredRegisteredUsers.length} total users)
+            </p>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-zinc-500">Rows</label>
+              <select
+                value={userPageSize}
+                onChange={(event) => setUserPageSize(Number(event.target.value))}
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-1 text-xs"
+              >
+                <option value={-1}>All</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <button
+                type="button"
+                disabled={busy || userPage <= 1}
+                onClick={() => setUserPage((prev) => Math.max(1, prev - 1))}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800 disabled:opacity-60"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={busy || userPage >= registeredUsersTotalPages}
+                onClick={() =>
+                  setUserPage((prev) =>
+                    Math.min(registeredUsersTotalPages, prev + 1),
+                  )
+                }
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800 disabled:opacity-60"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+          <div>
+            <div>
+              <h2 className="font-semibold text-lg">Coaches</h2>
+              <p className="text-zinc-400 text-sm mt-1">
+                Coaches grouped by assigned age group.
+              </p>
+            </div>
+          </div>
+          <input
+            value={coachSearch}
+            onChange={(event) => setCoachSearch(event.target.value)}
+            placeholder="Search coaches by name or email"
+            className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+          />
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-zinc-500">Age Group</label>
+            <select
+              value={coachAgeGroupFilter}
+              onChange={(event) => setCoachAgeGroupFilter(event.target.value)}
+              className="rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-1.5 text-xs"
+            >
+              <option value="ALL">All age groups</option>
+              {coachAgeGroupOptions.map((option) => (
+                <option key={option} value={option}>
+                  {option === "UNASSIGNED" ? "Unassigned" : option}
+                </option>
+              ))}
+            </select>
+          </div>
+          <div className="max-h-80 overflow-auto rounded-lg border border-zinc-800">
+            {filteredCoachUsers.length === 0 ? (
+              <p className="text-zinc-500 text-sm p-3">No coaches found.</p>
+            ) : (
+              coachesByAgeGroup.map(([ageGroup, users]) => (
+                <div key={ageGroup}>
+                  <div className="sticky top-0 z-10 bg-zinc-900/95 border-b border-zinc-800 px-3 py-2">
+                    <p className="text-xs font-semibold text-zinc-300">
+                      {ageGroup} ({coachGroupCounts.get(ageGroup) || users.length})
+                    </p>
+                  </div>
+                  {users.map((user) => (
+                    <div
+                      key={user.id}
+                      className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex items-center justify-between gap-3"
+                    >
+                      <div className="min-w-0">
+                        <p className="text-sm font-medium">
+                          {user.firstName || user.lastName
+                            ? [user.firstName, user.lastName].filter(Boolean).join(" ")
+                            : user.name || "Unnamed Coach"}
+                        </p>
+                        <p className="text-xs text-zinc-500">{user.email}</p>
+                        {user.contactPhone ? (
+                          <p className="text-xs text-zinc-500">{user.contactPhone}</p>
+                        ) : null}
+                        {user.assignedTeam ? (
+                          <p className="text-xs text-brand-purple mt-0.5">
+                            Team: {user.assignedTeam}
+                          </p>
+                        ) : null}
+                        {user.coachRole ? (
+                          <p className="text-xs text-zinc-400 mt-0.5">
+                            Coach:{" "}
+                            {user.coachRole === "HEAD_COACH"
+                              ? "Head Coach"
+                              : "Assistant Coach"}
+                          </p>
+                        ) : null}
+                      </div>
+                      <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void openAssignment(user)}
+                          title="Edit age group & team assignment"
+                          aria-label="Edit assignment"
+                          className="rounded-lg border border-brand-purple text-brand-purple hover:bg-brand-purple/10 px-2.5 py-1.5 disabled:opacity-60"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={1.8}
+                          >
+                            <path strokeLinecap="round" strokeLinejoin="round" d="M9 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-2" />
+                            <rect x="9" y="3" width="6" height="4" rx="1" />
+                            <path strokeLinecap="round" d="M9 12h6M9 16h4" />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void toggleCoach(user.id, user.isCoach)}
+                          title="Revoke Coach"
+                          aria-label="Revoke Coach"
+                          className="rounded-lg border border-brand-purple text-brand-purple hover:bg-brand-purple/10 px-2.5 py-1.5 disabled:opacity-60"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={1.8}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M3 14h14a1 1 0 0 0 1-1V9a7 7 0 0 0-7-7H9a6 6 0 0 0-6 6v6Z"
+                            />
+                            <path strokeLinecap="round" d="M3 14v1a2 2 0 0 0 2 2h12" />
+                            <path strokeLinecap="round" d="M10 7v4" />
+                            <line
+                              x1="3"
+                              y1="3"
+                              x2="21"
+                              y2="21"
+                              strokeLinecap="round"
+                              strokeWidth={1.8}
+                            />
+                          </svg>
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            setConfirmAction({
+                              kind: "promote",
+                              userId: user.id,
+                              label: `Promote ${user.email} to admin access?`,
+                            })
+                          }
+                          title="Promote to Admin"
+                          aria-label="Promote to Admin"
+                          className="rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            className="h-4 w-4"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth={2}
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M12 3 L5 20 M12 3 L19 20"
+                            />
+                            <path strokeLinecap="round" d="M7.5 14.5 h9" />
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              d="M12 3 L10 7 L14 7 Z"
+                            />
+                          </svg>
+                        </button>
+                        <span
+                          className="w-px self-stretch bg-zinc-700 mx-1"
+                          aria-hidden="true"
+                        />
+                        {user.isBlocked ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              setConfirmAction({
+                                kind: "unblock",
+                                userId: user.id,
+                                email: user.email,
+                                label: `Unblock ${user.email}?`,
+                              })
+                            }
+                            aria-label="Unblock"
+                            title="Unblock"
+                            className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-2.5 py-1.5 disabled:opacity-60"
+                          >
+                            🛡
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() =>
+                              setConfirmAction({
+                                kind: "block",
+                                userId: user.id,
+                                email: user.email,
+                                label: `Block ${user.email}?`,
+                              })
+                            }
+                            aria-label="Block"
+                            title="Block"
+                            className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-2.5 py-1.5 disabled:opacity-60"
+                          >
+                            🛡
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() =>
+                            setConfirmAction({
+                              kind: "remove",
+                              userId: user.id,
+                              email: user.email,
+                              label: `Permanently remove ${user.email}? This will delete all posts and comments.`,
+                            })
+                          }
+                          aria-label="Remove"
+                          title="Remove"
+                          className="text-xs rounded-lg border border-red-700 text-red-300 hover:bg-red-950/60 px-2.5 py-1.5 disabled:opacity-60"
+                        >
+                          x
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-xs text-zinc-500">
+              Showing page {coachPage} of {coachTotalPages} (
+              {filteredCoachUsers.length} total coaches)
+            </p>
+            <div className="flex items-center gap-2">
+              <label className="text-xs text-zinc-500">Rows</label>
+              <select
+                value={coachPageSize}
+                onChange={(event) => setCoachPageSize(Number(event.target.value))}
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-1 text-xs"
+              >
+                <option value={-1}>All</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+              <button
+                type="button"
+                disabled={busy || coachPage <= 1}
+                onClick={() => setCoachPage((prev) => Math.max(1, prev - 1))}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800 disabled:opacity-60"
+              >
+                Previous
+              </button>
+              <button
+                type="button"
+                disabled={busy || coachPage >= coachTotalPages}
+                onClick={() =>
+                  setCoachPage((prev) => Math.min(coachTotalPages, prev + 1))
+                }
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800 disabled:opacity-60"
+              >
+                Next
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
           <div>
             <h2 className="font-semibold text-lg">Admin Accounts</h2>
@@ -728,235 +1473,6 @@ export default function AdminUsersManager({
                   </div>
                 );
               })
-            )}
-          </div>
-        </div>
-
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-          <div>
-            <h2 className="font-semibold text-lg">Registered Users</h2>
-            <p className="text-zinc-400 text-sm mt-1">
-              Users are listed here after successful Google sign-in.
-            </p>
-          </div>
-
-          <input
-            value={userSearch}
-            onChange={(event) => setUserSearch(event.target.value)}
-            placeholder="Search users by name or email"
-            className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-          />
-
-          <div className="max-h-80 overflow-auto rounded-lg border border-zinc-800">
-            {filteredRegisteredUsers.length === 0 ? (
-              <p className="text-zinc-500 text-sm p-3">
-                No users waiting for promotion.
-              </p>
-            ) : (
-              filteredRegisteredUsers.map((user) => (
-                <div
-                  key={user.id}
-                  className="flex items-center justify-between gap-3 px-3 py-3 border-b border-zinc-800 last:border-b-0"
-                >
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium">
-                      {user.firstName || user.lastName
-                        ? [user.firstName, user.lastName]
-                            .filter(Boolean)
-                            .join(" ")
-                        : user.name || "Unnamed User"}
-                    </p>
-                    <p className="text-xs text-zinc-500">{user.email}</p>
-                    {user.isBlocked && (
-                      <p className="text-xs text-red-400 mt-1">🚫 Blocked</p>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-1.5 flex-wrap justify-end">
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => openEditName(user)}
-                      title="Edit name"
-                      aria-label="Edit name"
-                      className="rounded-lg border border-blue-700 text-blue-300 hover:bg-blue-950/40 px-2.5 py-1.5 disabled:opacity-60"
-                    >
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={1.8}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M15.232 5.232l3.536 3.536M9 13l6.586-6.586a2 2 0 0 1 2.828 2.828L11.828 15.828a2 2 0 0 1-1.414.586H8v-2.414a2 2 0 0 1 .586-1.414Z"
-                        />
-                        <path strokeLinecap="round" d="M3 21h18" />
-                      </svg>
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() => void toggleCoach(user.id, user.isCoach)}
-                      title={user.isCoach ? "Revoke Coach" : "Grant Coach"}
-                      aria-label={user.isCoach ? "Revoke Coach" : "Grant Coach"}
-                      className={`rounded-lg border px-2.5 py-1.5 disabled:opacity-60 ${
-                        user.isCoach
-                          ? "border-brand-purple text-brand-purple hover:bg-brand-purple/10"
-                          : "border-zinc-600 text-zinc-400 hover:bg-zinc-800"
-                      }`}
-                    >
-                      {user.isCoach ? (
-                        /* Baseball cap with strikethrough line */
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={1.8}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M3 14h14a1 1 0 0 0 1-1V9a7 7 0 0 0-7-7H9a6 6 0 0 0-6 6v6Z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            d="M3 14v1a2 2 0 0 0 2 2h12"
-                          />
-                          <path strokeLinecap="round" d="M10 7v4" />
-                          <line
-                            x1="3"
-                            y1="3"
-                            x2="21"
-                            y2="21"
-                            strokeLinecap="round"
-                            strokeWidth={1.8}
-                          />
-                        </svg>
-                      ) : (
-                        /* Baseball cap */
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4 w-4"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="currentColor"
-                          strokeWidth={1.8}
-                        >
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M3 14h14a1 1 0 0 0 1-1V9a7 7 0 0 0-7-7H9a6 6 0 0 0-6 6v6Z"
-                          />
-                          <path
-                            strokeLinecap="round"
-                            d="M3 14v1a2 2 0 0 0 2 2h12"
-                          />
-                          <path strokeLinecap="round" d="M10 7v4" />
-                        </svg>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        setConfirmAction({
-                          kind: "promote",
-                          userId: user.id,
-                          label: `Promote ${user.email} to admin access?`,
-                        })
-                      }
-                      title="Promote to Admin"
-                      aria-label="Promote to Admin"
-                      className="rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60"
-                    >
-                      {/* Avengers-style "A" */}
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        className="h-4 w-4"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth={2}
-                      >
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M12 3 L5 20 M12 3 L19 20"
-                        />
-                        <path strokeLinecap="round" d="M7.5 14.5 h9" />
-                        <path
-                          strokeLinecap="round"
-                          strokeLinejoin="round"
-                          d="M12 3 L10 7 L14 7 Z"
-                        />
-                      </svg>
-                    </button>
-                    <span
-                      className="w-px self-stretch bg-zinc-700 mx-1"
-                      aria-hidden="true"
-                    />
-                    {user.isBlocked ? (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          setConfirmAction({
-                            kind: "unblock",
-                            userId: user.id,
-                            email: user.email,
-                            label: `Unblock ${user.email}?`,
-                          })
-                        }
-                        aria-label="Unblock"
-                        title="Unblock"
-                        className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-2.5 py-1.5 disabled:opacity-60"
-                      >
-                        🛡
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        disabled={busy}
-                        onClick={() =>
-                          setConfirmAction({
-                            kind: "block",
-                            userId: user.id,
-                            email: user.email,
-                            label: `Block ${user.email}?`,
-                          })
-                        }
-                        aria-label="Block"
-                        title="Block"
-                        className="text-xs rounded-lg border border-amber-600 text-amber-300 hover:bg-amber-950/40 px-2.5 py-1.5 disabled:opacity-60"
-                      >
-                        🛡
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      disabled={busy}
-                      onClick={() =>
-                        setConfirmAction({
-                          kind: "remove",
-                          userId: user.id,
-                          email: user.email,
-                          label: `Permanently remove ${user.email}? This will delete all posts and comments.`,
-                        })
-                      }
-                      aria-label="Remove"
-                      title="Remove"
-                      className="text-xs rounded-lg border border-red-700 text-red-300 hover:bg-red-950/60 px-2.5 py-1.5 disabled:opacity-60"
-                    >
-                      x
-                    </button>
-                  </div>
-                </div>
-              ))
             )}
           </div>
         </div>
@@ -1133,7 +1649,7 @@ export default function AdminUsersManager({
       {editingUser ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
-            <h3 className="text-lg font-semibold">Edit User Name</h3>
+            <h3 className="text-lg font-semibold">Edit User Details</h3>
             <p className="text-sm text-zinc-400">{editingUser.email}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <input
@@ -1151,6 +1667,13 @@ export default function AdminUsersManager({
                 className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
               />
             </div>
+            <input
+              type="text"
+              value={editContactPhone}
+              onChange={(event) => setEditContactPhone(event.target.value)}
+              placeholder="Contact phone"
+              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+            />
             <div className="flex justify-end gap-3">
               <button
                 type="button"
@@ -1171,6 +1694,93 @@ export default function AdminUsersManager({
           </div>
         </div>
       ) : null}
+
+      {assignmentUser ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
+          <div className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
+            <div>
+              <h3 className="text-lg font-semibold">Edit Coach Assignment</h3>
+              <p className="text-sm text-zinc-400 mt-0.5">{assignmentUser.email}</p>
+            </div>
+
+            {assignmentError ? (
+              <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
+                {assignmentError}
+              </div>
+            ) : null}
+
+            {assignmentLoading ? (
+              <p className="text-sm text-zinc-500">Loading age groups from Assignr…</p>
+            ) : (
+              <div className="space-y-3">
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Age Group</label>
+                  <select
+                    value={assignmentAgeGroup}
+                    onChange={(e) => {
+                      setAssignmentAgeGroup(e.target.value);
+                      setAssignmentTeam("");
+                    }}
+                    disabled={assignmentBusy}
+                    className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm disabled:opacity-60"
+                  >
+                    <option value="">— None —</option>
+                    {assignmentAgeGroups.map((ag) => (
+                      <option key={ag} value={ag}>{ag}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-xs text-zinc-400 mb-1">Assigned Team</label>
+                  {assignmentAgeGroup && (assignmentTeamsByAgeGroup[assignmentAgeGroup]?.length ?? 0) > 0 ? (
+                    <select
+                      value={assignmentTeam}
+                      onChange={(e) => setAssignmentTeam(e.target.value)}
+                      disabled={assignmentBusy}
+                      className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm disabled:opacity-60"
+                    >
+                      <option value="">— None —</option>
+                      {(assignmentTeamsByAgeGroup[assignmentAgeGroup] ?? []).map((team) => (
+                        <option key={team} value={team}>{team}</option>
+                      ))}
+                    </select>
+                  ) : (
+                    <input
+                      type="text"
+                      value={assignmentTeam}
+                      onChange={(e) => setAssignmentTeam(e.target.value)}
+                      placeholder="Team name"
+                      disabled={assignmentBusy}
+                      className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm disabled:opacity-60"
+                    />
+                  )}
+                </div>
+              </div>
+            )}
+
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={closeAssignment}
+                disabled={assignmentBusy}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={assignmentBusy || assignmentLoading}
+                onClick={() => void saveAssignment()}
+                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                {assignmentBusy ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
     </section>
   );
 }

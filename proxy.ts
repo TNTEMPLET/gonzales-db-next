@@ -2,7 +2,7 @@ import { NextResponse, type NextRequest } from "next/server";
 
 const REPORTS_HOST = "reports.apbaseball.com";
 
-export function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const host = (request.headers.get("host") || "").toLowerCase();
 
   if (host === REPORTS_HOST && request.nextUrl.pathname === "/") {

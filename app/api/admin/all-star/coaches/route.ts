@@ -1,0 +1,51 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import prisma from "@/lib/prisma";
+import { isMasterDeployment } from "@/lib/siteConfig";
+
+function forbidIfNotMaster() {
+  if (!isMasterDeployment()) {
+    return NextResponse.json(
+      { error: "All-Star Vault is only managed from master deployment" },
+      { status: 403 },
+    );
+  }
+  return null;
+}
+
+export async function GET(request: NextRequest) {
+  const auth = await ensureAllStarVaultAdmin(request);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+  const forbid = forbidIfNotMaster();
+  if (forbid) return forbid;
+
+  const cycleId = request.nextUrl.searchParams.get("cycleId");
+  if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
+
+  const cycle = await prisma.allStarBallotCycle.findUnique({
+    where: { id: cycleId },
+    select: { organizationId: true, ageGroup: true },
+  });
+  if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
+
+  const coaches = await prisma.registeredUser.findMany({
+    where: {
+      organizationId: cycle.organizationId,
+      isCoach: true,
+      isBlocked: false,
+      ageGroup: { equals: cycle.ageGroup, mode: "insensitive" },
+    },
+    select: {
+      id: true,
+      email: true,
+      name: true,
+      firstName: true,
+      lastName: true,
+      assignedTeam: true,
+    },
+    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { email: "asc" }],
+  });
+
+  return NextResponse.json({ data: coaches });
+}

@@ -28,6 +28,28 @@ enum AdminRole {
   PARK_DIRECTOR
 }
 
+enum AllStarCycleStatus {
+  DRAFT
+  PUBLISHED
+  CLOSED
+  ARCHIVED
+}
+
+enum AllStarAccessMode {
+  INVITE_LIST
+  AGE_GROUP_COACHES
+}
+
+enum AllStarVaultRole {
+  FULL_ACCESS
+  VIEW_ONLY
+}
+
+enum TeamCoachRole {
+  HEAD_COACH
+  ASSISTANT_COACH
+}
+
 enum DugoutMediaType {
   IMAGE
   GIF
@@ -74,6 +96,13 @@ model AdminUser {
   sessions     AdminSession[]
   auditLogs    AdminAuditLog[] @relation("AdminActorLogs")
   enteredScores GameScore[]
+  coachImportBatches CoachImportBatch[]
+  allStarBallotCycles AllStarBallotCycle[] @relation("AllStarCycleCreatedBy")
+  allStarHeadCoachAssignments AllStarHeadCoachAssignment[] @relation("AllStarHeadCoachAdmin")
+  allStarInvites AllStarInvite[] @relation("AllStarInviteCreatedByAdmin")
+  allStarVaultAccessGrants AllStarVaultAccess[] @relation("AllStarVaultAccessGrantedByAdmin")
+  teamsCreated Team[]
+  teamPlayerImportBatches TeamPlayerImportBatch[]
 }
 
 model RegisteredUser {
@@ -85,6 +114,9 @@ model RegisteredUser {
   lastName       String?
   isCoach        Boolean  @default(false)
   isBlocked      Boolean  @default(false)
+  contactPhone   String?
+  ageGroup       String?
+  assignedTeam   String?
   googleSub      String?  @unique
   passwordHash   String?
   avatarUrl      String?
@@ -97,6 +129,13 @@ model RegisteredUser {
   dugoutLikes  DugoutPostLike[]
   dugoutNotificationCursor DugoutNotificationCursor?
   dugoutNotificationReads DugoutNotificationRead[]
+  allStarVoteDrafts AllStarVoteDraft[]
+  allStarVoteSubmissions AllStarVoteSubmission[]
+  allStarHeadCoachAssignments AllStarHeadCoachAssignment[] @relation("AllStarHeadCoachRegisteredUser")
+  allStarInvites AllStarInvite[] @relation("AllStarInviteRegisteredUser")
+  allStarVaultAccess AllStarVaultAccess[]
+  teamCoachAssignments TeamCoachAssignment[]
+  teamGameNotes TeamGameNote[] @relation("TeamGameNoteAuthor")
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -254,4 +293,292 @@ model GameScore {
   @@unique([organizationId, gameExternalId])
   @@index([organizationId, ageGroup])
   @@index([organizationId, gameDate])
+}
+
+model CoachImportBatch {
+  id             String   @id @default(cuid())
+  organizationId String
+  createdByAdminId String?
+  createdByEmail String?
+  createdCount   Int      @default(0)
+  updatedCount   Int      @default(0)
+  processedCount Int      @default(0)
+  skippedCount   Int      @default(0)
+  undoPayload    Json
+  undoneAt       DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  createdByAdmin AdminUser? @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, undoneAt, createdAt])
+}
+
+model AllStarBallotCycle {
+  id            String            @id @default(cuid())
+  organizationId String
+  seasonYear    Int
+  ageGroup      String
+  title         String?
+  status        AllStarCycleStatus @default(DRAFT)
+  accessMode    AllStarAccessMode  @default(AGE_GROUP_COACHES)
+  publishedAt   DateTime?
+  closedAt      DateTime?
+  createdByAdminId String?
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  createdByAdmin      AdminUser?                  @relation("AllStarCycleCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  candidates          AllStarCandidate[]
+  headCoachAssignments AllStarHeadCoachAssignment[]
+  voteDrafts          AllStarVoteDraft[]
+  voteSubmissions     AllStarVoteSubmission[]
+  invites             AllStarInvite[]
+
+  @@unique([organizationId, seasonYear, ageGroup])
+  @@index([organizationId, status, ageGroup])
+}
+
+model AllStarCandidate {
+  id                String   @id @default(cuid())
+  ballotCycleId     String
+  organizationId    String
+  ageGroup          String
+  playerFullName    String
+  team              String
+  jerseyNumber      String
+  showcaseBibNumber String?
+  isActive          Boolean  @default(true)
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  ballotCycle AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
+  voteItems   AllStarVoteItem[]
+
+  @@index([ballotCycleId, team])
+  @@index([organizationId, ageGroup, playerFullName])
+}
+
+model AllStarHeadCoachAssignment {
+  id                String   @id @default(cuid())
+  ballotCycleId     String
+  organizationId    String
+  ageGroup          String
+  registeredUserId  String?
+  adminUserId       String?
+  coachName         String?
+  coachEmail        String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  ballotCycle    AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
+  registeredUser RegisteredUser?    @relation("AllStarHeadCoachRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
+  adminUser      AdminUser?         @relation("AllStarHeadCoachAdmin", fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([ballotCycleId])
+  @@index([organizationId, ageGroup])
+}
+
+model AllStarVoteDraft {
+  id               String   @id @default(cuid())
+  ballotCycleId    String
+  coachUserId      String
+  organizationId   String
+  ageGroup         String
+  ratingsPayload   Json
+  updatedAt        DateTime @updatedAt
+  createdAt        DateTime @default(now())
+
+  ballotCycle AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
+  coachUser   RegisteredUser      @relation(fields: [coachUserId], references: [id], onDelete: Cascade)
+
+  @@unique([ballotCycleId, coachUserId])
+  @@index([organizationId, ageGroup])
+}
+
+model AllStarVoteSubmission {
+  id               String   @id @default(cuid())
+  ballotCycleId    String
+  coachUserId      String
+  organizationId   String
+  ageGroup         String
+  submittedAt      DateTime @default(now())
+  createdAt        DateTime @default(now())
+
+  ballotCycle AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
+  coachUser   RegisteredUser      @relation(fields: [coachUserId], references: [id], onDelete: Cascade)
+  voteItems   AllStarVoteItem[]
+
+  @@unique([ballotCycleId, coachUserId])
+  @@index([organizationId, ageGroup, submittedAt])
+}
+
+model AllStarVoteItem {
+  id                String   @id @default(cuid())
+  voteSubmissionId  String
+  candidateId       String
+  rating            Int
+  createdAt         DateTime @default(now())
+
+  voteSubmission AllStarVoteSubmission @relation(fields: [voteSubmissionId], references: [id], onDelete: Cascade)
+  candidate      AllStarCandidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([voteSubmissionId, candidateId])
+  @@index([candidateId, rating])
+}
+
+model AllStarInvite {
+  id               String   @id @default(cuid())
+  ballotCycleId    String
+  tokenHash        String   @unique
+  organizationId   String
+  ageGroup         String
+  invitedEmail     String
+  invitedUserId    String?
+  createdByAdminId String?
+  revokedAt        DateTime?
+  openedAt         DateTime?
+  expiresAt        DateTime?
+  createdAt        DateTime @default(now())
+
+  ballotCycle  AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
+  invitedUser  RegisteredUser?    @relation("AllStarInviteRegisteredUser", fields: [invitedUserId], references: [id], onDelete: SetNull)
+  createdByAdmin AdminUser?       @relation("AllStarInviteCreatedByAdmin", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([ballotCycleId, invitedEmail])
+  @@index([organizationId, ageGroup])
+}
+
+model AllStarVaultAccess {
+  id               String   @id @default(cuid())
+  registeredUserId String
+  organizationId   String
+  role             AllStarVaultRole
+  grantedByAdminId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  registeredUser RegisteredUser @relation(fields: [registeredUserId], references: [id], onDelete: Cascade)
+  grantedByAdmin AdminUser?     @relation("AllStarVaultAccessGrantedByAdmin", fields: [grantedByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([registeredUserId, organizationId])
+  @@index([organizationId, role, updatedAt])
+}
+
+model Team {
+  id                String   @id @default(cuid())
+  organizationId    String
+  seasonYear        Int
+  ageGroup          String
+  teamName          String
+  contactNotes      String?
+  practicePlan      String?
+  createdByAdminId  String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  createdByAdmin    AdminUser?             @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  coachAssignments  TeamCoachAssignment[]
+  players           TeamPlayer[]
+  gameNotes         TeamGameNote[]
+
+  @@unique([organizationId, seasonYear, ageGroup, teamName])
+  @@index([organizationId, seasonYear, ageGroup])
+}
+
+model TeamCoachAssignment {
+  id               String        @id @default(cuid())
+  teamId           String
+  registeredUserId String
+  role             TeamCoachRole @default(ASSISTANT_COACH)
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  team           Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  registeredUser RegisteredUser @relation(fields: [registeredUserId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, registeredUserId])
+  @@index([registeredUserId, role])
+}
+
+model TeamPlayer {
+  id            String   @id @default(cuid())
+  teamId         String
+  firstName      String?
+  lastName       String?
+  fullName       String
+  contactPhone   String?
+  gender         String?
+  birthDate      DateTime?
+  guardianFirstName String?
+  guardianLastName  String?
+  guardianEmail     String?
+  guardianPhone     String?
+  paymentStatus     String?
+  birthCertificateStatus String?
+  registrationOrderNo    String?
+  registrationOrderDate  DateTime?
+  jerseySize            String?
+  medicalConditionsSummary String?
+  medicalConditionsDetails String?
+  medicalTreatmentAuthorized Boolean?
+  liabilityWaiverAccepted     Boolean?
+  codeOfConductAccepted       Boolean?
+  refundPolicyAccepted        Boolean?
+  playedPriorSeason           Boolean?
+  priorSeasonTeamInfo         String?
+  streetAddress               String?
+  unit                        String?
+  city                        String?
+  state                       String?
+  postalCode                  String?
+  rosterStatus   String?
+  jerseyNumber   String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@index([teamId, fullName])
+}
+
+model TeamGameNote {
+  id               String   @id @default(cuid())
+  teamId           String
+  gameExternalId   String
+  note             String?
+  availabilityNote String?
+  authoredByUserId String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  team       Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  authoredBy RegisteredUser @relation("TeamGameNoteAuthor", fields: [authoredByUserId], references: [id], onDelete: Cascade)
+
+  @@unique([teamId, gameExternalId])
+  @@index([authoredByUserId, updatedAt])
+}
+
+model TeamPlayerImportBatch {
+  id             String   @id @default(cuid())
+  organizationId String
+  createdByAdminId String?
+  status         String   @default("RUNNING")
+  totalRows      Int      @default(0)
+  processedRows  Int      @default(0)
+  createdTeams   Int      @default(0)
+  createdPlayers Int      @default(0)
+  updatedPlayers Int      @default(0)
+  skippedRows    Int      @default(0)
+  undoPayload    Json
+  completedAt    DateTime?
+  undoneAt       DateTime?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  createdByAdmin AdminUser? @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status, createdAt])
 }

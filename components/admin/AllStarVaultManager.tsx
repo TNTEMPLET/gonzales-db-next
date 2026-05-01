@@ -1,0 +1,1134 @@
+"use client";
+
+import { useEffect, useState } from "react";
+
+type Cycle = {
+  id: string;
+  organizationId: "gonzales" | "ascension";
+  seasonYear: number;
+  ageGroup: string;
+  title: string | null;
+  status: "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
+  accessMode: "INVITE_LIST" | "AGE_GROUP_COACHES";
+  publishedAt: string | null;
+  closedAt: string | null;
+};
+
+type Candidate = {
+  id: string;
+  playerFullName: string;
+  team: string;
+  jerseyNumber: string;
+  showcaseBibNumber: string | null;
+};
+
+type CycleCoachOption = {
+  id: string;
+  email: string;
+  name: string | null;
+  firstName: string | null;
+  lastName: string | null;
+  assignedTeam: string | null;
+};
+
+type VaultAccess = {
+  id: string;
+  organizationId: "gonzales" | "ascension";
+  role: "FULL_ACCESS" | "VIEW_ONLY";
+  isImplicit?: boolean;
+  registeredUser: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    name: string | null;
+  };
+};
+
+type UserOption = {
+  id: string;
+  email: string;
+  name: string;
+};
+
+type SubmittedBallot = {
+  id: string;
+  coachUserId: string;
+  submittedAt: string;
+  voteItemCount: number;
+  coachUser: {
+    id: string;
+    email: string;
+    firstName: string | null;
+    lastName: string | null;
+    name: string | null;
+  };
+};
+
+type VoteSummaryRow = {
+  candidateId: string;
+  playerFullName: string;
+  team: string;
+  jerseyNumber: string;
+  showcaseBibNumber: string | null;
+  voteCount: number;
+  averageRating: number;
+};
+
+type AllStarVaultManagerProps = {
+  initialOrg: "gonzales" | "ascension";
+};
+
+function formatOrganizationLabel(org: "gonzales" | "ascension") {
+  return org === "gonzales" ? "Gonzales DYB" : "Ascension LLB";
+}
+
+export default function AllStarVaultManager({
+  initialOrg,
+}: AllStarVaultManagerProps) {
+  const [org, setOrg] = useState<"gonzales" | "ascension">(initialOrg);
+  const [seasonYear, setSeasonYear] = useState(new Date().getFullYear());
+  const [cycles, setCycles] = useState<Cycle[]>([]);
+  const [selectedCycleId, setSelectedCycleId] = useState("");
+  const [candidates, setCandidates] = useState<Candidate[]>([]);
+  const [headCoaches, setHeadCoaches] = useState<Array<{ id: string; coachName: string | null; coachEmail: string | null }>>([]);
+  const [cycleCoachOptions, setCycleCoachOptions] = useState<CycleCoachOption[]>([]);
+  const [vaultAccess, setVaultAccess] = useState<VaultAccess[]>([]);
+  const [submittedBallots, setSubmittedBallots] = useState<SubmittedBallot[]>([]);
+  const [voteSummary, setVoteSummary] = useState<VoteSummaryRow[]>([]);
+  const [voteSummarySubmissionCount, setVoteSummarySubmissionCount] = useState(0);
+  const [userOptions, setUserOptions] = useState<UserOption[]>([]);
+  const [inviteLinks, setInviteLinks] = useState<Array<{ invitedEmail: string; link: string }>>([]);
+  const [canDeleteCycles, setCanDeleteCycles] = useState(false);
+
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+
+  const [newCycleAgeGroup, setNewCycleAgeGroup] = useState("12U LLB");
+  const [ageGroupOptions, setAgeGroupOptions] = useState<string[]>([]);
+  const [newCycleTitle, setNewCycleTitle] = useState("");
+  const [newCycleAccessMode, setNewCycleAccessMode] = useState<"INVITE_LIST" | "AGE_GROUP_COACHES">("AGE_GROUP_COACHES");
+  const [cycleOpenAt, setCycleOpenAt] = useState("");
+  const [cycleCloseAt, setCycleCloseAt] = useState("");
+
+  const [candidateFile, setCandidateFile] = useState<File | null>(null);
+  const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
+  const [candidateName, setCandidateName] = useState("");
+  const [candidateTeam, setCandidateTeam] = useState("");
+  const [candidateJerseyNumber, setCandidateJerseyNumber] = useState("");
+  const [selectedCoachUserId, setSelectedCoachUserId] = useState("");
+  const [vaultUserId, setVaultUserId] = useState("");
+  const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "VIEW_ONLY">("VIEW_ONLY");
+  const [inviteEmails, setInviteEmails] = useState("");
+
+  useEffect(() => {
+    setOrg(initialOrg);
+    setSelectedCycleId("");
+    setError("");
+    setNotice("");
+  }, [initialOrg]);
+
+  /* eslint-disable react-hooks/exhaustive-deps */
+  useEffect(() => {
+    void loadCycles();
+    void loadAgeGroups();
+    void loadVaultAccess();
+    void loadUserOptions();
+  }, [org, seasonYear]);
+
+  useEffect(() => {
+    if (selectedCycleId) {
+      void loadCycleDetails(selectedCycleId);
+      void loadCycleCoaches(selectedCycleId);
+      void loadSubmittedBallots(selectedCycleId);
+      void loadVoteSummary(selectedCycleId);
+    } else {
+      setCandidates([]);
+      setHeadCoaches([]);
+      setCycleCoachOptions([]);
+      setSubmittedBallots([]);
+      setVoteSummary([]);
+      setVoteSummarySubmissionCount(0);
+      setSelectedCoachUserId("");
+      setCycleOpenAt("");
+      setCycleCloseAt("");
+    }
+  }, [selectedCycleId]);
+
+  useEffect(() => {
+    if (!selectedCycleId) return;
+    const cycle = cycles.find((entry) => entry.id === selectedCycleId);
+    setCycleOpenAt(toDateTimeLocalValue(cycle?.publishedAt || null));
+    setCycleCloseAt(toDateTimeLocalValue(cycle?.closedAt || null));
+  }, [cycles, selectedCycleId]);
+
+  useEffect(() => {
+    if (!selectedCycleId) return;
+    const timer = window.setInterval(() => {
+      void loadVoteSummary(selectedCycleId);
+    }, 15000);
+    return () => window.clearInterval(timer);
+  }, [selectedCycleId]);
+  /* eslint-enable react-hooks/exhaustive-deps */
+
+  async function safeJson(response: Response) {
+    const text = await response.text();
+    if (!text.trim()) return {};
+    try {
+      return JSON.parse(text) as Record<string, unknown>;
+    } catch {
+      throw new Error(
+        `Request failed (${response.status}): response was not valid JSON.`,
+      );
+    }
+  }
+
+  async function loadCycles() {
+    try {
+      const response = await fetch(`/api/admin/all-star/cycles?org=${org}&seasonYear=${seasonYear}`, { cache: "no-store" });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String(json.error || "Failed to load cycles"));
+      const data = Array.isArray(json.data) ? (json.data as Cycle[]) : [];
+      setCycles(data);
+      const canDelete =
+        typeof json.permissions === "object" &&
+        json.permissions !== null &&
+        (json.permissions as { canDeleteCycles?: unknown }).canDeleteCycles ===
+          true;
+      setCanDeleteCycles(canDelete);
+      if (!selectedCycleId && data[0]?.id) {
+        setSelectedCycleId(data[0].id);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load cycles");
+    }
+  }
+
+  async function loadAgeGroups() {
+    try {
+      const response = await fetch(`/api/admin/age-groups?org=${org}`, {
+        cache: "no-store",
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to load age groups"));
+      }
+      const options = Array.isArray(json.ageGroups)
+        ? (json.ageGroups as unknown[])
+            .filter(
+              (value): value is string =>
+                typeof value === "string" && value.trim().length > 0,
+            )
+            .map((value) => value.trim())
+        : [];
+      setAgeGroupOptions(options);
+      if (!newCycleAgeGroup || !options.includes(newCycleAgeGroup)) {
+        setNewCycleAgeGroup(options[0] || "");
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load age groups");
+      setAgeGroupOptions([]);
+    }
+  }
+
+  async function loadVaultAccess() {
+    try {
+      const response = await fetch(`/api/admin/all-star/vault-access?org=${org}`, {
+        cache: "no-store",
+      });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String(json.error || "Failed to load vault access"));
+      setVaultAccess(Array.isArray(json.data) ? (json.data as VaultAccess[]) : []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load vault access");
+      setVaultAccess([]);
+    }
+  }
+
+  async function loadUserOptions() {
+    const response = await fetch("/api/admin/all-star/user-options", {
+      cache: "no-store",
+    });
+    const json = await safeJson(response);
+    if (!response.ok) {
+      throw new Error(String(json.error || "Failed to load user options"));
+    }
+    const combined = Array.isArray(json.data) ? json.data : [];
+    const unique = new Map<string, UserOption>();
+    for (const user of combined) {
+      if (unique.has(user.id)) continue;
+      const name =
+        (user.firstName || user.lastName
+          ? [user.firstName, user.lastName].filter(Boolean).join(" ")
+          : user.name) || user.email;
+      unique.set(user.id, { id: user.id, email: user.email, name });
+    }
+    setUserOptions(Array.from(unique.values()).sort((a, b) => a.name.localeCompare(b.name)));
+  }
+
+  async function loadCycleDetails(cycleId: string) {
+    const [candidatesRes, coachesRes] = await Promise.all([
+      fetch(`/api/admin/all-star/candidates?cycleId=${cycleId}`, { cache: "no-store" }),
+      fetch(`/api/admin/all-star/head-coaches?cycleId=${cycleId}`, { cache: "no-store" }),
+    ]);
+    const candidatesJson = await safeJson(candidatesRes);
+    const coachesJson = await safeJson(coachesRes);
+    if (!candidatesRes.ok || !coachesRes.ok) throw new Error("Failed to load cycle details");
+    setCandidates(Array.isArray(candidatesJson.data) ? (candidatesJson.data as Candidate[]) : []);
+    setHeadCoaches(
+      Array.isArray(coachesJson.data)
+        ? (coachesJson.data as Array<{ id: string; coachName: string | null; coachEmail: string | null }>)
+        : [],
+    );
+  }
+
+  async function loadCycleCoaches(cycleId: string) {
+    const response = await fetch(
+      `/api/admin/all-star/coaches?cycleId=${cycleId}`,
+      { cache: "no-store" },
+    );
+    const json = await safeJson(response);
+    if (!response.ok) {
+      throw new Error(String(json.error || "Failed to load coaches"));
+    }
+    const coaches = Array.isArray(json.data)
+      ? (json.data as CycleCoachOption[])
+      : [];
+    setCycleCoachOptions(coaches);
+    setSelectedCoachUserId((current) =>
+      current && coaches.some((coach) => coach.id === current)
+        ? current
+        : coaches[0]?.id || "",
+    );
+  }
+
+  async function loadSubmittedBallots(cycleId: string) {
+    const response = await fetch(
+      `/api/admin/all-star/submitted-ballots?cycleId=${cycleId}`,
+      { cache: "no-store" },
+    );
+    const json = await safeJson(response);
+    if (!response.ok) {
+      throw new Error(String(json.error || "Failed to load submitted ballots"));
+    }
+    setSubmittedBallots(
+      Array.isArray(json.data) ? (json.data as SubmittedBallot[]) : [],
+    );
+  }
+
+  async function loadVoteSummary(cycleId: string) {
+    const response = await fetch(
+      `/api/admin/all-star/votes-summary?cycleId=${cycleId}`,
+      { cache: "no-store" },
+    );
+    const json = await safeJson(response);
+    if (!response.ok) {
+      throw new Error(String(json.error || "Failed to load vote summary"));
+    }
+    setVoteSummary(Array.isArray(json.data) ? (json.data as VoteSummaryRow[]) : []);
+    const count =
+      typeof json.meta === "object" &&
+      json.meta !== null &&
+      typeof (json.meta as { submissionCount?: unknown }).submissionCount ===
+        "number"
+        ? (json.meta as { submissionCount: number }).submissionCount
+        : 0;
+    setVoteSummarySubmissionCount(count);
+  }
+
+  async function createCycle() {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/cycles", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: org,
+          seasonYear,
+          ageGroup: newCycleAgeGroup,
+          title: newCycleTitle,
+          accessMode: newCycleAccessMode,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Failed to create cycle");
+      setNotice("Ballot cycle saved.");
+      await loadCycles();
+      setSelectedCycleId(json.cycle.id);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create cycle");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateCycleStatus(status: Cycle["status"]) {
+    if (!selectedCycleId) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/cycles", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cycleId: selectedCycleId, status }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Failed to update cycle");
+      setNotice(`Cycle moved to ${status}.`);
+      await loadCycles();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update cycle");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveCycleOpenWindow() {
+    if (!selectedCycleId) return;
+    const publishedAt = cycleOpenAt ? new Date(cycleOpenAt).toISOString() : null;
+    const closedAt = cycleCloseAt ? new Date(cycleCloseAt).toISOString() : null;
+    if (!publishedAt || !closedAt) {
+      setError("Open and close date/time are required.");
+      return;
+    }
+    if (new Date(closedAt) <= new Date(publishedAt)) {
+      setError("Close date/time must be later than open date/time.");
+      return;
+    }
+
+    await saveCycleOpenWindowByIso(publishedAt, closedAt, "Cycle open window saved.");
+  }
+
+  async function setOpenNowForHours(hours: number) {
+    if (!selectedCycleId) return;
+    const now = new Date();
+    const close = new Date(now.getTime() + hours * 60 * 60 * 1000);
+    const publishedAtIso = now.toISOString();
+    const closedAtIso = close.toISOString();
+
+    setCycleOpenAt(toDateTimeLocalValue(publishedAtIso));
+    setCycleCloseAt(toDateTimeLocalValue(closedAtIso));
+    await saveCycleOpenWindowByIso(
+      publishedAtIso,
+      closedAtIso,
+      `Cycle opened for ${hours} hour${hours === 1 ? "" : "s"}.`,
+    );
+  }
+
+  async function saveCycleOpenWindowByIso(
+    publishedAt: string,
+    closedAt: string,
+    successNotice: string,
+  ) {
+    if (!selectedCycleId) return;
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/cycles", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cycleId: selectedCycleId,
+          status: "PUBLISHED",
+          publishedAt,
+          closedAt,
+        }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String(json.error || "Failed to save cycle window"));
+      setNotice(successNotice);
+      await loadCycles();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save cycle window");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCycle() {
+    if (!selectedCycleId || !canDeleteCycles) return;
+    if (!window.confirm("Delete this cycle and all related votes/candidates?")) {
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/cycles", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cycleId: selectedCycleId }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to delete cycle"));
+      }
+      setNotice("Cycle deleted.");
+      setSelectedCycleId("");
+      setCandidates([]);
+      setHeadCoaches([]);
+      await loadCycles();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete cycle");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importCandidates() {
+    if (!selectedCycleId || !candidateFile) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const form = new FormData();
+      form.append("cycleId", selectedCycleId);
+      form.append("file", candidateFile);
+      const response = await fetch("/api/admin/all-star/candidates/import", { method: "POST", body: form });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Failed to import candidates");
+      setNotice(`Candidates imported: ${json.created} created, ${json.skipped} skipped.`);
+      setCandidateFile(null);
+      await loadCycleDetails(selectedCycleId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to import candidates");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addCandidate() {
+    if (!selectedCycleId) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/candidates", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cycleId: selectedCycleId,
+          playerFullName: candidateName,
+          team: candidateTeam,
+          jerseyNumber: candidateJerseyNumber,
+        }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to add candidate"));
+      }
+      setNotice("Candidate added.");
+      setCandidateName("");
+      setCandidateTeam("");
+      setCandidateJerseyNumber("");
+      setShowAddCandidateModal(false);
+      await loadCycleDetails(selectedCycleId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to add candidate");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeCandidate(candidateId: string) {
+    if (!selectedCycleId) return;
+    if (!window.confirm("Remove this candidate? Bib numbers will be re-numbered.")) {
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/candidates", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateId }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to remove candidate"));
+      }
+      setNotice("Candidate removed.");
+      await loadCycleDetails(selectedCycleId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to remove candidate");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function addHeadCoach() {
+    if (!selectedCycleId || !selectedCoachUserId) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/head-coaches", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cycleId: selectedCycleId,
+          registeredUserId: selectedCoachUserId,
+        }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String(json.error || "Failed to add coach"));
+      setNotice("Coach assignment saved.");
+      await loadCycleDetails(selectedCycleId);
+      await loadCycleCoaches(selectedCycleId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to add coach");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeHeadCoach(assignmentId: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/head-coaches", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ assignmentId }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Failed to remove head coach");
+      setNotice("Head coach assignment removed.");
+      if (selectedCycleId) await loadCycleDetails(selectedCycleId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to remove head coach");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteSubmittedBallot(submissionId: string) {
+    if (!selectedCycleId) return;
+    if (
+      !window.confirm(
+        "Delete this submitted ballot? The coach will be able to submit again.",
+      )
+    ) {
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/submitted-ballots", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ submissionId }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to delete submitted ballot"));
+      }
+      setNotice("Submitted ballot deleted.");
+      await loadSubmittedBallots(selectedCycleId);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to delete submitted ballot",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refreshSubmittedBallots() {
+    if (!selectedCycleId) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await loadSubmittedBallots(selectedCycleId);
+      setNotice("Submitted ballots refreshed.");
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to refresh submitted ballots",
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function refreshVoteSummary() {
+    if (!selectedCycleId) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await loadVoteSummary(selectedCycleId);
+      setNotice("Votes summary refreshed.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to refresh votes summary");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function toDateTimeLocalValue(value: string | null) {
+    if (!value) return "";
+    const date = new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const hour = String(date.getHours()).padStart(2, "0");
+    const minute = String(date.getMinutes()).padStart(2, "0");
+    return `${year}-${month}-${day}T${hour}:${minute}`;
+  }
+
+  async function grantVaultAccess() {
+    if (!vaultUserId) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/vault-access", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          registeredUserId: vaultUserId,
+          organizationId: org,
+          role: vaultRole,
+        }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Failed to grant vault access");
+      setNotice("Vault access updated.");
+      setVaultUserId("");
+      await loadVaultAccess();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to grant vault access");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeVaultAccess(registeredUserId: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/vault-access", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ registeredUserId, organizationId: org }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Failed to remove vault access");
+      setNotice("Vault access removed.");
+      await loadVaultAccess();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to remove vault access");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function createInvites() {
+    if (!selectedCycleId) return;
+    const emails = inviteEmails
+      .split(/[,\n]/)
+      .map((item) => item.trim())
+      .filter(Boolean);
+    if (!emails.length) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/invites", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cycleId: selectedCycleId, emails }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Failed to create invites");
+      setNotice("Invite links generated.");
+      setInviteLinks(json.invites || []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to create invites");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className="space-y-6">
+      {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
+      {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <h2 className="text-lg font-semibold">Cycle Management</h2>
+        <div className="grid md:grid-cols-4 gap-3">
+          <select value={org} onChange={(e) => setOrg(e.target.value as "gonzales" | "ascension")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm">
+            <option value="gonzales">Gonzales DYB</option>
+            <option value="ascension">Ascension LLB</option>
+          </select>
+          <input type="number" value={seasonYear} onChange={(e) => setSeasonYear(Number(e.target.value))} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm" />
+          <select
+            value={newCycleAgeGroup}
+            onChange={(e) => setNewCycleAgeGroup(e.target.value)}
+            className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+          >
+            {ageGroupOptions.length === 0 ? (
+              <option value="">No age groups available</option>
+            ) : (
+              ageGroupOptions.map((ageGroup) => (
+                <option key={ageGroup} value={ageGroup}>
+                  {ageGroup}
+                </option>
+              ))
+            )}
+          </select>
+          <input value={newCycleTitle} onChange={(e) => setNewCycleTitle(e.target.value)} placeholder="Cycle title (optional)" className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm" />
+        </div>
+        <div className="flex flex-wrap gap-3">
+          <select value={newCycleAccessMode} onChange={(e) => setNewCycleAccessMode(e.target.value as "INVITE_LIST" | "AGE_GROUP_COACHES")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm">
+            <option value="AGE_GROUP_COACHES">Age-group coaches only</option>
+            <option value="INVITE_LIST">Invite-list only</option>
+          </select>
+          <button type="button" disabled={busy || !newCycleAgeGroup} onClick={() => void createCycle()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save Cycle</button>
+          <select value={selectedCycleId} onChange={(e) => setSelectedCycleId(e.target.value)} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-60">
+            <option value="">Select cycle…</option>
+            {cycles.map((cycle) => (
+              <option key={cycle.id} value={cycle.id}>
+                {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {cycle.ageGroup} | {cycle.status}
+              </option>
+            ))}
+          </select>
+          <button type="button" disabled={busy || !selectedCycleId} onClick={() => void updateCycleStatus("PUBLISHED")} className="rounded-lg border border-emerald-700 text-emerald-300 px-3 py-2 text-sm disabled:opacity-60">Publish</button>
+          <button type="button" disabled={busy || !selectedCycleId} onClick={() => void updateCycleStatus("CLOSED")} className="rounded-lg border border-amber-700 text-amber-300 px-3 py-2 text-sm disabled:opacity-60">Close</button>
+          <button type="button" disabled={busy || !selectedCycleId || !canDeleteCycles} onClick={() => void deleteCycle()} className="rounded-lg border border-red-700 text-red-300 px-3 py-2 text-sm disabled:opacity-60">Delete Cycle</button>
+        </div>
+        <div className="grid md:grid-cols-3 gap-3">
+          <input
+            type="datetime-local"
+            value={cycleOpenAt}
+            onChange={(e) => setCycleOpenAt(e.target.value)}
+            className="rounded-lg bg-zinc-900 border-2 border-zinc-600 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500 scheme-dark"
+          />
+          <input
+            type="datetime-local"
+            value={cycleCloseAt}
+            onChange={(e) => setCycleCloseAt(e.target.value)}
+            className="rounded-lg bg-zinc-900 border-2 border-zinc-600 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500 scheme-dark"
+          />
+          <button
+            type="button"
+            disabled={busy || !selectedCycleId || !cycleOpenAt || !cycleCloseAt}
+            onClick={() => void saveCycleOpenWindow()}
+            className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-2 text-sm disabled:opacity-60"
+          >
+            Set Open Time Period
+          </button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy || !selectedCycleId}
+            onClick={() => void setOpenNowForHours(1)}
+            className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
+          >
+            Open Now (1h)
+          </button>
+          <button
+            type="button"
+            disabled={busy || !selectedCycleId}
+            onClick={() => void setOpenNowForHours(4)}
+            className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
+          >
+            Open Now (4h)
+          </button>
+          <button
+            type="button"
+            disabled={busy || !selectedCycleId}
+            onClick={() => void setOpenNowForHours(24)}
+            className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
+          >
+            Open Now (24h)
+          </button>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <h2 className="text-lg font-semibold">Candidates Import</h2>
+        <div className="flex items-center gap-3 flex-wrap">
+          <a href="/api/admin/all-star/candidates/template" className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5">Download Template</a>
+          <input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => setCandidateFile(e.target.files?.[0] || null)} className="text-sm" />
+          <button type="button" disabled={busy || !selectedCycleId || !candidateFile} onClick={() => void importCandidates()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Import Candidates</button>
+          <button type="button" disabled={busy || !selectedCycleId} onClick={() => setShowAddCandidateModal(true)} className="rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-4 py-2 text-sm disabled:opacity-60">Add Candidate</button>
+        </div>
+        <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
+          {candidates.length === 0 ? (
+            <p className="text-zinc-500 text-sm p-3">No candidates loaded.</p>
+          ) : (
+            candidates.map((candidate) => (
+              <div key={candidate.id} className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3">
+                <p className="min-w-0">
+                  <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team} · #{candidate.jerseyNumber}
+                  {candidate.showcaseBibNumber ? ` · Bib ${candidate.showcaseBibNumber}` : ""}
+                </p>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void removeCandidate(candidate.id)}
+                  className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60"
+                >
+                  Remove
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <h2 className="text-lg font-semibold">Coaches</h2>
+        <div className="grid md:grid-cols-3 gap-3">
+          <select
+            value={selectedCoachUserId}
+            onChange={(e) => setSelectedCoachUserId(e.target.value)}
+            className="md:col-span-2 rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+          >
+            <option value="">Select coach…</option>
+            {cycleCoachOptions.map((coach) => {
+              const label =
+                (coach.firstName || coach.lastName
+                  ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
+                  : coach.name) || coach.email;
+              const teamLabel = coach.assignedTeam ? ` - ${coach.assignedTeam}` : "";
+              return (
+                <option key={coach.id} value={coach.id}>
+                  {label} ({coach.email}){teamLabel}
+                </option>
+              );
+            })}
+          </select>
+          <button type="button" disabled={busy || !selectedCycleId || !selectedCoachUserId} onClick={() => void addHeadCoach()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Add Coach</button>
+        </div>
+        <div className="max-h-48 overflow-auto rounded-lg border border-zinc-800">
+          {headCoaches.length === 0 ? <p className="text-zinc-500 text-sm p-3">No coaches assigned.</p> : headCoaches.map((coach) => (
+            <div key={coach.id} className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 last:border-b-0">
+              <p className="text-sm">{coach.coachName || coach.coachEmail || "Assigned coach"}</p>
+              <button type="button" disabled={busy} onClick={() => void removeHeadCoach(coach.id)} className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60">Remove</button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <h2 className="text-lg font-semibold">Submitted Ballots</h2>
+        <p className="text-xs text-zinc-400">
+          Review submitted ballots for the selected cycle. Deleting a ballot unlocks that coach to submit again.
+        </p>
+        <div>
+          <button
+            type="button"
+            disabled={busy || !selectedCycleId}
+            onClick={() => void refreshSubmittedBallots()}
+            className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
+          >
+            Refresh
+          </button>
+        </div>
+        <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
+          {!selectedCycleId ? (
+            <p className="text-zinc-500 text-sm p-3">Select a cycle to view submitted ballots.</p>
+          ) : submittedBallots.length === 0 ? (
+            <p className="text-zinc-500 text-sm p-3">No submitted ballots yet.</p>
+          ) : (
+            submittedBallots.map((submission) => {
+              const coachName =
+                (submission.coachUser.firstName || submission.coachUser.lastName
+                  ? [submission.coachUser.firstName, submission.coachUser.lastName]
+                      .filter(Boolean)
+                      .join(" ")
+                  : submission.coachUser.name) || submission.coachUser.email;
+
+              return (
+                <div key={submission.id} className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 last:border-b-0 gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm truncate">
+                      <span className="font-medium">{coachName}</span> ({submission.coachUser.email})
+                    </p>
+                    <p className="text-xs text-zinc-400">
+                      Submitted {new Date(submission.submittedAt).toLocaleString()} · {submission.voteItemCount} ratings
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => void deleteSubmittedBallot(submission.id)}
+                    className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60"
+                  >
+                    Delete
+                  </button>
+                </div>
+              );
+            })
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <h2 className="text-lg font-semibold">Votes Panel</h2>
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <p className="text-xs text-zinc-400">
+            Live candidate standings sorted by vote count, then average rating. Auto-refreshes every 15 seconds.
+          </p>
+          <button
+            type="button"
+            disabled={busy || !selectedCycleId}
+            onClick={() => void refreshVoteSummary()}
+            className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
+          >
+            Refresh
+          </button>
+        </div>
+        <p className="text-xs text-zinc-500">Submitted ballots: {voteSummarySubmissionCount}</p>
+        <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
+          {!selectedCycleId ? (
+            <p className="text-zinc-500 text-sm p-3">Select a cycle to view vote standings.</p>
+          ) : voteSummary.length === 0 ? (
+            <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
+          ) : (
+            voteSummary.map((row, index) => (
+              <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3">
+                <p className="min-w-0 truncate">
+                  <span className="text-zinc-500 mr-2">#{index + 1}</span>
+                  <span className="font-medium">{row.playerFullName}</span> · {row.team} · #{row.jerseyNumber}
+                  {row.showcaseBibNumber ? ` · Bib ${row.showcaseBibNumber}` : ""}
+                </p>
+                <p className="text-xs text-zinc-300 whitespace-nowrap">
+                  Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+                </p>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <h2 className="text-lg font-semibold">All-Star Vault Access</h2>
+        <div className="flex flex-wrap gap-3 items-center">
+          <select value={vaultUserId} onChange={(e) => setVaultUserId(e.target.value)} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-80">
+            <option value="">Select account…</option>
+            {userOptions.map((user) => (
+              <option key={user.id} value={user.id}>{user.name} ({user.email})</option>
+            ))}
+          </select>
+          <select value={vaultRole} onChange={(e) => setVaultRole(e.target.value as "FULL_ACCESS" | "VIEW_ONLY")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm">
+            <option value="VIEW_ONLY">View Only</option>
+            <option value="FULL_ACCESS">Full Access</option>
+          </select>
+          <button type="button" disabled={busy || !vaultUserId} onClick={() => void grantVaultAccess()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Grant Access</button>
+        </div>
+        <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
+          {vaultAccess.length === 0 ? <p className="text-zinc-500 text-sm p-3">No vault access grants yet.</p> : vaultAccess.map((access) => (
+            <div key={access.id} className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 last:border-b-0">
+              <p className="text-sm">{access.registeredUser.email} · {access.role === "FULL_ACCESS" ? "Full Access" : "View Only"}</p>
+              <button
+                type="button"
+                disabled={busy || access.isImplicit === true}
+                onClick={() => void removeVaultAccess(access.registeredUser.id)}
+                className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60"
+                title={access.isImplicit ? "Default Admin+ full access cannot be revoked here." : undefined}
+              >
+                {access.isImplicit ? "Default Access" : "Revoke"}
+              </button>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <h2 className="text-lg font-semibold">Invites And Exports</h2>
+        <textarea value={inviteEmails} onChange={(e) => setInviteEmails(e.target.value)} placeholder="coach1@email.com, coach2@email.com" rows={3} className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm" />
+        <div className="flex flex-wrap gap-3">
+          <button type="button" disabled={busy || !selectedCycleId} onClick={() => void createInvites()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Generate Invite Links</button>
+          <a href={selectedCycleId ? `/api/admin/all-star/exports/csv?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm">Export CSV</a>
+          <a href={selectedCycleId ? `/api/admin/all-star/exports/pdf?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm">Export PDF</a>
+        </div>
+        {inviteLinks.length > 0 ? (
+          <div className="rounded-lg border border-zinc-800 max-h-56 overflow-auto">
+            {inviteLinks.map((invite) => (
+              <div key={invite.link} className="px-3 py-2 border-b border-zinc-800 last:border-b-0">
+                <p className="text-xs text-zinc-400">{invite.invitedEmail}</p>
+                <a href={invite.link} className="text-sm text-brand-gold break-all">{invite.link}</a>
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+
+      {showAddCandidateModal ? (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
+            <h3 className="text-lg font-semibold">Add Candidate</h3>
+            <p className="text-xs text-zinc-400">
+              Bib numbers are assigned automatically (starting at 001) and
+              re-numbered when candidates are removed.
+            </p>
+            <div className="space-y-3">
+              <input
+                value={candidateName}
+                onChange={(e) => setCandidateName(e.target.value)}
+                placeholder="Player full name"
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
+              <input
+                value={candidateTeam}
+                onChange={(e) => setCandidateTeam(e.target.value)}
+                placeholder="Team"
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
+              <input
+                value={candidateJerseyNumber}
+                onChange={(e) => setCandidateJerseyNumber(e.target.value)}
+                placeholder="Jersey number"
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
+            </div>
+            <div className="flex justify-end gap-3">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setShowAddCandidateModal(false)}
+                className="rounded-lg border border-zinc-600 text-zinc-300 px-4 py-2 text-sm disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  busy ||
+                  !selectedCycleId ||
+                  !candidateName.trim() ||
+                  !candidateTeam.trim() ||
+                  !candidateJerseyNumber.trim()
+                }
+                onClick={() => void addCandidate()}
+                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                Add Candidate
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+    </section>
+  );
+}
