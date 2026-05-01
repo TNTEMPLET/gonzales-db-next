@@ -26,10 +26,38 @@ export async function upsertRegisteredUserFromGoogle(
   // Reuse the already linked Google account to avoid global googleSub unique
   // collisions when the same person signs in across multiple org deployments.
   if (existingBySub) {
+    if (existingBySub.organizationId !== orgId) {
+      const existingByEmailInOrg = await prisma.registeredUser.findFirst({
+        where: { organizationId: orgId, email: input.email },
+      });
+
+      if (existingByEmailInOrg) {
+        // Move the googleSub link to the current org/email row without violating
+        // global unique constraints on googleSub.
+        return prisma.$transaction(async (tx) => {
+          await tx.registeredUser.update({
+            where: { id: existingBySub.id },
+            data: { googleSub: null },
+          });
+          return tx.registeredUser.update({
+            where: { id: existingByEmailInOrg.id },
+            data: {
+              googleSub: input.sub,
+              name: input.name,
+              firstName: input.firstName,
+              lastName: input.lastName,
+            },
+          });
+        });
+      }
+    }
+
     return prisma.registeredUser.update({
       where: { id: existingBySub.id },
       data: {
         organizationId: orgId,
+        email: input.email,
+        googleSub: input.sub,
         name: input.name,
         firstName: input.firstName,
         lastName: input.lastName,
