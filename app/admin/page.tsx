@@ -101,6 +101,15 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open Content Desk" : "Open News Admin",
     },
     {
+      module: "SOCIAL_MEDIA" as AdminModule,
+      href: `/admin/social${orgQuery}`,
+      title: "Social media",
+      description: masterMode
+        ? "Draft Facebook Page posts for AP Baseball and publish via Meta when connected."
+        : "Compose posts and publish to your Facebook Page (Meta credentials required).",
+      action: masterMode ? "Open Social Desk" : "Open Social Media",
+    },
+    {
       module: "DUGOUT_MODERATION" as AdminModule,
       href: `/admin/dugout${orgQuery}`,
       title: "Dugout Moderation",
