@@ -61,7 +61,7 @@ export default function Header({ brand }: HeaderProps) {
     : "sticky top-0 z-50 bg-zinc-950 border-b border-zinc-800";
 
   const headerInnerClassName = isMasterHeader
-    ? "mx-auto grid w-full max-w-7xl grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 md:grid-cols-[auto_minmax(0,1fr)_auto] md:items-center md:gap-4 lg:gap-6"
+    ? "mx-auto grid w-full max-w-7xl grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-4 lg:gap-6"
     : "max-w-7xl mx-auto px-6 py-4 flex items-center justify-between";
 
   const logoFrameClassName = isMasterHeader
@@ -77,7 +77,7 @@ export default function Header({ brand }: HeaderProps) {
     : "font-bold text-2xl tracking-tight text-white uppercase";
 
   const desktopNavClassName = isMasterHeader
-    ? "hidden md:flex flex-1 min-w-0 items-center justify-center gap-1 lg:gap-2 text-[12px] font-semibold tracking-wide xl:text-[13px]"
+    ? "flex min-w-0 items-center justify-end gap-1 lg:gap-2 text-[12px] font-semibold tracking-wide xl:text-[13px]"
     : "hidden md:flex items-center gap-8 text-sm font-medium";
 
   const mobileMenuClassName = isMasterHeader
@@ -322,11 +322,11 @@ export default function Header({ brand }: HeaderProps) {
 
         {/* Desktop Navigation */}
         {isMasterHeader ? (
-          <>
-            <nav
-              ref={masterMenuRef}
-              className={`${desktopNavClassName} md:col-start-2 md:row-start-1`}
-            >
+          <div
+            ref={masterMenuRef}
+            className="hidden min-w-0 items-center justify-end gap-2 md:col-start-2 md:row-start-1 md:flex lg:gap-3"
+          >
+            <nav className={desktopNavClassName}>
               <Link href="/admin" className={desktopLinkClassName("/admin")}>
                 Dashboard
               </Link>
@@ -337,7 +337,7 @@ export default function Header({ brand }: HeaderProps) {
                 });
                 const open = openMasterMenu === group.id;
                 return (
-                  <div key={group.id} className="relative">
+                  <div key={group.id} className="relative shrink-0">
                     <button
                       type="button"
                       aria-expanded={open}
@@ -360,7 +360,7 @@ export default function Header({ brand }: HeaderProps) {
                     </button>
                     {open ? (
                       <div
-                        className="absolute left-0 top-full z-50 mt-1 min-w-50 rounded-lg border border-red-900/50 bg-zinc-900/98 py-1 shadow-xl backdrop-blur-sm"
+                        className="absolute right-0 top-full z-50 mt-1 min-w-50 rounded-lg border border-red-900/50 bg-zinc-900/98 py-1 shadow-xl backdrop-blur-sm"
                         onClick={(e) => e.stopPropagation()}
                       >
                         {group.items.map((item) => (
@@ -379,10 +379,10 @@ export default function Header({ brand }: HeaderProps) {
                 );
               })}
             </nav>
-            <div className="hidden items-center justify-end md:col-start-3 md:row-start-1 md:flex">
+            <div className="shrink-0">
               <CoachAuthButton />
             </div>
-          </>
+          </div>
         ) : (
           <nav className={desktopNavClassName}>
             {publicNavLinks.map((link) => (
