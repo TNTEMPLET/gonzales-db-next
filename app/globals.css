@@ -82,12 +82,12 @@ body {
 }
 
 .sponsor-pill {
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
+  flex: 0 0 auto;
   border-radius: 9999px;
   border: 1px solid #3f3f46;
   background: rgba(9, 9, 11, 0.7);
+  overflow: hidden;
 }
 
 .sponsor-strip:hover .sponsor-marquee-track {
