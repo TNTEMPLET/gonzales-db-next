@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 type Cycle = {
   id: string;
@@ -83,9 +83,20 @@ function formatOrganizationLabel(org: "gonzales" | "ascension") {
   return org === "gonzales" ? "Gonzales DYB" : "Ascension LLB";
 }
 
+function isCycleOpenAndPublished(cycle: Cycle | null) {
+  if (!cycle || cycle.status !== "PUBLISHED") return false;
+  const now = Date.now();
+  const openAt = cycle.publishedAt ? new Date(cycle.publishedAt).getTime() : null;
+  const closeAt = cycle.closedAt ? new Date(cycle.closedAt).getTime() : null;
+  if (openAt !== null && !Number.isNaN(openAt) && now < openAt) return false;
+  if (closeAt !== null && !Number.isNaN(closeAt) && now >= closeAt) return false;
+  return true;
+}
+
 export default function AllStarVaultManager({
   initialOrg,
 }: AllStarVaultManagerProps) {
+  const latestCycleIdRef = useRef("");
   const [org, setOrg] = useState<"gonzales" | "ascension">(initialOrg);
   const [seasonYear, setSeasonYear] = useState(new Date().getFullYear());
   const [cycles, setCycles] = useState<Cycle[]>([]);
@@ -107,7 +118,6 @@ export default function AllStarVaultManager({
 
   const [newCycleAgeGroup, setNewCycleAgeGroup] = useState("12U LLB");
   const [ageGroupOptions, setAgeGroupOptions] = useState<string[]>([]);
-  const [newCycleTitle, setNewCycleTitle] = useState("");
   const [newCycleAccessMode, setNewCycleAccessMode] = useState<"INVITE_LIST" | "AGE_GROUP_COACHES">("AGE_GROUP_COACHES");
   const [cycleOpenAt, setCycleOpenAt] = useState("");
   const [cycleCloseAt, setCycleCloseAt] = useState("");
@@ -117,6 +127,7 @@ export default function AllStarVaultManager({
   const [candidateName, setCandidateName] = useState("");
   const [candidateTeam, setCandidateTeam] = useState("");
   const [candidateJerseyNumber, setCandidateJerseyNumber] = useState("");
+  const [candidateSearch, setCandidateSearch] = useState("");
   const [selectedCoachUserId, setSelectedCoachUserId] = useState("");
   const [vaultUserId, setVaultUserId] = useState("");
   const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "VIEW_ONLY">("VIEW_ONLY");
@@ -138,11 +149,32 @@ export default function AllStarVaultManager({
   }, [org, seasonYear]);
 
   useEffect(() => {
+    latestCycleIdRef.current = selectedCycleId;
     if (selectedCycleId) {
-      void loadCycleDetails(selectedCycleId);
-      void loadCycleCoaches(selectedCycleId);
-      void loadSubmittedBallots(selectedCycleId);
-      void loadVoteSummary(selectedCycleId);
+      setCandidates([]);
+      setHeadCoaches([]);
+      setCycleCoachOptions([]);
+      setSubmittedBallots([]);
+      setVoteSummary([]);
+      setVoteSummarySubmissionCount(0);
+      setSelectedCoachUserId("");
+      void (async () => {
+        try {
+          await Promise.all([
+            loadCycleDetails(selectedCycleId),
+            loadCycleCoaches(selectedCycleId),
+            loadSubmittedBallots(selectedCycleId),
+            ...(isCycleOpenAndPublished(
+              cycles.find((entry) => entry.id === selectedCycleId) || null,
+            )
+              ? [loadVoteSummary(selectedCycleId)]
+              : []),
+          ]);
+        } catch (err: unknown) {
+          if (latestCycleIdRef.current !== selectedCycleId) return;
+          setError(err instanceof Error ? err.message : "Failed to load cycle data");
+        }
+      })();
     } else {
       setCandidates([]);
       setHeadCoaches([]);
@@ -154,7 +186,7 @@ export default function AllStarVaultManager({
       setCycleOpenAt("");
       setCycleCloseAt("");
     }
-  }, [selectedCycleId]);
+  }, [selectedCycleId, cycles]);
 
   useEffect(() => {
     if (!selectedCycleId) return;
@@ -164,12 +196,13 @@ export default function AllStarVaultManager({
   }, [cycles, selectedCycleId]);
 
   useEffect(() => {
-    if (!selectedCycleId) return;
+    const cycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
+    if (!selectedCycleId || !isCycleOpenAndPublished(cycle)) return;
     const timer = window.setInterval(() => {
       void loadVoteSummary(selectedCycleId);
     }, 15000);
     return () => window.clearInterval(timer);
-  }, [selectedCycleId]);
+  }, [selectedCycleId, cycles]);
   /* eslint-enable react-hooks/exhaustive-deps */
 
   async function safeJson(response: Response) {
@@ -275,6 +308,7 @@ export default function AllStarVaultManager({
     const candidatesJson = await safeJson(candidatesRes);
     const coachesJson = await safeJson(coachesRes);
     if (!candidatesRes.ok || !coachesRes.ok) throw new Error("Failed to load cycle details");
+    if (latestCycleIdRef.current !== cycleId) return;
     setCandidates(Array.isArray(candidatesJson.data) ? (candidatesJson.data as Candidate[]) : []);
     setHeadCoaches(
       Array.isArray(coachesJson.data)
@@ -295,6 +329,7 @@ export default function AllStarVaultManager({
     const coaches = Array.isArray(json.data)
       ? (json.data as CycleCoachOption[])
       : [];
+    if (latestCycleIdRef.current !== cycleId) return;
     setCycleCoachOptions(coaches);
     setSelectedCoachUserId((current) =>
       current && coaches.some((coach) => coach.id === current)
@@ -312,6 +347,7 @@ export default function AllStarVaultManager({
     if (!response.ok) {
       throw new Error(String(json.error || "Failed to load submitted ballots"));
     }
+    if (latestCycleIdRef.current !== cycleId) return;
     setSubmittedBallots(
       Array.isArray(json.data) ? (json.data as SubmittedBallot[]) : [],
     );
@@ -326,6 +362,7 @@ export default function AllStarVaultManager({
     if (!response.ok) {
       throw new Error(String(json.error || "Failed to load vote summary"));
     }
+    if (latestCycleIdRef.current !== cycleId) return;
     setVoteSummary(Array.isArray(json.data) ? (json.data as VoteSummaryRow[]) : []);
     const count =
       typeof json.meta === "object" &&
@@ -349,15 +386,33 @@ export default function AllStarVaultManager({
           organizationId: org,
           seasonYear,
           ageGroup: newCycleAgeGroup,
-          title: newCycleTitle,
           accessMode: newCycleAccessMode,
         }),
       });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Failed to create cycle");
-      setNotice("Ballot cycle saved.");
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(
+          String((json as { error?: unknown }).error || "Failed to create cycle"),
+        );
+      }
+      const autoImport = json.autoImport as
+        | { created?: number; skipped?: number; processed?: number; imported?: boolean }
+        | undefined;
+      const cycleId = String(
+        ((json as { cycle?: { id?: unknown } }).cycle?.id as string | undefined) || "",
+      );
+      if (!cycleId) {
+        throw new Error("Failed to create cycle");
+      }
+      if (autoImport?.imported) {
+        setNotice(
+          `Ballot cycle saved. Imported ${autoImport.created || 0} players from teams (${autoImport.skipped || 0} skipped).`,
+        );
+      } else {
+        setNotice("Ballot cycle saved.");
+      }
       await loadCycles();
-      setSelectedCycleId(json.cycle.id);
+      setSelectedCycleId(cycleId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create cycle");
     } finally {
@@ -499,6 +554,41 @@ export default function AllStarVaultManager({
       await loadCycleDetails(selectedCycleId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to import candidates");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function reimportCandidatesFromTeams() {
+    if (!selectedCycleId) return;
+    if (
+      !window.confirm(
+        "Re-import all players from Teams for this cycle's organization and age group?",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const form = new FormData();
+      form.append("cycleId", selectedCycleId);
+      form.append("source", "teams");
+      const response = await fetch("/api/admin/all-star/candidates/import", {
+        method: "POST",
+        body: form,
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to import candidates from teams"));
+      }
+      const created = Number((json as { created?: unknown }).created || 0);
+      const skipped = Number((json as { skipped?: unknown }).skipped || 0);
+      setNotice(`Teams re-import complete: ${created} created, ${skipped} skipped.`);
+      await loadCycleDetails(selectedCycleId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to import candidates from teams");
     } finally {
       setBusy(false);
     }
@@ -665,6 +755,13 @@ export default function AllStarVaultManager({
 
   async function refreshVoteSummary() {
     if (!selectedCycleId) return;
+    const cycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
+    if (!isCycleOpenAndPublished(cycle)) {
+      setError(
+        "Votes summary refresh is only available while the selected cycle is open and published.",
+      );
+      return;
+    }
     setBusy(true);
     setError("");
     setNotice("");
@@ -765,6 +862,30 @@ export default function AllStarVaultManager({
     }
   }
 
+  const filteredCandidates = candidates.filter((candidate) => {
+    const query = candidateSearch.trim().toLowerCase();
+    if (!query) return true;
+    return (
+      candidate.playerFullName.toLowerCase().includes(query) ||
+      candidate.team.toLowerCase().includes(query) ||
+      candidate.jerseyNumber.toLowerCase().includes(query) ||
+      String(candidate.showcaseBibNumber || "")
+        .toLowerCase()
+        .includes(query)
+    );
+  });
+  const seasonOptions = Array.from(
+    new Set([
+      seasonYear - 1,
+      seasonYear,
+      seasonYear + 1,
+      seasonYear + 2,
+      ...cycles.map((cycle) => cycle.seasonYear),
+    ]),
+  ).sort((a, b) => b - a);
+  const selectedCycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
+  const canRefreshVoteSummary = isCycleOpenAndPublished(selectedCycle);
+
   return (
     <section className="space-y-6">
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
@@ -772,16 +893,26 @@ export default function AllStarVaultManager({
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Cycle Management</h2>
-        <div className="grid md:grid-cols-4 gap-3">
-          <select value={org} onChange={(e) => setOrg(e.target.value as "gonzales" | "ascension")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm">
+        <div className="flex flex-wrap items-center justify-start gap-3">
+          <select value={org} onChange={(e) => setOrg(e.target.value as "gonzales" | "ascension")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]">
             <option value="gonzales">Gonzales DYB</option>
             <option value="ascension">Ascension LLB</option>
           </select>
-          <input type="number" value={seasonYear} onChange={(e) => setSeasonYear(Number(e.target.value))} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm" />
+          <select
+            value={seasonYear}
+            onChange={(e) => setSeasonYear(Number(e.target.value))}
+            className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[120px]"
+          >
+            {seasonOptions.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
           <select
             value={newCycleAgeGroup}
             onChange={(e) => setNewCycleAgeGroup(e.target.value)}
-            className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+            className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[160px] max-w-[220px]"
           >
             {ageGroupOptions.length === 0 ? (
               <option value="">No age groups available</option>
@@ -793,14 +924,17 @@ export default function AllStarVaultManager({
               ))
             )}
           </select>
-          <input value={newCycleTitle} onChange={(e) => setNewCycleTitle(e.target.value)} placeholder="Cycle title (optional)" className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm" />
-        </div>
-        <div className="flex flex-wrap gap-3">
-          <select value={newCycleAccessMode} onChange={(e) => setNewCycleAccessMode(e.target.value as "INVITE_LIST" | "AGE_GROUP_COACHES")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm">
+          <select value={newCycleAccessMode} onChange={(e) => setNewCycleAccessMode(e.target.value as "INVITE_LIST" | "AGE_GROUP_COACHES")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[210px]">
             <option value="AGE_GROUP_COACHES">Age-group coaches only</option>
             <option value="INVITE_LIST">Invite-list only</option>
           </select>
           <button type="button" disabled={busy || !newCycleAgeGroup} onClick={() => void createCycle()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save Cycle</button>
+        </div>
+        <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Selected Cycle
+          </p>
+          <div className="flex flex-wrap gap-3">
           <select value={selectedCycleId} onChange={(e) => setSelectedCycleId(e.target.value)} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-60">
             <option value="">Select cycle…</option>
             {cycles.map((cycle) => (
@@ -861,6 +995,7 @@ export default function AllStarVaultManager({
             Open Now (24h)
           </button>
         </div>
+        </div>
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
@@ -869,16 +1004,38 @@ export default function AllStarVaultManager({
           <a href="/api/admin/all-star/candidates/template" className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5">Download Template</a>
           <input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => setCandidateFile(e.target.files?.[0] || null)} className="text-sm" />
           <button type="button" disabled={busy || !selectedCycleId || !candidateFile} onClick={() => void importCandidates()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Import Candidates</button>
+          <button
+            type="button"
+            disabled={busy || !selectedCycleId}
+            onClick={() => void reimportCandidatesFromTeams()}
+            className="rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-4 py-2 text-sm disabled:opacity-60"
+          >
+            Re-import from Teams
+          </button>
           <button type="button" disabled={busy || !selectedCycleId} onClick={() => setShowAddCandidateModal(true)} className="rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-4 py-2 text-sm disabled:opacity-60">Add Candidate</button>
         </div>
+        <input
+          value={candidateSearch}
+          onChange={(e) => setCandidateSearch(e.target.value)}
+          placeholder="Search candidates by name, team, jersey, or bib"
+          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+        />
         <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
-          {candidates.length === 0 ? (
-            <p className="text-zinc-500 text-sm p-3">No candidates loaded.</p>
+          {filteredCandidates.length === 0 ? (
+            <p className="text-zinc-500 text-sm p-3">
+              {candidates.length === 0
+                ? "No candidates loaded."
+                : "No candidates match your search."}
+            </p>
           ) : (
-            candidates.map((candidate) => (
+            filteredCandidates.map((candidate) => (
               <div key={candidate.id} className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3">
                 <p className="min-w-0">
-                  <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team} · #{candidate.jerseyNumber}
+                  <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team}
+                  {candidate.jerseyNumber?.trim() &&
+                  !["tbd", "n/a", "na"].includes(candidate.jerseyNumber.trim().toLowerCase())
+                    ? ` · #${candidate.jerseyNumber}`
+                    : ""}
                   {candidate.showcaseBibNumber ? ` · Bib ${candidate.showcaseBibNumber}` : ""}
                 </p>
                 <button
@@ -987,11 +1144,12 @@ export default function AllStarVaultManager({
         <h2 className="text-lg font-semibold">Votes Panel</h2>
         <div className="flex items-center justify-between gap-3 flex-wrap">
           <p className="text-xs text-zinc-400">
-            Live candidate standings sorted by vote count, then average rating. Auto-refreshes every 15 seconds.
+            Live candidate standings sorted by vote count, then average rating.
+            Auto-refresh runs every 15 seconds while a cycle is open and published.
           </p>
           <button
             type="button"
-            disabled={busy || !selectedCycleId}
+            disabled={busy || !selectedCycleId || !canRefreshVoteSummary}
             onClick={() => void refreshVoteSummary()}
             className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
           >

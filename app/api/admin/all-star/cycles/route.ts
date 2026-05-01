@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { importCandidatesFromTeamsForCycle } from "@/lib/allStar/candidates";
 import { mapAllStarCycle, parseContentOrg, parseSeasonYear } from "@/lib/allStar/server";
 import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
@@ -95,11 +96,29 @@ export async function POST(request: NextRequest) {
   }
 
   const admin = await getAdminUserFromRequest(request);
-  const created = await prisma.allStarBallotCycle.upsert({
+  const existingCycle = await prisma.allStarBallotCycle.findUnique({
     where: {
       organizationId_seasonYear_ageGroup: { organizationId, seasonYear, ageGroup },
     },
-    create: {
+  });
+
+  if (existingCycle) {
+    const updated = await prisma.allStarBallotCycle.update({
+      where: { id: existingCycle.id },
+      data: {
+        title: body.title?.trim() || null,
+        accessMode: body.accessMode || "AGE_GROUP_COACHES",
+      },
+    });
+    return NextResponse.json({
+      success: true,
+      cycle: mapAllStarCycle(updated),
+      autoImport: { created: 0, skipped: 0, processed: 0, imported: false },
+    });
+  }
+
+  const created = await prisma.allStarBallotCycle.create({
+    data: {
       organizationId,
       seasonYear,
       ageGroup,
@@ -107,13 +126,19 @@ export async function POST(request: NextRequest) {
       accessMode: body.accessMode || "AGE_GROUP_COACHES",
       createdByAdminId: admin?.id || null,
     },
-    update: {
-      title: body.title?.trim() || null,
-      accessMode: body.accessMode || "AGE_GROUP_COACHES",
-    },
+  });
+  const autoImport = await importCandidatesFromTeamsForCycle(prisma, {
+    id: created.id,
+    organizationId: created.organizationId,
+    seasonYear: created.seasonYear,
+    ageGroup: created.ageGroup,
   });
 
-  return NextResponse.json({ success: true, cycle: mapAllStarCycle(created) });
+  return NextResponse.json({
+    success: true,
+    cycle: mapAllStarCycle(created),
+    autoImport: { ...autoImport, imported: true },
+  });
 }
 
 export async function PATCH(request: NextRequest) {

@@ -7,7 +7,8 @@ export function hashToken(rawToken: string) {
 }
 
 export function createInviteToken() {
-  return crypto.randomBytes(24).toString("hex");
+  // 128-bit url-safe token (shorter than hex while still strong).
+  return crypto.randomBytes(16).toString("base64url");
 }
 
 export function parseSeasonYear(value: string | null | undefined) {

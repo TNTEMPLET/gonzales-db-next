@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     created.push({
       inviteId: invite.id,
       invitedEmail: email,
-      link: `${baseUrl}/all-star/vote?cycleId=${cycle.id}&token=${token}`,
+      link: `${baseUrl}/all-star/vote?c=${cycle.id}&t=${encodeURIComponent(token)}`,
     });
   }
 

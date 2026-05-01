@@ -34,14 +34,15 @@ export default function AllStarVotePage() {
   const [data, setData] = useState<OpenResponse | null>(null);
   const [ratings, setRatings] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState(false);
+  const [candidateSearch, setCandidateSearch] = useState("");
 
   const isLocked = Boolean(data?.hasSubmitted);
   const canRender = Boolean(cycleId);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    setCycleId(params.get("cycleId") || "");
-    setToken(params.get("token") || "");
+    setCycleId(params.get("cycleId") || params.get("c") || "");
+    setToken(params.get("token") || params.get("t") || "");
   }, []);
 
   const loadBallot = useCallback(async () => {
@@ -119,6 +120,21 @@ export default function AllStarVotePage() {
     () => Object.values(ratings).filter((rating) => rating >= 1 && rating <= 5).length,
     [ratings],
   );
+  const filteredCandidates = useMemo(() => {
+    const query = candidateSearch.trim().toLowerCase();
+    if (!data) return [];
+    if (!query) return data.candidates;
+    return data.candidates.filter((candidate) => {
+      return (
+        candidate.playerFullName.toLowerCase().includes(query) ||
+        candidate.team.toLowerCase().includes(query) ||
+        candidate.jerseyNumber.toLowerCase().includes(query) ||
+        String(candidate.showcaseBibNumber || "")
+          .toLowerCase()
+          .includes(query)
+      );
+    });
+  }, [candidateSearch, data]);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-10">
@@ -155,13 +171,26 @@ export default function AllStarVotePage() {
                 <p className="text-xs text-amber-300 mt-2">This ballot has already been submitted and is locked.</p>
               ) : null}
             </div>
+            <input
+              value={candidateSearch}
+              onChange={(event) => setCandidateSearch(event.target.value)}
+              placeholder="Search candidates by name, team, jersey, or bib"
+              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+            />
 
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
-              {data.candidates.map((candidate) => (
+              {filteredCandidates.length === 0 ? (
+                <p className="px-4 py-3 text-sm text-zinc-500">No candidates match your search.</p>
+              ) : (
+                filteredCandidates.map((candidate) => (
                 <div key={candidate.id} className="px-4 py-3 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-center justify-between gap-3">
                   <div>
                     <p className="text-sm font-medium">
-                      {candidate.playerFullName} · {candidate.team} · #{candidate.jerseyNumber}
+                      {candidate.playerFullName} · {candidate.team}
+                      {candidate.jerseyNumber?.trim() &&
+                      !["tbd", "n/a", "na"].includes(candidate.jerseyNumber.trim().toLowerCase())
+                        ? ` · #${candidate.jerseyNumber}`
+                        : ""}
                       {candidate.showcaseBibNumber ? ` · Bib ${candidate.showcaseBibNumber}` : ""}
                     </p>
                   </div>
@@ -183,7 +212,8 @@ export default function AllStarVotePage() {
                     ))}
                   </div>
                 </div>
-              ))}
+                ))
+              )}
             </div>
 
             <div className="flex flex-wrap gap-3">

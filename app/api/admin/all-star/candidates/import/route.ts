@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
-import { resequenceCandidateBibNumbers } from "@/lib/allStar/candidates";
+import {
+  importCandidatesFromTeamsForCycle,
+  resequenceCandidateBibNumbers,
+} from "@/lib/allStar/candidates";
 import prisma from "@/lib/prisma";
 import { isMasterDeployment } from "@/lib/siteConfig";
 
@@ -36,12 +39,30 @@ export async function POST(request: NextRequest) {
 
   const form = await request.formData();
   const cycleId = String(form.get("cycleId") || "");
+  const source = String(form.get("source") || "").trim().toLowerCase();
   const file = form.get("file");
   if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
-  if (!(file instanceof File)) return NextResponse.json({ error: "file is required" }, { status: 400 });
 
   const cycle = await prisma.allStarBallotCycle.findUnique({ where: { id: cycleId } });
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
+
+  if (source === "teams") {
+    const result = await importCandidatesFromTeamsForCycle(prisma, {
+      id: cycle.id,
+      organizationId: cycle.organizationId,
+      seasonYear: cycle.seasonYear,
+      ageGroup: cycle.ageGroup,
+    });
+    return NextResponse.json({
+      success: true,
+      source: "teams",
+      created: result.created,
+      skipped: result.skipped,
+      processed: result.processed,
+    });
+  }
+
+  if (!(file instanceof File)) return NextResponse.json({ error: "file is required" }, { status: 400 });
 
   const buffer = Buffer.from(await file.arrayBuffer());
   const workbook = XLSX.read(buffer, { type: "buffer" });
