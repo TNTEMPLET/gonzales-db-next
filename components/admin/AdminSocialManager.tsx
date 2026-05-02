@@ -196,6 +196,39 @@ export default function AdminSocialManager() {
     }
   }
 
+  async function unpublishPost(id: string) {
+    if (!facebookPublishConfigured) {
+      setError("Facebook env vars are not configured on the server.");
+      return;
+    }
+    if (
+      !confirm(
+        "Remove this post from Facebook and save it as a draft here? This cannot be undone on Facebook.",
+      )
+    )
+      return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/admin/social/${id}/unpublish`, {
+        method: "POST",
+      });
+      const json = (await response.json()) as { error?: string; data?: SocialPostRecord };
+      if (!response.ok) {
+        throw new Error(json.error || "Unpublish failed");
+      }
+      setNotice("Removed from Facebook and saved as draft.");
+      resetForm();
+      await loadPosts();
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Unpublish failed");
+      await loadPosts();
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function publishPost(id: string) {
     if (!facebookPublishConfigured) {
       setError("Facebook env vars are not configured on the server.");
@@ -451,7 +484,7 @@ export default function AdminSocialManager() {
                 <th className="px-3 py-2 text-left">Status</th>
                 <th className="px-3 py-2 text-left">Source</th>
                 <th className="px-3 py-2 text-left">Preview</th>
-                <th className="px-3 py-2 text-left">Updated</th>
+                <th className="px-3 py-2 text-left">Posted / created</th>
                 <th className="px-3 py-2 text-right">Actions</th>
               </tr>
             </thead>
@@ -494,7 +527,7 @@ export default function AdminSocialManager() {
                     ) : null}
                   </td>
                   <td className="px-3 py-2 align-top text-xs text-zinc-500 whitespace-nowrap">
-                    {new Date(post.updatedAt).toLocaleString()}
+                    {new Date(post.publishedAt ?? post.createdAt).toLocaleString()}
                   </td>
                   <td className="px-3 py-2 align-top text-right space-x-1 whitespace-nowrap">
                     {post.status === "DRAFT" || post.status === "FAILED" ? (
@@ -515,6 +548,16 @@ export default function AdminSocialManager() {
                         className="rounded border border-brand-gold px-2 py-1 text-xs text-brand-gold disabled:opacity-50"
                       >
                         Publish
+                      </button>
+                    ) : null}
+                    {post.status === "PUBLISHED" ? (
+                      <button
+                        type="button"
+                        disabled={busy || !facebookPublishConfigured}
+                        onClick={() => void unpublishPost(post.id)}
+                        className="rounded border border-amber-700 px-2 py-1 text-xs text-amber-200 disabled:opacity-50"
+                      >
+                        Unpublish
                       </button>
                     ) : null}
                     <button
