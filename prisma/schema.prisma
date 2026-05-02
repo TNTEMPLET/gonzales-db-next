@@ -105,6 +105,8 @@ model AdminUser {
   isMaster     Boolean         @default(false)
   passwordHash String?
   avatarUrl    String?
+  /// Set when the admin signs in with Google; required to open org Drive files in the browser.
+  googleSub    String?         @unique
   createdAt    DateTime        @default(now())
   updatedAt    DateTime        @updatedAt
   sessions     AdminSession[]

@@ -9,7 +9,8 @@ const DRIVE_HOST = "drive.google.com";
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 function extractFolderIdFromUrl(url: URL): string | null {
-  const foldersMatch = url.pathname.match(/\/drive\/folders\/([^/]+)/);
+  // /drive/folders/ID and /drive/u/0/folders/ID (and similar) — not only /drive/folders/
+  const foldersMatch = url.pathname.match(/\/folders\/([^/?]+)/);
   if (foldersMatch?.[1] && ID_PATTERN.test(foldersMatch[1])) {
     return foldersMatch[1];
   }
@@ -73,4 +74,16 @@ export function getOrgDocumentsConfig(): OrgDocumentsConfig | null {
 
 export function getOrgDocumentsEmbedSrc(folderId: string): string {
   return `https://drive.google.com/embeddedfolderview?id=${encodeURIComponent(folderId)}#list`;
+}
+
+/** Workspace domain for admins who may open Drive links (default apbaseball.com). */
+export function getAdminGoogleWorkspaceDomain(): string {
+  return (process.env.ADMIN_GOOGLE_WORKSPACE_DOMAIN || "apbaseball.com")
+    .trim()
+    .toLowerCase();
+}
+
+export function adminEmailAllowedForOrgDrive(email: string): boolean {
+  const domain = getAdminGoogleWorkspaceDomain();
+  return email.trim().toLowerCase().endsWith(`@${domain}`);
 }

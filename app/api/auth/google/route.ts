@@ -88,6 +88,11 @@ export async function POST(request: NextRequest) {
     });
 
     if (admin) {
+      await prisma.adminUser.update({
+        where: { id: admin.id },
+        data: { googleSub: sub },
+      });
+
       const session = await createAdminSession(admin.id);
       response.cookies.set({
         name: ADMIN_SESSION_COOKIE,
