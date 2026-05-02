@@ -164,6 +164,8 @@ export async function GET(request: NextRequest) {
           select: {
             id: true,
             content: true,
+            mediaUrl: true,
+            mediaType: true,
             parentId: true,
             createdAt: true,
             author: {
@@ -219,7 +221,15 @@ export async function GET(request: NextRequest) {
         actor: comment.author,
         postId: comment.post.id,
         postPreview: trimPreview(comment.post.content || "(Media post)"),
-        commentPreview: trimPreview(comment.content, 140),
+        commentPreview: trimPreview(
+          comment.content.trim() ||
+            (comment.mediaUrl
+              ? comment.mediaType === "GIF"
+                ? "(GIF reply)"
+                : "(Photo reply)"
+              : "(Reply)"),
+          140,
+        ),
         reaction: null,
       }),
     );

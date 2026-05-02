@@ -265,20 +265,11 @@ export default function Header({ brand }: HeaderProps) {
             ...(allowModule("DUGOUT_MODERATION")
               ? [{ href: "/admin/dugout", label: "Dugout" }]
               : []),
+            ...(canSeeDugout
+              ? [{ href: `/coach-corner${masterOrgSuffix}`, label: "Coach's Corner" }]
+              : []),
           ],
         },
-        ...(canSeeDugout
-          ? [
-              {
-                id: "coaching",
-                label: "Coaching",
-                items: [
-                  { href: `/coach-corner${masterOrgSuffix}`, label: "Coach's Corner" },
-                  { href: `/dugout${masterOrgSuffix}`, label: "The Board Room" },
-                ],
-              },
-            ]
-          : []),
       ].filter((g) => g.items.length > 0)
     : [];
 
@@ -382,6 +373,14 @@ export default function Header({ brand }: HeaderProps) {
                   </div>
                 );
               })}
+              {canSeeDugout ? (
+                <Link
+                  href={`/dugout${masterOrgSuffix}`}
+                  className={desktopLinkClassName(`/dugout${masterOrgSuffix}`)}
+                >
+                  The Board Room
+                </Link>
+              ) : null}
             </nav>
             <div className="shrink-0">
               <CoachAuthButton />
@@ -458,6 +457,15 @@ export default function Header({ brand }: HeaderProps) {
                     </div>
                   </div>
                 ))}
+                {canSeeDugout ? (
+                  <Link
+                    href={`/dugout${masterOrgSuffix}`}
+                    onClick={() => setIsMenuOpen(false)}
+                    className={mobileLinkClassName(`/dugout${masterOrgSuffix}`)}
+                  >
+                    The Board Room
+                  </Link>
+                ) : null}
               </>
             ) : (
               publicNavLinks.map((link) => (

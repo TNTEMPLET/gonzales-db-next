@@ -6,6 +6,8 @@ import { resolveDugoutApiOrg } from "@/lib/siteConfig";
 
 type CreateCommentPayload = {
   content?: string;
+  mediaUrl?: string | null;
+  mediaType?: "IMAGE" | "GIF" | null;
 };
 
 const MAX_COMMENT_LENGTH = 280;
@@ -21,6 +23,8 @@ const commentAuthorSelect = {
 function serializeComment(comment: {
   id: string;
   content: string;
+  mediaUrl: string | null;
+  mediaType: "IMAGE" | "GIF" | null;
   postId: string;
   parentId: string | null;
   createdAt: Date;
@@ -111,10 +115,12 @@ export async function POST(
   try {
     const body = (await request.json()) as CreateCommentPayload;
     const content = body.content?.trim() || "";
+    const mediaUrl = body.mediaUrl?.trim() || null;
+    const mediaType = body.mediaType || null;
 
-    if (!content) {
+    if (!content && !mediaUrl) {
       return NextResponse.json(
-        { error: "Comment content is required" },
+        { error: "Comment text or media is required" },
         { status: 400 },
       );
     }
@@ -124,6 +130,20 @@ export async function POST(
         {
           error: `Comment must be ${MAX_COMMENT_LENGTH} characters or fewer`,
         },
+        { status: 400 },
+      );
+    }
+
+    if (mediaType && !["IMAGE", "GIF"].includes(mediaType)) {
+      return NextResponse.json(
+        { error: "Unsupported media type" },
+        { status: 400 },
+      );
+    }
+
+    if ((mediaUrl && !mediaType) || (!mediaUrl && mediaType)) {
+      return NextResponse.json(
+        { error: "mediaUrl and mediaType must both be set for attachments" },
         { status: 400 },
       );
     }
@@ -139,6 +159,8 @@ export async function POST(
     const comment = await prisma.dugoutComment.create({
       data: {
         content,
+        mediaUrl,
+        mediaType,
         postId,
         parentId: null,
         authorId,

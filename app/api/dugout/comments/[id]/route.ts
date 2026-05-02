@@ -18,6 +18,8 @@ const commentAuthorSelect = {
 function serializeComment(comment: {
   id: string;
   content: string;
+  mediaUrl: string | null;
+  mediaType: "IMAGE" | "GIF" | null;
   postId: string;
   parentId: string | null;
   createdAt: Date;
@@ -65,10 +67,15 @@ export async function PATCH(
       }
     }
 
-    const body = (await request.json()) as { content?: string };
-    const content = body.content?.trim() || "";
+    const body = (await request.json()) as {
+      content?: string;
+      removeMedia?: boolean;
+    };
+    const content = body.content?.trim() ?? "";
+    const removeMedia = body.removeMedia === true;
 
-    if (!content) {
+    const willHaveMedia = !removeMedia && Boolean(existing.mediaUrl);
+    if (!content && !willHaveMedia) {
       return NextResponse.json(
         { error: "Comment content is required" },
         { status: 400 },
@@ -86,7 +93,10 @@ export async function PATCH(
 
     const updated = await prisma.dugoutComment.update({
       where: { id },
-      data: { content },
+      data: {
+        content,
+        ...(removeMedia ? { mediaUrl: null, mediaType: null } : {}),
+      },
       include: {
         author: {
           select: commentAuthorSelect,

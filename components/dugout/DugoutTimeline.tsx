@@ -29,6 +29,8 @@ type DugoutAuthor = {
 type DugoutComment = {
   id: string;
   content: string;
+  mediaUrl: string | null;
+  mediaType: "IMAGE" | "GIF" | null;
   postId: string;
   parentId: string | null;
   createdAt: string;
@@ -85,6 +87,16 @@ type GifSearchResponse = {
   providerConfigured?: boolean;
   message?: string;
 };
+
+type CommentDraftMedia = {
+  file: File | null;
+  previewUrl: string | null;
+  gif: GifResult | null;
+};
+
+function emptyCommentDraftMedia(): CommentDraftMedia {
+  return { file: null, previewUrl: null, gif: null };
+}
 
 type DugoutNotificationCounts = {
   unreadLikeCount: number;
@@ -366,22 +378,24 @@ async function uploadMedia(file: File) {
 }
 
 function DugoutMedia({
-  post,
+  mediaUrl,
+  mediaType,
   alt,
 }: {
-  post: Pick<DugoutPost, "mediaUrl" | "mediaType">;
+  mediaUrl: string | null;
+  mediaType: "IMAGE" | "GIF" | null;
   alt: string;
 }) {
-  if (!post.mediaUrl) return null;
+  if (!mediaUrl) return null;
 
   return (
     <div className="mt-3 overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/70">
       <Image
-        src={post.mediaUrl}
+        src={mediaUrl}
         alt={alt}
         width={1200}
         height={900}
-        unoptimized={post.mediaType === "GIF"}
+        unoptimized={mediaType === "GIF"}
         className="h-auto max-h-115 w-full object-cover"
       />
     </div>
@@ -520,6 +534,24 @@ export default function DugoutTimeline({
   const [commentEditingId, setCommentEditingId] = useState<string | null>(null);
   const [commentEditContent, setCommentEditContent] = useState("");
   const [commentEditBusy, setCommentEditBusy] = useState(false);
+  const [replyEmojiPickerPostId, setReplyEmojiPickerPostId] = useState<
+    string | null
+  >(null);
+  const [commentDraftMediaByPost, setCommentDraftMediaByPost] = useState<
+    Record<string, CommentDraftMedia>
+  >({});
+  const [replyGifSearchPostId, setReplyGifSearchPostId] = useState<
+    string | null
+  >(null);
+  const [replyGifQuery, setReplyGifQuery] = useState("");
+  const [replyGifResults, setReplyGifResults] = useState<GifResult[]>([]);
+  const [replyGifBusy, setReplyGifBusy] = useState(false);
+  const [replyGifHasMore, setReplyGifHasMore] = useState(false);
+  const [replyGifOffset, setReplyGifOffset] = useState(0);
+  const [replyActiveGifQuery, setReplyActiveGifQuery] = useState("");
+  const commentMediaFileInputRef = useRef<HTMLInputElement>(null);
+  const commentMediaPickPostIdRef = useRef<string | null>(null);
+  const [commentEditRemoveMedia, setCommentEditRemoveMedia] = useState(false);
 
   const [notificationBusy, setNotificationBusy] = useState(false);
   const [isClientMounted, setIsClientMounted] = useState(false);
@@ -573,6 +605,15 @@ export default function DugoutTimeline({
   function appendEmoji(emoji: string, editing = false) {
     if (editing || activeComposerTarget.type === "edit") {
       setEditContent((prev) => `${prev}${emoji}`);
+      return;
+    }
+
+    if (activeComposerTarget.type === "comment") {
+      const pid = activeComposerTarget.postId;
+      setCommentInputByPost((prev) => ({
+        ...prev,
+        [pid]: `${prev[pid] ?? ""}${emoji}`,
+      }));
       return;
     }
 
@@ -701,6 +742,34 @@ export default function DugoutTimeline({
     selectMedia(file);
   }
 
+  function handleCommentMediaFileChange(event: ChangeEvent<HTMLInputElement>) {
+    const postId = commentMediaPickPostIdRef.current;
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!postId || !file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Only image and GIF files are allowed");
+      return;
+    }
+
+    setActiveComposerTarget({ type: "comment", postId });
+    setCommentDraftMediaByPost((prev) => {
+      const old = prev[postId];
+      if (old?.previewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(old.previewUrl);
+      }
+      return {
+        ...prev,
+        [postId]: {
+          file,
+          previewUrl: URL.createObjectURL(file),
+          gif: null,
+        },
+      };
+    });
+    setReplyGifSearchPostId((id) => (id === postId ? null : id));
+  }
+
   function onDropMedia(event: DragEvent<HTMLDivElement>) {
     event.preventDefault();
     event.stopPropagation();
@@ -768,6 +837,78 @@ export default function DugoutTimeline({
     if (event.key === "Enter") {
       event.preventDefault();
       void searchGifs();
+    }
+  }
+
+  function clearCommentDraftMedia(postId: string) {
+    setCommentDraftMediaByPost((prev) => {
+      const cur = prev[postId];
+      if (cur?.previewUrl?.startsWith("blob:")) {
+        URL.revokeObjectURL(cur.previewUrl);
+      }
+      if (!cur) return prev;
+      const next = { ...prev };
+      delete next[postId];
+      return next;
+    });
+  }
+
+  async function searchReplyGifs({
+    append = false,
+  }: { append?: boolean } = {}) {
+    const query = (append ? replyActiveGifQuery : replyGifQuery).trim();
+    if (!query) {
+      setReplyGifResults([]);
+      setReplyGifOffset(0);
+      setReplyGifHasMore(false);
+      setReplyActiveGifQuery("");
+      return;
+    }
+
+    setReplyGifBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const offset = append ? replyGifOffset : 0;
+      const response = await fetch(
+        `/api/dugout/gifs?q=${encodeURIComponent(query)}&offset=${offset}&limit=15`,
+        { cache: "no-store" },
+      );
+      const json = (await response.json()) as GifSearchResponse;
+
+      if (!response.ok) {
+        throw new Error(json.error || "Failed to search GIFs");
+      }
+
+      if (json.providerConfigured === false) {
+        setReplyGifResults([]);
+        setReplyGifHasMore(false);
+        setReplyGifOffset(0);
+        setReplyActiveGifQuery("");
+        setNotice(
+          json.message ||
+            "GIF search is disabled. Add GIPHY_API_KEY to .env.local and restart the dev server.",
+        );
+        return;
+      }
+
+      const nextData = json.data ?? [];
+      setReplyGifResults((prev) => (append ? [...prev, ...nextData] : nextData));
+      setReplyGifHasMore(Boolean(json.hasMore));
+      setReplyGifOffset(json.nextOffset ?? offset + nextData.length);
+      setReplyActiveGifQuery(query);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to search GIFs");
+    } finally {
+      setReplyGifBusy(false);
+    }
+  }
+
+  function handleReplyGifInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      void searchReplyGifs();
     }
   }
 
@@ -1389,6 +1530,12 @@ export default function DugoutTimeline({
       [postId]: nextExpanded,
     }));
 
+    if (!nextExpanded) {
+      setReplyEmojiPickerPostId((open) => (open === postId ? null : open));
+      setReplyGifSearchPostId((open) => (open === postId ? null : open));
+      clearCommentDraftMedia(postId);
+    }
+
     if (nextExpanded && !commentsByPost[postId]) {
       await loadComments(postId);
     }
@@ -1398,7 +1545,11 @@ export default function DugoutTimeline({
     if (!currentUserId) return;
 
     const text = (commentInputByPost[postId] || "").trim();
-    if (!text) return;
+    const draft = commentDraftMediaByPost[postId] ?? emptyCommentDraftMedia();
+    const hasFile = Boolean(draft.file);
+    const hasGif = Boolean(draft.gif);
+
+    if (!text && !hasFile && !hasGif) return;
 
     if (text.length > MAX_COMMENT_LENGTH) {
       setError(`Comment must be ${MAX_COMMENT_LENGTH} characters or fewer`);
@@ -1412,6 +1563,18 @@ export default function DugoutTimeline({
     setError("");
 
     try {
+      let mediaUrl: string | null = null;
+      let mediaType: "IMAGE" | "GIF" | null = null;
+
+      if (draft.file) {
+        const uploaded = await uploadMedia(draft.file);
+        mediaUrl = uploaded.mediaUrl;
+        mediaType = uploaded.mediaType;
+      } else if (draft.gif) {
+        mediaUrl = draft.gif.mediaUrl;
+        mediaType = "GIF";
+      }
+
       const response = await fetch(
         `/api/dugout/posts/${postId}/comments${orgParam}`,
         {
@@ -1419,6 +1582,8 @@ export default function DugoutTimeline({
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             content: text,
+            mediaUrl,
+            mediaType,
           }),
         },
       );
@@ -1445,6 +1610,13 @@ export default function DugoutTimeline({
         ...prev,
         [postId]: "",
       }));
+      clearCommentDraftMedia(postId);
+      setReplyGifSearchPostId((id) => (id === postId ? null : id));
+      setReplyGifQuery("");
+      setReplyGifResults([]);
+      setReplyGifOffset(0);
+      setReplyGifHasMore(false);
+      setReplyActiveGifQuery("");
       setPosts((prev) =>
         prev.map((post) =>
           post.id === postId
@@ -1511,16 +1683,24 @@ export default function DugoutTimeline({
   function startCommentEdit(comment: DugoutComment) {
     setCommentEditingId(comment.id);
     setCommentEditContent(comment.content);
+    setCommentEditRemoveMedia(false);
   }
 
   function cancelCommentEdit() {
     setCommentEditingId(null);
     setCommentEditContent("");
+    setCommentEditRemoveMedia(false);
   }
 
   async function saveCommentEdit(postId: string, commentId: string) {
     const trimmed = commentEditContent.trim();
-    if (!trimmed) return;
+    const existingComment = (commentsByPost[postId] ?? []).find(
+      (c) => c.id === commentId,
+    );
+    const willHaveMedia =
+      !commentEditRemoveMedia && Boolean(existingComment?.mediaUrl);
+
+    if (!trimmed && !willHaveMedia) return;
     if (trimmed.length > MAX_COMMENT_LENGTH) {
       setError(`Comment must be ${MAX_COMMENT_LENGTH} characters or fewer`);
       return;
@@ -1533,7 +1713,10 @@ export default function DugoutTimeline({
       const response = await fetch(`/api/dugout/comments/${commentId}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ content: trimmed }),
+        body: JSON.stringify({
+          content: trimmed,
+          removeMedia: commentEditRemoveMedia,
+        }),
       });
       const json = (await response.json()) as {
         error?: string;
@@ -1546,9 +1729,7 @@ export default function DugoutTimeline({
       setCommentsByPost((prev) => ({
         ...prev,
         [postId]: (prev[postId] ?? []).map((entry) =>
-          entry.id === commentId
-            ? { ...entry, content: json.data!.content, updatedAt: json.data!.updatedAt }
-            : entry,
+          entry.id === commentId ? (json.data as DugoutComment) : entry,
         ),
       }));
       cancelCommentEdit();
@@ -1636,6 +1817,11 @@ export default function DugoutTimeline({
   function renderComment(postId: string, comment: DugoutComment) {
     const canManageComment = isAdmin || comment.author.id === currentUserId;
     const isEditingComment = commentEditingId === comment.id;
+    const trimmedCommentEdit = commentEditContent.trim();
+    const commentEditKeepsMedia =
+      Boolean(comment.mediaUrl) && !commentEditRemoveMedia;
+    const canSaveCommentEdit =
+      trimmedCommentEdit.length > 0 || commentEditKeepsMedia;
 
     return (
       <div
@@ -1659,6 +1845,27 @@ export default function DugoutTimeline({
               onChange={(event) => setCommentEditContent(event.target.value)}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
             />
+            {comment.mediaUrl && !commentEditRemoveMedia ? (
+              <div className="space-y-2">
+                <DugoutMedia
+                  mediaUrl={comment.mediaUrl}
+                  mediaType={comment.mediaType}
+                  alt={comment.content || "Reply attachment"}
+                />
+                <button
+                  type="button"
+                  onClick={() => setCommentEditRemoveMedia(true)}
+                  className="text-xs text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline"
+                >
+                  Remove attachment
+                </button>
+              </div>
+            ) : null}
+            {comment.mediaUrl && commentEditRemoveMedia ? (
+              <p className="text-[11px] text-zinc-500">
+                Attachment will be removed when you save.
+              </p>
+            ) : null}
             <div className="flex items-center justify-end gap-2">
               <button
                 type="button"
@@ -1669,7 +1876,7 @@ export default function DugoutTimeline({
               </button>
               <button
                 type="button"
-                disabled={commentEditBusy || !commentEditContent.trim()}
+                disabled={commentEditBusy || !canSaveCommentEdit}
                 onClick={() => void saveCommentEdit(postId, comment.id)}
                 className="rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-violet-400 disabled:opacity-60"
               >
@@ -1678,9 +1885,18 @@ export default function DugoutTimeline({
             </div>
           </div>
         ) : (
-          <p className="whitespace-pre-wrap wrap-anywhere text-sm text-zinc-200">
-            {renderFormattedText(comment.content)}
-          </p>
+          <>
+            {comment.content.trim() ? (
+              <p className="whitespace-pre-wrap wrap-anywhere text-sm text-zinc-200">
+                {renderFormattedText(comment.content)}
+              </p>
+            ) : null}
+            <DugoutMedia
+              mediaUrl={comment.mediaUrl}
+              mediaType={comment.mediaType}
+              alt={comment.content || "Reply attachment"}
+            />
+          </>
         )}
         <div className="mt-2 flex items-center gap-3">
           {canManageComment ? (
@@ -1733,6 +1949,9 @@ export default function DugoutTimeline({
       isThreadLead: boolean;
     },
   ) {
+    const replyMediaDraft =
+      commentDraftMediaByPost[post.id] ?? emptyCommentDraftMedia();
+
     return (
       <>
         <div className="mb-1.5 flex items-start justify-between gap-3">
@@ -1921,7 +2140,11 @@ export default function DugoutTimeline({
                 ) : null}
               </div>
             ) : null}
-            <DugoutMedia post={post} alt={post.content || "Dugout media"} />
+            <DugoutMedia
+              mediaUrl={post.mediaUrl}
+              mediaType={post.mediaType}
+              alt={post.content || "Dugout media"}
+            />
             <div className="mt-3 flex flex-wrap items-center gap-3">
               <div
                 className="relative"
@@ -2034,55 +2257,12 @@ export default function DugoutTimeline({
 
             {commentsExpanded ? (
               <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                <div className="mb-2 flex items-center gap-2 text-violet-400">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveComposerTarget({
-                        type: "comment",
-                        postId: post.id,
-                      });
-                      applyInlineFormat("**");
-                    }}
-                    className="rounded-full px-2.5 py-1 text-sm font-bold hover:bg-zinc-800"
-                  >
-                    B
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setActiveComposerTarget({
-                        type: "comment",
-                        postId: post.id,
-                      });
-                      applyInlineFormat("*");
-                    }}
-                    className="rounded-full px-2.5 py-1 text-sm italic hover:bg-zinc-800"
-                  >
-                    I
-                  </button>
-                  <div className="ml-1 flex items-center gap-1">
-                    {EMOJI_CHOICES.map((emoji) => (
-                      <button
-                        key={`${post.id}-comment-${emoji}`}
-                        type="button"
-                        onClick={() =>
-                          updateCommentInput(post.id, `${commentInput}${emoji}`)
-                        }
-                        className="rounded-full border border-zinc-700 px-2 py-0.5 text-xs hover:bg-zinc-800"
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
+                <div className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40">
                   <textarea
                     ref={(element) => {
                       commentTextareaRefs.current[post.id] = element;
                     }}
-                    rows={2}
+                    rows={3}
                     maxLength={MAX_COMMENT_LENGTH}
                     value={commentInput}
                     onChange={(event) =>
@@ -2100,31 +2280,329 @@ export default function DugoutTimeline({
                         : "Sign in as a coach to reply"
                     }
                     disabled={!currentUserId}
-                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
+                    className="w-full resize-y bg-transparent px-3 py-2.5 text-sm leading-relaxed text-white placeholder-zinc-500 outline-none min-h-[4.5rem] disabled:opacity-50"
                   />
-                  <div className="flex shrink-0 flex-col items-end gap-2">
-                    {(commentInput.length > 0 ||
-                      (activeComposerTarget.type === "comment" &&
-                        activeComposerTarget.postId === post.id)) && (
-                      <CharacterMeter
-                        current={commentInput.length}
-                        max={MAX_COMMENT_LENGTH}
-                      />
-                    )}
-                    <button
-                      type="button"
-                      disabled={
-                        !currentUserId ||
-                        !commentInput.trim() ||
-                        commentBusyByPost[post.id]
-                      }
-                      onClick={() =>
-                        void submitComment(post.id)
-                      }
-                      className="h-fit rounded-lg bg-violet-500 px-3 py-2 text-xs font-semibold text-zinc-950 hover:bg-violet-400 disabled:opacity-60 disabled:text-zinc-700"
-                    >
-                      {commentBusyByPost[post.id] ? "Sending..." : "Send"}
-                    </button>
+
+                  {replyMediaDraft.previewUrl ? (
+                    <div className="border-t border-zinc-800 px-3 pt-2">
+                      <div className="relative overflow-hidden rounded-xl border border-zinc-700">
+                        <Image
+                          src={replyMediaDraft.previewUrl}
+                          alt="Attachment preview"
+                          width={1200}
+                          height={900}
+                          unoptimized={
+                            replyMediaDraft.file?.type === "image/gif"
+                          }
+                          className="h-auto max-h-48 w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => clearCommentDraftMedia(post.id)}
+                          className="absolute right-2 top-2 rounded-full bg-zinc-900/80 px-2 py-0.5 text-xs text-red-300 hover:text-red-200"
+                        >
+                          ✕ Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {replyMediaDraft.gif && !replyMediaDraft.file ? (
+                    <div className="border-t border-zinc-800 px-3 pt-2">
+                      <div className="relative overflow-hidden rounded-xl border border-brand-gold">
+                        <Image
+                          src={replyMediaDraft.gif.previewUrl}
+                          alt={replyMediaDraft.gif.title}
+                          width={1200}
+                          height={900}
+                          unoptimized
+                          className="h-auto max-h-48 w-full object-cover"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => clearCommentDraftMedia(post.id)}
+                          className="absolute right-2 top-2 rounded-full bg-zinc-900/80 px-2 py-0.5 text-xs text-red-300 hover:text-red-200"
+                        >
+                          ✕ Remove
+                        </button>
+                      </div>
+                    </div>
+                  ) : null}
+
+                  {replyEmojiPickerPostId === post.id ? (
+                    <div className="flex flex-wrap gap-2 border-t border-zinc-800 px-3 py-2">
+                      {EMOJI_CHOICES.map((emoji) => (
+                        <button
+                          key={`${post.id}-reply-emoji-${emoji}`}
+                          type="button"
+                          onClick={() => {
+                            setActiveComposerTarget({
+                              type: "comment",
+                              postId: post.id,
+                            });
+                            setCommentInputByPost((prev) => ({
+                              ...prev,
+                              [post.id]: `${prev[post.id] ?? ""}${emoji}`,
+                            }));
+                            setReplyEmojiPickerPostId(null);
+                          }}
+                          className="rounded-full border border-zinc-700 px-2.5 py-1 text-base hover:bg-zinc-800"
+                        >
+                          {emoji}
+                        </button>
+                      ))}
+                    </div>
+                  ) : null}
+
+                  {replyGifSearchPostId === post.id ? (
+                    <div className="border-t border-zinc-800 px-3 py-2">
+                      <div className="flex gap-2">
+                        <input
+                          value={replyGifQuery}
+                          onChange={(event) =>
+                            setReplyGifQuery(event.target.value)
+                          }
+                          onKeyDown={handleReplyGifInputKeyDown}
+                          placeholder="Search GIFs"
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => void searchReplyGifs()}
+                          disabled={replyGifBusy || !replyGifQuery.trim()}
+                          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+                        >
+                          {replyGifBusy ? "..." : "Find"}
+                        </button>
+                      </div>
+                      {replyGifResults.length > 0 ? (
+                        <>
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            {replyGifResults.map((gif) => (
+                              <button
+                                key={`reply-gif-${post.id}-${gif.id}`}
+                                type="button"
+                                onClick={() => {
+                                  setActiveComposerTarget({
+                                    type: "comment",
+                                    postId: post.id,
+                                  });
+                                  setCommentDraftMediaByPost((prev) => {
+                                    const old = prev[post.id];
+                                    if (old?.previewUrl?.startsWith("blob:")) {
+                                      URL.revokeObjectURL(old.previewUrl);
+                                    }
+                                    return {
+                                      ...prev,
+                                      [post.id]: {
+                                        file: null,
+                                        previewUrl: null,
+                                        gif,
+                                      },
+                                    };
+                                  });
+                                  setReplyGifSearchPostId(null);
+                                }}
+                                className={`overflow-hidden rounded-lg border ${
+                                  replyMediaDraft.gif?.id === gif.id
+                                    ? "border-brand-gold"
+                                    : "border-zinc-800"
+                                }`}
+                              >
+                                <Image
+                                  src={gif.previewUrl}
+                                  alt={gif.title}
+                                  width={240}
+                                  height={240}
+                                  unoptimized
+                                  className="h-16 w-full object-cover"
+                                />
+                              </button>
+                            ))}
+                          </div>
+                          {replyGifHasMore ? (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                void searchReplyGifs({ append: true })
+                              }
+                              disabled={replyGifBusy}
+                              className="mt-2 w-full rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+                            >
+                              {replyGifBusy ? "Loading..." : "Load more"}
+                            </button>
+                          ) : null}
+                        </>
+                      ) : null}
+                    </div>
+                  ) : null}
+
+                  <div className="flex items-center gap-2 border-t border-zinc-800 px-2 py-2 sm:gap-3 sm:px-3 sm:py-2.5">
+                    <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto text-violet-400 scrollbar-hide sm:gap-1">
+                      <button
+                        type="button"
+                        title="Add photo"
+                        onClick={() => {
+                          setReplyEmojiPickerPostId(null);
+                          setActiveComposerTarget({
+                            type: "comment",
+                            postId: post.id,
+                          });
+                          commentMediaPickPostIdRef.current = post.id;
+                          commentMediaFileInputRef.current?.click();
+                        }}
+                        className="rounded-full p-1.5 hover:bg-zinc-800 sm:p-2"
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4.5 w-4.5 sm:h-5 sm:w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                          aria-hidden
+                        >
+                          <rect x="3" y="5" width="18" height="14" rx="2" />
+                          <circle cx="8.5" cy="10.5" r="1.5" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            d="M3 16l5-5 4 4 3-3 4 4"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        title="Search GIFs"
+                        onClick={() => {
+                          setReplyEmojiPickerPostId(null);
+                          setActiveComposerTarget({
+                            type: "comment",
+                            postId: post.id,
+                          });
+                          setReplyGifSearchPostId((id) =>
+                            id === post.id ? null : post.id,
+                          );
+                        }}
+                        className={`rounded-full p-1.5 hover:bg-zinc-800 sm:p-2 ${replyGifSearchPostId === post.id ? "bg-zinc-800" : ""}`}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4.5 w-4.5 sm:h-5 sm:w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                          aria-hidden
+                        >
+                          <rect x="2" y="6" width="20" height="12" rx="2" />
+                          <path
+                            strokeLinecap="round"
+                            d="M7 12h2m0 0v2m0-2V10M13 10v4M17 10h-2v4h2M17 12h-1"
+                          />
+                        </svg>
+                      </button>
+                      <button
+                        type="button"
+                        title="Add emoji"
+                        onClick={() => {
+                          setReplyGifSearchPostId((open) =>
+                            open === post.id ? null : open,
+                          );
+                          setActiveComposerTarget({
+                            type: "comment",
+                            postId: post.id,
+                          });
+                          setReplyEmojiPickerPostId((id) =>
+                            id === post.id ? null : post.id,
+                          );
+                        }}
+                        className={`rounded-full p-1.5 hover:bg-zinc-800 sm:p-2 ${replyEmojiPickerPostId === post.id ? "bg-zinc-800" : ""}`}
+                      >
+                        <svg
+                          xmlns="http://www.w3.org/2000/svg"
+                          className="h-4.5 w-4.5 sm:h-5 sm:w-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          strokeWidth={1.8}
+                          aria-hidden
+                        >
+                          <circle cx="12" cy="12" r="9" />
+                          <path
+                            strokeLinecap="round"
+                            d="M8.5 14.5s1 1.5 3.5 1.5 3.5-1.5 3.5-1.5"
+                          />
+                          <circle
+                            cx="9"
+                            cy="10"
+                            r="1"
+                            fill="currentColor"
+                            stroke="none"
+                          />
+                          <circle
+                            cx="15"
+                            cy="10"
+                            r="1"
+                            fill="currentColor"
+                            stroke="none"
+                          />
+                        </svg>
+                      </button>
+                      <div className="flex items-center gap-0.5 sm:gap-1">
+                        <button
+                          type="button"
+                          title="Bold"
+                          onClick={() => {
+                            setActiveComposerTarget({
+                              type: "comment",
+                              postId: post.id,
+                            });
+                            applyInlineFormat("**");
+                          }}
+                          className="rounded-full px-2 py-1.5 text-base font-bold hover:bg-zinc-800 sm:px-3 sm:py-2 sm:text-lg"
+                        >
+                          B
+                        </button>
+                        <button
+                          type="button"
+                          title="Italic"
+                          onClick={() => {
+                            setActiveComposerTarget({
+                              type: "comment",
+                              postId: post.id,
+                            });
+                            applyInlineFormat("*");
+                          }}
+                          className="rounded-full px-2 py-1.5 text-base italic hover:bg-zinc-800 sm:px-3 sm:py-2 sm:text-lg"
+                        >
+                          I
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="ml-auto flex shrink-0 items-center gap-2">
+                      {commentInput.length > 0 ? (
+                        <CharacterMeter
+                          current={commentInput.length}
+                          max={MAX_COMMENT_LENGTH}
+                        />
+                      ) : null}
+                      <button
+                        type="button"
+                        disabled={
+                          !currentUserId ||
+                          (!commentInput.trim() &&
+                            !replyMediaDraft.file &&
+                            !replyMediaDraft.gif) ||
+                          commentBusyByPost[post.id]
+                        }
+                        onClick={() => void submitComment(post.id)}
+                        className="rounded-full bg-violet-500 px-3 py-1.5 text-xs font-bold leading-5 text-zinc-950 hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-50 sm:px-4 sm:text-sm"
+                      >
+                        {commentBusyByPost[post.id] ? "Sending..." : "Send"}
+                      </button>
+                    </div>
                   </div>
                 </div>
 
@@ -2573,6 +3051,13 @@ export default function DugoutTimeline({
         </section>
       ) : (
         <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70">
+          <input
+            ref={commentMediaFileInputRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp,image/gif"
+            className="hidden"
+            onChange={handleCommentMediaFileChange}
+          />
           <div
             ref={composerRef}
             className="relative z-30 overflow-visible border-b border-zinc-800 bg-zinc-900/70 px-3 py-3 sm:px-5 sm:py-4"

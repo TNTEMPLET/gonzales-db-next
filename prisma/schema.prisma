@@ -197,6 +197,8 @@ model DugoutPost {
 model DugoutComment {
   id        String   @id @default(cuid())
   content   String
+  mediaUrl  String?
+  mediaType DugoutMediaType?
   postId    String
   authorId  String
   parentId  String?
