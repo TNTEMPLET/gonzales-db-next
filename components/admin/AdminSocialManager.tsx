@@ -26,6 +26,42 @@ function IconSmile(props: { className?: string }) {
   );
 }
 
+function IconEdit(props: { className?: string }) {
+  return (
+    <svg className={props.className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a.996.996 0 0 0 0-1.41l-2.34-2.34a.996.996 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z" />
+    </svg>
+  );
+}
+
+function IconPublish(props: { className?: string }) {
+  return (
+    <svg className={props.className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
+    </svg>
+  );
+}
+
+/** Take down live post — undo / revert metaphor. */
+function IconUnpublish(props: { className?: string }) {
+  return (
+    <svg className={props.className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M12.5 8c-2.65 0-5.05.99-6.9 2.6L2 7v9h9l-3.62-3.62c1.39-1.16 3.16-1.88 5.12-1.88 3.54 0 6.55 2.31 7.6 5.5l2.37-.78C21.08 11.03 17.15 8 12.5 8z" />
+    </svg>
+  );
+}
+
+function IconDelete(props: { className?: string }) {
+  return (
+    <svg className={props.className} viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+      <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z" />
+    </svg>
+  );
+}
+
+const actionIconBtn =
+  "inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border text-sm transition enabled:hover:bg-zinc-800/90 disabled:cursor-not-allowed disabled:opacity-50";
+
 type SocialPostStatus = "DRAFT" | "PUBLISHING" | "PUBLISHED" | "FAILED";
 
 type SocialPostRecord = {
@@ -465,7 +501,7 @@ export default function AdminSocialManager() {
         </p>
       ) : null}
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
+      <div className="min-w-0 max-w-full rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
         <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <h2 className="text-lg font-semibold">Posts</h2>
           <button
@@ -477,15 +513,15 @@ export default function AdminSocialManager() {
             {busy ? "Working…" : "Sync from Facebook"}
           </button>
         </div>
-        <div className="overflow-x-auto rounded-lg border border-zinc-800">
-          <table className="min-w-full text-sm">
+        <div className="w-full min-w-0 overflow-x-auto rounded-lg border border-zinc-800">
+          <table className="w-full min-w-[640px] table-fixed border-collapse text-sm">
             <thead className="bg-zinc-950/80 text-zinc-400">
               <tr>
-                <th className="px-3 py-2 text-left">Status</th>
-                <th className="px-3 py-2 text-left">Source</th>
-                <th className="px-3 py-2 text-left">Preview</th>
-                <th className="px-3 py-2 text-left">Posted / created</th>
-                <th className="px-3 py-2 text-right">Actions</th>
+                <th className="w-36 px-3 py-2 text-left align-top">Status</th>
+                <th className="w-24 px-3 py-2 text-left align-top">Source</th>
+                <th className="min-w-0 px-3 py-2 text-left align-top">Preview</th>
+                <th className="w-40 px-3 py-2 text-left align-top">Posted / created</th>
+                <th className="w-44 px-3 py-2 text-right align-top">Actions</th>
               </tr>
             </thead>
             <tbody>
@@ -517,8 +553,8 @@ export default function AdminSocialManager() {
                       <span className="text-zinc-500">Admin</span>
                     )}
                   </td>
-                  <td className="px-3 py-2 align-top text-zinc-300 max-w-md">
-                    <p className="line-clamp-3 whitespace-pre-wrap">{post.body}</p>
+                  <td className="min-w-0 overflow-hidden px-3 py-2 align-top text-zinc-300">
+                    <p className="line-clamp-3 wrap-break-word whitespace-pre-wrap">{post.body}</p>
                     {post.linkUrl ? (
                       <p className="mt-1 text-xs text-brand-gold truncate">{post.linkUrl}</p>
                     ) : null}
@@ -526,48 +562,58 @@ export default function AdminSocialManager() {
                       <p className="mt-1 text-xs text-zinc-500 truncate">{post.imageUrl}</p>
                     ) : null}
                   </td>
-                  <td className="px-3 py-2 align-top text-xs text-zinc-500 whitespace-nowrap">
+                  <td className="px-3 py-2 align-top text-xs text-zinc-500 leading-snug">
                     {new Date(post.publishedAt ?? post.createdAt).toLocaleString()}
                   </td>
-                  <td className="px-3 py-2 align-top text-right space-x-1 whitespace-nowrap">
-                    {post.status === "DRAFT" || post.status === "FAILED" ? (
+                  <td className="px-3 py-2 align-top text-right">
+                    <div className="flex flex-wrap justify-end gap-1">
+                      {post.status === "DRAFT" || post.status === "FAILED" ? (
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => startEdit(post)}
+                          className={`${actionIconBtn} border-zinc-600 text-zinc-200`}
+                          title="Edit draft"
+                          aria-label="Edit draft"
+                        >
+                          <IconEdit className="h-[18px] w-[18px]" />
+                        </button>
+                      ) : null}
+                      {post.status === "DRAFT" || post.status === "FAILED" ? (
+                        <button
+                          type="button"
+                          disabled={busy || !facebookPublishConfigured}
+                          onClick={() => void publishPost(post.id)}
+                          className={`${actionIconBtn} border-brand-gold text-brand-gold`}
+                          title="Publish to Facebook"
+                          aria-label="Publish to Facebook"
+                        >
+                          <IconPublish className="h-[18px] w-[18px]" />
+                        </button>
+                      ) : null}
+                      {post.status === "PUBLISHED" ? (
+                        <button
+                          type="button"
+                          disabled={busy || !facebookPublishConfigured}
+                          onClick={() => void unpublishPost(post.id)}
+                          className={`${actionIconBtn} border-amber-600 text-amber-200`}
+                          title="Unpublish — remove from Facebook and save as draft"
+                          aria-label="Unpublish — remove from Facebook and save as draft"
+                        >
+                          <IconUnpublish className="h-[18px] w-[18px]" />
+                        </button>
+                      ) : null}
                       <button
                         type="button"
-                        disabled={busy}
-                        onClick={() => startEdit(post)}
-                        className="rounded border border-zinc-600 px-2 py-1 text-xs"
+                        disabled={busy || post.status === "PUBLISHING"}
+                        onClick={() => void removePost(post.id)}
+                        className={`${actionIconBtn} border-red-800/90 text-red-300`}
+                        title="Delete post record"
+                        aria-label="Delete post record"
                       >
-                        Edit
+                        <IconDelete className="h-[18px] w-[18px]" />
                       </button>
-                    ) : null}
-                    {post.status === "DRAFT" || post.status === "FAILED" ? (
-                      <button
-                        type="button"
-                        disabled={busy || !facebookPublishConfigured}
-                        onClick={() => void publishPost(post.id)}
-                        className="rounded border border-brand-gold px-2 py-1 text-xs text-brand-gold disabled:opacity-50"
-                      >
-                        Publish
-                      </button>
-                    ) : null}
-                    {post.status === "PUBLISHED" ? (
-                      <button
-                        type="button"
-                        disabled={busy || !facebookPublishConfigured}
-                        onClick={() => void unpublishPost(post.id)}
-                        className="rounded border border-amber-700 px-2 py-1 text-xs text-amber-200 disabled:opacity-50"
-                      >
-                        Unpublish
-                      </button>
-                    ) : null}
-                    <button
-                      type="button"
-                      disabled={busy || post.status === "PUBLISHING"}
-                      onClick={() => void removePost(post.id)}
-                      className="rounded border border-red-800 px-2 py-1 text-xs text-red-300"
-                    >
-                      Delete
-                    </button>
+                    </div>
                   </td>
                 </tr>
               ))}
