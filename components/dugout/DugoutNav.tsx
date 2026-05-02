@@ -88,6 +88,26 @@ type Props = {
   };
 };
 
+function BackChevronIcon() {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className="h-5 w-5 shrink-0"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.8}
+      aria-hidden
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M15 19l-7-7 7-7"
+      />
+    </svg>
+  );
+}
+
 export default function DugoutNav({
   activeView,
   currentUserName,
@@ -97,6 +117,11 @@ export default function DugoutNav({
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
+  const backHref = isMaster ? "/admin" : "/";
+  const backLabel = isMaster ? "Dashboard" : "Home";
+  const backAria = isMaster
+    ? "Back to admin dashboard"
+    : "Back to home";
 
   return (
     <nav
@@ -104,6 +129,24 @@ export default function DugoutNav({
         collapsed ? "w-16 px-2 items-center" : "w-56 px-3"
       }`}
     >
+      <div
+        className={`mb-2 ${collapsed ? "flex justify-center" : "px-1"}`}
+      >
+        <Link
+          href={backHref}
+          title={collapsed ? backAria : undefined}
+          aria-label={backAria}
+          className={`flex items-center rounded-full text-zinc-400 transition hover:bg-zinc-800 hover:text-zinc-100 ${
+            collapsed ? "justify-center p-2.5" : "gap-2 px-2 py-1.5"
+          }`}
+        >
+          <BackChevronIcon />
+          {!collapsed ? (
+            <span className="text-[13px] font-medium">{backLabel}</span>
+          ) : null}
+        </Link>
+      </div>
+
       {/* Brand / logo */}
       <div
         className={`mb-4 flex items-center ${collapsed ? "justify-center" : "gap-2 px-1"}`}

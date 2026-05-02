@@ -178,9 +178,39 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
   const authed = admin ?? (coach?.isCoach ? coach : null);
 
   if (!authed) {
+    const gateBackHref = isMaster ? "/admin" : "/";
+    const gateBackAria = isMaster
+      ? "Back to admin dashboard"
+      : "Back to home";
+    const gateBackLabel = isMaster ? "Dashboard" : "Home";
+
     return (
       <main className="min-h-screen bg-zinc-950 text-white flex flex-col items-center justify-center px-4">
         <div className="w-full max-w-md space-y-4 text-center">
+          <div className="text-left">
+            <Link
+              href={gateBackHref}
+              className="inline-flex items-center gap-1.5 rounded-full py-1.5 pl-0.5 pr-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-100"
+              aria-label={gateBackAria}
+            >
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                className="h-5 w-5 shrink-0"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={1.8}
+                aria-hidden
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 19l-7-7 7-7"
+                />
+              </svg>
+              {gateBackLabel}
+            </Link>
+          </div>
           <h1 className="text-3xl font-bold">
             {isMaster ? "The Board Room" : "The Dugout"}
           </h1>
@@ -361,17 +391,45 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
         {/* ── Center feed column ───────────────────────────────── */}
         <div className="flex h-full flex-1 flex-col overflow-hidden border-r border-zinc-800 px-0 pb-24 pt-0 sm:px-4 sm:pt-4 lg:pb-4">
           <div className="shrink-0 border-x border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
-            <div className="grid grid-cols-[auto_1fr_auto] items-center px-4 py-3">
+            <div className="px-4 pt-3">
+              <Link
+                href={isMaster ? "/admin" : "/"}
+                className="inline-flex items-center gap-1 rounded-full py-1 pl-0.5 pr-2 text-sm font-medium text-zinc-400 transition hover:text-zinc-100"
+                aria-label={
+                  isMaster
+                    ? "Back to admin dashboard"
+                    : "Back to home"
+                }
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  className="h-5 w-5 shrink-0"
+                  fill="none"
+                  viewBox="0 0 24 24"
+                  stroke="currentColor"
+                  strokeWidth={1.8}
+                  aria-hidden
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    d="M15 19l-7-7 7-7"
+                  />
+                </svg>
+                {isMaster ? "Dashboard" : "Home"}
+              </Link>
+            </div>
+            <div className="grid grid-cols-[auto_1fr_auto] items-center px-4 py-3 pt-1">
               <CoachAuthButton avatarOnly avatarSize={32} />
               <div className="flex justify-center">
                 <Link
                   href="/dugout"
                   className="inline-flex rounded-full p-1 transition hover:bg-zinc-900"
-                  aria-label="The Dugout"
+                  aria-label={isMaster ? "The Board Room" : "The Dugout"}
                 >
                   <Image
                     src={site.logoPath}
-                    alt="The Dugout"
+                    alt={isMaster ? "The Board Room" : "The Dugout"}
                     width={28}
                     height={28}
                     loading="eager"
