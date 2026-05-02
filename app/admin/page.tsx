@@ -110,6 +110,15 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open Social Desk" : "Open Social Media",
     },
     {
+      module: "ORG_DOCUMENTS" as AdminModule,
+      href: "/admin/documents",
+      title: "Organization documents",
+      description: masterMode
+        ? "Open the shared AP Baseball Google Drive folder (policies, templates, org files)."
+        : "Open the shared Google Drive folder for organizational documents.",
+      action: masterMode ? "Open Drive" : "Open Documents",
+    },
+    {
       module: "DUGOUT_MODERATION" as AdminModule,
       href: `/admin/dugout${orgQuery}`,
       title: "Dugout Moderation",

@@ -223,7 +223,8 @@ export default function Header({ brand }: HeaderProps) {
       | "REPORTS"
       | "SCORES"
       | "DUGOUT_MODERATION"
-      | "SOCIAL_MEDIA",
+      | "SOCIAL_MEDIA"
+      | "ORG_DOCUMENTS",
   ) => {
     if (!masterRole) return true;
     return canAccessAdminModule(masterRole, module);
@@ -241,6 +242,9 @@ export default function Header({ brand }: HeaderProps) {
               : []),
             ...(allowModule("SOCIAL_MEDIA")
               ? [{ href: "/admin/social", label: "Social" }]
+              : []),
+            ...(allowModule("ORG_DOCUMENTS")
+              ? [{ href: "/admin/documents", label: "Documents" }]
               : []),
             { href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" },
           ],

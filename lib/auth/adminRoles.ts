@@ -20,6 +20,7 @@ export const ADMIN_MODULES = [
   "NEWS_ADMIN",
   "ALL_STAR_VAULT",
   "SOCIAL_MEDIA",
+  "ORG_DOCUMENTS",
 ] as const;
 
 export type AdminModule = (typeof ADMIN_MODULES)[number];
@@ -42,6 +43,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   NEWS_ADMIN: "BOARD_MEMBER",
   ALL_STAR_VAULT: "ADMIN",
   SOCIAL_MEDIA: "BOARD_MEMBER",
+  ORG_DOCUMENTS: "BOARD_MEMBER",
 };
 
 export function isAdminRole(
