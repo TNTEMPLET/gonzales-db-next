@@ -52,8 +52,8 @@ export default async function AdminDocumentsPage() {
             Organization documents
           </h1>
           <p className="text-zinc-400 max-w-3xl">
-            Browse the shared AP Baseball Google Drive here. <strong>Open</strong> launches the file in
-            a new tab on Google; you must use your workspace Google account (and have been granted
+            Browse the shared AP Baseball Google Drive here. <strong>Click a file name</strong> to open
+            it in a new tab on Google; you must use your workspace Google account (and have been granted
             access in Drive). Master admins can invite people by email below. For site images, still use
             News/Social uploads so assets stay on this site.
           </p>
@@ -92,6 +92,7 @@ export default async function AdminDocumentsPage() {
             </div>
 
             <OrgDocumentsManager
+              key={drive.folderId}
               folderId={drive.folderId}
               folderUrl={drive.folderUrl}
               driveApiEnabled={driveApiEnabled}
