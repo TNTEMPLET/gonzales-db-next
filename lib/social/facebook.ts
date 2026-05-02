@@ -42,8 +42,9 @@ type GraphPostsResponse = {
   error?: { message?: string };
 };
 
-const POST_FIELDS =
-  "id,message,story,created_time,permalink_url,full_picture,link,status_type";
+// v3.3+ deprecates link, full_picture, and other attachment-aggregated fields on Page posts.
+// Keep only supported fields or Graph returns (#12) deprecate_post_aggregated_fields_for_attachement.
+const POST_FIELDS = "id,message,story,created_time,permalink_url";
 
 function normalizeFeedEntry(raw: Record<string, unknown>): PageFeedPostNormalized | null {
   const id = raw.id;
