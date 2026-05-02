@@ -53,10 +53,10 @@ export default function HeroNewsRotator({ items }: HeroNewsRotatorProps) {
           <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-black/25" />
 
           <div className="absolute left-0 right-0 bottom-0 p-6 md:p-8">
-            <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-4 py-2 rounded-full mb-4">
+            <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-4 py-2 rounded-full mb-4 text-white">
               FEATURED NEWS
             </div>
-            <h1 className="text-3xl md:text-5xl font-bold tracking-tight max-w-3xl">
+            <h1 className="text-3xl md:text-5xl font-bold tracking-tight max-w-3xl text-white">
               {activeItem.title}
             </h1>
             {activeItem.excerpt ? (

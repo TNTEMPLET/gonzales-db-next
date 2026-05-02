@@ -37,7 +37,7 @@ export default function Footer({ brand }: FooterProps) {
               />
             </div>
             <div>
-              <div className="font-bold text-xl">{brand.shortName}</div>
+              <div className="font-bold text-xl text-white">{brand.shortName}</div>
               <div className="text-xs text-brand-gold">
                 {brand.displayNameLine2}
               </div>
@@ -57,14 +57,17 @@ export default function Footer({ brand }: FooterProps) {
             {isMaster ? (
               <>
                 <li>
-                  <a href="/admin" className="hover:text-brand-gold transition">
+                  <a
+                    href="/admin"
+                    className="text-zinc-100 hover:text-brand-gold transition"
+                  >
                     Dashboard
                   </a>
                 </li>
                 <li>
                   <a
                     href="/admin/users"
-                    className="hover:text-brand-gold transition"
+                    className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Users
                   </a>
@@ -72,7 +75,7 @@ export default function Footer({ brand }: FooterProps) {
                 <li>
                   <a
                     href="/admin/reports"
-                    className="hover:text-brand-gold transition"
+                    className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Reports
                   </a>
@@ -80,7 +83,7 @@ export default function Footer({ brand }: FooterProps) {
                 <li>
                   <a
                     href="/admin/scores"
-                    className="hover:text-brand-gold transition"
+                    className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Scores
                   </a>
@@ -88,7 +91,7 @@ export default function Footer({ brand }: FooterProps) {
                 <li>
                   <a
                     href="/admin/dugout"
-                    className="hover:text-brand-gold transition"
+                    className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Dugout
                   </a>
@@ -96,7 +99,7 @@ export default function Footer({ brand }: FooterProps) {
                 <li>
                   <a
                     href="/dugout"
-                    className="hover:text-brand-gold transition"
+                    className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     The Board Room
                   </a>
@@ -107,7 +110,7 @@ export default function Footer({ brand }: FooterProps) {
                 <li>
                   <a
                     href="#schedule"
-                    className="hover:text-brand-gold transition"
+                    className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Schedules &amp; Standings
                   </a>
@@ -115,26 +118,32 @@ export default function Footer({ brand }: FooterProps) {
                 <li>
                   <a
                     href="#register"
-                    className="hover:text-brand-gold transition"
+                    className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Player Registration
                   </a>
                 </li>
                 <li>
-                  <a href="#teams" className="hover:text-brand-gold transition">
+                  <a
+                    href="#teams"
+                    className="text-zinc-100 hover:text-brand-gold transition"
+                  >
                     Teams &amp; Rosters
                   </a>
                 </li>
                 <li>
                   <a
                     href="#fields"
-                    className="hover:text-brand-gold transition"
+                    className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Field Status
                   </a>
                 </li>
                 <li>
-                  <a href="#news" className="hover:text-brand-gold transition">
+                  <a
+                    href="#news"
+                    className="text-zinc-100 hover:text-brand-gold transition"
+                  >
                     News &amp; Announcements
                   </a>
                 </li>
@@ -157,13 +166,19 @@ export default function Footer({ brand }: FooterProps) {
             </p>
             <p>
               Phone:{" "}
-              <a href="tel:225-495-4001" className="hover:text-white">
+              <a
+                href="tel:225-495-4001"
+                className="text-zinc-100 hover:text-white"
+              >
                 (225) 495-4001
               </a>
             </p>
             <p>
               Email:{" "}
-              <a href="mailto:info@apbaseball.com" className="hover:text-white">
+              <a
+                href="mailto:info@apbaseball.com"
+                className="text-zinc-100 hover:text-white"
+              >
                 info@apbaseball.com
               </a>
             </p>
@@ -179,7 +194,7 @@ export default function Footer({ brand }: FooterProps) {
               href="https://www.facebook.com/APBaseball"
               target="_blank"
               rel="noopener"
-              className="hover:text-brand-gold"
+              className="text-zinc-100 hover:text-brand-gold"
             >
               Facebook
             </a>

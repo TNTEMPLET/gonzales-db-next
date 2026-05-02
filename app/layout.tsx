@@ -44,7 +44,7 @@ export default function RootLayout({
   `;
 
   return (
-    <html lang="en">
+    <html lang="en" className="dark">
       <head>
         {/* Inject org brand colors before any other styles */}
         <style dangerouslySetInnerHTML={{ __html: orgCss }} />

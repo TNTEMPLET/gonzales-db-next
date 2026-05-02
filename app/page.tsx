@@ -203,11 +203,11 @@ export default async function Home({
           <div className="absolute inset-0 bg-black/45" />
 
           <div className="relative z-10 text-center px-6 max-w-5xl mx-auto">
-            <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-6">
+            <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-6 text-white">
               SPRING 2026 SEASON
             </div>
 
-            <h1 className="text-6xl md:text-7xl font-bold mb-6 tracking-tighter leading-none">
+            <h1 className="text-6xl md:text-7xl font-bold mb-6 tracking-tighter leading-none text-white">
               {site.name}
             </h1>
 
@@ -227,7 +227,7 @@ export default async function Home({
               )}
               <a
                 href="#schedule"
-                className="border-2 border-white hover:bg-white hover:text-black font-semibold text-xl px-12 py-5 rounded-xl transition-all"
+                className="border-2 border-white text-white hover:bg-white hover:text-black font-semibold text-xl px-12 py-5 rounded-xl transition-all"
               >
                 View Schedules
               </a>
@@ -241,7 +241,7 @@ export default async function Home({
         <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-3 gap-10 text-center">
           <div>
             <div className="text-6xl mb-3">🏟️</div>
-            <h3 className="font-semibold text-xl mb-3">Park Status</h3>
+            <h3 className="font-semibold text-xl mb-3 text-white">Park Status</h3>
             {venueStats.length > 0 ? (
               <div className="space-y-2">
                 {venueStats.map(([, venue]) => {
@@ -291,14 +291,14 @@ export default async function Home({
                 {todayDayLabel}
               </div>
             </div>
-            <h3 className="font-semibold text-xl mb-1">Registration</h3>
+            <h3 className="font-semibold text-xl mb-1 text-white">Registration</h3>
             <p className="text-brand-gold">
               {regOpen ? "Spring 2026 Season" : "Closed"}
             </p>
           </div>
           <div>
             <div className="text-6xl mb-3">📱</div>
-            <h3 className="font-semibold text-xl mb-1">Live Scores</h3>
+            <h3 className="font-semibold text-xl mb-1 text-white">Live Scores</h3>
             <p className="text-zinc-400">Integrated with GameChanger</p>
           </div>
         </div>
@@ -313,7 +313,7 @@ export default async function Home({
                 <div className="inline-block bg-brand-purple text-[11px] tracking-[2px] px-4 py-1.5 rounded-full mb-3">
                   FEATURED NEWS
                 </div>
-                <h2 className="text-3xl md:text-4xl font-bold tracking-tight">
+                <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white">
                   Top League Updates
                 </h2>
               </div>

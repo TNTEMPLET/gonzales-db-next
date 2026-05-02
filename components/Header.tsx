@@ -91,7 +91,8 @@ export default function Header({ brand }: HeaderProps) {
   }
 
   function desktopLinkClassName(href: string) {
-    if (!isMasterHeader) return "hover:text-brand-gold transition-colors";
+    if (!isMasterHeader)
+      return "text-white hover:text-brand-gold transition-colors";
 
     const isRouteLink = !href.includes("#");
     const pathKey = href.split("?")[0] ?? href;
@@ -106,7 +107,7 @@ export default function Header({ brand }: HeaderProps) {
   }
 
   function mobileLinkClassName(href: string) {
-    if (!isMasterHeader) return "hover:text-brand-gold";
+    if (!isMasterHeader) return "text-white hover:text-brand-gold";
 
     const isRouteLink = !href.includes("#");
     const pathKey = href.split("?")[0] ?? href;
@@ -405,7 +406,7 @@ export default function Header({ brand }: HeaderProps) {
         {!isMasterHeader && regOpen && (
           <Link
             href="/#register"
-            className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm transition"
+            className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm text-white transition"
           >
             Register Now
           </Link>
@@ -415,7 +416,7 @@ export default function Header({ brand }: HeaderProps) {
         <button
           type="button"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className={`justify-self-end text-2xl md:hidden ${isMasterHeader ? "col-start-2 row-start-1" : ""}`}
+          className={`justify-self-end text-2xl text-white md:hidden ${isMasterHeader ? "col-start-2 row-start-1" : ""}`}
           aria-expanded={isMenuOpen}
           aria-label={isMenuOpen ? "Close menu" : "Open menu"}
         >
@@ -483,7 +484,7 @@ export default function Header({ brand }: HeaderProps) {
               <Link
                 href="/#register"
                 onClick={() => setIsMenuOpen(false)}
-                className="bg-brand-purple hover:bg-brand-purple-dark py-3 text-center rounded-lg font-semibold mt-4"
+                className="bg-brand-purple hover:bg-brand-purple-dark py-3 text-center rounded-lg font-semibold text-white mt-4"
               >
                 Register for Spring 2026
               </Link>
@@ -492,7 +493,7 @@ export default function Header({ brand }: HeaderProps) {
               <Link
                 href="/coach-corner"
                 onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-2 hover:text-brand-gold"
+                className="flex items-center gap-2 text-white hover:text-brand-gold"
               >
                 Coach&apos;s Corner
               </Link>
@@ -501,7 +502,7 @@ export default function Header({ brand }: HeaderProps) {
               <Link
                 href="/dugout"
                 onClick={() => setIsMenuOpen(false)}
-                className="flex items-center gap-2 hover:text-brand-gold"
+                className="flex items-center gap-2 text-white hover:text-brand-gold"
               >
                 The Dugout
               </Link>

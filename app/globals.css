@@ -8,13 +8,18 @@ input[type="date"]::-webkit-input-placeholder {
 }
 @import "tailwindcss";
 
-:root {
-  --background: #ffffff;
-  --foreground: #171717;
+/* Match OS "dark" Tailwind utilities to our always-dark layout (html.dark). */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Always dark UI: public pages ignore OS light/dark so contrast stays correct (esp. iOS / Safari). */
+html {
+  color-scheme: dark;
 }
 
 /* Org-specific brand color defaults (overridden per deployment via layout.tsx <style>) */
 :root {
+  --background: #0a0a0a;
+  --foreground: #fafafa;
   --org-primary: #590275;
   --org-primary-dark: #4a0163;
   --org-accent: #ffcb29;
@@ -29,13 +34,6 @@ input[type="date"]::-webkit-input-placeholder {
   --color-brand-gold: var(--org-accent);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
 }
 
 body {
