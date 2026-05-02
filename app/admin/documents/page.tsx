@@ -39,7 +39,7 @@ export default async function AdminDocumentsPage() {
     redirect("/admin?denied=documents");
   }
 
-  const canManageSharing = hasAdminRoleAtLeast(role, "ADMIN");
+  const canManageSharing = hasAdminRoleAtLeast(role, "MASTER_ADMIN");
   const drive = getOrgDocumentsConfig();
   const driveApiEnabled = isDriveServiceAccountConfigured();
 
@@ -54,7 +54,7 @@ export default async function AdminDocumentsPage() {
           <p className="text-zinc-400 max-w-3xl">
             Browse the shared AP Baseball Google Drive here. <strong>Open</strong> launches the file in
             a new tab on Google; you must use your workspace Google account (and have been granted
-            access in Drive). Admins can invite people by email below. For site images, still use
+            access in Drive). Master admins can invite people by email below. For site images, still use
             News/Social uploads so assets stay on this site.
           </p>
         </div>

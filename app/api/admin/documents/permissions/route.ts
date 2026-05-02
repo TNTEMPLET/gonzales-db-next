@@ -69,14 +69,14 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const adminOnly = await ensureAdminRole(request, "ADMIN");
-  if (!adminOnly.ok) {
+  const masterOnly = await ensureAdminRole(request, "MASTER_ADMIN");
+  if (!masterOnly.ok) {
     return NextResponse.json(
       {
         error:
-          "Only admins can change folder sharing. Ask a master or site admin to grant access.",
+          "Only a master admin can change folder sharing. Ask a master admin to grant access.",
       },
-      { status: adminOnly.status },
+      { status: masterOnly.status },
     );
   }
 
@@ -116,14 +116,14 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  const adminOnly = await ensureAdminRole(request, "ADMIN");
-  if (!adminOnly.ok) {
+  const masterOnly = await ensureAdminRole(request, "MASTER_ADMIN");
+  if (!masterOnly.ok) {
     return NextResponse.json(
       {
         error:
-          "Only admins can remove folder sharing. Ask a master or site admin.",
+          "Only a master admin can remove folder sharing. Ask a master admin.",
       },
-      { status: adminOnly.status },
+      { status: masterOnly.status },
     );
   }
 

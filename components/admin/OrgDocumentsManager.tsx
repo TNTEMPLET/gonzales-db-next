@@ -254,8 +254,8 @@ export default function OrgDocumentsManager({
             <p className="text-sm text-zinc-500 mb-4">
               People and groups who can open this folder in Google Drive.{" "}
               {canManageSharing
-                ? "As an admin, you can invite users by email."
-                : "Only site admins can add or remove sharing."}
+                ? "As a master admin, you can invite users by email."
+                : "Only master admins can add or remove sharing."}
             </p>
 
             {canManageSharing ? (
