@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { AP_BASEBALL_SOCIAL_ORG_ID } from "@/lib/social/constants";
 import { isFacebookPublishConfigured, publishPageFeedPost } from "@/lib/social/facebook";
 import { serializeSocialPost } from "@/lib/social/socialPostSerialize";
 import { unknownErrorMessage } from "@/lib/unknownErrorMessage";
@@ -20,7 +20,6 @@ export async function POST(
   }
 
   const { id } = await context.params;
-  const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
 
   if (!isFacebookPublishConfigured()) {
     return NextResponse.json(
@@ -34,7 +33,7 @@ export async function POST(
 
   try {
     const existing = await prisma.socialPost.findFirst({
-      where: { id, organizationId: targetOrg },
+      where: { id, organizationId: AP_BASEBALL_SOCIAL_ORG_ID },
     });
     if (!existing) {
       return NextResponse.json({ error: "Post not found" }, { status: 404 });
@@ -92,7 +91,7 @@ export async function POST(
     const message = unknownErrorMessage(err);
     try {
       await prisma.socialPost.updateMany({
-        where: { id, organizationId: targetOrg },
+        where: { id, organizationId: AP_BASEBALL_SOCIAL_ORG_ID },
         data: { status: "FAILED", publishError: message },
       });
     } catch {

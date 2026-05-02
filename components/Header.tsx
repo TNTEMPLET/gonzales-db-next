@@ -240,7 +240,7 @@ export default function Header({ brand }: HeaderProps) {
               ? [{ href: `/admin/sponsors${masterOrgSuffix}`, label: "Sponsors" }]
               : []),
             ...(allowModule("SOCIAL_MEDIA")
-              ? [{ href: `/admin/social${masterOrgSuffix}`, label: "Social" }]
+              ? [{ href: "/admin/social", label: "Social" }]
               : []),
             { href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" },
           ],

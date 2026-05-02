@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAdminModule } from "@/lib/news/auth";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { AP_BASEBALL_SOCIAL_ORG_ID } from "@/lib/social/constants";
 import { isFacebookPublishConfigured } from "@/lib/social/facebook";
 import { serializeSocialPost } from "@/lib/social/socialPostSerialize";
 import { unknownErrorMessage } from "@/lib/unknownErrorMessage";
@@ -24,15 +24,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
     const posts = await prisma.socialPost.findMany({
-      where: { organizationId: targetOrg },
+      where: { organizationId: AP_BASEBALL_SOCIAL_ORG_ID },
       orderBy: [{ updatedAt: "desc" }],
     });
 
     return NextResponse.json({
       data: posts.map(serializeSocialPost),
-      targetOrg,
       facebookPublishConfigured: isFacebookPublishConfigured(),
     });
   } catch (err: unknown) {
@@ -54,7 +52,6 @@ export async function POST(request: NextRequest) {
 
   try {
     const adminUser = await getAdminUserFromRequest(request);
-    const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
     const body = (await request.json()) as {
       body?: string;
       linkUrl?: string | null;
@@ -71,7 +68,7 @@ export async function POST(request: NextRequest) {
 
     const post = await prisma.socialPost.create({
       data: {
-        organizationId: targetOrg,
+        organizationId: AP_BASEBALL_SOCIAL_ORG_ID,
         body: text || "(Image post)",
         linkUrl: toNullableString(body.linkUrl),
         imageUrl: toNullableString(body.imageUrl),

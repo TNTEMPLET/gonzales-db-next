@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { AP_BASEBALL_SOCIAL_ORG_ID } from "@/lib/social/constants";
 import { fetchPageFeedPosts, isFacebookPublishConfigured } from "@/lib/social/facebook";
 import { serializeSocialPost } from "@/lib/social/socialPostSerialize";
 import { unknownErrorMessage } from "@/lib/unknownErrorMessage";
@@ -26,8 +26,6 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
-
   let maxPosts = 200;
   try {
     const body = await request.json().catch(() => ({}));
@@ -47,7 +45,7 @@ export async function POST(request: NextRequest) {
 
     const fbIds = feed.posts.map((p) => p.facebookPostId);
     const existingRows = await prisma.socialPost.findMany({
-      where: { organizationId: targetOrg, facebookPostId: { in: fbIds } },
+      where: { organizationId: AP_BASEBALL_SOCIAL_ORG_ID, facebookPostId: { in: fbIds } },
       select: { facebookPostId: true },
     });
     const existingSet = new Set(
@@ -62,12 +60,12 @@ export async function POST(request: NextRequest) {
       await prisma.socialPost.upsert({
         where: {
           organizationId_facebookPostId: {
-            organizationId: targetOrg,
+            organizationId: AP_BASEBALL_SOCIAL_ORG_ID,
             facebookPostId: item.facebookPostId,
           },
         },
         create: {
-          organizationId: targetOrg,
+          organizationId: AP_BASEBALL_SOCIAL_ORG_ID,
           status: "PUBLISHED",
           body: item.body,
           linkUrl: item.linkUrl,
@@ -90,7 +88,7 @@ export async function POST(request: NextRequest) {
     }
 
     const posts = await prisma.socialPost.findMany({
-      where: { organizationId: targetOrg },
+      where: { organizationId: AP_BASEBALL_SOCIAL_ORG_ID },
       orderBy: [{ updatedAt: "desc" }],
     });
 
@@ -101,7 +99,6 @@ export async function POST(request: NextRequest) {
         updated,
         posts: posts.map(serializeSocialPost),
       },
-      targetOrg,
       facebookPublishConfigured: true,
     });
   } catch (err: unknown) {

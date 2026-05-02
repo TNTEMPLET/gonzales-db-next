@@ -102,10 +102,10 @@ export default async function AdminDashboardPage({
     },
     {
       module: "SOCIAL_MEDIA" as AdminModule,
-      href: `/admin/social${orgQuery}`,
+      href: "/admin/social",
       title: "Social media",
       description: masterMode
-        ? "Draft Facebook Page posts for AP Baseball and publish via Meta when connected."
+        ? "Draft posts for the shared AP Baseball Facebook Page (not per league site)."
         : "Compose posts and publish to your Facebook Page (Meta credentials required).",
       action: masterMode ? "Open Social Desk" : "Open Social Media",
     },

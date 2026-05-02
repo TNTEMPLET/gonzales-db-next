@@ -662,7 +662,8 @@ model SponsorPlacement {
 
 model SocialPost {
   id                   String           @id @default(cuid())
-  organizationId     String           @default("gonzales")
+  /** Always `ap-baseball`: shared AP Baseball Facebook Page, not per league site. */
+  organizationId     String           @default("ap-baseball")
   status               SocialPostStatus @default(DRAFT)
   body                 String
   linkUrl              String?
