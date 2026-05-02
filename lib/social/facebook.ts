@@ -147,6 +147,82 @@ function graphErrorMessage(payload: unknown): string {
 }
 
 /**
+ * True when Graph indicates the object is gone or was already removed (safe to treat unpublish as done).
+ */
+function isAlreadyDeletedOrMissingGraphError(payload: unknown): boolean {
+  if (!payload || typeof payload !== "object") return false;
+  const err = (payload as { error?: { message?: string; code?: number; error_subcode?: number } })
+    .error;
+  if (!err?.message) return false;
+  const msg = err.message.toLowerCase();
+  return (
+    msg.includes("does not exist") ||
+    msg.includes("cannot be loaded") ||
+    msg.includes("could not be deleted") ||
+    msg.includes("invalid post") ||
+    msg.includes("was deleted") ||
+    msg.includes("nonexistent")
+  );
+}
+
+export type DeletePagePostResult = { ok: true } | { ok: false; error: string };
+
+/**
+ * Deletes a Page post or photo object by Graph id (same token as publishing).
+ */
+export async function deletePagePost(
+  facebookPostId: string,
+): Promise<DeletePagePostResult> {
+  const { accessToken } = getPageCredentials();
+  if (!accessToken) {
+    return {
+      ok: false,
+      error:
+        "Facebook is not configured. Set FACEBOOK_PAGE_ID and FACEBOOK_PAGE_ACCESS_TOKEN.",
+    };
+  }
+
+  const id = facebookPostId.trim();
+  if (!id) {
+    return { ok: false, error: "Missing Facebook post id." };
+  }
+
+  const url =
+    `https://graph.facebook.com/${GRAPH_VERSION}/${encodeURIComponent(id)}` +
+    `?access_token=${encodeURIComponent(accessToken)}`;
+
+  try {
+    const response = await fetch(url, { method: "DELETE" });
+    const text = await response.text();
+    let json: { success?: boolean; error?: { message?: string; code?: number } } = {};
+    if (text.trim()) {
+      try {
+        json = JSON.parse(text) as typeof json;
+      } catch {
+        return { ok: false, error: "Invalid response from Facebook." };
+      }
+    }
+
+    if (response.ok && (json.success === true || !json.error)) {
+      return { ok: true };
+    }
+
+    if (!response.ok && isAlreadyDeletedOrMissingGraphError(json)) {
+      return { ok: true };
+    }
+
+    if (!response.ok) {
+      return { ok: false, error: graphErrorMessage(json) };
+    }
+
+    return { ok: false, error: graphErrorMessage(json) };
+  } catch (e: unknown) {
+    const msg = e instanceof Error ? e.message : "Network error calling Facebook";
+    return { ok: false, error: msg };
+  }
+}
+
+/**
  * Publishes to the Page feed.
  * - If `imageUrl` is set, uses `/{page-id}/photos` with `url` + optional `caption` (message).
  * - Otherwise uses `/{page-id}/feed` with `message` and optional `link`.

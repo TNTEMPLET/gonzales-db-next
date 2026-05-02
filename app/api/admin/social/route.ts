@@ -5,6 +5,7 @@ import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
 import { AP_BASEBALL_SOCIAL_ORG_ID } from "@/lib/social/constants";
 import { isFacebookPublishConfigured } from "@/lib/social/facebook";
+import { findManySocialPostsForOrg } from "@/lib/social/socialPostQueries";
 import { serializeSocialPost } from "@/lib/social/socialPostSerialize";
 import { unknownErrorMessage } from "@/lib/unknownErrorMessage";
 
@@ -24,10 +25,7 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const posts = await prisma.socialPost.findMany({
-      where: { organizationId: AP_BASEBALL_SOCIAL_ORG_ID },
-      orderBy: [{ updatedAt: "desc" }],
-    });
+    const posts = await findManySocialPostsForOrg(AP_BASEBALL_SOCIAL_ORG_ID);
 
     return NextResponse.json({
       data: posts.map(serializeSocialPost),
