@@ -13,6 +13,7 @@ import {
   getOrgDisplayName,
   type ContentOrgId,
 } from "@/lib/siteConfig";
+import { parseOptionalNewsImageUrl } from "@/lib/uploads/validateNewsImageUrl";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
@@ -290,6 +291,15 @@ export default function NewsAdminPanel({
       return;
     }
 
+    const normalizedHero = parseOptionalNewsImageUrl(createPayload.imageUrl);
+    if (!normalizedHero.ok) {
+      setBusy(false);
+      setError(normalizedHero.error);
+      return;
+    }
+
+    const heroForApi = normalizedHero.value ?? "";
+
     try {
       const response = await fetch(`/api/news?${orgQuery}`, {
         method: "POST",
@@ -298,11 +308,13 @@ export default function NewsAdminPanel({
           createPayload.publishedAt
             ? {
                 ...createPayload,
+                imageUrl: heroForApi,
                 publishedAt: fromLocalDateTimeInput(createPayload.publishedAt),
                 targetOrgs: effectiveTargets,
               }
             : {
                 ...createPayload,
+                imageUrl: heroForApi,
                 targetOrgs: effectiveTargets,
               },
         ),
@@ -462,14 +474,24 @@ export default function NewsAdminPanel({
     setError("");
     setNotice("");
 
+    const normalizedHero = parseOptionalNewsImageUrl(editPayload.imageUrl);
+    if (!normalizedHero.ok) {
+      setBusy(false);
+      setError(normalizedHero.error);
+      return;
+    }
+    const heroForApi = normalizedHero.value ?? "";
+
     try {
       const patchBody = editPayload.publishedAt
         ? {
             ...editPayload,
+            imageUrl: heroForApi,
             publishedAt: fromLocalDateTimeInput(editPayload.publishedAt),
           }
         : {
             ...editPayload,
+            imageUrl: heroForApi,
             publishedAt: editPayload.status === "DRAFT" ? null : undefined,
           };
 
@@ -745,8 +767,22 @@ export default function NewsAdminPanel({
                 className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-zinc-200"
               />
               <p className="text-xs text-zinc-500">
-                Upload image files only (max 5MB).
+                Upload image files only (max 5MB). From Canva: export PNG or JPG,
+                then upload here for a stable URL.
               </p>
+              <input
+                type="url"
+                inputMode="url"
+                placeholder="Or paste HTTPS image URL"
+                value={createPayload.imageUrl}
+                onChange={(event) =>
+                  setCreatePayload((prev) => ({
+                    ...prev,
+                    imageUrl: event.target.value,
+                  }))
+                }
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
               {createPayload.imageUrl ? (
                 <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2">
                   <p className="text-[11px] text-zinc-500 break-all mb-2">
@@ -968,8 +1004,22 @@ export default function NewsAdminPanel({
                     className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-zinc-200"
                   />
                   <p className="text-xs text-zinc-500">
-                    Upload image files only (max 5MB).
+                    Upload image files only (max 5MB). From Canva: export PNG or
+                    JPG, then upload here.
                   </p>
+                  <input
+                    type="url"
+                    inputMode="url"
+                    placeholder="Or paste HTTPS image URL"
+                    value={editPayload.imageUrl}
+                    onChange={(event) =>
+                      setEditPayload((prev) => ({
+                        ...prev,
+                        imageUrl: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                  />
                   {editPayload.imageUrl ? (
                     <div className="rounded-lg border border-zinc-800 bg-zinc-950 p-2">
                       <p className="text-[11px] text-zinc-500 break-all mb-2">

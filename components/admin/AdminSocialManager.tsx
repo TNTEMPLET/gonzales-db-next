@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 
 function IconPhoto(props: { className?: string }) {
   return (
@@ -111,6 +111,7 @@ export default function AdminSocialManager() {
   const [form, setForm] = useState(EMPTY_FORM);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [attachmentOpen, setAttachmentOpen] = useState({ link: false, image: false });
+  const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const charCount = useMemo(() => form.body.length, [form.body]);
   const canSave = Boolean(form.body.trim() || form.imageUrl.trim());
 
@@ -196,6 +197,42 @@ export default function AdminSocialManager() {
     setEditingId(null);
     setForm(EMPTY_FORM);
     setAttachmentOpen({ link: false, image: false });
+  }
+
+  async function uploadSocialImage(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setError("Only image files are allowed");
+      event.target.value = "";
+      return;
+    }
+    setImageUploadBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const formData = new FormData();
+      formData.append("image", file);
+      const response = await fetch("/api/admin/social/upload", {
+        method: "POST",
+        body: formData,
+      });
+      const json = (await response.json()) as { error?: string; data?: { imageUrl?: string } };
+      if (!response.ok) {
+        throw new Error(json.error || "Upload failed");
+      }
+      const url = json.data?.imageUrl?.trim();
+      if (url) {
+        setForm((f) => ({ ...f, imageUrl: url }));
+        setAttachmentOpen((a) => ({ ...a, image: true }));
+        setNotice("Image uploaded — ready to save draft.");
+      }
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : "Upload failed");
+    } finally {
+      setImageUploadBusy(false);
+      event.target.value = "";
+    }
   }
 
   async function savePost() {
@@ -440,21 +477,37 @@ export default function AdminSocialManager() {
                 </label>
               ) : null}
               {attachmentOpen.image ? (
-                <label className="block">
-                  <span className="text-xs font-medium text-zinc-400">
-                    Image URL <span className="font-normal text-zinc-500">(HTTPS, public)</span>
-                  </span>
-                  <input
-                    value={form.imageUrl}
-                    onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
-                    placeholder="https://…"
-                    className="mt-1 w-full rounded-lg border border-zinc-600 bg-[#242526] px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-[#2374E1] focus:outline-none"
-                  />
-                </label>
+                <div className="space-y-3">
+                  <label className="block">
+                    <span className="text-xs font-medium text-zinc-400">Upload image</span>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      onChange={(e) => void uploadSocialImage(e)}
+                      disabled={busy || imageUploadBusy}
+                      className="mt-1 w-full rounded-lg border border-zinc-600 bg-[#242526] px-3 py-2 text-sm file:mr-3 file:rounded-md file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-zinc-200"
+                    />
+                    <span className="mt-1 block text-[11px] text-zinc-500">
+                      Canva (or any tool): export PNG or JPG, then upload here for a stable URL
+                      Facebook can fetch.
+                    </span>
+                  </label>
+                  <label className="block">
+                    <span className="text-xs font-medium text-zinc-400">
+                      Or image URL <span className="font-normal text-zinc-500">(HTTPS, public)</span>
+                    </span>
+                    <input
+                      value={form.imageUrl}
+                      onChange={(e) => setForm((f) => ({ ...f, imageUrl: e.target.value }))}
+                      placeholder="https://…"
+                      className="mt-1 w-full rounded-lg border border-zinc-600 bg-[#242526] px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-[#2374E1] focus:outline-none"
+                    />
+                  </label>
+                </div>
               ) : null}
               <p className="text-xs text-zinc-500">
-                With an image URL, Facebook posts as a photo; the link field is not used as the
-                primary attachment.
+                With an image, Facebook posts as a photo; the link field is not used as the primary
+                attachment.
               </p>
             </div>
           ) : null}
@@ -464,7 +517,7 @@ export default function AdminSocialManager() {
           <div className="p-3 pt-1">
             <button
               type="button"
-              disabled={busy || !canSave}
+              disabled={busy || imageUploadBusy || !canSave}
               onClick={() => void savePost()}
               className="w-full rounded-lg py-2 text-center text-[15px] font-semibold text-white transition disabled:cursor-not-allowed disabled:bg-zinc-700 disabled:text-zinc-500 enabled:bg-[#2374E1] enabled:hover:bg-[#1864D7]"
             >
@@ -484,6 +537,10 @@ export default function AdminSocialManager() {
             </li>
             <li>Link previews are generated by Facebook from Open Graph tags on the URL.</li>
             <li>Image URLs must be publicly reachable over HTTPS.</li>
+            <li>
+              <strong>Canva:</strong> download PNG/JPG from your design, then use{" "}
+              <strong>Upload image</strong> in the composer so the file is hosted on this site.
+            </li>
             <li>Posts are public on your Page; Meta App Review may be required outside dev mode.</li>
             <li>Long posts are fine; character count is informational only.</li>
           </ul>

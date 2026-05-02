@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureNewsAdmin } from "@/lib/news/auth";
+import { ensureAdminModule } from "@/lib/news/auth";
 import {
   isBlobConfigStoreError,
   storeAdminImageFromFile,
@@ -9,11 +9,11 @@ import {
 export const runtime = "nodejs";
 
 export async function POST(request: NextRequest) {
-  const admin = await ensureNewsAdmin(request);
-  if (!admin.ok) {
+  const auth = await ensureAdminModule(request, "SOCIAL_MEDIA");
+  if (!auth.ok) {
     return NextResponse.json(
-      { error: admin.message || "Unauthorized" },
-      { status: admin.status },
+      { error: auth.message || "Unauthorized" },
+      { status: auth.status },
     );
   }
 
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const result = await storeAdminImageFromFile(file, "news");
+    const result = await storeAdminImageFromFile(file, "social");
     if (!result.ok) {
       const status = isBlobConfigStoreError(result) ? 500 : 400;
       return NextResponse.json({ error: result.error }, { status });

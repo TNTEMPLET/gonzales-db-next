@@ -9,6 +9,7 @@ import {
   resolveAdminTargetOrg,
   type ContentOrgId,
 } from "@/lib/siteConfig";
+import { parseOptionalNewsImageUrl } from "@/lib/uploads/validateNewsImageUrl";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
@@ -124,6 +125,15 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       }
     }
 
+    let imageUrlForDb: string | null | undefined = undefined;
+    if (body.imageUrl !== undefined) {
+      const parsed = parseOptionalNewsImageUrl(body.imageUrl);
+      if (!parsed.ok) {
+        return NextResponse.json({ error: parsed.error }, { status: 400 });
+      }
+      imageUrlForDb = parsed.value;
+    }
+
     const updated = await prisma.newsPost.update({
       where: { id: existing.id },
       data: {
@@ -132,10 +142,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
         excerpt:
           body.excerpt !== undefined ? body.excerpt?.trim() || null : undefined,
         content: body.content?.trim(),
-        imageUrl:
-          body.imageUrl !== undefined
-            ? body.imageUrl?.trim() || null
-            : undefined,
+        imageUrl: imageUrlForDb,
         author:
           body.author !== undefined ? body.author?.trim() || null : undefined,
         featured: body.featured,

@@ -9,6 +9,7 @@ import {
   isMasterDeployment,
   type ContentOrgId,
 } from "@/lib/siteConfig";
+import { parseOptionalNewsImageUrl } from "@/lib/uploads/validateNewsImageUrl";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
 
@@ -152,6 +153,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const parsedImage = parseOptionalNewsImageUrl(body.imageUrl);
+    if (!parsedImage.ok) {
+      return NextResponse.json({ error: parsedImage.error }, { status: 400 });
+    }
+
     const createdPosts = [];
     for (const orgId of targetOrgs) {
       const slug = await ensureUniqueSlug(orgId, requestedSlug);
@@ -163,7 +169,7 @@ export async function POST(request: NextRequest) {
           slug,
           excerpt: body.excerpt?.trim() || null,
           content: body.content.trim(),
-          imageUrl: body.imageUrl?.trim() || null,
+          imageUrl: parsedImage.value,
           author: body.author?.trim() || null,
           featured: Boolean(body.featured),
           rotatorEnabled: Boolean(body.rotatorEnabled),
