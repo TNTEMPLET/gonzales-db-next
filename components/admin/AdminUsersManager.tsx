@@ -31,6 +31,31 @@ type RegisteredUser = {
   ageGroup: string | null;
   assignedTeam: string | null;
   coachRole: "HEAD_COACH" | "ASSISTANT_COACH" | null;
+  duplicateReviewPending?: boolean;
+};
+
+type DuplicateCandidateRow = {
+  id: string;
+  createdAt: string;
+  matchReason: string;
+  status: string;
+  newerUser: {
+    id: string;
+    email: string;
+    name: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    createdAt: string;
+    duplicateReviewPending: boolean;
+  };
+  candidateUser: {
+    id: string;
+    email: string;
+    name: string | null;
+    firstName: string | null;
+    lastName: string | null;
+    createdAt: string;
+  };
 };
 
 type AdminAuditLog = {
@@ -209,6 +234,10 @@ export default function AdminUsersManager({
   const [assignmentLoading, setAssignmentLoading] = useState(false);
   const [assignmentBusy, setAssignmentBusy] = useState(false);
   const [assignmentError, setAssignmentError] = useState("");
+  const [duplicateCandidates, setDuplicateCandidates] = useState<
+    DuplicateCandidateRow[]
+  >([]);
+  const [duplicatePendingFilter, setDuplicatePendingFilter] = useState(false);
 
   useEffect(() => {
     void loadData();
@@ -230,13 +259,17 @@ export default function AdminUsersManager({
   }, [admins, adminSearch]);
 
   const filteredRegisteredUsers = useMemo(() => {
+    let users = registeredOnlyUsers;
+    if (duplicatePendingFilter) {
+      users = users.filter((user) => user.duplicateReviewPending === true);
+    }
     const term = userSearch.trim().toLowerCase();
-    if (!term) return registeredOnlyUsers;
-    return registeredOnlyUsers.filter((user) => {
+    if (!term) return users;
+    return users.filter((user) => {
       const haystack = `${user.name || ""} ${user.email}`.toLowerCase();
       return haystack.includes(term);
     });
-  }, [registeredOnlyUsers, userSearch]);
+  }, [registeredOnlyUsers, userSearch, duplicatePendingFilter]);
 
   const registeredUsersTotalPages = useMemo(
     () =>
@@ -400,15 +433,30 @@ export default function AdminUsersManager({
       if (logToDate) params.set("logTo", toIsoFromDateInput(logToDate, true));
 
       params.set("org", targetOrg);
-      const response = await fetch(`/api/admin/users?${params.toString()}`, {
-        cache: "no-store",
-      });
+      const [response, dupResponse] = await Promise.all([
+        fetch(`/api/admin/users?${params.toString()}`, {
+          cache: "no-store",
+        }),
+        fetch(
+          `/api/admin/users/duplicate-candidates?org=${encodeURIComponent(targetOrg)}&status=PENDING`,
+          { cache: "no-store" },
+        ),
+      ]);
       const json = (await response.json()) as ApiResponse | { error?: string };
 
       if (!response.ok) {
         throw new Error(
           json && "error" in json ? json.error : "Failed to load users",
         );
+      }
+
+      if (dupResponse.ok) {
+        const dupJson = (await dupResponse.json()) as {
+          candidates?: DuplicateCandidateRow[];
+        };
+        setDuplicateCandidates(dupJson.candidates || []);
+      } else {
+        setDuplicateCandidates([]);
       }
 
       const payload = json as ApiResponse;
@@ -434,6 +482,57 @@ export default function AdminUsersManager({
       setCurrentAdminIsMaster(Boolean(payload.currentAdminIsMaster));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load users");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function dismissDuplicateCandidate(candidateId: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(
+        `/api/admin/users/duplicate-candidates?${orgQuery}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+            "x-source-path": window.location.pathname,
+          },
+          body: JSON.stringify({ candidateId }),
+        },
+      );
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Dismiss failed");
+      setNotice("Marked as not a duplicate.");
+      await loadData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Dismiss failed");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function mergeDuplicateAccounts(keepUserId: string, mergeUserId: string) {
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/admin/users/merge?${orgQuery}`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-source-path": window.location.pathname,
+        },
+        body: JSON.stringify({ keepUserId, mergeUserId }),
+      });
+      const json = await response.json();
+      if (!response.ok) throw new Error(json.error || "Merge failed");
+      setNotice("Accounts merged into one.");
+      await loadData();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Merge failed");
     } finally {
       setBusy(false);
     }
@@ -861,6 +960,18 @@ export default function AdminUsersManager({
             <p className="text-zinc-400 text-sm mt-1">
               Users are listed here after successful Google sign-in.
             </p>
+            <label className="mt-3 flex items-center gap-2 text-sm text-zinc-300 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={duplicatePendingFilter}
+                onChange={(event) =>
+                  setDuplicatePendingFilter(event.target.checked)
+                }
+                className="rounded border-zinc-600"
+              />
+              Show only accounts flagged for duplicate review (same name as an
+              existing user)
+            </label>
           </div>
 
           <input
@@ -890,6 +1001,11 @@ export default function AdminUsersManager({
                         : user.name || "Unnamed User"}
                     </p>
                     <p className="text-xs text-zinc-500">{user.email}</p>
+                    {user.duplicateReviewPending ? (
+                      <span className="inline-block mt-1 text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 border border-amber-700 text-amber-300 bg-amber-950/40">
+                        Duplicate review
+                      </span>
+                    ) : null}
                     {user.contactPhone ? (
                       <p className="text-xs text-zinc-500">{user.contactPhone}</p>
                     ) : null}
@@ -1085,6 +1201,99 @@ export default function AdminUsersManager({
               </button>
             </div>
           </div>
+        </div>
+
+        <div className="rounded-xl border border-amber-900/50 bg-amber-950/20 p-5 space-y-4">
+          <div>
+            <h2 className="font-semibold text-lg">Potential duplicate accounts</h2>
+            <p className="text-zinc-400 text-sm mt-1">
+              New registrations with the same normalized name as an existing user in
+              this org. Choose which account to keep; the other is merged in (dugout
+              activity, All-Star data, and coach assignments move to the kept
+              account).
+            </p>
+          </div>
+          {duplicateCandidates.length === 0 ? (
+            <p className="text-zinc-500 text-sm">No pending name matches.</p>
+          ) : (
+            <div className="space-y-3">
+              {duplicateCandidates.map((row) => (
+                <div
+                  key={row.id}
+                  className="rounded-lg border border-zinc-700 bg-zinc-900/60 p-3 space-y-2"
+                >
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-sm">
+                    <div>
+                      <p className="text-xs font-semibold text-amber-300/90 uppercase tracking-wide">
+                        Newer signup
+                      </p>
+                      <p className="text-zinc-200 font-medium">
+                        {row.newerUser.firstName || row.newerUser.lastName
+                          ? [row.newerUser.firstName, row.newerUser.lastName]
+                              .filter(Boolean)
+                              .join(" ")
+                          : row.newerUser.name || "Unnamed"}
+                      </p>
+                      <p className="text-xs text-zinc-500 break-all">
+                        {row.newerUser.email}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-zinc-500 uppercase tracking-wide">
+                        Existing user (name match)
+                      </p>
+                      <p className="text-zinc-200 font-medium">
+                        {row.candidateUser.firstName || row.candidateUser.lastName
+                          ? [row.candidateUser.firstName, row.candidateUser.lastName]
+                              .filter(Boolean)
+                              .join(" ")
+                          : row.candidateUser.name || "Unnamed"}
+                      </p>
+                      <p className="text-xs text-zinc-500 break-all">
+                        {row.candidateUser.email}
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex flex-wrap gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void mergeDuplicateAccounts(
+                          row.candidateUser.id,
+                          row.newerUser.id,
+                        )
+                      }
+                      className="rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950/50 px-3 py-1.5 text-xs disabled:opacity-60"
+                    >
+                      Keep existing (merge new into this one)
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() =>
+                        void mergeDuplicateAccounts(
+                          row.newerUser.id,
+                          row.candidateUser.id,
+                        )
+                      }
+                      className="rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950/50 px-3 py-1.5 text-xs disabled:opacity-60"
+                    >
+                      Keep new email (merge old into new)
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void dismissDuplicateCandidate(row.id)}
+                      className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 text-xs disabled:opacity-60"
+                    >
+                      Not a duplicate
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">

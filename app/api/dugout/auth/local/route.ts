@@ -11,6 +11,7 @@ import {
   createCoachSession,
 } from "@/lib/auth/coachSession";
 import prisma from "@/lib/prisma";
+import { recordDuplicateCandidatesForNewUser } from "@/lib/registeredUserDuplicates";
 import { getDugoutRegisteredUserOrgId } from "@/lib/siteConfig";
 
 const orgId = getDugoutRegisteredUserOrgId();
@@ -68,32 +69,36 @@ export async function POST(request: NextRequest) {
         where: { organizationId: orgId, email },
       });
 
-      const user = existing
-        ? await prisma.registeredUser.update({
-            where: { id: existing.id },
-            data: {
-              passwordHash,
-              firstName,
-              lastName,
-              name: displayName(firstName, lastName),
-              contactPhone,
-              ageGroup,
-              assignedTeam,
-            },
-          })
-        : await prisma.registeredUser.create({
-            data: {
-              organizationId: orgId,
-              email,
-              firstName,
-              lastName,
-              name: displayName(firstName, lastName),
-              passwordHash,
-              contactPhone,
-              ageGroup,
-              assignedTeam,
-            },
-          });
+      let user;
+      if (existing) {
+        user = await prisma.registeredUser.update({
+          where: { id: existing.id },
+          data: {
+            passwordHash,
+            firstName,
+            lastName,
+            name: displayName(firstName, lastName),
+            contactPhone,
+            ageGroup,
+            assignedTeam,
+          },
+        });
+      } else {
+        user = await prisma.registeredUser.create({
+          data: {
+            organizationId: orgId,
+            email,
+            firstName,
+            lastName,
+            name: displayName(firstName, lastName),
+            passwordHash,
+            contactPhone,
+            ageGroup,
+            assignedTeam,
+          },
+        });
+        await recordDuplicateCandidatesForNewUser(prisma, user);
+      }
 
       // Check if user is blocked
       if (user.isBlocked) {

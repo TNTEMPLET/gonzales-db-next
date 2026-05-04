@@ -4,6 +4,7 @@ import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
 import prisma from "@/lib/prisma";
+import { recordDuplicateCandidatesForNewUser } from "@/lib/registeredUserDuplicates";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export type CoachCornerActor = {
@@ -60,8 +61,16 @@ export async function resolveCoachCornerActor(
         null,
       isCoach: true,
     },
-    select: { id: true },
+    select: {
+      id: true,
+      organizationId: true,
+      firstName: true,
+      lastName: true,
+      name: true,
+    },
   });
+
+  await recordDuplicateCandidatesForNewUser(prisma, created);
 
   return { targetOrg, registeredUserId: created.id, isAdmin: true };
 }

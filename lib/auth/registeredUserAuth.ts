@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { recordDuplicateCandidatesForNewUser } from "@/lib/registeredUserDuplicates";
 import { getDefaultContentOrg, getOrgId } from "@/lib/siteConfig";
 
 function getRegisteredUserOrgId() {
@@ -93,7 +94,7 @@ export async function upsertRegisteredUserFromGoogle(
     });
   }
 
-  return prisma.registeredUser.create({
+  const created = await prisma.registeredUser.create({
     data: {
       organizationId: orgId,
       email: input.email,
@@ -103,4 +104,6 @@ export async function upsertRegisteredUserFromGoogle(
       lastName: input.lastName,
     },
   });
+  await recordDuplicateCandidatesForNewUser(prisma, created);
+  return created;
 }
