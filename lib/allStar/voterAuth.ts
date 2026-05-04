@@ -12,6 +12,7 @@ type RegisteredVoter = {
   ageGroup: string | null;
   isCoach: boolean;
   isBlocked: boolean;
+  isAdmin: boolean;
 };
 
 type ResolveAllStarVoterOptions = {
@@ -37,7 +38,7 @@ export async function resolveAllStarVoterFromRequest(
       },
     });
     if (registeredUser && !registeredUser.isBlocked) {
-      return registeredUser;
+      return { ...registeredUser, isAdmin: false };
     }
   }
 
@@ -57,7 +58,7 @@ export async function resolveAllStarVoterFromRequest(
     });
 
     if (registeredUser && !registeredUser.isBlocked) {
-      return registeredUser;
+      return { ...registeredUser, isAdmin: true };
     }
   }
 
@@ -88,7 +89,7 @@ export async function resolveAllStarVoterFromRequest(
   }
 
   if (invite.invitedUser && !invite.invitedUser.isBlocked) {
-    return invite.invitedUser;
+    return { ...invite.invitedUser, isAdmin: false };
   }
 
   const inviteEmailUser = await prisma.registeredUser.findFirst({
@@ -107,7 +108,7 @@ export async function resolveAllStarVoterFromRequest(
     },
   });
 
-  return inviteEmailUser;
+  return inviteEmailUser ? { ...inviteEmailUser, isAdmin: false } : null;
 }
 
 export async function ensureVoterCanAccessCycle(
@@ -127,6 +128,10 @@ export async function ensureVoterCanAccessCycle(
   }
   if (cycle.closedAt && cycle.closedAt <= now) {
     return { error: "Ballot window has closed", status: 403 as const };
+  }
+
+  if (voter.isAdmin) {
+    return { cycle, invite: null };
   }
 
   if (cycle.accessMode === "INVITE_LIST") {
