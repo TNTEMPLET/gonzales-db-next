@@ -19,6 +19,7 @@ enum AdminAuditAction {
   REMOVE
   GRANT_MASTER
   REVOKE_MASTER
+  MERGE_USERS
 }
 
 enum AdminRole {
@@ -65,6 +66,16 @@ enum DugoutMediaType {
 enum DugoutNotificationEntityType {
   POST_LIKE
   COMMENT
+}
+
+enum RegisteredUserDuplicateMatchReason {
+  NAME_NORMALIZED
+}
+
+enum RegisteredUserDuplicateStatus {
+  PENDING
+  DISMISSED
+  MERGED
 }
 
 enum SocialPostStatus {
@@ -137,6 +148,8 @@ model RegisteredUser {
   googleSub      String?  @unique
   passwordHash   String?
   avatarUrl      String?
+  /** True when name-based duplicate detection flagged this account for admin review. */
+  duplicateReviewPending Boolean @default(false)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   auditLogs    AdminAuditLog[]
@@ -153,9 +166,30 @@ model RegisteredUser {
   allStarVaultAccess AllStarVaultAccess[]
   teamCoachAssignments TeamCoachAssignment[]
   teamGameNotes TeamGameNote[] @relation("TeamGameNoteAuthor")
+  duplicateAsNewer     RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsNewer")
+  duplicateAsCandidate RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsCandidate")
 
   @@unique([organizationId, email])
   @@index([organizationId])
+  @@index([organizationId, duplicateReviewPending])
+}
+
+model RegisteredUserDuplicateCandidate {
+  id              String   @id @default(cuid())
+  organizationId  String
+  newerUserId     String
+  candidateUserId String
+  matchReason     RegisteredUserDuplicateMatchReason @default(NAME_NORMALIZED)
+  status          RegisteredUserDuplicateStatus      @default(PENDING)
+  createdAt       DateTime @default(now())
+  resolvedAt      DateTime?
+
+  newerUser     RegisteredUser @relation("RegisteredUserDuplicateAsNewer", fields: [newerUserId], references: [id], onDelete: Cascade)
+  candidateUser RegisteredUser @relation("RegisteredUserDuplicateAsCandidate", fields: [candidateUserId], references: [id], onDelete: Cascade)
+
+  @@unique([newerUserId, candidateUserId])
+  @@index([organizationId, status])
+  @@index([newerUserId, status])
 }
 
 model CoachSession {
