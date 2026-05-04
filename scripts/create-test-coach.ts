@@ -1,25 +1,31 @@
 /**
- * One-off helpers to create or remove a disposable coach for login / account-setup testing.
+ * Creates a disposable `RegisteredUser` with `isCoach: true` for local / QA testing
+ * (Dugout login, coach account setup, etc.).
  *
- * Requires DATABASE_URL (e.g. from Vercel prod or `source .env.local`).
+ * Usage:
+ *   DATABASE_URL=... [SITE_ORG=gonzales|ascension|master] npm run coach:test
+ *   DATABASE_URL=... npm run coach:test -- --password 'YourTempPassword1'
+ *   DATABASE_URL=... npm run coach:test -- --org ascension --age-group '6U LLB' --team 'Red Sox'
+ *   DATABASE_URL=... npm run coach:test -- --delete <userId|cuid-or-email>
  *
- * Create (incomplete profile → first-time setup + local password creation):
- *   npx tsx scripts/create-test-coach.ts create --org ascension --age-group "6U LLB" --season 2026
+ * Flags (create only):
+ *   --organization-id, --org   gonzales | ascension (overrides SITE_ORG-based default)
+ *   --age-group, --league      stored as RegisteredUser.ageGroup (league / division label)
+ *   --team, --assigned-team    stored as RegisteredUser.assignedTeam
  *
- * Create with your email (use a plus-address you control if you also test Google):
- *   npx tsx scripts/create-test-coach.ts create --org ascension --age-group "6U LLB" --season 2026 --email "you+allstar-test@gmail.com"
- *
- * Remove:
- *   npx tsx scripts/create-test-coach.ts delete --org ascension --email "you+allstar-test@gmail.com"
+ * Defaults: no local password (use /account/setup after “can register” login flow),
+ * random email `test-coach+<unixMs>@apbaseball.test`, org bucket matches Dugout when
+ * --org is omitted (`master` → `gonzales` content org).
  */
-
+import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
 
 function createClient() {
   const connectionString = process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error("DATABASE_URL is required");
+    console.error("DATABASE_URL is required.");
+    process.exit(1);
   }
   const adapter = new PrismaPostgresAdapter({ connectionString });
   return new PrismaClient({ adapter });
@@ -27,153 +33,181 @@ function createClient() {
 
 const prisma = createClient();
 
-function parseArgs(argv: string[]) {
-  const out: Record<string, string> = {};
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i];
-    if (a === "--org" || a === "--age-group" || a === "--season" || a === "--email" || a === "--team") {
-      const key = a.slice(2).replace(/-/g, "");
-      out[key] = argv[i + 1] ?? "";
-      i++;
-    }
-  }
-  return out;
+/** Same bucket as `getDugoutRegisteredUserOrgId()` in lib/siteConfig. */
+function resolveRegisteredUserOrgId(): "gonzales" | "ascension" {
+  const raw = process.env.SITE_ORG ?? "gonzales";
+  if (raw === "ascension") return "ascension";
+  return "gonzales";
 }
 
-async function cmdCreate() {
-  const args = parseArgs(process.argv.slice(3));
-  const organizationId = (args.org || "ascension").trim().toLowerCase();
-  const ageGroupFilter = (args.agegroup || "6U LLB").trim();
-  const seasonYear = Number.parseInt(args.season || "2026", 10);
-  if (!Number.isFinite(seasonYear)) {
-    throw new Error(`Invalid season: ${args.season}`);
+function normalizeOrgIdArg(raw: string | undefined): "gonzales" | "ascension" {
+  const v = raw?.trim().toLowerCase();
+  if (!v) return resolveRegisteredUserOrgId();
+  if (v === "gonzales" || v === "ascension") return v;
+  console.error(
+    `--organization-id / --org must be gonzales or ascension (got: ${raw})`,
+  );
+  process.exit(1);
+}
+
+type CreateOptions = {
+  password: string | null;
+  organizationId: "gonzales" | "ascension";
+  ageGroup: string | null;
+  assignedTeam: string | null;
+};
+
+function parseArgs(argv: string[]): {
+  deleteTarget: string | null;
+  create: CreateOptions | null;
+} {
+  let deleteTarget: string | null = null;
+  let password: string | null = null;
+  let organizationIdRaw: string | undefined;
+  let ageGroupRaw: string | undefined;
+  let assignedTeamRaw: string | undefined;
+
+  for (let i = 0; i < argv.length; i++) {
+    const a = argv[i];
+    if (a === "--delete") {
+      deleteTarget = argv[++i] ?? "";
+    } else if (a === "--password") {
+      password = argv[++i] ?? "";
+    } else if (a.startsWith("--password=")) {
+      password = a.slice("--password=".length);
+    } else if (a === "--organization-id" || a === "--org") {
+      organizationIdRaw = argv[++i];
+    } else if (a.startsWith("--organization-id=")) {
+      organizationIdRaw = a.slice("--organization-id=".length);
+    } else if (a.startsWith("--org=")) {
+      organizationIdRaw = a.slice("--org=".length);
+    } else if (a === "--age-group" || a === "--league") {
+      ageGroupRaw = argv[++i];
+    } else if (a.startsWith("--age-group=")) {
+      ageGroupRaw = a.slice("--age-group=".length);
+    } else if (a.startsWith("--league=")) {
+      ageGroupRaw = a.slice("--league=".length);
+    } else if (a === "--team" || a === "--assigned-team") {
+      assignedTeamRaw = argv[++i];
+    } else if (a.startsWith("--team=")) {
+      assignedTeamRaw = a.slice("--team=".length);
+    } else if (a.startsWith("--assigned-team=")) {
+      assignedTeamRaw = a.slice("--assigned-team=".length);
+    }
   }
 
-  const team = await prisma.team.findFirst({
-    where: {
+  if (deleteTarget !== null) {
+    return { deleteTarget, create: null };
+  }
+
+  const organizationId = normalizeOrgIdArg(organizationIdRaw);
+  const ageGroup =
+    ageGroupRaw !== undefined ? ageGroupRaw.trim() || null : null;
+  const assignedTeam =
+    assignedTeamRaw !== undefined ? assignedTeamRaw.trim() || null : null;
+
+  return {
+    deleteTarget: null,
+    create: {
+      password,
       organizationId,
-      seasonYear,
-      ageGroup: { equals: ageGroupFilter, mode: "insensitive" },
+      ageGroup,
+      assignedTeam,
     },
-    orderBy: [{ teamName: "asc" }],
-  });
+  };
+}
 
-  if (!team) {
-    const samples = await prisma.team.findMany({
-      where: { organizationId, seasonYear },
-      select: { ageGroup: true, teamName: true },
-      orderBy: [{ ageGroup: "asc" }, { teamName: "asc" }],
-      take: 25,
-    });
-    console.error(
-      `No team found for org=${organizationId} season=${seasonYear} ageGroup matching "${ageGroupFilter}".`,
+async function deleteCoach(target: string) {
+  const trimmed = target.trim();
+  if (!trimmed) {
+    console.error("Usage: npm run coach:test -- --delete <id-or-email>");
+    process.exit(1);
+  }
+  const deleted = await prisma.registeredUser.deleteMany({
+    where: {
+      OR: [
+        { id: trimmed },
+        { email: { equals: trimmed, mode: "insensitive" } },
+      ],
+    },
+  });
+  console.log(`Deleted ${deleted.count} RegisteredUser row(s) matching "${trimmed}".`);
+}
+
+async function createCoach(options: CreateOptions) {
+  const { organizationId, ageGroup, assignedTeam } = options;
+  const explicitPassword = options.password;
+  const stamp = Date.now();
+  const email = `test-coach+${stamp}@apbaseball.test`.toLowerCase();
+  const plain =
+    explicitPassword && explicitPassword.length >= 8
+      ? explicitPassword
+      : null;
+  if (explicitPassword && explicitPassword.length > 0 && !plain) {
+    console.warn(
+      "Ignoring --password: use at least 8 characters (app rule). Creating user with no password for setup flow.",
     );
-    console.error("Sample teams in DB:", JSON.stringify(samples, null, 2));
-    process.exit(1);
   }
-
-  const email =
-    (args.email || `allstar-workflow-test-${Date.now()}@example.com`).trim().toLowerCase();
-
-  const existing = await prisma.registeredUser.findFirst({
-    where: { organizationId, email },
-  });
-  if (existing) {
-    console.error(`RegisteredUser already exists: ${email} in ${organizationId}`);
-    process.exit(1);
-  }
+  const passwordHash = plain ? await bcrypt.hash(plain, 10) : null;
 
   const user = await prisma.registeredUser.create({
     data: {
       organizationId,
       email,
+      firstName: "Test",
+      lastName: "Coach",
+      name: "Test Coach",
       isCoach: true,
-      isBlocked: false,
-      // Incomplete profile → Google sign-in returns canRegister; local login returns canRegister until signup.
-      firstName: null,
-      lastName: null,
-      name: null,
       contactPhone: null,
+      ageGroup,
+      assignedTeam,
+      passwordHash,
       googleSub: null,
-      passwordHash: null,
-      // Tie to real 6U roster context for Dugout / org data; still incomplete for setup gate.
-      ageGroup: team.ageGroup,
-      assignedTeam: team.teamName,
     },
   });
 
-  await prisma.teamCoachAssignment.upsert({
-    where: {
-      teamId_registeredUserId: { teamId: team.id, registeredUserId: user.id },
-    },
-    create: {
-      teamId: team.id,
-      registeredUserId: user.id,
-      role: "ASSISTANT_COACH",
-    },
-    update: { role: "ASSISTANT_COACH" },
-  });
-
-  console.log(
-    JSON.stringify(
-      {
-        created: true,
-        organizationId,
-        email,
-        userId: user.id,
-        team: { id: team.id, ageGroup: team.ageGroup, teamName: team.teamName, seasonYear },
-        nextSteps: [
-          "Open the league site (Ascension LL), use Login → enter this email + any password ≥8 chars → you should be sent to /account/setup.",
-          "After testing, run the delete command below (removes coach sessions, team assignment, and user).",
-        ],
-        deleteCommand: `npx tsx scripts/create-test-coach.ts delete --org ${organizationId} --email ${email}`,
-      },
-      null,
-      2,
-    ),
-  );
-}
-
-async function cmdDelete() {
-  const args = parseArgs(process.argv.slice(3));
-  const organizationId = (args.org || "ascension").trim().toLowerCase();
-  const email = (args.email || "").trim().toLowerCase();
-  if (!email) {
-    console.error('Usage: npx tsx scripts/create-test-coach.ts delete --org ascension --email "..."');
-    process.exit(1);
+  console.log("");
+  console.log("Created disposable test coach");
+  console.log("────────────────────────────────────");
+  console.log(`  id:             ${user.id}`);
+  console.log(`  organizationId: ${user.organizationId}`);
+  console.log(`  ageGroup:       ${user.ageGroup ?? "(null)"}`);
+  console.log(`  assignedTeam:   ${user.assignedTeam ?? "(null)"}`);
+  console.log(`  email:          ${user.email}`);
+  console.log(`  isCoach:        ${user.isCoach}`);
+  if (plain) {
+    console.log(`  password:       ${plain}`);
+    console.log("");
+    console.log("Sign in at Dugout with email + password above.");
+  } else {
+    console.log(`  password:       (none — first-time setup)`);
+    console.log("");
+    console.log(
+      "Open the site, use local login with this email and any password to hit",
+    );
+    console.log(
+      'the "finish account setup" flow, then complete /account/setup with a real password.',
+    );
   }
-
-  const user = await prisma.registeredUser.findFirst({
-    where: { organizationId, email },
-  });
-  if (!user) {
-    console.error(`No RegisteredUser found for ${email} in ${organizationId}`);
-    process.exit(1);
-  }
-
-  await prisma.$transaction([
-    prisma.coachSession.deleteMany({ where: { userId: user.id } }),
-    prisma.teamCoachAssignment.deleteMany({ where: { registeredUserId: user.id } }),
-    prisma.registeredUser.delete({ where: { id: user.id } }),
-  ]);
-
-  console.log(JSON.stringify({ deleted: true, organizationId, email, userId: user.id }, null, 2));
+  console.log("");
+  console.log("Remove when finished:");
+  console.log(`  npm run coach:test -- --delete ${user.id}`);
+  console.log(`  # or: npm run coach:test -- --delete ${user.email}`);
+  console.log("");
 }
 
 async function main() {
-  const [, , cmd] = process.argv;
-  if (cmd === "create") {
-    await cmdCreate();
+  const argv = process.argv.slice(2);
+  const { deleteTarget, create } = parseArgs(argv);
+
+  if (deleteTarget !== null) {
+    await deleteCoach(deleteTarget);
     return;
   }
-  if (cmd === "delete") {
-    await cmdDelete();
-    return;
+
+  if (create) {
+    await createCoach(create);
   }
-  console.error(`Usage:
-  npx tsx scripts/create-test-coach.ts create --org ascension --age-group "6U LLB" --season 2026 [--email "..."]
-  npx tsx scripts/create-test-coach.ts delete --org ascension --email "..."`);
-  process.exit(1);
 }
 
 main()

@@ -108,6 +108,7 @@ export async function POST(request: NextRequest) {
             "Finish account setup to create your password and confirm your profile.",
           canRegister: true,
           email: user.email,
+          isCoach: true,
           setupProfile: {
             firstName: user.firstName || "",
             lastName: user.lastName || "",

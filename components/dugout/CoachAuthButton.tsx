@@ -32,6 +32,7 @@ type LoginResponse = {
   error?: string;
   canRegister?: boolean;
   email?: string;
+  isCoach?: boolean;
   setupProfile?: {
     firstName?: string;
     lastName?: string;
@@ -39,7 +40,6 @@ type LoginResponse = {
     ageGroup?: string;
     assignedTeam?: string;
   } | null;
-  isCoach?: boolean;
   isAdmin?: boolean;
 };
 
@@ -80,12 +80,6 @@ function getAccountSetupHref(loginResponse: LoginResponse, fallbackEmail: string
   }
   if (loginResponse.setupProfile?.contactPhone) {
     params.set("contactPhone", loginResponse.setupProfile.contactPhone);
-  }
-  if (loginResponse.setupProfile?.ageGroup) {
-    params.set("ageGroup", loginResponse.setupProfile.ageGroup);
-  }
-  if (loginResponse.setupProfile?.assignedTeam) {
-    params.set("assignedTeam", loginResponse.setupProfile.assignedTeam);
   }
   return `/account/setup?${params.toString()}`;
 }
@@ -199,6 +193,9 @@ export default function CoachAuthButton({
                 setOpen(false);
                 stashAccountSetupPrefill({
                   email: (json.email || email).trim().toLowerCase(),
+                  ...(typeof json.isCoach === "boolean"
+                    ? { isCoach: json.isCoach }
+                    : {}),
                   ...(json.setupProfile != null
                     ? { setupProfile: json.setupProfile }
                     : {}),
@@ -286,6 +283,9 @@ export default function CoachAuthButton({
           stashAccountSetupPrefill({
             email: (json.email || email).trim().toLowerCase(),
             ...(password ? { password } : {}),
+            ...(typeof json.isCoach === "boolean"
+              ? { isCoach: json.isCoach }
+              : {}),
             ...(json.setupProfile != null
               ? { setupProfile: json.setupProfile }
               : {}),

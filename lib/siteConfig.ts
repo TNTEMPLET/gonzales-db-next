@@ -95,6 +95,12 @@ export function getDefaultContentOrg(): ContentOrgId {
   return getOrgId() === "ascension" ? "ascension" : "gonzales";
 }
 
+/** Org bucket for `RegisteredUser` rows on this deployment (matches Dugout local auth). */
+export function getDugoutRegisteredUserOrgId(): ContentOrgId {
+  const org = getOrgId();
+  return org === "master" ? getDefaultContentOrg() : (org as ContentOrgId);
+}
+
 export function resolveAdminTargetOrg(
   requestedOrg?: string | null,
 ): ContentOrgId {

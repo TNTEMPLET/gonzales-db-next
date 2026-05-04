@@ -1,25 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
-import type { ContentOrgId } from "@/lib/siteConfig";
-import { getDefaultContentOrg, getOrgId } from "@/lib/siteConfig";
+import { getDugoutRegisteredUserOrgId } from "@/lib/siteConfig";
 
 export const dynamic = "force-dynamic";
-
-function registeredUserOrgId(): ContentOrgId {
-  const org = getOrgId();
-  if (org === "master") return getDefaultContentOrg();
-  return org;
-}
 
 function normalizeEmail(value: string) {
   return value.trim().toLowerCase();
 }
 
 /**
- * Returns existing coach profile fields for the account-setup form.
- * Only responds for users in this deployment's org who have not set a local password yet
- * (first-time setup / password creation flow).
+ * Returns profile + coach flag for the account-setup form.
+ * Profile is only included when the user has not set a local password yet
+ * (first-time password / setup flow).
  */
 export async function POST(request: NextRequest) {
   let body: { email?: string };
@@ -34,13 +27,15 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
 
-  const organizationId = registeredUserOrgId();
+  const organizationId = getDugoutRegisteredUserOrgId();
   const user = await prisma.registeredUser.findFirst({
     where: {
       organizationId,
       email: { equals: email, mode: "insensitive" },
     },
     select: {
+      organizationId: true,
+      isCoach: true,
       firstName: true,
       lastName: true,
       contactPhone: true,
@@ -50,11 +45,27 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  if (!user || user.passwordHash) {
-    return NextResponse.json({ profile: null });
+  if (!user) {
+    return NextResponse.json({
+      isCoach: false,
+      organizationId: null as string | null,
+      profile: null,
+    });
+  }
+
+  const isCoach = Boolean(user.isCoach);
+
+  if (user.passwordHash) {
+    return NextResponse.json({
+      isCoach,
+      organizationId: user.organizationId,
+      profile: null,
+    });
   }
 
   return NextResponse.json({
+    isCoach,
+    organizationId: user.organizationId,
     profile: {
       firstName: user.firstName?.trim() || "",
       lastName: user.lastName?.trim() || "",

@@ -11,8 +11,9 @@ import {
   createCoachSession,
 } from "@/lib/auth/coachSession";
 import prisma from "@/lib/prisma";
+import { getDugoutRegisteredUserOrgId } from "@/lib/siteConfig";
 
-const orgId = process.env.SITE_ORG ?? "gonzales";
+const orgId = getDugoutRegisteredUserOrgId();
 
 type LocalAuthPayload = {
   mode?: "login" | "signup";
@@ -178,6 +179,7 @@ export async function POST(request: NextRequest) {
             : "No local login found for this email. Use Google sign-in or create a local password.",
           canRegister: true,
           email,
+          isCoach: user ? Boolean(user.isCoach) : false,
           setupProfile: user
             ? {
                 firstName: user.firstName || "",
