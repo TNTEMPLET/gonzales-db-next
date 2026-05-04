@@ -11,6 +11,11 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import {
+  ACCOUNT_SETUP_PREFILL_KEY,
+  type AccountSetupPrefillPayload,
+} from "@/lib/accountSetupPrefill";
+
 type CoachUser = {
   name: string;
   firstName: string | null;
@@ -27,6 +32,7 @@ type LoginResponse = {
   error?: string;
   canRegister?: boolean;
   email?: string;
+  isCoach?: boolean;
   setupProfile?: {
     firstName?: string;
     lastName?: string;
@@ -34,7 +40,6 @@ type LoginResponse = {
     ageGroup?: string;
     assignedTeam?: string;
   } | null;
-  isCoach?: boolean;
   isAdmin?: boolean;
 };
 
@@ -55,6 +60,15 @@ function getPostLoginHref(loginResponse: LoginResponse): string {
   return loginResponse.isCoach ? "/dugout" : "/";
 }
 
+function stashAccountSetupPrefill(payload: AccountSetupPrefillPayload) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(ACCOUNT_SETUP_PREFILL_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore private mode / quota
+  }
+}
+
 function getAccountSetupHref(loginResponse: LoginResponse, fallbackEmail: string) {
   const params = new URLSearchParams();
   params.set("email", loginResponse.email || fallbackEmail);
@@ -66,12 +80,6 @@ function getAccountSetupHref(loginResponse: LoginResponse, fallbackEmail: string
   }
   if (loginResponse.setupProfile?.contactPhone) {
     params.set("contactPhone", loginResponse.setupProfile.contactPhone);
-  }
-  if (loginResponse.setupProfile?.ageGroup) {
-    params.set("ageGroup", loginResponse.setupProfile.ageGroup);
-  }
-  if (loginResponse.setupProfile?.assignedTeam) {
-    params.set("assignedTeam", loginResponse.setupProfile.assignedTeam);
   }
   return `/account/setup?${params.toString()}`;
 }
@@ -183,6 +191,15 @@ export default function CoachAuthButton({
             if (!apiResponse.ok) {
               if (json.canRegister) {
                 setOpen(false);
+                stashAccountSetupPrefill({
+                  email: (json.email || email).trim().toLowerCase(),
+                  ...(typeof json.isCoach === "boolean"
+                    ? { isCoach: json.isCoach }
+                    : {}),
+                  ...(json.setupProfile != null
+                    ? { setupProfile: json.setupProfile }
+                    : {}),
+                });
                 router.push(getAccountSetupHref(json, email));
                 return;
               }
@@ -263,6 +280,16 @@ export default function CoachAuthButton({
       if (!response.ok) {
         if (json.canRegister) {
           setOpen(false);
+          stashAccountSetupPrefill({
+            email: (json.email || email).trim().toLowerCase(),
+            ...(password ? { password } : {}),
+            ...(typeof json.isCoach === "boolean"
+              ? { isCoach: json.isCoach }
+              : {}),
+            ...(json.setupProfile != null
+              ? { setupProfile: json.setupProfile }
+              : {}),
+          });
           router.push(getAccountSetupHref(json, email));
           return;
         }
