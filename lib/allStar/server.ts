@@ -11,6 +11,22 @@ export function createInviteToken() {
   return crypto.randomBytes(16).toString("base64url");
 }
 
+/** Crockford base32 without I, L, O, U — easy to read and type (no 0/O/1/I confusion). */
+const CROCKFORD = "0123456789ABCDEFGHJKMNPQRSTVWXYZ";
+
+/**
+ * Short code for the shared ballot URL only (`?t=`). Uniqueness enforced by DB + retry on conflict.
+ * 9 characters ≈ 45 bits; fine for a non-guessable shared link with org + roster checks.
+ */
+export function createBallotLinkToken(length = 9) {
+  const bytes = crypto.randomBytes(length);
+  let out = "";
+  for (let i = 0; i < length; i++) {
+    out += CROCKFORD[bytes[i]! % 32]!;
+  }
+  return out;
+}
+
 export function parseSeasonYear(value: string | null | undefined) {
   const year = Number(value);
   if (!Number.isInteger(year) || year < 2020 || year > 2100) return null;
@@ -33,11 +49,15 @@ export function mapAllStarCycle(row: {
   accessMode: string;
   publishedAt: Date | null;
   closedAt: Date | null;
+  ballotLinkToken?: string | null;
+  ballotLinkTokenHash?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }) {
+  const { ballotLinkTokenHash: _omitHash, ...rest } = row;
+  void _omitHash;
   return {
-    ...row,
+    ...rest,
     publishedAt: row.publishedAt?.toISOString() || null,
     closedAt: row.closedAt?.toISOString() || null,
     createdAt: row.createdAt.toISOString(),

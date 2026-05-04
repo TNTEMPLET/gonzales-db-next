@@ -131,6 +131,22 @@ model AdminUser {
   teamsCreated Team[]
   teamPlayerImportBatches TeamPlayerImportBatch[]
   socialPostsCreated      SocialPost[]
+  orgMemberships          AdminOrgMembership[]
+}
+
+/// Effective admin role for a specific organization (gonzales | ascension).
+/// Master Admin (`AdminUser.isMaster`) does not require a row — they apply everywhere.
+model AdminOrgMembership {
+  id             String    @id @default(cuid())
+  adminUserId    String
+  organizationId String
+  role           AdminRole
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  adminUser      AdminUser @relation(fields: [adminUserId], references: [id], onDelete: Cascade)
+
+  @@unique([adminUserId, organizationId])
+  @@index([organizationId, role])
 }
 
 model RegisteredUser {
@@ -379,6 +395,9 @@ model AllStarBallotCycle {
   accessMode    AllStarAccessMode  @default(AGE_GROUP_COACHES)
   publishedAt   DateTime?
   closedAt      DateTime?
+  /// One shared voting link per ballot; coaches authenticate with an email on the invite roster.
+  ballotLinkToken     String?  @unique
+  ballotLinkTokenHash String?  @unique
   createdByAdminId String?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
@@ -485,7 +504,9 @@ model AllStarVoteItem {
 model AllStarInvite {
   id               String   @id @default(cuid())
   ballotCycleId    String
-  tokenHash        String   @unique
+  /// Legacy per-coach links; null when using shared `AllStarBallotCycle.ballotLinkToken` only.
+  tokenHash        String?  @unique
+  inviteToken      String?  @unique
   organizationId   String
   ageGroup         String
   invitedEmail     String

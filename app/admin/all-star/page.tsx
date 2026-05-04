@@ -5,7 +5,7 @@ import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarVaultManager from "@/components/admin/AllStarVaultManager";
-import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -52,7 +52,11 @@ export default async function AdminAllStarPage({
           </p>
         </div>
 
-        <AllStarVaultManager key={currentOrg} initialOrg={currentOrg} />
+        <AllStarVaultManager
+          key={currentOrg}
+          initialOrg={currentOrg}
+          isMasterMode={isMasterDeployment()}
+        />
       </section>
     </main>
   );

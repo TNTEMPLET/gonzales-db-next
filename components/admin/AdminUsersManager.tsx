@@ -11,6 +11,8 @@ type AdminUser = {
   email: string;
   name: string | null;
   role: AdminRole;
+  /** Set when the role is scoped to the current `targetOrg` (not used for display-only Master rows). */
+  orgRole: AdminRole | null;
   isMaster: boolean;
   createdAt: string;
 };
@@ -92,8 +94,10 @@ type ApiResponse = {
   auditLogsMeta: AuditLogsMeta;
   currentAdminEmail: string | null;
   currentAdminRole: AdminRole | null;
+  currentAdminOrgRole: AdminRole | null;
   protectedMasterAdminEmail?: string;
   currentAdminIsMaster: boolean;
+  isMasterDeployment: boolean;
   latestImportBatch?: {
     id: string;
     createdAt: string;
@@ -199,6 +203,9 @@ export default function AdminUsersManager({
   const [currentAdminRole, setCurrentAdminRole] = useState<AdminRole | null>(
     null,
   );
+  const [currentAdminOrgRole, setCurrentAdminOrgRole] =
+    useState<AdminRole | null>(null);
+  const [isMasterDeploymentState, setIsMasterDeploymentState] = useState(false);
   const [protectedMasterAdminEmail, setProtectedMasterAdminEmail] = useState(
     PROTECTED_MASTER_ADMIN_EMAIL,
   );
@@ -476,10 +483,12 @@ export default function AdminUsersManager({
       setRegisteredUsers(payload.data || []);
       setCurrentAdminEmail(payload.currentAdminEmail || null);
       setCurrentAdminRole(payload.currentAdminRole || null);
+      setCurrentAdminOrgRole(payload.currentAdminOrgRole ?? null);
       setProtectedMasterAdminEmail(
         payload.protectedMasterAdminEmail || PROTECTED_MASTER_ADMIN_EMAIL,
       );
       setCurrentAdminIsMaster(Boolean(payload.currentAdminIsMaster));
+      setIsMasterDeploymentState(Boolean(payload.isMasterDeployment));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load users");
     } finally {
@@ -646,7 +655,11 @@ export default function AdminUsersManager({
           "Content-Type": "application/json",
           "x-source-path": window.location.pathname,
         },
-        body: JSON.stringify({ adminId, role }),
+        body: JSON.stringify({
+          adminId,
+          role,
+          organizationId: targetOrg,
+        }),
       });
       const json = await response.json();
 
@@ -1070,11 +1083,21 @@ export default function AdminUsersManager({
                         setConfirmAction({
                           kind: "promote",
                           userId: user.id,
-                          label: `Promote ${user.email} to admin access?`,
+                          label: isMasterDeploymentState
+                            ? `Promote ${user.email} to an admin role?`
+                            : `Make ${user.email} a Site Admin for this organization?`,
                         })
                       }
-                      title="Promote to Admin"
-                      aria-label="Promote to Admin"
+                      title={
+                        isMasterDeploymentState
+                          ? "Promote to admin (use Master Admin for Park Director and above)"
+                          : "Make Site Admin"
+                      }
+                      aria-label={
+                        isMasterDeploymentState
+                          ? "Promote to admin"
+                          : "Make Site Admin"
+                      }
                       className="rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60"
                     >
                       <svg
@@ -1428,11 +1451,21 @@ export default function AdminUsersManager({
                             setConfirmAction({
                               kind: "promote",
                               userId: user.id,
-                              label: `Promote ${user.email} to admin access?`,
+                              label: isMasterDeploymentState
+                                ? `Promote ${user.email} to an admin role?`
+                                : `Make ${user.email} a Site Admin for this organization?`,
                             })
                           }
-                          title="Promote to Admin"
-                          aria-label="Promote to Admin"
+                          title={
+                            isMasterDeploymentState
+                              ? "Promote to admin (use Master Admin for Park Director and above)"
+                              : "Make Site Admin"
+                          }
+                          aria-label={
+                            isMasterDeploymentState
+                              ? "Promote to admin"
+                              : "Make Site Admin"
+                          }
                           className="rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60"
                         >
                           <svg
@@ -1565,8 +1598,15 @@ export default function AdminUsersManager({
           <div>
             <h2 className="font-semibold text-lg">Admin Accounts</h2>
             <p className="text-zinc-400 text-sm mt-1">
-              Active admin users who can access admin pages.
+              Admins for{" "}
+              <span className="text-zinc-300">{targetOrg}</span>. Organization sites can grant{" "}
+              <strong className="font-medium text-zinc-300">Site Admin</strong> only; Park Director and Board Member are assigned on the Master Admin site for this organization.
             </p>
+            {currentAdminOrgRole ? (
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Your role for this org: {currentAdminOrgRole === "MASTER_ADMIN" ? "Master Admin" : currentAdminOrgRole === "BOARD_MEMBER" ? "Board Member" : currentAdminOrgRole === "PARK_DIRECTOR" ? "Park Director" : "Site Admin"}
+              </p>
+            ) : null}
           </div>
 
           <input
@@ -1585,7 +1625,8 @@ export default function AdminUsersManager({
                 const isProtectedMaster =
                   admin.email.trim().toLowerCase() ===
                   protectedMasterAdminEmail.trim().toLowerCase();
-                const canManageRoles =
+                const canManageMasterRolePicker =
+                  isMasterDeploymentState &&
                   (currentAdminRole === "MASTER_ADMIN" ||
                     currentAdminIsMaster) &&
                   !isProtectedMaster;
@@ -1626,14 +1667,14 @@ export default function AdminUsersManager({
                       </p>
                       <p className="text-xs text-zinc-500">{admin.email}</p>
                       <p className="text-[11px] text-zinc-400 mt-0.5">
-                        Role: {roleLabel}
+                        Role (this org): {roleLabel}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {canManageRoles ? (
+                      {canManageMasterRolePicker ? (
                         <select
                           value={admin.role}
-                          disabled={busy}
+                          disabled={busy || admin.isMaster}
                           onChange={(event) => {
                             const nextRole = event.target.value as AdminRole;
                             if (nextRole === admin.role) return;
@@ -1646,9 +1687,14 @@ export default function AdminUsersManager({
                             });
                           }}
                           className="text-xs rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-zinc-200 disabled:opacity-60"
+                          title={
+                            admin.isMaster
+                              ? "Use Master Admin account tools to change Master Admin access"
+                              : undefined
+                          }
                         >
                           <option value="MASTER_ADMIN">Master Admin</option>
-                          <option value="ADMIN">Admin</option>
+                          <option value="ADMIN">Site Admin</option>
                           <option value="BOARD_MEMBER">Board Member</option>
                           <option value="PARK_DIRECTOR">Park Director</option>
                         </select>

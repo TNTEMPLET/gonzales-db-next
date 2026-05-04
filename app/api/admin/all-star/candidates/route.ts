@@ -3,15 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { resequenceCandidateBibNumbers } from "@/lib/allStar/candidates";
 import prisma from "@/lib/prisma";
-import { isMasterDeployment } from "@/lib/siteConfig";
 
 function forbidIfNotMaster() {
-  if (!isMasterDeployment()) {
-    return NextResponse.json(
-      { error: "All-Star Vault is only managed from master deployment" },
-      { status: 403 },
-    );
-  }
   return null;
 }
 

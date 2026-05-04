@@ -1,3 +1,5 @@
+import { isMasterDeployment } from "@/lib/siteConfig";
+
 export const ADMIN_ROLES = [
   "MASTER_ADMIN",
   "ADMIN",
@@ -46,6 +48,13 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   ORG_DOCUMENTS: "BOARD_MEMBER",
 };
 
+const MASTER_ONLY_MODULES = new Set<AdminModule>([
+  "SPONSORS",
+  "NEWS_ADMIN",
+  "SOCIAL_MEDIA",
+  "ORG_DOCUMENTS",
+]);
+
 export function isAdminRole(
   value: string | null | undefined,
 ): value is AdminRole {
@@ -69,6 +78,19 @@ export function hasAdminRoleAtLeast(
   return roleRank[role] >= roleRank[minimum];
 }
 
+/** Highest role by authority (rank). Useful when aggregating org memberships onto AdminUser.role. */
+export function getHighestAdminRole(roles: AdminRole[]): AdminRole {
+  if (roles.length === 0) return "PARK_DIRECTOR";
+  return roles.reduce((best, r) =>
+    roleRank[r] > roleRank[best] ? r : best,
+  );
+}
+
+/** Roles that organization-site admins may assign (everything else is Master Admin only). */
+export function isAssignableOnlyOnMasterSite(role: AdminRole): boolean {
+  return role === "BOARD_MEMBER" || role === "PARK_DIRECTOR";
+}
+
 export function getMinimumRoleForModule(module: AdminModule): AdminRole {
   return moduleMinimumRole[module];
 }
@@ -77,6 +99,9 @@ export function canAccessAdminModule(
   role: AdminRole,
   module: AdminModule,
 ): boolean {
+  if (MASTER_ONLY_MODULES.has(module) && !isMasterDeployment()) {
+    return false;
+  }
   return hasAdminRoleAtLeast(role, getMinimumRoleForModule(module));
 }
 

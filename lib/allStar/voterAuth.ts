@@ -12,6 +12,7 @@ type RegisteredVoter = {
   ageGroup: string | null;
   isCoach: boolean;
   isBlocked: boolean;
+  isAdmin: boolean;
 };
 
 type ResolveAllStarVoterOptions = {
@@ -37,7 +38,7 @@ export async function resolveAllStarVoterFromRequest(
       },
     });
     if (registeredUser && !registeredUser.isBlocked) {
-      return registeredUser;
+      return { ...registeredUser, isAdmin: false };
     }
   }
 
@@ -57,14 +58,15 @@ export async function resolveAllStarVoterFromRequest(
     });
 
     if (registeredUser && !registeredUser.isBlocked) {
-      return registeredUser;
+      return { ...registeredUser, isAdmin: true };
     }
   }
 
   if (!options.token) return null;
 
-  const invite = await prisma.allStarInvite.findUnique({
-    where: { tokenHash: hashToken(options.token) },
+  const hashed = hashToken(options.token);
+  const invite = await prisma.allStarInvite.findFirst({
+    where: { tokenHash: hashed },
     include: {
       invitedUser: {
         select: {
@@ -88,7 +90,7 @@ export async function resolveAllStarVoterFromRequest(
   }
 
   if (invite.invitedUser && !invite.invitedUser.isBlocked) {
-    return invite.invitedUser;
+    return { ...invite.invitedUser, isAdmin: false };
   }
 
   const inviteEmailUser = await prisma.registeredUser.findFirst({
@@ -107,7 +109,7 @@ export async function resolveAllStarVoterFromRequest(
     },
   });
 
-  return inviteEmailUser;
+  return inviteEmailUser ? { ...inviteEmailUser, isAdmin: false } : null;
 }
 
 export async function ensureVoterCanAccessCycle(
@@ -129,19 +131,77 @@ export async function ensureVoterCanAccessCycle(
     return { error: "Ballot window has closed", status: 403 as const };
   }
 
+  if (voter.isAdmin) {
+    return { cycle, invite: null };
+  }
+
+  const tokenHash = token ? hashToken(token) : null;
+  const sharedBallotTokenOk =
+    Boolean(cycle.ballotLinkTokenHash) &&
+    Boolean(tokenHash) &&
+    tokenHash === cycle.ballotLinkTokenHash;
+
+  const legacyInviteForToken =
+    tokenHash &&
+    (await prisma.allStarInvite.findFirst({
+      where: {
+        tokenHash,
+        ballotCycleId: cycle.id,
+        revokedAt: null,
+      },
+    }));
+
   if (cycle.accessMode === "INVITE_LIST") {
-    if (!token) return { error: "Invite token required", status: 403 as const };
-    const invite = await prisma.allStarInvite.findUnique({ where: { tokenHash: hashToken(token) } });
-    if (
-      !invite ||
-      invite.ballotCycleId !== cycle.id ||
-      invite.revokedAt ||
-      (invite.expiresAt && invite.expiresAt < new Date()) ||
-      invite.invitedEmail.toLowerCase() !== voter.email.toLowerCase()
-    ) {
-      return { error: "Invalid invite token", status: 403 as const };
+    const rosterEntry = await prisma.allStarInvite.findFirst({
+      where: {
+        ballotCycleId: cycle.id,
+        invitedEmail: { equals: voter.email, mode: "insensitive" },
+        revokedAt: null,
+      },
+    });
+    if (!rosterEntry) {
+      return {
+        error: "This email is not authorized for this ballot",
+        status: 403 as const,
+      };
     }
-    return { cycle, invite };
+
+    if (sharedBallotTokenOk) {
+      return { cycle, invite: rosterEntry };
+    }
+    if (legacyInviteForToken) {
+      if (
+        legacyInviteForToken.invitedEmail.toLowerCase() !== voter.email.toLowerCase()
+      ) {
+        return { error: "Invalid invite token", status: 403 as const };
+      }
+      return { cycle, invite: legacyInviteForToken };
+    }
+    if (cycle.ballotLinkTokenHash) {
+      return {
+        error:
+          "Use the shared ballot link from your league, then sign in with your invited email.",
+        status: 403 as const,
+      };
+    }
+    if (!token) {
+      return { error: "Invite token required", status: 403 as const };
+    }
+    return { error: "Invalid or expired invite link", status: 403 as const };
+  }
+
+  if (cycle.ballotLinkTokenHash && !sharedBallotTokenOk) {
+    if (
+      legacyInviteForToken &&
+      legacyInviteForToken.invitedEmail.toLowerCase() === voter.email.toLowerCase()
+    ) {
+      return { cycle, invite: legacyInviteForToken };
+    }
+    return {
+      error:
+        "Use the shared ballot link from your league, then sign in as a coach for this age group.",
+      status: 403 as const,
+    };
   }
 
   if (voter.organizationId !== cycle.organizationId) {

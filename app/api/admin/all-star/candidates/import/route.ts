@@ -7,7 +7,6 @@ import {
   resequenceCandidateBibNumbers,
 } from "@/lib/allStar/candidates";
 import prisma from "@/lib/prisma";
-import { isMasterDeployment } from "@/lib/siteConfig";
 
 type SheetRow = Record<string, string | number | null | undefined>;
 
@@ -22,12 +21,6 @@ function getRowValue(row: SheetRow, keys: string[]) {
 }
 
 function forbidIfNotMaster() {
-  if (!isMasterDeployment()) {
-    return NextResponse.json(
-      { error: "All-Star Vault is only managed from master deployment" },
-      { status: 403 },
-    );
-  }
   return null;
 }
 

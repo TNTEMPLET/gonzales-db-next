@@ -3,9 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { parseContentOrg } from "@/lib/allStar/server";
 import prisma from "@/lib/prisma";
-import { isMasterDeployment } from "@/lib/siteConfig";
+import { isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 function getAllStarVaultAccessModel() {
   const model = (prisma as unknown as { allStarVaultAccess?: typeof prisma.allStarVaultAccess })
@@ -19,12 +18,6 @@ function getAllStarVaultAccessModel() {
 }
 
 function forbidIfNotMaster() {
-  if (!isMasterDeployment()) {
-    return NextResponse.json(
-      { error: "All-Star Vault is only managed from master deployment" },
-      { status: 403 },
-    );
-  }
   return null;
 }
 
@@ -35,7 +28,7 @@ export async function GET(request: NextRequest) {
     const forbid = forbidIfNotMaster();
     if (forbid) return forbid;
 
-    const org = parseContentOrg(request.nextUrl.searchParams.get("org"));
+    const org = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
     if (!org) {
       return NextResponse.json({ error: "org is required" }, { status: 400 });
     }
@@ -65,7 +58,11 @@ export async function GET(request: NextRequest) {
     const explicitIds = new Set(explicitAccess.map((entry) => entry.registeredUserId));
     const implicitRows = await Promise.all(
       adminDefaults
-        .filter((admin) => hasAdminRoleAtLeast(toAdminRole(admin.role, admin.isMaster), "ADMIN"))
+        .filter(
+          (admin) =>
+            admin.isMaster &&
+            hasAdminRoleAtLeast(toAdminRole(admin.role, admin.isMaster), "ADMIN"),
+        )
         .map(async (admin) => {
           const registeredUser = await prisma.registeredUser.findFirst({
             where: { email: { equals: admin.email, mode: "insensitive" } },
@@ -111,7 +108,7 @@ export async function POST(request: NextRequest) {
       organizationId?: string;
       role?: "FULL_ACCESS" | "VIEW_ONLY";
     };
-    const organizationId = parseContentOrg(body.organizationId);
+    const organizationId = resolveAdminTargetOrg(body.organizationId);
     if (!body.registeredUserId || !body.role || !organizationId) {
       return NextResponse.json(
         { error: "registeredUserId, organizationId, and role are required" },
@@ -121,6 +118,25 @@ export async function POST(request: NextRequest) {
 
     const admin = await getAdminUserFromRequest(request);
     const allStarVaultAccess = getAllStarVaultAccessModel();
+    const existingForTarget = await allStarVaultAccess.findUnique({
+      where: {
+        registeredUserId_organizationId: {
+          registeredUserId: body.registeredUserId,
+          organizationId,
+        },
+      },
+      select: { id: true },
+    });
+    if (!existingForTarget && isMasterDeployment()) {
+      return NextResponse.json(
+        {
+          error:
+            "New vault access must be granted from the organization’s admin site. You can change or remove existing access here.",
+        },
+        { status: 403 },
+      );
+    }
+
     const data = await allStarVaultAccess.upsert({
       where: {
         registeredUserId_organizationId: {
@@ -158,7 +174,7 @@ export async function DELETE(request: NextRequest) {
       registeredUserId?: string;
       organizationId?: string;
     };
-    const organizationId = parseContentOrg(body.organizationId);
+    const organizationId = resolveAdminTargetOrg(body.organizationId);
     if (!body.registeredUserId || !organizationId) {
       return NextResponse.json(
         { error: "registeredUserId and organizationId are required" },

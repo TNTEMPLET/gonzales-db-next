@@ -27,6 +27,28 @@ type OpenResponse = {
 
 const REQUIRED_VOTES = 12;
 
+function BaseballRatingIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" className="fill-zinc-100" stroke="currentColor" strokeWidth={1.2} />
+      <path className="stroke-red-600" strokeWidth={1.15} strokeLinecap="round" d="M9 4.5C7.5 7 7.5 17 9 19.5" />
+      <path className="stroke-red-600" strokeWidth={1.15} strokeLinecap="round" d="M15 4.5C16.5 7 16.5 17 15 19.5" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M9 8.5L7 9" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M9 12L6.8 12" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M9 15.5L7 15" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M15 8.5L17 9" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M15 12L17.2 12" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M15 15.5L17 15" />
+    </svg>
+  );
+}
+
 export default function AllStarVotePage() {
   const [cycleId, setCycleId] = useState("");
   const [token, setToken] = useState("");
@@ -40,7 +62,7 @@ export default function AllStarVotePage() {
   const [candidateSearch, setCandidateSearch] = useState("");
 
   const isLocked = Boolean(data?.hasSubmitted);
-  const canRender = Boolean(cycleId);
+  const canRender = Boolean(cycleId || token);
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
@@ -52,7 +74,10 @@ export default function AllStarVotePage() {
     setLoading(true);
     setError("");
     try {
-      const response = await fetch(`/api/all-star/vote/open?cycleId=${encodeURIComponent(cycleId)}&token=${encodeURIComponent(token)}`, {
+      const qs = new URLSearchParams();
+      if (cycleId) qs.set("cycleId", cycleId);
+      if (token) qs.set("token", token);
+      const response = await fetch(`/api/all-star/vote/open?${qs.toString()}`, {
         cache: "no-store",
       });
       const json = (await response.json()) as OpenResponse | { error?: string };
@@ -70,7 +95,7 @@ export default function AllStarVotePage() {
   useEffect(() => {
     if (!canRender) {
       setLoading(false);
-      setError("Missing cycleId in link.");
+      setError("Missing ballot token in link. Use the shared URL from your league.");
       return;
     }
     void loadBallot();
@@ -158,7 +183,10 @@ export default function AllStarVotePage() {
         <div>
           <h1 className="text-3xl font-bold">All-Star Ballot</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Rate each player from 1 to 5. Save your draft anytime and submit when final.
+            Voters shall assign each candidate a rating by means of the baseball controls, on a scale of{" "}
+            <span className="text-zinc-500">1</span> (lowest) through <span className="text-zinc-500">5</span>{" "}
+            (highest). A draft may be saved at any time; final submission shall be permitted only after all
+            applicable ballot requirements are satisfied.
           </p>
         </div>
 
@@ -175,32 +203,59 @@ export default function AllStarVotePage() {
 
         {!loading && data ? (
           <>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-              <p className="text-sm text-zinc-300">
-                {data.cycle.organizationId.toUpperCase()} · {data.cycle.ageGroup} · {data.cycle.seasonYear}
-                {data.cycle.title ? ` · ${data.cycle.title}` : ""}
-              </p>
-              <p className="text-xs text-zinc-500 mt-1">
-                Rated {ratedCount} of {data.candidates.length} players.
-              </p>
-              <p
-                className={`text-xs mt-2 ${
-                  isVoteCountValid ? "text-emerald-300" : "text-amber-300"
-                }`}
-              >
-                Vote Status: {ratedCount}/{REQUIRED_VOTES} selected
-                {isVoteCountValid ? " (ready to submit)" : " (select exactly 12)"}
-              </p>
-              {isLocked ? (
-                <p className="text-xs text-amber-300 mt-2">This ballot has already been submitted and is locked.</p>
-              ) : null}
+            <div className="sticky top-28 z-40 -mx-1 px-1 md:top-24">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/95 backdrop-blur p-4 shadow-lg shadow-black/30">
+                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-zinc-300">
+                      {data.cycle.organizationId.toUpperCase()} · {data.cycle.ageGroup} ·{" "}
+                      {data.cycle.seasonYear}
+                      {data.cycle.title ? ` · ${data.cycle.title}` : ""}
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      Rated {ratedCount} of {data.candidates.length} players.
+                    </p>
+                    <p
+                      className={`text-xs mt-2 ${
+                        isVoteCountValid ? "text-emerald-300" : "text-amber-300"
+                      }`}
+                    >
+                      Vote Status: {ratedCount}/{REQUIRED_VOTES} selected
+                      {isVoteCountValid ? " (ready to submit)" : " (select exactly 12)"}
+                    </p>
+                    {isLocked ? (
+                      <p className="text-xs text-amber-300 mt-2">
+                        This ballot has already been submitted and is locked.
+                      </p>
+                    ) : null}
+                  </div>
+                  <label className="block w-full lg:w-[min(100%,22rem)] lg:shrink-0">
+                    <span className="sr-only">Search candidates</span>
+                    <input
+                      value={candidateSearch}
+                      onChange={(event) => setCandidateSearch(event.target.value)}
+                      placeholder="Search candidates by name, team, jersey, or bib"
+                      type="search"
+                      enterKeyHint="search"
+                      autoCapitalize="none"
+                      autoCorrect="off"
+                      className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-brand-purple/40 focus:border-brand-purple/60"
+                    />
+                  </label>
+                </div>
+                <div className="mt-3 border-t border-zinc-800 pt-3">
+                  <p className="text-xs leading-relaxed text-zinc-400">
+                    <span className="font-medium text-zinc-300">Instructions.</span> Each candidate shall be
+                    rated by selecting the appropriate baseball icon:{" "}
+                    <span className="text-zinc-500">1</span> shall represent the minimum score and{" "}
+                    <span className="text-zinc-500">5</span> the maximum. The ballot must not be submitted until
+                    exactly <span className="text-zinc-500">{REQUIRED_VOTES}</span> players have been rated. Voters
+                    shall use <span className="text-zinc-500">Save Draft</span> to record their entries in advance
+                    of final submission.
+                  </p>
+                </div>
+              </div>
             </div>
-            <input
-              value={candidateSearch}
-              onChange={(event) => setCandidateSearch(event.target.value)}
-              placeholder="Search candidates by name, team, jersey, or bib"
-              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-            />
 
             <div className="grid lg:grid-cols-2 gap-4">
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
@@ -232,17 +287,34 @@ export default function AllStarVotePage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((value) => (
-                          <button
-                            key={value}
-                            type="button"
-                            disabled={busy || isLocked}
-                            onClick={() => setRatings((prev) => ({ ...prev, [candidate.id]: value }))}
-                            className="h-8 w-8 rounded-md border text-sm border-zinc-700 text-zinc-300 disabled:opacity-50"
-                          >
-                            {value}
-                          </button>
-                        ))}
+                        {[1, 2, 3, 4, 5].map((value) => {
+                          const chosen = ratings[candidate.id] ?? 0;
+                          const isFilled = chosen > 0 && value <= chosen;
+                          const isChosen = chosen === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              disabled={busy || isLocked}
+                              aria-label={`Rate ${value} of 5${value === 1 ? " — lowest" : value === 5 ? " — highest" : ""}`}
+                              title={`${value} of 5`}
+                              onClick={() => setRatings((prev) => ({ ...prev, [candidate.id]: value }))}
+                              className={`group inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border p-0.5 transition-colors disabled:opacity-50 ${
+                                isFilled
+                                  ? isChosen
+                                    ? "border-brand-purple bg-brand-purple/15 ring-2 ring-brand-purple/50 text-brand-purple"
+                                    : "border-brand-purple/70 bg-brand-purple/10 ring-1 ring-brand-purple/35 text-brand-purple"
+                                  : "border-zinc-600/80 bg-zinc-950/50 text-zinc-500 hover:border-zinc-500 hover:text-zinc-400"
+                              }`}
+                            >
+                              <BaseballRatingIcon
+                                className={`h-8 w-8 transition-opacity duration-150 ${
+                                  isFilled ? "opacity-100" : "opacity-35 group-hover:opacity-70"
+                                }`}
+                              />
+                            </button>
+                          );
+                        })}
                       </div>
                     </div>
                   ))
@@ -273,21 +345,34 @@ export default function AllStarVotePage() {
                         </p>
                       </div>
                       <div className="flex items-center gap-1">
-                        {[1, 2, 3, 4, 5].map((value) => (
-                          <button
-                            key={value}
-                            type="button"
-                            disabled={busy || isLocked}
-                            onClick={() => setRatings((prev) => ({ ...prev, [candidate.id]: value }))}
-                            className={`h-8 w-8 rounded-md border text-sm ${
-                              ratings[candidate.id] === value
-                                ? "border-brand-purple bg-brand-purple/20 text-brand-purple"
-                                : "border-zinc-700 text-zinc-300"
-                            } disabled:opacity-50`}
-                          >
-                            {value}
-                          </button>
-                        ))}
+                        {[1, 2, 3, 4, 5].map((value) => {
+                          const chosen = ratings[candidate.id] ?? 0;
+                          const isFilled = chosen > 0 && value <= chosen;
+                          const isChosen = chosen === value;
+                          return (
+                            <button
+                              key={value}
+                              type="button"
+                              disabled={busy || isLocked}
+                              aria-label={`Rate ${value} of 5${value === 1 ? " — lowest" : value === 5 ? " — highest" : ""}`}
+                              title={`${value} of 5`}
+                              onClick={() => setRatings((prev) => ({ ...prev, [candidate.id]: value }))}
+                              className={`group inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border p-0.5 transition-colors disabled:opacity-50 ${
+                                isFilled
+                                  ? isChosen
+                                    ? "border-brand-purple bg-brand-purple/15 ring-2 ring-brand-purple/50 text-brand-purple"
+                                    : "border-brand-purple/70 bg-brand-purple/10 ring-1 ring-brand-purple/35 text-brand-purple"
+                                  : "border-zinc-600/80 bg-zinc-950/50 text-zinc-500 hover:border-zinc-500 hover:text-zinc-400"
+                              }`}
+                            >
+                              <BaseballRatingIcon
+                                className={`h-8 w-8 transition-opacity duration-150 ${
+                                  isFilled ? "opacity-100" : "opacity-35 group-hover:opacity-70"
+                                }`}
+                              />
+                            </button>
+                          );
+                        })}
                         <button
                           type="button"
                           disabled={busy || isLocked}

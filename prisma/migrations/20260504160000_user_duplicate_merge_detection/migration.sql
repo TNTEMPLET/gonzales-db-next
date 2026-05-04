@@ -1,20 +1,27 @@
 -- AlterEnum
 ALTER TYPE "AdminAuditAction" ADD VALUE IF NOT EXISTS 'MERGE_USERS';
 
--- CreateEnum
-CREATE TYPE "RegisteredUserDuplicateMatchReason" AS ENUM ('NAME_NORMALIZED');
+-- CreateEnum (idempotent: migration may have partially applied)
+DO $$ BEGIN
+  CREATE TYPE "RegisteredUserDuplicateMatchReason" AS ENUM ('NAME_NORMALIZED');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
--- CreateEnum
-CREATE TYPE "RegisteredUserDuplicateStatus" AS ENUM ('PENDING', 'DISMISSED', 'MERGED');
+DO $$ BEGIN
+  CREATE TYPE "RegisteredUserDuplicateStatus" AS ENUM ('PENDING', 'DISMISSED', 'MERGED');
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
 -- AlterTable
-ALTER TABLE "RegisteredUser" ADD COLUMN "duplicateReviewPending" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "RegisteredUser" ADD COLUMN IF NOT EXISTS "duplicateReviewPending" BOOLEAN NOT NULL DEFAULT false;
 
 -- CreateIndex
-CREATE INDEX "RegisteredUser_organizationId_duplicateReviewPending_idx" ON "RegisteredUser"("organizationId", "duplicateReviewPending");
+CREATE INDEX IF NOT EXISTS "RegisteredUser_organizationId_duplicateReviewPending_idx" ON "RegisteredUser"("organizationId", "duplicateReviewPending");
 
 -- CreateTable
-CREATE TABLE "RegisteredUserDuplicateCandidate" (
+CREATE TABLE IF NOT EXISTS "RegisteredUserDuplicateCandidate" (
     "id" TEXT NOT NULL,
     "organizationId" TEXT NOT NULL,
     "newerUserId" TEXT NOT NULL,
@@ -28,16 +35,23 @@ CREATE TABLE "RegisteredUserDuplicateCandidate" (
 );
 
 -- CreateIndex
-CREATE UNIQUE INDEX "RegisteredUserDuplicateCandidate_newerUserId_candidateUserId_key" ON "RegisteredUserDuplicateCandidate"("newerUserId", "candidateUserId");
+CREATE UNIQUE INDEX IF NOT EXISTS "RegisteredUserDuplicateCandidate_newerUserId_candidateUserId_key" ON "RegisteredUserDuplicateCandidate"("newerUserId", "candidateUserId");
 
 -- CreateIndex
-CREATE INDEX "RegisteredUserDuplicateCandidate_organizationId_status_idx" ON "RegisteredUserDuplicateCandidate"("organizationId", "status");
+CREATE INDEX IF NOT EXISTS "RegisteredUserDuplicateCandidate_organizationId_status_idx" ON "RegisteredUserDuplicateCandidate"("organizationId", "status");
 
 -- CreateIndex
-CREATE INDEX "RegisteredUserDuplicateCandidate_newerUserId_status_idx" ON "RegisteredUserDuplicateCandidate"("newerUserId", "status");
+CREATE INDEX IF NOT EXISTS "RegisteredUserDuplicateCandidate_newerUserId_status_idx" ON "RegisteredUserDuplicateCandidate"("newerUserId", "status");
 
 -- AddForeignKey
-ALTER TABLE "RegisteredUserDuplicateCandidate" ADD CONSTRAINT "RegisteredUserDuplicateCandidate_newerUserId_fkey" FOREIGN KEY ("newerUserId") REFERENCES "RegisteredUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "RegisteredUserDuplicateCandidate" ADD CONSTRAINT "RegisteredUserDuplicateCandidate_newerUserId_fkey" FOREIGN KEY ("newerUserId") REFERENCES "RegisteredUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
 
--- AddForeignKey
-ALTER TABLE "RegisteredUserDuplicateCandidate" ADD CONSTRAINT "RegisteredUserDuplicateCandidate_candidateUserId_fkey" FOREIGN KEY ("candidateUserId") REFERENCES "RegisteredUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+DO $$ BEGIN
+  ALTER TABLE "RegisteredUserDuplicateCandidate" ADD CONSTRAINT "RegisteredUserDuplicateCandidate_candidateUserId_fkey" FOREIGN KEY ("candidateUserId") REFERENCES "RegisteredUser"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+EXCEPTION
+  WHEN duplicate_object THEN NULL;
+END $$;
