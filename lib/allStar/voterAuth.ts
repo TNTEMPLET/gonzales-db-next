@@ -14,7 +14,15 @@ type RegisteredVoter = {
   isBlocked: boolean;
 };
 
-export async function resolveAllStarVoterFromRequest(request: NextRequest) {
+type ResolveAllStarVoterOptions = {
+  cycleId?: string | null;
+  token?: string | null;
+};
+
+export async function resolveAllStarVoterFromRequest(
+  request: NextRequest,
+  options: ResolveAllStarVoterOptions = {},
+) {
   const coach = await getCoachUserFromRequest(request);
   if (coach && !coach.isBlocked) {
     const registeredUser = await prisma.registeredUser.findUnique({
@@ -34,11 +42,61 @@ export async function resolveAllStarVoterFromRequest(request: NextRequest) {
   }
 
   const admin = await getAdminUserFromRequest(request);
-  if (!admin) return null;
+  if (admin) {
+    const registeredUser = await prisma.registeredUser.findFirst({
+      where: { email: { equals: admin.email, mode: "insensitive" } },
+      orderBy: { updatedAt: "desc" },
+      select: {
+        id: true,
+        email: true,
+        organizationId: true,
+        ageGroup: true,
+        isCoach: true,
+        isBlocked: true,
+      },
+    });
 
-  const registeredUser = await prisma.registeredUser.findFirst({
-    where: { email: { equals: admin.email, mode: "insensitive" } },
-    orderBy: { updatedAt: "desc" },
+    if (registeredUser && !registeredUser.isBlocked) {
+      return registeredUser;
+    }
+  }
+
+  if (!options.token) return null;
+
+  const invite = await prisma.allStarInvite.findUnique({
+    where: { tokenHash: hashToken(options.token) },
+    include: {
+      invitedUser: {
+        select: {
+          id: true,
+          email: true,
+          organizationId: true,
+          ageGroup: true,
+          isCoach: true,
+          isBlocked: true,
+        },
+      },
+    },
+  });
+  if (
+    !invite ||
+    invite.revokedAt ||
+    (invite.expiresAt && invite.expiresAt < new Date()) ||
+    (options.cycleId && invite.ballotCycleId !== options.cycleId)
+  ) {
+    return null;
+  }
+
+  if (invite.invitedUser && !invite.invitedUser.isBlocked) {
+    return invite.invitedUser;
+  }
+
+  const inviteEmailUser = await prisma.registeredUser.findFirst({
+    where: {
+      organizationId: invite.organizationId,
+      email: { equals: invite.invitedEmail, mode: "insensitive" },
+      isBlocked: false,
+    },
     select: {
       id: true,
       email: true,
@@ -49,8 +107,7 @@ export async function resolveAllStarVoterFromRequest(request: NextRequest) {
     },
   });
 
-  if (!registeredUser || registeredUser.isBlocked) return null;
-  return registeredUser;
+  return inviteEmailUser;
 }
 
 export async function ensureVoterCanAccessCycle(

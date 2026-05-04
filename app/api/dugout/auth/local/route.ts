@@ -177,6 +177,7 @@ export async function POST(request: NextRequest) {
             ? "Finish account setup to create your password and confirm your profile."
             : "No local login found for this email. Use Google sign-in or create a local password.",
           canRegister: true,
+          email,
           setupProfile: user
             ? {
                 firstName: user.firstName || "",

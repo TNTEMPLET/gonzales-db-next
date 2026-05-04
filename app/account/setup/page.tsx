@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useEffect, useMemo, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 
 type LocalAuthResponse = {
   error?: string;
@@ -16,13 +16,27 @@ function getPostLoginHref(response: LocalAuthResponse): string {
 
 export default function AccountSetupPage() {
   const router = useRouter();
-  const [email, setEmail] = useState("");
+  const setupParams =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search);
+  const [email, setEmail] = useState(() => setupParams?.get("email") || "");
   const [password, setPassword] = useState("");
-  const [firstName, setFirstName] = useState("");
-  const [lastName, setLastName] = useState("");
-  const [contactPhone, setContactPhone] = useState("");
-  const [ageGroup, setAgeGroup] = useState("");
-  const [assignedTeam, setAssignedTeam] = useState("");
+  const [firstName, setFirstName] = useState(
+    () => setupParams?.get("firstName") || "",
+  );
+  const [lastName, setLastName] = useState(
+    () => setupParams?.get("lastName") || "",
+  );
+  const [contactPhone, setContactPhone] = useState(
+    () => setupParams?.get("contactPhone") || "",
+  );
+  const [ageGroup, setAgeGroup] = useState(
+    () => setupParams?.get("ageGroup") || "",
+  );
+  const [assignedTeam, setAssignedTeam] = useState(
+    () => setupParams?.get("assignedTeam") || "",
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -31,11 +45,6 @@ export default function AccountSetupPage() {
     () => email.trim().length > 0 && password.length >= 8 && !busy,
     [busy, email, password],
   );
-
-  useEffect(() => {
-    const initialEmail = new URLSearchParams(window.location.search).get("email") || "";
-    setEmail(initialEmail);
-  }, []);
 
   async function submitSetup(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();

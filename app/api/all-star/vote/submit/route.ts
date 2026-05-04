@@ -7,11 +7,6 @@ import {
 import prisma from "@/lib/prisma";
 
 export async function POST(request: NextRequest) {
-  const voter = await resolveAllStarVoterFromRequest(request);
-  if (!voter) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const body = (await request.json()) as {
     cycleId?: string;
     token?: string;
@@ -19,6 +14,13 @@ export async function POST(request: NextRequest) {
   };
   if (!body.cycleId || !body.ratings || typeof body.ratings !== "object") {
     return NextResponse.json({ error: "cycleId and ratings are required" }, { status: 400 });
+  }
+  const voter = await resolveAllStarVoterFromRequest(request, {
+    cycleId: body.cycleId,
+    token: body.token || null,
+  });
+  if (!voter) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const access = await ensureVoterCanAccessCycle(
