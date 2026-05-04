@@ -22,6 +22,24 @@ const googleClientId =
   "";
 const client = googleClientId ? new OAuth2Client(googleClientId) : null;
 
+function requiresCoachSetup(user: {
+  isCoach: boolean;
+  firstName: string | null;
+  lastName: string | null;
+  contactPhone: string | null;
+  ageGroup: string | null;
+  assignedTeam: string | null;
+}) {
+  if (!user.isCoach) return false;
+  return !(
+    user.firstName?.trim() &&
+    user.lastName?.trim() &&
+    user.contactPhone?.trim() &&
+    user.ageGroup?.trim() &&
+    user.assignedTeam?.trim()
+  );
+}
+
 export async function POST(request: NextRequest) {
   if (!googleClientId || !client) {
     return NextResponse.json(
@@ -80,6 +98,25 @@ export async function POST(request: NextRequest) {
             "This account has been blocked and cannot access the application",
         },
         { status: 403 },
+      );
+    }
+
+    if (requiresCoachSetup(user)) {
+      return NextResponse.json(
+        {
+          error:
+            "Finish account setup to create your password and confirm your profile.",
+          canRegister: true,
+          email: user.email,
+          setupProfile: {
+            firstName: user.firstName || "",
+            lastName: user.lastName || "",
+            contactPhone: user.contactPhone || "",
+            ageGroup: user.ageGroup || "",
+            assignedTeam: user.assignedTeam || "",
+          },
+        },
+        { status: 409 },
       );
     }
 

@@ -9,14 +9,14 @@ import prisma from "@/lib/prisma";
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const voter = await resolveAllStarVoterFromRequest(request);
-  if (!voter) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const cycleId = request.nextUrl.searchParams.get("cycleId");
   const token = request.nextUrl.searchParams.get("token");
   if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
+
+  const voter = await resolveAllStarVoterFromRequest(request, { cycleId, token });
+  if (!voter) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   const access = await ensureVoterCanAccessCycle(voter, cycleId, token || null);
   if ("error" in access) {

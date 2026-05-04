@@ -26,6 +26,14 @@ type MeResponse = {
 type LoginResponse = {
   error?: string;
   canRegister?: boolean;
+  email?: string;
+  setupProfile?: {
+    firstName?: string;
+    lastName?: string;
+    contactPhone?: string;
+    ageGroup?: string;
+    assignedTeam?: string;
+  } | null;
   isCoach?: boolean;
   isAdmin?: boolean;
 };
@@ -45,6 +53,27 @@ function getInitial(user: CoachUser): string {
 
 function getPostLoginHref(loginResponse: LoginResponse): string {
   return loginResponse.isCoach ? "/dugout" : "/";
+}
+
+function getAccountSetupHref(loginResponse: LoginResponse, fallbackEmail: string) {
+  const params = new URLSearchParams();
+  params.set("email", loginResponse.email || fallbackEmail);
+  if (loginResponse.setupProfile?.firstName) {
+    params.set("firstName", loginResponse.setupProfile.firstName);
+  }
+  if (loginResponse.setupProfile?.lastName) {
+    params.set("lastName", loginResponse.setupProfile.lastName);
+  }
+  if (loginResponse.setupProfile?.contactPhone) {
+    params.set("contactPhone", loginResponse.setupProfile.contactPhone);
+  }
+  if (loginResponse.setupProfile?.ageGroup) {
+    params.set("ageGroup", loginResponse.setupProfile.ageGroup);
+  }
+  if (loginResponse.setupProfile?.assignedTeam) {
+    params.set("assignedTeam", loginResponse.setupProfile.assignedTeam);
+  }
+  return `/account/setup?${params.toString()}`;
 }
 
 function AvatarBubble({
@@ -152,6 +181,11 @@ export default function CoachAuthButton({
             });
             const json = (await apiResponse.json()) as LoginResponse;
             if (!apiResponse.ok) {
+              if (json.canRegister) {
+                setOpen(false);
+                router.push(getAccountSetupHref(json, email));
+                return;
+              }
               throw new Error(json.error || "Sign-in failed");
             }
             await refreshUser();
@@ -229,7 +263,7 @@ export default function CoachAuthButton({
       if (!response.ok) {
         if (json.canRegister) {
           setOpen(false);
-          router.push(`/account/setup?email=${encodeURIComponent(email)}`);
+          router.push(getAccountSetupHref(json, email));
           return;
         }
         throw new Error(json.error || "Local auth failed");
