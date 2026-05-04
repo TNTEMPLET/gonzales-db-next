@@ -5,11 +5,17 @@
  * Usage:
  *   DATABASE_URL=... [SITE_ORG=gonzales|ascension|master] npm run coach:test
  *   DATABASE_URL=... npm run coach:test -- --password 'YourTempPassword1'
+ *   DATABASE_URL=... npm run coach:test -- --org ascension --age-group '6U LLB' --team 'Red Sox'
  *   DATABASE_URL=... npm run coach:test -- --delete <userId|cuid-or-email>
  *
+ * Flags (create only):
+ *   --organization-id, --org   gonzales | ascension (overrides SITE_ORG-based default)
+ *   --age-group, --league      stored as RegisteredUser.ageGroup (league / division label)
+ *   --team, --assigned-team    stored as RegisteredUser.assignedTeam
+ *
  * Defaults: no local password (use /account/setup after “can register” login flow),
- * random email `test-coach+<unixMs>@apbaseball.test`, org bucket matches Dugout
- * (`master` → `gonzales` content org).
+ * random email `test-coach+<unixMs>@apbaseball.test`, org bucket matches Dugout when
+ * --org is omitted (`master` → `gonzales` content org).
  */
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
@@ -34,9 +40,33 @@ function resolveRegisteredUserOrgId(): "gonzales" | "ascension" {
   return "gonzales";
 }
 
-function parseArgs(argv: string[]) {
+function normalizeOrgIdArg(raw: string | undefined): "gonzales" | "ascension" {
+  const v = raw?.trim().toLowerCase();
+  if (!v) return resolveRegisteredUserOrgId();
+  if (v === "gonzales" || v === "ascension") return v;
+  console.error(
+    `--organization-id / --org must be gonzales or ascension (got: ${raw})`,
+  );
+  process.exit(1);
+}
+
+type CreateOptions = {
+  password: string | null;
+  organizationId: "gonzales" | "ascension";
+  ageGroup: string | null;
+  assignedTeam: string | null;
+};
+
+function parseArgs(argv: string[]): {
+  deleteTarget: string | null;
+  create: CreateOptions | null;
+} {
   let deleteTarget: string | null = null;
   let password: string | null = null;
+  let organizationIdRaw: string | undefined;
+  let ageGroupRaw: string | undefined;
+  let assignedTeamRaw: string | undefined;
+
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
     if (a === "--delete") {
@@ -45,9 +75,46 @@ function parseArgs(argv: string[]) {
       password = argv[++i] ?? "";
     } else if (a.startsWith("--password=")) {
       password = a.slice("--password=".length);
+    } else if (a === "--organization-id" || a === "--org") {
+      organizationIdRaw = argv[++i];
+    } else if (a.startsWith("--organization-id=")) {
+      organizationIdRaw = a.slice("--organization-id=".length);
+    } else if (a.startsWith("--org=")) {
+      organizationIdRaw = a.slice("--org=".length);
+    } else if (a === "--age-group" || a === "--league") {
+      ageGroupRaw = argv[++i];
+    } else if (a.startsWith("--age-group=")) {
+      ageGroupRaw = a.slice("--age-group=".length);
+    } else if (a.startsWith("--league=")) {
+      ageGroupRaw = a.slice("--league=".length);
+    } else if (a === "--team" || a === "--assigned-team") {
+      assignedTeamRaw = argv[++i];
+    } else if (a.startsWith("--team=")) {
+      assignedTeamRaw = a.slice("--team=".length);
+    } else if (a.startsWith("--assigned-team=")) {
+      assignedTeamRaw = a.slice("--assigned-team=".length);
     }
   }
-  return { deleteTarget, password };
+
+  if (deleteTarget !== null) {
+    return { deleteTarget, create: null };
+  }
+
+  const organizationId = normalizeOrgIdArg(organizationIdRaw);
+  const ageGroup =
+    ageGroupRaw !== undefined ? ageGroupRaw.trim() || null : null;
+  const assignedTeam =
+    assignedTeamRaw !== undefined ? assignedTeamRaw.trim() || null : null;
+
+  return {
+    deleteTarget: null,
+    create: {
+      password,
+      organizationId,
+      ageGroup,
+      assignedTeam,
+    },
+  };
 }
 
 async function deleteCoach(target: string) {
@@ -67,8 +134,9 @@ async function deleteCoach(target: string) {
   console.log(`Deleted ${deleted.count} RegisteredUser row(s) matching "${trimmed}".`);
 }
 
-async function createCoach(explicitPassword: string | null) {
-  const organizationId = resolveRegisteredUserOrgId();
+async function createCoach(options: CreateOptions) {
+  const { organizationId, ageGroup, assignedTeam } = options;
+  const explicitPassword = options.password;
   const stamp = Date.now();
   const email = `test-coach+${stamp}@apbaseball.test`.toLowerCase();
   const plain =
@@ -91,8 +159,8 @@ async function createCoach(explicitPassword: string | null) {
       name: "Test Coach",
       isCoach: true,
       contactPhone: null,
-      ageGroup: null,
-      assignedTeam: null,
+      ageGroup,
+      assignedTeam,
       passwordHash,
       googleSub: null,
     },
@@ -103,6 +171,8 @@ async function createCoach(explicitPassword: string | null) {
   console.log("────────────────────────────────────");
   console.log(`  id:             ${user.id}`);
   console.log(`  organizationId: ${user.organizationId}`);
+  console.log(`  ageGroup:       ${user.ageGroup ?? "(null)"}`);
+  console.log(`  assignedTeam:   ${user.assignedTeam ?? "(null)"}`);
   console.log(`  email:          ${user.email}`);
   console.log(`  isCoach:        ${user.isCoach}`);
   if (plain) {
@@ -128,14 +198,16 @@ async function createCoach(explicitPassword: string | null) {
 
 async function main() {
   const argv = process.argv.slice(2);
-  const { deleteTarget, password } = parseArgs(argv);
+  const { deleteTarget, create } = parseArgs(argv);
 
   if (deleteTarget !== null) {
     await deleteCoach(deleteTarget);
     return;
   }
 
-  await createCoach(password);
+  if (create) {
+    await createCoach(create);
+  }
 }
 
 main()
