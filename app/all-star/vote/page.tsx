@@ -175,25 +175,27 @@ export default function AllStarVotePage() {
 
         {!loading && data ? (
           <>
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-              <p className="text-sm text-zinc-300">
-                {data.cycle.organizationId.toUpperCase()} · {data.cycle.ageGroup} · {data.cycle.seasonYear}
-                {data.cycle.title ? ` · ${data.cycle.title}` : ""}
-              </p>
-              <p className="text-xs text-zinc-500 mt-1">
-                Rated {ratedCount} of {data.candidates.length} players.
-              </p>
-              <p
-                className={`text-xs mt-2 ${
-                  isVoteCountValid ? "text-emerald-300" : "text-amber-300"
-                }`}
-              >
-                Vote Status: {ratedCount}/{REQUIRED_VOTES} selected
-                {isVoteCountValid ? " (ready to submit)" : " (select exactly 12)"}
-              </p>
-              {isLocked ? (
-                <p className="text-xs text-amber-300 mt-2">This ballot has already been submitted and is locked.</p>
-              ) : null}
+            <div className="sticky top-3 z-20 -mx-1 px-1">
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/95 backdrop-blur p-4 shadow-lg shadow-black/30">
+                <p className="text-sm text-zinc-300">
+                  {data.cycle.organizationId.toUpperCase()} · {data.cycle.ageGroup} · {data.cycle.seasonYear}
+                  {data.cycle.title ? ` · ${data.cycle.title}` : ""}
+                </p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  Rated {ratedCount} of {data.candidates.length} players.
+                </p>
+                <p
+                  className={`text-xs mt-2 ${
+                    isVoteCountValid ? "text-emerald-300" : "text-amber-300"
+                  }`}
+                >
+                  Vote Status: {ratedCount}/{REQUIRED_VOTES} selected
+                  {isVoteCountValid ? " (ready to submit)" : " (select exactly 12)"}
+                </p>
+                {isLocked ? (
+                  <p className="text-xs text-amber-300 mt-2">This ballot has already been submitted and is locked.</p>
+                ) : null}
+              </div>
             </div>
             <input
               value={candidateSearch}
