@@ -175,7 +175,7 @@ export default function AllStarVotePage() {
 
         {!loading && data ? (
           <>
-            <div className="sticky top-3 z-20 -mx-1 px-1">
+            <div className="sticky top-28 z-40 -mx-1 px-1 md:top-24">
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/95 backdrop-blur p-4 shadow-lg shadow-black/30">
                 <p className="text-sm text-zinc-300">
                   {data.cycle.organizationId.toUpperCase()} · {data.cycle.ageGroup} · {data.cycle.seasonYear}
