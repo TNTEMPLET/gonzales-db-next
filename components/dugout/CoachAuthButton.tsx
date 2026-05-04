@@ -11,6 +11,11 @@ import { createPortal } from "react-dom";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 
+import {
+  ACCOUNT_SETUP_PREFILL_KEY,
+  type AccountSetupPrefillPayload,
+} from "@/lib/accountSetupPrefill";
+
 type CoachUser = {
   name: string;
   firstName: string | null;
@@ -53,6 +58,15 @@ function getInitial(user: CoachUser): string {
 
 function getPostLoginHref(loginResponse: LoginResponse): string {
   return loginResponse.isCoach ? "/dugout" : "/";
+}
+
+function stashAccountSetupPrefill(payload: AccountSetupPrefillPayload) {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(ACCOUNT_SETUP_PREFILL_KEY, JSON.stringify(payload));
+  } catch {
+    // ignore private mode / quota
+  }
 }
 
 function getAccountSetupHref(loginResponse: LoginResponse, fallbackEmail: string) {
@@ -183,6 +197,12 @@ export default function CoachAuthButton({
             if (!apiResponse.ok) {
               if (json.canRegister) {
                 setOpen(false);
+                stashAccountSetupPrefill({
+                  email: (json.email || email).trim().toLowerCase(),
+                  ...(json.setupProfile != null
+                    ? { setupProfile: json.setupProfile }
+                    : {}),
+                });
                 router.push(getAccountSetupHref(json, email));
                 return;
               }
@@ -263,6 +283,13 @@ export default function CoachAuthButton({
       if (!response.ok) {
         if (json.canRegister) {
           setOpen(false);
+          stashAccountSetupPrefill({
+            email: (json.email || email).trim().toLowerCase(),
+            ...(password ? { password } : {}),
+            ...(json.setupProfile != null
+              ? { setupProfile: json.setupProfile }
+              : {}),
+          });
           router.push(getAccountSetupHref(json, email));
           return;
         }

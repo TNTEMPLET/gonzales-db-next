@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { FormEvent, useMemo, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
+
+import {
+  ACCOUNT_SETUP_PREFILL_KEY,
+  type AccountSetupPrefillPayload,
+} from "@/lib/accountSetupPrefill";
 
 type LocalAuthResponse = {
   error?: string;
@@ -16,30 +21,101 @@ function getPostLoginHref(response: LocalAuthResponse): string {
 
 export default function AccountSetupPage() {
   const router = useRouter();
-  const setupParams =
-    typeof window === "undefined"
-      ? null
-      : new URLSearchParams(window.location.search);
-  const [email, setEmail] = useState(() => setupParams?.get("email") || "");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const [firstName, setFirstName] = useState(
-    () => setupParams?.get("firstName") || "",
-  );
-  const [lastName, setLastName] = useState(
-    () => setupParams?.get("lastName") || "",
-  );
-  const [contactPhone, setContactPhone] = useState(
-    () => setupParams?.get("contactPhone") || "",
-  );
-  const [ageGroup, setAgeGroup] = useState(
-    () => setupParams?.get("ageGroup") || "",
-  );
-  const [assignedTeam, setAssignedTeam] = useState(
-    () => setupParams?.get("assignedTeam") || "",
-  );
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [contactPhone, setContactPhone] = useState("");
+  const [ageGroup, setAgeGroup] = useState("");
+  const [assignedTeam, setAssignedTeam] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const params = new URLSearchParams(window.location.search);
+    let nextEmail = params.get("email")?.trim() ?? "";
+    let nextPassword = "";
+    let nextFirstName = params.get("firstName")?.trim() ?? "";
+    let nextLastName = params.get("lastName")?.trim() ?? "";
+    let nextContactPhone = params.get("contactPhone")?.trim() ?? "";
+    let nextAgeGroup = params.get("ageGroup")?.trim() ?? "";
+    let nextAssignedTeam = params.get("assignedTeam")?.trim() ?? "";
+
+    try {
+      const raw = sessionStorage.getItem(ACCOUNT_SETUP_PREFILL_KEY);
+      if (raw) {
+        sessionStorage.removeItem(ACCOUNT_SETUP_PREFILL_KEY);
+        const parsed = JSON.parse(raw) as AccountSetupPrefillPayload;
+        if (typeof parsed.email === "string" && parsed.email.trim()) {
+          nextEmail = parsed.email.trim().toLowerCase();
+        }
+        if (typeof parsed.password === "string") {
+          nextPassword = parsed.password;
+        }
+        if (parsed.setupProfile) {
+          const sp = parsed.setupProfile;
+          if (sp.firstName?.trim()) nextFirstName = sp.firstName.trim();
+          if (sp.lastName?.trim()) nextLastName = sp.lastName.trim();
+          if (sp.contactPhone?.trim()) nextContactPhone = sp.contactPhone.trim();
+          if (sp.ageGroup?.trim()) nextAgeGroup = sp.ageGroup.trim();
+          if (sp.assignedTeam?.trim()) nextAssignedTeam = sp.assignedTeam.trim();
+        }
+      }
+    } catch {
+      // ignore malformed prefill payload
+    }
+
+    setEmail(nextEmail);
+    setPassword(nextPassword);
+    setFirstName(nextFirstName);
+    setLastName(nextLastName);
+    setContactPhone(nextContactPhone);
+    setAgeGroup(nextAgeGroup);
+    setAssignedTeam(nextAssignedTeam);
+
+    const emailForHydrate = nextEmail.trim();
+    if (!emailForHydrate) {
+      return () => {
+        cancelled = true;
+      };
+    }
+
+    void (async () => {
+      try {
+        const response = await fetch("/api/dugout/account-setup-context", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ email: emailForHydrate }),
+        });
+        if (!response.ok || cancelled) return;
+        const data = (await response.json()) as {
+          profile: {
+            firstName?: string;
+            lastName?: string;
+            contactPhone?: string;
+            ageGroup?: string;
+            assignedTeam?: string;
+          } | null;
+        };
+        if (cancelled || !data.profile) return;
+        const profile = data.profile;
+        setFirstName((prev) => profile.firstName?.trim() || prev);
+        setLastName((prev) => profile.lastName?.trim() || prev);
+        setContactPhone((prev) => profile.contactPhone?.trim() || prev);
+        setAgeGroup((prev) => profile.ageGroup?.trim() || prev);
+        setAssignedTeam((prev) => profile.assignedTeam?.trim() || prev);
+      } catch {
+        // ignore network errors
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const canSubmit = useMemo(
     () => email.trim().length > 0 && password.length >= 8 && !busy,
@@ -89,7 +165,8 @@ export default function AccountSetupPage() {
         <div>
           <h1 className="text-2xl font-bold">Complete Account Setup</h1>
           <p className="text-zinc-400 text-sm mt-1">
-            Create your password and confirm your profile details before first login.
+            We&apos;ve filled in what we already have on file—edit anything that needs updating, then
+            save. Create your password below if you have not set one yet.
           </p>
         </div>
 
