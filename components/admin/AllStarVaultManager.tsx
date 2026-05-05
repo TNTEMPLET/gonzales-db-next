@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type Cycle = {
   id: string;
@@ -87,6 +87,22 @@ function formatOrganizationLabel(org: "gonzales" | "ascension") {
   return org === "gonzales" ? "Gonzales DYB" : "Ascension LLB";
 }
 
+function normalizeBallotEmail(email: string) {
+  return email.trim().toLowerCase();
+}
+
+function displayNameFromCoachFields(
+  firstName: string | null,
+  lastName: string | null,
+  name: string | null,
+  email: string,
+) {
+  const fromParts =
+    firstName || lastName ? [firstName, lastName].filter(Boolean).join(" ").trim() : "";
+  const fromName = name?.trim() || "";
+  return fromParts || fromName || email;
+}
+
 function isCycleOpenAndPublished(cycle: Cycle | null) {
   if (!cycle || cycle.status !== "PUBLISHED") return false;
   const now = Date.now();
@@ -119,6 +135,7 @@ export default function AllStarVaultManager({
       inviteId: string;
       invitedEmail: string;
       invitedCoachName: string | null;
+      invitedUserId: string | null;
       link: string | null;
       createdAt: string;
       openedAt: string | null;
@@ -156,6 +173,7 @@ export default function AllStarVaultManager({
   const [vaultUserId, setVaultUserId] = useState("");
   const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "VIEW_ONLY">("VIEW_ONLY");
   const [inviteEmails, setInviteEmails] = useState("");
+  const [showBallotRosterStatusModal, setShowBallotRosterStatusModal] = useState(false);
 
   useEffect(() => {
     setOrg(initialOrg);
@@ -404,6 +422,8 @@ export default function AllStarVaultManager({
           id: string;
           invitedEmail: string;
           invitedCoachName: string | null;
+          invitedUserId?: string | null;
+          invitedUser?: { id: string } | null;
           link: string | null;
           createdAt: string;
           openedAt: string | null;
@@ -416,6 +436,10 @@ export default function AllStarVaultManager({
         inviteId: row.id,
         invitedEmail: row.invitedEmail,
         invitedCoachName: row.invitedCoachName,
+        invitedUserId:
+          typeof row.invitedUserId === "string" && row.invitedUserId
+            ? row.invitedUserId
+            : row.invitedUser?.id ?? null,
         link: row.link,
         createdAt: row.createdAt,
         openedAt: row.openedAt,
@@ -1110,6 +1134,75 @@ export default function AllStarVaultManager({
   const selectedCycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
   const canRefreshVoteSummary = isCycleOpenAndPublished(selectedCycle);
   const isInviteListCycle = selectedCycle?.accessMode === "INVITE_LIST";
+
+  const ballotRosterStatus = useMemo(() => {
+    if (!selectedCycleId || !selectedCycle) return null;
+
+    const submittedByUserId = new Set(submittedBallots.map((s) => s.coachUserId));
+    const submittedEmails = new Set(
+      submittedBallots.map((s) => normalizeBallotEmail(s.coachUser.email)),
+    );
+
+    type RosterRow = { key: string; displayName: string; email: string };
+
+    if (selectedCycle.accessMode === "INVITE_LIST") {
+      const active = inviteLinks.filter((i) => !i.revokedAt);
+      const submitted: RosterRow[] = [];
+      const pending: RosterRow[] = [];
+      for (const inv of active) {
+        const row: RosterRow = {
+          key: inv.inviteId,
+          displayName: inv.invitedCoachName?.trim() || inv.invitedEmail,
+          email: inv.invitedEmail,
+        };
+        const uid = inv.invitedUserId;
+        const didSubmit =
+          (uid != null && submittedByUserId.has(uid)) ||
+          submittedEmails.has(normalizeBallotEmail(inv.invitedEmail));
+        (didSubmit ? submitted : pending).push(row);
+      }
+      return {
+        rosterLabel: "Invite roster",
+        rosterLabelShort: "invite roster",
+        total: active.length,
+        submittedCount: submitted.length,
+        submitted,
+        pending,
+      };
+    }
+
+    const roster: RosterRow[] = cycleCoachOptions.map((c) => ({
+      key: c.id,
+      displayName: displayNameFromCoachFields(
+        c.firstName,
+        c.lastName,
+        c.name,
+        c.email,
+      ),
+      email: c.email,
+    }));
+    const submitted: RosterRow[] = [];
+    const pending: RosterRow[] = [];
+    for (const row of roster) {
+      const didSubmit = submittedByUserId.has(row.key);
+      (didSubmit ? submitted : pending).push(row);
+    }
+    return {
+      rosterLabel: "Coaches in league (this age group)",
+      rosterLabelShort: "league coaches",
+      total: roster.length,
+      submittedCount: submitted.length,
+      submitted,
+      pending,
+    };
+  }, [
+    selectedCycleId,
+    selectedCycle,
+    inviteLinks,
+    cycleCoachOptions,
+    submittedBallots,
+  ]);
+
   const filteredInviteCoachOptions = cycleCoachOptions.filter((coach) => {
     const query = inviteCoachSearch.trim().toLowerCase();
     if (!query) return true;
@@ -1357,7 +1450,7 @@ export default function AllStarVaultManager({
         <p className="text-xs text-zinc-400">
           Review submitted ballots for the selected cycle. Deleting a ballot unlocks that coach to submit again.
         </p>
-        <div>
+        <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
             disabled={busy || !selectedCycleId}
@@ -1366,6 +1459,21 @@ export default function AllStarVaultManager({
           >
             Refresh
           </button>
+          {selectedCycleId && ballotRosterStatus ? (
+            <button
+              type="button"
+              disabled={busy}
+              title={`Open list of who has submitted vs not yet (${ballotRosterStatus.rosterLabel})`}
+              onClick={() => setShowBallotRosterStatusModal(true)}
+              className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60 inline-flex items-center gap-2 flex-wrap"
+            >
+              <span className="text-zinc-500">Submitted ballots</span>
+              <span className="tabular-nums font-semibold text-zinc-100">
+                {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
+              </span>
+              <span className="text-zinc-500">· {ballotRosterStatus.rosterLabelShort}</span>
+            </button>
+          ) : null}
         </div>
         <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
           {!selectedCycleId ? (
@@ -1666,6 +1774,82 @@ export default function AllStarVaultManager({
           </div>
         ) : null}
       </div>
+
+      {showBallotRosterStatusModal && ballotRosterStatus ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="ballot-roster-status-title"
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setShowBallotRosterStatusModal(false);
+          }}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 id="ballot-roster-status-title" className="text-lg font-semibold">
+                  Submitted ballot status
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  {ballotRosterStatus.submittedCount} of {ballotRosterStatus.total} on{" "}
+                  <span className="text-zinc-300">{ballotRosterStatus.rosterLabel}</span> have submitted.
+                </p>
+              </div>
+              <button
+                type="button"
+                className="shrink-0 rounded-lg border border-zinc-600 text-zinc-300 px-3 py-1.5 text-xs hover:bg-zinc-800"
+                onClick={() => setShowBallotRosterStatusModal(false)}
+              >
+                Close
+              </button>
+            </div>
+            <div className="grid md:grid-cols-2 gap-4 min-h-0 flex-1 overflow-hidden">
+              <div className="flex flex-col min-h-0 rounded-lg border border-zinc-800 bg-zinc-950/40">
+                <p className="text-sm font-medium text-emerald-400 px-3 py-2 border-b border-zinc-800 shrink-0">
+                  Submitted ({ballotRosterStatus.submitted.length})
+                </p>
+                <ul className="overflow-y-auto p-3 space-y-2 text-sm max-h-64 md:max-h-72">
+                  {ballotRosterStatus.submitted.length === 0 ? (
+                    <li className="text-zinc-500">No roster coaches have submitted yet.</li>
+                  ) : (
+                    [...ballotRosterStatus.submitted]
+                      .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }))
+                      .map((row) => (
+                        <li key={row.key} className="border-b border-zinc-800/80 pb-2 last:border-b-0 last:pb-0">
+                          <span className="font-medium text-zinc-100">{row.displayName}</span>
+                          <span className="block text-xs text-zinc-500 truncate">{row.email}</span>
+                        </li>
+                      ))
+                  )}
+                </ul>
+              </div>
+              <div className="flex flex-col min-h-0 rounded-lg border border-zinc-800 bg-zinc-950/40">
+                <p className="text-sm font-medium text-amber-300 px-3 py-2 border-b border-zinc-800 shrink-0">
+                  Not submitted yet ({ballotRosterStatus.pending.length})
+                </p>
+                <ul className="overflow-y-auto p-3 space-y-2 text-sm max-h-64 md:max-h-72">
+                  {ballotRosterStatus.pending.length === 0 ? (
+                    <li className="text-zinc-500">Everyone on the roster has submitted.</li>
+                  ) : (
+                    [...ballotRosterStatus.pending]
+                      .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }))
+                      .map((row) => (
+                        <li key={row.key} className="border-b border-zinc-800/80 pb-2 last:border-b-0 last:pb-0">
+                          <span className="font-medium text-zinc-100">{row.displayName}</span>
+                          <span className="block text-xs text-zinc-500 truncate">{row.email}</span>
+                        </li>
+                      ))
+                  )}
+                </ul>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showAddCandidateModal ? (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
