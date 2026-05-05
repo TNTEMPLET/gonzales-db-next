@@ -19,6 +19,7 @@ import {
   isMasterDeployment,
   resolveAdminTargetOrg,
 } from "@/lib/siteConfig";
+import { isCommunicationsModuleEnabled } from "@/lib/communications/config";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -50,6 +51,7 @@ export default async function AdminDashboardPage({
     adminUser.name ||
     adminUser.email;
   const adminRole = toAdminRole(adminUser.role, adminUser.isMaster);
+  const communicationsEnabled = isCommunicationsModuleEnabled();
 
   const orgQuery = `?org=${currentOrg}`;
   const masterMode = isMasterDeployment();
@@ -145,7 +147,18 @@ export default async function AdminDashboardPage({
         : "Manage All-Star voting cycles and ballot administration.",
       action: masterMode ? "Open All-Star Vault" : "Open All-Star",
     },
-  ].filter((card) => canAccessAdminModule(adminRole, card.module));
+    {
+      module: "COMMUNICATIONS" as AdminModule,
+      href: `/admin/communications${orgQuery}`,
+      title: "Communications",
+      description: masterMode
+        ? "Coordinate approved broadcast communications across organizations with audience targeting."
+        : "Send approved organization communications by audience rules and roles.",
+      action: masterMode ? "Open Comms Hub" : "Open Communications",
+    },
+  ]
+    .filter((card) => (card.module === "COMMUNICATIONS" ? communicationsEnabled : true))
+    .filter((card) => canAccessAdminModule(adminRole, card.module));
 
   const statusChips = [
     {
