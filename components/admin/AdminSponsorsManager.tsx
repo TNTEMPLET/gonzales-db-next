@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { SPONSOR_PACKAGE_TYPES, type SponsorPackageTypeValue } from "@/lib/sponsors/catalog";
-import { type ContentOrgId } from "@/lib/siteConfig";
+import { formatOrganizationIdDisplay, type ContentOrgId } from "@/lib/siteConfig";
 import { SPONSOR_PACKAGE_TEMPLATES } from "@/lib/sponsors/templates";
 
 type SponsorPlacement = {
@@ -868,7 +868,9 @@ export default function AdminSponsorsManager({
                     {centsDisplay(sponsor.packageEnrollment?.amountCents)}
                   </td>
                   <td className="px-3 py-2 text-xs">
-                    {sponsor.placements.map((entry) => entry.organizationId).join(", ")}
+                    {sponsor.placements
+                      .map((entry) => formatOrganizationIdDisplay(entry.organizationId))
+                      .join(", ")}
                   </td>
                   <td className="px-3 py-2 text-xs">
                     {sponsor.placements.some((entry) => entry.showInFooterScroller)

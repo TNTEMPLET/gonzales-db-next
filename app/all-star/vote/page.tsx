@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
 
 type Candidate = {
   id: string;
@@ -208,7 +209,7 @@ export default function AllStarVotePage() {
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-zinc-300">
-                      {data.cycle.organizationId.toUpperCase()} · {data.cycle.ageGroup} ·{" "}
+                      {formatOrganizationIdDisplay(data.cycle.organizationId)} · {data.cycle.ageGroup} ·{" "}
                       {data.cycle.seasonYear}
                       {data.cycle.title ? ` · ${data.cycle.title}` : ""}
                     </p>

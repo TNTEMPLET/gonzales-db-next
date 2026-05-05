@@ -138,6 +138,19 @@ export function getOrgDisplayName(org: ContentOrgId): string {
   return getSiteConfigForOrg(org).shortName;
 }
 
+/**
+ * Friendly label for raw org ids across UI surfaces.
+ * Falls back to uppercase for unknown values so we never expose lowercase ids.
+ */
+export function formatOrganizationIdDisplay(org: string | null | undefined): string {
+  if (!org) return "Global";
+  if (org === "gonzales" || org === "ascension") {
+    return getOrgDisplayName(org);
+  }
+  if (org === "master") return "AP Baseball Master";
+  return org.trim().toUpperCase();
+}
+
 export function getAssignrLeagueId(org?: ContentOrgId): string {
   if (org) {
     return getSiteConfigForOrg(org).assignrLeagueId || "515712";

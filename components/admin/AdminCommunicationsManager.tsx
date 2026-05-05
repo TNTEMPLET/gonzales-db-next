@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import type { ContentOrgId } from "@/lib/siteConfig";
+import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
 
 type Campaign = {
   id: string;
@@ -293,7 +294,7 @@ export default function AdminCommunicationsManager({
                   </span>
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Scope: {campaign.organizationId || "GLOBAL"} · Logic: {campaign.logicalMode} · Channels: {campaign.channels.join(", ")}
+                  Scope: {formatOrganizationIdDisplay(campaign.organizationId)} · Logic: {campaign.logicalMode} · Channels: {campaign.channels.join(", ")}
                 </p>
                 <p className="text-xs text-zinc-500">
                   Snapshots: {campaign._count?.recipientSnapshots ?? 0} · Deliveries: {campaign._count?.deliveries ?? 0}
