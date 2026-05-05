@@ -176,10 +176,40 @@ export async function GET(request: NextRequest) {
             orderBy: [{ team: { seasonYear: "desc" } }, { createdAt: "desc" }],
           });
 
-    const assignmentByUserId = new Map<string, string>();
+    type CoachTeamRow = {
+      ageGroup: string;
+      teamName: string;
+      role: "HEAD_COACH" | "ASSISTANT_COACH";
+      seasonYear: number;
+    };
+
+    const coachTeamAssignmentsByUserId = new Map<string, CoachTeamRow[]>();
+    const coachRoleByUserId = new Map<string, "HEAD_COACH" | "ASSISTANT_COACH">();
+
     for (const assignment of coachAssignments) {
-      if (assignmentByUserId.has(assignment.registeredUserId)) continue;
-      assignmentByUserId.set(assignment.registeredUserId, assignment.role);
+      const uid = assignment.registeredUserId;
+
+      const prev = coachRoleByUserId.get(uid);
+      coachRoleByUserId.set(
+        uid,
+        assignment.role === "HEAD_COACH" || prev === "HEAD_COACH" ? "HEAD_COACH" : "ASSISTANT_COACH",
+      );
+
+      if (!coachTeamAssignmentsByUserId.has(uid)) coachTeamAssignmentsByUserId.set(uid, []);
+      coachTeamAssignmentsByUserId.get(uid)!.push({
+        ageGroup: assignment.team.ageGroup.trim(),
+        teamName: assignment.team.teamName.trim(),
+        role: assignment.role,
+        seasonYear: assignment.team.seasonYear,
+      });
+    }
+
+    for (const rows of coachTeamAssignmentsByUserId.values()) {
+      rows.sort((a, b) =>
+        b.seasonYear !== a.seasonYear
+          ? b.seasonYear - a.seasonYear
+          : a.teamName.localeCompare(b.teamName, undefined, { sensitivity: "base" }),
+      );
     }
 
     const memberIds = new Set(orgMemberships.map((m) => m.adminUserId));
@@ -255,7 +285,8 @@ export async function GET(request: NextRequest) {
       data: users.map((user: { id: string; email: string }) => ({
         ...user,
         isAdmin: adminEmailSet.has(user.email.trim().toLowerCase()),
-        coachRole: assignmentByUserId.get(user.id) || null,
+        coachRole: coachRoleByUserId.get(user.id) || null,
+        coachTeamAssignments: coachTeamAssignmentsByUserId.get(user.id) ?? [],
       })),
     });
   } catch (err: unknown) {
