@@ -24,24 +24,6 @@ export async function resolveAllStarVoterFromRequest(
   request: NextRequest,
   options: ResolveAllStarVoterOptions = {},
 ) {
-  const coach = await getCoachUserFromRequest(request);
-  if (coach && !coach.isBlocked) {
-    const registeredUser = await prisma.registeredUser.findUnique({
-      where: { id: coach.id },
-      select: {
-        id: true,
-        email: true,
-        organizationId: true,
-        ageGroup: true,
-        isCoach: true,
-        isBlocked: true,
-      },
-    });
-    if (registeredUser && !registeredUser.isBlocked) {
-      return { ...registeredUser, isAdmin: false };
-    }
-  }
-
   const admin = await getAdminUserFromRequest(request);
   if (admin) {
     const registeredUser = await prisma.registeredUser.findFirst({
@@ -56,9 +38,27 @@ export async function resolveAllStarVoterFromRequest(
         isBlocked: true,
       },
     });
-
     if (registeredUser && !registeredUser.isBlocked) {
       return { ...registeredUser, isAdmin: true };
+    }
+  }
+
+  const coach = await getCoachUserFromRequest(request);
+  if (coach && !coach.isBlocked) {
+    const registeredUser = await prisma.registeredUser.findUnique({
+      where: { id: coach.id },
+      select: {
+        id: true,
+        email: true,
+        organizationId: true,
+        ageGroup: true,
+        isCoach: true,
+        isBlocked: true,
+      },
+    });
+
+    if (registeredUser && !registeredUser.isBlocked) {
+      return { ...registeredUser, isAdmin: false };
     }
   }
 
