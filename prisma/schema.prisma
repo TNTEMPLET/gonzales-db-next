@@ -85,6 +85,56 @@ enum SocialPostStatus {
   FAILED
 }
 
+enum CommunicationChannel {
+  EMAIL
+  SMS
+}
+
+enum CommunicationCampaignStatus {
+  DRAFT
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  SCHEDULED
+  SENDING
+  SENT
+  FAILED
+  CANCELED
+}
+
+enum CommunicationApprovalStatus {
+  REQUESTED
+  APPROVED
+  REJECTED
+}
+
+enum CommunicationAudienceLogicalMode {
+  AND
+  OR
+}
+
+enum CommunicationAudienceRuleType {
+  ALL_USERS
+  ORGANIZATION
+  ALL_COACHES
+  ORGANIZATION_COACHES
+  ADMIN_ROLE
+}
+
+enum CommunicationRecipientType {
+  REGISTERED_USER
+  ADMIN_USER
+}
+
+enum CommunicationDeliveryStatus {
+  PENDING
+  SENT
+  FAILED
+  SKIPPED_SUPPRESSED
+  SKIPPED_NO_CONSENT
+  SKIPPED_NO_CONTACT
+}
+
 model NewsPost {
   id             String     @id @default(cuid())
   organizationId String     @default("gonzales")
@@ -132,6 +182,10 @@ model AdminUser {
   teamPlayerImportBatches TeamPlayerImportBatch[]
   socialPostsCreated      SocialPost[]
   orgMemberships          AdminOrgMembership[]
+  communicationsCreated   CommunicationCampaign[] @relation("CommunicationCampaignCreatedBy")
+  communicationsApproved  CommunicationApproval[] @relation("CommunicationApprovedBy")
+  communicationRecipientSnapshots CommunicationRecipientSnapshot[] @relation("CommunicationRecipientAdminUser")
+  communicationDeliveries CommunicationDelivery[] @relation("CommunicationDeliveryAdminUser")
 }
 
 /// Effective admin role for a specific organization (gonzales | ascension).
@@ -184,6 +238,11 @@ model RegisteredUser {
   teamGameNotes TeamGameNote[] @relation("TeamGameNoteAuthor")
   duplicateAsNewer     RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsNewer")
   duplicateAsCandidate RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsCandidate")
+  communicationsCreated CommunicationCampaign[] @relation("CommunicationCampaignCreatedByRegisteredUser")
+  communicationRecipientSnapshots CommunicationRecipientSnapshot[] @relation("CommunicationRecipientRegisteredUser")
+  communicationDeliveries CommunicationDelivery[] @relation("CommunicationDeliveryRegisteredUser")
+  emailSuppressions EmailSuppression[]
+  smsConsents SmsConsent[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -341,6 +400,145 @@ model AdminAuditLog {
 
   @@index([createdAt])
   @@index([action, createdAt])
+}
+
+model CommunicationCampaign {
+  id               String                       @id @default(cuid())
+  organizationId   String?
+  logicalMode      CommunicationAudienceLogicalMode @default(OR)
+  channels         CommunicationChannel[]
+  status           CommunicationCampaignStatus  @default(DRAFT)
+  title            String
+  messageSubject   String?
+  messageBody      String
+  createdByAdminId String?
+  createdByRegisteredUserId String?
+  sendAt           DateTime?
+  timezone         String?
+  quietHoursStart  Int?
+  quietHoursEnd    Int?
+  approvedAt       DateTime?
+  sentAt           DateTime?
+  createdAt        DateTime                     @default(now())
+  updatedAt        DateTime                     @updatedAt
+
+  createdByAdmin         AdminUser?            @relation("CommunicationCampaignCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdByRegisteredUser RegisteredUser?      @relation("CommunicationCampaignCreatedByRegisteredUser", fields: [createdByRegisteredUserId], references: [id], onDelete: SetNull)
+  audienceRules          CommunicationAudienceRule[]
+  approvals              CommunicationApproval[]
+  recipientSnapshots     CommunicationRecipientSnapshot[]
+  deliveries             CommunicationDelivery[]
+
+  @@index([status, sendAt])
+  @@index([organizationId, createdAt])
+}
+
+model CommunicationAudienceRule {
+  id           String                     @id @default(cuid())
+  campaignId   String
+  ruleType     CommunicationAudienceRuleType
+  organizationId String?
+  adminRole    AdminRole?
+  createdAt    DateTime                   @default(now())
+
+  campaign     CommunicationCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId])
+  @@index([ruleType, organizationId, adminRole])
+}
+
+model CommunicationApproval {
+  id            String                      @id @default(cuid())
+  campaignId    String
+  approverAdminId String?
+  status        CommunicationApprovalStatus
+  note          String?
+  actedAt       DateTime                    @default(now())
+  createdAt     DateTime                    @default(now())
+
+  campaign      CommunicationCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  approverAdmin AdminUser?                  @relation("CommunicationApprovedBy", fields: [approverAdminId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, status])
+  @@index([approverAdminId, actedAt])
+}
+
+model CommunicationRecipientSnapshot {
+  id               String                   @id @default(cuid())
+  campaignId       String
+  recipientType    CommunicationRecipientType
+  registeredUserId String?
+  adminUserId      String?
+  email            String?
+  phone            String?
+  matchReasons     String[]
+  createdAt        DateTime                 @default(now())
+
+  campaign         CommunicationCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  registeredUser   RegisteredUser?          @relation("CommunicationRecipientRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
+  adminUser        AdminUser?               @relation("CommunicationRecipientAdminUser", fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId])
+  @@index([registeredUserId])
+  @@index([adminUserId])
+}
+
+model CommunicationDelivery {
+  id               String                   @id @default(cuid())
+  campaignId       String
+  channel          CommunicationChannel
+  recipientType    CommunicationRecipientType
+  registeredUserId String?
+  adminUserId      String?
+  toEmail          String?
+  toPhone          String?
+  provider         String?
+  providerMessageId String?
+  status           CommunicationDeliveryStatus @default(PENDING)
+  errorMessage     String?
+  attemptedAt      DateTime?
+  sentAt           DateTime?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  campaign         CommunicationCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  registeredUser   RegisteredUser?          @relation("CommunicationDeliveryRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
+  adminUser        AdminUser?               @relation("CommunicationDeliveryAdminUser", fields: [adminUserId], references: [id], onDelete: SetNull)
+
+  @@index([campaignId, status, channel])
+  @@index([registeredUserId])
+  @@index([adminUserId])
+}
+
+model EmailSuppression {
+  id               String     @id @default(cuid())
+  organizationId   String?
+  registeredUserId String?
+  email            String
+  reason           String
+  createdAt        DateTime   @default(now())
+
+  registeredUser   RegisteredUser? @relation(fields: [registeredUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, email])
+  @@index([email, createdAt])
+}
+
+model SmsConsent {
+  id               String     @id @default(cuid())
+  organizationId   String?
+  registeredUserId String?
+  phone            String
+  consentedAt      DateTime?
+  revokedAt        DateTime?
+  source           String?
+  createdAt        DateTime   @default(now())
+  updatedAt        DateTime   @updatedAt
+
+  registeredUser   RegisteredUser? @relation(fields: [registeredUserId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, phone])
+  @@index([registeredUserId, consentedAt, revokedAt])
 }
 
 model GameScore {
