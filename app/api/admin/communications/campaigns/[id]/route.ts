@@ -1,4 +1,4 @@
-import type { CommunicationAudienceLogicalMode, CommunicationChannel } from "@prisma/client";
+import type { CommunicationChannel } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCommunicationActor } from "@/lib/communications/authz";
@@ -10,7 +10,6 @@ type UpdateCampaignBody = {
   messageSubject?: string | null;
   messageBody?: string;
   channels?: CommunicationChannel[];
-  logicalMode?: CommunicationAudienceLogicalMode;
   organizationId?: string | null;
   quietHoursStart?: number | null;
   quietHoursEnd?: number | null;
@@ -82,7 +81,7 @@ export async function PATCH(
         messageSubject: body.messageSubject === undefined ? existing.messageSubject : body.messageSubject?.trim() || null,
         messageBody: body.messageBody?.trim() || existing.messageBody,
         channels: body.channels && body.channels.length > 0 ? body.channels : existing.channels,
-        logicalMode: body.logicalMode ?? existing.logicalMode,
+        logicalMode: "AND",
         organizationId: requestedOrg,
         quietHoursStart:
           typeof body.quietHoursStart === "number"

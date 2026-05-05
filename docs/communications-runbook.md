@@ -25,7 +25,7 @@
 ## Operational workflow
 
 1. Create campaign draft in `/admin/communications`.
-2. Set audience rules (`AND`/`OR`) and preview recipients.
+2. Set audience rules (always combined with **`AND`**) and preview recipients.
 3. Submit campaign for approval.
 4. Board Member+ (not campaign creator) approves/rejects.
 5. Send immediately or schedule for dispatch.

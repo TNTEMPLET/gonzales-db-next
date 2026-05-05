@@ -62,7 +62,6 @@ export default function AdminCommunicationsManager({
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
-  const [logicalMode, setLogicalMode] = useState<"AND" | "OR">("OR");
   const [scope, setScope] = useState<"ORG" | "GLOBAL">("ORG");
   const [quietStart, setQuietStart] = useState("");
   const [quietEnd, setQuietEnd] = useState("");
@@ -126,7 +125,6 @@ export default function AdminCommunicationsManager({
           messageSubject: subject || null,
           messageBody: body,
           channels: ["EMAIL"],
-          logicalMode,
           organizationId: scope === "GLOBAL" ? null : targetOrg,
           quietHoursStart: quietStart ? Number(quietStart) : null,
           quietHoursEnd: quietEnd ? Number(quietEnd) : null,
@@ -202,18 +200,7 @@ export default function AdminCommunicationsManager({
           className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
         />
 
-        <div className="grid md:grid-cols-4 gap-3">
-          <div>
-            <label className="text-xs text-zinc-500">Logic Mode</label>
-            <select
-              value={logicalMode}
-              onChange={(e) => setLogicalMode(e.target.value as "AND" | "OR")}
-              className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-2 text-sm"
-            >
-              <option value="OR">OR (match any)</option>
-              <option value="AND">AND (match all)</option>
-            </select>
-          </div>
+        <div className="grid md:grid-cols-3 gap-3">
           <div>
             <label className="text-xs text-zinc-500">Scope</label>
             <select
@@ -248,6 +235,9 @@ export default function AdminCommunicationsManager({
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 space-y-2">
           <p className="text-sm font-medium">Audience rules</p>
+          <p className="text-xs text-zinc-500">
+            Rules are always combined with <span className="text-zinc-400">AND</span>: recipients must match every rule you enable (narrower audience).
+          </p>
           <div className="grid md:grid-cols-2 gap-2 text-sm">
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllUsers} onChange={(e) => setRuleAllUsers(e.target.checked)} />All users</label>
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgUsers} onChange={(e) => setRuleOrgUsers(e.target.checked)} />Users in {targetOrgLabel}</label>
@@ -295,7 +285,7 @@ export default function AdminCommunicationsManager({
                   </span>
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Scope: {formatOrganizationIdDisplay(campaign.organizationId)} · Logic: {campaign.logicalMode} · Channels: {campaign.channels.join(", ")}
+                  Scope: {formatOrganizationIdDisplay(campaign.organizationId)} · Audience: all rules (AND) · Channels: {campaign.channels.join(", ")}
                 </p>
                 <p className="text-xs text-zinc-500">
                   Snapshots: {campaign._count?.recipientSnapshots ?? 0} · Deliveries: {campaign._count?.deliveries ?? 0}

@@ -1,4 +1,4 @@
-import type { CommunicationAudienceLogicalMode, CommunicationChannel } from "@prisma/client";
+import type { CommunicationChannel } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 import { canSendForOrg } from "@/lib/communications/policy";
@@ -10,7 +10,6 @@ type CreateCampaignBody = {
   messageSubject?: string | null;
   messageBody?: string;
   channels?: CommunicationChannel[];
-  logicalMode?: CommunicationAudienceLogicalMode;
   organizationId?: string | null;
   quietHoursStart?: number | null;
   quietHoursEnd?: number | null;
@@ -50,7 +49,6 @@ export async function POST(request: NextRequest) {
   if (!title || !messageBody) {
     return NextResponse.json({ error: "title and messageBody are required" }, { status: 400 });
   }
-  const logicalMode = body.logicalMode ?? "OR";
   const channels: CommunicationChannel[] =
     Array.isArray(body.channels) && body.channels.length > 0 ? body.channels : ["EMAIL"];
   const requestedOrg =
@@ -66,7 +64,7 @@ export async function POST(request: NextRequest) {
   const created = await prisma.communicationCampaign.create({
     data: {
       organizationId: requestedOrg,
-      logicalMode,
+      logicalMode: "AND",
       channels,
       title,
       messageSubject: body.messageSubject?.trim() || null,

@@ -405,7 +405,7 @@ model AdminAuditLog {
 model CommunicationCampaign {
   id               String                       @id @default(cuid())
   organizationId   String?
-  logicalMode      CommunicationAudienceLogicalMode @default(OR)
+  logicalMode      CommunicationAudienceLogicalMode @default(AND)
   channels         CommunicationChannel[]
   status           CommunicationCampaignStatus  @default(DRAFT)
   title            String
