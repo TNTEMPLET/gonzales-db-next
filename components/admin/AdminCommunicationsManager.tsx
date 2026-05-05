@@ -52,6 +52,7 @@ export default function AdminCommunicationsManager({
   isMaster: boolean;
 }) {
   const orgQuery = `org=${targetOrg}`;
+  const targetOrgLabel = formatOrganizationIdDisplay(targetOrg);
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -221,7 +222,7 @@ export default function AdminCommunicationsManager({
               className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-2 text-sm"
               disabled={!isMaster}
             >
-              <option value="ORG">Organization only ({targetOrg})</option>
+              <option value="ORG">Organization only ({targetOrgLabel})</option>
               <option value="GLOBAL">Global (all orgs)</option>
             </select>
           </div>
@@ -249,9 +250,9 @@ export default function AdminCommunicationsManager({
           <p className="text-sm font-medium">Audience rules</p>
           <div className="grid md:grid-cols-2 gap-2 text-sm">
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllUsers} onChange={(e) => setRuleAllUsers(e.target.checked)} />All users</label>
-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgUsers} onChange={(e) => setRuleOrgUsers(e.target.checked)} />Users in {targetOrg}</label>
+            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgUsers} onChange={(e) => setRuleOrgUsers(e.target.checked)} />Users in {targetOrgLabel}</label>
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllCoaches} onChange={(e) => setRuleAllCoaches(e.target.checked)} />All coaches</label>
-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgCoaches} onChange={(e) => setRuleOrgCoaches(e.target.checked)} />Coaches in {targetOrg}</label>
+            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgCoaches} onChange={(e) => setRuleOrgCoaches(e.target.checked)} />Coaches in {targetOrgLabel}</label>
           </div>
           <div>
             <label className="text-xs text-zinc-500">Include admin role (optional)</label>
