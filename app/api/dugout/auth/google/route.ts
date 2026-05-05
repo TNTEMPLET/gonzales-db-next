@@ -101,7 +101,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (requiresCoachSetup(user)) {
+    const admin = await prisma.adminUser.findUnique({ where: { email } });
+
+    // Admin users should never be blocked behind coach profile setup on site login.
+    if (!admin && requiresCoachSetup(user)) {
       return NextResponse.json(
         {
           error:
@@ -120,8 +123,6 @@ export async function POST(request: NextRequest) {
         { status: 409 },
       );
     }
-
-    const admin = await prisma.adminUser.findUnique({ where: { email } });
 
     const response = NextResponse.json({
       success: true,
