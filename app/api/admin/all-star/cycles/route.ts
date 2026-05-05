@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { importCandidatesFromTeamsForCycle } from "@/lib/allStar/candidates";
 import { mapAllStarCycle, parseSeasonYear } from "@/lib/allStar/server";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
@@ -47,7 +47,7 @@ async function canDeleteCycles(request: NextRequest) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const forbid = forbidIfNotMaster();

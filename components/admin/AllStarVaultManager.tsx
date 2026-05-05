@@ -81,6 +81,8 @@ type VoteSummaryRow = {
 type AllStarVaultManagerProps = {
   initialOrg: "gonzales" | "ascension";
   isMasterMode: boolean;
+  /** Org admins with the All-Star module, or vault Full Access. View-only vault grants use false. */
+  canManageAllStarVault?: boolean;
 };
 
 function formatOrganizationLabel(org: "gonzales" | "ascension") {
@@ -116,6 +118,7 @@ function isCycleOpenAndPublished(cycle: Cycle | null) {
 export default function AllStarVaultManager({
   initialOrg,
   isMasterMode,
+  canManageAllStarVault = true,
 }: AllStarVaultManagerProps) {
   const latestCycleIdRef = useRef("");
   const [org, setOrg] = useState<"gonzales" | "ascension">(initialOrg);
@@ -153,6 +156,7 @@ export default function AllStarVaultManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const manageDisabled = busy || !canManageAllStarVault;
 
   const [newCycleAgeGroup, setNewCycleAgeGroup] = useState("12U LLB");
   const [ageGroupOptions, setAgeGroupOptions] = useState<string[]>([]);
@@ -186,9 +190,14 @@ export default function AllStarVaultManager({
   useEffect(() => {
     void loadCycles();
     void loadAgeGroups();
-    void loadVaultAccess();
-    void loadUserOptions();
-  }, [org, seasonYear]);
+    if (canManageAllStarVault) {
+      void loadVaultAccess();
+      void loadUserOptions();
+    } else {
+      setVaultAccess([]);
+      setUserOptions([]);
+    }
+  }, [org, seasonYear, canManageAllStarVault]);
 
   useEffect(() => {
     latestCycleIdRef.current = selectedCycleId;
@@ -1227,6 +1236,11 @@ export default function AllStarVaultManager({
     <section className="space-y-6">
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
+      {!canManageAllStarVault ? (
+        <div className="rounded-lg border border-sky-800 bg-sky-950/30 p-3 text-sm text-sky-200">
+          View-only vault access: you can review cycles, submitted ballots, and vote standings. Management actions are disabled.
+        </div>
+      ) : null}
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Cycle Management</h2>
@@ -1279,7 +1293,7 @@ export default function AllStarVaultManager({
             <option value="yes">Showcase: Yes</option>
             <option value="no">Showcase: No</option>
           </select>
-          <button type="button" disabled={busy || !newCycleAgeGroup} onClick={() => void createCycle()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save Cycle</button>
+          <button type="button" disabled={manageDisabled || !newCycleAgeGroup} onClick={() => void createCycle()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save Cycle</button>
         </div>
         <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
@@ -1294,9 +1308,9 @@ export default function AllStarVaultManager({
               </option>
             ))}
           </select>
-          <button type="button" disabled={busy || !selectedCycleId} onClick={() => void updateCycleStatus("PUBLISHED")} className="rounded-lg border border-emerald-700 text-emerald-300 px-3 py-2 text-sm disabled:opacity-60">Publish</button>
-          <button type="button" disabled={busy || !selectedCycleId} onClick={() => void updateCycleStatus("CLOSED")} className="rounded-lg border border-amber-700 text-amber-300 px-3 py-2 text-sm disabled:opacity-60">Close</button>
-          <button type="button" disabled={busy || !selectedCycleId || !canDeleteCycles} onClick={() => void deleteCycle()} className="rounded-lg border border-red-700 text-red-300 px-3 py-2 text-sm disabled:opacity-60">Delete Cycle</button>
+          <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void updateCycleStatus("PUBLISHED")} className="rounded-lg border border-emerald-700 text-emerald-300 px-3 py-2 text-sm disabled:opacity-60">Publish</button>
+          <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void updateCycleStatus("CLOSED")} className="rounded-lg border border-amber-700 text-amber-300 px-3 py-2 text-sm disabled:opacity-60">Close</button>
+          <button type="button" disabled={manageDisabled || !selectedCycleId || !canDeleteCycles} onClick={() => void deleteCycle()} className="rounded-lg border border-red-700 text-red-300 px-3 py-2 text-sm disabled:opacity-60">Delete Cycle</button>
         </div>
         <div className="grid md:grid-cols-3 gap-3">
           <input
@@ -1313,7 +1327,7 @@ export default function AllStarVaultManager({
           />
           <button
             type="button"
-            disabled={busy || !selectedCycleId || !cycleOpenAt || !cycleCloseAt}
+            disabled={manageDisabled || !selectedCycleId || !cycleOpenAt || !cycleCloseAt}
             onClick={() => void saveCycleOpenWindow()}
             className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-2 text-sm disabled:opacity-60"
           >
@@ -1323,7 +1337,7 @@ export default function AllStarVaultManager({
         <div className="flex flex-wrap gap-2">
           <button
             type="button"
-            disabled={busy || !selectedCycleId}
+            disabled={manageDisabled || !selectedCycleId}
             onClick={() => void setOpenNowForHours(1)}
             className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
           >
@@ -1331,7 +1345,7 @@ export default function AllStarVaultManager({
           </button>
           <button
             type="button"
-            disabled={busy || !selectedCycleId}
+            disabled={manageDisabled || !selectedCycleId}
             onClick={() => void setOpenNowForHours(4)}
             className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
           >
@@ -1339,7 +1353,7 @@ export default function AllStarVaultManager({
           </button>
           <button
             type="button"
-            disabled={busy || !selectedCycleId}
+            disabled={manageDisabled || !selectedCycleId}
             onClick={() => void setOpenNowForHours(24)}
             className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
           >
@@ -1353,17 +1367,17 @@ export default function AllStarVaultManager({
         <h2 className="text-lg font-semibold">Candidates Import</h2>
         <div className="flex items-center gap-3 flex-wrap">
           <a href="/api/admin/all-star/candidates/template" className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5">Download Template</a>
-          <input type="file" accept=".csv,.xlsx,.xls" onChange={(e) => setCandidateFile(e.target.files?.[0] || null)} className="text-sm" />
-          <button type="button" disabled={busy || !selectedCycleId || !candidateFile} onClick={() => void importCandidates()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Import Candidates</button>
+          <input type="file" accept=".csv,.xlsx,.xls" disabled={manageDisabled} onChange={(e) => setCandidateFile(e.target.files?.[0] || null)} className="text-sm disabled:opacity-60" />
+          <button type="button" disabled={manageDisabled || !selectedCycleId || !candidateFile} onClick={() => void importCandidates()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Import Candidates</button>
           <button
             type="button"
-            disabled={busy || !selectedCycleId}
+            disabled={manageDisabled || !selectedCycleId}
             onClick={() => void reimportCandidatesFromTeams()}
             className="rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-4 py-2 text-sm disabled:opacity-60"
           >
             Re-import from Teams
           </button>
-          <button type="button" disabled={busy || !selectedCycleId} onClick={() => setShowAddCandidateModal(true)} className="rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-4 py-2 text-sm disabled:opacity-60">Add Candidate</button>
+          <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => setShowAddCandidateModal(true)} className="rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-4 py-2 text-sm disabled:opacity-60">Add Candidate</button>
         </div>
         <input
           value={candidateSearch}
@@ -1393,7 +1407,7 @@ export default function AllStarVaultManager({
                 </p>
                 <button
                   type="button"
-                  disabled={busy}
+                  disabled={manageDisabled}
                   onClick={() => void removeCandidate(candidate.id)}
                   className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60"
                 >
@@ -1433,13 +1447,13 @@ export default function AllStarVaultManager({
               );
             })}
           </select>
-          <button type="button" disabled={busy || !selectedCycleId || !selectedCoachUserId} onClick={() => void addHeadCoach()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Add Coach</button>
+          <button type="button" disabled={manageDisabled || !selectedCycleId || !selectedCoachUserId} onClick={() => void addHeadCoach()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Add Coach</button>
         </div>
         <div className="max-h-48 overflow-auto rounded-lg border border-zinc-800">
           {headCoaches.length === 0 ? <p className="text-zinc-500 text-sm p-3">No coaches assigned.</p> : headCoaches.map((coach) => (
             <div key={coach.id} className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 last:border-b-0">
               <p className="text-sm">{coach.coachName || coach.coachEmail || "Assigned coach"}</p>
-              <button type="button" disabled={busy} onClick={() => void removeHeadCoach(coach.id)} className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60">Remove</button>
+              <button type="button" disabled={manageDisabled} onClick={() => void removeHeadCoach(coach.id)} className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60">Remove</button>
             </div>
           ))}
         </div>
@@ -1501,7 +1515,7 @@ export default function AllStarVaultManager({
                   </div>
                   <button
                     type="button"
-                    disabled={busy}
+                    disabled={manageDisabled}
                     onClick={() => void deleteSubmittedBallot(submission.id)}
                     className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60"
                   >
@@ -1575,7 +1589,7 @@ export default function AllStarVaultManager({
               <option value="VIEW_ONLY">View Only</option>
               <option value="FULL_ACCESS">Full Access</option>
             </select>
-            <button type="button" disabled={busy || !vaultUserId} onClick={() => void grantVaultAccess()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Grant Access</button>
+            <button type="button" disabled={manageDisabled || !vaultUserId} onClick={() => void grantVaultAccess()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Grant Access</button>
           </div>
         )}
         <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
@@ -1586,7 +1600,7 @@ export default function AllStarVaultManager({
                 {isMasterMode && !access.isImplicit ? (
                   <select
                     value={access.role}
-                    disabled={busy || vaultAccessRoleBusyId === access.registeredUser.id}
+                    disabled={manageDisabled || busy || vaultAccessRoleBusyId === access.registeredUser.id}
                     onChange={(e) =>
                       void saveVaultAccessRole(
                         access.registeredUser.id,
@@ -1605,7 +1619,7 @@ export default function AllStarVaultManager({
                 )}
                 <button
                   type="button"
-                  disabled={busy || access.isImplicit === true}
+                  disabled={manageDisabled || busy || access.isImplicit === true}
                   onClick={() => void removeVaultAccess(access.registeredUser.id)}
                   className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60"
                   title={
@@ -1635,7 +1649,7 @@ export default function AllStarVaultManager({
             </div>
             <button
               type="button"
-              disabled={busy || !selectedCycleId}
+              disabled={manageDisabled || !selectedCycleId}
               onClick={() => void generateSharedBallotLink()}
               className="text-xs rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-3 py-2 font-semibold disabled:opacity-60 shrink-0"
             >
@@ -1705,6 +1719,7 @@ export default function AllStarVaultManager({
                       <input
                         type="checkbox"
                         checked={checked}
+                        disabled={manageDisabled}
                         onChange={(event) =>
                           setSelectedInviteCoachIds((current) =>
                             event.target.checked
@@ -1720,9 +1735,9 @@ export default function AllStarVaultManager({
             </div>
           </div>
         ) : null}
-        <textarea value={inviteEmails} onChange={(e) => setInviteEmails(e.target.value)} placeholder={isInviteListCycle ? "Optional extra emails: coach1@email.com, coach2@email.com" : "Optional extra emails (coaches auto-filled from cycle when left blank)"} rows={3} className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm" />
+        <textarea value={inviteEmails} onChange={(e) => setInviteEmails(e.target.value)} readOnly={manageDisabled} placeholder={isInviteListCycle ? "Optional extra emails: coach1@email.com, coach2@email.com" : "Optional extra emails (coaches auto-filled from cycle when left blank)"} rows={3} className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm read-only:opacity-60" />
         <div className="flex flex-wrap gap-3">
-          <button type="button" disabled={busy || !selectedCycleId} onClick={() => void createInvites()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save invite roster</button>
+          <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void createInvites()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save invite roster</button>
           <a href={selectedCycleId ? `/api/admin/all-star/exports/csv?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm">Export CSV</a>
           <a href={selectedCycleId ? `/api/admin/all-star/exports/pdf?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm">Export PDF</a>
         </div>
@@ -1750,7 +1765,7 @@ export default function AllStarVaultManager({
                       {invite.revokedAt ? (
                         <button
                           type="button"
-                          disabled={busy || rowBusy}
+                          disabled={manageDisabled || busy || rowBusy}
                           onClick={() => void reenableInviteRow(invite.inviteId)}
                           className="text-xs rounded-lg border border-emerald-800 text-emerald-200 hover:bg-emerald-950/40 px-3 py-1.5 disabled:opacity-60"
                         >
@@ -1759,7 +1774,7 @@ export default function AllStarVaultManager({
                       ) : (
                         <button
                           type="button"
-                          disabled={busy || rowBusy}
+                          disabled={manageDisabled || busy || rowBusy}
                           onClick={() => void revokeInviteRow(invite.inviteId)}
                           className="text-xs rounded-lg border border-red-800 text-red-200 hover:bg-red-950/30 px-3 py-1.5 disabled:opacity-60"
                         >
@@ -1891,6 +1906,7 @@ export default function AllStarVaultManager({
               <button
                 type="button"
                 disabled={
+                  manageDisabled ||
                   busy ||
                   !selectedCycleId ||
                   !candidateName.trim() ||

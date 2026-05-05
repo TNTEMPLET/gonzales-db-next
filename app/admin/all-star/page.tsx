@@ -1,10 +1,15 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import {
+  canViewAllStarVault,
+  canManageAllStarVault,
+} from "@/lib/allStar/auth";
 import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarVaultManager from "@/components/admin/AllStarVaultManager";
+import prisma from "@/lib/prisma";
 import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -31,9 +36,27 @@ export default async function AdminAllStarPage({
   }
 
   const role = toAdminRole(adminUser.role, adminUser.isMaster);
-  if (!canAccessAdminModule(role, "ALL_STAR_VAULT")) {
+  const moduleAllStar = canAccessAdminModule(role, "ALL_STAR_VAULT");
+
+  const vaultLinkedUsers = await prisma.registeredUser.findMany({
+    where: {
+      email: { equals: adminUser.email, mode: "insensitive" },
+      organizationId: currentOrg,
+    },
+    select: { id: true },
+  });
+  let vaultView = false;
+  let vaultManage = false;
+  for (const row of vaultLinkedUsers) {
+    if (await canViewAllStarVault(row.id, currentOrg)) vaultView = true;
+    if (await canManageAllStarVault(row.id, currentOrg)) vaultManage = true;
+  }
+
+  if (!moduleAllStar && !vaultView) {
     redirect("/admin?denied=all-star");
   }
+
+  const canManageAllStarVaultUi = moduleAllStar || vaultManage;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
@@ -56,6 +79,7 @@ export default async function AdminAllStarPage({
           key={currentOrg}
           initialOrg={currentOrg}
           isMasterMode={isMasterDeployment()}
+          canManageAllStarVault={canManageAllStarVaultUi}
         />
       </section>
     </main>

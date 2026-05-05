@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
 import { ensureAdminModule } from "@/lib/news/auth";
 import { fetchGames } from "@/lib/fetchGames";
 import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
@@ -21,12 +22,15 @@ function sortAgeGroupLabel(a: string, b: string) {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "USERS");
-  if (!auth.ok) {
-    return NextResponse.json(
-      { error: auth.message || "Unauthorized" },
-      { status: auth.status },
-    );
+  const authUsers = await ensureAdminModule(request, "USERS");
+  if (!authUsers.ok) {
+    const authVault = await ensureAllStarVaultAccess(request, { needsManage: false });
+    if (!authVault.ok) {
+      return NextResponse.json(
+        { error: authUsers.message || "Unauthorized" },
+        { status: authUsers.status },
+      );
+    }
   }
 
   const targetOrg = resolveAdminTargetOrg(

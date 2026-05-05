@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
@@ -10,7 +10,7 @@ function forbidIfNotMaster() {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
   const forbid = forbidIfNotMaster();
   if (forbid) return forbid;

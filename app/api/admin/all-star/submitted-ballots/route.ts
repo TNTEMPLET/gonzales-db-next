@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import prisma from "@/lib/prisma";
 
 function forbidIfNotMaster() {
@@ -8,7 +8,7 @@ function forbidIfNotMaster() {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const forbid = forbidIfNotMaster();

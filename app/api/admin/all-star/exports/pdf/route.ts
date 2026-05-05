@@ -2,11 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
 import prisma from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const cycleId = request.nextUrl.searchParams.get("cycleId");
