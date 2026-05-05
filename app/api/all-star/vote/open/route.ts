@@ -4,14 +4,23 @@ import {
   ensureVoterCanAccessCycle,
   resolveAllStarVoterFromRequest,
 } from "@/lib/allStar/voterAuth";
+import { resolveCycleIdForVoteRequest } from "@/lib/allStar/voteCycle";
 import prisma from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const cycleId = request.nextUrl.searchParams.get("cycleId");
-  const token = request.nextUrl.searchParams.get("token");
-  if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
+  const cycleIdParam =
+    request.nextUrl.searchParams.get("cycleId") || request.nextUrl.searchParams.get("c");
+  const token =
+    request.nextUrl.searchParams.get("token") || request.nextUrl.searchParams.get("t");
+  const cycleId = await resolveCycleIdForVoteRequest(cycleIdParam, token);
+  if (!cycleId) {
+    return NextResponse.json(
+      { error: "Ballot cycle id or shared ballot token (t) is required" },
+      { status: 400 },
+    );
+  }
 
   const voter = await resolveAllStarVoterFromRequest(request, { cycleId, token });
   if (!voter) {

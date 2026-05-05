@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { getEffectiveAdminRoleForOrg, syncAdminUserAggregateRole } from "@/lib/auth/effectiveAdminRole";
 import {
   hasAdminRoleAtLeast,
   isAdminRole,
+  isAssignableOnlyOnMasterSite,
   PROTECTED_MASTER_ADMIN_EMAIL,
   toAdminRole,
+  type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureAdminModule } from "@/lib/news/auth";
@@ -114,13 +117,10 @@ export async function GET(request: NextRequest) {
         : undefined,
     };
 
-    const [users, admins, currentAdmin, auditLogs, totalAuditLogs, latestImportBatch] =
+    const [users, currentAdmin, auditLogs, totalAuditLogs, latestImportBatch, orgMemberships, masterAdmins] =
       await Promise.all([
         prisma.registeredUser.findMany({
           where: { organizationId: targetOrg },
-          orderBy: { createdAt: "desc" },
-        }),
-        prisma.adminUser.findMany({
           orderBy: { createdAt: "desc" },
         }),
         getAdminUserFromRequest(request),
@@ -143,6 +143,15 @@ export async function GET(request: NextRequest) {
             skippedCount: true,
             createdByEmail: true,
           },
+        }),
+        prisma.adminOrgMembership.findMany({
+          where: { organizationId: targetOrg },
+          include: { adminUser: true },
+          orderBy: { updatedAt: "desc" },
+        }),
+        prisma.adminUser.findMany({
+          where: { isMaster: true },
+          orderBy: { createdAt: "desc" },
         }),
       ]);
 
@@ -167,15 +176,88 @@ export async function GET(request: NextRequest) {
             orderBy: [{ team: { seasonYear: "desc" } }, { createdAt: "desc" }],
           });
 
-    const assignmentByUserId = new Map<string, string>();
+    type CoachTeamRow = {
+      ageGroup: string;
+      teamName: string;
+      role: "HEAD_COACH" | "ASSISTANT_COACH";
+      seasonYear: number;
+    };
+
+    const coachTeamAssignmentsByUserId = new Map<string, CoachTeamRow[]>();
+    const coachRoleByUserId = new Map<string, "HEAD_COACH" | "ASSISTANT_COACH">();
+
     for (const assignment of coachAssignments) {
-      if (assignmentByUserId.has(assignment.registeredUserId)) continue;
-      assignmentByUserId.set(assignment.registeredUserId, assignment.role);
+      const uid = assignment.registeredUserId;
+
+      const prev = coachRoleByUserId.get(uid);
+      coachRoleByUserId.set(
+        uid,
+        assignment.role === "HEAD_COACH" || prev === "HEAD_COACH" ? "HEAD_COACH" : "ASSISTANT_COACH",
+      );
+
+      if (!coachTeamAssignmentsByUserId.has(uid)) coachTeamAssignmentsByUserId.set(uid, []);
+      coachTeamAssignmentsByUserId.get(uid)!.push({
+        ageGroup: assignment.team.ageGroup.trim(),
+        teamName: assignment.team.teamName.trim(),
+        role: assignment.role,
+        seasonYear: assignment.team.seasonYear,
+      });
     }
 
-    const adminEmailSet = new Set(
-      admins.map((admin: { email: string }) => admin.email),
-    );
+    for (const rows of coachTeamAssignmentsByUserId.values()) {
+      rows.sort((a, b) =>
+        b.seasonYear !== a.seasonYear
+          ? b.seasonYear - a.seasonYear
+          : a.teamName.localeCompare(b.teamName, undefined, { sensitivity: "base" }),
+      );
+    }
+
+    const memberIds = new Set(orgMemberships.map((m) => m.adminUserId));
+    const admins = [
+      ...orgMemberships.map((m) => {
+        const u = m.adminUser;
+        return {
+          id: u.id,
+          email: u.email,
+          name: u.name,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          role: (u.isMaster ? "MASTER_ADMIN" : m.role) as AdminRole,
+          orgRole: u.isMaster ? null : m.role,
+          isMaster: u.isMaster,
+          createdAt: u.createdAt.toISOString(),
+        };
+      }),
+      ...masterAdmins
+        .filter((a) => !memberIds.has(a.id))
+        .map((u) => ({
+          id: u.id,
+          email: u.email,
+          name: u.name,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          role: "MASTER_ADMIN" as const,
+          orgRole: null,
+          isMaster: true,
+          createdAt: u.createdAt.toISOString(),
+        })),
+    ];
+
+    const adminEmailSet = new Set<string>();
+    for (const m of orgMemberships) {
+      adminEmailSet.add(m.adminUser.email.trim().toLowerCase());
+    }
+    for (const a of masterAdmins) {
+      adminEmailSet.add(a.email.trim().toLowerCase());
+    }
+
+    const currentAdminOrgRole = currentAdmin
+      ? await getEffectiveAdminRoleForOrg(
+          currentAdmin.id,
+          currentAdmin.isMaster,
+          targetOrg,
+        )
+      : null;
     const totalPages = Math.max(1, Math.ceil(totalAuditLogs / logPageSize));
 
     return NextResponse.json({
@@ -194,6 +276,7 @@ export async function GET(request: NextRequest) {
       currentAdminRole: currentAdmin
         ? toAdminRole(currentAdmin.role, currentAdmin.isMaster)
         : null,
+      currentAdminOrgRole,
       protectedMasterAdminEmail: PROTECTED_MASTER_ADMIN_EMAIL,
       currentAdminIsMaster: currentAdmin?.isMaster || false,
       isMasterDeployment: isMasterDeployment(),
@@ -201,8 +284,9 @@ export async function GET(request: NextRequest) {
       latestImportBatch,
       data: users.map((user: { id: string; email: string }) => ({
         ...user,
-        isAdmin: adminEmailSet.has(user.email),
-        coachRole: assignmentByUserId.get(user.id) || null,
+        isAdmin: adminEmailSet.has(user.email.trim().toLowerCase()),
+        coachRole: coachRoleByUserId.get(user.id) || null,
+        coachTeamAssignments: coachTeamAssignmentsByUserId.get(user.id) ?? [],
       })),
     });
   } catch (err: unknown) {
@@ -226,8 +310,15 @@ export async function POST(request: NextRequest) {
   try {
     const body = (await request.json()) as PromotePayload;
     const currentAdmin = await getAdminUserFromRequest(request);
-    const currentRole = currentAdmin
-      ? toAdminRole(currentAdmin.role, currentAdmin.isMaster)
+    const targetOrg = resolveAdminTargetOrg(
+      request.nextUrl.searchParams.get("org"),
+    );
+    const actorOrgRole = currentAdmin
+      ? await getEffectiveAdminRoleForOrg(
+          currentAdmin.id,
+          currentAdmin.isMaster,
+          targetOrg,
+        )
       : null;
 
     if (body.role && !isAdminRole(body.role)) {
@@ -244,10 +335,26 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (body.role && requestedRole !== "MASTER_ADMIN") {
-      if (!currentRole || !hasAdminRoleAtLeast(currentRole, "MASTER_ADMIN")) {
+    if (isAssignableOnlyOnMasterSite(requestedRole) && !currentAdmin?.isMaster) {
+      return NextResponse.json(
+        {
+          error:
+            "Park Director and Board Member roles can only be assigned from the Master Admin site by a Master Admin",
+        },
+        { status: 403 },
+      );
+    }
+
+    if (!isMasterRole && !currentAdmin?.isMaster) {
+      if (requestedRole !== "ADMIN") {
         return NextResponse.json(
-          { error: "Only a master admin can assign admin roles" },
+          { error: "Organization admins can only grant Site Admin (Admin) access" },
+          { status: 403 },
+        );
+      }
+      if (!actorOrgRole || !hasAdminRoleAtLeast(actorOrgRole, "ADMIN")) {
+        return NextResponse.json(
+          { error: "You must be a Site Admin for this organization to grant admin access" },
           { status: 403 },
         );
       }
@@ -255,9 +362,6 @@ export async function POST(request: NextRequest) {
 
     const sourcePath = getSourcePath(request);
     const requestIp = getRequestIp(request);
-    const targetOrg = resolveAdminTargetOrg(
-      request.nextUrl.searchParams.get("org"),
-    );
 
     if (!body.userId) {
       return NextResponse.json(
@@ -301,25 +405,64 @@ export async function POST(request: NextRequest) {
       : requestedRole;
     const effectiveIsMasterRole = effectiveRole === "MASTER_ADMIN";
 
-    const admin = await prisma.adminUser.upsert({
-      where: { email: user.email },
-      create: {
-        email: user.email,
-        name: fullName,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: effectiveRole,
-        isMaster: effectiveIsMasterRole,
-        passwordHash: null,
-      },
-      update: {
-        name: fullName,
-        firstName: user.firstName,
-        lastName: user.lastName,
-        role: effectiveRole,
-        isMaster: effectiveIsMasterRole,
-      },
-    });
+    let admin;
+
+    if (effectiveIsMasterRole) {
+      admin = await prisma.adminUser.upsert({
+        where: { email: user.email },
+        create: {
+          email: user.email,
+          name: fullName,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: "MASTER_ADMIN",
+          isMaster: true,
+          passwordHash: null,
+        },
+        update: {
+          name: fullName,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: "MASTER_ADMIN",
+          isMaster: true,
+        },
+      });
+    } else {
+      admin = await prisma.adminUser.upsert({
+        where: { email: user.email },
+        create: {
+          email: user.email,
+          name: fullName,
+          firstName: user.firstName,
+          lastName: user.lastName,
+          role: "ADMIN",
+          isMaster: false,
+          passwordHash: null,
+        },
+        update: {
+          name: fullName,
+          firstName: user.firstName,
+          lastName: user.lastName,
+        },
+      });
+
+      await prisma.adminOrgMembership.upsert({
+        where: {
+          adminUserId_organizationId: {
+            adminUserId: admin.id,
+            organizationId: targetOrg,
+          },
+        },
+        create: {
+          adminUserId: admin.id,
+          organizationId: targetOrg,
+          role: effectiveRole,
+        },
+        update: { role: effectiveRole },
+      });
+
+      await syncAdminUserAggregateRole(admin.id);
+    }
 
     await prisma.adminAuditLog.create({
       data: {
@@ -383,26 +526,19 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const currentRole = currentAdmin
-      ? toAdminRole(currentAdmin.role, currentAdmin.isMaster)
-      : null;
-    if (!currentRole || !hasAdminRoleAtLeast(currentRole, "MASTER_ADMIN")) {
-      return NextResponse.json(
-        { error: "Only a master admin can manage roles" },
-        { status: 403 },
-      );
-    }
+    const body = (await request.json()) as RoleUpdatePayload & {
+      organizationId?: string;
+    };
+    const targetOrg = resolveAdminTargetOrg(
+      body.organizationId ?? request.nextUrl.searchParams.get("org"),
+    );
 
-    const body = (await request.json()) as RoleUpdatePayload;
     if (!body.adminId || !isAdminRole(body.role)) {
       return NextResponse.json(
         { error: "adminId and role are required" },
         { status: 400 },
       );
     }
-
-    const nextRole = body.role;
-    const nextIsMaster = nextRole === "MASTER_ADMIN";
 
     const targetAdmin = await prisma.adminUser.findUnique({
       where: { id: body.adminId },
@@ -411,35 +547,143 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Admin not found" }, { status: 404 });
     }
 
+    const nextRole = body.role;
+    const nextIsMaster = nextRole === "MASTER_ADMIN";
+
+    const actorOrgRole = await getEffectiveAdminRoleForOrg(
+      currentAdmin.id,
+      currentAdmin.isMaster,
+      targetOrg,
+    );
+    if (!actorOrgRole) {
+      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    }
+
     const targetEmail = targetAdmin.email.trim().toLowerCase();
     const actorEmail = currentAdmin.email.trim().toLowerCase();
-    if (targetEmail === PROTECTED_MASTER_ADMIN_EMAIL) {
-      if (actorEmail !== PROTECTED_MASTER_ADMIN_EMAIL) {
+
+    // Platform Master Admin accounts (global — only Master Admins)
+    if (targetAdmin.isMaster || nextIsMaster) {
+      if (!currentAdmin.isMaster) {
         return NextResponse.json(
-          { error: "This protected account can only be managed by itself" },
+          { error: "Only a Master Admin can change Master Admin accounts" },
           { status: 403 },
         );
       }
 
-      if (nextRole !== "MASTER_ADMIN" || !nextIsMaster) {
+      if (targetEmail === PROTECTED_MASTER_ADMIN_EMAIL) {
+        if (actorEmail !== PROTECTED_MASTER_ADMIN_EMAIL) {
+          return NextResponse.json(
+            { error: "This protected account can only be managed by itself" },
+            { status: 403 },
+          );
+        }
+
+        if (nextRole !== "MASTER_ADMIN" || !nextIsMaster) {
+          return NextResponse.json(
+            { error: "This protected account is locked as Master Admin" },
+            { status: 400 },
+          );
+        }
+      }
+
+      if (targetAdmin.id === currentAdmin.id && !nextIsMaster) {
         return NextResponse.json(
-          { error: "This protected account is locked as Master Admin" },
+          { error: "You cannot remove your own master access" },
           { status: 400 },
+        );
+      }
+
+      if (
+        targetAdmin.role === nextRole &&
+        targetAdmin.isMaster === nextIsMaster
+      ) {
+        return NextResponse.json({
+          success: true,
+          admin: {
+            id: targetAdmin.id,
+            email: targetAdmin.email,
+            role: targetAdmin.role,
+            isMaster: targetAdmin.isMaster,
+          },
+        });
+      }
+
+      const updatedAdmin = await prisma.adminUser.update({
+        where: { id: targetAdmin.id },
+        data: {
+          role: nextRole,
+          isMaster: nextIsMaster,
+        },
+      });
+
+      if (targetAdmin.isMaster !== nextIsMaster) {
+        await prisma.adminAuditLog.create({
+          data: {
+            action: nextIsMaster ? "GRANT_MASTER" : "REVOKE_MASTER",
+            actorAdminId: currentAdmin.id,
+            actorEmail: currentAdmin.email,
+            targetAdminId: updatedAdmin.id,
+            targetEmail: updatedAdmin.email,
+            targetName: updatedAdmin.name,
+            sourcePath: getSourcePath(request),
+            requestIp: getRequestIp(request),
+          },
+        });
+      }
+
+      if (!nextIsMaster) {
+        await prisma.adminSession.deleteMany({
+          where: { userId: updatedAdmin.id },
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        admin: {
+          id: updatedAdmin.id,
+          email: updatedAdmin.email,
+          role: updatedAdmin.role,
+          isMaster: updatedAdmin.isMaster,
+        },
+      });
+    }
+
+    if (!currentAdmin.isMaster) {
+      if (!hasAdminRoleAtLeast(actorOrgRole, "ADMIN")) {
+        return NextResponse.json(
+          { error: "You must be a Site Admin for this organization" },
+          { status: 403 },
+        );
+      }
+      if (isAssignableOnlyOnMasterSite(nextRole) || nextRole !== "ADMIN") {
+        return NextResponse.json(
+          {
+            error:
+              "Organization admins can only assign Site Admin for this organization. Park Director and Board Member are assigned by Master Admin.",
+          },
+          { status: 403 },
         );
       }
     }
 
-    if (targetAdmin.id === currentAdmin.id && !nextIsMaster) {
+    if (targetEmail === PROTECTED_MASTER_ADMIN_EMAIL && actorEmail !== PROTECTED_MASTER_ADMIN_EMAIL) {
       return NextResponse.json(
-        { error: "You cannot remove your own master access" },
-        { status: 400 },
+        { error: "This protected account can only be managed by itself" },
+        { status: 403 },
       );
     }
 
-    if (
-      targetAdmin.role === nextRole &&
-      targetAdmin.isMaster === nextIsMaster
-    ) {
+    const existingMembership = await prisma.adminOrgMembership.findUnique({
+      where: {
+        adminUserId_organizationId: {
+          adminUserId: targetAdmin.id,
+          organizationId: targetOrg,
+        },
+      },
+    });
+
+    if (existingMembership && existingMembership.role === nextRole) {
       return NextResponse.json({
         success: true,
         admin: {
@@ -451,48 +695,40 @@ export async function PATCH(request: NextRequest) {
       });
     }
 
-    const updatedAdmin = await prisma.adminUser.update({
-      where: { id: targetAdmin.id },
-      data: {
-        role: nextRole,
-        isMaster: nextIsMaster,
+    await prisma.adminOrgMembership.upsert({
+      where: {
+        adminUserId_organizationId: {
+          adminUserId: targetAdmin.id,
+          organizationId: targetOrg,
+        },
       },
+      create: {
+        adminUserId: targetAdmin.id,
+        organizationId: targetOrg,
+        role: nextRole,
+      },
+      update: { role: nextRole },
     });
 
-    if (targetAdmin.isMaster !== nextIsMaster) {
-      await prisma.adminAuditLog.create({
-        data: {
-          action: nextIsMaster ? "GRANT_MASTER" : "REVOKE_MASTER",
-          actorAdminId: currentAdmin.id,
-          actorEmail: currentAdmin.email,
-          targetAdminId: updatedAdmin.id,
-          targetEmail: updatedAdmin.email,
-          targetName: updatedAdmin.name,
-          sourcePath: getSourcePath(request),
-          requestIp: getRequestIp(request),
-        },
-      });
-    }
+    await syncAdminUserAggregateRole(targetAdmin.id);
 
-    if (!nextIsMaster) {
-      await prisma.adminSession.deleteMany({
-        where: { userId: updatedAdmin.id },
-      });
-    }
+    const refreshed = await prisma.adminUser.findUnique({
+      where: { id: targetAdmin.id },
+    });
 
     return NextResponse.json({
       success: true,
       admin: {
-        id: updatedAdmin.id,
-        email: updatedAdmin.email,
-        role: updatedAdmin.role,
-        isMaster: updatedAdmin.isMaster,
+        id: refreshed!.id,
+        email: refreshed!.email,
+        role: refreshed!.role,
+        isMaster: refreshed!.isMaster,
       },
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
-      { error: `Failed to update master access: ${message}` },
+      { error: `Failed to update admin role: ${message}` },
       { status: 500 },
     );
   }
@@ -534,6 +770,16 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: "Admin not found" }, { status: 404 });
     }
 
+    if (targetAdmin.isMaster) {
+      return NextResponse.json(
+        {
+          error:
+            "Master Admin accounts cannot be removed from organization user management. Use the Master Admin site.",
+        },
+        { status: 400 },
+      );
+    }
+
     if (
       targetAdmin.email.trim().toLowerCase() === PROTECTED_MASTER_ADMIN_EMAIL
     ) {
@@ -543,10 +789,39 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    if (!currentAdmin) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    const actorOrgRole = await getEffectiveAdminRoleForOrg(
+      currentAdmin.id,
+      currentAdmin.isMaster,
+      targetOrg,
+    );
+    if (!actorOrgRole || !hasAdminRoleAtLeast(actorOrgRole, "ADMIN")) {
+      return NextResponse.json(
+        { error: "You must be a Site Admin for this organization" },
+        { status: 403 },
+      );
+    }
+
     if (currentAdmin && targetAdmin.email === currentAdmin.email) {
       return NextResponse.json(
         { error: "You cannot demote your own account" },
         { status: 400 },
+      );
+    }
+
+    const removedMemberships = await prisma.adminOrgMembership.deleteMany({
+      where: {
+        adminUserId: targetAdmin.id,
+        organizationId: targetOrg,
+      },
+    });
+    if (removedMemberships.count === 0) {
+      return NextResponse.json(
+        { error: "This admin is not assigned to this organization" },
+        { status: 404 },
       );
     }
 
@@ -587,8 +862,16 @@ export async function DELETE(request: NextRequest) {
       },
     });
 
-    await prisma.adminSession.deleteMany({ where: { userId: targetAdmin.id } });
-    await prisma.adminUser.delete({ where: { id: targetAdmin.id } });
+    const remainingMemberships = await prisma.adminOrgMembership.count({
+      where: { adminUserId: targetAdmin.id },
+    });
+
+    if (remainingMemberships === 0) {
+      await prisma.adminSession.deleteMany({ where: { userId: targetAdmin.id } });
+      await prisma.adminUser.delete({ where: { id: targetAdmin.id } });
+    } else {
+      await syncAdminUserAggregateRole(targetAdmin.id);
+    }
 
     return NextResponse.json({
       success: true,

@@ -2,26 +2,28 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { importCandidatesFromTeamsForCycle } from "@/lib/allStar/candidates";
-import { mapAllStarCycle, parseContentOrg, parseSeasonYear } from "@/lib/allStar/server";
-import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { mapAllStarCycle, parseSeasonYear } from "@/lib/allStar/server";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import { hasAdminRoleAtLeast } from "@/lib/auth/adminRoles";
+import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
-import { isMasterDeployment } from "@/lib/siteConfig";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 function forbidIfNotMaster() {
-  if (!isMasterDeployment()) {
-    return NextResponse.json(
-      { error: "All-Star Vault is only managed from master deployment" },
-      { status: 403 },
-    );
-  }
   return null;
 }
 
 async function canDeleteCycles(request: NextRequest) {
   const admin = await getAdminUserFromRequest(request);
   if (!admin) return false;
-  if (hasAdminRoleAtLeast(toAdminRole(admin.role, admin.isMaster), "ADMIN")) {
+  const orgId = resolveAuthOrganizationId(request);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    admin.id,
+    admin.isMaster,
+    orgId,
+  );
+  if (effectiveRole && hasAdminRoleAtLeast(effectiveRole, "ADMIN")) {
     return true;
   }
 
@@ -36,6 +38,7 @@ async function canDeleteCycles(request: NextRequest) {
   const fullAccess = await prisma.allStarVaultAccess.findFirst({
     where: {
       registeredUserId: { in: linkedRegisteredUsers.map((user) => user.id) },
+      organizationId: orgId,
       role: "FULL_ACCESS",
     },
     select: { id: true },
@@ -50,7 +53,7 @@ export async function GET(request: NextRequest) {
   const forbid = forbidIfNotMaster();
   if (forbid) return forbid;
 
-  const org = parseContentOrg(request.nextUrl.searchParams.get("org"));
+  const org = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   const seasonYear = parseSeasonYear(request.nextUrl.searchParams.get("seasonYear"));
   const ageGroup = request.nextUrl.searchParams.get("ageGroup")?.trim() || null;
 
@@ -86,7 +89,7 @@ export async function POST(request: NextRequest) {
     hasShowcase?: boolean;
   };
 
-  const organizationId = parseContentOrg(body.organizationId);
+  const organizationId = resolveAdminTargetOrg(body.organizationId);
   const seasonYear = parseSeasonYear(String(body.seasonYear ?? ""));
   const ageGroup = body.ageGroup?.trim();
   if (!organizationId || !seasonYear || !ageGroup) {

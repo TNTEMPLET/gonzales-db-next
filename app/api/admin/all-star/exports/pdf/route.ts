@@ -4,14 +4,10 @@ import autoTable from "jspdf-autotable";
 
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import prisma from "@/lib/prisma";
-import { isMasterDeployment } from "@/lib/siteConfig";
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  if (!isMasterDeployment()) {
-    return NextResponse.json({ error: "Master deployment only" }, { status: 403 });
-  }
 
   const cycleId = request.nextUrl.searchParams.get("cycleId");
   if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });

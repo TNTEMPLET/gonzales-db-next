@@ -2,15 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import prisma from "@/lib/prisma";
-import { isMasterDeployment } from "@/lib/siteConfig";
 
 function forbidIfNotMaster() {
-  if (!isMasterDeployment()) {
-    return NextResponse.json(
-      { error: "All-Star Vault is only managed from master deployment" },
-      { status: 403 },
-    );
-  }
   return null;
 }
 
@@ -29,53 +22,73 @@ export async function GET(request: NextRequest) {
   });
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
-  const coaches = await prisma.registeredUser.findMany({
+  /**
+   * Coaches are sourced from team assignments for this org/season/age group—not from
+   * `RegisteredUser.ageGroup`, which only stores a single profile value and misses coaches
+   * who are assigned to multiple divisions.
+   */
+  const assignmentRows = await prisma.teamCoachAssignment.findMany({
     where: {
-      organizationId: cycle.organizationId,
-      isCoach: true,
-      isBlocked: false,
-      ageGroup: { equals: cycle.ageGroup, mode: "insensitive" },
+      registeredUser: {
+        organizationId: cycle.organizationId,
+        isCoach: true,
+        isBlocked: false,
+      },
+      team: {
+        organizationId: cycle.organizationId,
+        seasonYear: cycle.seasonYear,
+        ageGroup: { equals: cycle.ageGroup, mode: "insensitive" },
+      },
     },
-    select: {
-      id: true,
-      email: true,
-      name: true,
-      firstName: true,
-      lastName: true,
-      assignedTeam: true,
+    include: {
+      registeredUser: {
+        select: {
+          id: true,
+          email: true,
+          name: true,
+          firstName: true,
+          lastName: true,
+          assignedTeam: true,
+        },
+      },
     },
-    orderBy: [{ lastName: "asc" }, { firstName: "asc" }, { email: "asc" }],
+    orderBy: [{ createdAt: "desc" }],
   });
 
-  const assignmentRows =
-    coaches.length === 0
-      ? []
-      : await prisma.teamCoachAssignment.findMany({
-          where: {
-            registeredUserId: { in: coaches.map((coach) => coach.id) },
-            team: {
-              organizationId: cycle.organizationId,
-              ageGroup: cycle.ageGroup,
-              seasonYear: cycle.seasonYear,
-            },
-          },
-          select: {
-            registeredUserId: true,
-            role: true,
-            createdAt: true,
-          },
-          orderBy: [{ createdAt: "desc" }],
-        });
-  const roleByCoachId = new Map<string, "HEAD_COACH" | "ASSISTANT_COACH">();
+  const mergedByCoachId = new Map<
+    string,
+    {
+      coach: (typeof assignmentRows)[0]["registeredUser"];
+      coachRole: "HEAD_COACH" | "ASSISTANT_COACH";
+    }
+  >();
+
   for (const row of assignmentRows) {
-    if (roleByCoachId.has(row.registeredUserId)) continue;
-    roleByCoachId.set(row.registeredUserId, row.role);
+    const id = row.registeredUserId;
+    const prev = mergedByCoachId.get(id);
+    const coachRole: "HEAD_COACH" | "ASSISTANT_COACH" =
+      row.role === "HEAD_COACH" || prev?.coachRole === "HEAD_COACH"
+        ? "HEAD_COACH"
+        : "ASSISTANT_COACH";
+    if (!prev) {
+      mergedByCoachId.set(id, { coach: row.registeredUser, coachRole });
+    } else {
+      mergedByCoachId.set(id, { coach: prev.coach, coachRole });
+    }
   }
 
-  return NextResponse.json({
-    data: coaches.map((coach) => ({
-      ...coach,
-      coachRole: roleByCoachId.get(coach.id) || null,
-    })),
+  const data = Array.from(mergedByCoachId.values()).map(({ coach, coachRole }) => ({
+    ...coach,
+    coachRole,
+  }));
+
+  data.sort((a, b) => {
+    const ln = (a.lastName || "").localeCompare(b.lastName || "", undefined, { sensitivity: "base" });
+    if (ln !== 0) return ln;
+    const fn = (a.firstName || "").localeCompare(b.firstName || "", undefined, { sensitivity: "base" });
+    if (fn !== 0) return fn;
+    return (a.email || "").localeCompare(b.email || "", undefined, { sensitivity: "base" });
   });
+
+  return NextResponse.json({ data });
 }

@@ -11,6 +11,8 @@ type AdminUser = {
   email: string;
   name: string | null;
   role: AdminRole;
+  /** Set when the role is scoped to the current `targetOrg` (not used for display-only Master rows). */
+  orgRole: AdminRole | null;
   isMaster: boolean;
   createdAt: string;
 };
@@ -32,6 +34,13 @@ type RegisteredUser = {
   assignedTeam: string | null;
   coachRole: "HEAD_COACH" | "ASSISTANT_COACH" | null;
   duplicateReviewPending?: boolean;
+  /** Per-team assignments for this org (age group + team + role). Used for coach list grouping. */
+  coachTeamAssignments?: Array<{
+    ageGroup: string;
+    teamName: string;
+    role: "HEAD_COACH" | "ASSISTANT_COACH";
+    seasonYear: number;
+  }>;
 };
 
 type DuplicateCandidateRow = {
@@ -92,8 +101,10 @@ type ApiResponse = {
   auditLogsMeta: AuditLogsMeta;
   currentAdminEmail: string | null;
   currentAdminRole: AdminRole | null;
+  currentAdminOrgRole: AdminRole | null;
   protectedMasterAdminEmail?: string;
   currentAdminIsMaster: boolean;
+  isMasterDeployment: boolean;
   latestImportBatch?: {
     id: string;
     createdAt: string;
@@ -175,6 +186,48 @@ function ageGroupSortRank(label: string) {
   return 0;
 }
 
+function coachAssignmentAgeGroupBuckets(user: RegisteredUser): string[] {
+  if (user.coachTeamAssignments && user.coachTeamAssignments.length > 0) {
+    const raw = user.coachTeamAssignments.map((t) =>
+      t.ageGroup?.trim() ? t.ageGroup.trim() : "UNASSIGNED",
+    );
+    return [...new Set(raw)];
+  }
+  return [user.ageGroup?.trim() || "UNASSIGNED"];
+}
+
+/** Assignments whose team age group matches this section header (exact labels from DB). */
+function coachAssignmentsForAgeGroupSection(user: RegisteredUser, sectionDisplayKey: string) {
+  const rows = user.coachTeamAssignments ?? [];
+  if (sectionDisplayKey === "Unassigned") return [];
+  const target = sectionDisplayKey.trim().toLowerCase();
+  return rows.filter((t) => t.ageGroup.trim().toLowerCase() === target);
+}
+
+function coachDisplayName(user: RegisteredUser) {
+  return (
+    (user.firstName || user.lastName
+      ? [user.firstName, user.lastName].filter(Boolean).join(" ")
+      : user.name || user.email) || ""
+  );
+}
+
+/** When sorting coaches with multiple divisions, use one canonical label for ordering. */
+function primaryAgeGroupLabelForSort(user: RegisteredUser): string {
+  const buckets = coachAssignmentAgeGroupBuckets(user);
+  if (buckets.length === 1) {
+    return buckets[0] === "UNASSIGNED" ? "Unassigned" : buckets[0];
+  }
+  const sorted = [...buckets].sort((a, b) => {
+    const la = a === "UNASSIGNED" ? "Unassigned" : a;
+    const lb = b === "UNASSIGNED" ? "Unassigned" : b;
+    const r = ageGroupSortRank(lb) - ageGroupSortRank(la);
+    if (r !== 0) return r;
+    return la.localeCompare(lb, undefined, { sensitivity: "base" });
+  });
+  return sorted[0] === "UNASSIGNED" ? "Unassigned" : sorted[0];
+}
+
 export default function AdminUsersManager({
   targetOrg,
 }: {
@@ -199,6 +252,9 @@ export default function AdminUsersManager({
   const [currentAdminRole, setCurrentAdminRole] = useState<AdminRole | null>(
     null,
   );
+  const [currentAdminOrgRole, setCurrentAdminOrgRole] =
+    useState<AdminRole | null>(null);
+  const [isMasterDeploymentState, setIsMasterDeploymentState] = useState(false);
   const [protectedMasterAdminEmail, setProtectedMasterAdminEmail] = useState(
     PROTECTED_MASTER_ADMIN_EMAIL,
   );
@@ -293,7 +349,9 @@ export default function AdminUsersManager({
   const coachAgeGroupOptions = useMemo(() => {
     const set = new Set<string>();
     for (const user of coachUsers) {
-      set.add(user.ageGroup?.trim() || "UNASSIGNED");
+      for (const bucket of coachAssignmentAgeGroupBuckets(user)) {
+        set.add(bucket);
+      }
     }
     return Array.from(set).sort((a, b) => {
       if (a === "UNASSIGNED") return 1;
@@ -318,8 +376,8 @@ export default function AdminUsersManager({
       );
     }
     if (coachAgeGroupFilter !== "ALL") {
-      users = users.filter(
-        (user) => (user.ageGroup?.trim() || "UNASSIGNED") === coachAgeGroupFilter,
+      users = users.filter((user) =>
+        coachAssignmentAgeGroupBuckets(user).includes(coachAgeGroupFilter),
       );
     }
     return users;
@@ -328,8 +386,8 @@ export default function AdminUsersManager({
   const sortedFilteredCoachUsers = useMemo(() => {
     const users = [...filteredCoachUsers];
     users.sort((a, b) => {
-      const groupA = a.ageGroup?.trim() || "Unassigned";
-      const groupB = b.ageGroup?.trim() || "Unassigned";
+      const groupA = primaryAgeGroupLabelForSort(a);
+      const groupB = primaryAgeGroupLabelForSort(b);
 
       if (groupA === "Unassigned" && groupB !== "Unassigned") return 1;
       if (groupB === "Unassigned" && groupA !== "Unassigned") return -1;
@@ -340,15 +398,7 @@ export default function AdminUsersManager({
 
       if (groupA !== groupB) return groupA.localeCompare(groupB);
 
-      const nameA =
-        (a.firstName || a.lastName
-          ? [a.firstName, a.lastName].filter(Boolean).join(" ")
-          : a.name || a.email).toLowerCase();
-      const nameB =
-        (b.firstName || b.lastName
-          ? [b.firstName, b.lastName].filter(Boolean).join(" ")
-          : b.name || b.email).toLowerCase();
-      return nameA.localeCompare(nameB);
+      return coachDisplayName(a).toLowerCase().localeCompare(coachDisplayName(b).toLowerCase());
     });
     return users;
   }, [filteredCoachUsers]);
@@ -369,34 +419,60 @@ export default function AdminUsersManager({
 
   const coachGroupCounts = useMemo(() => {
     const counts = new Map<string, number>();
+    if (coachAgeGroupFilter !== "ALL") {
+      const key =
+        coachAgeGroupFilter === "UNASSIGNED" ? "Unassigned" : coachAgeGroupFilter;
+      counts.set(key, sortedFilteredCoachUsers.length);
+      return counts;
+    }
     for (const user of sortedFilteredCoachUsers) {
-      const key = user.ageGroup?.trim() || "Unassigned";
-      counts.set(key, (counts.get(key) || 0) + 1);
+      for (const raw of coachAssignmentAgeGroupBuckets(user)) {
+        const key = raw === "UNASSIGNED" ? "Unassigned" : raw;
+        counts.set(key, (counts.get(key) || 0) + 1);
+      }
     }
     return counts;
-  }, [sortedFilteredCoachUsers]);
+  }, [sortedFilteredCoachUsers, coachAgeGroupFilter]);
 
   const coachesByAgeGroup = useMemo(() => {
     const groups = new Map<string, RegisteredUser[]>();
-    for (const user of paginatedCoachUsers) {
-      const key = user.ageGroup?.trim() || "Unassigned";
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key)!.push(user);
+
+    if (coachAgeGroupFilter !== "ALL") {
+      const sectionKey =
+        coachAgeGroupFilter === "UNASSIGNED" ? "Unassigned" : coachAgeGroupFilter;
+      groups.set(sectionKey, [...paginatedCoachUsers]);
+    } else {
+      for (const user of paginatedCoachUsers) {
+        for (const raw of coachAssignmentAgeGroupBuckets(user)) {
+          const key = raw === "UNASSIGNED" ? "Unassigned" : raw;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key)!.push(user);
+        }
+      }
     }
 
-    return Array.from(groups.entries()).sort(([a, usersA], [b, usersB]) => {
-      if (a === "Unassigned") return 1;
-      if (b === "Unassigned") return -1;
+    const sortedEntries = Array.from(groups.entries())
+      .map(([sectionKey, sectionUsers]) => {
+        const sortedUsers = [...sectionUsers].sort((a, b) =>
+          coachDisplayName(a).localeCompare(coachDisplayName(b), undefined, {
+            sensitivity: "base",
+          }),
+        );
+        return [sectionKey, sortedUsers] as [string, RegisteredUser[]];
+      })
+      .sort(([a, ,], [b]) => {
+        if (a === "Unassigned") return 1;
+        if (b === "Unassigned") return -1;
 
-      const rankA = ageGroupSortRank(a);
-      const rankB = ageGroupSortRank(b);
-      if (rankA !== rankB) return rankB - rankA;
+        const rankA = ageGroupSortRank(a);
+        const rankB = ageGroupSortRank(b);
+        if (rankA !== rankB) return rankB - rankA;
 
-      if (usersA.length !== usersB.length) return usersB.length - usersA.length;
+        return a.localeCompare(b, undefined, { sensitivity: "base" });
+      });
 
-      return a.localeCompare(b);
-    });
-  }, [paginatedCoachUsers]);
+    return sortedEntries;
+  }, [paginatedCoachUsers, coachAgeGroupFilter]);
 
   useEffect(() => {
     setUserPage(1);
@@ -476,10 +552,12 @@ export default function AdminUsersManager({
       setRegisteredUsers(payload.data || []);
       setCurrentAdminEmail(payload.currentAdminEmail || null);
       setCurrentAdminRole(payload.currentAdminRole || null);
+      setCurrentAdminOrgRole(payload.currentAdminOrgRole ?? null);
       setProtectedMasterAdminEmail(
         payload.protectedMasterAdminEmail || PROTECTED_MASTER_ADMIN_EMAIL,
       );
       setCurrentAdminIsMaster(Boolean(payload.currentAdminIsMaster));
+      setIsMasterDeploymentState(Boolean(payload.isMasterDeployment));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load users");
     } finally {
@@ -646,7 +724,11 @@ export default function AdminUsersManager({
           "Content-Type": "application/json",
           "x-source-path": window.location.pathname,
         },
-        body: JSON.stringify({ adminId, role }),
+        body: JSON.stringify({
+          adminId,
+          role,
+          organizationId: targetOrg,
+        }),
       });
       const json = await response.json();
 
@@ -1070,11 +1152,21 @@ export default function AdminUsersManager({
                         setConfirmAction({
                           kind: "promote",
                           userId: user.id,
-                          label: `Promote ${user.email} to admin access?`,
+                          label: isMasterDeploymentState
+                            ? `Promote ${user.email} to an admin role?`
+                            : `Make ${user.email} a Site Admin for this organization?`,
                         })
                       }
-                      title="Promote to Admin"
-                      aria-label="Promote to Admin"
+                      title={
+                        isMasterDeploymentState
+                          ? "Promote to admin (use Master Admin for Park Director and above)"
+                          : "Make Site Admin"
+                      }
+                      aria-label={
+                        isMasterDeploymentState
+                          ? "Promote to admin"
+                          : "Make Site Admin"
+                      }
                       className="rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60"
                     >
                       <svg
@@ -1301,7 +1393,8 @@ export default function AdminUsersManager({
             <div>
               <h2 className="font-semibold text-lg">Coaches</h2>
               <p className="text-zinc-400 text-sm mt-1">
-                Coaches grouped by assigned age group.
+                Coaches are listed under each age group (sorted). Team and head/assistant role shown are for that
+                division only.
               </p>
             </div>
           </div>
@@ -1337,9 +1430,11 @@ export default function AdminUsersManager({
                       {ageGroup} ({coachGroupCounts.get(ageGroup) || users.length})
                     </p>
                   </div>
-                  {users.map((user) => (
+                  {users.map((user) => {
+                    const sectionTeams = coachAssignmentsForAgeGroupSection(user, ageGroup);
+                    return (
                     <div
-                      key={user.id}
+                      key={`${user.id}-${ageGroup}`}
                       className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex items-center justify-between gap-3"
                     >
                       <div className="min-w-0">
@@ -1352,18 +1447,31 @@ export default function AdminUsersManager({
                         {user.contactPhone ? (
                           <p className="text-xs text-zinc-500">{user.contactPhone}</p>
                         ) : null}
-                        {user.assignedTeam ? (
-                          <p className="text-xs text-brand-purple mt-0.5">
-                            Team: {user.assignedTeam}
-                          </p>
-                        ) : null}
-                        {user.coachRole ? (
-                          <p className="text-xs text-zinc-400 mt-0.5">
-                            Coach:{" "}
-                            {user.coachRole === "HEAD_COACH"
-                              ? "Head Coach"
-                              : "Assistant Coach"}
-                          </p>
+                        {sectionTeams.length > 0 ? (
+                          sectionTeams.map((row, idx) => (
+                            <p key={`${row.teamName}-${row.seasonYear}-${idx}`} className="text-xs mt-0.5">
+                              <span className="text-brand-purple">Team: {row.teamName}</span>
+                              <span className="text-zinc-400">
+                                {" "}
+                                · {row.role === "HEAD_COACH" ? "Head Coach" : "Assistant Coach"} ·{" "}
+                                {row.seasonYear}
+                              </span>
+                            </p>
+                          ))
+                        ) : ageGroup === "Unassigned" ? (
+                          <>
+                            {user.assignedTeam ? (
+                              <p className="text-xs text-brand-purple mt-0.5">Team: {user.assignedTeam}</p>
+                            ) : null}
+                            {user.coachRole ? (
+                              <p className="text-xs text-zinc-400 mt-0.5">
+                                Coach:{" "}
+                                {user.coachRole === "HEAD_COACH"
+                                  ? "Head Coach"
+                                  : "Assistant Coach"}
+                              </p>
+                            ) : null}
+                          </>
                         ) : null}
                       </div>
                       <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
@@ -1428,11 +1536,21 @@ export default function AdminUsersManager({
                             setConfirmAction({
                               kind: "promote",
                               userId: user.id,
-                              label: `Promote ${user.email} to admin access?`,
+                              label: isMasterDeploymentState
+                                ? `Promote ${user.email} to an admin role?`
+                                : `Make ${user.email} a Site Admin for this organization?`,
                             })
                           }
-                          title="Promote to Admin"
-                          aria-label="Promote to Admin"
+                          title={
+                            isMasterDeploymentState
+                              ? "Promote to admin (use Master Admin for Park Director and above)"
+                              : "Make Site Admin"
+                          }
+                          aria-label={
+                            isMasterDeploymentState
+                              ? "Promote to admin"
+                              : "Make Site Admin"
+                          }
                           className="rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-2.5 py-1.5 disabled:opacity-60"
                         >
                           <svg
@@ -1516,7 +1634,8 @@ export default function AdminUsersManager({
                         </button>
                       </div>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               ))
             )}
@@ -1565,8 +1684,15 @@ export default function AdminUsersManager({
           <div>
             <h2 className="font-semibold text-lg">Admin Accounts</h2>
             <p className="text-zinc-400 text-sm mt-1">
-              Active admin users who can access admin pages.
+              Admins for{" "}
+              <span className="text-zinc-300">{targetOrg}</span>. Organization sites can grant{" "}
+              <strong className="font-medium text-zinc-300">Site Admin</strong> only; Park Director and Board Member are assigned on the Master Admin site for this organization.
             </p>
+            {currentAdminOrgRole ? (
+              <p className="text-[11px] text-zinc-500 mt-1">
+                Your role for this org: {currentAdminOrgRole === "MASTER_ADMIN" ? "Master Admin" : currentAdminOrgRole === "BOARD_MEMBER" ? "Board Member" : currentAdminOrgRole === "PARK_DIRECTOR" ? "Park Director" : "Site Admin"}
+              </p>
+            ) : null}
           </div>
 
           <input
@@ -1585,7 +1711,8 @@ export default function AdminUsersManager({
                 const isProtectedMaster =
                   admin.email.trim().toLowerCase() ===
                   protectedMasterAdminEmail.trim().toLowerCase();
-                const canManageRoles =
+                const canManageMasterRolePicker =
+                  isMasterDeploymentState &&
                   (currentAdminRole === "MASTER_ADMIN" ||
                     currentAdminIsMaster) &&
                   !isProtectedMaster;
@@ -1626,14 +1753,14 @@ export default function AdminUsersManager({
                       </p>
                       <p className="text-xs text-zinc-500">{admin.email}</p>
                       <p className="text-[11px] text-zinc-400 mt-0.5">
-                        Role: {roleLabel}
+                        Role (this org): {roleLabel}
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      {canManageRoles ? (
+                      {canManageMasterRolePicker ? (
                         <select
                           value={admin.role}
-                          disabled={busy}
+                          disabled={busy || admin.isMaster}
                           onChange={(event) => {
                             const nextRole = event.target.value as AdminRole;
                             if (nextRole === admin.role) return;
@@ -1646,9 +1773,14 @@ export default function AdminUsersManager({
                             });
                           }}
                           className="text-xs rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-zinc-200 disabled:opacity-60"
+                          title={
+                            admin.isMaster
+                              ? "Use Master Admin account tools to change Master Admin access"
+                              : undefined
+                          }
                         >
                           <option value="MASTER_ADMIN">Master Admin</option>
-                          <option value="ADMIN">Admin</option>
+                          <option value="ADMIN">Site Admin</option>
                           <option value="BOARD_MEMBER">Board Member</option>
                           <option value="PARK_DIRECTOR">Park Director</option>
                         </select>

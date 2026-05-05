@@ -20,7 +20,7 @@ async function hasImplicitAllStarFullAccess(registeredUserId: string) {
     orderBy: { updatedAt: "desc" },
     select: { role: true, isMaster: true },
   });
-  if (!adminUser) return false;
+  if (!adminUser || !adminUser.isMaster) return false;
 
   const adminRole = toAdminRole(adminUser.role, adminUser.isMaster);
   return hasAdminRoleAtLeast(adminRole, "ADMIN");

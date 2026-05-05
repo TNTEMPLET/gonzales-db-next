@@ -1,12 +1,13 @@
 import type { NextRequest } from "next/server";
 
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   canAccessAdminModule,
   hasAdminRoleAtLeast,
   type AdminModule,
-  toAdminRole,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
+import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 
 export async function isNewsAdmin(request: NextRequest): Promise<boolean> {
@@ -39,8 +40,21 @@ export async function ensureAdminModule(
     };
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
-  if (!canAccessAdminModule(role, module)) {
+  const orgId = resolveAuthOrganizationId(request);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    orgId,
+  );
+  if (!effectiveRole) {
+    return {
+      ok: false,
+      status: 403,
+      message: "No admin access for this organization",
+    };
+  }
+
+  if (!canAccessAdminModule(effectiveRole, module)) {
     return {
       ok: false,
       status: 403,
@@ -68,8 +82,21 @@ export async function ensureAdminRole(
     };
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
-  if (!hasAdminRoleAtLeast(role, minimumRole)) {
+  const orgId = resolveAuthOrganizationId(request);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    orgId,
+  );
+  if (!effectiveRole) {
+    return {
+      ok: false,
+      status: 403,
+      message: "No admin access for this organization",
+    };
+  }
+
+  if (!hasAdminRoleAtLeast(effectiveRole, minimumRole)) {
     return {
       ok: false,
       status: 403,

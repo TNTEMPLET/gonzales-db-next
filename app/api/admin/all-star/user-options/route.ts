@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import prisma from "@/lib/prisma";
-import { isMasterDeployment } from "@/lib/siteConfig";
+import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,15 +14,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    if (!isMasterDeployment()) {
-      return NextResponse.json(
-        { error: "All-Star Vault is only managed from master deployment" },
-        { status: 403 },
-      );
-    }
+    const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
 
     const users = await prisma.registeredUser.findMany({
-      where: { organizationId: { in: ["gonzales", "ascension"] } },
+      where: { organizationId: targetOrg },
       select: {
         id: true,
         email: true,
@@ -30,7 +25,7 @@ export async function GET(request: NextRequest) {
         firstName: true,
         lastName: true,
       },
-      orderBy: [{ organizationId: "asc" }, { email: "asc" }],
+      orderBy: [{ email: "asc" }],
     });
 
     return NextResponse.json({ data: users });
