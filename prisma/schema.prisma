@@ -41,6 +41,11 @@ enum AllStarAccessMode {
   AGE_GROUP_COACHES
 }
 
+enum AllStarBallotPhase {
+  FIRST_TEAM
+  SECOND_TEAM
+}
+
 enum AllStarVaultRole {
   FULL_ACCESS
   VIEW_ONLY
@@ -177,6 +182,7 @@ model AdminUser {
   allStarBallotCycles AllStarBallotCycle[] @relation("AllStarCycleCreatedBy")
   allStarHeadCoachAssignments AllStarHeadCoachAssignment[] @relation("AllStarHeadCoachAdmin")
   allStarInvites AllStarInvite[] @relation("AllStarInviteCreatedByAdmin")
+  allStarSecondPhaseOverrides AllStarCandidate[] @relation("AllStarSecondPhaseOverrideByAdmin")
   allStarVaultAccessGrants AllStarVaultAccess[] @relation("AllStarVaultAccessGrantedByAdmin")
   teamsCreated Team[]
   teamPlayerImportBatches TeamPlayerImportBatch[]
@@ -591,6 +597,8 @@ model AllStarBallotCycle {
   hasShowcase   Boolean           @default(true)
   status        AllStarCycleStatus @default(DRAFT)
   accessMode    AllStarAccessMode  @default(AGE_GROUP_COACHES)
+  activePhase   AllStarBallotPhase @default(FIRST_TEAM)
+  secondPhaseGeneratedAt DateTime?
   publishedAt   DateTime?
   closedAt      DateTime?
   /// One shared voting link per ballot; coaches authenticate with an email on the invite roster.
@@ -607,7 +615,7 @@ model AllStarBallotCycle {
   voteSubmissions     AllStarVoteSubmission[]
   invites             AllStarInvite[]
 
-  @@unique([organizationId, seasonYear, ageGroup])
+  @@index([organizationId, seasonYear, ageGroup])
   @@index([organizationId, status, ageGroup])
 }
 
@@ -621,10 +629,15 @@ model AllStarCandidate {
   jerseyNumber      String
   showcaseBibNumber String?
   isActive          Boolean  @default(true)
+  excludedFromSecondPhase Boolean @default(false)
+  secondPhaseOverrideReason String?
+  secondPhaseOverrideAt DateTime?
+  secondPhaseOverrideByAdminId String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   ballotCycle AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
+  secondPhaseOverrideByAdmin AdminUser? @relation("AllStarSecondPhaseOverrideByAdmin", fields: [secondPhaseOverrideByAdminId], references: [id], onDelete: SetNull)
   voteItems   AllStarVoteItem[]
 
   @@index([ballotCycleId, team])
@@ -655,6 +668,7 @@ model AllStarVoteDraft {
   id               String   @id @default(cuid())
   ballotCycleId    String
   coachUserId      String
+  phase            AllStarBallotPhase @default(FIRST_TEAM)
   organizationId   String
   ageGroup         String
   ratingsPayload   Json
@@ -664,14 +678,15 @@ model AllStarVoteDraft {
   ballotCycle AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
   coachUser   RegisteredUser      @relation(fields: [coachUserId], references: [id], onDelete: Cascade)
 
-  @@unique([ballotCycleId, coachUserId])
-  @@index([organizationId, ageGroup])
+  @@unique([ballotCycleId, coachUserId, phase])
+  @@index([organizationId, ageGroup, phase])
 }
 
 model AllStarVoteSubmission {
   id               String   @id @default(cuid())
   ballotCycleId    String
   coachUserId      String
+  phase            AllStarBallotPhase @default(FIRST_TEAM)
   organizationId   String
   ageGroup         String
   submittedAt      DateTime @default(now())
@@ -681,8 +696,8 @@ model AllStarVoteSubmission {
   coachUser   RegisteredUser      @relation(fields: [coachUserId], references: [id], onDelete: Cascade)
   voteItems   AllStarVoteItem[]
 
-  @@unique([ballotCycleId, coachUserId])
-  @@index([organizationId, ageGroup, submittedAt])
+  @@unique([ballotCycleId, coachUserId, phase])
+  @@index([organizationId, ageGroup, phase, submittedAt])
 }
 
 model AllStarVoteItem {
@@ -702,6 +717,7 @@ model AllStarVoteItem {
 model AllStarInvite {
   id               String   @id @default(cuid())
   ballotCycleId    String
+  phase            AllStarBallotPhase @default(FIRST_TEAM)
   /// Legacy per-coach links; null when using shared `AllStarBallotCycle.ballotLinkToken` only.
   tokenHash        String?  @unique
   inviteToken      String?  @unique
@@ -719,8 +735,8 @@ model AllStarInvite {
   invitedUser  RegisteredUser?    @relation("AllStarInviteRegisteredUser", fields: [invitedUserId], references: [id], onDelete: SetNull)
   createdByAdmin AdminUser?       @relation("AllStarInviteCreatedByAdmin", fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
-  @@index([ballotCycleId, invitedEmail])
-  @@index([organizationId, ageGroup])
+  @@index([ballotCycleId, phase, invitedEmail])
+  @@index([organizationId, ageGroup, phase])
 }
 
 model AllStarVaultAccess {
