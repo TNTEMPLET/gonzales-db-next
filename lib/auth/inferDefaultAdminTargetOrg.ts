@@ -19,10 +19,12 @@ export async function inferDefaultAdminTargetOrgForMasterDashboard(
     where: { adminUserId },
     select: { organizationId: true, role: true },
   });
-  const contentMemberships = memberships.filter(
-    (m): m is { organizationId: ContentOrgId; role: string } =>
-      m.organizationId === "gonzales" || m.organizationId === "ascension",
-  );
+  const contentMemberships = memberships.flatMap((m) => {
+    if (m.organizationId !== "gonzales" && m.organizationId !== "ascension") {
+      return [];
+    }
+    return [{ organizationId: m.organizationId as ContentOrgId, role: m.role }];
+  });
 
   if (contentMemberships.length === 1) {
     return contentMemberships[0].organizationId;

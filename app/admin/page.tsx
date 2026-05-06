@@ -229,7 +229,9 @@ export default async function AdminDashboardPage({
   const statusChips = [
     {
       label: "Platform",
-      value: masterMode ? "AP Baseball Master" : getOrgDisplayName(currentOrg),
+      value: masterMode
+        ? "AP Baseball Master"
+        : getOrgDisplayName(getDefaultContentOrg()),
     },
     { label: "Target Site", value: currentOrg ? getOrgDisplayName(currentOrg) : "Not selected" },
     {

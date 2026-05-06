@@ -116,15 +116,16 @@ export default function AdminDashboardModuleGrid({
   const visibleCards = useMemo(() => {
     if (!allowRolePreview || previewRole === "NONE") return cards;
     if (previewContext.mode === "user" && previewContext.user) {
+      const previewUser = previewContext.user;
       return cards.filter((card) => {
-        if (card.module === "ALL_STAR_VAULT") return previewContext.user.allStarVaultView;
+        if (card.module === "ALL_STAR_VAULT") return previewUser.allStarVaultView;
         return canPreviewAccessModule(
-          previewContext.user.effectiveRole === "MASTER_ADMIN"
+          previewUser.effectiveRole === "MASTER_ADMIN"
             ? "ADMIN"
-            : previewContext.user.effectiveRole,
+            : previewUser.effectiveRole,
           card.module,
           masterMode,
-          previewContext.user.allStarVaultView,
+          previewUser.allStarVaultView,
         );
       });
     }
