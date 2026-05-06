@@ -4,7 +4,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { createBallotLinkToken, hashToken } from "@/lib/allStar/server";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getCanonicalBallotOriginForOrganizationId,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 function forbidIfNotMaster() {
   return null;
@@ -32,7 +35,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const baseUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
+  const origin = getCanonicalBallotOriginForOrganizationId(cycle.organizationId);
 
   for (let attempt = 0; attempt < 16; attempt++) {
     const token = createBallotLinkToken();
@@ -45,7 +48,7 @@ export async function POST(request: NextRequest) {
           ballotLinkTokenHash: tokenHash,
         },
       });
-      const link = `${baseUrl}/all-star/vote?t=${encodeURIComponent(token)}`;
+      const link = `${origin}/all-star/vote?t=${encodeURIComponent(token)}`;
       return NextResponse.json({
         success: true,
         link,

@@ -246,6 +246,7 @@ export default function AllStarVaultManager({
   const router = useRouter();
   const latestCycleIdRef = useRef("");
   const cycleManagementRef = useRef<HTMLDivElement | null>(null);
+  const vaultShellRef = useRef<HTMLElement | null>(null);
   const [previewRole, setPreviewRole] = useState<AdminViewPreviewRole>("NONE");
   const [org, setOrg] = useState<"gonzales" | "ascension">(initialOrg);
   const [seasonYear, setSeasonYear] = useState(new Date().getFullYear());
@@ -479,9 +480,6 @@ export default function AllStarVaultManager({
         (json.permissions as { canDeleteCycles?: unknown }).canDeleteCycles ===
           true;
       setCanDeleteCycles(canDelete);
-      if (!selectedCycleId && data[0]?.id) {
-        setSelectedCycleId(data[0].id);
-      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load cycles");
     }
@@ -1182,6 +1180,15 @@ export default function AllStarVaultManager({
     router.push(`/admin/all-star/cycle-management?${params.toString()}`);
   }
 
+  function backToCycleSnapshotBoard() {
+    setSelectedCycleId("");
+    setError("");
+    setNotice("");
+    window.requestAnimationFrame(() => {
+      vaultShellRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+  }
+
   async function generateSecondTeamPhase() {
     if (!selectedCycleId) return;
     if (
@@ -1511,9 +1518,17 @@ export default function AllStarVaultManager({
   const showCycleSnapshotBoard =
     !showFullAdminView ||
     (showSnapshotBoardOnInitialFullAccess && !selectedCycleId);
+  /** On the main Vault page, full admins start on the board only; management chrome appears after opening a cycle. */
+  const showFullAdminManagementChrome =
+    showFullAdminView &&
+    (!showSnapshotBoardOnInitialFullAccess || Boolean(selectedCycleId));
+  const showBackToCycleBoardShortcut =
+    showFullAdminManagementChrome &&
+    showSnapshotBoardOnInitialFullAccess &&
+    Boolean(selectedCycleId);
 
   return (
-    <section className="space-y-6">
+    <section ref={vaultShellRef} className="space-y-6">
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
       {!canManageAllStarVaultUi ? (
@@ -1523,22 +1538,53 @@ export default function AllStarVaultManager({
       ) : null}
       {showCycleSnapshotBoard ? (
         <div className="rounded-xl border border-amber-700 bg-amber-950/20 p-5 space-y-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div>
             <h2 className="text-lg font-semibold text-amber-200">{boardTitle}</h2>
             <p className="text-sm text-amber-100/80">
               Per-cycle snapshots with names-first leaderboard context.
             </p>
           </div>
-          {showFullAdminView ? (
-            <button
-              type="button"
-              onClick={createNewCycleFromBoard}
-              className="rounded-lg border border-violet-700 text-violet-300 hover:bg-violet-950/40 px-3 py-2 text-sm"
-            >
-              Create New
-            </button>
-          ) : null}
+          <div className="flex flex-wrap items-center gap-3">
+            {showFullAdminView &&
+            showSnapshotBoardOnInitialFullAccess &&
+            !selectedCycleId ? (
+              <>
+                {isMasterMode ? (
+                  <select
+                    value={org}
+                    onChange={(e) =>
+                      setOrg(e.target.value as "gonzales" | "ascension")
+                    }
+                    className="rounded-lg bg-zinc-950 border border-amber-800/80 px-3 py-2 text-sm text-amber-100 min-w-[170px]"
+                  >
+                    <option value="gonzales">Gonzales DYB</option>
+                    <option value="ascension">Ascension LLB</option>
+                  </select>
+                ) : null}
+                <select
+                  value={seasonYear}
+                  onChange={(e) => setSeasonYear(Number(e.target.value))}
+                  className="rounded-lg bg-zinc-950 border border-amber-800/80 px-3 py-2 text-sm text-amber-100 min-w-[120px]"
+                >
+                  {seasonOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+              </>
+            ) : null}
+            {showFullAdminView ? (
+              <button
+                type="button"
+                onClick={createNewCycleFromBoard}
+                className="rounded-lg border border-violet-700 text-violet-300 hover:bg-violet-950/40 px-3 py-2 text-sm"
+              >
+                Create New
+              </button>
+            ) : null}
+          </div>
         </div>
         {limitedOverviewCycles.length === 0 ? (
           <p className="text-zinc-400 text-sm">No cycles available for this organization.</p>
@@ -1770,7 +1816,19 @@ export default function AllStarVaultManager({
         </>
       ) : null}
 
-      {showFullAdminView ? (
+      {showBackToCycleBoardShortcut ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={backToCycleSnapshotBoard}
+            className="inline-flex items-center gap-2 rounded-lg border border-amber-700/80 bg-amber-950/25 text-amber-100 hover:bg-amber-950/40 px-3 py-2 text-sm"
+          >
+            ← Back to cycle board
+          </button>
+        </div>
+      ) : null}
+
+      {showFullAdminManagementChrome ? (
       <>
       <div ref={cycleManagementRef} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Cycle Management</h2>

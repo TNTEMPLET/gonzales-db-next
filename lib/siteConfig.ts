@@ -160,3 +160,29 @@ export function getAssignrLeagueId(org?: ContentOrgId): string {
 
 /** All org IDs except master — used by master admin to enumerate orgs */
 export const CONTENT_ORGS: ContentOrgId[] = ["gonzales", "ascension"];
+
+function stripTrailingSlash(url: string) {
+  return url.replace(/\/+$/, "");
+}
+
+/**
+ * Public origin for All-Star ballot links and redirects: league site for each
+ * content org; master (admin) for anything else.
+ */
+export function getCanonicalBallotOriginForOrganizationId(organizationId: string): string {
+  if (organizationId === "gonzales") {
+    return stripTrailingSlash(configs.gonzales.siteUrl);
+  }
+  if (organizationId === "ascension") {
+    return stripTrailingSlash(configs.ascension.siteUrl);
+  }
+  return stripTrailingSlash(configs.master.siteUrl);
+}
+
+/** Skip cross-domain ballot redirect (local dev / Vercel preview). */
+export function shouldSkipBallotCanonicalHostRedirect(hostname: string): boolean {
+  const h = hostname.toLowerCase().split(":")[0] ?? "";
+  if (h === "localhost" || h.startsWith("127.")) return true;
+  if (h.endsWith(".vercel.app")) return true;
+  return false;
+}

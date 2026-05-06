@@ -20,6 +20,56 @@ type ResolveAllStarVoterOptions = {
   token?: string | null;
 };
 
+/**
+ * On the master deployment, coach login (`gdb_coach_session`) is tied to a single
+ * `RegisteredUser` id, and new Google/local sign-ups default to the site's
+ * default content org (on master, currently Gonzales). Coaches who also have an
+ * Ascension (etc.) row under the same email then hit "Wrong organization" for
+ * Ascension ballots.
+ * If the ballot cycle's org differs from the session row, prefer the same-email row
+ * for that org when one exists.
+ */
+async function coachRegisteredUserForBallotCycle(
+  sessionRow: {
+    id: string;
+    email: string;
+    organizationId: string;
+    ageGroup: string | null;
+    isCoach: boolean;
+    isBlocked: boolean;
+  },
+  cycleId: string | null | undefined,
+) {
+  if (!cycleId) return sessionRow;
+
+  const cycle = await prisma.allStarBallotCycle.findUnique({
+    where: { id: cycleId },
+    select: { organizationId: true },
+  });
+  if (!cycle || sessionRow.organizationId === cycle.organizationId) {
+    return sessionRow;
+  }
+
+  const alternate = await prisma.registeredUser.findFirst({
+    where: {
+      email: { equals: sessionRow.email, mode: "insensitive" },
+      organizationId: cycle.organizationId,
+      isBlocked: false,
+    },
+    select: {
+      id: true,
+      email: true,
+      organizationId: true,
+      ageGroup: true,
+      isCoach: true,
+      isBlocked: true,
+    },
+    orderBy: { updatedAt: "desc" },
+  });
+
+  return alternate ?? sessionRow;
+}
+
 export async function resolveAllStarVoterFromRequest(
   request: NextRequest,
   options: ResolveAllStarVoterOptions = {},
@@ -58,7 +108,11 @@ export async function resolveAllStarVoterFromRequest(
     });
 
     if (registeredUser && !registeredUser.isBlocked) {
-      return { ...registeredUser, isAdmin: false };
+      const aligned = await coachRegisteredUserForBallotCycle(
+        registeredUser,
+        options.cycleId,
+      );
+      return { ...aligned, isAdmin: false };
     }
   }
 

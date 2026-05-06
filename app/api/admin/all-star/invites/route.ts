@@ -4,7 +4,10 @@ import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar
 import { isFrozenFirstTeamCycle } from "@/lib/allStar/cycleType";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getCanonicalBallotOriginForOrganizationId,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 function forbidIfNotMaster() {
   return null;
@@ -20,11 +23,13 @@ export async function GET(request: NextRequest) {
   if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
   const cycleMeta = await prisma.allStarBallotCycle.findUnique({
     where: { id: cycleId },
-    select: { ballotLinkToken: true },
+    select: { ballotLinkToken: true, organizationId: true },
   });
   if (!cycleMeta) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
-  const baseUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
+  const origin = getCanonicalBallotOriginForOrganizationId(
+    cycleMeta.organizationId,
+  );
   const data = await prisma.allStarInvite.findMany({
     where: { ballotCycleId: cycleId },
     include: {
@@ -35,7 +40,7 @@ export async function GET(request: NextRequest) {
 
   const ballotVotingLink =
     cycleMeta.ballotLinkToken != null
-      ? `${baseUrl}/all-star/vote?t=${encodeURIComponent(cycleMeta.ballotLinkToken)}`
+      ? `${origin}/all-star/vote?t=${encodeURIComponent(cycleMeta.ballotLinkToken)}`
       : null;
 
   return NextResponse.json({
@@ -45,7 +50,7 @@ export async function GET(request: NextRequest) {
       /** @deprecated Use top-level `ballotVotingLink` — one link per ballot. */
       link:
         invite.inviteToken != null
-          ? `${baseUrl}/all-star/vote?c=${invite.ballotCycleId}&t=${encodeURIComponent(invite.inviteToken)}`
+          ? `${origin}/all-star/vote?c=${invite.ballotCycleId}&t=${encodeURIComponent(invite.inviteToken)}`
           : ballotVotingLink,
       invitedCoachName:
         invite.invitedUser?.firstName || invite.invitedUser?.lastName
@@ -143,10 +148,10 @@ export async function POST(request: NextRequest) {
     where: { id: cycle.id },
     select: { ballotLinkToken: true },
   });
-  const baseUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
+  const origin = getCanonicalBallotOriginForOrganizationId(cycle.organizationId);
   const ballotVotingLink =
     refreshed?.ballotLinkToken != null
-      ? `${baseUrl}/all-star/vote?t=${encodeURIComponent(refreshed.ballotLinkToken)}`
+      ? `${origin}/all-star/vote?t=${encodeURIComponent(refreshed.ballotLinkToken)}`
       : null;
 
   return NextResponse.json({
