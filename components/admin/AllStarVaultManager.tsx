@@ -553,7 +553,7 @@ export default function AllStarVaultManager({
 
   async function loadVoteSummary(cycleId: string) {
     const response = await fetch(
-      `/api/admin/all-star/votes-summary?cycleId=${cycleId}`,
+      `/api/admin/all-star/votes-summary?cycleId=${cycleId}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`,
       { cache: "no-store" },
     );
     const json = await safeJson(response);
@@ -1530,19 +1530,51 @@ export default function AllStarVaultManager({
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Votes Panel</h2>
-        <div className="flex items-center justify-between gap-3 flex-wrap">
-          <p className="text-xs text-zinc-400">
+        <div className="flex items-start justify-between gap-3 flex-wrap">
+          <p className="text-xs text-zinc-400 flex-1 min-w-[200px]">
             Live candidate standings sorted by vote count, then average rating.
             Auto-refresh runs every 15 seconds while a cycle is open and published.
           </p>
-          <button
-            type="button"
-            disabled={busy || !selectedCycleId || !canRefreshVoteSummary}
-            onClick={() => void refreshVoteSummary()}
-            className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
-          >
-            Refresh
-          </button>
+          <div className="flex flex-wrap items-center gap-2 justify-end shrink-0">
+            <a
+              href={
+                selectedCycleId
+                  ? `/api/admin/all-star/exports/votes-panel/csv?cycleId=${selectedCycleId}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
+                  : "#"
+              }
+              className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+            >
+              Export CSV
+            </a>
+            <a
+              href={
+                selectedCycleId
+                  ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
+                  : "#"
+              }
+              className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+            >
+              PDF (name only)
+            </a>
+            <a
+              href={
+                selectedCycleId
+                  ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=full${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
+                  : "#"
+              }
+              className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+            >
+              PDF (full)
+            </a>
+            <button
+              type="button"
+              disabled={busy || !selectedCycleId || !canRefreshVoteSummary}
+              onClick={() => void refreshVoteSummary()}
+              className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
+            >
+              Refresh
+            </button>
+          </div>
         </div>
         <p className="text-xs text-zinc-500">Submitted ballots: {voteSummarySubmissionCount}</p>
         <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
