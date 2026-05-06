@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AdminUsersManager from "@/components/admin/AdminUsersManager";
 import {
@@ -34,7 +35,12 @@ export default async function AdminUsersPage({
     redirect("/admin/login?next=/admin/users");
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    currentOrg,
+  );
+  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
   if (!canAccessAdminModule(role, "USERS")) {
     redirect("/admin?denied=users");
   }
@@ -47,6 +53,7 @@ export default async function AdminUsersPage({
             badge="ACCESS CONTROL"
             currentOrg={currentOrg}
             currentPath="/admin/users"
+            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Admin User Management

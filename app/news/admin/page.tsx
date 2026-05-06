@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import NewsAdminPanel from "@/components/news/NewsAdminPanel";
 import {
@@ -27,6 +28,9 @@ export default async function NewsAdminPage({
 }: {
   searchParams: Promise<{ edit?: string; org?: string }>;
 }) {
+  const { edit, org } = await searchParams;
+  const currentOrg = resolveAdminTargetOrg(org);
+
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
@@ -35,13 +39,15 @@ export default async function NewsAdminPage({
     redirect("/admin/login?next=/news/admin");
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    currentOrg,
+  );
+  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
   if (!canAccessAdminModule(role, "NEWS_ADMIN")) {
     redirect("/admin?denied=news");
   }
-
-  const { edit, org } = await searchParams;
-  const currentOrg = resolveAdminTargetOrg(org);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
@@ -51,6 +57,7 @@ export default async function NewsAdminPage({
             badge="CONTENT MANAGEMENT"
             currentOrg={currentOrg}
             currentPath="/news/admin"
+            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             News Admin

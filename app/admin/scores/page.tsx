@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import AdminScoresManager from "@/components/admin/AdminScoresManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import {
@@ -42,7 +43,12 @@ export default async function AdminScoresPage({
     redirect("/admin/login?next=/admin/scores");
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    orgId,
+  );
+  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
   if (!canAccessAdminModule(role, "SCORES")) {
     redirect("/admin?denied=scores");
   }
@@ -74,6 +80,7 @@ export default async function AdminScoresPage({
             badge="SCORE ENTRY"
             currentOrg={orgId}
             currentPath="/admin/scores"
+            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Enter Game Scores

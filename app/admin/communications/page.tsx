@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import AdminCommunicationsManager from "@/components/admin/AdminCommunicationsManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import { isCommunicationsModuleEnabled } from "@/lib/communications/config";
@@ -38,7 +39,12 @@ export default async function AdminCommunicationsPage({
     redirect("/admin/login?next=/admin/communications");
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    currentOrg,
+  );
+  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
   if (!canAccessAdminModule(role, "COMMUNICATIONS")) {
     redirect("/admin?denied=communications");
   }
@@ -51,6 +57,7 @@ export default async function AdminCommunicationsPage({
             badge="COMMUNICATIONS"
             currentOrg={currentOrg}
             currentPath="/admin/communications"
+            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Centralized Communications

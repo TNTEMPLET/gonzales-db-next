@@ -1,7 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
@@ -34,7 +35,12 @@ export default async function AdminSponsorsPage({
     redirect("/admin/login?next=/admin/sponsors");
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    currentOrg,
+  );
+  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
   if (!canAccessAdminModule(role, "SPONSORS")) {
     redirect("/admin?denied=sponsors");
   }
@@ -47,6 +53,7 @@ export default async function AdminSponsorsPage({
             badge="SPONSORS MODULE"
             currentOrg={currentOrg}
             currentPath="/admin/sponsors"
+            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Sponsors Management

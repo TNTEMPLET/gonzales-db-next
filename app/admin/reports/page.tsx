@@ -3,7 +3,8 @@ import { redirect } from "next/navigation";
 
 import AdminReportsManager from "@/components/admin/AdminReportsManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
@@ -34,7 +35,12 @@ export default async function AdminReportsPage({
     redirect("/admin/login?next=/admin/reports");
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    orgId,
+  );
+  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
   if (!canAccessAdminModule(role, "REPORTS")) {
     redirect("/admin?denied=reports");
   }
@@ -47,6 +53,7 @@ export default async function AdminReportsPage({
             badge="REPORTING"
             currentOrg={orgId}
             currentPath="/admin/reports"
+            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Umpire Reports
