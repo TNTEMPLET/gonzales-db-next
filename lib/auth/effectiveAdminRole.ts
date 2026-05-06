@@ -13,6 +13,18 @@ export async function getEffectiveAdminRoleForOrg(
 ): Promise<AdminRole | null> {
   if (isMaster) return "MASTER_ADMIN";
 
+  const adminUser = await prisma.adminUser.findUnique({
+    where: { id: adminUserId },
+    select: { role: true },
+  });
+  if (!adminUser) return null;
+
+  // Command-and-control roles are global across orgs.
+  const aggregateRole = toAdminRole(adminUser.role, false);
+  if (aggregateRole === "BOARD_MEMBER" || aggregateRole === "PARK_DIRECTOR") {
+    return aggregateRole;
+  }
+
   const row = await prisma.adminOrgMembership.findUnique({
     where: {
       adminUserId_organizationId: { adminUserId, organizationId },
