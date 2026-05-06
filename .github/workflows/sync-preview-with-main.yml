@@ -1,0 +1,29 @@
+# Keeps `preview` aligned with `main` whenever `main` advances (e.g. hotfixes pushed straight to main).
+name: Sync preview with main
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: sync-preview-with-main
+  cancel-in-progress: true
+
+jobs:
+  fast-forward-preview:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fast-forward preview to main
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin preview
+          git checkout preview
+          git merge origin/main --ff-only
+          git push origin preview
