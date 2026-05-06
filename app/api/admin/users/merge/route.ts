@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 import { PROTECTED_MASTER_ADMIN_EMAIL } from "@/lib/auth/adminRoles";
@@ -99,12 +100,13 @@ export async function POST(request: NextRequest) {
       organizationId: targetOrg,
     });
 
+    // Cannot reference `mergeUserId` here — that row was deleted. Snapshot email/name only.
     await prisma.adminAuditLog.create({
       data: {
         action: "MERGE_USERS",
         actorAdminId: currentAdmin?.id ?? null,
         actorEmail: currentAdmin?.email || "unknown",
-        targetRegisteredUserId: mergeUserId,
+        targetRegisteredUserId: null,
         targetEmail: mergeEmailSnapshot,
         targetName: mergeNameSnapshot,
         sourcePath: getSourcePath(request),
@@ -118,10 +120,14 @@ export async function POST(request: NextRequest) {
       mergedUserId: mergeUserId,
     });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json(
-      { error: message || "Merge failed" },
-      { status: 400 },
-    );
+    let message = "Merge failed";
+    if (err instanceof Prisma.PrismaClientKnownRequestError) {
+      message = err.message;
+    } else if (err instanceof Error && err.message.trim()) {
+      message = err.message;
+    } else if (typeof err === "string" && err.trim()) {
+      message = err;
+    }
+    return NextResponse.json({ error: message }, { status: 400 });
   }
 }
