@@ -32,9 +32,10 @@ export async function POST(request: NextRequest) {
 
   const existing = await prisma.allStarVoteSubmission.findUnique({
     where: {
-      ballotCycleId_coachUserId: {
+      ballotCycleId_coachUserId_phase: {
         ballotCycleId: body.cycleId,
         coachUserId: voter.id,
+        phase: "FIRST_TEAM",
       },
     },
   });
@@ -68,6 +69,7 @@ export async function POST(request: NextRequest) {
       data: {
         ballotCycleId: body.cycleId!,
         coachUserId: voter.id,
+        phase: "FIRST_TEAM",
         organizationId: access.cycle.organizationId,
         ageGroup: access.cycle.ageGroup,
       },
@@ -83,6 +85,7 @@ export async function POST(request: NextRequest) {
       where: {
         ballotCycleId: body.cycleId!,
         coachUserId: voter.id,
+        phase: "FIRST_TEAM",
       },
     });
     return created;

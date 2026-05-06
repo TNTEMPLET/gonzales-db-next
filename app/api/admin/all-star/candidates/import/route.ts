@@ -6,6 +6,7 @@ import {
   importCandidatesFromTeamsForCycle,
   resequenceCandidateBibNumbers,
 } from "@/lib/allStar/candidates";
+import { isFrozenFirstTeamCycle } from "@/lib/allStar/cycleType";
 import prisma from "@/lib/prisma";
 
 type SheetRow = Record<string, string | number | null | undefined>;
@@ -38,6 +39,12 @@ export async function POST(request: NextRequest) {
 
   const cycle = await prisma.allStarBallotCycle.findUnique({ where: { id: cycleId } });
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
+  if (isFrozenFirstTeamCycle(cycle)) {
+    return NextResponse.json(
+      { error: "First-team cycle is frozen while closed. Reopen cycle to edit." },
+      { status: 409 },
+    );
+  }
 
   if (source === "teams") {
     const result = await importCandidatesFromTeamsForCycle(prisma, {

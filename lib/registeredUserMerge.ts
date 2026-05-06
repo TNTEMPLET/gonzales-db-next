@@ -136,9 +136,10 @@ export async function mergeRegisteredUsers(
       for (const d of mergeDrafts) {
         const conflict = await tx.allStarVoteDraft.findUnique({
           where: {
-            ballotCycleId_coachUserId: {
+            ballotCycleId_coachUserId_phase: {
               ballotCycleId: d.ballotCycleId,
               coachUserId: keepUserId,
+              phase: d.phase,
             },
           },
         });
@@ -158,9 +159,10 @@ export async function mergeRegisteredUsers(
       for (const s of mergeSubs) {
         const conflict = await tx.allStarVoteSubmission.findUnique({
           where: {
-            ballotCycleId_coachUserId: {
+            ballotCycleId_coachUserId_phase: {
               ballotCycleId: s.ballotCycleId,
               coachUserId: keepUserId,
+              phase: s.phase,
             },
           },
         });

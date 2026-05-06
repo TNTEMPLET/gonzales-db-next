@@ -1,6 +1,11 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import {
+  readAdminViewPreviewRole,
+  type AdminViewPreviewRole,
+} from "@/components/admin/AdminRolePreviewControl";
 
 type Cycle = {
   id: string;
@@ -22,6 +27,9 @@ type Candidate = {
   team: string;
   jerseyNumber: string;
   showcaseBibNumber: string | null;
+  isActive?: boolean;
+  excludedFromSecondPhase: boolean;
+  secondPhaseOverrideReason: string | null;
 };
 
 type CycleCoachOption = {
@@ -81,12 +89,125 @@ type VoteSummaryRow = {
 type AllStarVaultManagerProps = {
   initialOrg: "gonzales" | "ascension";
   isMasterMode: boolean;
+  initialSelectedCycleId?: string;
+  showSnapshotBoardOnInitialFullAccess?: boolean;
   /** Org admins with the All-Star module, or vault Full Access. View-only vault grants use false. */
   canManageAllStarVault?: boolean;
 };
 
 function formatOrganizationLabel(org: "gonzales" | "ascension") {
   return org === "gonzales" ? "Gonzales DYB" : "Ascension LLB";
+}
+
+function getCycleTierLabel(title: string | null) {
+  return (title || "").toLowerCase().includes("second team")
+    ? "SECOND_TEAM"
+    : "FIRST_TEAM";
+}
+
+function getCycleTierDisplayLabel(
+  organizationId: "gonzales" | "ascension",
+  title: string | null,
+) {
+  const tier = getCycleTierLabel(title);
+  if (organizationId === "ascension") {
+    return tier === "SECOND_TEAM" ? "RED" : "NAVY";
+  }
+  return tier === "SECOND_TEAM" ? "GOLD" : "PURPLE";
+}
+
+function getCycleTierBadgeClass(
+  organizationId: "gonzales" | "ascension",
+  title: string | null,
+) {
+  const displayLabel = getCycleTierDisplayLabel(organizationId, title);
+  if (displayLabel === "RED") {
+    return "border-red-700 bg-red-950/40 text-red-200";
+  }
+  if (displayLabel === "NAVY") {
+    return "border-sky-700 bg-sky-950/30 text-sky-200";
+  }
+  if (displayLabel === "GOLD") {
+    return "border-amber-700 bg-amber-950/30 text-amber-200";
+  }
+  return "border-purple-700 bg-purple-950/30 text-purple-200";
+}
+
+function getCycleStatusCardClass(status: Cycle["status"]) {
+  if (status === "PUBLISHED") {
+    return "border-emerald-700/60 bg-emerald-950/20";
+  }
+  if (status === "CLOSED") {
+    return "border-amber-700/60 bg-amber-950/20";
+  }
+  if (status === "DRAFT") {
+    return "border-sky-700/60 bg-sky-950/20";
+  }
+  return "border-zinc-700 bg-zinc-900/50";
+}
+
+function getCycleStatusBadgeClass(status: Cycle["status"]) {
+  if (status === "PUBLISHED") {
+    return "border-emerald-700 bg-emerald-950/40 text-emerald-200";
+  }
+  if (status === "CLOSED") {
+    return "border-amber-700 bg-amber-950/40 text-amber-200";
+  }
+  if (status === "DRAFT") {
+    return "border-sky-700 bg-sky-950/40 text-sky-200";
+  }
+  return "border-zinc-700 bg-zinc-950 text-zinc-300";
+}
+
+function getCycleDisplayTitle(cycle: { title: string | null; seasonYear: number; ageGroup: string } | null) {
+  if (!cycle) return "No cycle selected";
+  const title = cycle.title?.trim();
+  if (title) return title;
+  return `${cycle.seasonYear} ${cycle.ageGroup}`;
+}
+
+function getCycleOptionSuffix(cycle: {
+  title: string | null;
+  seasonYear: number;
+  ageGroup: string;
+}) {
+  const title = cycle.title?.trim();
+  if (!title) return "";
+  const tier = getCycleTierLabel(cycle.title);
+  if (tier === "SECOND_TEAM" && title.toLowerCase() === "second team") return "";
+  return ` | ${title}`;
+}
+
+function getTop12WithCutoffTies(rows: VoteSummaryRow[]) {
+  if (rows.length <= 12) return rows;
+  const cutoffVotes = rows[11]!.voteCount;
+  let end = 12;
+  while (end < rows.length && rows[end]!.voteCount === cutoffVotes) {
+    end += 1;
+  }
+  return rows.slice(0, end);
+}
+
+function BaseballRatingIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      className={className}
+      fill="none"
+      viewBox="0 0 24 24"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" className="fill-zinc-100" stroke="currentColor" strokeWidth={1.2} />
+      <path className="stroke-red-600" strokeWidth={1.15} strokeLinecap="round" d="M9 4.5C7.5 7 7.5 17 9 19.5" />
+      <path className="stroke-red-600" strokeWidth={1.15} strokeLinecap="round" d="M15 4.5C16.5 7 16.5 17 15 19.5" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M9 8.5L7 9" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M9 12L6.8 12" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M9 15.5L7 15" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M15 8.5L17 9" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M15 12L17.2 12" />
+      <path className="stroke-red-600" strokeWidth={1} strokeLinecap="round" d="M15 15.5L17 15" />
+    </svg>
+  );
 }
 
 function normalizeBallotEmail(email: string) {
@@ -118,13 +239,18 @@ function isCycleOpenAndPublished(cycle: Cycle | null) {
 export default function AllStarVaultManager({
   initialOrg,
   isMasterMode,
+  initialSelectedCycleId = "",
+  showSnapshotBoardOnInitialFullAccess = true,
   canManageAllStarVault = true,
 }: AllStarVaultManagerProps) {
+  const router = useRouter();
   const latestCycleIdRef = useRef("");
+  const cycleManagementRef = useRef<HTMLDivElement | null>(null);
+  const [previewRole, setPreviewRole] = useState<AdminViewPreviewRole>("NONE");
   const [org, setOrg] = useState<"gonzales" | "ascension">(initialOrg);
   const [seasonYear, setSeasonYear] = useState(new Date().getFullYear());
   const [cycles, setCycles] = useState<Cycle[]>([]);
-  const [selectedCycleId, setSelectedCycleId] = useState("");
+  const [selectedCycleId, setSelectedCycleId] = useState(initialSelectedCycleId);
   const [candidates, setCandidates] = useState<Candidate[]>([]);
   const [headCoaches, setHeadCoaches] = useState<Array<{ id: string; coachName: string | null; coachEmail: string | null }>>([]);
   const [cycleCoachOptions, setCycleCoachOptions] = useState<CycleCoachOption[]>([]);
@@ -153,10 +279,20 @@ export default function AllStarVaultManager({
   );
   const [canDeleteCycles, setCanDeleteCycles] = useState(false);
 
+  const previewCanViewAllStar =
+    previewRole === "BOARD_MEMBER" || previewRole === "PARK_DIRECTOR" ? false : true;
+  const previewCanManageAllStar =
+    previewRole === "ALL_STAR_VIEW_ONLY" ||
+    previewRole === "BOARD_MEMBER" ||
+    previewRole === "PARK_DIRECTOR"
+      ? false
+      : true;
+  const canManageAllStarVaultUi = canManageAllStarVault && previewCanManageAllStar;
+
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const manageDisabled = busy || !canManageAllStarVault;
+  const manageDisabled = busy || !canManageAllStarVaultUi;
 
   const [newCycleAgeGroup, setNewCycleAgeGroup] = useState("12U LLB");
   const [ageGroupOptions, setAgeGroupOptions] = useState<string[]>([]);
@@ -178,6 +314,24 @@ export default function AllStarVaultManager({
   const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "VIEW_ONLY">("VIEW_ONLY");
   const [inviteEmails, setInviteEmails] = useState("");
   const [showBallotRosterStatusModal, setShowBallotRosterStatusModal] = useState(false);
+  const [limitedOverviewSnapshots, setLimitedOverviewSnapshots] = useState<
+    Record<string, VoteSummaryRow[]>
+  >({});
+  const [limitedOverviewSubmissionCounts, setLimitedOverviewSubmissionCounts] = useState<
+    Record<string, number>
+  >({});
+  const [limitedOverviewMoreCycleId, setLimitedOverviewMoreCycleId] = useState("");
+
+  useEffect(() => {
+    setPreviewRole(readAdminViewPreviewRole());
+    const onPreviewUpdate = () => setPreviewRole(readAdminViewPreviewRole());
+    window.addEventListener("admin-view-preview-updated", onPreviewUpdate);
+    window.addEventListener("storage", onPreviewUpdate);
+    return () => {
+      window.removeEventListener("admin-view-preview-updated", onPreviewUpdate);
+      window.removeEventListener("storage", onPreviewUpdate);
+    };
+  }, []);
 
   useEffect(() => {
     setOrg(initialOrg);
@@ -185,6 +339,47 @@ export default function AllStarVaultManager({
     setError("");
     setNotice("");
   }, [initialOrg]);
+
+  useEffect(() => {
+    if (cycles.length === 0) return;
+    let cancelled = false;
+    void (async () => {
+      const entries = await Promise.all(
+        cycles.map(async (cycle) => {
+          try {
+            const response = await fetch(
+              `/api/admin/all-star/votes-summary?cycleId=${cycle.id}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`,
+              { cache: "no-store" },
+            );
+            const json = await safeJson(response);
+            if (!response.ok) {
+              return [cycle.id, [] as VoteSummaryRow[], 0] as const;
+            }
+            const rows = Array.isArray(json.data) ? (json.data as VoteSummaryRow[]) : [];
+            const submissionCount =
+              typeof json.meta === "object" &&
+              json.meta !== null &&
+              typeof (json.meta as { submissionCount?: unknown }).submissionCount === "number"
+                ? (json.meta as { submissionCount: number }).submissionCount
+                : 0;
+            return [cycle.id, rows, submissionCount] as const;
+          } catch {
+            return [cycle.id, [] as VoteSummaryRow[], 0] as const;
+          }
+        }),
+      );
+      if (cancelled) return;
+      setLimitedOverviewSnapshots(
+        Object.fromEntries(entries.map(([id, rows]) => [id, rows])),
+      );
+      setLimitedOverviewSubmissionCounts(
+        Object.fromEntries(entries.map(([id, _rows, submissionCount]) => [id, submissionCount])),
+      );
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [cycles, isMasterMode, org]);
 
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
@@ -216,11 +411,7 @@ export default function AllStarVaultManager({
             loadCycleCoaches(selectedCycleId),
             loadSubmittedBallots(selectedCycleId),
             loadInvites(selectedCycleId),
-            ...(isCycleOpenAndPublished(
-              cycles.find((entry) => entry.id === selectedCycleId) || null,
-            )
-              ? [loadVoteSummary(selectedCycleId)]
-              : []),
+            loadVoteSummary(selectedCycleId),
           ]);
         } catch (err: unknown) {
           if (latestCycleIdRef.current !== selectedCycleId) return;
@@ -974,6 +1165,68 @@ export default function AllStarVaultManager({
     }
   }
 
+  function openCycleFromCard(cycleId: string) {
+    setSelectedCycleId(cycleId);
+  }
+
+  function editCycleFromCard(cycleId: string) {
+    const params = new URLSearchParams({
+      cycleId,
+      org,
+    });
+    router.push(`/admin/all-star/cycle-management?${params.toString()}`);
+  }
+
+  function createNewCycleFromBoard() {
+    const params = new URLSearchParams({ org });
+    router.push(`/admin/all-star/cycle-management?${params.toString()}`);
+  }
+
+  async function generateSecondTeamPhase() {
+    if (!selectedCycleId) return;
+    if (
+      !window.confirm(
+        "Generate second-team phase now? This uses FIRST_TEAM standings and excludes the top 12 by current vote ordering (editable after generation).",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/second-phase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cycleId: selectedCycleId, action: "generate" }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to generate second-team phase"));
+      }
+      const secondCycleId =
+        typeof (json as { secondCycleId?: unknown }).secondCycleId === "string"
+          ? (json as { secondCycleId: string }).secondCycleId
+          : "";
+      setNotice(
+        typeof (json as { created?: unknown }).created === "boolean" &&
+          (json as { created: boolean }).created === false
+          ? "Second-team cycle already exists. Switched to existing cycle."
+          : "Second-team cycle created from first-team standings.",
+      );
+      await loadCycles();
+      if (secondCycleId) {
+        setSelectedCycleId(secondCycleId);
+      } else {
+        await loadCycleDetails(selectedCycleId);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate second-team phase");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function toDateTimeLocalValue(value: string | null) {
     if (!value) return "";
     const date = new Date(value);
@@ -1098,7 +1351,10 @@ export default function AllStarVaultManager({
       const response = await fetch("/api/admin/all-star/invites", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ cycleId: selectedCycleId, emails }),
+        body: JSON.stringify({
+          cycleId: selectedCycleId,
+          emails,
+        }),
       });
       const json = (await response.json()) as {
         error?: string;
@@ -1232,17 +1488,291 @@ export default function AllStarVaultManager({
     );
   });
 
+  const isAuditorFocusedPreview = previewRole === "ALL_STAR_VIEW_ONLY";
+  const showFullAdminView = previewCanViewAllStar && !isAuditorFocusedPreview;
+  const orgQuery = isMasterMode ? `&org=${encodeURIComponent(org)}` : "";
+  const sampleBallotCandidates = candidates
+    .filter((candidate) => candidate.isActive !== false)
+    .slice(0, 12);
+  const limitedOverviewCycles = [...cycles].sort((a, b) => {
+    if (b.seasonYear !== a.seasonYear) return b.seasonYear - a.seasonYear;
+    return b.id.localeCompare(a.id);
+  });
+  const limitedOverviewMoreCycle =
+    cycles.find((cycle) => cycle.id === limitedOverviewMoreCycleId) || null;
+  const limitedOverviewMoreRows = getTop12WithCutoffTies(
+    limitedOverviewSnapshots[limitedOverviewMoreCycleId] || [],
+  );
+  const boardTitle = showFullAdminView
+    ? "Cycle Snapshot Board"
+    : isAuditorFocusedPreview
+      ? "Observer Snapshot (View-Only)"
+      : `Limited Overview (${previewRole.replaceAll("_", " ")})`;
+  const showCycleSnapshotBoard =
+    !showFullAdminView ||
+    (showSnapshotBoardOnInitialFullAccess && !selectedCycleId);
+
   return (
     <section className="space-y-6">
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
-      {!canManageAllStarVault ? (
+      {!canManageAllStarVaultUi ? (
         <div className="rounded-lg border border-sky-800 bg-sky-950/30 p-3 text-sm text-sky-200">
           View-only vault access: you can review cycles, submitted ballots, and vote standings. Management actions are disabled.
         </div>
       ) : null}
+      {showCycleSnapshotBoard ? (
+        <div className="rounded-xl border border-amber-700 bg-amber-950/20 p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold text-amber-200">{boardTitle}</h2>
+            <p className="text-sm text-amber-100/80">
+              Per-cycle snapshots with names-first leaderboard context.
+            </p>
+          </div>
+          {showFullAdminView ? (
+            <button
+              type="button"
+              onClick={createNewCycleFromBoard}
+              className="rounded-lg border border-violet-700 text-violet-300 hover:bg-violet-950/40 px-3 py-2 text-sm"
+            >
+              Create New
+            </button>
+          ) : null}
+        </div>
+        {limitedOverviewCycles.length === 0 ? (
+          <p className="text-zinc-400 text-sm">No cycles available for this organization.</p>
+        ) : (
+          <div className="space-y-3">
+            {limitedOverviewCycles.map((cycle) => {
+              const rows = limitedOverviewSnapshots[cycle.id] || [];
+              const topFive = rows.slice(0, 5);
+              return (
+                <div key={cycle.id} className={`rounded-lg border p-3 text-sm space-y-2 ${getCycleStatusCardClass(cycle.status)}`}>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-zinc-200 font-medium">
+                      {formatOrganizationLabel(cycle.organizationId)} · {cycle.seasonYear} · {cycle.ageGroup} · {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}
+                    </p>
+                    <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(cycle.status)}`}>
+                      {cycle.status}
+                    </span>
+                  </div>
+                  <p className="text-xs text-zinc-400">
+                    Submitted ballots: {limitedOverviewSubmissionCounts[cycle.id] || 0}
+                  </p>
+                  <div className="space-y-1">
+                    {topFive.length === 0 ? (
+                      <p className="text-zinc-500 text-xs">No vote data yet.</p>
+                    ) : (
+                      topFive.map((row, index) => (
+                        <p key={row.candidateId} className="text-zinc-200 text-xs">
+                          #{index + 1} {row.playerFullName} · {row.team}
+                        </p>
+                      ))
+                    )}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      data-admin-preview-allow="true"
+                      onClick={() => openCycleFromCard(cycle.id)}
+                      className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+                    >
+                      Open cycle details
+                    </button>
+                    {showFullAdminView ? (
+                      <button
+                        type="button"
+                        onClick={() => editCycleFromCard(cycle.id)}
+                        className="text-xs rounded-lg border border-emerald-700 text-emerald-300 hover:bg-emerald-950/30 px-3 py-1.5"
+                      >
+                        Edit
+                      </button>
+                    ) : null}
+                    <button
+                      type="button"
+                      data-admin-preview-allow="true"
+                      onClick={() => setLimitedOverviewMoreCycleId(cycle.id)}
+                      className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+                    >
+                      ...more
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+        </div>
+      ) : null}
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+      {isAuditorFocusedPreview ? (
+        <>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+            <h2 className="text-lg font-semibold">Observer Snapshot (View-Only)</h2>
+            <p className="text-xs text-zinc-400">
+              Management sections are hidden in this preview. Showing operational read-only data only.
+            </p>
+            <div className="max-w-md">
+              <label className="text-xs uppercase tracking-wide text-zinc-500">Select Ballot</label>
+              <select
+                data-admin-preview-allow="true"
+                value={selectedCycleId}
+                onChange={(event) => setSelectedCycleId(event.target.value)}
+                className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              >
+                <option value="">Select cycle…</option>
+                {cycles.map((cycle) => (
+                  <option key={cycle.id} value={cycle.id}>
+                    {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {cycle.ageGroup} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <p className="text-sm text-zinc-200">
+              {selectedCycle
+                ? `${formatOrganizationLabel(selectedCycle.organizationId)} · ${selectedCycle.seasonYear} · ${selectedCycle.ageGroup} · ${selectedCycle.status} · ${getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}`
+                : "No cycle selected"}
+            </p>
+            <p className="text-xs text-zinc-500">
+              {ballotRosterStatus
+                ? `${ballotRosterStatus.submittedCount}/${ballotRosterStatus.total} submitted (${ballotRosterStatus.rosterLabelShort})`
+                : "No roster progress available"}
+            </p>
+            {selectedCycleId && ballotRosterStatus ? (
+              <button
+                type="button"
+                data-admin-preview-allow="true"
+                onClick={() => setShowBallotRosterStatusModal(true)}
+                className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 inline-flex items-center gap-2 w-fit"
+              >
+                <span className="text-zinc-500">View submitted vs total</span>
+                <span className="tabular-nums font-semibold text-zinc-100">
+                  {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
+                </span>
+              </button>
+            ) : null}
+            <div className="flex flex-wrap gap-2">
+              <a
+                href={
+                  selectedCycleId
+                    ? `/api/admin/all-star/exports/votes-panel/csv?cycleId=${selectedCycleId}${orgQuery}`
+                    : "#"
+                }
+                className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+              >
+                Export CSV
+              </a>
+              <a
+                href={
+                  selectedCycleId
+                    ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${orgQuery}`
+                    : "#"
+                }
+                className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+              >
+                PDF (name only)
+              </a>
+              <a
+                href={
+                  selectedCycleId
+                    ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=full${orgQuery}`
+                    : "#"
+                }
+                className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+              >
+                PDF (full)
+              </a>
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+            <h2 className="text-lg font-semibold">Submitted Ballots</h2>
+            <p className="text-xs text-zinc-500">Submitted ballots: {voteSummarySubmissionCount}</p>
+            <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
+              {!selectedCycleId ? (
+                <p className="text-zinc-500 text-sm p-3">Select a cycle to view submitted ballots.</p>
+              ) : submittedBallots.length === 0 ? (
+                <p className="text-zinc-500 text-sm p-3">No submitted ballots yet.</p>
+              ) : (
+                submittedBallots.map((submission) => (
+                  <div key={submission.id} className="px-3 py-2 border-b border-zinc-800 last:border-b-0">
+                    <p className="text-sm text-zinc-200">
+                      {displayNameFromCoachFields(
+                        submission.coachUser.firstName,
+                        submission.coachUser.lastName,
+                        submission.coachUser.name,
+                        submission.coachUser.email,
+                      )}
+                    </p>
+                    <p className="text-xs text-zinc-500">{submission.coachUser.email}</p>
+                    <p className="text-xs text-zinc-500">
+                      Submitted {new Date(submission.submittedAt).toLocaleString()} · {submission.voteItemCount} ratings
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+            <h2 className="text-lg font-semibold">Votes Panel</h2>
+            <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
+              {!selectedCycleId ? (
+                <p className="text-zinc-500 text-sm p-3">Select a cycle to view vote standings.</p>
+              ) : voteSummary.length === 0 ? (
+                <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
+              ) : (
+                voteSummary.map((row, index) => (
+                  <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3">
+                    <p className="min-w-0 truncate">
+                      <span className="text-zinc-500 mr-2">#{index + 1}</span>
+                      <span className="font-medium">{row.playerFullName}</span> · {row.team} · #{row.jerseyNumber}
+                    </p>
+                    <p className="text-xs text-zinc-300 whitespace-nowrap">
+                      Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+            <h2 className="text-lg font-semibold">Sample Ballot</h2>
+            <p className="text-xs text-zinc-400">
+              Read-only preview of what a ballot row looks like for this cycle.
+            </p>
+            <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
+              {sampleBallotCandidates.length === 0 ? (
+                <p className="text-zinc-500 text-sm p-3">No candidates available for sample ballot.</p>
+              ) : (
+                sampleBallotCandidates.map((candidate) => (
+                  <div
+                    key={candidate.id}
+                    className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex items-center justify-between gap-3"
+                  >
+                    <p className="text-sm min-w-0 truncate">
+                      <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team} · #{candidate.jerseyNumber}
+                    </p>
+                    <div className="flex items-center gap-1 text-zinc-500">
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <span key={value} className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700 bg-zinc-950/50 p-0.5 opacity-70">
+                          <BaseballRatingIcon className="h-5 w-5" />
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </>
+      ) : null}
+
+      {showFullAdminView ? (
+      <>
+      <div ref={cycleManagementRef} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Cycle Management</h2>
         <div className="flex flex-wrap items-center justify-start gap-3">
           {isMasterMode ? (
@@ -1304,13 +1834,24 @@ export default function AllStarVaultManager({
             <option value="">Select cycle…</option>
             {cycles.map((cycle) => (
               <option key={cycle.id} value={cycle.id}>
-                {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {cycle.ageGroup} | {cycle.status}
+                {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {cycle.ageGroup} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
               </option>
             ))}
           </select>
           <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void updateCycleStatus("PUBLISHED")} className="rounded-lg border border-emerald-700 text-emerald-300 px-3 py-2 text-sm disabled:opacity-60">Publish</button>
           <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void updateCycleStatus("CLOSED")} className="rounded-lg border border-amber-700 text-amber-300 px-3 py-2 text-sm disabled:opacity-60">Close</button>
           <button type="button" disabled={manageDisabled || !selectedCycleId || !canDeleteCycles} onClick={() => void deleteCycle()} className="rounded-lg border border-red-700 text-red-300 px-3 py-2 text-sm disabled:opacity-60">Delete Cycle</button>
+          <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void generateSecondTeamPhase()} className="rounded-lg border border-indigo-700 text-indigo-300 px-3 py-2 text-sm disabled:opacity-60">Generate Second Team</button>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
+          <span>
+            Cycle: <span className="text-zinc-300 font-medium">{getCycleDisplayTitle(selectedCycle)}</span>
+          </span>
+          {selectedCycle ? (
+            <span className={`rounded-full border px-2 py-0.5 font-semibold tracking-wide ${getCycleTierBadgeClass(selectedCycle.organizationId, selectedCycle.title)}`}>
+              {getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
+            </span>
+          ) : null}
         </div>
         <div className="grid md:grid-cols-3 gap-3">
           <input
@@ -1364,7 +1905,12 @@ export default function AllStarVaultManager({
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-        <h2 className="text-lg font-semibold">Candidates Import</h2>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-lg font-semibold">Candidates Import</h2>
+          <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2.5 py-1 text-xs font-semibold tracking-wide text-zinc-300">
+            Candidates: {candidates.length}
+          </span>
+        </div>
         <div className="flex items-center gap-3 flex-wrap">
           <a href="/api/admin/all-star/candidates/template" className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5">Download Template</a>
           <input type="file" accept=".csv,.xlsx,.xls" disabled={manageDisabled} onChange={(e) => setCandidateFile(e.target.files?.[0] || null)} className="text-sm disabled:opacity-60" />
@@ -1601,6 +2147,41 @@ export default function AllStarVaultManager({
         </div>
       </div>
 
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+        <h2 className="text-lg font-semibold">Sample Ballot</h2>
+        <p className="text-xs text-zinc-400">
+          Read-only preview of ballot layout using current cycle candidates.
+        </p>
+        <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
+          {!selectedCycleId ? (
+            <p className="text-zinc-500 text-sm p-3">Select a cycle to preview the sample ballot.</p>
+          ) : sampleBallotCandidates.length === 0 ? (
+            <p className="text-zinc-500 text-sm p-3">No candidates available for sample ballot.</p>
+          ) : (
+            sampleBallotCandidates.map((candidate) => (
+              <div
+                key={candidate.id}
+                className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex items-center justify-between gap-3"
+              >
+                <p className="text-sm min-w-0 truncate">
+                  <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team} · #{candidate.jerseyNumber}
+                  {selectedCycle?.hasShowcase && candidate.showcaseBibNumber
+                    ? ` · Bib ${candidate.showcaseBibNumber}`
+                    : ""}
+                </p>
+                <div className="flex items-center gap-1 text-zinc-500">
+                  {[1, 2, 3, 4, 5].map((value) => (
+                    <span key={value} className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700 bg-zinc-950/50 p-0.5 opacity-70">
+                      <BaseballRatingIcon className="h-5 w-5" />
+                    </span>
+                  ))}
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">All-Star Vault Access</h2>
         {isMasterMode ? (
@@ -1822,6 +2403,53 @@ export default function AllStarVaultManager({
         ) : null}
       </div>
 
+      {limitedOverviewMoreCycleId && limitedOverviewMoreCycle ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="limited-overview-top12-title"
+          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setLimitedOverviewMoreCycleId("");
+          }}
+        >
+          <div
+            className="w-full max-w-2xl rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 max-h-[90vh] flex flex-col"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 id="limited-overview-top12-title" className="text-lg font-semibold">
+                  Top 12 Snapshot (Names Only)
+                </h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  {formatOrganizationLabel(limitedOverviewMoreCycle.organizationId)} · {limitedOverviewMoreCycle.seasonYear} · {limitedOverviewMoreCycle.ageGroup} · {limitedOverviewMoreCycle.status}
+                </p>
+              </div>
+              <button
+                type="button"
+                data-admin-preview-allow="true"
+                className="shrink-0 rounded-lg border border-zinc-600 text-zinc-300 px-3 py-1.5 text-xs hover:bg-zinc-800"
+                onClick={() => setLimitedOverviewMoreCycleId("")}
+              >
+                Close
+              </button>
+            </div>
+            <div className="overflow-y-auto rounded-lg border border-zinc-800">
+              {limitedOverviewMoreRows.length === 0 ? (
+                <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
+              ) : (
+                limitedOverviewMoreRows.map((row, index) => (
+                  <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0">
+                    <p className="text-sm text-zinc-200">#{index + 1} {row.playerFullName} · {row.team}</p>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showBallotRosterStatusModal && ballotRosterStatus ? (
         <div
           role="dialog"
@@ -1953,6 +2581,8 @@ export default function AllStarVaultManager({
             </div>
           </div>
         </div>
+      ) : null}
+      </>
       ) : null}
     </section>
   );

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { resequenceCandidateBibNumbers } from "@/lib/allStar/candidates";
+import { isFrozenFirstTeamCycle } from "@/lib/allStar/cycleType";
 import prisma from "@/lib/prisma";
 
 function forbidIfNotMaster() {
@@ -51,6 +52,12 @@ export async function POST(request: NextRequest) {
 
   const cycle = await prisma.allStarBallotCycle.findUnique({ where: { id: cycleId } });
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
+  if (isFrozenFirstTeamCycle(cycle)) {
+    return NextResponse.json(
+      { error: "First-team cycle is frozen while closed. Reopen cycle to edit." },
+      { status: 409 },
+    );
+  }
 
   const created = await prisma.$transaction(async (tx) => {
     const candidate = await tx.allStarCandidate.create({
@@ -82,10 +89,19 @@ export async function DELETE(request: NextRequest) {
   if (body.candidateId) {
     const candidate = await prisma.allStarCandidate.findUnique({
       where: { id: body.candidateId },
-      select: { ballotCycleId: true },
+      select: {
+        ballotCycleId: true,
+        ballotCycle: { select: { status: true, title: true } },
+      },
     });
     if (!candidate) {
       return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
+    }
+    if (isFrozenFirstTeamCycle(candidate.ballotCycle)) {
+      return NextResponse.json(
+        { error: "First-team cycle is frozen while closed. Reopen cycle to edit." },
+        { status: 409 },
+      );
     }
 
     await prisma.$transaction(async (tx) => {
@@ -96,6 +112,17 @@ export async function DELETE(request: NextRequest) {
   }
 
   if (!body.cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
+  const cycle = await prisma.allStarBallotCycle.findUnique({
+    where: { id: body.cycleId },
+    select: { status: true, title: true },
+  });
+  if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
+  if (isFrozenFirstTeamCycle(cycle)) {
+    return NextResponse.json(
+      { error: "First-team cycle is frozen while closed. Reopen cycle to edit." },
+      { status: 409 },
+    );
+  }
 
   const deleted = await prisma.allStarCandidate.deleteMany({
     where: { ballotCycleId: body.cycleId },

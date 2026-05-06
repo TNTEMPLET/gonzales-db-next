@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { isFrozenFirstTeamCycle } from "@/lib/allStar/cycleType";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
@@ -17,25 +18,24 @@ export async function GET(request: NextRequest) {
 
   const cycleId = request.nextUrl.searchParams.get("cycleId");
   if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
+  const cycleMeta = await prisma.allStarBallotCycle.findUnique({
+    where: { id: cycleId },
+    select: { ballotLinkToken: true },
+  });
+  if (!cycleMeta) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
   const baseUrl = `${request.nextUrl.protocol}//${request.nextUrl.host}`;
-  const [cycle, data] = await Promise.all([
-    prisma.allStarBallotCycle.findUnique({
-      where: { id: cycleId },
-      select: { ballotLinkToken: true },
-    }),
-    prisma.allStarInvite.findMany({
-      where: { ballotCycleId: cycleId },
-      include: {
-        invitedUser: { select: { id: true, email: true, firstName: true, lastName: true } },
-      },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
+  const data = await prisma.allStarInvite.findMany({
+    where: { ballotCycleId: cycleId },
+    include: {
+      invitedUser: { select: { id: true, email: true, firstName: true, lastName: true } },
+    },
+    orderBy: { createdAt: "desc" },
+  });
 
   const ballotVotingLink =
-    cycle?.ballotLinkToken != null
-      ? `${baseUrl}/all-star/vote?t=${encodeURIComponent(cycle.ballotLinkToken)}`
+    cycleMeta.ballotLinkToken != null
+      ? `${baseUrl}/all-star/vote?t=${encodeURIComponent(cycleMeta.ballotLinkToken)}`
       : null;
 
   return NextResponse.json({
@@ -81,6 +81,12 @@ export async function POST(request: NextRequest) {
 
   const cycle = await prisma.allStarBallotCycle.findUnique({ where: { id: body.cycleId } });
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
+  if (isFrozenFirstTeamCycle(cycle)) {
+    return NextResponse.json(
+      { error: "First-team cycle is frozen while closed. Reopen cycle to edit." },
+      { status: 409 },
+    );
+  }
 
   const admin = await getAdminUserFromRequest(request);
   const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
@@ -166,13 +172,19 @@ export async function DELETE(request: NextRequest) {
 
   const existing = await prisma.allStarInvite.findUnique({
     where: { id: body.inviteId },
-    include: { ballotCycle: { select: { organizationId: true } } },
+    include: { ballotCycle: { select: { organizationId: true, status: true, title: true } } },
   });
   if (!existing) {
     return NextResponse.json({ error: "Invite not found" }, { status: 404 });
   }
   if (existing.ballotCycle.organizationId !== targetOrg) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (isFrozenFirstTeamCycle(existing.ballotCycle)) {
+    return NextResponse.json(
+      { error: "First-team cycle is frozen while closed. Reopen cycle to edit." },
+      { status: 409 },
+    );
   }
 
   const invite = await prisma.allStarInvite.update({
@@ -199,13 +211,19 @@ export async function PATCH(request: NextRequest) {
 
   const existing = await prisma.allStarInvite.findUnique({
     where: { id: body.inviteId },
-    include: { ballotCycle: { select: { organizationId: true } } },
+    include: { ballotCycle: { select: { organizationId: true, status: true, title: true } } },
   });
   if (!existing) {
     return NextResponse.json({ error: "Invite not found" }, { status: 404 });
   }
   if (existing.ballotCycle.organizationId !== targetOrg) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (isFrozenFirstTeamCycle(existing.ballotCycle)) {
+    return NextResponse.json(
+      { error: "First-team cycle is frozen while closed. Reopen cycle to edit." },
+      { status: 409 },
+    );
   }
 
   const invite = await prisma.allStarInvite.update({

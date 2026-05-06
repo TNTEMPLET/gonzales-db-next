@@ -49,17 +49,19 @@ export async function GET(request: NextRequest) {
 
   const submission = await prisma.allStarVoteSubmission.findUnique({
     where: {
-      ballotCycleId_coachUserId: {
+      ballotCycleId_coachUserId_phase: {
         ballotCycleId: cycle.id,
         coachUserId: voter.id,
+        phase: "FIRST_TEAM",
       },
     },
   });
   const draft = await prisma.allStarVoteDraft.findUnique({
     where: {
-      ballotCycleId_coachUserId: {
+      ballotCycleId_coachUserId_phase: {
         ballotCycleId: cycle.id,
         coachUserId: voter.id,
+        phase: "FIRST_TEAM",
       },
     },
   });

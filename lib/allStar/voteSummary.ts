@@ -1,4 +1,4 @@
-import type { PrismaClient } from "@prisma/client";
+import type { AllStarBallotPhase, PrismaClient } from "@prisma/client";
 
 /** Matches All-Star Votes Panel ordering and filters (active candidates with ≥1 rating only). */
 export type VoteSummaryRow = {
@@ -17,6 +17,7 @@ export type VoteSummaryCycleMeta = {
   ageGroup: string;
   hasShowcase: boolean;
   title: string | null;
+  activePhase: AllStarBallotPhase;
 };
 
 /**
@@ -25,6 +26,7 @@ export type VoteSummaryCycleMeta = {
 export async function computeVoteSummaryRows(
   prisma: PrismaClient,
   cycleId: string,
+  phase?: AllStarBallotPhase,
 ): Promise<{ rows: VoteSummaryRow[]; submissionCount: number; cycle: VoteSummaryCycleMeta } | null> {
   const cycle = await prisma.allStarBallotCycle.findUnique({
     where: { id: cycleId },
@@ -32,16 +34,20 @@ export async function computeVoteSummaryRows(
       candidates: {
         where: { isActive: true },
       },
-      voteSubmissions: {
-        include: { voteItems: true },
-      },
     },
   });
 
   if (!cycle) return null;
+  const voteSubmissions = await prisma.allStarVoteSubmission.findMany({
+    where: {
+      ballotCycleId: cycle.id,
+      phase: phase ?? undefined,
+    },
+    include: { voteItems: true },
+  });
 
   const ratingsByCandidate = new Map<string, number[]>();
-  for (const submission of cycle.voteSubmissions) {
+  for (const submission of voteSubmissions) {
     for (const item of submission.voteItems) {
       const bucket = ratingsByCandidate.get(item.candidateId) || [];
       bucket.push(item.rating);
@@ -75,15 +81,43 @@ export async function computeVoteSummaryRows(
 
   return {
     rows,
-    submissionCount: cycle.voteSubmissions.length,
+    submissionCount: voteSubmissions.length,
     cycle: {
       organizationId: cycle.organizationId,
       seasonYear: cycle.seasonYear,
       ageGroup: cycle.ageGroup,
       hasShowcase: cycle.hasShowcase,
       title: cycle.title ?? null,
+      activePhase: cycle.activePhase,
     },
   };
+}
+
+export function getSecondTeamAutoExclusionCandidateIds(firstPhaseRows: VoteSummaryRow[]) {
+  return new Set(firstPhaseRows.slice(0, 12).map((row) => row.candidateId));
+}
+
+export function computeSecondTeamInclusion(
+  candidates: Array<{
+    id: string;
+    isActive: boolean;
+    excludedFromSecondPhase: boolean;
+    secondPhaseOverrideReason: string | null;
+  }>,
+  autoExcludedIds: Set<string>,
+) {
+  return candidates.filter((candidate) => {
+    if (!candidate.isActive) return false;
+    if (candidate.secondPhaseOverrideReason === "INCLUDE_OVERRIDE") return true;
+    if (
+      candidate.excludedFromSecondPhase ||
+      candidate.secondPhaseOverrideReason === "EXCLUDE_OVERRIDE"
+    ) {
+      return false;
+    }
+    if (autoExcludedIds.has(candidate.id)) return false;
+    return true;
+  });
 }
 
 export type NameOnlyRankRow = { rank: string; displayLine: string };

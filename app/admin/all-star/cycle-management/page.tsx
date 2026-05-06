@@ -1,5 +1,6 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import Link from "next/link";
 
 import {
   canViewAllStarVault,
@@ -16,24 +17,24 @@ import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/
 export function generateMetadata() {
   const site = getSiteConfig();
   return {
-    title: `All-Star Vault | ${site.name}`,
-    description: "Manage AP Baseball All-Star voting cycles and ballots.",
+    title: `Cycle Management | ${site.name}`,
+    description: "Create and edit All-Star ballot cycles.",
   };
 }
 
-export default async function AdminAllStarPage({
+export default async function AdminAllStarCycleManagementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string }>;
+  searchParams: Promise<{ org?: string; cycleId?: string }>;
 }) {
-  const { org } = await searchParams;
+  const { org, cycleId } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org);
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
   if (!adminUser) {
-    redirect("/admin/login?next=/admin/all-star");
+    redirect("/admin/login?next=/admin/all-star/cycle-management");
   }
 
   const effectiveRole = await getEffectiveAdminRoleForOrg(
@@ -71,21 +72,31 @@ export default async function AdminAllStarPage({
           <AdminSectionHeader
             badge="ALL-STAR VAULT"
             currentOrg={currentOrg}
-            currentPath="/admin/all-star"
+            currentPath="/admin/all-star/cycle-management"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
-            All-Star Voting Management
+            All-Star Cycle Management
           </h1>
           <p className="text-zinc-400 max-w-3xl">
-            Manage ballot cycles, import players, assign head coaches, control vault access, publish invite links, and export voting results.
+            Create and edit ballot cycles, then manage status windows, roster imports, invites, and exports.
           </p>
+          <div className="mt-4">
+            <Link
+              href={`/admin/all-star?org=${currentOrg}`}
+              className="inline-flex items-center rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+            >
+              Back to Snapshot Board
+            </Link>
+          </div>
         </div>
 
         <AllStarVaultManager
-          key={currentOrg}
+          key={`${currentOrg}-${cycleId ?? "new"}`}
           initialOrg={currentOrg}
           isMasterMode={isMasterDeployment()}
+          initialSelectedCycleId={cycleId ?? ""}
+          showSnapshotBoardOnInitialFullAccess={false}
           canManageAllStarVault={canManageAllStarVaultUi}
         />
       </section>

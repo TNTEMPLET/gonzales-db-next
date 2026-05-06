@@ -3,6 +3,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
+import { parseAllStarPhase } from "@/lib/allStar/phase";
 import {
   buildNameOnlyVotePdfRows,
   computeVoteSummaryRows,
@@ -39,7 +40,8 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const computed = await computeVoteSummaryRows(prisma, cycleId);
+  const phase = parseAllStarPhase(request.nextUrl.searchParams.get("phase"));
+  const computed = await computeVoteSummaryRows(prisma, cycleId, phase ?? undefined);
   if (!computed) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
   const { rows, cycle } = computed;

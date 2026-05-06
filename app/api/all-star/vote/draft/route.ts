@@ -30,9 +30,10 @@ export async function GET(request: NextRequest) {
 
   const draft = await prisma.allStarVoteDraft.findUnique({
     where: {
-      ballotCycleId_coachUserId: {
+      ballotCycleId_coachUserId_phase: {
         ballotCycleId: cycleId,
         coachUserId: voter.id,
+        phase: "FIRST_TEAM",
       },
     },
   });
@@ -65,9 +66,10 @@ export async function POST(request: NextRequest) {
 
   const alreadySubmitted = await prisma.allStarVoteSubmission.findUnique({
     where: {
-      ballotCycleId_coachUserId: {
+      ballotCycleId_coachUserId_phase: {
         ballotCycleId: body.cycleId,
         coachUserId: voter.id,
+        phase: "FIRST_TEAM",
       },
     },
     select: { id: true },
@@ -78,14 +80,16 @@ export async function POST(request: NextRequest) {
 
   await prisma.allStarVoteDraft.upsert({
     where: {
-      ballotCycleId_coachUserId: {
+      ballotCycleId_coachUserId_phase: {
         ballotCycleId: body.cycleId,
         coachUserId: voter.id,
+        phase: "FIRST_TEAM",
       },
     },
     create: {
       ballotCycleId: body.cycleId,
       coachUserId: voter.id,
+      phase: "FIRST_TEAM",
       organizationId: access.cycle.organizationId,
       ageGroup: access.cycle.ageGroup,
       ratingsPayload: body.ratings,

@@ -99,11 +99,16 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const normalizedTitle = body.title?.trim() || null;
   const admin = await getAdminUserFromRequest(request);
-  const existingCycle = await prisma.allStarBallotCycle.findUnique({
+  const existingCycle = await prisma.allStarBallotCycle.findFirst({
     where: {
-      organizationId_seasonYear_ageGroup: { organizationId, seasonYear, ageGroup },
+      organizationId,
+      seasonYear,
+      ageGroup,
+      title: normalizedTitle,
     },
+    orderBy: { createdAt: "desc" },
   });
 
   if (existingCycle) {
@@ -163,6 +168,7 @@ export async function PATCH(request: NextRequest) {
     title?: string | null;
     publishedAt?: string | null;
     closedAt?: string | null;
+    activePhase?: "FIRST_TEAM" | "SECOND_TEAM";
   };
 
   if (!body.cycleId) {
@@ -234,6 +240,7 @@ export async function PATCH(request: NextRequest) {
       title: body.title === undefined ? undefined : body.title?.trim() || null,
       publishedAt: effectivePublishedAt,
       closedAt: effectiveClosedAt,
+      activePhase: body.activePhase,
     },
   });
 
