@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
@@ -37,7 +37,10 @@ export default async function AdminSocialPage() {
     <main className="min-h-screen bg-zinc-950 text-white py-14 pb-24">
       <section className="max-w-6xl mx-auto px-6">
         <div className="mb-8">
-          <AdminSectionHeader badge="SOCIAL MEDIA" />
+          <AdminSectionHeader
+            badge="SOCIAL MEDIA"
+            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+          />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Social media
           </h1>

@@ -1,17 +1,20 @@
 import Link from "next/link";
 import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
+import AdminRolePreviewControl from "@/components/admin/AdminRolePreviewControl";
 import { isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
 
 type AdminSectionHeaderProps = {
   badge: string;
   currentOrg?: ContentOrgId;
   currentPath?: string;
+  allowRolePreview?: boolean;
 };
 
 export default function AdminSectionHeader({
   badge,
   currentOrg,
   currentPath,
+  allowRolePreview = false,
 }: AdminSectionHeaderProps) {
   const adminHref = currentOrg ? `/admin?org=${currentOrg}` : "/admin";
 
@@ -36,6 +39,7 @@ export default function AdminSectionHeader({
                 currentPath={currentPath}
               />
             ) : null}
+            <AdminRolePreviewControl enabled={allowRolePreview} />
             <Link
               href={adminHref}
               className="inline-flex items-center gap-2 text-sm font-semibold text-red-200 transition hover:text-red-100"
@@ -55,7 +59,8 @@ export default function AdminSectionHeader({
         {badge}
       </div>
       <div className="flex items-center gap-4 text-sm">
-        {currentOrg && currentPath ? (
+        <AdminRolePreviewControl enabled={allowRolePreview} />
+        {isMasterDeployment() && currentOrg && currentPath ? (
           <AdminOrgSwitcher currentOrg={currentOrg} currentPath={currentPath} />
         ) : null}
         <Link

@@ -1,25 +1,33 @@
-import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import {
   canAccessAdminModule,
+  hasAdminRoleAtLeast,
   toAdminRole,
   type AdminModule,
 } from "@/lib/auth/adminRoles";
+import { canViewAllStarVault } from "@/lib/allStar/auth";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
 import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
+import AdminRolePreviewControl from "@/components/admin/AdminRolePreviewControl";
+import AdminDashboardModuleGrid from "@/components/admin/AdminDashboardModuleGrid";
 import {
+  CONTENT_ORGS,
+  getDefaultContentOrg,
   getOrgDisplayName,
   getSiteConfig,
   getSiteConfigForOrg,
   isMasterDeployment,
-  resolveAdminTargetOrg,
+  type ContentOrgId,
 } from "@/lib/siteConfig";
 import { isCommunicationsModuleEnabled } from "@/lib/communications/config";
+import prisma from "@/lib/prisma";
+import { inferDefaultAdminTargetOrgForMasterDashboard } from "@/lib/auth/inferDefaultAdminTargetOrg";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -36,7 +44,11 @@ export default async function AdminDashboardPage({
   searchParams: Promise<{ org?: string }>;
 }) {
   const { org } = await searchParams;
-  const currentOrg = resolveAdminTargetOrg(org);
+  const masterMode = isMasterDeployment();
+  const requestedOrg =
+    org && CONTENT_ORGS.includes(org as ContentOrgId)
+      ? (org as ContentOrgId)
+      : null;
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
@@ -46,20 +58,72 @@ export default async function AdminDashboardPage({
     redirect("/admin/login?next=/admin");
   }
 
+  if (masterMode && !requestedOrg && !adminUser.isMaster) {
+    const inferred = await inferDefaultAdminTargetOrgForMasterDashboard(
+      adminUser.id,
+      adminUser.email,
+      adminUser.isMaster,
+    );
+    if (inferred) {
+      redirect(`/admin?org=${inferred}`);
+    }
+  }
+
+  const currentOrg = masterMode ? requestedOrg : getDefaultContentOrg();
+
   const displayName =
     [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") ||
     adminUser.name ||
     adminUser.email;
-  const adminRole = toAdminRole(adminUser.role, adminUser.isMaster);
+  const roleByOrg = {
+    gonzales:
+      (await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, "gonzales")) ??
+      toAdminRole(adminUser.role, adminUser.isMaster),
+    ascension:
+      (await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, "ascension")) ??
+      toAdminRole(adminUser.role, adminUser.isMaster),
+  };
+  const adminRole = currentOrg ? roleByOrg[currentOrg] : toAdminRole(adminUser.role, adminUser.isMaster);
+  const allowRolePreview = hasAdminRoleAtLeast(adminRole, "ADMIN");
   const communicationsEnabled = isCommunicationsModuleEnabled();
+  const allStarLinkedUsers = await prisma.registeredUser.findMany({
+    where: { email: { equals: adminUser.email, mode: "insensitive" } },
+    select: { id: true, organizationId: true },
+  });
+  const allStarVaultViewByOrg: Record<ContentOrgId, boolean> = {
+    gonzales: false,
+    ascension: false,
+  };
+  for (const row of allStarLinkedUsers) {
+    if (row.organizationId !== "gonzales" && row.organizationId !== "ascension") continue;
+    if (await canViewAllStarVault(row.id, row.organizationId)) {
+      allStarVaultViewByOrg[row.organizationId] = true;
+    }
+  }
+  const allStarVaultView = currentOrg
+    ? allStarVaultViewByOrg[currentOrg]
+    : allStarVaultViewByOrg.gonzales || allStarVaultViewByOrg.ascension;
 
-  const orgQuery = `?org=${currentOrg}`;
-  const masterMode = isMasterDeployment();
-  const currentSite = getSiteConfigForOrg(currentOrg);
+  const currentSite = currentOrg ? getSiteConfigForOrg(currentOrg) : null;
+  const hasModuleAccess = (orgId: ContentOrgId, module: AdminModule) => {
+    if (module === "ALL_STAR_VAULT") {
+      return canAccessAdminModule(roleByOrg[orgId], module) || allStarVaultViewByOrg[orgId];
+    }
+    return canAccessAdminModule(roleByOrg[orgId], module);
+  };
+  const hasModuleAnyOrg = (module: AdminModule) =>
+    hasModuleAccess("gonzales", module) || hasModuleAccess("ascension", module);
+  const preferredOrgForModule = (module: AdminModule): ContentOrgId => {
+    if (currentOrg) return currentOrg;
+    if (hasModuleAccess("ascension", module)) return "ascension";
+    return "gonzales";
+  };
+  const moduleHref = (basePath: string, module: AdminModule) =>
+    `${basePath}?org=${preferredOrgForModule(module)}`;
   const cards = [
     {
       module: "USERS" as AdminModule,
-      href: `/admin/users${orgQuery}`,
+      href: moduleHref("/admin/users", "USERS"),
       title: "User Management",
       description: masterMode
         ? "Control admin access, role elevation, and account governance for the active organization."
@@ -68,7 +132,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "TEAMS" as AdminModule,
-      href: `/admin/teams${orgQuery}`,
+      href: moduleHref("/admin/teams", "TEAMS"),
       title: "Teams Management",
       description: masterMode
         ? "Import players, build rosters, assign coaches, and maintain team operations by site."
@@ -77,7 +141,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "SPONSORS" as AdminModule,
-      href: `/admin/sponsors${orgQuery}`,
+      href: moduleHref("/admin/sponsors", "SPONSORS"),
       title: "Sponsors",
       description: masterMode
         ? "Manage sponsorship packages, logo assets, and site placements for footer sponsorship visibility."
@@ -86,7 +150,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "SCORES" as AdminModule,
-      href: `/admin/scores${orgQuery}`,
+      href: moduleHref("/admin/scores", "SCORES"),
       title: "Scores & Standings",
       description: masterMode
         ? "Capture game outcomes, correct results, and keep standings accurate for the selected site."
@@ -95,7 +159,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "NEWS_ADMIN" as AdminModule,
-      href: `/news/admin${orgQuery}`,
+      href: moduleHref("/news/admin", "NEWS_ADMIN"),
       title: "News Management",
       description: masterMode
         ? "Coordinate announcements, featured stories, and publishing cadence from the AP Baseball desk."
@@ -122,7 +186,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "DUGOUT_MODERATION" as AdminModule,
-      href: `/admin/dugout${orgQuery}`,
+      href: moduleHref("/admin/dugout", "DUGOUT_MODERATION"),
       title: "Dugout Moderation",
       description: masterMode
         ? "Monitor internal coach conversations and enforce moderation standards from one command post."
@@ -131,7 +195,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "REPORTS" as AdminModule,
-      href: `/admin/reports${orgQuery}`,
+      href: moduleHref("/admin/reports", "REPORTS"),
       title: "Reporting",
       description: masterMode
         ? "Run umpire payout reports and operational summaries from the AP Baseball reporting desk."
@@ -140,7 +204,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "ALL_STAR_VAULT" as AdminModule,
-      href: `/admin/all-star${orgQuery}`,
+      href: moduleHref("/admin/all-star", "ALL_STAR_VAULT"),
       title: "All-Star Vault",
       description: masterMode
         ? "Manage All-Star voting cycles, invitations, and exports for both organizations."
@@ -149,7 +213,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "COMMUNICATIONS" as AdminModule,
-      href: `/admin/communications${orgQuery}`,
+      href: moduleHref("/admin/communications", "COMMUNICATIONS"),
       title: "Communications",
       description: masterMode
         ? "Coordinate approved broadcast communications across organizations with audience targeting."
@@ -158,26 +222,30 @@ export default async function AdminDashboardPage({
     },
   ]
     .filter((card) => (card.module === "COMMUNICATIONS" ? communicationsEnabled : true))
-    .filter((card) => canAccessAdminModule(adminRole, card.module));
+    .filter((card) =>
+      currentOrg ? hasModuleAccess(currentOrg, card.module) : hasModuleAnyOrg(card.module),
+    );
 
   const statusChips = [
     {
       label: "Platform",
       value: masterMode ? "AP Baseball Master" : getOrgDisplayName(currentOrg),
     },
-    { label: "Target Site", value: getOrgDisplayName(currentOrg) },
+    { label: "Target Site", value: currentOrg ? getOrgDisplayName(currentOrg) : "Not selected" },
     {
       label: "Endpoint",
-      value: currentSite.siteUrl.replace("https://", ""),
-      href: currentSite.siteUrl,
+      value: currentSite ? currentSite.siteUrl.replace("https://", "") : "Select a target site",
+      href: currentSite ? currentSite.siteUrl : undefined,
     },
   ];
 
   const oversightCards = [
     {
       title: "Organization Target",
-      value: getOrgDisplayName(currentOrg),
-      detail: `Operations currently pointed at ${currentSite.name}.`,
+      value: currentOrg ? getOrgDisplayName(currentOrg) : "Not selected",
+      detail: currentOrg
+        ? `Operations currently pointed at ${currentSite?.name}.`
+        : "Choose a target site or continue with access-based module defaults.",
     },
     {
       title: "Publishing Scope",
@@ -244,7 +312,14 @@ export default async function AdminDashboardPage({
             </div>
 
             <div className="flex flex-col gap-4 xl:min-w-[320px] xl:max-w-90">
-              <AdminOrgSwitcher currentOrg={currentOrg} currentPath="/admin" />
+              {masterMode ? (
+                <AdminOrgSwitcher currentOrg={currentOrg} currentPath="/admin" />
+              ) : null}
+              <AdminRolePreviewControl
+                enabled={allowRolePreview}
+                currentOrg={currentOrg ?? undefined}
+                allowViewByUser={adminUser.isMaster}
+              />
               {masterMode ? (
                 <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-4">
                   <p className="text-[10px] uppercase tracking-[0.28em] text-zinc-500">
@@ -310,34 +385,12 @@ export default async function AdminDashboardPage({
           </div>
         ) : null}
 
-        <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-          {cards.map((card) => (
-            <article
-              key={card.href}
-              className={`rounded-3xl border p-6 ${
-                masterMode
-                  ? "border-zinc-800 bg-[linear-gradient(180deg,rgba(24,24,27,0.9),rgba(9,9,11,0.95))] shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
-                  : "border-zinc-800 bg-zinc-900/70"
-              }`}
-            >
-              <div className="mb-3 inline-flex rounded-full border border-zinc-700 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-                {masterMode ? "Control Module" : "Admin"}
-              </div>
-              <h2 className="text-2xl font-semibold mb-2">{card.title}</h2>
-              <p className="text-zinc-400 text-sm mb-5">{card.description}</p>
-              <Link
-                href={card.href}
-                className={`inline-block text-sm font-semibold ${
-                  masterMode
-                    ? "text-red-100 hover:text-red-50"
-                    : "text-brand-gold hover:text-brand-gold/80"
-                }`}
-              >
-                {card.action}
-              </Link>
-            </article>
-          ))}
-        </div>
+        <AdminDashboardModuleGrid
+          cards={cards}
+          masterMode={masterMode}
+          allowRolePreview={allowRolePreview}
+          allStarVaultView={allStarVaultView}
+        />
       </section>
     </main>
   );

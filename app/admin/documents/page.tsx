@@ -47,7 +47,10 @@ export default async function AdminDocumentsPage() {
     <main className="min-h-screen bg-zinc-950 text-white py-14 pb-24">
       <section className="max-w-6xl mx-auto px-6">
         <div className="mb-8">
-          <AdminSectionHeader badge="ORG DOCUMENTS" />
+          <AdminSectionHeader
+            badge="ORG DOCUMENTS"
+            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+          />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Organization documents
           </h1>
