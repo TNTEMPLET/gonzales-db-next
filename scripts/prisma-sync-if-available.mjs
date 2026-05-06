@@ -17,6 +17,15 @@ if (!databaseUrl) {
   process.exit(0);
 }
 
+// Vercel build workers often cannot reach the DB (P1001). Schema should be applied with
+// `prisma migrate deploy` (or db push) from CI or a machine that can connect—not during `next build`.
+if (process.env.VERCEL === "1" || process.env.SKIP_PRISMA_SYNC === "1") {
+  console.log(
+    "[prisma-sync] Skipping prisma db push and bootstrap (Vercel or SKIP_PRISMA_SYNC).",
+  );
+  process.exit(0);
+}
+
 console.log("[prisma-sync] Running prisma db push...");
 const result = spawnSync("npx", ["prisma", "db", "push"], {
   stdio: "inherit",
