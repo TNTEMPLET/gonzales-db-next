@@ -94,6 +94,56 @@ type CandidateBulkUpdateDraft = {
   secondPhaseOverrideReason: string;
 };
 
+type ModulePreset = "OPERATIONS" | "ROSTER" | "ACCESS";
+type EditModuleKey =
+  | "cycle"
+  | "candidates"
+  | "coaches"
+  | "submitted"
+  | "votes"
+  | "sample"
+  | "access"
+  | "invites";
+
+type EditModuleVisibility = Record<EditModuleKey, boolean>;
+
+function getVisibilityForPreset(preset: ModulePreset): EditModuleVisibility {
+  if (preset === "ROSTER") {
+    return {
+      cycle: true,
+      candidates: true,
+      coaches: true,
+      submitted: true,
+      votes: true,
+      sample: true,
+      access: false,
+      invites: false,
+    };
+  }
+  if (preset === "ACCESS") {
+    return {
+      cycle: true,
+      candidates: false,
+      coaches: false,
+      submitted: false,
+      votes: false,
+      sample: false,
+      access: true,
+      invites: true,
+    };
+  }
+  return {
+    cycle: true,
+    candidates: true,
+    coaches: false,
+    submitted: false,
+    votes: true,
+    sample: false,
+    access: false,
+    invites: false,
+  };
+}
+
 type AllStarVaultManagerProps = {
   initialOrg: "gonzales" | "ascension";
   isMasterMode: boolean;
@@ -320,6 +370,10 @@ export default function AllStarVaultManager({
   );
   const [canDeleteCycles, setCanDeleteCycles] = useState(false);
   const [showEditModules, setShowEditModules] = useState(false);
+  const [modulePreset, setModulePreset] = useState<ModulePreset>("OPERATIONS");
+  const [moduleVisibility, setModuleVisibility] = useState<EditModuleVisibility>(
+    getVisibilityForPreset("OPERATIONS"),
+  );
 
   const previewCanViewAllStar =
     previewRole === "BOARD_MEMBER" || previewRole === "PARK_DIRECTOR" ? false : true;
@@ -415,6 +469,10 @@ export default function AllStarVaultManager({
     setError("");
     setNotice("");
   }, [initialOrg]);
+
+  useEffect(() => {
+    setModuleVisibility(getVisibilityForPreset(modulePreset));
+  }, [modulePreset]);
 
   useEffect(() => {
     if (cycles.length === 0) return;
@@ -2184,7 +2242,6 @@ export default function AllStarVaultManager({
 
       {showFullAdminManagementChrome ? (
       <>
-      {showEditModules ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -2205,9 +2262,51 @@ export default function AllStarVaultManager({
           <p className="text-xs text-zinc-500">
             Editing is collapsed. Expand to work in Cycle Management, Candidates, and Votes.
           </p>
-        ) : null}
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
+            <label className="text-xs uppercase tracking-wide text-zinc-500">Preset</label>
+            <select
+              value={modulePreset}
+              onChange={(event) => setModulePreset(event.target.value as ModulePreset)}
+              className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-xs"
+            >
+              <option value="OPERATIONS">Operations</option>
+              <option value="ROSTER">Roster + Voting</option>
+              <option value="ACCESS">Access + Invites</option>
+            </select>
+            <div className="flex flex-wrap items-center gap-2 ml-2">
+              {(
+                [
+                  ["cycle", "Cycle"],
+                  ["candidates", "Candidates"],
+                  ["coaches", "Coaches"],
+                  ["submitted", "Ballots"],
+                  ["votes", "Votes"],
+                  ["sample", "Sample"],
+                  ["access", "Access"],
+                  ["invites", "Invites"],
+                ] as Array<[EditModuleKey, string]>
+              ).map(([key, label]) => (
+                <button
+                  key={key}
+                  type="button"
+                  onClick={() =>
+                    setModuleVisibility((current) => ({ ...current, [key]: !current[key] }))
+                  }
+                  className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${
+                    moduleVisibility[key]
+                      ? "border-emerald-700 bg-emerald-950/30 text-emerald-200"
+                      : "border-zinc-700 bg-zinc-950 text-zinc-400"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
-      {showEditModules ? (
+      {showEditModules && moduleVisibility.cycle ? (
       <div ref={cycleManagementRef} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Cycle Management</h2>
         <div className="flex flex-wrap items-center justify-start gap-3">
@@ -2354,7 +2453,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules ? (
+      {showEditModules && moduleVisibility.candidates ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Candidates Import</h2>
@@ -2664,7 +2763,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules ? (
+      {showEditModules && moduleVisibility.coaches ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Coaches</h2>
         <div className="grid md:grid-cols-3 gap-3">
@@ -2706,7 +2805,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules ? (
+      {showEditModules && moduleVisibility.submitted ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Submitted Ballots</h2>
         <p className="text-xs text-zinc-400">
@@ -2776,6 +2875,7 @@ export default function AllStarVaultManager({
         </div>
       </div>
 
+      {moduleVisibility.votes ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Votes Panel</h2>
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -2859,8 +2959,9 @@ export default function AllStarVaultManager({
         </div>
       </div>
       ) : null}
+      ) : null}
 
-      {showEditModules ? (
+      {showEditModules && moduleVisibility.sample ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
         <h2 className="text-lg font-semibold">Sample Ballot</h2>
         <p className="text-xs text-zinc-400">
@@ -2897,6 +2998,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
+      {showEditModules && moduleVisibility.access ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">All-Star Vault Access</h2>
         {isMasterMode ? (
@@ -2963,7 +3065,9 @@ export default function AllStarVaultManager({
           ))}
         </div>
       </div>
+      ) : null}
 
+      {showEditModules && moduleVisibility.invites ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Invites And Exports</h2>
         <div className="rounded-lg border border-zinc-700 bg-zinc-950/40 p-4 space-y-3">
@@ -3118,6 +3222,7 @@ export default function AllStarVaultManager({
           </div>
         ) : null}
       </div>
+      ) : null}
       ) : null}
 
       {pendingBulkDelete ? (
