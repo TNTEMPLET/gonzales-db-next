@@ -1515,6 +1515,9 @@ export default function AllStarVaultManager({
   function openCycleFromCard(cycleId: string) {
     setLimitedOverviewMoreCycleId("");
     setSelectedCycleId(cycleId);
+    if (showSnapshotBoardOnInitialFullAccess) {
+      setShowEditModules(true);
+    }
   }
 
   function editCycleFromCard(cycleId: string) {
@@ -2293,6 +2296,78 @@ export default function AllStarVaultManager({
           >
             ← Back to cycle board
           </button>
+        </div>
+      ) : null}
+
+      {showBackToCycleBoardShortcut && selectedCycle ? (
+        <div className="rounded-xl border border-emerald-800/45 bg-emerald-950/20 p-5 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1 min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400/90">
+                Selected cycle (vault view)
+              </p>
+              <h2 className="text-lg font-semibold text-zinc-100 leading-snug">
+                {formatOrganizationLabel(selectedCycle.organizationId)} · {selectedCycle.seasonYear} ·{" "}
+                {getDisplayedCycleAgeGroup(selectedCycle)} ·{" "}
+                {getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
+              </h2>
+              <p className="text-sm text-zinc-400 truncate" title={getCycleDisplayTitle(selectedCycle)}>
+                {getCycleDisplayTitle(selectedCycle)}
+              </p>
+            </div>
+            <span
+              className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(selectedCycle.status)}`}
+            >
+              {selectedCycle.status}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-zinc-400">
+            <span>
+              Candidates:{" "}
+              <span className="font-semibold text-zinc-200 tabular-nums">{candidates.length}</span>
+            </span>
+            {ballotRosterStatus ? (
+              <span>
+                Ballots in:{" "}
+                <span className="font-semibold text-zinc-200 tabular-nums">
+                  {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
+                </span>
+                <span className="text-zinc-500"> · {ballotRosterStatus.rosterLabelShort}</span>
+              </span>
+            ) : null}
+            <span>
+              Vote standings:{" "}
+              <span className="font-semibold text-zinc-200 tabular-nums">{voteSummary.length}</span>
+            </span>
+            <span className="text-zinc-500">
+              {selectedCycle.accessMode === "INVITE_LIST" ? "Invite list access" : "Age-group coach access"}
+              {selectedCycle.hasShowcase ? " · Showcase" : ""}
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500 max-w-2xl">
+            You left the snapshot board for this ballot. Editing tools are below (toggle with{" "}
+            <span className="text-zinc-400">Hide Edit Modules</span> when you want a calmer screen). Use{" "}
+            <span className="text-zinc-400">Full cycle editor</span> for the dedicated cycle page.
+          </p>
+          <div className="flex flex-wrap items-center gap-2">
+            {!showEditModules ? (
+              <button
+                type="button"
+                onClick={() => setShowEditModules(true)}
+                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold text-white"
+              >
+                Show editing tools
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => editCycleFromCard(selectedCycle.id)}
+              className="inline-flex items-center gap-2 rounded-lg border border-emerald-700/80 text-emerald-200 px-4 py-2 text-sm hover:bg-emerald-950/35"
+            >
+              <EditCycleIcon />
+              Full cycle editor
+            </button>
+          </div>
         </div>
       ) : null}
 
