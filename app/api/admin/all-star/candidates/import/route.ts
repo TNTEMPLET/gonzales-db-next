@@ -25,6 +25,16 @@ function forbidIfNotMaster() {
   return null;
 }
 
+function normalizeAgeBandFilter(value: string | null | undefined) {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "11U" || normalized === "12U" || normalized === "BOTH") return normalized;
+  return null;
+}
+
+function requiresAgeBandFilterForCycle(organizationId: string, ageGroup: string) {
+  return organizationId === "gonzales" && ageGroup.trim().toUpperCase().startsWith("12U");
+}
+
 export async function POST(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
@@ -34,6 +44,9 @@ export async function POST(request: NextRequest) {
   const form = await request.formData();
   const cycleId = String(form.get("cycleId") || "");
   const source = String(form.get("source") || "").trim().toLowerCase();
+  const ageBandFilter = normalizeAgeBandFilter(
+    typeof form.get("ageBandFilter") === "string" ? String(form.get("ageBandFilter")) : null,
+  );
   const file = form.get("file");
   if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
 
@@ -47,12 +60,18 @@ export async function POST(request: NextRequest) {
   }
 
   if (source === "teams") {
+    if (requiresAgeBandFilterForCycle(cycle.organizationId, cycle.ageGroup) && !ageBandFilter) {
+      return NextResponse.json(
+        { error: "Select All-Star age filter (11U, 12U, or BOTH) for 12U DYB imports." },
+        { status: 400 },
+      );
+    }
     const result = await importCandidatesFromTeamsForCycle(prisma, {
       id: cycle.id,
       organizationId: cycle.organizationId,
       seasonYear: cycle.seasonYear,
       ageGroup: cycle.ageGroup,
-    });
+    }, ageBandFilter || "BOTH");
     return NextResponse.json({
       success: true,
       source: "teams",

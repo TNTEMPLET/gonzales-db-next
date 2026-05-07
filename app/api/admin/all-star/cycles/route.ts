@@ -14,6 +14,18 @@ function forbidIfNotMaster() {
   return null;
 }
 
+function normalizeAgeBandFilter(value: unknown): "11U" | "12U" | "BOTH" | null {
+  const normalized = String(value || "").trim().toUpperCase();
+  if (normalized === "11U" || normalized === "12U" || normalized === "BOTH") {
+    return normalized;
+  }
+  return null;
+}
+
+function requiresAgeBandFilterForCycle(organizationId: string, ageGroup: string) {
+  return organizationId === "gonzales" && ageGroup.trim().toUpperCase().startsWith("12U");
+}
+
 async function canDeleteCycles(request: NextRequest) {
   const admin = await getAdminUserFromRequest(request);
   if (!admin) return false;
@@ -87,6 +99,7 @@ export async function POST(request: NextRequest) {
     title?: string;
     accessMode?: "INVITE_LIST" | "AGE_GROUP_COACHES";
     hasShowcase?: boolean;
+    autoImportAgeBandFilter?: "11U" | "12U" | "BOTH";
   };
 
   const organizationId = resolveAdminTargetOrg(body.organizationId);
@@ -98,6 +111,7 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const ageBandFilter = normalizeAgeBandFilter(body.autoImportAgeBandFilter) || "BOTH";
 
   const normalizedTitle = body.title?.trim() || null;
   const admin = await getAdminUserFromRequest(request);
@@ -127,6 +141,15 @@ export async function POST(request: NextRequest) {
       autoImport: { created: 0, skipped: 0, processed: 0, imported: false },
     });
   }
+  if (
+    requiresAgeBandFilterForCycle(organizationId, ageGroup) &&
+    !normalizeAgeBandFilter(body.autoImportAgeBandFilter)
+  ) {
+    return NextResponse.json(
+      { error: "Select All-Star age filter (11U, 12U, or BOTH) for 12U DYB cycle imports." },
+      { status: 400 },
+    );
+  }
 
   const created = await prisma.allStarBallotCycle.create({
     data: {
@@ -144,7 +167,7 @@ export async function POST(request: NextRequest) {
     organizationId: created.organizationId,
     seasonYear: created.seasonYear,
     ageGroup: created.ageGroup,
-  });
+  }, ageBandFilter);
 
   return NextResponse.json({
     success: true,

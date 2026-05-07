@@ -14,6 +14,12 @@ function normalizeDate(value: string | null | undefined) {
   return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function normalizeAllStarAgeBand(value: string | null | undefined) {
+  const normalized = value?.trim().toUpperCase() || "";
+  if (normalized === "11U" || normalized === "12U") return normalized;
+  return null;
+}
+
 export async function GET(request: NextRequest) {
   const auth = await ensureAdminModule(request, "TEAMS");
   if (!auth.ok) {
@@ -86,6 +92,7 @@ export async function POST(request: NextRequest) {
     city?: string | null;
     state?: string | null;
     postalCode?: string | null;
+    allStarAgeBand?: string | null;
   };
   if (!body.teamId || !body.fullName?.trim()) {
     return NextResponse.json(
@@ -135,6 +142,7 @@ export async function POST(request: NextRequest) {
       city: normalizeString(body.city),
       state: normalizeString(body.state),
       postalCode: normalizeString(body.postalCode),
+      allStarAgeBand: normalizeAllStarAgeBand(body.allStarAgeBand),
     },
   });
   return NextResponse.json({ success: true, player: created });
@@ -182,6 +190,7 @@ export async function PATCH(request: NextRequest) {
     city?: string | null;
     state?: string | null;
     postalCode?: string | null;
+    allStarAgeBand?: string | null;
   };
   if (!body.playerId) {
     return NextResponse.json({ error: "playerId is required" }, { status: 400 });
@@ -263,6 +272,10 @@ export async function PATCH(request: NextRequest) {
       state: body.state === undefined ? undefined : normalizeString(body.state),
       postalCode:
         body.postalCode === undefined ? undefined : normalizeString(body.postalCode),
+      allStarAgeBand:
+        body.allStarAgeBand === undefined
+          ? undefined
+          : normalizeAllStarAgeBand(body.allStarAgeBand),
     },
   });
   return NextResponse.json({ success: true, player: updated });

@@ -17,6 +17,13 @@ type UndoSnapshot = {
     data: Record<string, unknown>;
   }>;
 };
+type ImportSkipDetail = {
+  rowNumber: number | null;
+  reason: string;
+  playerName?: string;
+  ageGroup?: string;
+  teamName?: string;
+};
 
 function getRowValue(row: Row, keys: string[]) {
   for (const key of keys) {
@@ -26,6 +33,15 @@ function getRowValue(row: Row, keys: string[]) {
     if (parsed) return parsed;
   }
   return "";
+}
+
+function normalizeLooseName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseSeasonYearFromProgramName(programName: string) {
@@ -60,6 +76,29 @@ function parseDateValue(value: string) {
   if (!trimmed) return null;
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function parseAllStarAgeBand(raw: string | null | undefined) {
+  const value = String(raw || "").trim().toUpperCase();
+  if (value === "11U" || value === "12U") return value;
+  if (value === "11" || value === "11 YEAR" || value === "11 YEARS") return "11U";
+  if (value === "12" || value === "12 YEAR" || value === "12 YEARS") return "12U";
+  return null;
+}
+
+function deriveAllStarAgeBandFromBirthDate(birthDate: Date | null, cutoffDate: Date | null) {
+  if (!birthDate || !cutoffDate) return null;
+  let age = cutoffDate.getUTCFullYear() - birthDate.getUTCFullYear();
+  const monthDiff = cutoffDate.getUTCMonth() - birthDate.getUTCMonth();
+  if (
+    monthDiff < 0 ||
+    (monthDiff === 0 && cutoffDate.getUTCDate() < birthDate.getUTCDate())
+  ) {
+    age -= 1;
+  }
+  if (age === 11) return "11U";
+  if (age === 12) return "12U";
+  return null;
 }
 
 function parseDivisionMappings(
@@ -105,6 +144,50 @@ function toInputJson(value: unknown): Prisma.InputJsonValue {
   return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
 }
 
+const TEAM_PLAYER_UNDO_ALLOWED_FIELDS = new Set([
+  "firstName",
+  "lastName",
+  "fullName",
+  "contactPhone",
+  "gender",
+  "birthDate",
+  "guardianFirstName",
+  "guardianLastName",
+  "guardianEmail",
+  "guardianPhone",
+  "paymentStatus",
+  "birthCertificateStatus",
+  "registrationOrderNo",
+  "registrationOrderDate",
+  "jerseySize",
+  "medicalConditionsSummary",
+  "medicalConditionsDetails",
+  "medicalTreatmentAuthorized",
+  "liabilityWaiverAccepted",
+  "codeOfConductAccepted",
+  "refundPolicyAccepted",
+  "playedPriorSeason",
+  "priorSeasonTeamInfo",
+  "streetAddress",
+  "unit",
+  "city",
+  "state",
+  "postalCode",
+  "rosterStatus",
+  "jerseyNumber",
+  "allStarAgeBand",
+]);
+
+function sanitizeUndoTeamPlayerData(data: Record<string, unknown>) {
+  const safe: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(data)) {
+    if (TEAM_PLAYER_UNDO_ALLOWED_FIELDS.has(key)) {
+      safe[key] = value;
+    }
+  }
+  return safe;
+}
+
 async function applyImportRows(params: {
   rows: Row[];
   targetOrg: string;
@@ -112,6 +195,11 @@ async function applyImportRows(params: {
   explicitSeasonYear: number | null;
   divisionMappings: Map<string, string>;
   batchId: string;
+  confirmedAgeGroup?: string | null;
+  confirmedTeamName?: string | null;
+  updateExistingOnly?: boolean;
+  teamMappings?: Map<string, string>;
+  allStarCutoffDate?: Date | null;
 }) {
   const {
     rows,
@@ -120,12 +208,20 @@ async function applyImportRows(params: {
     explicitSeasonYear,
     divisionMappings,
     batchId,
+    confirmedAgeGroup,
+    confirmedTeamName,
+    updateExistingOnly = false,
+    teamMappings = new Map(),
+    allStarCutoffDate = null,
   } = params;
   let processed = 0;
   let createdTeams = 0;
   let createdPlayers = 0;
   let updatedPlayers = 0;
   let skipped = 0;
+  let skippedByScope = 0;
+  let skippedMissingExisting = 0;
+  const skippedDetails: ImportSkipDetail[] = [];
   const teamCache = new Map<string, string>();
   const batch = await prisma.teamPlayerImportBatch.findUnique({
     where: { id: batchId },
@@ -139,6 +235,25 @@ async function applyImportRows(params: {
   }
   const undoPayload = (batch.undoPayload ?? emptyUndoPayload()) as UndoSnapshot;
   const updatedSeen = new Set(undoPayload.updatedPlayers.map((entry) => entry.id));
+  const pushSkipDetail = (
+    row: Row,
+    reason: string,
+    context?: { playerName?: string; ageGroup?: string; teamName?: string },
+  ) => {
+    if (skippedDetails.length >= 20) return;
+    const rawRowNumber = row.__importRowNumber;
+    const parsedRowNumber =
+      typeof rawRowNumber === "number"
+        ? rawRowNumber
+        : typeof rawRowNumber === "string"
+          ? Number(rawRowNumber)
+          : Number.NaN;
+    skippedDetails.push({
+      rowNumber: Number.isFinite(parsedRowNumber) && parsedRowNumber > 0 ? parsedRowNumber : null,
+      reason,
+      ...context,
+    });
+  };
 
   for (const row of rows) {
     processed += 1;
@@ -153,16 +268,48 @@ async function applyImportRows(params: {
       getRowValue(row, ["Division Name", "Age Group", "age_group", "AGE_GROUP"]) || "";
     if (shouldSkipDivisionImport(rawAgeGroup)) {
       skipped += 1;
+      pushSkipDetail(row, "Division is excluded from player imports", {
+        ageGroup: rawAgeGroup || undefined,
+      });
       continue;
     }
     const mappedAgeGroup = divisionMappings.get(rawAgeGroup.trim().toLowerCase());
     const ageGroup = mappedAgeGroup || rawAgeGroup;
-    const teamName =
+    const rawTeamName =
       getRowValue(row, ["Team Name", "team_name", "assigned_team", "ASSIGNED_TEAM"]) || "";
+    const teamName = teamMappings.get(normalizeLooseName(rawTeamName)) || rawTeamName;
     const programName = getRowValue(row, ["Program Name", "Season", "season"]);
     const seasonYear = explicitSeasonYear || parseSeasonYearFromProgramName(programName);
     if (!ageGroup || !teamName || !seasonYear) {
       skipped += 1;
+      pushSkipDetail(row, "Missing required age group, team name, or season year", {
+        ageGroup: ageGroup || undefined,
+        teamName: teamName || undefined,
+      });
+      continue;
+    }
+    if (
+      confirmedAgeGroup &&
+      ageGroup.trim().toLowerCase() !== confirmedAgeGroup.trim().toLowerCase()
+    ) {
+      skipped += 1;
+      skippedByScope += 1;
+      pushSkipDetail(row, "Outside confirmed import scope (age group mismatch)", {
+        ageGroup,
+        teamName,
+      });
+      continue;
+    }
+    if (
+      confirmedTeamName &&
+      teamName.trim().toLowerCase() !== confirmedTeamName.trim().toLowerCase()
+    ) {
+      skipped += 1;
+      skippedByScope += 1;
+      pushSkipDetail(row, "Outside confirmed import scope (team mismatch)", {
+        ageGroup,
+        teamName,
+      });
       continue;
     }
     const fullName =
@@ -189,6 +336,10 @@ async function applyImportRows(params: {
         .trim();
     if (!fullName) {
       skipped += 1;
+      pushSkipDetail(row, "Missing player full name", {
+        ageGroup,
+        teamName,
+      });
       continue;
     }
     const contactPhone = getRowValue(row, [
@@ -229,6 +380,14 @@ async function applyImportRows(params: {
       ]) || null;
     const jerseySize =
       getRowValue(row, ["What is the players jersey size?", "Jersey Size"]) || null;
+    const explicitAllStarAgeBand = parseAllStarAgeBand(
+      getRowValue(row, [
+        "All-Star Age Band",
+        "All Star Age Band",
+        "all_star_age_band",
+        "Age Band",
+      ]),
+    );
     const medicalConditionsSummary = getRowValue(row, [
       "Are there any physical / medical conditions or allergies that the staff need to be aware of?",
       "Medical Conditions",
@@ -254,6 +413,10 @@ async function applyImportRows(params: {
     const state = getRowValue(row, ["State"]);
     const postalCode = getRowValue(row, ["Postal Code", "Zip", "Zip Code"]);
     const { firstName, lastName } = splitName(fullName);
+    const derivedAllStarAgeBand = deriveAllStarAgeBandFromBirthDate(
+      birthDate,
+      allStarCutoffDate,
+    );
 
     const teamKey = `${targetOrg}::${seasonYear}::${ageGroup.toLowerCase()}::${teamName.toLowerCase()}`;
     let teamId = teamCache.get(teamKey);
@@ -271,6 +434,8 @@ async function applyImportRows(params: {
       });
       const team = existingTeam
         ? existingTeam
+        : updateExistingOnly
+          ? null
         : await prisma.team.create({
             data: {
               organizationId: targetOrg,
@@ -281,6 +446,16 @@ async function applyImportRows(params: {
             },
             select: { id: true },
           });
+      if (!team) {
+        skipped += 1;
+        skippedMissingExisting += 1;
+        pushSkipDetail(row, "Team not found in existing roster (update-only mode)", {
+          playerName: fullName,
+          ageGroup,
+          teamName,
+        });
+        continue;
+      }
       teamId = team.id;
       teamCache.set(teamKey, team.id);
       if (!existingTeam) {
@@ -294,7 +469,18 @@ async function applyImportRows(params: {
     const existingPlayer = await prisma.teamPlayer.findFirst({
       where: { teamId, fullName: { equals: fullName, mode: "insensitive" } },
     });
-    const updateData = {
+    if (updateExistingOnly && !existingPlayer) {
+      skipped += 1;
+      skippedMissingExisting += 1;
+      pushSkipDetail(row, "Player not found in existing roster (update-only mode)", {
+        playerName: fullName,
+        ageGroup,
+        teamName,
+      });
+      continue;
+    }
+    const createData = {
+      teamId,
       firstName,
       lastName,
       fullName,
@@ -325,7 +511,44 @@ async function applyImportRows(params: {
       postalCode: postalCode || null,
       rosterStatus,
       jerseyNumber,
+      allStarAgeBand: explicitAllStarAgeBand || derivedAllStarAgeBand,
     };
+    const updateData: Record<string, unknown> = {
+      firstName,
+      lastName,
+      fullName,
+    };
+    if (contactPhone) updateData.contactPhone = contactPhone;
+    if (gender) updateData.gender = gender;
+    if (birthDate) updateData.birthDate = birthDate;
+    if (guardianFirstName) updateData.guardianFirstName = guardianFirstName;
+    if (guardianLastName) updateData.guardianLastName = guardianLastName;
+    if (guardianEmail) updateData.guardianEmail = guardianEmail;
+    if (guardianPhone) updateData.guardianPhone = guardianPhone;
+    if (orderPaymentStatus) updateData.paymentStatus = orderPaymentStatus;
+    if (birthCertStatus) updateData.birthCertificateStatus = birthCertStatus;
+    if (registrationOrderNo) updateData.registrationOrderNo = registrationOrderNo;
+    if (registrationOrderDate) updateData.registrationOrderDate = registrationOrderDate;
+    if (jerseySize) updateData.jerseySize = jerseySize;
+    if (medicalConditionsSummary) updateData.medicalConditionsSummary = medicalConditionsSummary;
+    if (medicalConditionsDetails) updateData.medicalConditionsDetails = medicalConditionsDetails;
+    if (medicalTreatmentAuthorized !== null)
+      updateData.medicalTreatmentAuthorized = medicalTreatmentAuthorized;
+    if (liabilityWaiverAccepted !== null) updateData.liabilityWaiverAccepted = liabilityWaiverAccepted;
+    if (codeOfConductAccepted !== null) updateData.codeOfConductAccepted = codeOfConductAccepted;
+    if (refundPolicyAccepted !== null) updateData.refundPolicyAccepted = refundPolicyAccepted;
+    if (playedPriorSeason !== null) updateData.playedPriorSeason = playedPriorSeason;
+    if (priorSeasonTeamInfo) updateData.priorSeasonTeamInfo = priorSeasonTeamInfo;
+    if (streetAddress) updateData.streetAddress = streetAddress;
+    if (unit) updateData.unit = unit;
+    if (city) updateData.city = city;
+    if (state) updateData.state = state;
+    if (postalCode) updateData.postalCode = postalCode;
+    if (rosterStatus) updateData.rosterStatus = rosterStatus;
+    if (jerseyNumber) updateData.jerseyNumber = jerseyNumber;
+    if (explicitAllStarAgeBand || derivedAllStarAgeBand) {
+      updateData.allStarAgeBand = explicitAllStarAgeBand || derivedAllStarAgeBand;
+    }
     if (existingPlayer) {
       if (!updatedSeen.has(existingPlayer.id)) {
         undoPayload.updatedPlayers.push({
@@ -361,6 +584,7 @@ async function applyImportRows(params: {
             postalCode: existingPlayer.postalCode,
             rosterStatus: existingPlayer.rosterStatus,
             jerseyNumber: existingPlayer.jerseyNumber,
+            allStarAgeBand: existingPlayer.allStarAgeBand,
           },
         });
         updatedSeen.add(existingPlayer.id);
@@ -368,7 +592,7 @@ async function applyImportRows(params: {
       await prisma.teamPlayer.update({ where: { id: existingPlayer.id }, data: updateData });
       updatedPlayers += 1;
     } else {
-      const createdPlayer = await prisma.teamPlayer.create({ data: { teamId, ...updateData } });
+      const createdPlayer = await prisma.teamPlayer.create({ data: createData });
       createdPlayers += 1;
       undoPayload.createdPlayerIds.push(createdPlayer.id);
     }
@@ -396,7 +620,7 @@ async function applyImportRows(params: {
       completedAt: true,
     },
   });
-  return nextBatch;
+  return { batch: nextBatch, skippedByScope, skippedMissingExisting, skippedDetails };
 }
 
 async function undoBatch(targetOrg: string, batchId?: string) {
@@ -410,26 +634,43 @@ async function undoBatch(targetOrg: string, batchId?: string) {
       });
   if (!batch) throw new Error("No import batch available to undo");
   const undoPayload = (batch.undoPayload ?? emptyUndoPayload()) as UndoSnapshot;
-  const updatedOps = undoPayload.updatedPlayers.map((entry) =>
-    prisma.teamPlayer.update({
+  const updatedAttempted = undoPayload.updatedPlayers.length;
+  let restoredUpdated = 0;
+  for (const entry of undoPayload.updatedPlayers) {
+    const safeData = sanitizeUndoTeamPlayerData(entry.data);
+    if (Object.keys(safeData).length === 0) continue;
+    // Use updateMany so missing rows don't abort the entire undo.
+    const result = await prisma.teamPlayer.updateMany({
       where: { id: entry.id },
-      data: entry.data,
-    }),
-  );
-  if (updatedOps.length > 0) await prisma.$transaction(updatedOps);
-  if (undoPayload.createdPlayerIds.length > 0) {
-    await prisma.teamPlayer.deleteMany({ where: { id: { in: undoPayload.createdPlayerIds } } });
+      data: safeData,
+    });
+    restoredUpdated += result.count;
   }
+  let deletedPlayers = 0;
+  if (undoPayload.createdPlayerIds.length > 0) {
+    const deleted = await prisma.teamPlayer.deleteMany({
+      where: { id: { in: undoPayload.createdPlayerIds } },
+    });
+    deletedPlayers = deleted.count;
+  }
+  let deletedTeams = 0;
   if (undoPayload.createdTeamIds.length > 0) {
-    await prisma.team.deleteMany({
+    const deleted = await prisma.team.deleteMany({
       where: { id: { in: undoPayload.createdTeamIds }, organizationId: targetOrg },
     });
+    deletedTeams = deleted.count;
   }
   await prisma.teamPlayerImportBatch.update({
     where: { id: batch.id },
     data: { status: "UNDONE", undoneAt: new Date(), completedAt: new Date() },
   });
-  return batch.id;
+  return {
+    batchId: batch.id,
+    restoredUpdated,
+    skippedMissingUpdated: Math.max(0, updatedAttempted - restoredUpdated),
+    deletedPlayers,
+    deletedTeams,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -501,6 +742,11 @@ export async function POST(request: NextRequest) {
           rows?: Row[];
           seasonYear?: number | string | null;
           divisionMappings?: Record<string, string>;
+          confirmedAgeGroup?: string | null;
+          confirmedTeamName?: string | null;
+          updateExistingOnly?: boolean;
+          teamMappings?: Record<string, string>;
+          allStarCutoffDate?: string | null;
         }
       | { mode?: "complete"; batchId?: string }
       | { mode?: "cancel"; batchId?: string }
@@ -534,6 +780,18 @@ export async function POST(request: NextRequest) {
         const val = String(mapped || "").trim();
         if (key && val) divisionMappings.set(key, val);
       }
+      const teamMappings = new Map<string, string>();
+      const rawTeamMap =
+        body.teamMappings && typeof body.teamMappings === "object" ? body.teamMappings : {};
+      for (const [source, mapped] of Object.entries(rawTeamMap)) {
+        const from = normalizeLooseName(source);
+        const to = String(mapped || "").trim();
+        if (from && to) teamMappings.set(from, to);
+      }
+      const allStarCutoffDate =
+        typeof body.allStarCutoffDate === "string" && body.allStarCutoffDate.trim()
+          ? new Date(body.allStarCutoffDate)
+          : null;
       const updated = await applyImportRows({
         rows: body.rows,
         targetOrg,
@@ -541,8 +799,24 @@ export async function POST(request: NextRequest) {
         explicitSeasonYear,
         divisionMappings,
         batchId,
+        confirmedAgeGroup:
+          typeof body.confirmedAgeGroup === "string" ? body.confirmedAgeGroup : null,
+        confirmedTeamName:
+          typeof body.confirmedTeamName === "string" ? body.confirmedTeamName : null,
+        updateExistingOnly: body.updateExistingOnly === true,
+        teamMappings,
+        allStarCutoffDate:
+          allStarCutoffDate && !Number.isNaN(allStarCutoffDate.getTime())
+            ? allStarCutoffDate
+            : null,
       });
-      return NextResponse.json({ success: true, batch: updated });
+      return NextResponse.json({
+        success: true,
+        batch: updated.batch,
+        skippedByScope: updated.skippedByScope,
+        skippedMissingExisting: updated.skippedMissingExisting,
+        skippedDetails: updated.skippedDetails,
+      });
     }
     if (body.mode === "complete") {
       const batchId = typeof body.batchId === "string" ? body.batchId : "";
@@ -564,11 +838,11 @@ export async function POST(request: NextRequest) {
     }
     if (body.mode === "undo") {
       try {
-        const undoneBatchId = await undoBatch(
+        const undone = await undoBatch(
           targetOrg,
           typeof body.batchId === "string" ? body.batchId : undefined,
         );
-        return NextResponse.json({ success: true, batchId: undoneBatchId });
+        return NextResponse.json({ success: true, ...undone });
       } catch (error: unknown) {
         return NextResponse.json(
           { error: error instanceof Error ? error.message : "Failed to undo import" },
@@ -582,10 +856,26 @@ export async function POST(request: NextRequest) {
   const formData = await request.formData();
   const file = formData.get("file");
   const divisionMappings = parseDivisionMappings(formData.get("divisionMappings"));
+  const teamMappings = parseDivisionMappings(formData.get("teamMappings"));
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "CSV or XLSX file is required" }, { status: 400 });
   }
   const explicitSeasonYear = parseSeasonYear(String(formData.get("seasonYear") || ""));
+  const confirmedAgeGroup =
+    typeof formData.get("confirmedAgeGroup") === "string"
+      ? String(formData.get("confirmedAgeGroup") || "").trim()
+      : "";
+  const confirmedTeamName =
+    typeof formData.get("confirmedTeamName") === "string"
+      ? String(formData.get("confirmedTeamName") || "").trim()
+      : "";
+  const updateExistingOnly =
+    String(formData.get("updateExistingOnly") || "").trim().toLowerCase() === "true";
+  const allStarCutoffDate =
+    typeof formData.get("allStarCutoffDate") === "string" &&
+    String(formData.get("allStarCutoffDate") || "").trim()
+      ? new Date(String(formData.get("allStarCutoffDate")))
+      : null;
   const buffer = Buffer.from(await file.arrayBuffer());
   const workbook = XLSX.read(buffer, { type: "buffer" });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0] || ""];
@@ -612,6 +902,14 @@ export async function POST(request: NextRequest) {
     explicitSeasonYear,
     divisionMappings,
     batchId: createdBatch.id,
+    confirmedAgeGroup,
+    confirmedTeamName,
+    updateExistingOnly,
+    teamMappings,
+    allStarCutoffDate:
+      allStarCutoffDate && !Number.isNaN(allStarCutoffDate.getTime())
+        ? allStarCutoffDate
+        : null,
   });
   await prisma.teamPlayerImportBatch.update({
     where: { id: createdBatch.id },
@@ -619,11 +917,13 @@ export async function POST(request: NextRequest) {
   });
   return NextResponse.json({
     success: true,
-    processed: batch.processedRows,
-    createdTeams: batch.createdTeams,
-    createdPlayers: batch.createdPlayers,
-    updatedPlayers: batch.updatedPlayers,
-    skipped: batch.skippedRows,
+    processed: batch.batch.processedRows,
+    createdTeams: batch.batch.createdTeams,
+    createdPlayers: batch.batch.createdPlayers,
+    updatedPlayers: batch.batch.updatedPlayers,
+    skipped: batch.batch.skippedRows,
+    skippedByScope: batch.skippedByScope,
+    skippedMissingExisting: batch.skippedMissingExisting,
     batchId: createdBatch.id,
   });
 }

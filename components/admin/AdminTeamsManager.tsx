@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 import type { ContentOrgId } from "@/lib/siteConfig";
 
@@ -51,6 +51,7 @@ type TeamPlayer = {
   postalCode: string | null;
   rosterStatus: string | null;
   jerseyNumber: string | null;
+  allStarAgeBand: string | null;
 };
 
 type TeamCoachAssignment = {
@@ -79,6 +80,7 @@ type CoachOption = {
 
 type DivisionMapping = Record<string, string>;
 type CoachAgeGroupMapping = Record<string, string>;
+type TeamMapping = Record<string, string>;
 
 type ImportPreviewRow = {
   divisionName: string;
@@ -101,9 +103,31 @@ type ImportHistoryItem = ImportJobStatus & {
   completedAt: string | null;
   undoneAt: string | null;
 };
+type ImportSkippedRowDetail = {
+  rowNumber: number | null;
+  reason: string;
+  playerName?: string;
+  ageGroup?: string;
+  teamName?: string;
+};
 type CoachImportUndoData = {
   importBatchId?: string;
 };
+type UndoImportStatus = {
+  status: "RUNNING" | "DONE";
+  progress: number;
+  message: string;
+};
+
+function getImportRowValue(row: Record<string, unknown>, keys: string[]) {
+  for (const key of keys) {
+    const value = row[key];
+    if (value === undefined || value === null) continue;
+    const parsed = String(value).trim();
+    if (parsed) return parsed;
+  }
+  return "";
+}
 
 function getImportProgressPercent(status: ImportJobStatus | null) {
   if (!status) return 0;
@@ -112,6 +136,15 @@ function getImportProgressPercent(status: ImportJobStatus | null) {
     0,
     Math.min(100, Math.round((status.processedRows / status.totalRows) * 100)),
   );
+}
+
+function normalizeLooseName(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function shouldSkipDivisionImport(divisionName: string) {
@@ -134,6 +167,13 @@ function buildTeamNameFromSponsor(sponsor: string, headCoachLastName: string) {
   const normalizedLastName = headCoachLastName.trim();
   if (!normalizedSponsor || !normalizedLastName) return "";
   return `${normalizedSponsor} - ${normalizedLastName}`;
+}
+
+function toCsvSafeValue(value: string) {
+  if (value.includes('"') || value.includes(",") || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
 }
 
 export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrgId }) {
@@ -175,14 +215,23 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   const [importedDivisions, setImportedDivisions] = useState<string[]>([]);
   const [scheduleAgeGroupOptions, setScheduleAgeGroupOptions] = useState<string[]>([]);
   const [divisionMapping, setDivisionMapping] = useState<DivisionMapping>({});
+  const [teamMapping, setTeamMapping] = useState<TeamMapping>({});
   const [mappingError, setMappingError] = useState("");
+  const [confirmedImportAgeGroup, setConfirmedImportAgeGroup] = useState("");
+  const [confirmedImportTeamName, setConfirmedImportTeamName] = useState("");
+  const [importUpdateExistingOnly, setImportUpdateExistingOnly] = useState(true);
+  const [allStarCutoffDate, setAllStarCutoffDate] = useState("");
+  const allAgesSelected = confirmedImportAgeGroup === "__ALL_AGE_GROUPS__";
   const [importPreviewRows, setImportPreviewRows] = useState<ImportPreviewRow[]>([]);
   const [importStatus, setImportStatus] = useState<ImportJobStatus | null>(null);
   const [activeImportBatchId, setActiveImportBatchId] = useState<string | null>(null);
   const [importRows, setImportRows] = useState<Record<string, unknown>[]>([]);
+  const [importSkippedDetails, setImportSkippedDetails] = useState<ImportSkippedRowDetail[]>([]);
   const [stopImportRequested, setStopImportRequested] = useState(false);
   const [importHistory, setImportHistory] = useState<ImportHistoryItem[]>([]);
   const [pendingUndoImport, setPendingUndoImport] = useState<ImportHistoryItem | null>(null);
+  const [undoImportStatus, setUndoImportStatus] = useState<UndoImportStatus | null>(null);
+  const undoProgressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [coachImportFile, setCoachImportFile] = useState<File | null>(null);
   const [coachImportPreparing, setCoachImportPreparing] = useState(false);
   const [coachImportBusy, setCoachImportBusy] = useState(false);
@@ -234,10 +283,136 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       ),
     [teamsForSelectedSeason],
   );
+
+  function downloadSkippedRowsCsv() {
+    if (importSkippedDetails.length === 0) return;
+    const header = ["Row Number", "Reason", "Player Name", "Age Group", "Team Name"];
+    const lines = [header.join(",")];
+    for (const item of importSkippedDetails) {
+      lines.push(
+        [
+          item.rowNumber ? String(item.rowNumber) : "",
+          item.reason || "",
+          item.playerName || "",
+          item.ageGroup || "",
+          item.teamName || "",
+        ]
+          .map((value) => toCsvSafeValue(String(value)))
+          .join(","),
+      );
+    }
+    const csv = lines.join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `skipped-player-import-rows-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
   const filteredTeamOptions = useMemo(() => {
     if (!teamFilterAgeGroup) return teamsForSelectedSeason;
     return teamsForSelectedSeason.filter((team) => team.ageGroup === teamFilterAgeGroup);
   }, [teamsForSelectedSeason, teamFilterAgeGroup]);
+  const existingImportTeamsForAgeGroup = useMemo(() => {
+    if (!confirmedImportAgeGroup) return [] as string[];
+    if (allAgesSelected) {
+      return teams
+        .filter((team) => team.seasonYear === seasonYear)
+        .map((team) => team.teamName)
+        .sort((a, b) => a.localeCompare(b));
+    }
+    return teams
+      .filter(
+        (team) =>
+          team.seasonYear === seasonYear &&
+          team.ageGroup.trim().toLowerCase() === confirmedImportAgeGroup.trim().toLowerCase(),
+      )
+      .map((team) => team.teamName)
+      .sort((a, b) => a.localeCompare(b));
+  }, [allAgesSelected, confirmedImportAgeGroup, seasonYear, teams]);
+  const importedTeamNamesForConfirmedAgeGroup = useMemo(() => {
+    if (!confirmedImportAgeGroup) return [] as string[];
+    const names = new Set<string>();
+    for (const row of importRows) {
+      const rawDivision = getImportRowValue(row, [
+        "Division Name",
+        "Age Group",
+        "age_group",
+        "AGE_GROUP",
+      ]);
+      const mappedAgeGroup = divisionMapping[rawDivision] || rawDivision;
+      if (
+        !allAgesSelected &&
+        mappedAgeGroup.trim().toLowerCase() !==
+        confirmedImportAgeGroup.trim().toLowerCase()
+      ) {
+        continue;
+      }
+      const teamName = getImportRowValue(row, [
+        "Team Name",
+        "team_name",
+        "assigned_team",
+        "ASSIGNED_TEAM",
+      ]);
+      if (teamName) names.add(teamName);
+    }
+    return Array.from(names).sort((a, b) => a.localeCompare(b));
+  }, [allAgesSelected, confirmedImportAgeGroup, divisionMapping, importRows]);
+  const unmatchedImportedTeamsForConfirmedAgeGroup = useMemo(() => {
+    const existing = new Set(existingImportTeamsForAgeGroup.map((team) => normalizeLooseName(team)));
+    return importedTeamNamesForConfirmedAgeGroup.filter(
+      (team) => !existing.has(normalizeLooseName(team)),
+    );
+  }, [existingImportTeamsForAgeGroup, importedTeamNamesForConfirmedAgeGroup]);
+  const importConfirmedTeamNameOptions = existingImportTeamsForAgeGroup;
+  const importConfirmationCounts = useMemo(() => {
+    if (!confirmedImportAgeGroup || !confirmedImportTeamName) {
+      return { total: importRows.length, matching: 0, outOfScope: importRows.length };
+    }
+    let matching = 0;
+    let outOfScope = 0;
+    for (const row of importRows) {
+      const rawDivision = getImportRowValue(row, [
+        "Division Name",
+        "Age Group",
+        "age_group",
+        "AGE_GROUP",
+      ]);
+      const mappedAgeGroup = divisionMapping[rawDivision] || rawDivision;
+      const teamName = getImportRowValue(row, [
+        "Team Name",
+        "team_name",
+        "assigned_team",
+        "ASSIGNED_TEAM",
+      ]);
+      const mappedTeamName = teamMapping[teamName] || teamName;
+      const allTeamsSelected = confirmedImportTeamName === "__ALL__";
+      const ageMatches = allAgesSelected
+        ? true
+        : mappedAgeGroup.trim().toLowerCase() ===
+          confirmedImportAgeGroup.trim().toLowerCase();
+      const isMatch =
+        ageMatches &&
+        (allTeamsSelected ||
+          mappedTeamName.trim().toLowerCase() === confirmedImportTeamName.trim().toLowerCase());
+      if (isMatch) {
+        matching += 1;
+      } else {
+        outOfScope += 1;
+      }
+    }
+    return { total: importRows.length, matching, outOfScope };
+  }, [
+    confirmedImportAgeGroup,
+    confirmedImportTeamName,
+    allAgesSelected,
+    divisionMapping,
+    importRows,
+    teamMapping,
+  ]);
 
   useEffect(() => {
     void loadTeams();
@@ -492,6 +667,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     setBusy(true);
     setError("");
     setNotice("");
+    setImportSkippedDetails([]);
     try {
       const startRes = await fetch(`/api/admin/teams/import?${orgQuery}`, {
         method: "POST",
@@ -505,6 +681,9 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       const batchId = (startJson.batch as { id: string }).id;
       setActiveImportBatchId(batchId);
       setImportStatus(startJson.batch as ImportJobStatus);
+      let skippedByScopeTotal = 0;
+      let skippedMissingExistingTotal = 0;
+      const skippedDetails: ImportSkippedRowDetail[] = [];
       const chunkSize = 100;
       for (let offset = 0; offset < importRows.length; offset += chunkSize) {
         if (stopImportRequested) break;
@@ -518,10 +697,33 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
             rows: rowsChunk,
             seasonYear,
             divisionMappings: mapping,
+            confirmedAgeGroup:
+              confirmedImportAgeGroup === "__ALL_AGE_GROUPS__"
+                ? null
+                : confirmedImportAgeGroup,
+            confirmedTeamName:
+              confirmedImportTeamName === "__ALL__" ? null : confirmedImportTeamName,
+            updateExistingOnly: importUpdateExistingOnly,
+            teamMappings: teamMapping,
+            allStarCutoffDate: allStarCutoffDate
+              ? new Date(`${allStarCutoffDate}T00:00:00.000Z`).toISOString()
+              : null,
           }),
         });
         const chunkJson = await safeJson(chunkRes);
         if (!chunkRes.ok) throw new Error(String(chunkJson.error || "Chunk import failed"));
+        skippedByScopeTotal += Number((chunkJson as { skippedByScope?: unknown }).skippedByScope || 0);
+        skippedMissingExistingTotal += Number(
+          (chunkJson as { skippedMissingExisting?: unknown }).skippedMissingExisting || 0,
+        );
+        const chunkSkippedDetails = Array.isArray(
+          (chunkJson as { skippedDetails?: unknown }).skippedDetails,
+        )
+          ? ((chunkJson as { skippedDetails: ImportSkippedRowDetail[] }).skippedDetails ?? [])
+          : [];
+        if (chunkSkippedDetails.length > 0) {
+          skippedDetails.push(...chunkSkippedDetails);
+        }
         if (typeof chunkJson.batch === "object" && chunkJson.batch) {
           setImportStatus(chunkJson.batch as ImportJobStatus);
         }
@@ -547,12 +749,22 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
         const completeJson = await safeJson(completeRes);
         if (!completeRes.ok) throw new Error(String(completeJson.error || "Failed to complete import"));
         const finalStatus = importStatus || (completeJson.batch as ImportJobStatus | null);
+        setImportSkippedDetails(skippedDetails);
+        const skippedSummary =
+          skippedDetails.length > 0
+            ? ` First skipped row: ${
+                skippedDetails[0]?.rowNumber ? `#${skippedDetails[0].rowNumber}` : "unknown row"
+              } (${skippedDetails[0]?.reason || "unknown reason"}).`
+            : "";
         setNotice(
-          `Players import complete: ${finalStatus?.createdTeams || 0} teams created, ${finalStatus?.createdPlayers || 0} players created, ${finalStatus?.updatedPlayers || 0} updated, ${finalStatus?.skippedRows || 0} skipped.`,
+          `Players import complete: ${finalStatus?.createdTeams || 0} teams created, ${finalStatus?.createdPlayers || 0} players created, ${finalStatus?.updatedPlayers || 0} updated, ${finalStatus?.skippedRows || 0} skipped (${skippedByScopeTotal} mismatched age group/team, ${skippedMissingExistingTotal} not found in existing roster).${skippedSummary}`,
         );
         setImportFile(null);
         await loadImportHistory();
-        window.location.reload();
+        await loadTeams();
+        if (selectedTeamId) {
+          await loadTeamDetails(selectedTeamId);
+        }
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to import players");
@@ -577,6 +789,32 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       .map((value) => value.trim());
     setScheduleAgeGroupOptions(options);
     return options;
+  }
+
+  async function loadAllStarCutoffForSeason() {
+    const response = await fetch(
+      `/api/admin/teams/all-star-cutoff?${orgQuery}&seasonYear=${seasonYear}`,
+      {
+        cache: "no-store",
+      },
+    );
+    const json = await safeJson(response);
+    if (!response.ok) {
+      throw new Error(String(json.error || "Failed to load All-Star cutoff date"));
+    }
+    const raw =
+      typeof (json.data as { cutoffDate?: unknown } | undefined)?.cutoffDate === "string"
+        ? String((json.data as { cutoffDate: string }).cutoffDate)
+        : "";
+    const parsed = raw ? new Date(raw) : null;
+    if (!parsed || Number.isNaN(parsed.getTime())) {
+      setAllStarCutoffDate("");
+      return;
+    }
+    const yyyy = parsed.getUTCFullYear();
+    const mm = String(parsed.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(parsed.getUTCDate()).padStart(2, "0");
+    setAllStarCutoffDate(`${yyyy}-${mm}-${dd}`);
   }
 
   async function extractImportedCoachAgeGroups(file: File) {
@@ -795,6 +1033,9 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       defval: "",
       raw: false,
     });
+    rows.forEach((row, index) => {
+      row.__importRowNumber = index + 2;
+    });
 
     const divisionSet = new Set<string>();
     const preview: ImportPreviewRow[] = [];
@@ -856,6 +1097,11 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       setImportPreviewRows(extracted.preview);
       setImportRows(extracted.rows);
       setDivisionMapping(initialMapping);
+      setTeamMapping({});
+      setConfirmedImportAgeGroup("");
+      setConfirmedImportTeamName("");
+      setImportUpdateExistingOnly(true);
+      await loadAllStarCutoffForSeason();
       setShowImportMappingModal(true);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to prepare import mapping");
@@ -870,55 +1116,138 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       setMappingError("Please map every imported division before importing.");
       return;
     }
+    if (!confirmedImportAgeGroup.trim()) {
+      setMappingError("Please confirm the target age group before importing.");
+      return;
+    }
+    const finalTeamSelection = allAgesSelected ? "__ALL__" : confirmedImportTeamName;
+    if (allAgesSelected && confirmedImportTeamName !== "__ALL__") {
+      setConfirmedImportTeamName("__ALL__");
+    }
+    if (!finalTeamSelection.trim()) {
+      setMappingError("Please confirm the target team name before importing.");
+      return;
+    }
+    const missingTeamMappings = unmatchedImportedTeamsForConfirmedAgeGroup.filter(
+      (team) => !teamMapping[team],
+    );
+    if (missingTeamMappings.length > 0) {
+      setMappingError("Please map every unmatched imported team name before importing.");
+      return;
+    }
+    if (!importUpdateExistingOnly) {
+      setMappingError("Jersey update mode must remain enabled for this import.");
+      return;
+    }
+    if (!allStarCutoffDate) {
+      setMappingError("Please provide an All-Star age cutoff date.");
+      return;
+    }
+    try {
+      const saveCutoffRes = await fetch(`/api/admin/teams/all-star-cutoff?${orgQuery}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seasonYear,
+          cutoffDate: new Date(`${allStarCutoffDate}T00:00:00.000Z`).toISOString(),
+        }),
+      });
+      const saveCutoffJson = await safeJson(saveCutoffRes);
+      if (!saveCutoffRes.ok) {
+        throw new Error(String(saveCutoffJson.error || "Failed to save All-Star cutoff date"));
+      }
+    } catch (err: unknown) {
+      setMappingError(err instanceof Error ? err.message : "Failed to save cutoff date");
+      return;
+    }
     setShowImportMappingModal(false);
     setMappingError("");
     setImportStatus(null);
     await importPlayers(divisionMapping);
   }
 
-  async function undoPreviousImport() {
+  async function undoImportById(batchId?: string) {
     setBusy(true);
     setError("");
     setNotice("");
-    try {
-      const response = await fetch(`/api/admin/teams/import?${orgQuery}`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "undo" }),
-      });
-      const json = await safeJson(response);
-      if (!response.ok) throw new Error(String(json.error || "Failed to undo import"));
-      setNotice("Previous import has been undone.");
-      await loadImportHistory();
-      window.location.reload();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to undo import");
-    } finally {
-      setBusy(false);
+    setUndoImportStatus({
+      status: "RUNNING",
+      progress: 12,
+      message: "Undo import started...",
+    });
+    if (undoProgressIntervalRef.current) {
+      clearInterval(undoProgressIntervalRef.current);
+      undoProgressIntervalRef.current = null;
     }
-  }
-
-  async function undoImportById(batchId: string) {
-    setBusy(true);
-    setError("");
-    setNotice("");
+    undoProgressIntervalRef.current = setInterval(() => {
+      setUndoImportStatus((current) => {
+        if (!current || current.status !== "RUNNING") return current;
+        const next = Math.min(90, current.progress + (current.progress < 50 ? 11 : 7));
+        return {
+          ...current,
+          progress: next,
+          message: next >= 75 ? "Restoring player data..." : "Undo import running...",
+        };
+      });
+    }, 500);
     try {
       const response = await fetch(`/api/admin/teams/import?${orgQuery}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ mode: "undo", batchId }),
+        body: JSON.stringify({ mode: "undo", ...(batchId ? { batchId } : {}) }),
       });
       const json = await safeJson(response);
       if (!response.ok) throw new Error(String(json.error || "Failed to undo selected import"));
+      const restoredUpdated = Number((json as { restoredUpdated?: unknown }).restoredUpdated || 0);
+      const skippedMissingUpdated = Number(
+        (json as { skippedMissingUpdated?: unknown }).skippedMissingUpdated || 0,
+      );
+      const deletedPlayers = Number((json as { deletedPlayers?: unknown }).deletedPlayers || 0);
+      const deletedTeams = Number((json as { deletedTeams?: unknown }).deletedTeams || 0);
+      setUndoImportStatus({
+        status: "RUNNING",
+        progress: 96,
+        message: "Finalizing undo...",
+      });
+      if (undoProgressIntervalRef.current) {
+        clearInterval(undoProgressIntervalRef.current);
+        undoProgressIntervalRef.current = null;
+      }
+      setUndoImportStatus({
+        status: "DONE",
+        progress: 100,
+        message: `Undo complete: ${restoredUpdated} updated restored, ${deletedPlayers} created players removed, ${deletedTeams} created teams removed, ${skippedMissingUpdated} missing updated rows skipped.`,
+      });
       setNotice("Import undone.");
       await loadImportHistory();
       window.location.reload();
     } catch (err: unknown) {
+      if (undoProgressIntervalRef.current) {
+        clearInterval(undoProgressIntervalRef.current);
+        undoProgressIntervalRef.current = null;
+      }
+      setUndoImportStatus(null);
       setError(err instanceof Error ? err.message : "Failed to undo selected import");
     } finally {
+      if (undoProgressIntervalRef.current) {
+        clearInterval(undoProgressIntervalRef.current);
+        undoProgressIntervalRef.current = null;
+      }
       setBusy(false);
     }
   }
+
+  async function undoPreviousImport() {
+    await undoImportById();
+  }
+
+  useEffect(() => {
+    return () => {
+      if (undoProgressIntervalRef.current) {
+        clearInterval(undoProgressIntervalRef.current);
+      }
+    };
+  }, []);
 
   async function addCoachAssignment() {
     if (!selectedTeamId || !selectedCoachId) return;
@@ -1065,6 +1394,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
           city: player.city,
           state: player.state,
           postalCode: player.postalCode,
+          allStarAgeBand: player.allStarAgeBand,
         }),
       });
       const json = await safeJson(response);
@@ -1546,6 +1876,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                       <th className="px-3 py-2">Last Name</th>
                       <th className="px-3 py-2">Phone</th>
                       <th className="px-3 py-2">Size</th>
+                      <th className="px-3 py-2">AS Age</th>
                       <th className="px-3 py-2 text-center">Profile</th>
                       <th className="px-3 py-2 text-center">Status</th>
                       <th className="px-3 py-2 text-center">Details</th>
@@ -1610,6 +1941,24 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                               maxLength={3}
                               className="w-16 rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm text-center"
                             />
+                          </td>
+                          <td className="px-3 py-2 text-center">
+                            <select
+                              value={player.allStarAgeBand || ""}
+                              onChange={(event) =>
+                                updatePlayerField(
+                                  player.id,
+                                  "allStarAgeBand",
+                                  event.target.value || null,
+                                )
+                              }
+                              disabled={!isEditingRoster}
+                              className="w-20 rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-xs text-center"
+                            >
+                              <option value="">Unset</option>
+                              <option value="11U">11U</option>
+                              <option value="12U">12U</option>
+                            </select>
                           </td>
                           <td className="px-3 py-2 text-center">
                             <button
@@ -1854,6 +2203,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               <p className="md:col-span-3 mt-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Registration</p>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Jersey Number</span><input disabled={!isEditingRoster} value={activeProfilePlayer.jerseyNumber || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "jerseyNumber", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Jersey Size</span><input disabled={!isEditingRoster} value={activeProfilePlayer.jerseySize || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "jerseySize", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
+              <label className="space-y-1"><span className="block text-[11px] text-zinc-400">All-Star Age Band</span><select disabled={!isEditingRoster} value={activeProfilePlayer.allStarAgeBand || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "allStarAgeBand", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm"><option value="">Unset</option><option value="11U">11U</option><option value="12U">12U</option></select></label>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Roster Status</span><input disabled={!isEditingRoster} value={activeProfilePlayer.rosterStatus || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "rosterStatus", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Payment Status</span><input disabled={!isEditingRoster} value={activeProfilePlayer.paymentStatus || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "paymentStatus", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Birth Certificate</span><input disabled={!isEditingRoster} value={activeProfilePlayer.birthCertificateStatus || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "birthCertificateStatus", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
@@ -2240,6 +2590,52 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 </p>
               </div>
             ) : null}
+            {undoImportStatus ? (
+              <div
+                className={`rounded-lg border p-3 text-xs space-y-2 ${
+                  undoImportStatus.status === "RUNNING"
+                    ? "border-amber-700/80 bg-amber-950/20 text-amber-200"
+                    : "border-zinc-700 bg-zinc-950/50 text-zinc-300"
+                }`}
+              >
+                <p>{undoImportStatus.message}</p>
+                <div className="h-1.5 w-full rounded-full bg-zinc-800/90 overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all duration-500 ${
+                      undoImportStatus.status === "RUNNING" ? "bg-amber-400 animate-pulse" : "bg-brand-purple"
+                    }`}
+                    style={{ width: `${undoImportStatus.progress}%` }}
+                  />
+                </div>
+              </div>
+            ) : null}
+            {importSkippedDetails.length > 0 ? (
+              <div className="rounded-lg border border-amber-700/80 bg-amber-950/20 p-3 text-xs text-amber-200 space-y-2">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold">
+                    Skipped Rows ({importSkippedDetails.length}
+                    {importSkippedDetails.length >= 20 ? "+" : ""})
+                  </p>
+                  <button
+                    type="button"
+                    onClick={downloadSkippedRowsCsv}
+                    className="rounded border border-amber-700 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-900/30"
+                  >
+                    Download Skipped Rows CSV
+                  </button>
+                </div>
+                <div className="space-y-1">
+                  {importSkippedDetails.slice(0, 10).map((item, idx) => (
+                    <p key={`${item.rowNumber ?? "unknown"}-${idx}`}>
+                      Row {item.rowNumber ?? "?"}: {item.reason}
+                      {item.playerName ? ` · ${item.playerName}` : ""}
+                      {item.ageGroup ? ` · ${item.ageGroup}` : ""}
+                      {item.teamName ? ` · ${item.teamName}` : ""}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
             <p className="text-xs text-zinc-400">
               Before import, you will map each Division Name to a schedule age group and review a preview.
             </p>
@@ -2364,6 +2760,146 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               </table>
             </div>
 
+            <div className="rounded-lg border border-amber-700 bg-amber-950/20 p-4 space-y-3">
+              <p className="text-sm font-semibold text-amber-200">
+                Jersey Number Update Confirmation (required)
+              </p>
+              <p className="text-xs text-amber-100/80">
+                This import is locked to jersey-number update mode. Confirm the exact age group and
+                team to prevent cross-roster edits; mismatched rows are skipped and reported.
+              </p>
+              <p className="text-xs text-zinc-300/80">
+                Tip: select <span className="text-zinc-100 font-medium">All Mapped Age Groups</span> to
+                skip per-age-group runs for mixed-division files.
+              </p>
+              <div className="grid md:grid-cols-2 gap-3">
+                <label className="space-y-1">
+                  <span className="text-xs uppercase tracking-wide text-zinc-400">Confirm Age Group</span>
+                  <select
+                    value={confirmedImportAgeGroup}
+                    onChange={(event) => {
+                      const next = event.target.value;
+                      setConfirmedImportAgeGroup(next);
+                      setConfirmedImportTeamName(next === "__ALL_AGE_GROUPS__" ? "__ALL__" : "");
+                    }}
+                    className="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm"
+                  >
+                    <option value="">Select age group…</option>
+                    <option value="__ALL_AGE_GROUPS__">All Mapped Age Groups</option>
+                    {scheduleAgeGroupOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="space-y-1">
+                  <span className="text-xs uppercase tracking-wide text-zinc-400">Confirm Team Name</span>
+                  <select
+                    value={confirmedImportTeamName}
+                    onChange={(event) => setConfirmedImportTeamName(event.target.value)}
+                    disabled={!confirmedImportAgeGroup || allAgesSelected}
+                    className="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm disabled:opacity-60"
+                  >
+                    <option value="">
+                      {allAgesSelected
+                        ? "All Teams auto-selected"
+                        : confirmedImportAgeGroup
+                          ? "Select team…"
+                          : "Select age group first"}
+                    </option>
+                    {confirmedImportAgeGroup ? <option value="__ALL__">All Teams</option> : null}
+                    {importConfirmedTeamNameOptions.map((option) => (
+                      <option key={option} value={option}>
+                        {option}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </div>
+              {confirmedImportAgeGroup ? (
+                <div className="space-y-2">
+                  <p className="text-xs uppercase tracking-wide text-zinc-400">
+                    Unmatched Imported Team Mapping
+                  </p>
+                  {unmatchedImportedTeamsForConfirmedAgeGroup.length === 0 ? (
+                    <p className="text-xs text-emerald-300">
+                      All imported team names already match existing teams for this age group.
+                    </p>
+                  ) : (
+                    <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead className="bg-zinc-900 text-zinc-300">
+                          <tr className="text-left">
+                            <th className="px-3 py-2">Imported Team Name</th>
+                            <th className="px-3 py-2">Map to Existing Team</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {unmatchedImportedTeamsForConfirmedAgeGroup.map((rawTeam) => (
+                            <tr key={rawTeam} className="border-t border-zinc-800">
+                              <td className="px-3 py-2">{rawTeam}</td>
+                              <td className="px-3 py-2">
+                                <select
+                                  value={teamMapping[rawTeam] || ""}
+                                  onChange={(event) =>
+                                    setTeamMapping((current) => ({
+                                      ...current,
+                                      [rawTeam]: event.target.value,
+                                    }))
+                                  }
+                                  className="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-xs"
+                                >
+                                  <option value="">Select team…</option>
+                                  {existingImportTeamsForAgeGroup.map((teamName) => (
+                                    <option key={teamName} value={teamName}>
+                                      {teamName}
+                                    </option>
+                                  ))}
+                                </select>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                </div>
+              ) : null}
+              <label className="space-y-1 block max-w-xs">
+                <span className="text-xs uppercase tracking-wide text-zinc-400">
+                  All-Star Age Cutoff Date (season)
+                </span>
+                <input
+                  type="date"
+                  value={allStarCutoffDate}
+                  onChange={(event) => setAllStarCutoffDate(event.target.value)}
+                  className="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm"
+                />
+              </label>
+              <label className="inline-flex items-center gap-2 text-xs text-zinc-300">
+                <input
+                  type="checkbox"
+                  checked={importUpdateExistingOnly}
+                  onChange={(event) => setImportUpdateExistingOnly(event.target.checked)}
+                />
+                Update existing players only (no team/player creation)
+              </label>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 text-xs text-zinc-300 space-y-1">
+                <p>
+                  Rows in file: <span className="font-semibold text-zinc-100">{importConfirmationCounts.total}</span>
+                </p>
+                <p>
+                  Rows matching confirmed age group + team:{" "}
+                  <span className="font-semibold text-emerald-300">{importConfirmationCounts.matching}</span>
+                </p>
+                <p>
+                  Rows that will be skipped as out-of-scope:{" "}
+                  <span className="font-semibold text-amber-300">{importConfirmationCounts.outOfScope}</span>
+                </p>
+              </div>
+            </div>
+
             <div className="space-y-2">
               <h4 className="text-sm font-semibold text-zinc-200">Import Preview (first 25 rows)</h4>
               <div className="max-h-72 overflow-auto rounded-lg border border-zinc-800">
@@ -2403,7 +2939,12 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={
+                  busy ||
+                  !confirmedImportAgeGroup.trim() ||
+                  !confirmedImportTeamName.trim() ||
+                  !importUpdateExistingOnly
+                }
                 onClick={() => void confirmImportWithMapping()}
                 className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
