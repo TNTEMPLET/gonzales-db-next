@@ -413,10 +413,6 @@ async function applyImportRows(params: {
     const state = getRowValue(row, ["State"]);
     const postalCode = getRowValue(row, ["Postal Code", "Zip", "Zip Code"]);
     const { firstName, lastName } = splitName(fullName);
-    const derivedAllStarAgeBand = deriveAllStarAgeBandFromBirthDate(
-      birthDate,
-      allStarCutoffDate,
-    );
 
     const teamKey = `${targetOrg}::${seasonYear}::${ageGroup.toLowerCase()}::${teamName.toLowerCase()}`;
     let teamId = teamCache.get(teamKey);
@@ -479,6 +475,10 @@ async function applyImportRows(params: {
       });
       continue;
     }
+    const derivedAllStarAgeBand = deriveAllStarAgeBandFromBirthDate(
+      birthDate || existingPlayer?.birthDate || null,
+      allStarCutoffDate,
+    );
     const createData = {
       teamId,
       firstName,

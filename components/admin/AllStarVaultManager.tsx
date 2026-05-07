@@ -117,6 +117,10 @@ function getCycleTierDisplayLabel(
   organizationId: "gonzales" | "ascension",
   title: string | null,
 ) {
+  const normalizedTitle = (title || "").trim().toUpperCase();
+  if (organizationId === "gonzales" && normalizedTitle === "11U DYB") {
+    return "GOLD";
+  }
   const tier = getCycleTierLabel(title);
   if (organizationId === "ascension") {
     return tier === "SECOND_TEAM" ? "RED" : "NAVY";
@@ -175,6 +179,7 @@ function getCycleDisplayTitle(cycle: { title: string | null; seasonYear: number;
 }
 
 function getCycleOptionSuffix(cycle: {
+  organizationId: "gonzales" | "ascension";
   title: string | null;
   seasonYear: number;
   ageGroup: string;
@@ -183,7 +188,24 @@ function getCycleOptionSuffix(cycle: {
   if (!title) return "";
   const tier = getCycleTierLabel(cycle.title);
   if (tier === "SECOND_TEAM" && title.toLowerCase() === "second team") return "";
+  if (title.toLowerCase() === getDisplayedCycleAgeGroup(cycle).trim().toLowerCase()) return "";
   return ` | ${title}`;
+}
+
+function getDisplayedCycleAgeGroup(cycle: {
+  organizationId: "gonzales" | "ascension";
+  ageGroup: string;
+  title: string | null;
+}) {
+  const normalizedTitle = (cycle.title || "").trim().toUpperCase();
+  if (
+    cycle.organizationId === "gonzales" &&
+    cycle.ageGroup.trim().toUpperCase().startsWith("12U") &&
+    normalizedTitle === "11U DYB"
+  ) {
+    return "11U DYB";
+  }
+  return cycle.ageGroup;
 }
 
 function getTop12WithCutoffTies(rows: VoteSummaryRow[]) {
@@ -828,10 +850,15 @@ export default function AllStarVaultManager({
   }
 
   async function createCycle() {
-    if (requiresDyb12uAgeBandFilter(org, newCycleAgeGroup) && !newCycleAgeBandFilter) {
+    const shouldUseAgeBandFilter = requiresDyb12uAgeBandFilter(org, newCycleAgeGroup);
+    if (shouldUseAgeBandFilter && !newCycleAgeBandFilter) {
       setError("Choose 11U, 12U, or BOTH before creating a 12U DYB cycle.");
       return;
     }
+    const autoTitle =
+      shouldUseAgeBandFilter && newCycleAgeBandFilter === "11U" && org === "gonzales"
+        ? "11U DYB"
+        : undefined;
     setBusy(true);
     setError("");
     setNotice("");
@@ -843,9 +870,12 @@ export default function AllStarVaultManager({
           organizationId: org,
           seasonYear,
           ageGroup: newCycleAgeGroup,
+          title: autoTitle,
           accessMode: newCycleAccessMode,
           hasShowcase: newCycleHasShowcase,
-          autoImportAgeBandFilter: newCycleAgeBandFilter,
+          autoImportAgeBandFilter: shouldUseAgeBandFilter
+            ? newCycleAgeBandFilter
+            : "BOTH",
         }),
       });
       const json = await safeJson(response);
@@ -1886,7 +1916,7 @@ export default function AllStarVaultManager({
                 <div key={cycle.id} className={`rounded-lg border p-3 text-sm space-y-2 ${getCycleStatusCardClass(cycle.status)}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-zinc-200 font-medium">
-                      {formatOrganizationLabel(cycle.organizationId)} · {cycle.seasonYear} · {cycle.ageGroup} · {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}
+                      {formatOrganizationLabel(cycle.organizationId)} · {cycle.seasonYear} · {getDisplayedCycleAgeGroup(cycle)} · {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}
                     </p>
                     <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(cycle.status)}`}>
                       {cycle.status}
@@ -1983,14 +2013,14 @@ export default function AllStarVaultManager({
                 <option value="">Select cycle…</option>
                 {cycles.map((cycle) => (
                   <option key={cycle.id} value={cycle.id}>
-                    {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {cycle.ageGroup} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
+                    {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {getDisplayedCycleAgeGroup(cycle)} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
                   </option>
                 ))}
               </select>
             </div>
             <p className="text-sm text-zinc-200">
               {selectedCycle
-                ? `${formatOrganizationLabel(selectedCycle.organizationId)} · ${selectedCycle.seasonYear} · ${selectedCycle.ageGroup} · ${selectedCycle.status} · ${getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}`
+                ? `${formatOrganizationLabel(selectedCycle.organizationId)} · ${selectedCycle.seasonYear} · ${getDisplayedCycleAgeGroup(selectedCycle)} · ${selectedCycle.status} · ${getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}`
                 : "No cycle selected"}
             </p>
             <p className="text-xs text-zinc-500">
@@ -2228,7 +2258,7 @@ export default function AllStarVaultManager({
             <option value="">Select cycle…</option>
             {cycles.map((cycle) => (
               <option key={cycle.id} value={cycle.id}>
-                {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {cycle.ageGroup} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
+                {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {getDisplayedCycleAgeGroup(cycle)} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
               </option>
             ))}
           </select>

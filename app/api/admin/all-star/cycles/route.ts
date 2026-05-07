@@ -26,6 +26,21 @@ function requiresAgeBandFilterForCycle(organizationId: string, ageGroup: string)
   return organizationId === "gonzales" && ageGroup.trim().toUpperCase().startsWith("12U");
 }
 
+function getAutoCycleTitleForAgeBandPool(
+  organizationId: string,
+  ageGroup: string,
+  ageBandFilter: "11U" | "12U" | "BOTH",
+) {
+  if (
+    organizationId === "gonzales" &&
+    ageGroup.trim().toUpperCase().startsWith("12U") &&
+    ageBandFilter === "11U"
+  ) {
+    return "11U DYB";
+  }
+  return null;
+}
+
 async function canDeleteCycles(request: NextRequest) {
   const admin = await getAdminUserFromRequest(request);
   if (!admin) return false;
@@ -111,9 +126,12 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const ageBandFilter = normalizeAgeBandFilter(body.autoImportAgeBandFilter) || "BOTH";
+  const ageBandFilter = requiresAgeBandFilterForCycle(organizationId, ageGroup)
+    ? normalizeAgeBandFilter(body.autoImportAgeBandFilter) || "BOTH"
+    : "BOTH";
 
-  const normalizedTitle = body.title?.trim() || null;
+  const autoTitle = getAutoCycleTitleForAgeBandPool(organizationId, ageGroup, ageBandFilter);
+  const normalizedTitle = (body.title?.trim() || autoTitle || "").trim() || null;
   const admin = await getAdminUserFromRequest(request);
   const existingCycle = await prisma.allStarBallotCycle.findFirst({
     where: {
@@ -129,7 +147,7 @@ export async function POST(request: NextRequest) {
     const updated = await prisma.allStarBallotCycle.update({
       where: { id: existingCycle.id },
       data: {
-        title: body.title?.trim() || null,
+        title: normalizedTitle,
         accessMode: body.accessMode || "AGE_GROUP_COACHES",
         hasShowcase:
           typeof body.hasShowcase === "boolean" ? body.hasShowcase : undefined,
@@ -156,7 +174,7 @@ export async function POST(request: NextRequest) {
       organizationId,
       seasonYear,
       ageGroup,
-      title: body.title?.trim() || null,
+      title: normalizedTitle,
       accessMode: body.accessMode || "AGE_GROUP_COACHES",
       hasShowcase: typeof body.hasShowcase === "boolean" ? body.hasShowcase : true,
       createdByAdminId: admin?.id || null,
