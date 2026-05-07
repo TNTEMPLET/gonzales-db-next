@@ -1521,13 +1521,6 @@ export default function AllStarVaultManager({
     setShowEditModules(true);
   }
 
-  function expandEditModulesForCycle(cycleId: string) {
-    setLimitedOverviewMoreCycleId("");
-    setSelectedCycleId(cycleId);
-    scrollEditModulesIntoViewAfterExpand.current = true;
-    setShowEditModules(true);
-  }
-
   function createNewCycleFromBoard() {
     const params = new URLSearchParams({ org });
     router.push(`/admin/all-star/cycle-management?${params.toString()}`);
@@ -2065,11 +2058,11 @@ export default function AllStarVaultManager({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          expandEditModulesForCycle(cycle.id);
+                          openCycleFromCard(cycle.id);
                         }}
                         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-700/80 text-emerald-300 hover:bg-emerald-950/40"
-                        title="Show editing tools"
-                        aria-label="Show editing tools"
+                        title="Open cycle details"
+                        aria-label="Open cycle details"
                       >
                         <EditCycleIcon />
                       </button>
@@ -2085,10 +2078,10 @@ export default function AllStarVaultManager({
                           {showFullAdminView ? (
                             <button
                               type="button"
-                              onClick={() => expandEditModulesForCycle(cycle.id)}
+                              onClick={() => openCycleFromCard(cycle.id)}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700/80 text-emerald-300 hover:bg-emerald-950/40"
-                              title="Show editing tools"
-                              aria-label="Show editing tools"
+                              title="Open cycle details"
+                              aria-label="Open cycle details"
                             >
                               <EditCycleIcon />
                             </button>
@@ -2365,7 +2358,7 @@ export default function AllStarVaultManager({
             </span>
           </div>
           <p className="text-xs text-zinc-500 max-w-2xl">
-            Click the edit icon when you want ballot tools and exports. Use{" "}
+            On the snapshot board, the pencil only opens this summary (same as clicking the card). Use the edit icon here when you want ballot tools and exports. Use{" "}
             <span className="text-zinc-400">Hide Edit Modules</span> at the top of that section to collapse them again.
           </p>
         </div>
