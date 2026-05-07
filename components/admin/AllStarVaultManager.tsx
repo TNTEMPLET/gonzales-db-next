@@ -86,6 +86,14 @@ type VoteSummaryRow = {
   averageRating: number;
 };
 
+type CandidateBulkUpdateDraft = {
+  team: string;
+  jerseyNumber: string;
+  isActive: "UNCHANGED" | "ACTIVE" | "INACTIVE";
+  excludedFromSecondPhase: "UNCHANGED" | "YES" | "NO";
+  secondPhaseOverrideReason: string;
+};
+
 type AllStarVaultManagerProps = {
   initialOrg: "gonzales" | "ascension";
   isMasterMode: boolean;
@@ -188,6 +196,10 @@ function getTop12WithCutoffTies(rows: VoteSummaryRow[]) {
   return rows.slice(0, end);
 }
 
+function requiresDyb12uAgeBandFilter(orgId: "gonzales" | "ascension", ageGroup: string) {
+  return orgId === "gonzales" && ageGroup.trim().toUpperCase().startsWith("12U");
+}
+
 function BaseballRatingIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -234,6 +246,12 @@ function isCycleOpenAndPublished(cycle: Cycle | null) {
   if (openAt !== null && !Number.isNaN(openAt) && now < openAt) return false;
   if (closeAt !== null && !Number.isNaN(closeAt) && now >= closeAt) return false;
   return true;
+}
+
+function hasVisibleJerseyNumber(value: string | null | undefined) {
+  const normalized = String(value || "").trim().toLowerCase();
+  if (!normalized) return false;
+  return !["tbd", "n/a", "na"].includes(normalized);
 }
 
 export default function AllStarVaultManager({
@@ -299,6 +317,8 @@ export default function AllStarVaultManager({
   const [ageGroupOptions, setAgeGroupOptions] = useState<string[]>([]);
   const [newCycleAccessMode, setNewCycleAccessMode] = useState<"INVITE_LIST" | "AGE_GROUP_COACHES">("AGE_GROUP_COACHES");
   const [newCycleHasShowcase, setNewCycleHasShowcase] = useState(true);
+  const [newCycleAgeBandFilter, setNewCycleAgeBandFilter] = useState<"11U" | "12U" | "BOTH">("BOTH");
+  const [teamsReimportAgeBandFilter, setTeamsReimportAgeBandFilter] = useState<"11U" | "12U" | "BOTH">("BOTH");
   const [cycleOpenAt, setCycleOpenAt] = useState("");
   const [cycleCloseAt, setCycleCloseAt] = useState("");
 
@@ -308,6 +328,38 @@ export default function AllStarVaultManager({
   const [candidateTeam, setCandidateTeam] = useState("");
   const [candidateJerseyNumber, setCandidateJerseyNumber] = useState("");
   const [candidateSearch, setCandidateSearch] = useState("");
+  const [candidateFilterName, setCandidateFilterName] = useState("");
+  const [candidateFilterTeam, setCandidateFilterTeam] = useState("");
+  const [candidateFilterJersey, setCandidateFilterJersey] = useState("");
+  const [candidateFilterJerseyPresence, setCandidateFilterJerseyPresence] = useState<
+    "ANY" | "HAS_VALUE" | "NO_VALUE"
+  >("ANY");
+  const [candidateFilterBibPresence, setCandidateFilterBibPresence] = useState<
+    "ANY" | "HAS_VALUE" | "NO_VALUE"
+  >("ANY");
+  const [candidateFilterActive, setCandidateFilterActive] = useState<"ANY" | "ACTIVE" | "INACTIVE">(
+    "ANY",
+  );
+  const [candidateFilterSecondPhase, setCandidateFilterSecondPhase] = useState<
+    "ANY" | "EXCLUDED" | "NOT_EXCLUDED"
+  >("ANY");
+  const [showCandidateTools, setShowCandidateTools] = useState(false);
+  const [selectedCandidateIds, setSelectedCandidateIds] = useState<string[]>([]);
+  const [pendingBulkDelete, setPendingBulkDelete] = useState<{
+    mode: "SELECTED" | "FILTERED";
+    ids: string[];
+  } | null>(null);
+  const [bulkDeleteConfirmText, setBulkDeleteConfirmText] = useState("");
+  const [candidateBulkAction, setCandidateBulkAction] = useState<
+    "NONE" | "REMOVE_SELECTED" | "REMOVE_FILTERED" | "APPLY_UPDATE" | "REFRESH_BIBS"
+  >("NONE");
+  const [candidateBulkDraft, setCandidateBulkDraft] = useState<CandidateBulkUpdateDraft>({
+    team: "",
+    jerseyNumber: "",
+    isActive: "UNCHANGED",
+    excludedFromSecondPhase: "UNCHANGED",
+    secondPhaseOverrideReason: "",
+  });
   const [selectedCoachUserId, setSelectedCoachUserId] = useState("");
   const [selectedInviteCoachIds, setSelectedInviteCoachIds] = useState<string[]>([]);
   const [inviteCoachSearch, setInviteCoachSearch] = useState("");
@@ -397,7 +449,10 @@ export default function AllStarVaultManager({
 
   useEffect(() => {
     latestCycleIdRef.current = selectedCycleId;
+    setSelectedCandidateIds([]);
     if (selectedCycleId) {
+      const selectedCycleMeta = cycles.find((entry) => entry.id === selectedCycleId) || null;
+      const shouldLoadInvites = selectedCycleMeta?.accessMode === "INVITE_LIST";
       setCandidates([]);
       setHeadCoaches([]);
       setCycleCoachOptions([]);
@@ -405,15 +460,22 @@ export default function AllStarVaultManager({
       setVoteSummary([]);
       setVoteSummarySubmissionCount(0);
       setSelectedCoachUserId("");
+      if (!shouldLoadInvites) {
+        setInviteLinks([]);
+        setBallotVotingLink(null);
+      }
       void (async () => {
         try {
-          await Promise.all([
+          const loads = [
             loadCycleDetails(selectedCycleId),
             loadCycleCoaches(selectedCycleId),
             loadSubmittedBallots(selectedCycleId),
-            loadInvites(selectedCycleId),
             loadVoteSummary(selectedCycleId),
-          ]);
+          ];
+          if (shouldLoadInvites) {
+            loads.push(loadInvites(selectedCycleId));
+          }
+          await Promise.all(loads);
         } catch (err: unknown) {
           if (latestCycleIdRef.current !== selectedCycleId) return;
           setError(err instanceof Error ? err.message : "Failed to load cycle data");
@@ -766,6 +828,10 @@ export default function AllStarVaultManager({
   }
 
   async function createCycle() {
+    if (requiresDyb12uAgeBandFilter(org, newCycleAgeGroup) && !newCycleAgeBandFilter) {
+      setError("Choose 11U, 12U, or BOTH before creating a 12U DYB cycle.");
+      return;
+    }
     setBusy(true);
     setError("");
     setNotice("");
@@ -779,6 +845,7 @@ export default function AllStarVaultManager({
           ageGroup: newCycleAgeGroup,
           accessMode: newCycleAccessMode,
           hasShowcase: newCycleHasShowcase,
+          autoImportAgeBandFilter: newCycleAgeBandFilter,
         }),
       });
       const json = await safeJson(response);
@@ -967,6 +1034,9 @@ export default function AllStarVaultManager({
       const form = new FormData();
       form.append("cycleId", selectedCycleId);
       form.append("source", "teams");
+      if (selectedCycle && requiresDyb12uAgeBandFilter(selectedCycle.organizationId, selectedCycle.ageGroup)) {
+        form.append("ageBandFilter", teamsReimportAgeBandFilter);
+      }
       const response = await fetch("/api/admin/all-star/candidates/import", {
         method: "POST",
         body: form,
@@ -1043,6 +1113,171 @@ export default function AllStarVaultManager({
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to remove candidate");
     } finally {
+      setBusy(false);
+    }
+  }
+
+  async function applyBulkCandidateUpdate() {
+    if (!selectedCycleId || selectedCandidateIds.length === 0) return;
+    const changes: Record<string, unknown> = {};
+    if (candidateBulkDraft.team.trim()) changes.team = candidateBulkDraft.team.trim();
+    if (candidateBulkDraft.jerseyNumber.trim()) {
+      changes.jerseyNumber = candidateBulkDraft.jerseyNumber.trim();
+    }
+    if (candidateBulkDraft.isActive !== "UNCHANGED") {
+      changes.isActive = candidateBulkDraft.isActive === "ACTIVE";
+    }
+    if (candidateBulkDraft.excludedFromSecondPhase !== "UNCHANGED") {
+      changes.excludedFromSecondPhase = candidateBulkDraft.excludedFromSecondPhase === "YES";
+    }
+    if (candidateBulkDraft.secondPhaseOverrideReason.trim()) {
+      changes.secondPhaseOverrideReason = candidateBulkDraft.secondPhaseOverrideReason.trim();
+    }
+    if (Object.keys(changes).length === 0) {
+      setError("Choose at least one field value for bulk update.");
+      return;
+    }
+
+    setBusy(true);
+    setCandidateBulkAction("APPLY_UPDATE");
+    setError("");
+    setNotice(`Applying bulk updates to ${selectedCandidateIds.length} candidate(s)...`);
+    try {
+      const response = await fetch("/api/admin/all-star/candidates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "bulk-update",
+          cycleId: selectedCycleId,
+          candidateIds: selectedCandidateIds,
+          changes,
+        }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to bulk update candidates"));
+      }
+      const updated = Number((json as { updated?: unknown }).updated || 0);
+      setNotice(`Bulk candidate update complete: ${updated} row(s) updated.`);
+      setCandidateBulkDraft({
+        team: "",
+        jerseyNumber: "",
+        isActive: "UNCHANGED",
+        excludedFromSecondPhase: "UNCHANGED",
+        secondPhaseOverrideReason: "",
+      });
+      setSelectedCandidateIds([]);
+      await loadCycleDetails(selectedCycleId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to bulk update candidates");
+    } finally {
+      setCandidateBulkAction("NONE");
+      setBusy(false);
+    }
+  }
+
+  async function refreshCandidateBibNumbers() {
+    if (!selectedCycleId) return;
+    setBusy(true);
+    setCandidateBulkAction("REFRESH_BIBS");
+    setError("");
+    setNotice("Refreshing bib numbers...");
+    try {
+      const response = await fetch("/api/admin/all-star/candidates", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ mode: "resequence-bibs", cycleId: selectedCycleId }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to refresh bib numbers"));
+      }
+      setNotice("Bib numbers refreshed.");
+      await loadCycleDetails(selectedCycleId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to refresh bib numbers");
+    } finally {
+      setCandidateBulkAction("NONE");
+      setBusy(false);
+    }
+  }
+
+  function bulkRemoveCandidates() {
+    if (!selectedCycleId || selectedCandidateIds.length === 0) return;
+    setError("");
+    setNotice("");
+    setBulkDeleteConfirmText("");
+    setPendingBulkDelete({ mode: "SELECTED", ids: [...selectedCandidateIds] });
+  }
+
+  function bulkRemoveFilteredCandidates() {
+    if (!selectedCycleId || filteredCandidates.length === 0) return;
+    setError("");
+    setNotice("");
+    setBulkDeleteConfirmText("");
+    setPendingBulkDelete({
+      mode: "FILTERED",
+      ids: filteredCandidates.map((candidate) => candidate.id),
+    });
+  }
+
+  async function confirmBulkDeleteFromModal() {
+    if (!selectedCycleId || !pendingBulkDelete || pendingBulkDelete.ids.length === 0) {
+      setPendingBulkDelete(null);
+      return;
+    }
+    const requiresTypedConfirm = pendingBulkDelete.ids.length >= 10;
+    if (requiresTypedConfirm && bulkDeleteConfirmText !== "DELETE") {
+      setError("Type DELETE to confirm removals of 10+ candidates.");
+      return;
+    }
+    setBusy(true);
+    setCandidateBulkAction(
+      pendingBulkDelete.mode === "FILTERED" ? "REMOVE_FILTERED" : "REMOVE_SELECTED",
+    );
+    setError("");
+    setNotice(
+      pendingBulkDelete.mode === "FILTERED"
+        ? `Removing ${pendingBulkDelete.ids.length} filtered candidate(s)...`
+        : `Removing ${pendingBulkDelete.ids.length} selected candidate(s)...`,
+    );
+    try {
+      const response = await fetch("/api/admin/all-star/candidates", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ candidateIds: pendingBulkDelete.ids }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(
+          String(
+            json.error ||
+              (pendingBulkDelete.mode === "FILTERED"
+                ? "Failed to bulk remove filtered candidates"
+                : "Failed to bulk remove candidates"),
+          ),
+        );
+      }
+      const deleted = Number((json as { deleted?: unknown }).deleted || 0);
+      setNotice(
+        pendingBulkDelete.mode === "FILTERED"
+          ? `Bulk remove filtered complete: ${deleted} candidate(s) removed.`
+          : `Bulk remove complete: ${deleted} candidate(s) removed.`,
+      );
+      setSelectedCandidateIds([]);
+      setPendingBulkDelete(null);
+      setBulkDeleteConfirmText("");
+      await loadCycleDetails(selectedCycleId);
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error
+          ? err.message
+          : pendingBulkDelete.mode === "FILTERED"
+            ? "Failed to bulk remove filtered candidates"
+            : "Failed to bulk remove candidates",
+      );
+    } finally {
+      setCandidateBulkAction("NONE");
       setBusy(false);
     }
   }
@@ -1404,16 +1639,49 @@ export default function AllStarVaultManager({
 
   const filteredCandidates = candidates.filter((candidate) => {
     const query = candidateSearch.trim().toLowerCase();
-    if (!query) return true;
-    return (
+    const matchesSearch =
+      !query ||
+      (
       candidate.playerFullName.toLowerCase().includes(query) ||
       candidate.team.toLowerCase().includes(query) ||
       candidate.jerseyNumber.toLowerCase().includes(query) ||
       String(candidate.showcaseBibNumber || "")
         .toLowerCase()
         .includes(query)
-    );
+      );
+    if (!matchesSearch) return false;
+
+    const nameFilter = candidateFilterName.trim().toLowerCase();
+    if (nameFilter && !candidate.playerFullName.toLowerCase().includes(nameFilter)) return false;
+
+    const teamFilter = candidateFilterTeam.trim().toLowerCase();
+    if (teamFilter && !candidate.team.toLowerCase().includes(teamFilter)) return false;
+
+    const jerseyFilter = candidateFilterJersey.trim().toLowerCase();
+    if (jerseyFilter && !candidate.jerseyNumber.toLowerCase().includes(jerseyFilter)) return false;
+
+    const hasJerseyValue = hasVisibleJerseyNumber(candidate.jerseyNumber);
+    if (candidateFilterJerseyPresence === "HAS_VALUE" && !hasJerseyValue) return false;
+    if (candidateFilterJerseyPresence === "NO_VALUE" && hasJerseyValue) return false;
+
+    const hasBibValue = Boolean(candidate.showcaseBibNumber && String(candidate.showcaseBibNumber).trim());
+    if (candidateFilterBibPresence === "HAS_VALUE" && !hasBibValue) return false;
+    if (candidateFilterBibPresence === "NO_VALUE" && hasBibValue) return false;
+
+    const isActive = candidate.isActive !== false;
+    if (candidateFilterActive === "ACTIVE" && !isActive) return false;
+    if (candidateFilterActive === "INACTIVE" && isActive) return false;
+
+    if (candidateFilterSecondPhase === "EXCLUDED" && !candidate.excludedFromSecondPhase) return false;
+    if (candidateFilterSecondPhase === "NOT_EXCLUDED" && candidate.excludedFromSecondPhase) {
+      return false;
+    }
+
+    return true;
   });
+  const allFilteredSelected =
+    filteredCandidates.length > 0 &&
+    filteredCandidates.every((candidate) => selectedCandidateIds.includes(candidate.id));
   const seasonOptions = Array.from(
     new Set([
       seasonYear - 1,
@@ -1426,6 +1694,10 @@ export default function AllStarVaultManager({
   const selectedCycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
   const canRefreshVoteSummary = isCycleOpenAndPublished(selectedCycle);
   const isInviteListCycle = selectedCycle?.accessMode === "INVITE_LIST";
+
+  useEffect(() => {
+    setSelectedCandidateIds((prev) => prev.filter((id) => candidates.some((candidate) => candidate.id === id)));
+  }, [candidates]);
 
   const ballotRosterStatus = useMemo(() => {
     if (!selectedCycleId || !selectedCycle) return null;
@@ -1770,6 +2042,16 @@ export default function AllStarVaultManager({
               >
                 PDF (full)
               </a>
+              <a
+                href={
+                  selectedCycleId
+                    ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${orgQuery}`
+                    : "#"
+                }
+                className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
+              >
+                Showcase Score Card (fillable PDF)
+              </a>
             </div>
           </div>
 
@@ -1922,6 +2204,19 @@ export default function AllStarVaultManager({
             <option value="yes">Showcase: Yes</option>
             <option value="no">Showcase: No</option>
           </select>
+          {requiresDyb12uAgeBandFilter(org, newCycleAgeGroup) ? (
+            <select
+              value={newCycleAgeBandFilter}
+              onChange={(e) =>
+                setNewCycleAgeBandFilter(e.target.value as "11U" | "12U" | "BOTH")
+              }
+              className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]"
+            >
+              <option value="BOTH">All-Star pool: 11U + 12U</option>
+              <option value="11U">All-Star pool: 11U only</option>
+              <option value="12U">All-Star pool: 12U only</option>
+            </select>
+          ) : null}
           <button type="button" disabled={manageDisabled || !newCycleAgeGroup} onClick={() => void createCycle()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save Cycle</button>
         </div>
         <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
@@ -2022,6 +2317,20 @@ export default function AllStarVaultManager({
           >
             Re-import from Teams
           </button>
+          {selectedCycle &&
+          requiresDyb12uAgeBandFilter(selectedCycle.organizationId, selectedCycle.ageGroup) ? (
+            <select
+              value={teamsReimportAgeBandFilter}
+              onChange={(e) =>
+                setTeamsReimportAgeBandFilter(e.target.value as "11U" | "12U" | "BOTH")
+              }
+              className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[180px]"
+            >
+              <option value="BOTH">Re-import: 11U + 12U</option>
+              <option value="11U">Re-import: 11U only</option>
+              <option value="12U">Re-import: 12U only</option>
+            </select>
+          ) : null}
           <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => setShowAddCandidateModal(true)} className="rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-4 py-2 text-sm disabled:opacity-60">Add Candidate</button>
         </div>
         <input
@@ -2030,6 +2339,224 @@ export default function AllStarVaultManager({
           placeholder="Search candidates by name, team, jersey, or bib"
           className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
         />
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-xs text-zinc-400">
+            Filters + bulk tools
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowCandidateTools((prev) => !prev)}
+            className="rounded-lg border border-zinc-700 text-zinc-200 px-3 py-1.5 text-xs hover:bg-zinc-800"
+          >
+            {showCandidateTools ? "Hide Candidate Tools" : "Show Candidate Tools"}
+          </button>
+        </div>
+        {showCandidateTools ? (
+          <>
+            <div className="grid md:grid-cols-2 xl:grid-cols-4 gap-2">
+              <input
+                value={candidateFilterName}
+                onChange={(e) => setCandidateFilterName(e.target.value)}
+                placeholder="Filter Name"
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-xs"
+              />
+              <input
+                value={candidateFilterTeam}
+                onChange={(e) => setCandidateFilterTeam(e.target.value)}
+                placeholder="Filter Team"
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-xs"
+              />
+              <input
+                value={candidateFilterJersey}
+                onChange={(e) => setCandidateFilterJersey(e.target.value)}
+                placeholder="Filter Jersey #"
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-xs"
+              />
+              <select
+                value={candidateFilterJerseyPresence}
+                onChange={(e) =>
+                  setCandidateFilterJerseyPresence(
+                    e.target.value as "ANY" | "HAS_VALUE" | "NO_VALUE",
+                  )
+                }
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-xs"
+              >
+                <option value="ANY">Jersey: Any</option>
+                <option value="HAS_VALUE">Jersey: Has Value</option>
+                <option value="NO_VALUE">Jersey: No Value</option>
+              </select>
+              <select
+                value={candidateFilterBibPresence}
+                onChange={(e) =>
+                  setCandidateFilterBibPresence(
+                    e.target.value as "ANY" | "HAS_VALUE" | "NO_VALUE",
+                  )
+                }
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-xs"
+              >
+                <option value="ANY">Bib: Any</option>
+                <option value="HAS_VALUE">Bib: Has Value</option>
+                <option value="NO_VALUE">Bib: No Value</option>
+              </select>
+              <select
+                value={candidateFilterActive}
+                onChange={(e) =>
+                  setCandidateFilterActive(e.target.value as "ANY" | "ACTIVE" | "INACTIVE")
+                }
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-xs"
+              >
+                <option value="ANY">Status: Any</option>
+                <option value="ACTIVE">Status: Active</option>
+                <option value="INACTIVE">Status: Inactive</option>
+              </select>
+              <select
+                value={candidateFilterSecondPhase}
+                onChange={(e) =>
+                  setCandidateFilterSecondPhase(
+                    e.target.value as "ANY" | "EXCLUDED" | "NOT_EXCLUDED",
+                  )
+                }
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-xs"
+              >
+                <option value="ANY">Second Phase: Any</option>
+                <option value="EXCLUDED">Second Phase: Excluded</option>
+                <option value="NOT_EXCLUDED">Second Phase: Included</option>
+              </select>
+              <button
+                type="button"
+                onClick={() => {
+                  setCandidateFilterName("");
+                  setCandidateFilterTeam("");
+                  setCandidateFilterJersey("");
+                  setCandidateFilterJerseyPresence("ANY");
+                  setCandidateFilterBibPresence("ANY");
+                  setCandidateFilterActive("ANY");
+                  setCandidateFilterSecondPhase("ANY");
+                }}
+                className="rounded-lg border border-zinc-700 text-zinc-300 px-3 py-2 text-xs hover:bg-zinc-800"
+              >
+                Clear Filters
+              </button>
+            </div>
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3 space-y-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  type="button"
+                  disabled={manageDisabled || filteredCandidates.length === 0}
+                  onClick={() =>
+                    setSelectedCandidateIds((prev) =>
+                      allFilteredSelected
+                        ? prev.filter((id) => !filteredCandidates.some((candidate) => candidate.id === id))
+                        : Array.from(new Set([...prev, ...filteredCandidates.map((candidate) => candidate.id)])),
+                    )
+                  }
+                  className="rounded-lg border border-zinc-700 text-zinc-200 px-3 py-1.5 text-xs disabled:opacity-60"
+                >
+                  {allFilteredSelected ? "Unselect Filtered" : "Select Filtered"}
+                </button>
+                <span className="text-xs text-zinc-400">
+                  Selected: {selectedCandidateIds.length} / Filtered: {filteredCandidates.length}
+                </span>
+                <button
+                  type="button"
+                  disabled={manageDisabled || !selectedCycleId}
+                  onClick={() => void refreshCandidateBibNumbers()}
+                  className="rounded-lg border border-amber-700 text-amber-200 px-3 py-1.5 text-xs disabled:opacity-60"
+                >
+                {busy && candidateBulkAction === "REFRESH_BIBS" ? "Refreshing Bib #..." : "Refresh Bib #"}
+                </button>
+              </div>
+              <div className="grid md:grid-cols-2 xl:grid-cols-5 gap-2">
+                <input
+                  value={candidateBulkDraft.team}
+                  onChange={(e) =>
+                    setCandidateBulkDraft((prev) => ({ ...prev, team: e.target.value }))
+                  }
+                  placeholder="Bulk set Team"
+                  className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs"
+                />
+                <input
+                  value={candidateBulkDraft.jerseyNumber}
+                  onChange={(e) =>
+                    setCandidateBulkDraft((prev) => ({ ...prev, jerseyNumber: e.target.value }))
+                  }
+                  placeholder="Bulk set Jersey #"
+                  className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs"
+                />
+                <select
+                  value={candidateBulkDraft.isActive}
+                  onChange={(e) =>
+                    setCandidateBulkDraft((prev) => ({
+                      ...prev,
+                      isActive: e.target.value as CandidateBulkUpdateDraft["isActive"],
+                    }))
+                  }
+                  className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs"
+                >
+                  <option value="UNCHANGED">Active: Unchanged</option>
+                  <option value="ACTIVE">Active: Yes</option>
+                  <option value="INACTIVE">Active: No</option>
+                </select>
+                <select
+                  value={candidateBulkDraft.excludedFromSecondPhase}
+                  onChange={(e) =>
+                    setCandidateBulkDraft((prev) => ({
+                      ...prev,
+                      excludedFromSecondPhase:
+                        e.target.value as CandidateBulkUpdateDraft["excludedFromSecondPhase"],
+                    }))
+                  }
+                  className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs"
+                >
+                  <option value="UNCHANGED">Second phase: Unchanged</option>
+                  <option value="YES">Second phase: Excluded</option>
+                  <option value="NO">Second phase: Included</option>
+                </select>
+                <input
+                  value={candidateBulkDraft.secondPhaseOverrideReason}
+                  onChange={(e) =>
+                    setCandidateBulkDraft((prev) => ({
+                      ...prev,
+                      secondPhaseOverrideReason: e.target.value,
+                    }))
+                  }
+                  placeholder="Bulk override reason"
+                  className="rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs"
+                />
+              </div>
+              <button
+                type="button"
+                disabled={manageDisabled || selectedCandidateIds.length === 0}
+                onClick={() => void applyBulkCandidateUpdate()}
+                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-xs font-semibold disabled:opacity-60"
+              >
+                {busy && candidateBulkAction === "APPLY_UPDATE"
+                  ? "Applying Bulk Update..."
+                  : "Apply Bulk Update to Selected"}
+              </button>
+              <button
+                type="button"
+                disabled={manageDisabled || selectedCandidateIds.length === 0}
+                onClick={() => void bulkRemoveCandidates()}
+                className="rounded-lg border border-red-700 text-red-300 px-4 py-2 text-xs font-semibold disabled:opacity-60"
+              >
+                {busy && candidateBulkAction === "REMOVE_SELECTED"
+                  ? "Removing Selected..."
+                  : "Bulk Remove Selected"}
+              </button>
+              <button
+                type="button"
+                disabled={manageDisabled || filteredCandidates.length === 0}
+                onClick={() => void bulkRemoveFilteredCandidates()}
+                className="rounded-lg border border-red-700 text-red-300 px-4 py-2 text-xs font-semibold disabled:opacity-60"
+              >
+                {busy && candidateBulkAction === "REMOVE_FILTERED"
+                  ? "Removing Filtered..."
+                  : "Bulk Remove Filtered"}
+              </button>
+            </div>
+          </>
+        ) : null}
         <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
           {filteredCandidates.length === 0 ? (
             <p className="text-zinc-500 text-sm p-3">
@@ -2040,16 +2567,31 @@ export default function AllStarVaultManager({
           ) : (
             filteredCandidates.map((candidate) => (
               <div key={candidate.id} className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3">
+                <div className="flex items-center gap-2 min-w-0">
+                  <input
+                    type="checkbox"
+                    checked={selectedCandidateIds.includes(candidate.id)}
+                    onChange={() =>
+                      setSelectedCandidateIds((prev) =>
+                        prev.includes(candidate.id)
+                          ? prev.filter((id) => id !== candidate.id)
+                          : [...prev, candidate.id],
+                      )
+                    }
+                    className="h-4 w-4 rounded border-zinc-600 bg-zinc-900"
+                  />
                 <p className="min-w-0">
                   <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team}
-                  {candidate.jerseyNumber?.trim() &&
-                  !["tbd", "n/a", "na"].includes(candidate.jerseyNumber.trim().toLowerCase())
+                  {hasVisibleJerseyNumber(candidate.jerseyNumber)
                     ? ` · #${candidate.jerseyNumber}`
                     : ""}
                   {selectedCycle?.hasShowcase && candidate.showcaseBibNumber
                     ? ` · Bib ${candidate.showcaseBibNumber}`
                     : ""}
+                  {candidate.isActive === false ? " · Inactive" : ""}
+                  {candidate.excludedFromSecondPhase ? " · Excluded 2nd phase" : ""}
                 </p>
+                </div>
                 <button
                   type="button"
                   disabled={manageDisabled}
@@ -2210,6 +2752,16 @@ export default function AllStarVaultManager({
               className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
             >
               PDF (full)
+            </a>
+            <a
+              href={
+                selectedCycleId
+                  ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
+                  : "#"
+              }
+              className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
+            >
+              Showcase Score Card (fillable PDF)
             </a>
             <button
               type="button"
@@ -2452,6 +3004,7 @@ export default function AllStarVaultManager({
           <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void createInvites()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save invite roster</button>
           <a href={selectedCycleId ? `/api/admin/all-star/exports/csv?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm">Export CSV</a>
           <a href={selectedCycleId ? `/api/admin/all-star/exports/pdf?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm">Export PDF</a>
+          <a href={selectedCycleId ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-4 py-2 text-sm">Showcase Score Card (fillable PDF)</a>
         </div>
         {inviteLinks.length > 0 ? (
           <div className="rounded-lg border border-zinc-800 max-h-56 overflow-auto">
@@ -2501,6 +3054,59 @@ export default function AllStarVaultManager({
           </div>
         ) : null}
       </div>
+
+      {pendingBulkDelete ? (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
+            <div>
+              <h3 className="text-base font-semibold">Confirm Bulk Candidate Removal</h3>
+              <p className="text-xs text-zinc-400 mt-1">
+                This will remove {pendingBulkDelete.ids.length}{" "}
+                {pendingBulkDelete.mode === "FILTERED" ? "filtered" : "selected"} candidate(s) and re-number bibs.
+              </p>
+            </div>
+            {pendingBulkDelete.ids.length >= 10 ? (
+              <div className="space-y-2">
+                <p className="text-xs text-amber-300">
+                  Safety check required: type <span className="font-semibold">DELETE</span> to continue.
+                </p>
+                <input
+                  value={bulkDeleteConfirmText}
+                  onChange={(e) => setBulkDeleteConfirmText(e.target.value)}
+                  placeholder="Type DELETE"
+                  className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                />
+              </div>
+            ) : null}
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => {
+                  setPendingBulkDelete(null);
+                  setBulkDeleteConfirmText("");
+                  setNotice(
+                    pendingBulkDelete.mode === "FILTERED"
+                      ? "Bulk remove filtered cancelled."
+                      : "Bulk remove cancelled.",
+                  );
+                }}
+                className="rounded-lg border border-zinc-700 text-zinc-300 px-4 py-2 text-sm disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={busy || (pendingBulkDelete.ids.length >= 10 && bulkDeleteConfirmText !== "DELETE")}
+                onClick={() => void confirmBulkDeleteFromModal()}
+                className="rounded-lg border border-red-700 text-red-300 px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                {busy ? "Removing..." : "Confirm Remove"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {showBallotRosterStatusModal && ballotRosterStatus ? (
         <div
