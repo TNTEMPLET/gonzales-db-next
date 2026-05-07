@@ -2033,9 +2033,7 @@ export default function AllStarVaultManager({
                       )}
                     </div>
                   </div>
-                  <div
-                    className={`flex items-center gap-2 px-4 py-2 border-t border-emerald-800/30 bg-black/15 ${showFullAdminView ? "justify-between" : ""}`}
-                  >
+                  <div className="flex items-center gap-2 px-4 py-2 border-t border-emerald-800/30 bg-black/15">
                     <button
                       type="button"
                       data-admin-preview-allow="true"
@@ -2053,20 +2051,6 @@ export default function AllStarVaultManager({
                     >
                       {isExpanded ? "Collapse" : "...more"}
                     </button>
-                    {showFullAdminView ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          openCycleFromCard(cycle.id);
-                        }}
-                        className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-700/80 text-emerald-300 hover:bg-emerald-950/40"
-                        title="Open cycle details"
-                        aria-label="Open cycle details"
-                      >
-                        <EditCycleIcon />
-                      </button>
-                    ) : null}
                   </div>
                   {isExpanded && top12Rows.length > 0 ? (
                     <div className="rounded-lg border border-zinc-700 bg-zinc-900/70 p-3 space-y-2 mx-3 mb-3">
@@ -2074,27 +2058,14 @@ export default function AllStarVaultManager({
                         <p className="text-xs uppercase tracking-wide text-zinc-400">
                           Top 12 Snapshot (Names Only)
                         </p>
-                        <div className="flex items-center gap-2 shrink-0">
-                          {showFullAdminView ? (
-                            <button
-                              type="button"
-                              onClick={() => openCycleFromCard(cycle.id)}
-                              className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700/80 text-emerald-300 hover:bg-emerald-950/40"
-                              title="Open cycle details"
-                              aria-label="Open cycle details"
-                            >
-                              <EditCycleIcon />
-                            </button>
-                          ) : null}
-                          <button
-                            type="button"
-                            data-admin-preview-allow="true"
-                            className="rounded-lg border border-zinc-600 text-zinc-300 px-2 py-1 text-xs hover:bg-zinc-800"
-                            onClick={closeLimitedOverviewMore}
-                          >
-                            Close
-                          </button>
-                        </div>
+                        <button
+                          type="button"
+                          data-admin-preview-allow="true"
+                          className="rounded-lg border border-zinc-600 text-zinc-300 px-2 py-1 text-xs hover:bg-zinc-800 shrink-0"
+                          onClick={closeLimitedOverviewMore}
+                        >
+                          Close
+                        </button>
                       </div>
                       <div className="rounded-lg border border-zinc-800 overflow-hidden">
                         {top12Rows.map((row, index) => (
@@ -2358,7 +2329,7 @@ export default function AllStarVaultManager({
             </span>
           </div>
           <p className="text-xs text-zinc-500 max-w-2xl">
-            On the snapshot board, the pencil only opens this summary (same as clicking the card). Use the edit icon here when you want ballot tools and exports. Use{" "}
+            Click a snapshot card to open this summary. Use the edit icon here when you want ballot tools and exports. Use{" "}
             <span className="text-zinc-400">Hide Edit Modules</span> at the top of that section to collapse them again.
           </p>
         </div>
