@@ -214,19 +214,6 @@ function getCycleTierBadgeClass(
   return "border-purple-700 bg-purple-950/30 text-purple-200";
 }
 
-function getCycleStatusCardClass(status: Cycle["status"]) {
-  if (status === "PUBLISHED") {
-    return "border-emerald-700/60 bg-emerald-950/20";
-  }
-  if (status === "CLOSED") {
-    return "border-amber-700/60 bg-amber-950/20";
-  }
-  if (status === "DRAFT") {
-    return "border-sky-700/60 bg-sky-950/20";
-  }
-  return "border-zinc-700 bg-zinc-900/50";
-}
-
 function getCycleStatusBadgeClass(status: Cycle["status"]) {
   if (status === "PUBLISHED") {
     return "border-emerald-700 bg-emerald-950/40 text-emerald-200";
@@ -356,6 +343,8 @@ export default function AllStarVaultManager({
   const latestCycleIdRef = useRef("");
   const cycleManagementRef = useRef<HTMLDivElement | null>(null);
   const vaultShellRef = useRef<HTMLElement | null>(null);
+  const editModulesShellRef = useRef<HTMLDivElement | null>(null);
+  const scrollEditModulesIntoViewAfterExpand = useRef(false);
   const [previewRole, setPreviewRole] = useState<AdminViewPreviewRole>("NONE");
   const [org, setOrg] = useState<"gonzales" | "ascension">(initialOrg);
   const [seasonYear, setSeasonYear] = useState(new Date().getFullYear());
@@ -482,6 +471,15 @@ export default function AllStarVaultManager({
       window.removeEventListener("storage", onPreviewUpdate);
     };
   }, []);
+
+  useEffect(() => {
+    if (!showEditModules || !scrollEditModulesIntoViewAfterExpand.current) return;
+    scrollEditModulesIntoViewAfterExpand.current = false;
+    const id = window.requestAnimationFrame(() => {
+      editModulesShellRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+    });
+    return () => window.cancelAnimationFrame(id);
+  }, [showEditModules]);
 
   useEffect(() => {
     setOrg(initialOrg);
@@ -1515,17 +1513,19 @@ export default function AllStarVaultManager({
   function openCycleFromCard(cycleId: string) {
     setLimitedOverviewMoreCycleId("");
     setSelectedCycleId(cycleId);
-    if (showSnapshotBoardOnInitialFullAccess) {
-      setShowEditModules(true);
-    }
+    setShowEditModules(false);
   }
 
-  function editCycleFromCard(cycleId: string) {
-    const params = new URLSearchParams({
-      cycleId,
-      org,
-    });
-    router.push(`/admin/all-star/cycle-management?${params.toString()}`);
+  function expandEditModulesIntoView() {
+    scrollEditModulesIntoViewAfterExpand.current = true;
+    setShowEditModules(true);
+  }
+
+  function expandEditModulesForCycle(cycleId: string) {
+    setLimitedOverviewMoreCycleId("");
+    setSelectedCycleId(cycleId);
+    scrollEditModulesIntoViewAfterExpand.current = true;
+    setShowEditModules(true);
   }
 
   function createNewCycleFromBoard() {
@@ -1536,6 +1536,7 @@ export default function AllStarVaultManager({
   function backToCycleSnapshotBoard() {
     setLimitedOverviewMoreCycleId("");
     setSelectedCycleId("");
+    setShowEditModules(false);
     setError("");
     setNotice("");
     window.requestAnimationFrame(() => {
@@ -1922,6 +1923,12 @@ export default function AllStarVaultManager({
     showFullAdminManagementChrome &&
     showSnapshotBoardOnInitialFullAccess &&
     Boolean(selectedCycleId);
+  /** Vault snapshot drill-in: editing chrome stays hidden until the user clicks the edit icon. */
+  const vaultSnapshotDetailActive =
+    showSnapshotBoardOnInitialFullAccess && Boolean(selectedCycleId);
+  const showManagementEditChrome =
+    showFullAdminManagementChrome &&
+    (!vaultSnapshotDetailActive || showEditModules);
 
   return (
     <section ref={vaultShellRef} className="space-y-6">
@@ -1933,11 +1940,11 @@ export default function AllStarVaultManager({
         </div>
       ) : null}
       {showCycleSnapshotBoard ? (
-        <div className="rounded-xl border border-amber-700 bg-amber-950/20 p-5 space-y-4">
+        <div className="rounded-xl border border-emerald-800/45 bg-emerald-950/20 p-5 space-y-4">
         <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-amber-200">{boardTitle}</h2>
-            <p className="text-sm text-amber-100/80">
+            <h2 className="text-lg font-semibold text-emerald-100">{boardTitle}</h2>
+            <p className="text-sm text-emerald-100/75">
               Per-cycle snapshots with names-first leaderboard context.
             </p>
           </div>
@@ -1952,7 +1959,7 @@ export default function AllStarVaultManager({
                     onChange={(e) =>
                       setOrg(e.target.value as "gonzales" | "ascension")
                     }
-                    className="rounded-lg bg-zinc-950 border border-amber-800/80 px-3 py-2 text-sm text-amber-100 min-w-[170px]"
+                    className="rounded-lg bg-zinc-950 border border-emerald-800/60 px-3 py-2 text-sm text-emerald-50 min-w-[170px]"
                   >
                     <option value="gonzales">Gonzales DYB</option>
                     <option value="ascension">Ascension LLB</option>
@@ -1961,7 +1968,7 @@ export default function AllStarVaultManager({
                 <select
                   value={seasonYear}
                   onChange={(e) => setSeasonYear(Number(e.target.value))}
-                  className="rounded-lg bg-zinc-950 border border-amber-800/80 px-3 py-2 text-sm text-amber-100 min-w-[120px]"
+                  className="rounded-lg bg-zinc-950 border border-emerald-800/60 px-3 py-2 text-sm text-emerald-50 min-w-[120px]"
                 >
                   {seasonOptions.map((year) => (
                     <option key={year} value={year}>
@@ -1975,7 +1982,7 @@ export default function AllStarVaultManager({
               <button
                 type="button"
                 onClick={createNewCycleFromBoard}
-                className="rounded-lg border border-violet-700 text-violet-300 hover:bg-violet-950/40 px-3 py-2 text-sm"
+                className="rounded-lg border border-emerald-600/70 text-emerald-200 hover:bg-emerald-950/40 px-3 py-2 text-sm"
               >
                 Create New
               </button>
@@ -1995,7 +2002,7 @@ export default function AllStarVaultManager({
               return (
                 <div
                   key={cycle.id}
-                  className={`rounded-lg border text-sm flex flex-col ${getCycleStatusCardClass(cycle.status)}`}
+                  className="rounded-xl border border-emerald-800/35 bg-emerald-950/10 text-sm flex flex-col overflow-hidden"
                 >
                   <div
                     role="button"
@@ -2008,7 +2015,7 @@ export default function AllStarVaultManager({
                         openCycleFromCard(cycle.id);
                       }
                     }}
-                    className="p-3 space-y-2 cursor-pointer text-left hover:bg-white/4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500/50 focus-visible:ring-inset rounded-t-lg"
+                    className="p-4 space-y-2 cursor-pointer text-left hover:bg-emerald-950/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/45 focus-visible:ring-inset"
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-zinc-200 font-medium">
@@ -2034,7 +2041,7 @@ export default function AllStarVaultManager({
                     </div>
                   </div>
                   <div
-                    className={`flex items-center gap-2 px-3 py-2 border-t border-zinc-700/40 bg-black/10 ${showFullAdminView ? "justify-between" : ""}`}
+                    className={`flex items-center gap-2 px-4 py-2 border-t border-emerald-800/30 bg-black/15 ${showFullAdminView ? "justify-between" : ""}`}
                   >
                     <button
                       type="button"
@@ -2058,11 +2065,11 @@ export default function AllStarVaultManager({
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          editCycleFromCard(cycle.id);
+                          expandEditModulesForCycle(cycle.id);
                         }}
                         className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg border border-emerald-700/80 text-emerald-300 hover:bg-emerald-950/40"
-                        title="Edit cycle"
-                        aria-label="Edit cycle"
+                        title="Show editing tools"
+                        aria-label="Show editing tools"
                       >
                         <EditCycleIcon />
                       </button>
@@ -2078,10 +2085,10 @@ export default function AllStarVaultManager({
                           {showFullAdminView ? (
                             <button
                               type="button"
-                              onClick={() => editCycleFromCard(cycle.id)}
+                              onClick={() => expandEditModulesForCycle(cycle.id)}
                               className="inline-flex h-8 w-8 items-center justify-center rounded-lg border border-emerald-700/80 text-emerald-300 hover:bg-emerald-950/40"
-                              title="Edit cycle"
-                              aria-label="Edit cycle"
+                              title="Show editing tools"
+                              aria-label="Show editing tools"
                             >
                               <EditCycleIcon />
                             </button>
@@ -2292,7 +2299,7 @@ export default function AllStarVaultManager({
           <button
             type="button"
             onClick={backToCycleSnapshotBoard}
-            className="inline-flex items-center gap-2 rounded-lg border border-amber-700/80 bg-amber-950/25 text-amber-100 hover:bg-amber-950/40 px-3 py-2 text-sm"
+            className="inline-flex items-center gap-2 rounded-lg border border-emerald-800/60 bg-emerald-950/25 text-emerald-100 hover:bg-emerald-950/40 px-3 py-2 text-sm"
           >
             ← Back to cycle board
           </button>
@@ -2315,11 +2322,24 @@ export default function AllStarVaultManager({
                 {getCycleDisplayTitle(selectedCycle)}
               </p>
             </div>
-            <span
-              className={`shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(selectedCycle.status)}`}
-            >
-              {selectedCycle.status}
-            </span>
+            <div className="flex items-center gap-2 shrink-0">
+              {showFullAdminView && canManageAllStarVaultUi ? (
+                <button
+                  type="button"
+                  onClick={() => expandEditModulesIntoView()}
+                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
+                  title="Show editing tools"
+                  aria-label="Show editing tools"
+                >
+                  <EditCycleIcon className="h-4 w-4" />
+                </button>
+              ) : null}
+              <span
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(selectedCycle.status)}`}
+              >
+                {selectedCycle.status}
+              </span>
+            </div>
           </div>
           <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-zinc-400">
             <span>
@@ -2345,35 +2365,17 @@ export default function AllStarVaultManager({
             </span>
           </div>
           <p className="text-xs text-zinc-500 max-w-2xl">
-            You left the snapshot board for this ballot. Editing tools are below (toggle with{" "}
-            <span className="text-zinc-400">Hide Edit Modules</span> when you want a calmer screen). Use{" "}
-            <span className="text-zinc-400">Full cycle editor</span> for the dedicated cycle page.
+            Click the edit icon when you want ballot tools and exports. Use{" "}
+            <span className="text-zinc-400">Hide Edit Modules</span> at the top of that section to collapse them again.
           </p>
-          <div className="flex flex-wrap items-center gap-2">
-            {!showEditModules ? (
-              <button
-                type="button"
-                onClick={() => setShowEditModules(true)}
-                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold text-white"
-              >
-                Show editing tools
-              </button>
-            ) : null}
-            <button
-              type="button"
-              onClick={() => editCycleFromCard(selectedCycle.id)}
-              className="inline-flex items-center gap-2 rounded-lg border border-emerald-700/80 text-emerald-200 px-4 py-2 text-sm hover:bg-emerald-950/35"
-            >
-              <EditCycleIcon />
-              Full cycle editor
-            </button>
-          </div>
         </div>
       ) : null}
 
       {showFullAdminManagementChrome ? (
       <>
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+      {showManagementEditChrome ? (
+      <>
+      <div ref={editModulesShellRef} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold">Edit Modules</h2>
@@ -3384,6 +3386,8 @@ export default function AllStarVaultManager({
           </div>
         ) : null}
       </div>
+      ) : null}
+      </>
       ) : null}
 
       {pendingBulkDelete ? (
