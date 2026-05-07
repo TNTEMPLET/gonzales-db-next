@@ -319,6 +319,7 @@ export default function AllStarVaultManager({
     null,
   );
   const [canDeleteCycles, setCanDeleteCycles] = useState(false);
+  const [showEditModules, setShowEditModules] = useState(false);
 
   const previewCanViewAllStar =
     previewRole === "BOARD_MEMBER" || previewRole === "PARK_DIRECTOR" ? false : true;
@@ -2183,6 +2184,30 @@ export default function AllStarVaultManager({
 
       {showFullAdminManagementChrome ? (
       <>
+      {showEditModules ? (
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Edit Modules</h2>
+            <p className="text-xs text-zinc-400">
+              Keep the workspace compact and expand editing only when needed.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowEditModules((prev) => !prev)}
+            className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
+          >
+            {showEditModules ? "Hide Edit Modules" : "Show Edit Modules"}
+          </button>
+        </div>
+        {!showEditModules ? (
+          <p className="text-xs text-zinc-500">
+            Editing is collapsed. Expand to work in Cycle Management, Candidates, and Votes.
+          </p>
+        ) : null}
+      </div>
+      {showEditModules ? (
       <div ref={cycleManagementRef} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Cycle Management</h2>
         <div className="flex flex-wrap items-center justify-start gap-3">
@@ -2327,7 +2352,9 @@ export default function AllStarVaultManager({
         </div>
         </div>
       </div>
+      ) : null}
 
+      {showEditModules ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Candidates Import</h2>
@@ -2635,7 +2662,9 @@ export default function AllStarVaultManager({
           )}
         </div>
       </div>
+      ) : null}
 
+      {showEditModules ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Coaches</h2>
         <div className="grid md:grid-cols-3 gap-3">
@@ -2675,7 +2704,9 @@ export default function AllStarVaultManager({
           ))}
         </div>
       </div>
+      ) : null}
 
+      {showEditModules ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Submitted Ballots</h2>
         <p className="text-xs text-zinc-400">
@@ -2827,7 +2858,9 @@ export default function AllStarVaultManager({
           )}
         </div>
       </div>
+      ) : null}
 
+      {showEditModules ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
         <h2 className="text-lg font-semibold">Sample Ballot</h2>
         <p className="text-xs text-zinc-400">
@@ -2862,6 +2895,7 @@ export default function AllStarVaultManager({
           )}
         </div>
       </div>
+      ) : null}
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">All-Star Vault Access</h2>
@@ -3084,6 +3118,7 @@ export default function AllStarVaultManager({
           </div>
         ) : null}
       </div>
+      ) : null}
 
       {pendingBulkDelete ? (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
