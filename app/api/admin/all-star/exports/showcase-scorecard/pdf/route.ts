@@ -46,9 +46,23 @@ function fitTextToWidth(value: string, maxWidth: number, font: PDFFont, fontSize
 }
 
 function getCycleTierLabel(title: string | null) {
+  const normalizedTitle = (title || "").trim().toUpperCase();
+  if (normalizedTitle === "11U DYB") return "SECOND_TEAM";
   return (title || "").toLowerCase().includes("second team")
     ? "SECOND_TEAM"
     : "FIRST_TEAM";
+}
+
+function getDisplayAgeGroup(organizationId: string, ageGroup: string, title: string | null) {
+  const normalizedTitle = (title || "").trim().toUpperCase();
+  if (
+    organizationId === "gonzales" &&
+    ageGroup.trim().toUpperCase().startsWith("12U") &&
+    normalizedTitle === "11U DYB"
+  ) {
+    return "11U DYB";
+  }
+  return ageGroup;
 }
 
 function getScorecardPalette(organizationId: string, title: string | null) {
@@ -242,7 +256,8 @@ export async function GET(request: NextRequest) {
 
   const generatedAt = new Date().toLocaleString();
   const orgLabel = formatOrganizationIdDisplay(cycle.organizationId);
-  const cycleLabel = `${orgLabel} · ${cycle.ageGroup} · ${cycle.seasonYear}`;
+  const displayAgeGroup = getDisplayAgeGroup(cycle.organizationId, cycle.ageGroup, cycle.title);
+  const cycleLabel = `${orgLabel} · ${displayAgeGroup} · ${cycle.seasonYear}`;
   const palette = getScorecardPalette(cycle.organizationId, cycle.title);
 
   pageChunks.forEach((chunk, pageIdx) => {
@@ -402,7 +417,7 @@ export async function GET(request: NextRequest) {
     "showcase-score-card",
     cycle.organizationId,
     String(cycle.seasonYear),
-    cycle.ageGroup,
+    displayAgeGroup,
   ]);
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
