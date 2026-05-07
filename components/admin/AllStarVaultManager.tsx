@@ -2907,8 +2907,9 @@ export default function AllStarVaultManager({
           )}
         </div>
       </div>
+      ) : null}
 
-      {moduleVisibility.votes ? (
+      {showEditModules && moduleVisibility.votes ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Votes Panel</h2>
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -2991,7 +2992,6 @@ export default function AllStarVaultManager({
           )}
         </div>
       </div>
-      ) : null}
       ) : null}
 
       {showEditModules && moduleVisibility.sample ? (
@@ -3255,7 +3255,6 @@ export default function AllStarVaultManager({
           </div>
         ) : null}
       </div>
-      ) : null}
       ) : null}
 
       {pendingBulkDelete ? (
