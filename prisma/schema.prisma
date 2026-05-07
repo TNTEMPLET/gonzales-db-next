@@ -824,12 +824,25 @@ model TeamPlayer {
   postalCode                  String?
   rosterStatus   String?
   jerseyNumber   String?
+  allStarAgeBand String?
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([teamId, fullName])
+}
+
+model TeamAllStarAgeCutoff {
+  id             String   @id @default(cuid())
+  organizationId String
+  seasonYear     Int
+  cutoffDate     DateTime
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  @@unique([organizationId, seasonYear])
+  @@index([organizationId, seasonYear])
 }
 
 model TeamGameNote {

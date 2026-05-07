@@ -31,6 +31,8 @@ type ImportCycleContext = {
   ageGroup: string;
 };
 
+type CandidateAgeBandFilter = "11U" | "12U" | "BOTH";
+
 function normalizeCandidateKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
@@ -47,6 +49,7 @@ function normalizeJerseyNumber(value: string | null | undefined) {
 export async function importCandidatesFromTeamsForCycle(
   tx: Prisma.TransactionClient | PrismaClient,
   cycle: ImportCycleContext,
+  ageBandFilter: CandidateAgeBandFilter = "BOTH",
 ) {
   const existingCandidates = await tx.allStarCandidate.findMany({
     where: { ballotCycleId: cycle.id },
@@ -73,6 +76,7 @@ export async function importCandidatesFromTeamsForCycle(
     select: {
       fullName: true,
       jerseyNumber: true,
+      allStarAgeBand: true,
       team: { select: { teamName: true } },
     },
     orderBy: [{ team: { teamName: "asc" } }, { fullName: "asc" }],
@@ -89,6 +93,19 @@ export async function importCandidatesFromTeamsForCycle(
   }> = [];
   let skipped = 0;
   for (const player of players) {
+    if (ageBandFilter !== "BOTH") {
+      if (!player.allStarAgeBand || player.allStarAgeBand !== ageBandFilter) {
+        skipped += 1;
+        continue;
+      }
+    } else if (
+      player.allStarAgeBand !== null &&
+      player.allStarAgeBand !== "11U" &&
+      player.allStarAgeBand !== "12U"
+    ) {
+      skipped += 1;
+      continue;
+    }
     const playerFullName = String(player.fullName || "").trim();
     const team = String(player.team.teamName || "").trim();
     const jerseyNumber = normalizeJerseyNumber(player.jerseyNumber);
