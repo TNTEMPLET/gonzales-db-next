@@ -374,6 +374,7 @@ export default function AllStarVaultManager({
   const [moduleVisibility, setModuleVisibility] = useState<EditModuleVisibility>(
     getVisibilityForPreset("OPERATIONS"),
   );
+  const [showAdvancedCycleActions, setShowAdvancedCycleActions] = useState(false);
 
   const previewCanViewAllStar =
     previewRole === "BOARD_MEMBER" || previewRole === "PARK_DIRECTOR" ? false : true;
@@ -531,6 +532,7 @@ export default function AllStarVaultManager({
   useEffect(() => {
     latestCycleIdRef.current = selectedCycleId;
     setSelectedCandidateIds([]);
+    setShowAdvancedCycleActions(false);
     if (selectedCycleId) {
       const selectedCycleMeta = cycles.find((entry) => entry.id === selectedCycleId) || null;
       const shouldLoadInvites = selectedCycleMeta?.accessMode === "INVITE_LIST";
@@ -2388,9 +2390,40 @@ export default function AllStarVaultManager({
           </select>
           <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void updateCycleStatus("PUBLISHED")} className="rounded-lg border border-emerald-700 text-emerald-300 px-3 py-2 text-sm disabled:opacity-60">Publish</button>
           <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void updateCycleStatus("CLOSED")} className="rounded-lg border border-amber-700 text-amber-300 px-3 py-2 text-sm disabled:opacity-60">Close</button>
-          <button type="button" disabled={manageDisabled || !selectedCycleId || !canDeleteCycles} onClick={() => void deleteCycle()} className="rounded-lg border border-red-700 text-red-300 px-3 py-2 text-sm disabled:opacity-60">Delete Cycle</button>
-          <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void generateSecondTeamPhase()} className="rounded-lg border border-indigo-700 text-indigo-300 px-3 py-2 text-sm disabled:opacity-60">Generate Second Team</button>
+          <button
+            type="button"
+            disabled={manageDisabled || !selectedCycleId}
+            onClick={() => setShowAdvancedCycleActions((prev) => !prev)}
+            className="rounded-lg border border-zinc-600 text-zinc-300 px-3 py-2 text-sm disabled:opacity-60"
+          >
+            {showAdvancedCycleActions ? "Hide Advanced Actions" : "Advanced Actions"}
+          </button>
         </div>
+        {showAdvancedCycleActions ? (
+          <div className="rounded-lg border border-red-900/60 bg-red-950/20 p-3 space-y-3">
+            <p className="text-xs text-red-200">
+              Destructive actions are grouped here to reduce accidental changes.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                disabled={manageDisabled || !selectedCycleId || !canDeleteCycles}
+                onClick={() => void deleteCycle()}
+                className="rounded-lg border border-red-700 text-red-300 px-3 py-2 text-sm disabled:opacity-60"
+              >
+                Delete Cycle
+              </button>
+              <button
+                type="button"
+                disabled={manageDisabled || !selectedCycleId}
+                onClick={() => void generateSecondTeamPhase()}
+                className="rounded-lg border border-indigo-700 text-indigo-300 px-3 py-2 text-sm disabled:opacity-60"
+              >
+                Generate Second Team
+              </button>
+            </div>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
           <span>
             Cycle: <span className="text-zinc-300 font-medium">{getCycleDisplayTitle(selectedCycle)}</span>
