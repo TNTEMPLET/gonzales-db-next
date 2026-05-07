@@ -446,6 +446,10 @@ export default function AllStarVaultManager({
   }, [cycles, selectedCycleId]);
 
   useEffect(() => {
+    setLimitedOverviewMoreCycleId("");
+  }, [selectedCycleId]);
+
+  useEffect(() => {
     const cycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
     if (!selectedCycleId || !isCycleOpenAndPublished(cycle)) return;
     const timer = window.setInterval(() => {
@@ -1164,6 +1168,7 @@ export default function AllStarVaultManager({
   }
 
   function openCycleFromCard(cycleId: string) {
+    setLimitedOverviewMoreCycleId("");
     setSelectedCycleId(cycleId);
   }
 
@@ -1181,12 +1186,27 @@ export default function AllStarVaultManager({
   }
 
   function backToCycleSnapshotBoard() {
+    setLimitedOverviewMoreCycleId("");
     setSelectedCycleId("");
     setError("");
     setNotice("");
     window.requestAnimationFrame(() => {
       vaultShellRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
     });
+  }
+
+  function openLimitedOverviewMore(cycleId: string) {
+    const rows = limitedOverviewSnapshots[cycleId] || [];
+    if (rows.length === 0) {
+      setError("");
+      setNotice("No vote data yet for this cycle.");
+      return;
+    }
+    setLimitedOverviewMoreCycleId((current) => (current === cycleId ? "" : cycleId));
+  }
+
+  function closeLimitedOverviewMore() {
+    setLimitedOverviewMoreCycleId("");
   }
 
   async function generateSecondTeamPhase() {
@@ -1505,11 +1525,6 @@ export default function AllStarVaultManager({
     if (b.seasonYear !== a.seasonYear) return b.seasonYear - a.seasonYear;
     return b.id.localeCompare(a.id);
   });
-  const limitedOverviewMoreCycle =
-    cycles.find((cycle) => cycle.id === limitedOverviewMoreCycleId) || null;
-  const limitedOverviewMoreRows = getTop12WithCutoffTies(
-    limitedOverviewSnapshots[limitedOverviewMoreCycleId] || [],
-  );
   const boardTitle = showFullAdminView
     ? "Cycle Snapshot Board"
     : isAuditorFocusedPreview
@@ -1593,6 +1608,8 @@ export default function AllStarVaultManager({
             {limitedOverviewCycles.map((cycle) => {
               const rows = limitedOverviewSnapshots[cycle.id] || [];
               const topFive = rows.slice(0, 5);
+              const top12Rows = getTop12WithCutoffTies(rows);
+              const isExpanded = limitedOverviewMoreCycleId === cycle.id;
               return (
                 <div key={cycle.id} className={`rounded-lg border p-3 text-sm space-y-2 ${getCycleStatusCardClass(cycle.status)}`}>
                   <div className="flex flex-wrap items-center justify-between gap-2">
@@ -1638,12 +1655,36 @@ export default function AllStarVaultManager({
                     <button
                       type="button"
                       data-admin-preview-allow="true"
-                      onClick={() => setLimitedOverviewMoreCycleId(cycle.id)}
+                      onClick={() => openLimitedOverviewMore(cycle.id)}
                       className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
                     >
-                      ...more
+                      {isExpanded ? "Collapse" : "...more"}
                     </button>
                   </div>
+                  {isExpanded && top12Rows.length > 0 ? (
+                    <div className="rounded-lg border border-zinc-700 bg-zinc-900/70 p-3 space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-xs uppercase tracking-wide text-zinc-400">
+                          Top 12 Snapshot (Names Only)
+                        </p>
+                        <button
+                          type="button"
+                          data-admin-preview-allow="true"
+                          className="rounded-lg border border-zinc-600 text-zinc-300 px-2 py-1 text-xs hover:bg-zinc-800"
+                          onClick={closeLimitedOverviewMore}
+                        >
+                          Close
+                        </button>
+                      </div>
+                      <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                        {top12Rows.map((row, index) => (
+                          <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0">
+                            <p className="text-sm text-zinc-200">#{index + 1} {row.playerFullName} · {row.team}</p>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ) : null}
                 </div>
               );
             })}
@@ -2460,53 +2501,6 @@ export default function AllStarVaultManager({
           </div>
         ) : null}
       </div>
-
-      {limitedOverviewMoreCycleId && limitedOverviewMoreCycle ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="limited-overview-top12-title"
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setLimitedOverviewMoreCycleId("");
-          }}
-        >
-          <div
-            className="w-full max-w-2xl rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 max-h-[90vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 id="limited-overview-top12-title" className="text-lg font-semibold">
-                  Top 12 Snapshot (Names Only)
-                </h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  {formatOrganizationLabel(limitedOverviewMoreCycle.organizationId)} · {limitedOverviewMoreCycle.seasonYear} · {limitedOverviewMoreCycle.ageGroup} · {limitedOverviewMoreCycle.status}
-                </p>
-              </div>
-              <button
-                type="button"
-                data-admin-preview-allow="true"
-                className="shrink-0 rounded-lg border border-zinc-600 text-zinc-300 px-3 py-1.5 text-xs hover:bg-zinc-800"
-                onClick={() => setLimitedOverviewMoreCycleId("")}
-              >
-                Close
-              </button>
-            </div>
-            <div className="overflow-y-auto rounded-lg border border-zinc-800">
-              {limitedOverviewMoreRows.length === 0 ? (
-                <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
-              ) : (
-                limitedOverviewMoreRows.map((row, index) => (
-                  <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0">
-                    <p className="text-sm text-zinc-200">#{index + 1} {row.playerFullName} · {row.team}</p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-        </div>
-      ) : null}
 
       {showBallotRosterStatusModal && ballotRosterStatus ? (
         <div
