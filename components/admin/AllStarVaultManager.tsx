@@ -421,6 +421,7 @@ export default function AllStarVaultManager({
   const cycleManagementRef = useRef<HTMLDivElement | null>(null);
   const vaultShellRef = useRef<HTMLElement | null>(null);
   const editModulesShellRef = useRef<HTMLDivElement | null>(null);
+  const auditorObserverToolsRef = useRef<HTMLDivElement | null>(null);
   const scrollEditModulesIntoViewAfterExpand = useRef(false);
   const [previewRole, setPreviewRole] = useState<AdminViewPreviewRole>("NONE");
   const [org, setOrg] = useState<"gonzales" | "ascension">(initialOrg);
@@ -560,10 +561,14 @@ export default function AllStarVaultManager({
     if (!showEditModules || !scrollEditModulesIntoViewAfterExpand.current) return;
     scrollEditModulesIntoViewAfterExpand.current = false;
     const id = window.requestAnimationFrame(() => {
-      editModulesShellRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      if (previewRole === "ALL_STAR_VIEW_ONLY") {
+        auditorObserverToolsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      } else {
+        editModulesShellRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
     });
     return () => window.cancelAnimationFrame(id);
-  }, [showEditModules]);
+  }, [showEditModules, previewRole]);
 
   useEffect(() => {
     setOrg(initialOrg);
@@ -2243,8 +2248,9 @@ export default function AllStarVaultManager({
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {showFullAdminView && (canManageAllStarVaultUi || isLimitedVaultAccess) ? (
-                isLimitedVaultAccess ? (
+              {isAuditorFocusedPreview ||
+              (showFullAdminView && (canManageAllStarVaultUi || isLimitedVaultAccess)) ? (
+                isLimitedVaultAccess || isAuditorFocusedPreview ? (
                   <>
                     <button
                       type="button"
@@ -2316,8 +2322,9 @@ export default function AllStarVaultManager({
           <p className="text-xs text-zinc-500 max-w-2xl">
             {isAuditorFocusedPreview ? (
               <>
-                Observer snapshot tools for this ballot are in the sections below — submitted ballots, vote standings,
-                shared link, and exports.
+                Use <span className="text-zinc-400">View modules</span> to open ballot tools in this summary — submitted
+                ballots, vote standings, shared link, exports, and sample ballot. Collapse with{" "}
+                <span className="text-zinc-400">Hide view modules</span>.
               </>
             ) : isLimitedVaultAccess ? (
               <>
@@ -2332,223 +2339,211 @@ export default function AllStarVaultManager({
               </>
             )}
           </p>
-        </div>
-      ) : null}
-
-      {isAuditorFocusedPreview ? (
-        <>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
-            <h2 className="text-lg font-semibold">Observer Snapshot (limited admin)</h2>
-            <p className="text-xs text-zinc-400">
-              Full management sections are hidden in this preview. Showing ballot operations and read-only exports.
-            </p>
-            <div className="max-w-md">
-              <label className="text-xs uppercase tracking-wide text-zinc-500">Select Ballot</label>
-              <select
-                data-admin-preview-allow="true"
-                value={selectedCycleId}
-                onChange={(event) => setSelectedCycleId(event.target.value)}
-                className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-              >
-                <option value="">Select cycle…</option>
-                {cycles.map((cycle) => (
-                  <option key={cycle.id} value={cycle.id}>
-                    {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {getDisplayedCycleAgeGroupWithAllStarAge(cycle)} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <p className="text-sm text-zinc-200">
-              {selectedCycle
-                ? `${formatOrganizationLabel(selectedCycle.organizationId)} · ${selectedCycle.seasonYear} · ${getDisplayedCycleAgeGroupWithAllStarAge(selectedCycle)} · ${selectedCycle.status} · ${getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}`
-                : "No cycle selected"}
-            </p>
-            <p className="text-xs text-zinc-500">
-              {ballotRosterStatus
-                ? `${ballotRosterStatus.submittedCount}/${ballotRosterStatus.total} submitted (${ballotRosterStatus.rosterLabelShort})`
-                : "No roster progress available"}
-            </p>
-            {selectedCycleId && ballotRosterStatus ? (
-              <button
-                type="button"
-                data-admin-preview-allow="true"
-                onClick={() => setShowBallotRosterStatusModal(true)}
-                className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 inline-flex items-center gap-2 w-fit"
-              >
-                <span className="text-zinc-500">View submitted vs total</span>
-                <span className="tabular-nums font-semibold text-zinc-100">
-                  {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
-                </span>
-              </button>
-            ) : null}
-            <div className="flex flex-wrap gap-2">
-              <a
-                href={
-                  selectedCycleId
-                    ? `/api/admin/all-star/exports/votes-panel/csv?cycleId=${selectedCycleId}${orgQuery}`
-                    : "#"
-                }
-                className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
-              >
-                Export CSV
-              </a>
-              <a
-                href={
-                  selectedCycleId
-                    ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${orgQuery}`
-                    : "#"
-                }
-                className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
-              >
-                PDF (name only)
-              </a>
-              <a
-                href={
-                  selectedCycleId
-                    ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=full${orgQuery}`
-                    : "#"
-                }
-                className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
-              >
-                PDF (full)
-              </a>
-              <a
-                href={
-                  selectedCycleId
-                    ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${orgQuery}`
-                    : "#"
-                }
-                className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
-              >
-                Showcase Score Card (fillable PDF)
-              </a>
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-            <h2 className="text-lg font-semibold">Submitted Ballots</h2>
-            <p className="text-xs text-zinc-500">Submitted ballots: {voteSummarySubmissionCount}</p>
-            <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
-              {!selectedCycleId ? (
-                <p className="text-zinc-500 text-sm p-3">Select a cycle to view submitted ballots.</p>
-              ) : submittedBallots.length === 0 ? (
-                <p className="text-zinc-500 text-sm p-3">No submitted ballots yet.</p>
-              ) : (
-                submittedBallots.map((submission) => (
-                  <div
-                    key={submission.id}
-                    className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-start justify-between gap-2"
+          {isAuditorFocusedPreview && showEditModules ? (
+            <div
+              ref={auditorObserverToolsRef}
+              className="space-y-4 pt-4 mt-1 border-t border-emerald-800/40"
+            >
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+                <h2 className="text-lg font-semibold">Observer ballot tools</h2>
+                <p className="text-xs text-zinc-400">
+                  Read-only exports and ballot operations for this cycle. Choose another cycle from{" "}
+                  <span className="text-zinc-300">Back to cycle board</span> above.
+                </p>
+                <p className="text-xs text-zinc-500">
+                  {ballotRosterStatus
+                    ? `${ballotRosterStatus.submittedCount}/${ballotRosterStatus.total} submitted (${ballotRosterStatus.rosterLabelShort})`
+                    : "No roster progress available"}
+                </p>
+                {selectedCycleId && ballotRosterStatus ? (
+                  <button
+                    type="button"
+                    data-admin-preview-allow="true"
+                    onClick={() => setShowBallotRosterStatusModal(true)}
+                    className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 inline-flex items-center gap-2 w-fit"
                   >
-                    <div className="min-w-0">
-                      <p className="text-sm text-zinc-200">
-                        {displayNameFromCoachFields(
-                          submission.coachUser.firstName,
-                          submission.coachUser.lastName,
-                          submission.coachUser.name,
-                          submission.coachUser.email,
-                        )}
-                      </p>
-                      <p className="text-xs text-zinc-500">{submission.coachUser.email}</p>
-                      <p className="text-xs text-zinc-500">
-                        Submitted {new Date(submission.submittedAt).toLocaleString()} · {submission.voteItemCount}{" "}
-                        ratings
-                      </p>
-                    </div>
+                    <span className="text-zinc-500">View submitted vs total</span>
+                    <span className="tabular-nums font-semibold text-zinc-100">
+                      {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
+                    </span>
+                  </button>
+                ) : null}
+                <div className="flex flex-wrap gap-2">
+                  <a
+                    href={
+                      selectedCycleId
+                        ? `/api/admin/all-star/exports/votes-panel/csv?cycleId=${selectedCycleId}${orgQuery}`
+                        : "#"
+                    }
+                    className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+                  >
+                    Export CSV
+                  </a>
+                  <a
+                    href={
+                      selectedCycleId
+                        ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${orgQuery}`
+                        : "#"
+                    }
+                    className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+                  >
+                    PDF (name only)
+                  </a>
+                  <a
+                    href={
+                      selectedCycleId
+                        ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=full${orgQuery}`
+                        : "#"
+                    }
+                    className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
+                  >
+                    PDF (full)
+                  </a>
+                  <a
+                    href={
+                      selectedCycleId
+                        ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${orgQuery}`
+                        : "#"
+                    }
+                    className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
+                  >
+                    Showcase Score Card (fillable PDF)
+                  </a>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+                <h2 className="text-lg font-semibold">Submitted Ballots</h2>
+                <p className="text-xs text-zinc-500">Submitted ballots: {voteSummarySubmissionCount}</p>
+                <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
+                  {!selectedCycleId ? (
+                    <p className="text-zinc-500 text-sm p-3">Select a cycle to view submitted ballots.</p>
+                  ) : submittedBallots.length === 0 ? (
+                    <p className="text-zinc-500 text-sm p-3">No submitted ballots yet.</p>
+                  ) : (
+                    submittedBallots.map((submission) => (
+                      <div
+                        key={submission.id}
+                        className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-start justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm text-zinc-200">
+                            {displayNameFromCoachFields(
+                              submission.coachUser.firstName,
+                              submission.coachUser.lastName,
+                              submission.coachUser.name,
+                              submission.coachUser.email,
+                            )}
+                          </p>
+                          <p className="text-xs text-zinc-500">{submission.coachUser.email}</p>
+                          <p className="text-xs text-zinc-500">
+                            Submitted {new Date(submission.submittedAt).toLocaleString()} · {submission.voteItemCount}{" "}
+                            ratings
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={busy || !canDeleteSubmittedBallots}
+                          onClick={() => void deleteSubmittedBallot(submission.id)}
+                          className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60 shrink-0"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+                <h2 className="text-lg font-semibold">Votes Panel</h2>
+                <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
+                  {!selectedCycleId ? (
+                    <p className="text-zinc-500 text-sm p-3">Select a cycle to view vote standings.</p>
+                  ) : voteSummary.length === 0 ? (
+                    <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
+                  ) : (
+                    voteSummary.map((row, index) => (
+                      <div
+                        key={row.candidateId}
+                        className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
+                      >
+                        <p className="min-w-0 truncate">
+                          <span className="text-zinc-500 mr-2">#{index + 1}</span>
+                          <span className="font-medium">{row.playerFullName}</span> · {row.team} · #{row.jerseyNumber}
+                        </p>
+                        <p className="text-xs text-zinc-300 whitespace-nowrap">
+                          Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+                        </p>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+                <h2 className="text-lg font-semibold">Shared ballot link</h2>
+                <p className="text-xs text-zinc-400">
+                  Same link coaches use to open the ballot (when generated for this cycle). Copy and share as needed.
+                </p>
+                {ballotVotingLink ? (
+                  <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                    <code className="text-xs text-brand-gold break-all flex-1">{ballotVotingLink}</code>
                     <button
                       type="button"
-                      disabled={busy || !canDeleteSubmittedBallots}
-                      onClick={() => void deleteSubmittedBallot(submission.id)}
-                      className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60 shrink-0"
+                      disabled={busy}
+                      onClick={() => void copyInviteLink(ballotVotingLink)}
+                      className="text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-1.5 shrink-0"
                     >
-                      Delete
+                      Copy link
                     </button>
                   </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-            <h2 className="text-lg font-semibold">Votes Panel</h2>
-            <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
-              {!selectedCycleId ? (
-                <p className="text-zinc-500 text-sm p-3">Select a cycle to view vote standings.</p>
-              ) : voteSummary.length === 0 ? (
-                <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
-              ) : (
-                voteSummary.map((row, index) => (
-                  <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3">
-                    <p className="min-w-0 truncate">
-                      <span className="text-zinc-500 mr-2">#{index + 1}</span>
-                      <span className="font-medium">{row.playerFullName}</span> · {row.team} · #{row.jerseyNumber}
-                    </p>
-                    <p className="text-xs text-zinc-300 whitespace-nowrap">
-                      Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
-                    </p>
-                  </div>
-                ))
-              )}
-            </div>
-          </div>
-
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
-            <h2 className="text-lg font-semibold">Shared ballot link</h2>
-            <p className="text-xs text-zinc-400">
-              Same link coaches use to open the ballot (when generated for this cycle). Copy and share as needed.
-            </p>
-            {ballotVotingLink ? (
-              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
-                <code className="text-xs text-brand-gold break-all flex-1">{ballotVotingLink}</code>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => void copyInviteLink(ballotVotingLink)}
-                  className="text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-1.5 shrink-0"
-                >
-                  Copy link
-                </button>
+                ) : (
+                  <p className="text-xs text-zinc-500">
+                    No shared link is set for this cycle yet. A full admin can generate one under Invites on the main vault
+                    view.
+                  </p>
+                )}
               </div>
-            ) : (
-              <p className="text-xs text-zinc-500">
-                No shared link is set for this cycle yet. A full admin can generate one under Invites on the main vault
-                view.
-              </p>
-            )}
-          </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
-            <h2 className="text-lg font-semibold">Sample Ballot</h2>
-            <p className="text-xs text-zinc-400">
-              Read-only preview of what a ballot row looks like for this cycle.
-            </p>
-            <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
-              {sampleBallotCandidates.length === 0 ? (
-                <p className="text-zinc-500 text-sm p-3">No candidates available for sample ballot.</p>
-              ) : (
-                sampleBallotCandidates.map((candidate) => (
-                  <div
-                    key={candidate.id}
-                    className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex items-center justify-between gap-3"
-                  >
-                    <p className="text-sm min-w-0 truncate">
-                      <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team}
-                      {hasVisibleJerseyNumber(candidate.jerseyNumber)
-                        ? ` · #${candidate.jerseyNumber}`
-                        : ""}
-                    </p>
-                    <div className="flex items-center gap-1 text-zinc-500">
-                      {[1, 2, 3, 4, 5].map((value) => (
-                        <span key={value} className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700 bg-zinc-950/50 p-0.5 opacity-70">
-                          <BaseballRatingIcon className="h-5 w-5" />
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
+              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+                <h2 className="text-lg font-semibold">Sample Ballot</h2>
+                <p className="text-xs text-zinc-400">
+                  Read-only preview of what a ballot row looks like for this cycle.
+                </p>
+                <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
+                  {sampleBallotCandidates.length === 0 ? (
+                    <p className="text-zinc-500 text-sm p-3">No candidates available for sample ballot.</p>
+                  ) : (
+                    sampleBallotCandidates.map((candidate) => (
+                      <div
+                        key={candidate.id}
+                        className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex items-center justify-between gap-3"
+                      >
+                        <p className="text-sm min-w-0 truncate">
+                          <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team}
+                          {hasVisibleJerseyNumber(candidate.jerseyNumber)
+                            ? ` · #${candidate.jerseyNumber}`
+                            : ""}
+                        </p>
+                        <div className="flex items-center gap-1 text-zinc-500">
+                          {[1, 2, 3, 4, 5].map((value) => (
+                            <span
+                              key={value}
+                              className="inline-flex h-7 w-7 items-center justify-center rounded-md border border-zinc-700 bg-zinc-950/50 p-0.5 opacity-70"
+                            >
+                              <BaseballRatingIcon className="h-5 w-5" />
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
             </div>
-          </div>
-        </>
+          ) : null}
+        </div>
       ) : null}
 
       {showFullAdminManagementChrome ? (
