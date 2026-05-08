@@ -12,7 +12,6 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
-    if: ${{ secrets.DEMO_REPO_SYNC_TOKEN != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -35,6 +34,10 @@ jobs:
           TOKEN: ${{ secrets.DEMO_REPO_SYNC_TOKEN }}
           TARGET_REPO: ${{ matrix.repo }}
         run: |
+          if [ -z "${TOKEN}" ]; then
+            echo "DEMO_REPO_SYNC_TOKEN is not set; skipping sync."
+            exit 0
+          fi
           git remote add demo "https://x-access-token:${TOKEN}@github.com/${TARGET_REPO}.git"
           git push demo "refs/heads/main:refs/heads/main" --force
           git remote remove demo
