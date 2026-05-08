@@ -6,6 +6,8 @@ import prisma from "@/lib/prisma";
 import { getAssignrLeagueId, getOrgId, getSiteConfig } from "@/lib/siteConfig";
 import { computeStandingsByAgeGroup } from "@/lib/standings";
 
+export const dynamic = "force-dynamic";
+
 export function generateMetadata() {
   const site = getSiteConfig();
   return {
