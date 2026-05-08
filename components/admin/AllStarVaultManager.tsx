@@ -291,6 +291,18 @@ function getDisplayedCycleAgeGroup(cycle: {
   return cycle.ageGroup;
 }
 
+function getDisplayedCycleAgeGroupWithAllStarAge(cycle: {
+  organizationId: "gonzales" | "ascension";
+  ageGroup: string;
+  title: string | null;
+  allStarAgeGroupLabel?: string | null;
+}) {
+  const baseAgeGroup = getDisplayedCycleAgeGroup(cycle);
+  const allStarAge = cycle.allStarAgeGroupLabel?.trim();
+  if (!allStarAge) return baseAgeGroup;
+  return `${baseAgeGroup} [${allStarAge}]`;
+}
+
 function getTop12WithCutoffTies(rows: VoteSummaryRow[]) {
   if (rows.length <= 12) return rows;
   const cutoffVotes = rows[11]!.voteCount;
@@ -2064,7 +2076,7 @@ export default function AllStarVaultManager({
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-zinc-200 font-medium">
-                        {formatOrganizationLabel(cycle.organizationId)} · {cycle.seasonYear} · {getDisplayedCycleAgeGroup(cycle)} · {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}
+                        {formatOrganizationLabel(cycle.organizationId)} · {cycle.seasonYear} · {getDisplayedCycleAgeGroupWithAllStarAge(cycle)} · {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}
                       </p>
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(cycle.status)}`}>
                         {cycle.status}
@@ -2154,14 +2166,14 @@ export default function AllStarVaultManager({
                 <option value="">Select cycle…</option>
                 {cycles.map((cycle) => (
                   <option key={cycle.id} value={cycle.id}>
-                    {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {getDisplayedCycleAgeGroup(cycle)} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
+                    {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {getDisplayedCycleAgeGroupWithAllStarAge(cycle)} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
                   </option>
                 ))}
               </select>
             </div>
             <p className="text-sm text-zinc-200">
               {selectedCycle
-                ? `${formatOrganizationLabel(selectedCycle.organizationId)} · ${selectedCycle.seasonYear} · ${getDisplayedCycleAgeGroup(selectedCycle)} · ${selectedCycle.status} · ${getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}`
+                ? `${formatOrganizationLabel(selectedCycle.organizationId)} · ${selectedCycle.seasonYear} · ${getDisplayedCycleAgeGroupWithAllStarAge(selectedCycle)} · ${selectedCycle.status} · ${getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}`
                 : "No cycle selected"}
             </p>
             <p className="text-xs text-zinc-500">
@@ -2334,7 +2346,7 @@ export default function AllStarVaultManager({
               </p>
               <h2 className="text-lg font-semibold text-zinc-100 leading-snug">
                 {formatOrganizationLabel(selectedCycle.organizationId)} · {selectedCycle.seasonYear} ·{" "}
-                {getDisplayedCycleAgeGroup(selectedCycle)} ·{" "}
+                {getDisplayedCycleAgeGroupWithAllStarAge(selectedCycle)} ·{" "}
                 {getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
               </h2>
               <p className="text-sm text-zinc-400 truncate" title={getCycleDisplayTitle(selectedCycle)}>
