@@ -1622,13 +1622,8 @@ export default function AllStarVaultManager({
     setShowEditModules(false);
   }
 
-  function expandEditModulesIntoView() {
-    scrollEditModulesIntoViewAfterExpand.current = true;
-    setShowEditModules(true);
-  }
-
-  /** Limited admin: eye control toggles ballot modules open/closed (same as View modules / Hide in the panel). */
-  function toggleLimitedVaultViewModules() {
+  /** Full and limited admins: emerald icon toggles edit/view modules (scroll into view when opening). */
+  function toggleEditModulesPanel() {
     setShowEditModules((prev) => {
       const next = !prev;
       if (next) {
@@ -2253,7 +2248,7 @@ export default function AllStarVaultManager({
                   <>
                     <button
                       type="button"
-                      onClick={() => toggleLimitedVaultViewModules()}
+                      onClick={() => toggleEditModulesPanel()}
                       aria-pressed={showEditModules}
                       className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40 ${
                         showEditModules ? "bg-emerald-950/55 ring-2 ring-emerald-500/40" : ""
@@ -2265,7 +2260,7 @@ export default function AllStarVaultManager({
                     </button>
                     <button
                       type="button"
-                      onClick={() => toggleLimitedVaultViewModules()}
+                      onClick={() => toggleEditModulesPanel()}
                       className={`rounded-lg border border-emerald-600/80 px-3 py-1.5 text-sm font-medium text-emerald-100 hover:bg-emerald-950/40 ${
                         showEditModules ? "bg-emerald-950/55 ring-2 ring-emerald-500/40" : ""
                       }`}
@@ -2276,10 +2271,13 @@ export default function AllStarVaultManager({
                 ) : (
                   <button
                     type="button"
-                    onClick={() => expandEditModulesIntoView()}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
-                    title="Show editing tools"
-                    aria-label="Show editing tools"
+                    onClick={() => toggleEditModulesPanel()}
+                    aria-pressed={showEditModules}
+                    className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40 ${
+                      showEditModules ? "bg-emerald-950/55 ring-2 ring-emerald-500/40" : ""
+                    }`}
+                    title={showEditModules ? "Hide editing tools" : "Show editing tools"}
+                    aria-label={showEditModules ? "Hide editing tools" : "Show editing tools"}
                   >
                     <EditCycleIcon className="h-4 w-4" />
                   </button>
