@@ -2017,8 +2017,10 @@ export default function AllStarVaultManager({
       ? "Observer Snapshot (limited admin)"
       : `Limited Overview (${previewRole.replaceAll("_", " ")})`;
   const showCycleSnapshotBoard =
-    !showFullAdminView ||
-    (showSnapshotBoardOnInitialFullAccess && !selectedCycleId);
+    (showFullAdminView &&
+      (showSnapshotBoardOnInitialFullAccess && !selectedCycleId)) ||
+    (!showFullAdminView &&
+      !(isAuditorFocusedPreview && Boolean(selectedCycleId)));
   /** On the main Vault page, full admins start on the board only; management chrome appears after opening a cycle. */
   const showFullAdminManagementChrome =
     showFullAdminView &&
@@ -2027,6 +2029,15 @@ export default function AllStarVaultManager({
     showFullAdminManagementChrome &&
     showSnapshotBoardOnInitialFullAccess &&
     Boolean(selectedCycleId);
+  /** Limited-admin preview: back + emerald summary when drilled into a cycle (Observer Snapshot follows below). */
+  const showAuditorSelectedCycleSummary =
+    isAuditorFocusedPreview && Boolean(selectedCycle);
+  const showCycleBoardBackShortcut =
+    showBackToCycleBoardShortcut ||
+    (isAuditorFocusedPreview && Boolean(selectedCycleId));
+  const showEmeraldSelectedCycleCard =
+    (showBackToCycleBoardShortcut && Boolean(selectedCycle)) ||
+    showAuditorSelectedCycleSummary;
   /** Vault snapshot drill-in: editing chrome stays hidden until the user clicks the edit icon. */
   const vaultSnapshotDetailActive =
     showSnapshotBoardOnInitialFullAccess && Boolean(selectedCycleId);
@@ -2194,6 +2205,119 @@ export default function AllStarVaultManager({
             })}
           </div>
         )}
+        </div>
+      ) : null}
+
+      {showCycleBoardBackShortcut ? (
+        <div className="flex flex-wrap items-center gap-3">
+          <button
+            type="button"
+            onClick={backToCycleSnapshotBoard}
+            className="inline-flex items-center gap-2 rounded-lg border border-emerald-800/60 bg-emerald-950/25 text-emerald-100 hover:bg-emerald-950/40 px-3 py-2 text-sm"
+          >
+            ← Back to cycle board
+          </button>
+        </div>
+      ) : null}
+
+      {showEmeraldSelectedCycleCard && selectedCycle ? (
+        <div className="rounded-xl border border-emerald-800/45 bg-emerald-950/20 p-5 space-y-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div className="space-y-1 min-w-0">
+              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400/90">
+                Selected cycle (vault view)
+              </p>
+              <h2 className="text-lg font-semibold text-zinc-100 leading-snug">
+                {formatOrganizationLabel(selectedCycle.organizationId)} · {selectedCycle.seasonYear} ·{" "}
+                {getDisplayedCycleAgeGroupWithAllStarAge(selectedCycle)} ·{" "}
+                {getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
+              </h2>
+              <p className="text-sm text-zinc-400 truncate" title={getCycleDisplayTitle(selectedCycle)}>
+                {getCycleDisplayTitle(selectedCycle)}
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {showFullAdminView && (canManageAllStarVaultUi || isLimitedVaultAccess) ? (
+                isLimitedVaultAccess ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => expandEditModulesIntoView()}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
+                      title="View modules"
+                      aria-label="View modules"
+                    >
+                      <ViewCycleIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => expandEditModulesIntoView()}
+                      className="rounded-lg border border-emerald-600/80 px-3 py-1.5 text-sm font-medium text-emerald-100 hover:bg-emerald-950/40"
+                    >
+                      View modules
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => expandEditModulesIntoView()}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
+                    title="Show editing tools"
+                    aria-label="Show editing tools"
+                  >
+                    <EditCycleIcon className="h-4 w-4" />
+                  </button>
+                )
+              ) : null}
+              <span
+                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(selectedCycle.status)}`}
+              >
+                {selectedCycle.status}
+              </span>
+            </div>
+          </div>
+          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-zinc-400">
+            <span>
+              Candidates:{" "}
+              <span className="font-semibold text-zinc-200 tabular-nums">{candidates.length}</span>
+            </span>
+            {ballotRosterStatus ? (
+              <span>
+                Ballots in:{" "}
+                <span className="font-semibold text-zinc-200 tabular-nums">
+                  {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
+                </span>
+                <span className="text-zinc-500"> · {ballotRosterStatus.rosterLabelShort}</span>
+              </span>
+            ) : null}
+            <span>
+              Vote standings:{" "}
+              <span className="font-semibold text-zinc-200 tabular-nums">{voteSummary.length}</span>
+            </span>
+            <span className="text-zinc-500">
+              {selectedCycle.accessMode === "INVITE_LIST" ? "Invite list access" : "Age-group coach access"}
+              {selectedCycle.hasShowcase ? " · Showcase" : ""}
+            </span>
+          </div>
+          <p className="text-xs text-zinc-500 max-w-2xl">
+            {isAuditorFocusedPreview ? (
+              <>
+                Observer snapshot tools for this ballot are in the sections below — submitted ballots, vote standings,
+                shared link, and exports.
+              </>
+            ) : isLimitedVaultAccess ? (
+              <>
+                Use <span className="text-zinc-400">View modules</span> to open submitted ballots, vote standings, and the
+                shared ballot link. Collapse again with <span className="text-zinc-400">Hide view modules</span> in that
+                section.
+              </>
+            ) : (
+              <>
+                Click a snapshot card to open this summary. Use the edit icon here when you want ballot tools and exports. Use{" "}
+                <span className="text-zinc-400">Hide Edit Modules</span> at the top of that section to collapse them again.
+              </>
+            )}
+          </p>
         </div>
       ) : null}
 
@@ -2411,114 +2535,6 @@ export default function AllStarVaultManager({
             </div>
           </div>
         </>
-      ) : null}
-
-      {showBackToCycleBoardShortcut ? (
-        <div className="flex flex-wrap items-center gap-3">
-          <button
-            type="button"
-            onClick={backToCycleSnapshotBoard}
-            className="inline-flex items-center gap-2 rounded-lg border border-emerald-800/60 bg-emerald-950/25 text-emerald-100 hover:bg-emerald-950/40 px-3 py-2 text-sm"
-          >
-            ← Back to cycle board
-          </button>
-        </div>
-      ) : null}
-
-      {showBackToCycleBoardShortcut && selectedCycle ? (
-        <div className="rounded-xl border border-emerald-800/45 bg-emerald-950/20 p-5 space-y-4">
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div className="space-y-1 min-w-0">
-              <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400/90">
-                Selected cycle (vault view)
-              </p>
-              <h2 className="text-lg font-semibold text-zinc-100 leading-snug">
-                {formatOrganizationLabel(selectedCycle.organizationId)} · {selectedCycle.seasonYear} ·{" "}
-                {getDisplayedCycleAgeGroupWithAllStarAge(selectedCycle)} ·{" "}
-                {getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
-              </h2>
-              <p className="text-sm text-zinc-400 truncate" title={getCycleDisplayTitle(selectedCycle)}>
-                {getCycleDisplayTitle(selectedCycle)}
-              </p>
-            </div>
-            <div className="flex items-center gap-2 shrink-0">
-              {showFullAdminView && (canManageAllStarVaultUi || isLimitedVaultAccess) ? (
-                isLimitedVaultAccess ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => expandEditModulesIntoView()}
-                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
-                      title="View modules"
-                      aria-label="View modules"
-                    >
-                      <ViewCycleIcon className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => expandEditModulesIntoView()}
-                      className="rounded-lg border border-emerald-600/80 px-3 py-1.5 text-sm font-medium text-emerald-100 hover:bg-emerald-950/40"
-                    >
-                      View modules
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={() => expandEditModulesIntoView()}
-                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
-                    title="Show editing tools"
-                    aria-label="Show editing tools"
-                  >
-                    <EditCycleIcon className="h-4 w-4" />
-                  </button>
-                )
-              ) : null}
-              <span
-                className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(selectedCycle.status)}`}
-              >
-                {selectedCycle.status}
-              </span>
-            </div>
-          </div>
-          <div className="flex flex-wrap gap-x-4 gap-y-2 text-xs text-zinc-400">
-            <span>
-              Candidates:{" "}
-              <span className="font-semibold text-zinc-200 tabular-nums">{candidates.length}</span>
-            </span>
-            {ballotRosterStatus ? (
-              <span>
-                Ballots in:{" "}
-                <span className="font-semibold text-zinc-200 tabular-nums">
-                  {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
-                </span>
-                <span className="text-zinc-500"> · {ballotRosterStatus.rosterLabelShort}</span>
-              </span>
-            ) : null}
-            <span>
-              Vote standings:{" "}
-              <span className="font-semibold text-zinc-200 tabular-nums">{voteSummary.length}</span>
-            </span>
-            <span className="text-zinc-500">
-              {selectedCycle.accessMode === "INVITE_LIST" ? "Invite list access" : "Age-group coach access"}
-              {selectedCycle.hasShowcase ? " · Showcase" : ""}
-            </span>
-          </div>
-          <p className="text-xs text-zinc-500 max-w-2xl">
-            {isLimitedVaultAccess ? (
-              <>
-                Use <span className="text-zinc-400">View modules</span> to open submitted ballots, vote standings, and the
-                shared ballot link. Collapse again with <span className="text-zinc-400">Hide view modules</span> in that
-                section.
-              </>
-            ) : (
-              <>
-                Click a snapshot card to open this summary. Use the edit icon here when you want ballot tools and exports. Use{" "}
-                <span className="text-zinc-400">Hide Edit Modules</span> at the top of that section to collapse them again.
-              </>
-            )}
-          </p>
-        </div>
       ) : null}
 
       {showFullAdminManagementChrome ? (
