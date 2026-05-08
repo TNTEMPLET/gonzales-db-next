@@ -10,9 +10,15 @@ This project now supports three isolated demo repos:
 
 - Source of truth for code: `TNTEMPLET/gonzales-db-next` (`main`)
 - Automatic code sync to demo repos: `.github/workflows/sync-demo-repos.yml`
-- Required secret in `gonzales-db-next`: `DEMO_REPO_SYNC_TOKEN` (GitHub PAT with `repo` scope)
+- **Secrets** (one per demo repo — GitHub **Deploy keys** with write access): `DEMO_SYNC_SSH_KEY_ADMIN`, `DEMO_SYNC_SSH_KEY_DYB`, `DEMO_SYNC_SSH_KEY_LLB`. Omit any secret to skip that mirror; other demos still sync.
 
 This keeps frontend/backend code current in demo while allowing each demo deployment to use a separate database and environment values.
+
+## Production sites vs demo (same app, different Vercel projects)
+
+Production org sites (`gonzales-db-next`, `apbaseball-admin`, `apbaseball-llb`) can all point at **this** GitHub repo with **Production branch `main`**. Demo repos above are **separate** GitHub repos; they only affect `apbaseball-demo-*` Vercel projects.
+
+If **only one** production project rebuilds on a `main` push while others stay stale, that is a **Vercel ↔ GitHub** integration quirk (Hobby limits or webhook fan-out), not the demo sync workflow. Try on each stuck project: **Settings → Git → Disconnect**, then **Connect** the same repo again, confirm **Production Branch** is `main`. Demo mirroring does not replace production Git builds for admin/LLB.
 
 ## Vercel project mapping
 

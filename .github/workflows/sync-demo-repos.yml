@@ -1,3 +1,12 @@
+# Mirror main to isolated demo repos (separate Vercel + DB per demo).
+# Each job is independent: a missing or invalid deploy key skips or fails only that repo.
+#
+# GitHub Actions secrets (Deploy keys with write access to the matching demo repo):
+#   DEMO_SYNC_SSH_KEY_ADMIN  → TNTEMPLET/apbaseball-demo-admin
+#   DEMO_SYNC_SSH_KEY_DYB    → TNTEMPLET/apbaseball-demo-dyb
+#   DEMO_SYNC_SSH_KEY_LLB    → TNTEMPLET/apbaseball-demo-llb
+#
+# Omit a secret to skip that demo (workflow stays green for the rest).
 name: Sync demo repos with main
 
 on:
@@ -10,18 +19,10 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  sync:
+  sync-apbaseball-demo-admin:
+    name: Sync → apbaseball-demo-admin
+    if: ${{ secrets.DEMO_SYNC_SSH_KEY_ADMIN != '' }}
     runs-on: ubuntu-latest
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - repo: TNTEMPLET/apbaseball-demo-admin
-            ssh_key_secret: DEMO_SYNC_SSH_KEY_ADMIN
-          - repo: TNTEMPLET/apbaseball-demo-dyb
-            ssh_key_secret: DEMO_SYNC_SSH_KEY_DYB
-          - repo: TNTEMPLET/apbaseball-demo-llb
-            ssh_key_secret: DEMO_SYNC_SSH_KEY_LLB
     steps:
       - uses: actions/checkout@v4
         with:
@@ -35,17 +36,16 @@ jobs:
       - name: Load repo deploy key
         uses: webfactory/ssh-agent@v0.9.0
         with:
-          ssh-private-key: ${{ secrets[matrix.ssh_key_secret] }}
+          ssh-private-key: ${{ secrets.DEMO_SYNC_SSH_KEY_ADMIN }}
 
       - name: Trust github.com SSH host key
         run: |
           mkdir -p ~/.ssh
           ssh-keyscan github.com >> ~/.ssh/known_hosts
 
-      - name: Push main to demo repo
+      - name: Push snapshot to demo repo
         run: |
-          # Demo repos should not receive source-repo workflow files.
-          # Pushing workflow changes via deploy-key auth is blocked by GitHub.
+          set -euo pipefail
           git checkout --detach origin/main
           rm -rf .github/workflows
           git add -A
@@ -54,6 +54,93 @@ jobs:
           else
             git commit -m "chore: sync demo snapshot"
           fi
-          git remote add demo "git@github.com:${{ matrix.repo }}.git"
+          git remote add demo "git@github.com:TNTEMPLET/apbaseball-demo-admin.git"
           git push demo "HEAD:refs/heads/main" --force
           git remote remove demo
+
+  sync-apbaseball-demo-dyb:
+    name: Sync → apbaseball-demo-dyb
+    if: ${{ secrets.DEMO_SYNC_SSH_KEY_DYB != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Load repo deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEMO_SYNC_SSH_KEY_DYB }}
+
+      - name: Trust github.com SSH host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Push snapshot to demo repo
+        run: |
+          set -euo pipefail
+          git checkout --detach origin/main
+          rm -rf .github/workflows
+          git add -A
+          if git diff --cached --quiet; then
+            git commit --allow-empty -m "chore: sync demo snapshot"
+          else
+            git commit -m "chore: sync demo snapshot"
+          fi
+          git remote add demo "git@github.com:TNTEMPLET/apbaseball-demo-dyb.git"
+          git push demo "HEAD:refs/heads/main" --force
+          git remote remove demo
+
+  sync-apbaseball-demo-llb:
+    name: Sync → apbaseball-demo-llb
+    if: ${{ secrets.DEMO_SYNC_SSH_KEY_LLB != '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Load repo deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets.DEMO_SYNC_SSH_KEY_LLB }}
+
+      - name: Trust github.com SSH host key
+        run: |
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Push snapshot to demo repo
+        run: |
+          set -euo pipefail
+          git checkout --detach origin/main
+          rm -rf .github/workflows
+          git add -A
+          if git diff --cached --quiet; then
+            git commit --allow-empty -m "chore: sync demo snapshot"
+          else
+            git commit -m "chore: sync demo snapshot"
+          fi
+          git remote add demo "git@github.com:TNTEMPLET/apbaseball-demo-llb.git"
+          git push demo "HEAD:refs/heads/main" --force
+          git remote remove demo
+
+  demo-sync-not-configured:
+    name: Demo sync — secrets notice
+    if: ${{ secrets.DEMO_SYNC_SSH_KEY_ADMIN == '' && secrets.DEMO_SYNC_SSH_KEY_DYB == '' && secrets.DEMO_SYNC_SSH_KEY_LLB == '' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: No deploy keys configured
+        run: |
+          echo "::notice title=Demo sync skipped::No DEMO_SYNC_SSH_KEY_* secrets are set. Add deploy keys to enable mirroring to apbaseball-demo-* repos (see workflow header)."
