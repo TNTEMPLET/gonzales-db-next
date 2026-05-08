@@ -10,6 +10,7 @@ export interface SiteConfig {
   description: string;
   siteUrl: string;
   logoPath: string;
+  faviconPath: string;
   /** Tailwind/CSS: maps to --org-primary */
   colorPrimary: string;
   /** Tailwind/CSS: maps to --org-primary-dark */
@@ -33,6 +34,7 @@ const configs: Record<OrgId, SiteConfig> = {
       "Official home of Gonzales Diamond Baseball (DYB) in Ascension Parish.",
     siteUrl: "https://dyb.apbaseball.com",
     logoPath: "/images/dyb-logo.png",
+    faviconPath: "/images/dyb-logo.png",
     colorPrimary: "#590275",
     colorPrimaryDark: "#4a0163",
     colorAccent: "#ffcb29",
@@ -49,6 +51,7 @@ const configs: Record<OrgId, SiteConfig> = {
       "Official home of Ascension Little League Baseball in Ascension Parish.",
     siteUrl: "https://llb.apbaseball.com",
     logoPath: "/images/llb-logo.png",
+    faviconPath: "/images/llb-logo.png",
     colorPrimary: "#09306a",
     colorPrimaryDark: "#072550",
     colorAccent: "#b10807",
@@ -64,6 +67,7 @@ const configs: Record<OrgId, SiteConfig> = {
     description: "Master admin dashboard for all AP Baseball organizations.",
     siteUrl: "https://admin.apbaseball.com",
     logoPath: "/images/ap-logo.webp",
+    faviconPath: "/images/ap-logo.png",
     colorPrimary: "#cc0000",
     colorPrimaryDark: "#9b0000",
     colorAccent: "#f5f5f5",

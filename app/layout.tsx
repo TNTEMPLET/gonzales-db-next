@@ -16,9 +16,9 @@ export const metadata: Metadata = {
   title: site.name,
   description: site.description,
   icons: {
-    icon: site.logoPath,
-    shortcut: site.logoPath,
-    apple: site.logoPath,
+    icon: [{ url: site.faviconPath, type: "image/png" }],
+    shortcut: [site.faviconPath],
+    apple: [{ url: site.faviconPath, type: "image/png" }],
   },
 };
 
