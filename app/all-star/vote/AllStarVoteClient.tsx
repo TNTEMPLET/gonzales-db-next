@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
 
 type Candidate = {
@@ -77,6 +78,7 @@ export default function AllStarVoteClient({
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [needsLogin, setNeedsLogin] = useState(false);
   const [notice, setNotice] = useState("");
   const [data, setData] = useState<OpenResponse | null>(null);
   const [ratings, setRatings] = useState<Record<string, number>>({});
@@ -89,6 +91,7 @@ export default function AllStarVoteClient({
   const loadBallot = useCallback(async () => {
     setLoading(true);
     setError("");
+    setNeedsLogin(false);
     try {
       const qs = new URLSearchParams();
       if (cycleId) qs.set("cycleId", cycleId);
@@ -97,7 +100,13 @@ export default function AllStarVoteClient({
         cache: "no-store",
       });
       const json = (await response.json()) as OpenResponse | { error?: string };
-      if (!response.ok) throw new Error("error" in json ? json.error : "Failed to open ballot");
+      if (!response.ok) {
+        if (response.status === 401) {
+          setNeedsLogin(true);
+          throw new Error("Please log in with your coach account to access this ballot.");
+        }
+        throw new Error("error" in json ? json.error : "Failed to open ballot");
+      }
       const payload = json as OpenResponse;
       setData(payload);
       setRatings(payload.draft || {});
@@ -107,6 +116,18 @@ export default function AllStarVoteClient({
       setLoading(false);
     }
   }, [cycleId, token]);
+
+  useEffect(() => {
+    function handleAuthChanged() {
+      if (needsLogin) {
+        void loadBallot();
+      }
+    }
+    window.addEventListener("gdb-auth-changed", handleAuthChanged);
+    return () => {
+      window.removeEventListener("gdb-auth-changed", handleAuthChanged);
+    };
+  }, [loadBallot, needsLogin]);
 
   useEffect(() => {
     if (!canRender) {
@@ -219,7 +240,34 @@ export default function AllStarVoteClient({
           <div className="rounded-lg border border-zinc-800 bg-zinc-900/70 p-4 text-sm text-zinc-400">Loading ballot…</div>
         ) : null}
 
-        {!loading && data ? (
+        {!loading && needsLogin ? (
+          <div className="rounded-xl border border-amber-700 bg-amber-950/30 p-4 space-y-3">
+            <p className="text-sm text-amber-200">
+              You must be signed in as a coach before this ballot can open.
+            </p>
+            <p className="text-xs text-amber-100/90">
+              If prompted, verify your login with your registered coach email. Once signed in, your ballot
+              will open automatically.
+            </p>
+            <div className="flex flex-wrap items-center gap-3">
+              <CoachAuthButton
+                onAuthenticated={() => {
+                  setNotice("Login successful. Opening ballot...");
+                  void loadBallot();
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => void loadBallot()}
+                className="rounded-lg border border-zinc-600 text-zinc-200 px-4 py-2 text-sm"
+              >
+                Retry ballot
+              </button>
+            </div>
+          </div>
+        ) : null}
+
+        {!loading && data && !needsLogin ? (
           <>
             <div className="sticky top-28 z-40 -mx-1 px-1 md:top-24">
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/95 backdrop-blur p-4 shadow-lg shadow-black/30">
