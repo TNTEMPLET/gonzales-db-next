@@ -34,12 +34,23 @@ export async function GET(request: NextRequest) {
     }
 
     const allStarVaultAccess = getAllStarVaultAccessModel();
+    // Order by updatedAt only: composite enum+date orderBy has triggered Prisma validation errors
+    // with some client/driver-adapter combinations.
     const explicitAccess = await allStarVaultAccess.findMany({
       where: { organizationId: org },
-      include: {
-        registeredUser: { select: { id: true, email: true, firstName: true, lastName: true, name: true } },
+      select: {
+        id: true,
+        registeredUserId: true,
+        organizationId: true,
+        role: true,
+        grantedByAdminId: true,
+        createdAt: true,
+        updatedAt: true,
+        registeredUser: {
+          select: { id: true, email: true, firstName: true, lastName: true, name: true },
+        },
       },
-      orderBy: [{ role: "asc" }, { updatedAt: "desc" }],
+      orderBy: { updatedAt: "desc" },
     });
 
     const adminDefaults = await prisma.adminUser.findMany({

@@ -6,7 +6,8 @@ declare global {
   var prismaSchemaVersion: string | undefined;
 }
 
-const PRISMA_SCHEMA_VERSION = "2026-04-20-dugout-notification-reads-v1";
+/** Bump when Prisma schema/models change so dev HMR does not reuse a stale PrismaClient. */
+const PRISMA_SCHEMA_VERSION = "2026-05-08-all-star-vault-limited-admin-v1";
 
 function createClient() {
   const adapter = new PrismaPostgresAdapter({
@@ -24,7 +25,8 @@ const hasRequiredDelegates =
   !!cachedDelegates &&
   "adminUser" in cachedDelegates &&
   "dugoutComment" in cachedDelegates &&
-  "dugoutNotificationCursor" in cachedDelegates;
+  "dugoutNotificationCursor" in cachedDelegates &&
+  "allStarVaultAccess" in cachedDelegates;
 const schemaVersionMatches =
   global.prismaSchemaVersion === PRISMA_SCHEMA_VERSION;
 
