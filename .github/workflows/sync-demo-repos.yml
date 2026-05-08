@@ -1,0 +1,40 @@
+name: Sync demo repos with main
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: sync-demo-repos
+  cancel-in-progress: true
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.DEMO_REPO_SYNC_TOKEN != '' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        repo:
+          - TNTEMPLET/apbaseball-demo-admin
+          - TNTEMPLET/apbaseball-demo-dyb
+          - TNTEMPLET/apbaseball-demo-llb
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Configure git identity
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Push main to demo repo
+        env:
+          TOKEN: ${{ secrets.DEMO_REPO_SYNC_TOKEN }}
+          TARGET_REPO: ${{ matrix.repo }}
+        run: |
+          git remote add demo "https://x-access-token:${TOKEN}@github.com/${TARGET_REPO}.git"
+          git push demo "refs/heads/main:refs/heads/main" --force
+          git remote remove demo
