@@ -15,10 +15,13 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        repo:
-          - TNTEMPLET/apbaseball-demo-admin
-          - TNTEMPLET/apbaseball-demo-dyb
-          - TNTEMPLET/apbaseball-demo-llb
+        include:
+          - repo: TNTEMPLET/apbaseball-demo-admin
+            ssh_key_secret: DEMO_SYNC_SSH_KEY_ADMIN
+          - repo: TNTEMPLET/apbaseball-demo-dyb
+            ssh_key_secret: DEMO_SYNC_SSH_KEY_DYB
+          - repo: TNTEMPLET/apbaseball-demo-llb
+            ssh_key_secret: DEMO_SYNC_SSH_KEY_LLB
     steps:
       - uses: actions/checkout@v4
         with:
@@ -29,15 +32,18 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Push main to demo repo
-        env:
-          TOKEN: ${{ secrets.DEMO_REPO_SYNC_TOKEN }}
-          TARGET_REPO: ${{ matrix.repo }}
+      - name: Load repo deploy key
+        uses: webfactory/ssh-agent@v0.9.0
+        with:
+          ssh-private-key: ${{ secrets[matrix.ssh_key_secret] }}
+
+      - name: Trust github.com SSH host key
         run: |
-          if [ -z "${TOKEN}" ]; then
-            echo "DEMO_REPO_SYNC_TOKEN is not set; skipping sync."
-            exit 0
-          fi
-          git remote add demo "https://x-access-token:${TOKEN}@github.com/${TARGET_REPO}.git"
+          mkdir -p ~/.ssh
+          ssh-keyscan github.com >> ~/.ssh/known_hosts
+
+      - name: Push main to demo repo
+        run: |
+          git remote add demo "git@github.com:${{ matrix.repo }}.git"
           git push demo "refs/heads/main:refs/heads/main" --force
           git remote remove demo
