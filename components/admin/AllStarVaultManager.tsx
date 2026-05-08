@@ -2057,7 +2057,7 @@ export default function AllStarVaultManager({
     (!vaultSnapshotDetailActive || showEditModules);
 
   return (
-    <section ref={vaultShellRef} className="space-y-6">
+    <section ref={vaultShellRef} className="space-y-6" data-admin-vault-interactive="true">
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
       {!canManageAllStarVaultUi && !isAuditorFocusedPreview ? (
@@ -2251,29 +2251,18 @@ export default function AllStarVaultManager({
               {isAuditorFocusedPreview ||
               (showFullAdminView && (canManageAllStarVaultUi || isLimitedVaultAccess)) ? (
                 isLimitedVaultAccess || isAuditorFocusedPreview ? (
-                  <>
-                    <button
-                      type="button"
-                      onClick={() => toggleEditModulesPanel()}
-                      aria-pressed={showEditModules}
-                      className={`inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40 ${
-                        showEditModules ? "bg-emerald-950/55 ring-2 ring-emerald-500/40" : ""
-                      }`}
-                      title={showEditModules ? "Hide view modules" : "View modules"}
-                      aria-label={showEditModules ? "Hide view modules" : "View modules"}
-                    >
-                      <ViewCycleIcon className="h-4 w-4" />
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => toggleEditModulesPanel()}
-                      className={`rounded-lg border border-emerald-600/80 px-3 py-1.5 text-sm font-medium text-emerald-100 hover:bg-emerald-950/40 ${
-                        showEditModules ? "bg-emerald-950/55 ring-2 ring-emerald-500/40" : ""
-                      }`}
-                    >
-                      {showEditModules ? "Hide view modules" : "View modules"}
-                    </button>
-                  </>
+                  <button
+                    type="button"
+                    onClick={() => toggleEditModulesPanel()}
+                    aria-pressed={showEditModules}
+                    className={`inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-emerald-600/80 px-3 text-sm font-medium text-emerald-100 hover:bg-emerald-950/40 ${
+                      showEditModules ? "bg-emerald-950/55 ring-2 ring-emerald-500/40" : ""
+                    }`}
+                    title={showEditModules ? "Hide view modules" : "View modules"}
+                  >
+                    <ViewCycleIcon className="h-4 w-4 shrink-0" aria-hidden />
+                    {showEditModules ? "Hide view modules" : "View modules"}
+                  </button>
                 ) : (
                   <button
                     type="button"

@@ -249,6 +249,14 @@ export default function AdminRolePreviewControl({
           pointer-events: none !important;
           opacity: 0.55 !important;
         }
+        /* All-Star vault observer preview: restore interactions inside this subtree (toggles, ballot tools, exports). */
+        body.admin-preview-readonly main section[data-admin-vault-interactive="true"] button,
+        body.admin-preview-readonly main section[data-admin-vault-interactive="true"] input,
+        body.admin-preview-readonly main section[data-admin-vault-interactive="true"] textarea,
+        body.admin-preview-readonly main section[data-admin-vault-interactive="true"] select {
+          pointer-events: auto !important;
+          opacity: 1 !important;
+        }
       `}</style>
     </div>
   );
