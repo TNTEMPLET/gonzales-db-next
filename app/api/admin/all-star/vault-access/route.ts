@@ -106,7 +106,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       registeredUserId?: string;
       organizationId?: string;
-      role?: "FULL_ACCESS" | "VIEW_ONLY";
+      role?: "FULL_ACCESS" | "LIMITED_ADMIN";
     };
     const organizationId = resolveAdminTargetOrg(body.organizationId);
     if (!body.registeredUserId || !body.role || !organizationId) {

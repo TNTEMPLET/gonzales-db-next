@@ -31,7 +31,7 @@ const OPTIONS: Array<{ id: AdminViewPreviewRole; label: string }> = [
   { id: "ADMIN", label: "Admin" },
   { id: "BOARD_MEMBER", label: "Board Member" },
   { id: "PARK_DIRECTOR", label: "Park Director" },
-  { id: "ALL_STAR_VIEW_ONLY", label: "All-Star Vault View-Only" },
+  { id: "ALL_STAR_VIEW_ONLY", label: "All-Star Vault Limited Admin" },
 ];
 
 function isPreviewRole(value: string): value is AdminViewPreviewRole {

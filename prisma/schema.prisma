@@ -48,7 +48,7 @@ enum AllStarBallotPhase {
 
 enum AllStarVaultRole {
   FULL_ACCESS
-  VIEW_ONLY
+  LIMITED_ADMIN
 }
 
 enum TeamCoachRole {

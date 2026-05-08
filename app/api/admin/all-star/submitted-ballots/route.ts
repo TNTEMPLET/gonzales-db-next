@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import {
+  ensureAllStarVaultAccess,
+  ensureAllStarVaultCanDeleteVoteSubmission,
+} from "@/lib/allStar/auth";
 import { isFrozenFirstTeamCycle } from "@/lib/allStar/cycleType";
 import prisma from "@/lib/prisma";
 
@@ -57,7 +60,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAllStarVaultCanDeleteVoteSubmission(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const forbid = forbidIfNotMaster();

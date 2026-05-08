@@ -16,7 +16,7 @@ export async function ensureAllStarVaultAdmin(request: NextRequest) {
 
 /**
  * Reading cycles, candidates, submissions, vote summaries, etc. Also allowed for
- * registered users with View Only or Full Access on the vault (same admin session email + org).
+ * registered users with Limited Admin or Full Access on the vault (same admin session email + org).
  */
 export async function ensureAllStarVaultAccess(
   request: NextRequest,
@@ -100,7 +100,7 @@ export async function canViewAllStarVault(
   organizationId: "gonzales" | "ascension",
 ) {
   const role = await getAllStarVaultRoleForUser(registeredUserId, organizationId);
-  return role === "FULL_ACCESS" || role === "VIEW_ONLY";
+  return role === "FULL_ACCESS" || role === "LIMITED_ADMIN";
 }
 
 export async function canManageAllStarVault(
@@ -109,4 +109,54 @@ export async function canManageAllStarVault(
 ) {
   const role = await getAllStarVaultRoleForUser(registeredUserId, organizationId);
   return role === "FULL_ACCESS";
+}
+
+/** Limited vault admins may reset submitted ballots but not edit cycles or rosters. */
+export async function canDeleteAllStarSubmissionsAsVaultUser(
+  registeredUserId: string,
+  organizationId: "gonzales" | "ascension",
+) {
+  const role = await getAllStarVaultRoleForUser(registeredUserId, organizationId);
+  return role === "LIMITED_ADMIN";
+}
+
+/**
+ * Delete a submitted ballot: full vault admins, org admins with All-Star module,
+ * or limited vault admins (same email + org as grant).
+ */
+export async function ensureAllStarVaultCanDeleteVoteSubmission(request: NextRequest) {
+  const adminUser = await getAdminUserFromRequest(request);
+  if (!adminUser) {
+    return { ok: false as const, status: 401, message: "Unauthorized" };
+  }
+
+  const orgId = resolveAuthOrganizationId(request);
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    orgId,
+  );
+
+  if (effectiveRole && canAccessAdminModule(effectiveRole, "ALL_STAR_VAULT")) {
+    return { ok: true as const, status: 200 };
+  }
+
+  const registeredUsers = await prisma.registeredUser.findMany({
+    where: {
+      email: { equals: adminUser.email, mode: "insensitive" },
+      organizationId: orgId,
+    },
+    select: { id: true },
+  });
+
+  for (const row of registeredUsers) {
+    if (await canManageAllStarVault(row.id, orgId)) {
+      return { ok: true as const, status: 200 };
+    }
+    if (await canDeleteAllStarSubmissionsAsVaultUser(row.id, orgId)) {
+      return { ok: true as const, status: 200 };
+    }
+  }
+
+  return { ok: false as const, status: 403, message: "Forbidden" };
 }

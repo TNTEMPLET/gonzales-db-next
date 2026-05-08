@@ -64,6 +64,7 @@ export default async function AdminAllStarCycleManagementPage({
   }
 
   const canManageAllStarVaultUi = moduleAllStar || vaultManage;
+  const isLimitedVaultAccess = vaultView && !canManageAllStarVaultUi;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
@@ -98,6 +99,7 @@ export default async function AdminAllStarCycleManagementPage({
           initialSelectedCycleId={cycleId ?? ""}
           showSnapshotBoardOnInitialFullAccess={false}
           canManageAllStarVault={canManageAllStarVaultUi}
+          isLimitedVaultAccess={isLimitedVaultAccess}
         />
       </section>
     </main>

@@ -63,6 +63,7 @@ export default async function AdminAllStarPage({
   }
 
   const canManageAllStarVaultUi = moduleAllStar || vaultManage;
+  const isLimitedVaultAccess = vaultView && !canManageAllStarVaultUi;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
@@ -87,6 +88,7 @@ export default async function AdminAllStarPage({
           initialOrg={currentOrg}
           isMasterMode={isMasterDeployment()}
           canManageAllStarVault={canManageAllStarVaultUi}
+          isLimitedVaultAccess={isLimitedVaultAccess}
         />
       </section>
     </main>

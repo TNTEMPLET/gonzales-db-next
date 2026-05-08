@@ -52,7 +52,7 @@ const previewRoleLabel: Record<AdminViewPreviewRole, string> = {
   ADMIN: "Admin",
   BOARD_MEMBER: "Board Member",
   PARK_DIRECTOR: "Park Director",
-  ALL_STAR_VIEW_ONLY: "All-Star Vault View-Only",
+  ALL_STAR_VIEW_ONLY: "All-Star Vault Limited Admin",
 };
 
 function canPreviewAccessModule(

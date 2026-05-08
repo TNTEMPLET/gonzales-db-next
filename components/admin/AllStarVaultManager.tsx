@@ -91,7 +91,7 @@ type CycleCoachOption = {
 type VaultAccess = {
   id: string;
   organizationId: "gonzales" | "ascension";
-  role: "FULL_ACCESS" | "VIEW_ONLY";
+  role: "FULL_ACCESS" | "LIMITED_ADMIN";
   isImplicit?: boolean;
   registeredUser: {
     id: string;
@@ -153,6 +153,19 @@ type EditModuleKey =
 
 type EditModuleVisibility = Record<EditModuleKey, boolean>;
 
+function getVisibilityForLimitedVaultBallotToolkit(): EditModuleVisibility {
+  return {
+    cycle: false,
+    candidates: false,
+    coaches: false,
+    submitted: true,
+    votes: true,
+    sample: false,
+    access: false,
+    invites: true,
+  };
+}
+
 function getVisibilityForPreset(preset: ModulePreset): EditModuleVisibility {
   if (preset === "ROSTER") {
     return {
@@ -195,8 +208,13 @@ type AllStarVaultManagerProps = {
   isMasterMode: boolean;
   initialSelectedCycleId?: string;
   showSnapshotBoardOnInitialFullAccess?: boolean;
-  /** Org admins with the All-Star module, or vault Full Access. View-only vault grants use false. */
+  /** Org admins with the All-Star module, or vault Full Access. Limited vault grants use false. */
   canManageAllStarVault?: boolean;
+  /**
+   * Vault grant is LIMITED_ADMIN only (no org All-Star module, no FULL_ACCESS vault).
+   * Enables ballot tools: submissions, vote standings, shared link, ballot deletion.
+   */
+  isLimitedVaultAccess?: boolean;
 };
 
 function formatOrganizationLabel(org: "gonzales" | "ascension") {
@@ -377,6 +395,7 @@ export default function AllStarVaultManager({
   initialSelectedCycleId = "",
   showSnapshotBoardOnInitialFullAccess = true,
   canManageAllStarVault = true,
+  isLimitedVaultAccess = false,
 }: AllStarVaultManagerProps) {
   const router = useRouter();
   const latestCycleIdRef = useRef("");
@@ -496,7 +515,7 @@ export default function AllStarVaultManager({
   const [selectedInviteCoachIds, setSelectedInviteCoachIds] = useState<string[]>([]);
   const [inviteCoachSearch, setInviteCoachSearch] = useState("");
   const [vaultUserId, setVaultUserId] = useState("");
-  const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "VIEW_ONLY">("VIEW_ONLY");
+  const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "LIMITED_ADMIN">("LIMITED_ADMIN");
   const [inviteEmails, setInviteEmails] = useState("");
   const [showBallotRosterStatusModal, setShowBallotRosterStatusModal] = useState(false);
   const [limitedOverviewSnapshots, setLimitedOverviewSnapshots] = useState<
@@ -535,8 +554,21 @@ export default function AllStarVaultManager({
   }, [initialOrg]);
 
   useEffect(() => {
+    if (isLimitedVaultAccess) {
+      setModuleVisibility(getVisibilityForLimitedVaultBallotToolkit());
+      return;
+    }
     setModuleVisibility(getVisibilityForPreset(modulePreset));
-  }, [modulePreset]);
+  }, [modulePreset, isLimitedVaultAccess]);
+
+  useEffect(() => {
+    if (!isLimitedVaultAccess) return;
+    if (selectedCycleId) {
+      setShowEditModules(true);
+    } else {
+      setShowEditModules(false);
+    }
+  }, [isLimitedVaultAccess, selectedCycleId]);
 
   useEffect(() => {
     if (
@@ -1577,7 +1609,9 @@ export default function AllStarVaultManager({
   function openCycleFromCard(cycleId: string) {
     setLimitedOverviewMoreCycleId("");
     setSelectedCycleId(cycleId);
-    setShowEditModules(false);
+    if (!isLimitedVaultAccess) {
+      setShowEditModules(false);
+    }
   }
 
   function expandEditModulesIntoView() {
@@ -1718,7 +1752,7 @@ export default function AllStarVaultManager({
 
   async function saveVaultAccessRole(
     registeredUserId: string,
-    role: "FULL_ACCESS" | "VIEW_ONLY",
+    role: "FULL_ACCESS" | "LIMITED_ADMIN",
   ) {
     setVaultAccessRoleBusyId(registeredUserId);
     setError("");
@@ -1955,6 +1989,11 @@ export default function AllStarVaultManager({
   });
 
   const isAuditorFocusedPreview = previewRole === "ALL_STAR_VIEW_ONLY";
+  /** Includes limited vault grant and master preview of limited-admin lens (session still has full rights). */
+  const canDeleteSubmittedBallots =
+    canManageAllStarVaultUi ||
+    isLimitedVaultAccess ||
+    (canManageAllStarVault && isAuditorFocusedPreview);
   const showFullAdminView = previewCanViewAllStar && !isAuditorFocusedPreview;
   const orgQuery = isMasterMode ? `&org=${encodeURIComponent(org)}` : "";
   const sampleBallotCandidates = candidates
@@ -1967,7 +2006,7 @@ export default function AllStarVaultManager({
   const boardTitle = showFullAdminView
     ? "Cycle Snapshot Board"
     : isAuditorFocusedPreview
-      ? "Observer Snapshot (View-Only)"
+      ? "Observer Snapshot (limited admin)"
       : `Limited Overview (${previewRole.replaceAll("_", " ")})`;
   const showCycleSnapshotBoard =
     !showFullAdminView ||
@@ -1991,9 +2030,11 @@ export default function AllStarVaultManager({
     <section ref={vaultShellRef} className="space-y-6">
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
-      {!canManageAllStarVaultUi ? (
+      {!canManageAllStarVaultUi && !isAuditorFocusedPreview ? (
         <div className="rounded-lg border border-sky-800 bg-sky-950/30 p-3 text-sm text-sky-200">
-          View-only vault access: you can review cycles, submitted ballots, and vote standings. Management actions are disabled.
+          {isLimitedVaultAccess
+            ? "Limited admin vault access: you can open ballot tools below for the selected cycle — submitted ballots, vote standings, and the shared ballot link. You may delete a submitted ballot to let that coach vote again. Cycle setup, candidates, and roster edits stay disabled."
+            : "Some management actions are hidden for your current preview or role."}
         </div>
       ) : null}
       {showCycleSnapshotBoard ? (
@@ -2151,9 +2192,9 @@ export default function AllStarVaultManager({
       {isAuditorFocusedPreview ? (
         <>
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
-            <h2 className="text-lg font-semibold">Observer Snapshot (View-Only)</h2>
+            <h2 className="text-lg font-semibold">Observer Snapshot (limited admin)</h2>
             <p className="text-xs text-zinc-400">
-              Management sections are hidden in this preview. Showing operational read-only data only.
+              Full management sections are hidden in this preview. Showing ballot operations and read-only exports.
             </p>
             <div className="max-w-md">
               <label className="text-xs uppercase tracking-wide text-zinc-500">Select Ballot</label>
@@ -2248,19 +2289,33 @@ export default function AllStarVaultManager({
                 <p className="text-zinc-500 text-sm p-3">No submitted ballots yet.</p>
               ) : (
                 submittedBallots.map((submission) => (
-                  <div key={submission.id} className="px-3 py-2 border-b border-zinc-800 last:border-b-0">
-                    <p className="text-sm text-zinc-200">
-                      {displayNameFromCoachFields(
-                        submission.coachUser.firstName,
-                        submission.coachUser.lastName,
-                        submission.coachUser.name,
-                        submission.coachUser.email,
-                      )}
-                    </p>
-                    <p className="text-xs text-zinc-500">{submission.coachUser.email}</p>
-                    <p className="text-xs text-zinc-500">
-                      Submitted {new Date(submission.submittedAt).toLocaleString()} · {submission.voteItemCount} ratings
-                    </p>
+                  <div
+                    key={submission.id}
+                    className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-start justify-between gap-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="text-sm text-zinc-200">
+                        {displayNameFromCoachFields(
+                          submission.coachUser.firstName,
+                          submission.coachUser.lastName,
+                          submission.coachUser.name,
+                          submission.coachUser.email,
+                        )}
+                      </p>
+                      <p className="text-xs text-zinc-500">{submission.coachUser.email}</p>
+                      <p className="text-xs text-zinc-500">
+                        Submitted {new Date(submission.submittedAt).toLocaleString()} · {submission.voteItemCount}{" "}
+                        ratings
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      disabled={busy || !canDeleteSubmittedBallots}
+                      onClick={() => void deleteSubmittedBallot(submission.id)}
+                      className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60 shrink-0"
+                    >
+                      Delete
+                    </button>
                   </div>
                 ))
               )}
@@ -2288,6 +2343,31 @@ export default function AllStarVaultManager({
                 ))
               )}
             </div>
+          </div>
+
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
+            <h2 className="text-lg font-semibold">Shared ballot link</h2>
+            <p className="text-xs text-zinc-400">
+              Same link coaches use to open the ballot (when generated for this cycle). Copy and share as needed.
+            </p>
+            {ballotVotingLink ? (
+              <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+                <code className="text-xs text-brand-gold break-all flex-1">{ballotVotingLink}</code>
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void copyInviteLink(ballotVotingLink)}
+                  className="text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-1.5 shrink-0"
+                >
+                  Copy link
+                </button>
+              </div>
+            ) : (
+              <p className="text-xs text-zinc-500">
+                No shared link is set for this cycle yet. A full admin can generate one under Invites on the main vault
+                view.
+              </p>
+            )}
           </div>
 
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
@@ -2342,7 +2422,7 @@ export default function AllStarVaultManager({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1 min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400/90">
-                Selected cycle (vault view)
+                {isLimitedVaultAccess ? "Selected cycle (limited admin)" : "Selected cycle (vault view)"}
               </p>
               <h2 className="text-lg font-semibold text-zinc-100 leading-snug">
                 {formatOrganizationLabel(selectedCycle.organizationId)} · {selectedCycle.seasonYear} ·{" "}
@@ -2354,13 +2434,13 @@ export default function AllStarVaultManager({
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
-              {showFullAdminView && canManageAllStarVaultUi ? (
+              {showFullAdminView && (canManageAllStarVaultUi || isLimitedVaultAccess) ? (
                 <button
                   type="button"
                   onClick={() => expandEditModulesIntoView()}
                   className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
-                  title="Show editing tools"
-                  aria-label="Show editing tools"
+                  title={isLimitedVaultAccess ? "Show ballot tools" : "Show editing tools"}
+                  aria-label={isLimitedVaultAccess ? "Show ballot tools" : "Show editing tools"}
                 >
                   <EditCycleIcon className="h-4 w-4" />
                 </button>
@@ -2396,8 +2476,17 @@ export default function AllStarVaultManager({
             </span>
           </div>
           <p className="text-xs text-zinc-500 max-w-2xl">
-            Click a snapshot card to open this summary. Use the edit icon here when you want ballot tools and exports. Use{" "}
-            <span className="text-zinc-400">Hide Edit Modules</span> at the top of that section to collapse them again.
+            {isLimitedVaultAccess ? (
+              <>
+                Ballot tools (submitted ballots, vote standings, shared link) open below for this cycle. Use the icon here
+                or <span className="text-zinc-400">Hide Edit Modules</span> to collapse that section.
+              </>
+            ) : (
+              <>
+                Click a snapshot card to open this summary. Use the edit icon here when you want ballot tools and exports. Use{" "}
+                <span className="text-zinc-400">Hide Edit Modules</span> at the top of that section to collapse them again.
+              </>
+            )}
           </p>
         </div>
       ) : null}
@@ -2424,7 +2513,14 @@ export default function AllStarVaultManager({
         </div>
         {!showEditModules ? (
           <p className="text-xs text-zinc-500">
-            Editing is collapsed. Expand to work in Cycle Management, Candidates, and Votes.
+            {isLimitedVaultAccess
+              ? "Ballot tools are collapsed. Expand to see submitted ballots, vote standings, and the shared ballot link."
+              : "Editing is collapsed. Expand to work in Cycle Management, Candidates, and Votes."}
+          </p>
+        ) : isLimitedVaultAccess ? (
+          <p className="text-xs text-zinc-500">
+            Limited admin: Submitted Ballots, Votes Panel, and Invites (shared ballot link) are available below. Granting
+            vault access to others is not available at this level.
           </p>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -3122,7 +3218,7 @@ export default function AllStarVaultManager({
                   </div>
                   <button
                     type="button"
-                    disabled={manageDisabled}
+                    disabled={busy || !canDeleteSubmittedBallots}
                     onClick={() => void deleteSubmittedBallot(submission.id)}
                     className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60"
                   >
@@ -3278,8 +3374,8 @@ export default function AllStarVaultManager({
                 <option key={user.id} value={user.id}>{user.name} ({user.email})</option>
               ))}
             </select>
-            <select value={vaultRole} onChange={(e) => setVaultRole(e.target.value as "FULL_ACCESS" | "VIEW_ONLY")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm">
-              <option value="VIEW_ONLY">View Only</option>
+            <select value={vaultRole} onChange={(e) => setVaultRole(e.target.value as "FULL_ACCESS" | "LIMITED_ADMIN")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm">
+              <option value="LIMITED_ADMIN">Limited Admin</option>
               <option value="FULL_ACCESS">Full Access</option>
             </select>
             <button type="button" disabled={manageDisabled || !vaultUserId} onClick={() => void grantVaultAccess()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Grant Access</button>
@@ -3297,17 +3393,17 @@ export default function AllStarVaultManager({
                     onChange={(e) =>
                       void saveVaultAccessRole(
                         access.registeredUser.id,
-                        e.target.value as "FULL_ACCESS" | "VIEW_ONLY",
+                        e.target.value as "FULL_ACCESS" | "LIMITED_ADMIN",
                       )
                     }
                     className="rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-1.5 text-xs disabled:opacity-60"
                   >
-                    <option value="VIEW_ONLY">View Only</option>
+                    <option value="LIMITED_ADMIN">Limited Admin</option>
                     <option value="FULL_ACCESS">Full Access</option>
                   </select>
                 ) : (
                   <span className="text-xs text-zinc-400">
-                    {access.role === "FULL_ACCESS" ? "Full Access" : "View Only"}
+                    {access.role === "FULL_ACCESS" ? "Full Access" : "Limited Admin"}
                   </span>
                 )}
                 <button
