@@ -1,0 +1,58 @@
+# Fan-out Production deploys for sibling Vercel projects that share this GitHub repo.
+#
+# Multiple projects can link to TNTEMPLET/gonzales-db-next with productionBranch=main,
+# but Git-driven Production builds may only update one project per push. Deploy hooks
+# guarantee apbaseball-admin and apbaseball-llb get a new Production deployment.
+#
+# Setup (one-time per project in Vercel):
+#   Project → Settings → Git → Deploy Hooks → Create Hook
+#   - Name: github-actions-main (or any label)
+#   - Branch: main
+#   Copy the hook URL.
+#
+# GitHub (this repo) → Settings → Secrets and variables → Actions → New repository secret:
+#   VERCEL_DEPLOY_HOOK_URL_APBASEBALL_ADMIN  = <hook URL from apbaseball-admin>
+#   VERCEL_DEPLOY_HOOK_URL_APBASEBALL_LLB    = <hook URL from apbaseball-llb>
+#
+# If a secret is missing, that hook step is skipped (workflow still succeeds).
+name: Trigger Vercel production (admin + LLB)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: vercel-sibling-deploy-hooks
+  cancel-in-progress: false
+
+jobs:
+  vercel-hook-apbaseball-admin:
+    name: Deploy hook — apbaseball-admin
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST deploy hook
+        if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL_APBASEBALL_ADMIN != '' }}
+        env:
+          HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL_APBASEBALL_ADMIN }}
+        run: curl -fsS -X POST "$HOOK_URL"
+
+      - name: Missing secret (admin)
+        if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL_APBASEBALL_ADMIN == '' }}
+        run: |
+          echo "::notice title=Deploy hook::VERCEL_DEPLOY_HOOK_URL_APBASEBALL_ADMIN is not set — add it under Repo → Settings → Secrets → Actions to enable admin production deploys."
+
+  vercel-hook-apbaseball-llb:
+    name: Deploy hook — apbaseball-llb
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST deploy hook
+        if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL_APBASEBALL_LLB != '' }}
+        env:
+          HOOK_URL: ${{ secrets.VERCEL_DEPLOY_HOOK_URL_APBASEBALL_LLB }}
+        run: curl -fsS -X POST "$HOOK_URL"
+
+      - name: Missing secret (LLB)
+        if: ${{ secrets.VERCEL_DEPLOY_HOOK_URL_APBASEBALL_LLB == '' }}
+        run: |
+          echo "::notice title=Deploy hook::VERCEL_DEPLOY_HOOK_URL_APBASEBALL_LLB is not set — add it under Repo → Settings → Secrets → Actions to enable LLB production deploys."
