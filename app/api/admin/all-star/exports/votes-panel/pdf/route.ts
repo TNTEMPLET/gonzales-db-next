@@ -18,6 +18,12 @@ function filenameSlug(parts: string[]) {
     .replace(/^-|-$/g, "");
 }
 
+function getCycleName(cycle: { title: string | null; seasonYear: number; ageGroup: string }) {
+  const title = cycle.title?.trim();
+  if (title) return title;
+  return `${cycle.seasonYear} ${cycle.ageGroup}`;
+}
+
 /**
  * `layout=name` — ranks 1–11 + rank 12 tier (names only; avg in name when tied at 12).
  * `layout=full` — full standings: Rank, Player, Votes, Avg Rating (same sort as Votes Panel).
@@ -46,10 +52,11 @@ export async function GET(request: NextRequest) {
 
   const { rows, cycle } = computed;
   const orgLabel = formatOrganizationIdDisplay(cycle.organizationId);
+  const cycleName = getCycleName(cycle);
   const title =
     layout === "name"
-      ? `Vote standings (name view) — ${orgLabel} ${cycle.ageGroup} (${cycle.seasonYear})`
-      : `Vote standings (full view) — ${orgLabel} ${cycle.ageGroup} (${cycle.seasonYear})`;
+      ? `Vote standings (name view) — ${orgLabel} ${cycleName} (${cycle.seasonYear})`
+      : `Vote standings (full view) — ${orgLabel} ${cycleName} (${cycle.seasonYear})`;
 
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   doc.setFontSize(14);
@@ -92,7 +99,7 @@ export async function GET(request: NextRequest) {
     suffix,
     cycle.organizationId,
     String(cycle.seasonYear),
-    cycle.ageGroup,
+    cycleName,
   ]);
 
   return new NextResponse(Buffer.from(pdfBuffer), {

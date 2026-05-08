@@ -65,6 +65,12 @@ function getDisplayAgeGroup(organizationId: string, ageGroup: string, title: str
   return ageGroup;
 }
 
+function getCycleName(cycle: { title: string | null; seasonYear: number; ageGroup: string }) {
+  const title = cycle.title?.trim();
+  if (title) return title;
+  return `${cycle.seasonYear} ${cycle.ageGroup}`;
+}
+
 function getScorecardPalette(organizationId: string, title: string | null) {
   const tier = getCycleTierLabel(title);
   if (organizationId === "ascension") {
@@ -257,7 +263,8 @@ export async function GET(request: NextRequest) {
   const generatedAt = new Date().toLocaleString();
   const orgLabel = formatOrganizationIdDisplay(cycle.organizationId);
   const displayAgeGroup = getDisplayAgeGroup(cycle.organizationId, cycle.ageGroup, cycle.title);
-  const cycleLabel = `${orgLabel} · ${displayAgeGroup} · ${cycle.seasonYear}`;
+  const cycleName = getCycleName(cycle);
+  const cycleLabel = `${orgLabel} · ${cycleName} · ${displayAgeGroup} · ${cycle.seasonYear}`;
   const palette = getScorecardPalette(cycle.organizationId, cycle.title);
 
   pageChunks.forEach((chunk, pageIdx) => {
@@ -417,6 +424,7 @@ export async function GET(request: NextRequest) {
     "showcase-score-card",
     cycle.organizationId,
     String(cycle.seasonYear),
+    cycleName,
     displayAgeGroup,
   ]);
   return new NextResponse(Buffer.from(bytes), {

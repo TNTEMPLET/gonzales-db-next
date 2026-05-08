@@ -5,6 +5,12 @@ import autoTable from "jspdf-autotable";
 import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
 import prisma from "@/lib/prisma";
 
+function getCycleName(cycle: { title: string | null; seasonYear: number; ageGroup: string }) {
+  const title = cycle.title?.trim();
+  if (title) return title;
+  return `${cycle.seasonYear} ${cycle.ageGroup}`;
+}
+
 export async function GET(request: NextRequest) {
   const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
@@ -32,8 +38,9 @@ export async function GET(request: NextRequest) {
 
   const doc = new jsPDF({ unit: "pt", format: "letter" });
   doc.setFontSize(14);
+  const cycleName = getCycleName(cycle);
   doc.text(
-    `All-Star Ballot Export — ${cycle.organizationId.toUpperCase()} ${cycle.ageGroup} (${cycle.seasonYear})`,
+    `All-Star Ballot Export — ${cycle.organizationId.toUpperCase()} ${cycleName} (${cycle.seasonYear})`,
     40,
     40,
   );
@@ -72,7 +79,7 @@ export async function GET(request: NextRequest) {
     status: 200,
     headers: {
       "Content-Type": "application/pdf",
-      "Content-Disposition": `attachment; filename="all-star-${cycle.organizationId}-${cycle.seasonYear}-${cycle.ageGroup}.pdf"`,
+      "Content-Disposition": `attachment; filename="all-star-${cycle.organizationId}-${cycle.seasonYear}-${cycleName.replace(/[^a-zA-Z0-9.-]+/g, "-")}.pdf"`,
     },
   });
 }

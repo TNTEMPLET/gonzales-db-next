@@ -7,6 +7,12 @@ function csvEscape(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
 }
 
+function getCycleName(cycle: { title: string | null; seasonYear: number; ageGroup: string }) {
+  const title = cycle.title?.trim();
+  if (title) return title;
+  return `${cycle.seasonYear} ${cycle.ageGroup}`;
+}
+
 export async function GET(request: NextRequest) {
   const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
@@ -73,12 +79,13 @@ export async function GET(request: NextRequest) {
   const csv = [header, ...rows]
     .map((row) => row.map((cell) => csvEscape(cell)).join(","))
     .join("\n");
+  const cycleName = getCycleName(cycle);
 
   return new NextResponse(csv, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="all-star-${cycle.organizationId}-${cycle.seasonYear}-${cycle.ageGroup}.csv"`,
+      "Content-Disposition": `attachment; filename="all-star-${cycle.organizationId}-${cycle.seasonYear}-${cycleName.replace(/[^a-zA-Z0-9.-]+/g, "-")}.csv"`,
     },
   });
 }

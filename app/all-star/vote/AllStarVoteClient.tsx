@@ -17,6 +17,8 @@ type OpenResponse = {
     organizationId: string;
     seasonYear: number;
     ageGroup: string;
+    allStarAgeGroupId: string | null;
+    allStarAgeGroupLabel: string | null;
     title: string | null;
     hasShowcase: boolean;
     status: string;
@@ -27,6 +29,19 @@ type OpenResponse = {
 };
 
 const REQUIRED_VOTES = 12;
+
+function getCycleDisplayLabel(cycle: OpenResponse["cycle"]) {
+  const explicit = cycle.title?.trim() || cycle.allStarAgeGroupLabel?.trim();
+  if (explicit) {
+    const suffixMatch = cycle.ageGroup.trim().toUpperCase().match(/\b([A-Z]{2,4})\b$/);
+    const suffix = suffixMatch?.[1] || "";
+    if (suffix && !explicit.toUpperCase().includes(suffix)) {
+      return `${explicit} ${suffix}`;
+    }
+    return explicit;
+  }
+  return cycle.ageGroup;
+}
 
 function BaseballRatingIcon({ className }: { className?: string }) {
   return (
@@ -182,7 +197,9 @@ export default function AllStarVoteClient({
     <main className="min-h-screen bg-zinc-950 text-white py-10">
       <section className="max-w-4xl mx-auto px-6 space-y-6">
         <div>
-          <h1 className="text-3xl font-bold">All-Star Ballot</h1>
+          <h1 className="text-3xl font-bold">
+            {data ? `${getCycleDisplayLabel(data.cycle)} Ballot` : "All-Star Ballot"}
+          </h1>
           <p className="text-zinc-400 text-sm mt-1">
             Voters shall assign each candidate a rating by means of the baseball controls, on a scale of{" "}
             <span className="text-zinc-500">1</span> (lowest) through <span className="text-zinc-500">5</span>{" "}
@@ -209,9 +226,8 @@ export default function AllStarVoteClient({
                 <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-6">
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-zinc-300">
-                      {formatOrganizationIdDisplay(data.cycle.organizationId)} · {data.cycle.ageGroup} ·{" "}
-                      {data.cycle.seasonYear}
-                      {data.cycle.title ? ` · ${data.cycle.title}` : ""}
+                      {formatOrganizationIdDisplay(data.cycle.organizationId)} ·{" "}
+                      {getCycleDisplayLabel(data.cycle)} · {data.cycle.seasonYear}
                     </p>
                     <p className="text-xs text-zinc-500 mt-1">
                       Rated {ratedCount} of {data.candidates.length} players.

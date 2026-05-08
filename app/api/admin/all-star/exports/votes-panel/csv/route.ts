@@ -16,6 +16,12 @@ function filenameSlug(parts: string[]) {
     .replace(/^-|-$/g, "");
 }
 
+function getCycleName(cycle: { title: string | null; seasonYear: number; ageGroup: string }) {
+  const title = cycle.title?.trim();
+  if (title) return title;
+  return `${cycle.seasonYear} ${cycle.ageGroup}`;
+}
+
 /** CSV matches Votes Panel: sort order and columns (rank, player, team, jersey, optional bib, votes, avg). */
 export async function GET(request: NextRequest) {
   const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
@@ -50,12 +56,13 @@ export async function GET(request: NextRequest) {
   });
 
   const csv = [header, ...body].map((line) => line.map((cell) => csvEscape(cell)).join(",")).join("\n");
+  const cycleName = getCycleName(cycle);
 
   const baseName = filenameSlug([
     "votes-panel",
     cycle.organizationId,
     String(cycle.seasonYear),
-    cycle.ageGroup,
+    cycleName,
   ]);
 
   return new NextResponse(csv, {

@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   if (forbid) return forbid;
 
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
-  const body = (await request.json()) as { cycleId?: string };
+  const body = (await request.json()) as { cycleId?: string; rotate?: boolean };
   if (!body.cycleId) {
     return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
   }
@@ -36,6 +36,25 @@ export async function POST(request: NextRequest) {
   }
 
   const origin = getCanonicalBallotOriginForOrganizationId(cycle.organizationId);
+  const shouldRotate =
+    body.rotate === true || request.nextUrl.searchParams.get("rotate") === "1";
+
+  // Idempotent behavior: return existing link unless explicit rotation requested.
+  if (!shouldRotate && cycle.ballotLinkToken) {
+    if (!cycle.ballotLinkTokenHash) {
+      await prisma.allStarBallotCycle.update({
+        where: { id: cycle.id },
+        data: { ballotLinkTokenHash: hashToken(cycle.ballotLinkToken) },
+      });
+    }
+    const existingLink = `${origin}/all-star/vote?t=${encodeURIComponent(cycle.ballotLinkToken)}`;
+    return NextResponse.json({
+      success: true,
+      link: existingLink,
+      cycleId: cycle.id,
+      reused: true,
+    });
+  }
 
   for (let attempt = 0; attempt < 16; attempt++) {
     const token = createBallotLinkToken();
