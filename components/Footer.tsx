@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
+import DesignedByBrand from "@/components/ui/DesignedByBrand";
 
 type FooterProps = {
   brand: {
@@ -205,6 +206,12 @@ export default function Footer({ brand }: FooterProps) {
             <br />
             Powered by Next.js • All Rights Reserved
           </div>
+          <DesignedByBrand
+            className="mt-4 text-[10px] opacity-80"
+            labelClassName="text-zinc-500"
+            linkClassName="inline-flex items-center gap-0 font-normal text-zinc-300 transition-colors hover:text-zinc-200"
+            logoWrapClassName="inline-flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden opacity-85"
+          />
         </div>
       </div>
     </footer>

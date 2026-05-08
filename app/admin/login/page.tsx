@@ -1,6 +1,7 @@
 import Link from "next/link";
 
 import AdminLoginForm from "@/components/auth/AdminLoginForm";
+import DesignedByBrand from "@/components/ui/DesignedByBrand";
 import { getSiteConfig } from "@/lib/siteConfig";
 
 type LoginPageProps = {
@@ -40,6 +41,11 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
             >
               Back to News
             </Link>
+            <DesignedByBrand
+              className="mt-4 text-xs"
+              labelClassName="text-zinc-500"
+              linkClassName="font-medium text-brand-gold transition-colors hover:text-brand-gold/80"
+            />
           </div>
         </div>
       </section>
