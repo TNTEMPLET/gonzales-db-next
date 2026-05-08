@@ -44,6 +44,16 @@ jobs:
 
       - name: Push main to demo repo
         run: |
+          # Demo repos should not receive source-repo workflow files.
+          # Pushing workflow changes via deploy-key auth is blocked by GitHub.
+          git checkout --detach origin/main
+          rm -rf .github/workflows
+          git add -A
+          if git diff --cached --quiet; then
+            git commit --allow-empty -m "chore: sync demo snapshot"
+          else
+            git commit -m "chore: sync demo snapshot"
+          fi
           git remote add demo "git@github.com:${{ matrix.repo }}.git"
-          git push demo "refs/heads/main:refs/heads/main" --force
+          git push demo "HEAD:refs/heads/main" --force
           git remote remove demo
