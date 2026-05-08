@@ -16,8 +16,12 @@ function normalizeDate(value: string | null | undefined) {
 
 function normalizeAllStarAgeBand(value: string | null | undefined) {
   const normalized = value?.trim().toUpperCase() || "";
-  if (normalized === "11U" || normalized === "12U") return normalized;
-  return null;
+  if (!normalized) return null;
+  const match = normalized.match(/^(\d{1,2})U$/);
+  if (!match?.[1]) return null;
+  const age = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(age) || age < 4 || age > 18) return null;
+  return `${age}U`;
 }
 
 export async function GET(request: NextRequest) {

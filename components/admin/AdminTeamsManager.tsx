@@ -1956,8 +1956,14 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                               className="w-20 rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-xs text-center"
                             >
                               <option value="">Unset</option>
-                              <option value="11U">11U</option>
-                              <option value="12U">12U</option>
+                              {Array.from({ length: 15 }, (_, index) => {
+                                const age = index + 4;
+                                return (
+                                  <option key={`${age}U`} value={`${age}U`}>
+                                    {age}U
+                                  </option>
+                                );
+                              })}
                             </select>
                           </td>
                           <td className="px-3 py-2 text-center">
@@ -2203,7 +2209,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               <p className="md:col-span-3 mt-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Registration</p>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Jersey Number</span><input disabled={!isEditingRoster} value={activeProfilePlayer.jerseyNumber || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "jerseyNumber", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Jersey Size</span><input disabled={!isEditingRoster} value={activeProfilePlayer.jerseySize || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "jerseySize", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
-              <label className="space-y-1"><span className="block text-[11px] text-zinc-400">All-Star Age Band</span><select disabled={!isEditingRoster} value={activeProfilePlayer.allStarAgeBand || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "allStarAgeBand", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm"><option value="">Unset</option><option value="11U">11U</option><option value="12U">12U</option></select></label>
+              <label className="space-y-1"><span className="block text-[11px] text-zinc-400">All-Star Age Band</span><select disabled={!isEditingRoster} value={activeProfilePlayer.allStarAgeBand || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "allStarAgeBand", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm"><option value="">Unset</option>{Array.from({ length: 15 }, (_, index) => { const age = index + 4; return <option key={`${age}U`} value={`${age}U`}>{age}U</option>; })}</select></label>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Roster Status</span><input disabled={!isEditingRoster} value={activeProfilePlayer.rosterStatus || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "rosterStatus", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Payment Status</span><input disabled={!isEditingRoster} value={activeProfilePlayer.paymentStatus || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "paymentStatus", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Birth Certificate</span><input disabled={!isEditingRoster} value={activeProfilePlayer.birthCertificateStatus || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "birthCertificateStatus", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>

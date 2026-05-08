@@ -43,6 +43,8 @@ export function mapAllStarCycle(row: {
   organizationId: string;
   seasonYear: number;
   ageGroup: string;
+  allStarAgeGroupId: string | null;
+  allStarAgeGroupLabel: string | null;
   title: string | null;
   hasShowcase: boolean;
   status: string;

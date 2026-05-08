@@ -27,7 +27,10 @@ function forbidIfNotMaster() {
 
 function normalizeAgeBandFilter(value: string | null | undefined) {
   const normalized = String(value || "").trim().toUpperCase();
-  if (normalized === "11U" || normalized === "12U" || normalized === "BOTH") return normalized;
+  if (!normalized) return null;
+  if (normalized === "BOTH") return normalized;
+  const match = normalized.match(/^(\d{1,2})U$/);
+  if (match?.[1]) return `${Number.parseInt(match[1], 10)}U`;
   return null;
 }
 
@@ -71,6 +74,8 @@ export async function POST(request: NextRequest) {
       organizationId: cycle.organizationId,
       seasonYear: cycle.seasonYear,
       ageGroup: cycle.ageGroup,
+      allStarAgeGroupId: cycle.allStarAgeGroupId,
+      allStarAgeGroupLabel: cycle.allStarAgeGroupLabel,
     }, ageBandFilter || "BOTH");
     return NextResponse.json({
       success: true,

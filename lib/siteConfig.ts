@@ -138,6 +138,19 @@ export function getSiteConfigForOrg(org: ContentOrgId): SiteConfig {
   return configs[org];
 }
 
+/**
+ * Default month/day cutoff used to derive All-Star ages by org.
+ * Month is 1-based (January = 1).
+ */
+export function getDefaultAllStarCutoffMonthDayForOrg(
+  org: ContentOrgId,
+): { month: number; day: number } {
+  if (org === "gonzales") {
+    return { month: 4, day: 30 }; // DYB
+  }
+  return { month: 8, day: 31 }; // LLB
+}
+
 export function getOrgDisplayName(org: ContentOrgId): string {
   return getSiteConfigForOrg(org).shortName;
 }

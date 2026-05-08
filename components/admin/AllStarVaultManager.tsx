@@ -31,6 +31,8 @@ type Cycle = {
   organizationId: "gonzales" | "ascension";
   seasonYear: number;
   ageGroup: string;
+  allStarAgeGroupId: string | null;
+  allStarAgeGroupLabel: string | null;
   title: string | null;
   hasShowcase: boolean;
   status: "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
@@ -39,6 +41,31 @@ type Cycle = {
   closedAt: string | null;
   ballotLinkToken?: string | null;
 };
+
+type AllStarAgeOption = {
+  id: string;
+  label: string;
+};
+
+function parsePrimaryAgeFromAgeGroup(ageGroup: string) {
+  const match = ageGroup.trim().toUpperCase().match(/^(\d{1,2})U\b/);
+  if (!match?.[1]) return null;
+  const age = Number.parseInt(match[1], 10);
+  if (!Number.isFinite(age) || age < 4 || age > 18) return null;
+  return age;
+}
+
+function buildAllStarAgeOptionsForAgeGroup(ageGroup: string): AllStarAgeOption[] {
+  const primaryAge = parsePrimaryAgeFromAgeGroup(ageGroup);
+  if (!primaryAge) return [];
+  const secondaryAge = primaryAge - 1;
+  const options: AllStarAgeOption[] = [];
+  if (secondaryAge >= 4) {
+    options.push({ id: `${secondaryAge}U`, label: `${secondaryAge}U` });
+  }
+  options.push({ id: `${primaryAge}U`, label: `${primaryAge}U` });
+  return options;
+}
 
 type Candidate = {
   id: string;
@@ -401,12 +428,19 @@ export default function AllStarVaultManager({
 
   const [newCycleAgeGroup, setNewCycleAgeGroup] = useState("12U LLB");
   const [ageGroupOptions, setAgeGroupOptions] = useState<string[]>([]);
+  const [createCycleWizardStep, setCreateCycleWizardStep] = useState<1 | 2>(1);
+  const [newCycleTitle, setNewCycleTitle] = useState("");
+  const [newCycleAllStarAgeGroupId, setNewCycleAllStarAgeGroupId] = useState("");
   const [newCycleAccessMode, setNewCycleAccessMode] = useState<"INVITE_LIST" | "AGE_GROUP_COACHES">("AGE_GROUP_COACHES");
   const [newCycleHasShowcase, setNewCycleHasShowcase] = useState(true);
   const [newCycleAgeBandFilter, setNewCycleAgeBandFilter] = useState<"11U" | "12U" | "BOTH">("BOTH");
   const [teamsReimportAgeBandFilter, setTeamsReimportAgeBandFilter] = useState<"11U" | "12U" | "BOTH">("BOTH");
   const [cycleOpenAt, setCycleOpenAt] = useState("");
   const [cycleCloseAt, setCycleCloseAt] = useState("");
+  const ageDrivenAllStarOptions = useMemo(
+    () => buildAllStarAgeOptionsForAgeGroup(newCycleAgeGroup),
+    [newCycleAgeGroup],
+  );
 
   const [candidateFile, setCandidateFile] = useState<File | null>(null);
   const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
@@ -491,6 +525,15 @@ export default function AllStarVaultManager({
   useEffect(() => {
     setModuleVisibility(getVisibilityForPreset(modulePreset));
   }, [modulePreset]);
+
+  useEffect(() => {
+    if (
+      newCycleAllStarAgeGroupId &&
+      !ageDrivenAllStarOptions.some((option) => option.id === newCycleAllStarAgeGroupId)
+    ) {
+      setNewCycleAllStarAgeGroupId("");
+    }
+  }, [ageDrivenAllStarOptions, newCycleAllStarAgeGroupId]);
 
   useEffect(() => {
     if (cycles.length === 0) return;
@@ -937,6 +980,10 @@ export default function AllStarVaultManager({
       shouldUseAgeBandFilter && newCycleAgeBandFilter === "11U" && org === "gonzales"
         ? "11U DYB"
         : undefined;
+    const selectedAllStarAge = ageDrivenAllStarOptions.find(
+      (option) => option.id === newCycleAllStarAgeGroupId,
+    );
+    const normalizedTitle = newCycleTitle.trim() || autoTitle;
     setBusy(true);
     setError("");
     setNotice("");
@@ -948,7 +995,9 @@ export default function AllStarVaultManager({
           organizationId: org,
           seasonYear,
           ageGroup: newCycleAgeGroup,
-          title: autoTitle,
+          title: normalizedTitle,
+          allStarAgeGroupId: selectedAllStarAge?.id || null,
+          allStarAgeGroupLabel: selectedAllStarAge?.label || null,
           accessMode: newCycleAccessMode,
           hasShowcase: newCycleHasShowcase,
           autoImportAgeBandFilter: shouldUseAgeBandFilter
@@ -979,6 +1028,9 @@ export default function AllStarVaultManager({
         setNotice("Ballot cycle saved.");
       }
       await loadCycles();
+      setCreateCycleWizardStep(1);
+      setNewCycleTitle("");
+      setNewCycleAllStarAgeGroupId("");
       setSelectedCycleId(cycleId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create cycle");
@@ -2241,7 +2293,10 @@ export default function AllStarVaultManager({
                     className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex items-center justify-between gap-3"
                   >
                     <p className="text-sm min-w-0 truncate">
-                      <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team} · #{candidate.jerseyNumber}
+                      <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team}
+                      {hasVisibleJerseyNumber(candidate.jerseyNumber)
+                        ? ` · #${candidate.jerseyNumber}`
+                        : ""}
                     </p>
                     <div className="flex items-center gap-1 text-zinc-500">
                       {[1, 2, 3, 4, 5].map((value) => (
@@ -2428,47 +2483,104 @@ export default function AllStarVaultManager({
               </option>
             ))}
           </select>
-          <select
-            value={newCycleAgeGroup}
-            onChange={(e) => setNewCycleAgeGroup(e.target.value)}
-            className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[160px] max-w-[220px]"
-          >
-            {ageGroupOptions.length === 0 ? (
-              <option value="">No age groups available</option>
-            ) : (
-              ageGroupOptions.map((ageGroup) => (
-                <option key={ageGroup} value={ageGroup}>
-                  {ageGroup}
-                </option>
-              ))
-            )}
-          </select>
-          <select value={newCycleAccessMode} onChange={(e) => setNewCycleAccessMode(e.target.value as "INVITE_LIST" | "AGE_GROUP_COACHES")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[210px]">
-            <option value="AGE_GROUP_COACHES">Age-group coaches only</option>
-            <option value="INVITE_LIST">Invite-list only</option>
-          </select>
-          <select
-            value={newCycleHasShowcase ? "yes" : "no"}
-            onChange={(e) => setNewCycleHasShowcase(e.target.value === "yes")}
-            className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[150px]"
-          >
-            <option value="yes">Showcase: Yes</option>
-            <option value="no">Showcase: No</option>
-          </select>
-          {requiresDyb12uAgeBandFilter(org, newCycleAgeGroup) ? (
-            <select
-              value={newCycleAgeBandFilter}
-              onChange={(e) =>
-                setNewCycleAgeBandFilter(e.target.value as "11U" | "12U" | "BOTH")
-              }
-              className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]"
-            >
-              <option value="BOTH">All-Star pool: 11U + 12U</option>
-              <option value="11U">All-Star pool: 11U only</option>
-              <option value="12U">All-Star pool: 12U only</option>
-            </select>
-          ) : null}
-          <button type="button" disabled={manageDisabled || !newCycleAgeGroup} onClick={() => void createCycle()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save Cycle</button>
+          {createCycleWizardStep === 1 ? (
+            <>
+              <input
+                value={newCycleTitle}
+                onChange={(e) => setNewCycleTitle(e.target.value)}
+                placeholder="Cycle title (optional)"
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[220px]"
+              />
+              <select
+                value={newCycleAccessMode}
+                onChange={(e) =>
+                  setNewCycleAccessMode(
+                    e.target.value as "INVITE_LIST" | "AGE_GROUP_COACHES",
+                  )
+                }
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[210px]"
+              >
+                <option value="AGE_GROUP_COACHES">Age-group coaches only</option>
+                <option value="INVITE_LIST">Invite-list only</option>
+              </select>
+              <select
+                value={newCycleHasShowcase ? "yes" : "no"}
+                onChange={(e) => setNewCycleHasShowcase(e.target.value === "yes")}
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[150px]"
+              >
+                <option value="yes">Showcase: Yes</option>
+                <option value="no">Showcase: No</option>
+              </select>
+              <button
+                type="button"
+                disabled={manageDisabled}
+                onClick={() => setCreateCycleWizardStep(2)}
+                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 disabled:opacity-60"
+              >
+                Next: Age Setup
+              </button>
+            </>
+          ) : (
+            <>
+              <select
+                value={newCycleAgeGroup}
+                onChange={(e) => setNewCycleAgeGroup(e.target.value)}
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[160px] max-w-[220px]"
+              >
+                {ageGroupOptions.length === 0 ? (
+                  <option value="">No age groups available</option>
+                ) : (
+                  ageGroupOptions.map((ageGroup) => (
+                    <option key={ageGroup} value={ageGroup}>
+                      {ageGroup}
+                    </option>
+                  ))
+                )}
+              </select>
+              <select
+                value={newCycleAllStarAgeGroupId}
+                onChange={(e) => setNewCycleAllStarAgeGroupId(e.target.value)}
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[180px]"
+              >
+                <option value="">All-Star Age: Global (all ages)</option>
+                {ageDrivenAllStarOptions.map((ageOption) => (
+                  <option key={ageOption.id} value={ageOption.id}>
+                    All-Star Age: {ageOption.label}
+                  </option>
+                ))}
+              </select>
+              {requiresDyb12uAgeBandFilter(org, newCycleAgeGroup) &&
+              !newCycleAllStarAgeGroupId ? (
+                <select
+                  value={newCycleAgeBandFilter}
+                  onChange={(e) =>
+                    setNewCycleAgeBandFilter(e.target.value as "11U" | "12U" | "BOTH")
+                  }
+                  className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]"
+                >
+                  <option value="BOTH">All-Star pool: 11U + 12U</option>
+                  <option value="11U">All-Star pool: 11U only</option>
+                  <option value="12U">All-Star pool: 12U only</option>
+                </select>
+              ) : null}
+              <button
+                type="button"
+                disabled={manageDisabled}
+                onClick={() => setCreateCycleWizardStep(1)}
+                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-60"
+              >
+                Back
+              </button>
+              <button
+                type="button"
+                disabled={manageDisabled || !newCycleAgeGroup}
+                onClick={() => void createCycle()}
+                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                Save Cycle
+              </button>
+            </>
+          )}
         </div>
         <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
@@ -2479,7 +2591,10 @@ export default function AllStarVaultManager({
             <option value="">Select cycle…</option>
             {cycles.map((cycle) => (
               <option key={cycle.id} value={cycle.id}>
-                {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {getDisplayedCycleAgeGroup(cycle)} | {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
+                {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {getDisplayedCycleAgeGroup(cycle)}
+                {cycle.allStarAgeGroupLabel ? ` [${cycle.allStarAgeGroupLabel}]` : ""}
+                {" | "}
+                {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
               </option>
             ))}
           </select>
@@ -2526,6 +2641,11 @@ export default function AllStarVaultManager({
           {selectedCycle ? (
             <span className={`rounded-full border px-2 py-0.5 font-semibold tracking-wide ${getCycleTierBadgeClass(selectedCycle.organizationId, selectedCycle.title)}`}>
               {getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
+            </span>
+          ) : null}
+          {selectedCycle?.allStarAgeGroupLabel ? (
+            <span className="rounded-full border border-amber-700/70 bg-amber-950/30 px-2 py-0.5 font-semibold tracking-wide text-amber-200">
+              Age: {selectedCycle.allStarAgeGroupLabel}
             </span>
           ) : null}
         </div>
@@ -3107,7 +3227,10 @@ export default function AllStarVaultManager({
                 className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex items-center justify-between gap-3"
               >
                 <p className="text-sm min-w-0 truncate">
-                  <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team} · #{candidate.jerseyNumber}
+                  <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team}
+                  {hasVisibleJerseyNumber(candidate.jerseyNumber)
+                    ? ` · #${candidate.jerseyNumber}`
+                    : ""}
                   {selectedCycle?.hasShowcase && candidate.showcaseBibNumber
                     ? ` · Bib ${candidate.showcaseBibNumber}`
                     : ""}

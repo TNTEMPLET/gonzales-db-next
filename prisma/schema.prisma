@@ -593,6 +593,8 @@ model AllStarBallotCycle {
   organizationId String
   seasonYear    Int
   ageGroup      String
+  allStarAgeGroupId    String?
+  allStarAgeGroupLabel String?
   title         String?
   hasShowcase   Boolean           @default(true)
   status        AllStarCycleStatus @default(DRAFT)
@@ -617,6 +619,7 @@ model AllStarBallotCycle {
 
   @@index([organizationId, seasonYear, ageGroup])
   @@index([organizationId, status, ageGroup])
+  @@index([organizationId, seasonYear, allStarAgeGroupId])
 }
 
 model AllStarCandidate {

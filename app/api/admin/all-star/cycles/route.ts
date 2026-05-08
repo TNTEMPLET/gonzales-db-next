@@ -8,17 +8,21 @@ import { hasAdminRoleAtLeast } from "@/lib/auth/adminRoles";
 import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getDefaultAllStarCutoffMonthDayForOrg,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 function forbidIfNotMaster() {
   return null;
 }
 
-function normalizeAgeBandFilter(value: unknown): "11U" | "12U" | "BOTH" | null {
+function normalizeAgeBandFilter(value: unknown): string | "BOTH" | null {
   const normalized = String(value || "").trim().toUpperCase();
-  if (normalized === "11U" || normalized === "12U" || normalized === "BOTH") {
-    return normalized;
-  }
+  if (!normalized) return null;
+  if (normalized === "BOTH") return "BOTH";
+  const match = normalized.match(/^(\d{1,2})U$/);
+  if (match?.[1]) return `${Number.parseInt(match[1], 10)}U`;
   return null;
 }
 
@@ -26,10 +30,70 @@ function requiresAgeBandFilterForCycle(organizationId: string, ageGroup: string)
   return organizationId === "gonzales" && ageGroup.trim().toUpperCase().startsWith("12U");
 }
 
+function deriveAllStarAgeBandFromBirthDate(birthDate: Date | null, cutoffDate: Date | null) {
+  if (!birthDate || !cutoffDate) return null;
+  let age = cutoffDate.getUTCFullYear() - birthDate.getUTCFullYear();
+  const monthDiff = cutoffDate.getUTCMonth() - birthDate.getUTCMonth();
+  if (
+    monthDiff < 0 ||
+    (monthDiff === 0 && cutoffDate.getUTCDate() < birthDate.getUTCDate())
+  ) {
+    age -= 1;
+  }
+  if (!Number.isInteger(age) || age < 4 || age > 18) return null;
+  return `${age}U`;
+}
+
+async function backfillAllStarAgeBandsForCyclePublish(
+  organizationId: "gonzales" | "ascension",
+  seasonYear: number,
+  ageGroup: string,
+) {
+  const configuredCutoff = await prisma.teamAllStarAgeCutoff.findUnique({
+    where: {
+      organizationId_seasonYear: {
+        organizationId,
+        seasonYear,
+      },
+    },
+    select: { cutoffDate: true },
+  });
+  const defaultCutoff = (() => {
+    const { month, day } = getDefaultAllStarCutoffMonthDayForOrg(organizationId);
+    return new Date(Date.UTC(seasonYear, month - 1, day, 0, 0, 0, 0));
+  })();
+  const cutoffDate = configuredCutoff?.cutoffDate ?? defaultCutoff;
+
+  const players = await prisma.teamPlayer.findMany({
+    where: {
+      team: {
+        organizationId,
+        seasonYear,
+        ageGroup,
+      },
+    },
+    select: { id: true, birthDate: true },
+  });
+
+  await Promise.all(
+    players.map((player) =>
+      prisma.teamPlayer.update({
+        where: { id: player.id },
+        data: {
+          allStarAgeBand: deriveAllStarAgeBandFromBirthDate(
+            player.birthDate,
+            cutoffDate,
+          ),
+        },
+      }),
+    ),
+  );
+}
+
 function getAutoCycleTitleForAgeBandPool(
   organizationId: string,
   ageGroup: string,
-  ageBandFilter: "11U" | "12U" | "BOTH",
+  ageBandFilter: string | "BOTH",
 ) {
   if (
     organizationId === "gonzales" &&
@@ -111,6 +175,8 @@ export async function POST(request: NextRequest) {
     organizationId?: string;
     seasonYear?: number;
     ageGroup?: string;
+    allStarAgeGroupId?: string | null;
+    allStarAgeGroupLabel?: string | null;
     title?: string;
     accessMode?: "INVITE_LIST" | "AGE_GROUP_COACHES";
     hasShowcase?: boolean;
@@ -126,6 +192,8 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const normalizedAllStarAgeGroupId = body.allStarAgeGroupId?.trim() || null;
+  const normalizedAllStarAgeGroupLabel = body.allStarAgeGroupLabel?.trim() || null;
   const ageBandFilter = requiresAgeBandFilterForCycle(organizationId, ageGroup)
     ? normalizeAgeBandFilter(body.autoImportAgeBandFilter) || "BOTH"
     : "BOTH";
@@ -138,6 +206,7 @@ export async function POST(request: NextRequest) {
       organizationId,
       seasonYear,
       ageGroup,
+      allStarAgeGroupId: normalizedAllStarAgeGroupId,
       title: normalizedTitle,
     },
     orderBy: { createdAt: "desc" },
@@ -149,6 +218,8 @@ export async function POST(request: NextRequest) {
       data: {
         title: normalizedTitle,
         accessMode: body.accessMode || "AGE_GROUP_COACHES",
+        allStarAgeGroupId: normalizedAllStarAgeGroupId,
+        allStarAgeGroupLabel: normalizedAllStarAgeGroupLabel,
         hasShowcase:
           typeof body.hasShowcase === "boolean" ? body.hasShowcase : undefined,
       },
@@ -175,16 +246,31 @@ export async function POST(request: NextRequest) {
       seasonYear,
       ageGroup,
       title: normalizedTitle,
+      allStarAgeGroupId: normalizedAllStarAgeGroupId,
+      allStarAgeGroupLabel: normalizedAllStarAgeGroupLabel,
       accessMode: body.accessMode || "AGE_GROUP_COACHES",
       hasShowcase: typeof body.hasShowcase === "boolean" ? body.hasShowcase : true,
       createdByAdminId: admin?.id || null,
     },
   });
+  if (
+    created.organizationId === "gonzales" ||
+    created.organizationId === "ascension"
+  ) {
+    // Ensure player age bands are present before immediate auto-import on create.
+    await backfillAllStarAgeBandsForCyclePublish(
+      created.organizationId,
+      created.seasonYear,
+      created.ageGroup,
+    );
+  }
   const autoImport = await importCandidatesFromTeamsForCycle(prisma, {
     id: created.id,
     organizationId: created.organizationId,
     seasonYear: created.seasonYear,
     ageGroup: created.ageGroup,
+    allStarAgeGroupId: created.allStarAgeGroupId,
+    allStarAgeGroupLabel: created.allStarAgeGroupLabel,
   }, ageBandFilter);
 
   return NextResponse.json({
@@ -210,6 +296,8 @@ export async function PATCH(request: NextRequest) {
     publishedAt?: string | null;
     closedAt?: string | null;
     activePhase?: "FIRST_TEAM" | "SECOND_TEAM";
+    allStarAgeGroupId?: string | null;
+    allStarAgeGroupLabel?: string | null;
   };
 
   if (!body.cycleId) {
@@ -278,12 +366,32 @@ export async function PATCH(request: NextRequest) {
       status: body.status,
       accessMode: body.accessMode,
       hasShowcase: body.hasShowcase,
+      allStarAgeGroupId:
+        body.allStarAgeGroupId === undefined
+          ? undefined
+          : body.allStarAgeGroupId?.trim() || null,
+      allStarAgeGroupLabel:
+        body.allStarAgeGroupLabel === undefined
+          ? undefined
+          : body.allStarAgeGroupLabel?.trim() || null,
       title: body.title === undefined ? undefined : body.title?.trim() || null,
       publishedAt: effectivePublishedAt,
       closedAt: effectiveClosedAt,
       activePhase: body.activePhase,
     },
   });
+
+  if (
+    body.status === "PUBLISHED" &&
+    (updated.organizationId === "gonzales" ||
+      updated.organizationId === "ascension")
+  ) {
+    await backfillAllStarAgeBandsForCyclePublish(
+      updated.organizationId,
+      updated.seasonYear,
+      updated.ageGroup,
+    );
+  }
 
   return NextResponse.json({ success: true, cycle: mapAllStarCycle(updated) });
 }

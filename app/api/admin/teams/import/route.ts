@@ -80,9 +80,11 @@ function parseDateValue(value: string) {
 
 function parseAllStarAgeBand(raw: string | null | undefined) {
   const value = String(raw || "").trim().toUpperCase();
-  if (value === "11U" || value === "12U") return value;
-  if (value === "11" || value === "11 YEAR" || value === "11 YEARS") return "11U";
-  if (value === "12" || value === "12 YEAR" || value === "12 YEARS") return "12U";
+  if (!value) return null;
+  const uMatch = value.match(/^(\d{1,2})U$/);
+  if (uMatch?.[1]) return `${Number.parseInt(uMatch[1], 10)}U`;
+  const numericMatch = value.match(/^(\d{1,2})(?:\s*YEAR(?:S)?(?:\s*OLD)?)?$/);
+  if (numericMatch?.[1]) return `${Number.parseInt(numericMatch[1], 10)}U`;
   return null;
 }
 
@@ -96,9 +98,8 @@ function deriveAllStarAgeBandFromBirthDate(birthDate: Date | null, cutoffDate: D
   ) {
     age -= 1;
   }
-  if (age === 11) return "11U";
-  if (age === 12) return "12U";
-  return null;
+  if (!Number.isInteger(age) || age < 4 || age > 18) return null;
+  return `${age}U`;
 }
 
 function parseDivisionMappings(

@@ -72,6 +72,8 @@ export async function GET(request: NextRequest) {
       organizationId: cycle.organizationId,
       seasonYear: cycle.seasonYear,
       ageGroup: cycle.ageGroup,
+      allStarAgeGroupId: cycle.allStarAgeGroupId,
+      allStarAgeGroupLabel: cycle.allStarAgeGroupLabel,
       title: cycle.title,
       hasShowcase: cycle.hasShowcase,
       status: cycle.status,

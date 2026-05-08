@@ -29,9 +29,11 @@ type ImportCycleContext = {
   organizationId: string;
   seasonYear: number;
   ageGroup: string;
+  allStarAgeGroupId?: string | null;
+  allStarAgeGroupLabel?: string | null;
 };
 
-type CandidateAgeBandFilter = "11U" | "12U" | "BOTH";
+type CandidateAgeBandFilter = string | "BOTH";
 
 function normalizeCandidateKey(value: string) {
   return value.trim().toLowerCase().replace(/\s+/g, " ");
@@ -92,19 +94,21 @@ export async function importCandidatesFromTeamsForCycle(
     showcaseBibNumber: null;
   }> = [];
   let skipped = 0;
+  const explicitAllStarAge = String(cycle.allStarAgeGroupLabel || cycle.allStarAgeGroupId || "")
+    .trim()
+    .toUpperCase();
+
   for (const player of players) {
-    if (ageBandFilter !== "BOTH") {
+    if (explicitAllStarAge) {
+      if (!player.allStarAgeBand || player.allStarAgeBand.toUpperCase() !== explicitAllStarAge) {
+        skipped += 1;
+        continue;
+      }
+    } else if (ageBandFilter !== "BOTH") {
       if (!player.allStarAgeBand || player.allStarAgeBand !== ageBandFilter) {
         skipped += 1;
         continue;
       }
-    } else if (
-      player.allStarAgeBand !== null &&
-      player.allStarAgeBand !== "11U" &&
-      player.allStarAgeBand !== "12U"
-    ) {
-      skipped += 1;
-      continue;
     }
     const playerFullName = String(player.fullName || "").trim();
     const team = String(player.team.teamName || "").trim();

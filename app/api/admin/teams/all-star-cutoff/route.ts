@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getDefaultAllStarCutoffMonthDayForOrg,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 function parseSeasonYear(value: string | null): number | null {
   if (!value) return null;
@@ -11,8 +14,9 @@ function parseSeasonYear(value: string | null): number | null {
   return year;
 }
 
-function defaultCutoffDateForSeason(seasonYear: number) {
-  return new Date(Date.UTC(seasonYear, 7, 31, 0, 0, 0, 0)); // Aug 31 UTC
+function defaultCutoffDateForSeason(organizationId: "gonzales" | "ascension", seasonYear: number) {
+  const { month, day } = getDefaultAllStarCutoffMonthDayForOrg(organizationId);
+  return new Date(Date.UTC(seasonYear, month - 1, day, 0, 0, 0, 0));
 }
 
 export async function GET(request: NextRequest) {
@@ -33,7 +37,8 @@ export async function GET(request: NextRequest) {
       },
     },
   });
-  const cutoffDate = existing?.cutoffDate ?? defaultCutoffDateForSeason(seasonYear);
+  const cutoffDate =
+    existing?.cutoffDate ?? defaultCutoffDateForSeason(targetOrg, seasonYear);
   return NextResponse.json({
     data: {
       organizationId: targetOrg,
