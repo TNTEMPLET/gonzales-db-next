@@ -26,6 +26,25 @@ function EditCycleIcon({ className }: { className?: string }) {
   );
 }
 
+function ViewCycleIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className ?? "h-4 w-4"}
+      aria-hidden
+    >
+      <path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
 type Cycle = {
   id: string;
   organizationId: "gonzales" | "ascension";
@@ -560,15 +579,6 @@ export default function AllStarVaultManager({
     }
     setModuleVisibility(getVisibilityForPreset(modulePreset));
   }, [modulePreset, isLimitedVaultAccess]);
-
-  useEffect(() => {
-    if (!isLimitedVaultAccess) return;
-    if (selectedCycleId) {
-      setShowEditModules(true);
-    } else {
-      setShowEditModules(false);
-    }
-  }, [isLimitedVaultAccess, selectedCycleId]);
 
   useEffect(() => {
     if (
@@ -1609,9 +1619,7 @@ export default function AllStarVaultManager({
   function openCycleFromCard(cycleId: string) {
     setLimitedOverviewMoreCycleId("");
     setSelectedCycleId(cycleId);
-    if (!isLimitedVaultAccess) {
-      setShowEditModules(false);
-    }
+    setShowEditModules(false);
   }
 
   function expandEditModulesIntoView() {
@@ -2422,7 +2430,7 @@ export default function AllStarVaultManager({
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div className="space-y-1 min-w-0">
               <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400/90">
-                {isLimitedVaultAccess ? "Selected cycle (limited admin)" : "Selected cycle (vault view)"}
+                Selected cycle (vault view)
               </p>
               <h2 className="text-lg font-semibold text-zinc-100 leading-snug">
                 {formatOrganizationLabel(selectedCycle.organizationId)} · {selectedCycle.seasonYear} ·{" "}
@@ -2435,15 +2443,36 @@ export default function AllStarVaultManager({
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {showFullAdminView && (canManageAllStarVaultUi || isLimitedVaultAccess) ? (
-                <button
-                  type="button"
-                  onClick={() => expandEditModulesIntoView()}
-                  className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
-                  title={isLimitedVaultAccess ? "Show ballot tools" : "Show editing tools"}
-                  aria-label={isLimitedVaultAccess ? "Show ballot tools" : "Show editing tools"}
-                >
-                  <EditCycleIcon className="h-4 w-4" />
-                </button>
+                isLimitedVaultAccess ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={() => expandEditModulesIntoView()}
+                      className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
+                      title="View modules"
+                      aria-label="View modules"
+                    >
+                      <ViewCycleIcon className="h-4 w-4" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => expandEditModulesIntoView()}
+                      className="rounded-lg border border-emerald-600/80 px-3 py-1.5 text-sm font-medium text-emerald-100 hover:bg-emerald-950/40"
+                    >
+                      View modules
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => expandEditModulesIntoView()}
+                    className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-emerald-600/80 text-emerald-200 hover:bg-emerald-950/40"
+                    title="Show editing tools"
+                    aria-label="Show editing tools"
+                  >
+                    <EditCycleIcon className="h-4 w-4" />
+                  </button>
+                )
               ) : null}
               <span
                 className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(selectedCycle.status)}`}
@@ -2478,8 +2507,9 @@ export default function AllStarVaultManager({
           <p className="text-xs text-zinc-500 max-w-2xl">
             {isLimitedVaultAccess ? (
               <>
-                Ballot tools (submitted ballots, vote standings, shared link) open below for this cycle. Use the icon here
-                or <span className="text-zinc-400">Hide Edit Modules</span> to collapse that section.
+                Use <span className="text-zinc-400">View modules</span> to open submitted ballots, vote standings, and the
+                shared ballot link. Collapse again with <span className="text-zinc-400">Hide view modules</span> in that
+                section.
               </>
             ) : (
               <>
@@ -2498,9 +2528,11 @@ export default function AllStarVaultManager({
       <div ref={editModulesShellRef} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <h2 className="text-lg font-semibold">Edit Modules</h2>
+            <h2 className="text-lg font-semibold">{isLimitedVaultAccess ? "View modules" : "Edit Modules"}</h2>
             <p className="text-xs text-zinc-400">
-              Keep the workspace compact and expand editing only when needed.
+              {isLimitedVaultAccess
+                ? "Sections below match your access: view ballots and standings; delete a submission only when a coach must vote again."
+                : "Keep the workspace compact and expand editing only when needed."}
             </p>
           </div>
           <button
@@ -2508,19 +2540,25 @@ export default function AllStarVaultManager({
             onClick={() => setShowEditModules((prev) => !prev)}
             className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-200 hover:bg-zinc-800"
           >
-            {showEditModules ? "Hide Edit Modules" : "Show Edit Modules"}
+            {isLimitedVaultAccess
+              ? showEditModules
+                ? "Hide view modules"
+                : "View modules"
+              : showEditModules
+                ? "Hide Edit Modules"
+                : "Show Edit Modules"}
           </button>
         </div>
         {!showEditModules ? (
           <p className="text-xs text-zinc-500">
             {isLimitedVaultAccess
-              ? "Ballot tools are collapsed. Expand to see submitted ballots, vote standings, and the shared ballot link."
+              ? "Modules are collapsed. Open View modules to see ballots, vote standings, and the shared link."
               : "Editing is collapsed. Expand to work in Cycle Management, Candidates, and Votes."}
           </p>
         ) : isLimitedVaultAccess ? (
           <p className="text-xs text-zinc-500">
-            Limited admin: Submitted Ballots, Votes Panel, and Invites (shared ballot link) are available below. Granting
-            vault access to others is not available at this level.
+            Submitted ballots, vote standings, and ballot link / invite roster (view). Generating links or changing rosters
+            requires full vault access.
           </p>
         ) : (
           <div className="flex flex-wrap items-center gap-2">
@@ -3165,7 +3203,9 @@ export default function AllStarVaultManager({
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Submitted Ballots</h2>
         <p className="text-xs text-zinc-400">
-          Review submitted ballots for the selected cycle. Deleting a ballot unlocks that coach to submit again.
+          {isLimitedVaultAccess
+            ? "View who has submitted. Deleting a ballot is the only change available here — it lets that coach submit again. Other ballot setup requires full vault access."
+            : "Review submitted ballots for the selected cycle. Deleting a ballot unlocks that coach to submit again."}
         </p>
         <div className="flex flex-wrap items-center gap-3">
           <button
@@ -3237,8 +3277,9 @@ export default function AllStarVaultManager({
         <h2 className="text-lg font-semibold">Votes Panel</h2>
         <div className="flex items-start justify-between gap-3 flex-wrap">
           <p className="text-xs text-zinc-400 flex-1 min-w-[200px]">
-            Live candidate standings sorted by vote count, then average rating.
-            Auto-refresh runs every 15 seconds while a cycle is open and published.
+            {isLimitedVaultAccess
+              ? "View standings and export results. Live refresh runs every 15 seconds while the cycle is open and published."
+              : "Live candidate standings sorted by vote count, then average rating. Auto-refresh runs every 15 seconds while a cycle is open and published."}
           </p>
           <div className="flex flex-wrap items-center gap-2 justify-end shrink-0">
             <a
@@ -3428,7 +3469,9 @@ export default function AllStarVaultManager({
 
       {showEditModules && moduleVisibility.invites ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-        <h2 className="text-lg font-semibold">Invites And Exports</h2>
+        <h2 className="text-lg font-semibold">
+          {isLimitedVaultAccess ? "Ballot link & invite roster" : "Invites And Exports"}
+        </h2>
         <div className="rounded-lg border border-zinc-700 bg-zinc-950/40 p-4 space-y-3">
           <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
@@ -3438,14 +3481,20 @@ export default function AllStarVaultManager({
                 Age-group ballots use the same link once generated — keep your coach roster current below.
               </p>
             </div>
-            <button
-              type="button"
-              disabled={manageDisabled || !selectedCycleId}
-              onClick={() => void generateSharedBallotLink()}
-              className="text-xs rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-3 py-2 font-semibold disabled:opacity-60 shrink-0"
-            >
-              Generate / refresh link
-            </button>
+            {isLimitedVaultAccess ? (
+              <p className="text-[11px] text-zinc-500 shrink-0 max-w-xs text-right">
+                Generating or refreshing the link requires full vault access.
+              </p>
+            ) : (
+              <button
+                type="button"
+                disabled={manageDisabled || !selectedCycleId}
+                onClick={() => void generateSharedBallotLink()}
+                className="text-xs rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-3 py-2 font-semibold disabled:opacity-60 shrink-0"
+              >
+                Generate / refresh link
+              </button>
+            )}
           </div>
           {ballotVotingLink ? (
             <div className="flex flex-col sm:flex-row sm:items-center gap-2">
@@ -3461,77 +3510,170 @@ export default function AllStarVaultManager({
             </div>
           ) : (
             <p className="text-xs text-zinc-500">
-              Generate a link to create the shared voting URL. Refreshing creates a new URL and invalidates the previous one.
+              {isLimitedVaultAccess
+                ? "No shared URL is available yet. Ask a full vault admin to generate the ballot link."
+                : "Generate a link to create the shared voting URL. Refreshing creates a new URL and invalidates the previous one."}
             </p>
           )}
         </div>
         {isInviteListCycle ? (
-          <div className="space-y-2">
-            <p className="text-xs text-zinc-400">
-              Select coaches authorized for this ballot (invite-list cycles).
-            </p>
-            <input
-              value={inviteCoachSearch}
-              onChange={(event) => setInviteCoachSearch(event.target.value)}
-              placeholder="Filter coaches by name, email, or role"
-              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-            />
-            <div className="max-h-44 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950/30 divide-y divide-zinc-800">
-              {filteredInviteCoachOptions.length === 0 ? (
-                <p className="text-zinc-500 text-sm p-3">
-                  {cycleCoachOptions.length === 0
-                    ? "No coaches available for this cycle."
-                    : "No coaches match your filter."}
-                </p>
-              ) : (
-                filteredInviteCoachOptions.map((coach) => {
-                  const label =
-                    (coach.firstName || coach.lastName
-                      ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
-                      : coach.name) || coach.email;
-                  const roleLabel =
-                    coach.coachRole === "HEAD_COACH"
-                      ? "Head Coach"
-                      : coach.coachRole === "ASSISTANT_COACH"
-                        ? "Assistant Coach"
-                        : "Coach";
-                  const checked = selectedInviteCoachIds.includes(coach.id);
-                  return (
-                    <label
-                      key={coach.id}
-                      className="flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-zinc-900/50"
-                    >
-                      <span className="min-w-0 truncate">
-                        {label}{" "}
-                        <span className="text-zinc-400">
-                          ({coach.email}) · {roleLabel}
+          isLimitedVaultAccess ? (
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-400">
+                Invite-list cycle: roster changes require full vault access. Below is the coach directory for this age
+                group (read-only).
+              </p>
+              <input
+                value={inviteCoachSearch}
+                onChange={(event) => setInviteCoachSearch(event.target.value)}
+                placeholder="Filter coaches by name, email, or role"
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
+              <div className="max-h-44 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950/30 divide-y divide-zinc-800">
+                {filteredInviteCoachOptions.length === 0 ? (
+                  <p className="text-zinc-500 text-sm p-3">
+                    {cycleCoachOptions.length === 0
+                      ? "No coaches available for this cycle."
+                      : "No coaches match your filter."}
+                  </p>
+                ) : (
+                  filteredInviteCoachOptions.map((coach) => {
+                    const label =
+                      (coach.firstName || coach.lastName
+                        ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
+                        : coach.name) || coach.email;
+                    const roleLabel =
+                      coach.coachRole === "HEAD_COACH"
+                        ? "Head Coach"
+                        : coach.coachRole === "ASSISTANT_COACH"
+                          ? "Assistant Coach"
+                          : "Coach";
+                    return (
+                      <div
+                        key={coach.id}
+                        className="px-3 py-2 text-sm text-zinc-300 border-b border-zinc-800 last:border-b-0"
+                      >
+                        <span className="min-w-0 truncate">
+                          {label}{" "}
+                          <span className="text-zinc-500">
+                            ({coach.email}) · {roleLabel}
+                          </span>
                         </span>
-                      </span>
-                      <input
-                        type="checkbox"
-                        checked={checked}
-                        disabled={manageDisabled}
-                        onChange={(event) =>
-                          setSelectedInviteCoachIds((current) =>
-                            event.target.checked
-                              ? Array.from(new Set([...current, coach.id]))
-                              : current.filter((id) => id !== coach.id),
-                          )
-                        }
-                      />
-                    </label>
-                  );
-                })
-              )}
+                      </div>
+                    );
+                  })
+                )}
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-xs text-zinc-400">
+                Select coaches authorized for this ballot (invite-list cycles).
+              </p>
+              <input
+                value={inviteCoachSearch}
+                onChange={(event) => setInviteCoachSearch(event.target.value)}
+                placeholder="Filter coaches by name, email, or role"
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
+              <div className="max-h-44 overflow-auto rounded-lg border border-zinc-800 bg-zinc-950/30 divide-y divide-zinc-800">
+                {filteredInviteCoachOptions.length === 0 ? (
+                  <p className="text-zinc-500 text-sm p-3">
+                    {cycleCoachOptions.length === 0
+                      ? "No coaches available for this cycle."
+                      : "No coaches match your filter."}
+                  </p>
+                ) : (
+                  filteredInviteCoachOptions.map((coach) => {
+                    const label =
+                      (coach.firstName || coach.lastName
+                        ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
+                        : coach.name) || coach.email;
+                    const roleLabel =
+                      coach.coachRole === "HEAD_COACH"
+                        ? "Head Coach"
+                        : coach.coachRole === "ASSISTANT_COACH"
+                          ? "Assistant Coach"
+                          : "Coach";
+                    const checked = selectedInviteCoachIds.includes(coach.id);
+                    return (
+                      <label
+                        key={coach.id}
+                        className="flex items-center justify-between gap-3 px-3 py-2 text-sm cursor-pointer hover:bg-zinc-900/50"
+                      >
+                        <span className="min-w-0 truncate">
+                          {label}{" "}
+                          <span className="text-zinc-400">
+                            ({coach.email}) · {roleLabel}
+                          </span>
+                        </span>
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          disabled={manageDisabled}
+                          onChange={(event) =>
+                            setSelectedInviteCoachIds((current) =>
+                              event.target.checked
+                                ? Array.from(new Set([...current, coach.id]))
+                                : current.filter((id) => id !== coach.id),
+                            )
+                          }
+                        />
+                      </label>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+          )
         ) : null}
-        <textarea value={inviteEmails} onChange={(e) => setInviteEmails(e.target.value)} readOnly={manageDisabled} placeholder={isInviteListCycle ? "Optional extra emails: coach1@email.com, coach2@email.com" : "Optional extra emails (coaches auto-filled from cycle when left blank)"} rows={3} className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm read-only:opacity-60" />
+        {!isLimitedVaultAccess ? (
+          <textarea
+            value={inviteEmails}
+            onChange={(e) => setInviteEmails(e.target.value)}
+            readOnly={manageDisabled}
+            placeholder={
+              isInviteListCycle
+                ? "Optional extra emails: coach1@email.com, coach2@email.com"
+                : "Optional extra emails (coaches auto-filled from cycle when left blank)"
+            }
+            rows={3}
+            className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm read-only:opacity-60"
+          />
+        ) : null}
         <div className="flex flex-wrap gap-3">
-          <button type="button" disabled={manageDisabled || !selectedCycleId} onClick={() => void createInvites()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Save invite roster</button>
-          <a href={selectedCycleId ? `/api/admin/all-star/exports/csv?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm">Export CSV</a>
-          <a href={selectedCycleId ? `/api/admin/all-star/exports/pdf?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm">Export PDF</a>
-          <a href={selectedCycleId ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}` : "#"} className="rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-4 py-2 text-sm">Showcase Score Card (fillable PDF)</a>
+          {!isLimitedVaultAccess ? (
+            <button
+              type="button"
+              disabled={manageDisabled || !selectedCycleId}
+              onClick={() => void createInvites()}
+              className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+            >
+              Save invite roster
+            </button>
+          ) : null}
+          <a
+            href={selectedCycleId ? `/api/admin/all-star/exports/csv?cycleId=${selectedCycleId}` : "#"}
+            className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm"
+          >
+            Export CSV
+          </a>
+          <a
+            href={selectedCycleId ? `/api/admin/all-star/exports/pdf?cycleId=${selectedCycleId}` : "#"}
+            className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm"
+          >
+            Export PDF
+          </a>
+          <a
+            href={
+              selectedCycleId
+                ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}`
+                : "#"
+            }
+            className="rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-4 py-2 text-sm"
+          >
+            Showcase Score Card (fillable PDF)
+          </a>
         </div>
         {inviteLinks.length > 0 ? (
           <div className="rounded-lg border border-zinc-800 max-h-56 overflow-auto">
@@ -3553,27 +3695,29 @@ export default function AllStarVaultManager({
                         {invite.revokedAt ? " • Revoked from roster" : ""}
                       </p>
                     </div>
-                    <div className="flex flex-wrap gap-2 shrink-0">
-                      {invite.revokedAt ? (
-                        <button
-                          type="button"
-                          disabled={manageDisabled || busy || rowBusy}
-                          onClick={() => void reenableInviteRow(invite.inviteId)}
-                          className="text-xs rounded-lg border border-emerald-800 text-emerald-200 hover:bg-emerald-950/40 px-3 py-1.5 disabled:opacity-60"
-                        >
-                          {rowBusy ? "…" : "Re-enable"}
-                        </button>
-                      ) : (
-                        <button
-                          type="button"
-                          disabled={manageDisabled || busy || rowBusy}
-                          onClick={() => void revokeInviteRow(invite.inviteId)}
-                          className="text-xs rounded-lg border border-red-800 text-red-200 hover:bg-red-950/30 px-3 py-1.5 disabled:opacity-60"
-                        >
-                          {rowBusy ? "…" : "Remove from roster"}
-                        </button>
-                      )}
-                    </div>
+                    {!isLimitedVaultAccess ? (
+                      <div className="flex flex-wrap gap-2 shrink-0">
+                        {invite.revokedAt ? (
+                          <button
+                            type="button"
+                            disabled={manageDisabled || busy || rowBusy}
+                            onClick={() => void reenableInviteRow(invite.inviteId)}
+                            className="text-xs rounded-lg border border-emerald-800 text-emerald-200 hover:bg-emerald-950/40 px-3 py-1.5 disabled:opacity-60"
+                          >
+                            {rowBusy ? "…" : "Re-enable"}
+                          </button>
+                        ) : (
+                          <button
+                            type="button"
+                            disabled={manageDisabled || busy || rowBusy}
+                            onClick={() => void revokeInviteRow(invite.inviteId)}
+                            className="text-xs rounded-lg border border-red-800 text-red-200 hover:bg-red-950/30 px-3 py-1.5 disabled:opacity-60"
+                          >
+                            {rowBusy ? "…" : "Remove from roster"}
+                          </button>
+                        )}
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               );
