@@ -660,8 +660,6 @@ export default function AllStarVaultManager({
     setSelectedCandidateIds([]);
     setShowAdvancedCycleActions(false);
     if (selectedCycleId) {
-      const selectedCycleMeta = cycles.find((entry) => entry.id === selectedCycleId) || null;
-      const shouldLoadInvites = selectedCycleMeta?.accessMode === "INVITE_LIST";
       setCandidates([]);
       setHeadCoaches([]);
       setCycleCoachOptions([]);
@@ -669,21 +667,16 @@ export default function AllStarVaultManager({
       setVoteSummary([]);
       setVoteSummarySubmissionCount(0);
       setSelectedCoachUserId("");
-      if (!shouldLoadInvites) {
-        setInviteLinks([]);
-        setBallotVotingLink(null);
-      }
       void (async () => {
         try {
+          /** Invites GET always returns `ballotVotingLink` from the cycle token (all access modes). */
           const loads = [
             loadCycleDetails(selectedCycleId),
             loadCycleCoaches(selectedCycleId),
             loadSubmittedBallots(selectedCycleId),
             loadVoteSummary(selectedCycleId),
+            loadInvites(selectedCycleId),
           ];
-          if (shouldLoadInvites) {
-            loads.push(loadInvites(selectedCycleId));
-          }
           await Promise.all(loads);
         } catch (err: unknown) {
           if (latestCycleIdRef.current !== selectedCycleId) return;
