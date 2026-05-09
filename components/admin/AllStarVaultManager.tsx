@@ -2552,7 +2552,8 @@ export default function AllStarVaultManager({
                       >
                         <p className="min-w-0 truncate">
                           <span className="text-zinc-500 mr-2">#{index + 1}</span>
-                          <span className="font-medium">{row.playerFullName}</span> · {row.team} · #{row.jerseyNumber}
+                          <span className="font-medium">{row.playerFullName}</span> · {row.team}
+                          {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
                         </p>
                         <p className="text-xs text-zinc-300 whitespace-nowrap">
                           Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
@@ -3486,7 +3487,8 @@ export default function AllStarVaultManager({
               <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3">
                 <p className="min-w-0 truncate">
                   <span className="text-zinc-500 mr-2">#{index + 1}</span>
-                  <span className="font-medium">{row.playerFullName}</span> · {row.team} · #{row.jerseyNumber}
+                  <span className="font-medium">{row.playerFullName}</span> · {row.team}
+                  {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
                   {selectedCycle?.hasShowcase && row.showcaseBibNumber
                     ? ` · Bib ${row.showcaseBibNumber}`
                     : ""}
