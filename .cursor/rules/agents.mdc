@@ -1,0 +1,8 @@
+---
+description: Repository agent instructions — Next.js, Git preview workflow, and Prisma. Canonical source is AGENTS.md in the project root.
+alwaysApply: true
+---
+
+Canonical instructions for this repo (edit `AGENTS.md`, not this file):
+
+@AGENTS.md
