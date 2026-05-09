@@ -264,8 +264,35 @@ export async function ensureVoterCanAccessCycle(
   if (!voter.isCoach) {
     return { error: "Only coaches can access age-group ballots", status: 403 as const };
   }
-  if ((voter.ageGroup || "").trim().toLowerCase() !== cycle.ageGroup.trim().toLowerCase()) {
-    return { error: "Coach not in ballot age group", status: 403 as const };
+
+  const cycleAgeNorm = cycle.ageGroup.trim().toLowerCase();
+  const voterAgeNorm = (voter.ageGroup || "").trim().toLowerCase();
+  if (voterAgeNorm !== cycleAgeNorm) {
+    const headOnThisCycle = await prisma.allStarHeadCoachAssignment.findFirst({
+      where: {
+        ballotCycleId: cycle.id,
+        registeredUserId: voter.id,
+      },
+      select: { id: true },
+    });
+    if (!headOnThisCycle) {
+      const leagueAssignments = await prisma.teamCoachAssignment.findMany({
+        where: {
+          registeredUserId: voter.id,
+          team: {
+            organizationId: cycle.organizationId,
+            seasonYear: cycle.seasonYear,
+          },
+        },
+        select: { team: { select: { ageGroup: true } } },
+      });
+      const hasTeamInBallotAgeGroup = leagueAssignments.some(
+        (a) => a.team.ageGroup.trim().toLowerCase() === cycleAgeNorm,
+      );
+      if (!hasTeamInBallotAgeGroup) {
+        return { error: "Coach not in ballot age group", status: 403 as const };
+      }
+    }
   }
 
   return { cycle, invite: null };
