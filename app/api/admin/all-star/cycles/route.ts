@@ -147,6 +147,7 @@ export async function GET(request: NextRequest) {
   const org = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   const seasonYear = parseSeasonYear(request.nextUrl.searchParams.get("seasonYear"));
   const ageGroup = request.nextUrl.searchParams.get("ageGroup")?.trim() || null;
+  const ensureCycleId = request.nextUrl.searchParams.get("ensureCycleId")?.trim() || null;
 
   const cycles = await prisma.allStarBallotCycle.findMany({
     where: {
@@ -157,9 +158,42 @@ export async function GET(request: NextRequest) {
     orderBy: [{ seasonYear: "desc" }, { ageGroup: "asc" }],
   });
 
+  const mapped = cycles.map(mapAllStarCycle);
+  let ensuredExtra = false;
+  if (
+    ensureCycleId &&
+    org &&
+    !mapped.some((row) => row.id === ensureCycleId)
+  ) {
+    const extra = await prisma.allStarBallotCycle.findFirst({
+      where: { id: ensureCycleId, organizationId: org },
+    });
+    if (extra) {
+      mapped.push(mapAllStarCycle(extra));
+      ensuredExtra = true;
+    } else if (process.env.NODE_ENV === "development") {
+      console.warn("[all-star/cycles GET] ensureCycleId not found for org", {
+        ensureCycleId,
+        org,
+        seasonYear,
+      });
+    }
+  }
+
+  if (process.env.NODE_ENV === "development" && ensureCycleId) {
+    console.info("[all-star/cycles GET]", {
+      org,
+      seasonYear,
+      ensureCycleId,
+      baseCount: cycles.length,
+      returnedCount: mapped.length,
+      ensuredExtra,
+    });
+  }
+
   const canDelete = await canDeleteCycles(request);
   return NextResponse.json({
-    data: cycles.map(mapAllStarCycle),
+    data: mapped,
     permissions: { canDeleteCycles: canDelete },
   });
 }

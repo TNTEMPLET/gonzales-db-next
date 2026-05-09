@@ -257,6 +257,13 @@ export default function AdminRolePreviewControl({
           pointer-events: auto !important;
           opacity: 1 !important;
         }
+        /* Submitted-ballot roster modal triggers: belt-and-suspenders vs. nested hit targets in preview. */
+        body.admin-preview-readonly main button[data-ballot-roster-trigger="true"] {
+          pointer-events: auto !important;
+          opacity: 1 !important;
+          position: relative;
+          z-index: 1;
+        }
       `}</style>
     </div>
   );

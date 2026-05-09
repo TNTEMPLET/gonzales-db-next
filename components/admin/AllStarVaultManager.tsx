@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   readAdminViewPreviewRole,
@@ -172,6 +171,12 @@ type EditModuleKey =
   | "invites";
 
 type EditModuleVisibility = Record<EditModuleKey, boolean>;
+
+function sortBallotRosterRowsByName<T extends { displayName: string }>(rows: T[]): T[] {
+  return [...rows].sort((a, b) =>
+    a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
+  );
+}
 
 function getVisibilityForLimitedVaultBallotToolkit(): EditModuleVisibility {
   return {
@@ -538,7 +543,8 @@ export default function AllStarVaultManager({
   const [vaultUserId, setVaultUserId] = useState("");
   const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "LIMITED_ADMIN">("LIMITED_ADMIN");
   const [inviteEmails, setInviteEmails] = useState("");
-  const [showBallotRosterStatusModal, setShowBallotRosterStatusModal] = useState(false);
+  /** Inline two-column roster (submitted | yet to submit); avoids portal modals for limited / view-only. */
+  const [ballotRosterInlineExpanded, setBallotRosterInlineExpanded] = useState(true);
   const [limitedOverviewSnapshots, setLimitedOverviewSnapshots] = useState<
     Record<string, VoteSummaryRow[]>
   >({});
@@ -647,7 +653,7 @@ export default function AllStarVaultManager({
       setVaultAccess([]);
       setUserOptions([]);
     }
-  }, [org, seasonYear, canManageAllStarVault]);
+  }, [org, seasonYear, canManageAllStarVault, selectedCycleId]);
 
   useEffect(() => {
     latestCycleIdRef.current = selectedCycleId;
@@ -738,7 +744,14 @@ export default function AllStarVaultManager({
 
   async function loadCycles() {
     try {
-      const response = await fetch(`/api/admin/all-star/cycles?org=${org}&seasonYear=${seasonYear}`, { cache: "no-store" });
+      const params = new URLSearchParams({
+        org,
+        seasonYear: String(seasonYear),
+      });
+      if (selectedCycleId) {
+        params.set("ensureCycleId", selectedCycleId);
+      }
+      const response = await fetch(`/api/admin/all-star/cycles?${params}`, { cache: "no-store" });
       const json = await safeJson(response);
       if (!response.ok) throw new Error(String(json.error || "Failed to load cycles"));
       const data = Array.isArray(json.data) ? (json.data as Cycle[]) : [];
@@ -749,7 +762,25 @@ export default function AllStarVaultManager({
         (json.permissions as { canDeleteCycles?: unknown }).canDeleteCycles ===
           true;
       setCanDeleteCycles(canDelete);
+      const ensuredSelected = selectedCycleId
+        ? data.find((row) => row.id === selectedCycleId)
+        : undefined;
+      if (process.env.NODE_ENV === "development") {
+        console.info("[AllStarVault] loadCycles result", {
+          org,
+          seasonYear,
+          selectedCycleId: selectedCycleId || null,
+          rowCount: data.length,
+          selectedInPayload: Boolean(ensuredSelected),
+        });
+      }
+      if (ensuredSelected && ensuredSelected.seasonYear !== seasonYear) {
+        setSeasonYear(ensuredSelected.seasonYear);
+      }
     } catch (err: unknown) {
+      if (process.env.NODE_ENV === "development") {
+        console.error("[AllStarVault] loadCycles failed", err);
+      }
       setError(err instanceof Error ? err.message : "Failed to load cycles");
     }
   }
@@ -1623,7 +1654,12 @@ export default function AllStarVaultManager({
   }
 
   function openCycleFromCard(cycleId: string) {
+    const meta =
+      limitedOverviewCycles.find((c) => c.id === cycleId) || cycles.find((c) => c.id === cycleId);
     setLimitedOverviewMoreCycleId("");
+    if (meta && meta.seasonYear !== seasonYear) {
+      setSeasonYear(meta.seasonYear);
+    }
     setSelectedCycleId(cycleId);
     setShowEditModules(false);
   }
@@ -2293,9 +2329,21 @@ export default function AllStarVaultManager({
               isLimitedVaultAccess ? (
                 <button
                   type="button"
-                  onClick={() => setShowBallotRosterStatusModal(true)}
+                  data-admin-preview-allow="true"
+                  onClick={() => {
+                    setBallotRosterInlineExpanded(true);
+                    window.requestAnimationFrame(() => {
+                      const id = isAuditorFocusedPreview
+                        ? "vault-observer-submitted-ballots"
+                        : "vault-submitted-ballots-panel";
+                      document.getElementById(id)?.scrollIntoView({
+                        behavior: "smooth",
+                        block: "start",
+                      });
+                    });
+                  }}
                   className="text-left rounded-md px-1 -mx-1 py-0.5 hover:bg-emerald-950/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
-                  title={`Open who submitted vs not yet (${ballotRosterStatus.rosterLabel})`}
+                  title={`Jump to submitted & yet to submit (${ballotRosterStatus.rosterLabel})`}
                 >
                   Ballots in:{" "}
                   <span className="font-semibold text-zinc-200 tabular-nums">
@@ -2355,22 +2403,9 @@ export default function AllStarVaultManager({
                 </p>
                 <p className="text-xs text-zinc-500">
                   {ballotRosterStatus
-                    ? `${ballotRosterStatus.submittedCount}/${ballotRosterStatus.total} submitted (${ballotRosterStatus.rosterLabelShort})`
+                    ? `${ballotRosterStatus.submittedCount}/${ballotRosterStatus.total} submitted (${ballotRosterStatus.rosterLabelShort}) — see Submitted Ballots below for columns.`
                     : "No roster progress available"}
                 </p>
-                {selectedCycleId && ballotRosterStatus ? (
-                  <button
-                    type="button"
-                    data-admin-preview-allow="true"
-                    onClick={() => setShowBallotRosterStatusModal(true)}
-                    className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 inline-flex items-center gap-2 w-fit"
-                  >
-                    <span className="text-zinc-500">View submitted vs total</span>
-                    <span className="tabular-nums font-semibold text-zinc-100">
-                      {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
-                    </span>
-                  </button>
-                ) : null}
                 <div className="flex flex-wrap gap-2">
                   <a
                     href={
@@ -2415,47 +2450,98 @@ export default function AllStarVaultManager({
                 </div>
               </div>
 
-              <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-                <h2 className="text-lg font-semibold">Submitted Ballots</h2>
-                <p className="text-xs text-zinc-500">Submitted ballots: {voteSummarySubmissionCount}</p>
-                <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
-                  {!selectedCycleId ? (
-                    <p className="text-zinc-500 text-sm p-3">Select a cycle to view submitted ballots.</p>
-                  ) : submittedBallots.length === 0 ? (
-                    <p className="text-zinc-500 text-sm p-3">No submitted ballots yet.</p>
-                  ) : (
-                    submittedBallots.map((submission) => (
-                      <div
-                        key={submission.id}
-                        className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-start justify-between gap-2"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm text-zinc-200">
-                            {displayNameFromCoachFields(
-                              submission.coachUser.firstName,
-                              submission.coachUser.lastName,
-                              submission.coachUser.name,
-                              submission.coachUser.email,
-                            )}
-                          </p>
-                          <p className="text-xs text-zinc-500">{submission.coachUser.email}</p>
-                          <p className="text-xs text-zinc-500">
-                            Submitted {new Date(submission.submittedAt).toLocaleString()} · {submission.voteItemCount}{" "}
-                            ratings
-                          </p>
-                        </div>
-                        <button
-                          type="button"
-                          disabled={busy || !canDeleteSubmittedBallots}
-                          onClick={() => void deleteSubmittedBallot(submission.id)}
-                          className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60 shrink-0"
-                        >
-                          Delete
-                        </button>
-                      </div>
-                    ))
-                  )}
+              <div
+                id="vault-observer-submitted-ballots"
+                className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4"
+              >
+                <div className="flex flex-wrap items-start justify-between gap-3">
+                  <button
+                    type="button"
+                    data-admin-preview-allow="true"
+                    onClick={() => setBallotRosterInlineExpanded((v) => !v)}
+                    aria-expanded={ballotRosterInlineExpanded}
+                    className="text-left rounded-md -mx-1 px-1 py-0.5 hover:bg-zinc-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+                  >
+                    <h2 className="text-lg font-semibold text-zinc-100">Submitted Ballots</h2>
+                    <p className="text-xs text-zinc-500 mt-0.5">
+                      Submitted ballots: {voteSummarySubmissionCount}
+                      {ballotRosterStatus
+                        ? ` · ${ballotRosterStatus.pending.length} yet to submit · ${ballotRosterStatus.rosterLabelShort}`
+                        : ""}
+                      <span className="text-zinc-600"> {ballotRosterInlineExpanded ? "▼" : "▶"}</span>
+                    </p>
+                  </button>
                 </div>
+                {ballotRosterInlineExpanded ? (
+                  <div className="grid md:grid-cols-2 gap-4">
+                    <div className="flex flex-col min-h-0 gap-2">
+                      <p className="text-sm font-medium text-emerald-400 shrink-0">Submitted</p>
+                      <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
+                        {!selectedCycleId ? (
+                          <p className="text-zinc-500 text-sm p-3">Select a cycle to view submitted ballots.</p>
+                        ) : submittedBallots.length === 0 ? (
+                          <p className="text-zinc-500 text-sm p-3">No submitted ballots yet.</p>
+                        ) : (
+                          submittedBallots.map((submission) => (
+                            <div
+                              key={submission.id}
+                              className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-start justify-between gap-2"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm text-zinc-200">
+                                  {displayNameFromCoachFields(
+                                    submission.coachUser.firstName,
+                                    submission.coachUser.lastName,
+                                    submission.coachUser.name,
+                                    submission.coachUser.email,
+                                  )}
+                                </p>
+                                <p className="text-xs text-zinc-500">{submission.coachUser.email}</p>
+                                <p className="text-xs text-zinc-500">
+                                  Submitted {new Date(submission.submittedAt).toLocaleString()} ·{" "}
+                                  {submission.voteItemCount} ratings
+                                </p>
+                              </div>
+                              <button
+                                type="button"
+                                disabled={busy || !canDeleteSubmittedBallots}
+                                onClick={() => void deleteSubmittedBallot(submission.id)}
+                                className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60 shrink-0"
+                              >
+                                Delete
+                              </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex flex-col min-h-0 gap-2">
+                      <p className="text-sm font-medium text-amber-300 shrink-0">
+                        Yet to submit
+                        {ballotRosterStatus ? ` (${ballotRosterStatus.pending.length})` : ""}
+                      </p>
+                      <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
+                        {!selectedCycleId ? (
+                          <p className="text-zinc-500 text-sm p-3">Select a cycle to see who has not submitted.</p>
+                        ) : !ballotRosterStatus ? (
+                          <p className="text-zinc-500 text-sm p-3">Roster status unavailable.</p>
+                        ) : ballotRosterStatus.pending.length === 0 ? (
+                          <p className="text-zinc-500 text-sm p-3">Everyone on the roster has submitted.</p>
+                        ) : (
+                          sortBallotRosterRowsByName(ballotRosterStatus.pending).map((row) => (
+                            <div
+                              key={row.key}
+                              className="px-3 py-2 border-b border-zinc-800 last:border-b-0"
+                            >
+                              <p className="text-sm text-zinc-200">{row.displayName}</p>
+                              <p className="text-xs text-zinc-500 truncate">{row.email}</p>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
               </div>
 
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
@@ -3228,75 +3314,111 @@ export default function AllStarVaultManager({
       ) : null}
 
       {showEditModules && moduleVisibility.submitted ? (
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-        <h2 className="text-lg font-semibold">Submitted Ballots</h2>
-        <p className="text-xs text-zinc-400">
-          {isLimitedVaultAccess
-            ? "Read-only list of who has submitted. Use the Submitted ballots count button (or Ballots in on the cycle summary) to open the full submitted vs outstanding list for this cycle."
-            : "Review submitted ballots for the selected cycle. Deleting a ballot unlocks that coach to submit again."}
-        </p>
-        <div className="flex flex-wrap items-center gap-3">
+      <div
+        id="vault-submitted-ballots-panel"
+        className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4"
+      >
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <button
+            type="button"
+            data-admin-preview-allow="true"
+            onClick={() => setBallotRosterInlineExpanded((v) => !v)}
+            aria-expanded={ballotRosterInlineExpanded}
+            className="text-left rounded-md -mx-1 px-1 py-0.5 hover:bg-zinc-800/60 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50 min-w-0 flex-1"
+          >
+            <h2 className="text-lg font-semibold text-zinc-100">Submitted Ballots</h2>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              Submitted ballots: {voteSummarySubmissionCount}
+              {ballotRosterStatus
+                ? ` · ${ballotRosterStatus.pending.length} yet to submit · ${ballotRosterStatus.rosterLabelShort}`
+                : ""}
+              <span className="text-zinc-600"> {ballotRosterInlineExpanded ? "▼" : "▶"}</span>
+            </p>
+          </button>
           <button
             type="button"
             disabled={busy || !selectedCycleId}
             onClick={() => void refreshSubmittedBallots()}
-            className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
+            className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60 shrink-0"
           >
             Refresh
           </button>
-          {selectedCycleId && ballotRosterStatus ? (
-            <button
-              type="button"
-              disabled={busy}
-              title={`Open list of who has submitted vs not yet (${ballotRosterStatus.rosterLabel})`}
-              onClick={() => setShowBallotRosterStatusModal(true)}
-              className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60 inline-flex items-center gap-2 flex-wrap"
-            >
-              <span className="text-zinc-500">Submitted ballots</span>
-              <span className="tabular-nums font-semibold text-zinc-100">
-                {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
-              </span>
-              <span className="text-zinc-500">· {ballotRosterStatus.rosterLabelShort}</span>
-            </button>
-          ) : null}
         </div>
-        <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
-          {!selectedCycleId ? (
-            <p className="text-zinc-500 text-sm p-3">Select a cycle to view submitted ballots.</p>
-          ) : submittedBallots.length === 0 ? (
-            <p className="text-zinc-500 text-sm p-3">No submitted ballots yet.</p>
-          ) : (
-            submittedBallots.map((submission) => {
-              const coachName =
-                (submission.coachUser.firstName || submission.coachUser.lastName
-                  ? [submission.coachUser.firstName, submission.coachUser.lastName]
-                      .filter(Boolean)
-                      .join(" ")
-                  : submission.coachUser.name) || submission.coachUser.email;
+        <p className="text-xs text-zinc-400">
+          {isLimitedVaultAccess
+            ? "Submitted column lists each ballot; Yet to submit uses the invite roster or league coaches for this cycle (read-only for limited access)."
+            : "Review submitted ballots for the selected cycle. Deleting a ballot unlocks that coach to submit again."}
+        </p>
+        {ballotRosterInlineExpanded ? (
+          <div className="grid md:grid-cols-2 gap-4">
+            <div className="flex flex-col min-h-0 gap-2">
+              <p className="text-sm font-medium text-emerald-400 shrink-0">Submitted</p>
+              <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
+                {!selectedCycleId ? (
+                  <p className="text-zinc-500 text-sm p-3">Select a cycle to view submitted ballots.</p>
+                ) : submittedBallots.length === 0 ? (
+                  <p className="text-zinc-500 text-sm p-3">No submitted ballots yet.</p>
+                ) : (
+                  submittedBallots.map((submission) => {
+                    const coachName =
+                      (submission.coachUser.firstName || submission.coachUser.lastName
+                        ? [submission.coachUser.firstName, submission.coachUser.lastName]
+                            .filter(Boolean)
+                            .join(" ")
+                        : submission.coachUser.name) || submission.coachUser.email;
 
-              return (
-                <div key={submission.id} className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 last:border-b-0 gap-3">
-                  <div className="min-w-0">
-                    <p className="text-sm truncate">
-                      <span className="font-medium">{coachName}</span> ({submission.coachUser.email})
-                    </p>
-                    <p className="text-xs text-zinc-400">
-                      Submitted {new Date(submission.submittedAt).toLocaleString()} · {submission.voteItemCount} ratings
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    disabled={busy || !canDeleteSubmittedBallots}
-                    onClick={() => void deleteSubmittedBallot(submission.id)}
-                    className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60"
-                  >
-                    Delete
-                  </button>
-                </div>
-              );
-            })
-          )}
-        </div>
+                    return (
+                      <div
+                        key={submission.id}
+                        className="flex items-center justify-between px-3 py-2 border-b border-zinc-800 last:border-b-0 gap-3"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm truncate">
+                            <span className="font-medium">{coachName}</span> ({submission.coachUser.email})
+                          </p>
+                          <p className="text-xs text-zinc-400">
+                            Submitted {new Date(submission.submittedAt).toLocaleString()} · {submission.voteItemCount}{" "}
+                            ratings
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={busy || !canDeleteSubmittedBallots}
+                          onClick={() => void deleteSubmittedBallot(submission.id)}
+                          className="text-xs rounded-lg border border-red-700 text-red-300 px-3 py-1.5 disabled:opacity-60 shrink-0"
+                        >
+                          Delete
+                        </button>
+                      </div>
+                    );
+                  })
+                )}
+              </div>
+            </div>
+            <div className="flex flex-col min-h-0 gap-2">
+              <p className="text-sm font-medium text-amber-300 shrink-0">
+                Yet to submit
+                {ballotRosterStatus ? ` (${ballotRosterStatus.pending.length})` : ""}
+              </p>
+              <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
+                {!selectedCycleId ? (
+                  <p className="text-zinc-500 text-sm p-3">Select a cycle to see who has not submitted.</p>
+                ) : !ballotRosterStatus ? (
+                  <p className="text-zinc-500 text-sm p-3">Roster status unavailable.</p>
+                ) : ballotRosterStatus.pending.length === 0 ? (
+                  <p className="text-zinc-500 text-sm p-3">Everyone on the roster has submitted.</p>
+                ) : (
+                  sortBallotRosterRowsByName(ballotRosterStatus.pending).map((row) => (
+                    <div key={row.key} className="px-3 py-2 border-b border-zinc-800 last:border-b-0">
+                      <p className="text-sm text-zinc-200">{row.displayName}</p>
+                      <p className="text-xs text-zinc-500 truncate">{row.email}</p>
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
       ) : null}
 
@@ -3809,96 +3931,6 @@ export default function AllStarVaultManager({
           </div>
         </div>
       ) : null}
-
-      {showBallotRosterStatusModal && ballotRosterStatus && typeof document !== "undefined"
-        ? createPortal(
-            <div
-              role="dialog"
-              aria-modal="true"
-              aria-labelledby="ballot-roster-status-title"
-              className="fixed inset-0 z-100 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-              onClick={(e) => {
-                if (e.target === e.currentTarget) setShowBallotRosterStatusModal(false);
-              }}
-            >
-              <div
-                className="w-full max-w-2xl rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 max-h-[90vh] flex flex-col"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 id="ballot-roster-status-title" className="text-lg font-semibold">
-                      Submitted ballot status
-                    </h3>
-                    <p className="text-xs text-zinc-400 mt-1">
-                      {ballotRosterStatus.submittedCount} of {ballotRosterStatus.total} on{" "}
-                      <span className="text-zinc-300">{ballotRosterStatus.rosterLabel}</span> have submitted.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    data-admin-preview-allow="true"
-                    className="shrink-0 rounded-lg border border-zinc-600 text-zinc-300 px-3 py-1.5 text-xs hover:bg-zinc-800"
-                    onClick={() => setShowBallotRosterStatusModal(false)}
-                  >
-                    Close
-                  </button>
-                </div>
-                <div className="grid md:grid-cols-2 gap-4 min-h-0 flex-1 overflow-hidden">
-                  <div className="flex flex-col min-h-0 rounded-lg border border-zinc-800 bg-zinc-950/40">
-                    <p className="text-sm font-medium text-emerald-400 px-3 py-2 border-b border-zinc-800 shrink-0">
-                      Submitted ({ballotRosterStatus.submitted.length})
-                    </p>
-                    <ul className="overflow-y-auto p-3 space-y-2 text-sm max-h-64 md:max-h-72">
-                      {ballotRosterStatus.submitted.length === 0 ? (
-                        <li className="text-zinc-500">No roster coaches have submitted yet.</li>
-                      ) : (
-                        [...ballotRosterStatus.submitted]
-                          .sort((a, b) =>
-                            a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
-                          )
-                          .map((row) => (
-                            <li
-                              key={row.key}
-                              className="border-b border-zinc-800/80 pb-2 last:border-b-0 last:pb-0"
-                            >
-                              <span className="font-medium text-zinc-100">{row.displayName}</span>
-                              <span className="block text-xs text-zinc-500 truncate">{row.email}</span>
-                            </li>
-                          ))
-                      )}
-                    </ul>
-                  </div>
-                  <div className="flex flex-col min-h-0 rounded-lg border border-zinc-800 bg-zinc-950/40">
-                    <p className="text-sm font-medium text-amber-300 px-3 py-2 border-b border-zinc-800 shrink-0">
-                      Not submitted yet ({ballotRosterStatus.pending.length})
-                    </p>
-                    <ul className="overflow-y-auto p-3 space-y-2 text-sm max-h-64 md:max-h-72">
-                      {ballotRosterStatus.pending.length === 0 ? (
-                        <li className="text-zinc-500">Everyone on the roster has submitted.</li>
-                      ) : (
-                        [...ballotRosterStatus.pending]
-                          .sort((a, b) =>
-                            a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
-                          )
-                          .map((row) => (
-                            <li
-                              key={row.key}
-                              className="border-b border-zinc-800/80 pb-2 last:border-b-0 last:pb-0"
-                            >
-                              <span className="font-medium text-zinc-100">{row.displayName}</span>
-                              <span className="block text-xs text-zinc-500 truncate">{row.email}</span>
-                            </li>
-                          ))
-                      )}
-                    </ul>
-                  </div>
-                </div>
-              </div>
-            </div>,
-            document.body,
-          )
-        : null}
 
       {showAddCandidateModal ? (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
