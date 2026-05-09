@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useRouter } from "next/navigation";
 import {
   readAdminViewPreviewRole,
@@ -3809,81 +3810,95 @@ export default function AllStarVaultManager({
         </div>
       ) : null}
 
-      {showBallotRosterStatusModal && ballotRosterStatus ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="ballot-roster-status-title"
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) setShowBallotRosterStatusModal(false);
-          }}
-        >
-          <div
-            className="w-full max-w-2xl rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 max-h-[90vh] flex flex-col"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 id="ballot-roster-status-title" className="text-lg font-semibold">
-                  Submitted ballot status
-                </h3>
-                <p className="text-xs text-zinc-400 mt-1">
-                  {ballotRosterStatus.submittedCount} of {ballotRosterStatus.total} on{" "}
-                  <span className="text-zinc-300">{ballotRosterStatus.rosterLabel}</span> have submitted.
-                </p>
-              </div>
-              <button
-                type="button"
-                className="shrink-0 rounded-lg border border-zinc-600 text-zinc-300 px-3 py-1.5 text-xs hover:bg-zinc-800"
-                onClick={() => setShowBallotRosterStatusModal(false)}
+      {showBallotRosterStatusModal && ballotRosterStatus && typeof document !== "undefined"
+        ? createPortal(
+            <div
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby="ballot-roster-status-title"
+              className="fixed inset-0 z-100 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) setShowBallotRosterStatusModal(false);
+              }}
+            >
+              <div
+                className="w-full max-w-2xl rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 max-h-[90vh] flex flex-col"
+                onClick={(e) => e.stopPropagation()}
               >
-                Close
-              </button>
-            </div>
-            <div className="grid md:grid-cols-2 gap-4 min-h-0 flex-1 overflow-hidden">
-              <div className="flex flex-col min-h-0 rounded-lg border border-zinc-800 bg-zinc-950/40">
-                <p className="text-sm font-medium text-emerald-400 px-3 py-2 border-b border-zinc-800 shrink-0">
-                  Submitted ({ballotRosterStatus.submitted.length})
-                </p>
-                <ul className="overflow-y-auto p-3 space-y-2 text-sm max-h-64 md:max-h-72">
-                  {ballotRosterStatus.submitted.length === 0 ? (
-                    <li className="text-zinc-500">No roster coaches have submitted yet.</li>
-                  ) : (
-                    [...ballotRosterStatus.submitted]
-                      .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }))
-                      .map((row) => (
-                        <li key={row.key} className="border-b border-zinc-800/80 pb-2 last:border-b-0 last:pb-0">
-                          <span className="font-medium text-zinc-100">{row.displayName}</span>
-                          <span className="block text-xs text-zinc-500 truncate">{row.email}</span>
-                        </li>
-                      ))
-                  )}
-                </ul>
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 id="ballot-roster-status-title" className="text-lg font-semibold">
+                      Submitted ballot status
+                    </h3>
+                    <p className="text-xs text-zinc-400 mt-1">
+                      {ballotRosterStatus.submittedCount} of {ballotRosterStatus.total} on{" "}
+                      <span className="text-zinc-300">{ballotRosterStatus.rosterLabel}</span> have submitted.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    data-admin-preview-allow="true"
+                    className="shrink-0 rounded-lg border border-zinc-600 text-zinc-300 px-3 py-1.5 text-xs hover:bg-zinc-800"
+                    onClick={() => setShowBallotRosterStatusModal(false)}
+                  >
+                    Close
+                  </button>
+                </div>
+                <div className="grid md:grid-cols-2 gap-4 min-h-0 flex-1 overflow-hidden">
+                  <div className="flex flex-col min-h-0 rounded-lg border border-zinc-800 bg-zinc-950/40">
+                    <p className="text-sm font-medium text-emerald-400 px-3 py-2 border-b border-zinc-800 shrink-0">
+                      Submitted ({ballotRosterStatus.submitted.length})
+                    </p>
+                    <ul className="overflow-y-auto p-3 space-y-2 text-sm max-h-64 md:max-h-72">
+                      {ballotRosterStatus.submitted.length === 0 ? (
+                        <li className="text-zinc-500">No roster coaches have submitted yet.</li>
+                      ) : (
+                        [...ballotRosterStatus.submitted]
+                          .sort((a, b) =>
+                            a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
+                          )
+                          .map((row) => (
+                            <li
+                              key={row.key}
+                              className="border-b border-zinc-800/80 pb-2 last:border-b-0 last:pb-0"
+                            >
+                              <span className="font-medium text-zinc-100">{row.displayName}</span>
+                              <span className="block text-xs text-zinc-500 truncate">{row.email}</span>
+                            </li>
+                          ))
+                      )}
+                    </ul>
+                  </div>
+                  <div className="flex flex-col min-h-0 rounded-lg border border-zinc-800 bg-zinc-950/40">
+                    <p className="text-sm font-medium text-amber-300 px-3 py-2 border-b border-zinc-800 shrink-0">
+                      Not submitted yet ({ballotRosterStatus.pending.length})
+                    </p>
+                    <ul className="overflow-y-auto p-3 space-y-2 text-sm max-h-64 md:max-h-72">
+                      {ballotRosterStatus.pending.length === 0 ? (
+                        <li className="text-zinc-500">Everyone on the roster has submitted.</li>
+                      ) : (
+                        [...ballotRosterStatus.pending]
+                          .sort((a, b) =>
+                            a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }),
+                          )
+                          .map((row) => (
+                            <li
+                              key={row.key}
+                              className="border-b border-zinc-800/80 pb-2 last:border-b-0 last:pb-0"
+                            >
+                              <span className="font-medium text-zinc-100">{row.displayName}</span>
+                              <span className="block text-xs text-zinc-500 truncate">{row.email}</span>
+                            </li>
+                          ))
+                      )}
+                    </ul>
+                  </div>
+                </div>
               </div>
-              <div className="flex flex-col min-h-0 rounded-lg border border-zinc-800 bg-zinc-950/40">
-                <p className="text-sm font-medium text-amber-300 px-3 py-2 border-b border-zinc-800 shrink-0">
-                  Not submitted yet ({ballotRosterStatus.pending.length})
-                </p>
-                <ul className="overflow-y-auto p-3 space-y-2 text-sm max-h-64 md:max-h-72">
-                  {ballotRosterStatus.pending.length === 0 ? (
-                    <li className="text-zinc-500">Everyone on the roster has submitted.</li>
-                  ) : (
-                    [...ballotRosterStatus.pending]
-                      .sort((a, b) => a.displayName.localeCompare(b.displayName, undefined, { sensitivity: "base" }))
-                      .map((row) => (
-                        <li key={row.key} className="border-b border-zinc-800/80 pb-2 last:border-b-0 last:pb-0">
-                          <span className="font-medium text-zinc-100">{row.displayName}</span>
-                          <span className="block text-xs text-zinc-500 truncate">{row.email}</span>
-                        </li>
-                      ))
-                  )}
-                </ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
+            </div>,
+            document.body,
+          )
+        : null}
 
       {showAddCandidateModal ? (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
