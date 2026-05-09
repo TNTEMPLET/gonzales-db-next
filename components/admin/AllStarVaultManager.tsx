@@ -2010,9 +2010,7 @@ export default function AllStarVaultManager({
   const isAuditorFocusedPreview = previewRole === "ALL_STAR_VIEW_ONLY";
   /** Includes limited vault grant and master preview of limited-admin lens (session still has full rights). */
   const canDeleteSubmittedBallots =
-    canManageAllStarVaultUi ||
-    isLimitedVaultAccess ||
-    (canManageAllStarVault && isAuditorFocusedPreview);
+    canManageAllStarVaultUi || (canManageAllStarVault && isAuditorFocusedPreview);
   const showFullAdminView = previewCanViewAllStar && !isAuditorFocusedPreview;
   const orgQuery = isMasterMode ? `&org=${encodeURIComponent(org)}` : "";
   const sampleBallotCandidates = candidates
@@ -2063,7 +2061,7 @@ export default function AllStarVaultManager({
       {!canManageAllStarVaultUi && !isAuditorFocusedPreview ? (
         <div className="rounded-lg border border-sky-800 bg-sky-950/30 p-3 text-sm text-sky-200">
           {isLimitedVaultAccess
-            ? "Limited admin vault access: you can open ballot tools below for the selected cycle — submitted ballots, vote standings, and the shared ballot link. You may delete a submitted ballot to let that coach vote again. Cycle setup, candidates, and roster edits stay disabled."
+            ? "Limited admin vault access: you can open ballot tools below for the selected cycle — who has submitted, vote standings, and the shared ballot link. Submitted ballots are read-only here. Cycle setup, candidates, and roster edits stay disabled."
             : "Some management actions are hidden for your current preview or role."}
         </div>
       ) : null}
@@ -2291,13 +2289,28 @@ export default function AllStarVaultManager({
               <span className="font-semibold text-zinc-200 tabular-nums">{candidates.length}</span>
             </span>
             {ballotRosterStatus ? (
-              <span>
-                Ballots in:{" "}
-                <span className="font-semibold text-zinc-200 tabular-nums">
-                  {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
+              isLimitedVaultAccess ? (
+                <button
+                  type="button"
+                  onClick={() => setShowBallotRosterStatusModal(true)}
+                  className="text-left rounded-md px-1 -mx-1 py-0.5 hover:bg-emerald-950/50 focus:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/50"
+                  title={`Open who submitted vs not yet (${ballotRosterStatus.rosterLabel})`}
+                >
+                  Ballots in:{" "}
+                  <span className="font-semibold text-zinc-200 tabular-nums">
+                    {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
+                  </span>
+                  <span className="text-zinc-500"> · {ballotRosterStatus.rosterLabelShort}</span>
+                </button>
+              ) : (
+                <span>
+                  Ballots in:{" "}
+                  <span className="font-semibold text-zinc-200 tabular-nums">
+                    {ballotRosterStatus.submittedCount}/{ballotRosterStatus.total}
+                  </span>
+                  <span className="text-zinc-500"> · {ballotRosterStatus.rosterLabelShort}</span>
                 </span>
-                <span className="text-zinc-500"> · {ballotRosterStatus.rosterLabelShort}</span>
-              </span>
+              )
             ) : null}
             <span>
               Vote standings:{" "}
@@ -2317,9 +2330,9 @@ export default function AllStarVaultManager({
               </>
             ) : isLimitedVaultAccess ? (
               <>
-                Use <span className="text-zinc-400">View modules</span> to open submitted ballots, vote standings, and the
-                shared ballot link. Collapse again with <span className="text-zinc-400">Hide view modules</span> in that
-                section.
+                Use <span className="text-zinc-400">View modules</span> for submitted vs outstanding coaches, vote
+                standings, and the shared ballot link. Collapse again with{" "}
+                <span className="text-zinc-400">Hide view modules</span> in that section.
               </>
             ) : (
               <>
@@ -3218,7 +3231,7 @@ export default function AllStarVaultManager({
         <h2 className="text-lg font-semibold">Submitted Ballots</h2>
         <p className="text-xs text-zinc-400">
           {isLimitedVaultAccess
-            ? "View who has submitted. Deleting a ballot is the only change available here — it lets that coach submit again. Other ballot setup requires full vault access."
+            ? "Read-only list of who has submitted. Use the Submitted ballots count button (or Ballots in on the cycle summary) to open the full submitted vs outstanding list for this cycle."
             : "Review submitted ballots for the selected cycle. Deleting a ballot unlocks that coach to submit again."}
         </p>
         <div className="flex flex-wrap items-center gap-3">

@@ -111,18 +111,9 @@ export async function canManageAllStarVault(
   return role === "FULL_ACCESS";
 }
 
-/** Limited vault admins may reset submitted ballots but not edit cycles or rosters. */
-export async function canDeleteAllStarSubmissionsAsVaultUser(
-  registeredUserId: string,
-  organizationId: "gonzales" | "ascension",
-) {
-  const role = await getAllStarVaultRoleForUser(registeredUserId, organizationId);
-  return role === "LIMITED_ADMIN";
-}
-
 /**
- * Delete a submitted ballot: full vault admins, org admins with All-Star module,
- * or limited vault admins (same email + org as grant).
+ * Delete a submitted ballot: full vault admins or org admins with the All-Star module.
+ * Limited vault access (LIMITED_ADMIN) is read-only for submissions.
  */
 export async function ensureAllStarVaultCanDeleteVoteSubmission(request: NextRequest) {
   const adminUser = await getAdminUserFromRequest(request);
@@ -151,9 +142,6 @@ export async function ensureAllStarVaultCanDeleteVoteSubmission(request: NextReq
 
   for (const row of registeredUsers) {
     if (await canManageAllStarVault(row.id, orgId)) {
-      return { ok: true as const, status: 200 };
-    }
-    if (await canDeleteAllStarSubmissionsAsVaultUser(row.id, orgId)) {
       return { ok: true as const, status: 200 };
     }
   }
