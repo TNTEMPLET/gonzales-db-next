@@ -4,9 +4,13 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:webpack": "next dev --webpack",
     "dev:master": "SITE_ORG=master next dev",
+    "dev:master:webpack": "SITE_ORG=master next dev --webpack",
     "dev:gonzales": "SITE_ORG=gonzales next dev",
+    "dev:gonzales:webpack": "SITE_ORG=gonzales next dev --webpack",
     "dev:ascension": "SITE_ORG=ascension next dev",
+    "dev:ascension:webpack": "SITE_ORG=ascension next dev --webpack",
     "build": "node scripts/prisma-sync-if-available.mjs && prisma generate && next build",
     "postinstall": "prisma generate",
     "start": "next start",
