@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { parseRequiredRatingsPerCoachInput } from "@/lib/allStar/ballotVoteRules";
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { importCandidatesFromTeamsForCycle } from "@/lib/allStar/candidates";
 import { mapAllStarCycle, parseSeasonYear } from "@/lib/allStar/server";
@@ -216,9 +217,20 @@ export async function POST(request: NextRequest) {
     title?: string;
     accessMode?: "INVITE_LIST" | "AGE_GROUP_COACHES";
     hasShowcase?: boolean;
+    requiredRatingsPerCoach?: number;
     autoImportAgeBandFilter?: "11U" | "12U" | "BOTH";
   };
   const isSetupWizardIntent = body.intent === "setup_wizard";
+  const parsedRequiredRatingsPerCoach =
+    body.requiredRatingsPerCoach === undefined
+      ? null
+      : parseRequiredRatingsPerCoachInput(body.requiredRatingsPerCoach);
+  if (body.requiredRatingsPerCoach !== undefined && parsedRequiredRatingsPerCoach === null) {
+    return NextResponse.json(
+      { error: "requiredRatingsPerCoach must be an integer between 1 and 50" },
+      { status: 400 },
+    );
+  }
 
   const organizationId = resolveAdminTargetOrg(body.organizationId);
   const seasonYear = parseSeasonYear(String(body.seasonYear ?? ""));
@@ -290,6 +302,7 @@ export async function POST(request: NextRequest) {
           allStarAgeGroupLabel: normalizedAllStarAgeGroupLabel,
           hasShowcase:
             typeof body.hasShowcase === "boolean" ? body.hasShowcase : undefined,
+          requiredRatingsPerCoach: parsedRequiredRatingsPerCoach ?? undefined,
         },
       });
       return NextResponse.json({
@@ -311,6 +324,7 @@ export async function POST(request: NextRequest) {
         allStarAgeGroupLabel: normalizedAllStarAgeGroupLabel,
         hasShowcase:
           typeof body.hasShowcase === "boolean" ? body.hasShowcase : undefined,
+        requiredRatingsPerCoach: parsedRequiredRatingsPerCoach ?? undefined,
       },
     });
     return NextResponse.json({
@@ -341,6 +355,7 @@ export async function POST(request: NextRequest) {
       allStarAgeGroupLabel: normalizedAllStarAgeGroupLabel,
       accessMode: body.accessMode || "AGE_GROUP_COACHES",
       hasShowcase: typeof body.hasShowcase === "boolean" ? body.hasShowcase : true,
+      requiredRatingsPerCoach: parsedRequiredRatingsPerCoach ?? undefined,
       createdByAdminId: admin?.id || null,
     },
   });
@@ -383,6 +398,7 @@ export async function PATCH(request: NextRequest) {
     status?: "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
     accessMode?: "INVITE_LIST" | "AGE_GROUP_COACHES";
     hasShowcase?: boolean;
+    requiredRatingsPerCoach?: number;
     title?: string | null;
     publishedAt?: string | null;
     closedAt?: string | null;
@@ -393,6 +409,34 @@ export async function PATCH(request: NextRequest) {
 
   if (!body.cycleId) {
     return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
+  }
+
+  const existingCycle = await prisma.allStarBallotCycle.findUnique({
+    where: { id: body.cycleId },
+    select: { status: true },
+  });
+  if (!existingCycle) {
+    return NextResponse.json({ error: "Ballot cycle not found" }, { status: 404 });
+  }
+
+  const parsedRequiredRatingsPerCoach =
+    body.requiredRatingsPerCoach === undefined
+      ? null
+      : parseRequiredRatingsPerCoachInput(body.requiredRatingsPerCoach);
+  if (body.requiredRatingsPerCoach !== undefined && parsedRequiredRatingsPerCoach === null) {
+    return NextResponse.json(
+      { error: "requiredRatingsPerCoach must be an integer between 1 and 50" },
+      { status: 400 },
+    );
+  }
+  if (
+    parsedRequiredRatingsPerCoach !== null &&
+    (existingCycle.status === "CLOSED" || existingCycle.status === "ARCHIVED")
+  ) {
+    return NextResponse.json(
+      { error: "Ratings per coach cannot be changed after the ballot is closed." },
+      { status: 409 },
+    );
   }
 
   let parsedPublishedAt: Date | undefined | null = undefined;
@@ -457,6 +501,7 @@ export async function PATCH(request: NextRequest) {
       status: body.status,
       accessMode: body.accessMode,
       hasShowcase: body.hasShowcase,
+      requiredRatingsPerCoach: parsedRequiredRatingsPerCoach ?? undefined,
       allStarAgeGroupId:
         body.allStarAgeGroupId === undefined
           ? undefined

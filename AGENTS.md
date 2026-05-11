@@ -19,4 +19,6 @@ Each push to **`preview`** can trigger **about three** Vercel preview deployment
 
 ## Prisma
 
-Run Prisma CLI yourself when schema or migrations change (or when verifying the DB): e.g. `npx prisma migrate deploy`, `npx prisma migrate dev`, `npx prisma generate`, `npx prisma validate`, `npx prisma migrate status`, `npx prisma db push` when appropriate. **Do not** only tell the user to run these—execute them in this environment unless blocked (e.g. no `DATABASE_URL`).
+Run Prisma CLI yourself when schema or migrations change (or when verifying the DB): e.g. `npx prisma migrate deploy`, `npx prisma migrate dev`, `npx prisma generate`, `npx prisma validate`, `npx prisma migrate status`, `npx prisma db push` when appropriate. **Do not** only tell the user to run these—execute them in this environment unless blocked (e.g. no `DATABASE_URL` in `.env.local`).
+
+For local work in this repo, Prisma must use the `DATABASE_URL` from repo-root **`.env.local`** (same database as production). `prisma.config.ts` loads that file for the CLI. If a command still cannot see `DATABASE_URL`, run from the repo root with `node --env-file=.env.local` before invoking Prisma.

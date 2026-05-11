@@ -59,6 +59,7 @@ type Cycle = {
   allStarAgeGroupLabel: string | null;
   title: string | null;
   hasShowcase: boolean;
+  requiredRatingsPerCoach: number;
   status: "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
   accessMode: "INVITE_LIST" | "AGE_GROUP_COACHES";
   publishedAt: string | null;
@@ -460,6 +461,7 @@ export default function AllStarVaultManager({
   const [teamsReimportAgeBandFilter, setTeamsReimportAgeBandFilter] = useState<"11U" | "12U" | "BOTH">("BOTH");
   const [cycleOpenAt, setCycleOpenAt] = useState("");
   const [cycleCloseAt, setCycleCloseAt] = useState("");
+  const [cycleRequiredRatingsPerCoach, setCycleRequiredRatingsPerCoach] = useState(12);
   const [candidateFile, setCandidateFile] = useState<File | null>(null);
   const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
   const [candidateName, setCandidateName] = useState("");
@@ -653,6 +655,7 @@ export default function AllStarVaultManager({
       setBallotVotingLink(null);
       setCycleOpenAt("");
       setCycleCloseAt("");
+      setCycleRequiredRatingsPerCoach(12);
     }
   }, [selectedCycleId, cycles]);
 
@@ -661,6 +664,7 @@ export default function AllStarVaultManager({
     const cycle = cycles.find((entry) => entry.id === selectedCycleId);
     setCycleOpenAt(toDateTimeLocalValue(cycle?.publishedAt || null));
     setCycleCloseAt(toDateTimeLocalValue(cycle?.closedAt || null));
+    setCycleRequiredRatingsPerCoach(cycle?.requiredRatingsPerCoach ?? 12);
   }, [cycles, selectedCycleId]);
 
   useEffect(() => {
@@ -994,6 +998,46 @@ export default function AllStarVaultManager({
       await loadCycles();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update cycle");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveRequiredRatingsPerCoach() {
+    if (!selectedCycleId || !selectedCycle) return;
+    if (selectedCycle.status === "CLOSED" || selectedCycle.status === "ARCHIVED") {
+      setError("Ratings per coach cannot be changed after the ballot is closed.");
+      return;
+    }
+    if (cycleRequiredRatingsPerCoach < 1 || cycleRequiredRatingsPerCoach > 50) {
+      setError("Ratings per coach must be between 1 and 50.");
+      return;
+    }
+    if (cycleRequiredRatingsPerCoach > candidates.length) {
+      setError("Ratings per coach cannot exceed the number of candidates on the ballot.");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/cycles", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cycleId: selectedCycleId,
+          requiredRatingsPerCoach: cycleRequiredRatingsPerCoach,
+        }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to save ratings per coach"));
+      }
+      setNotice("Ratings per coach saved.");
+      await loadCycles();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save ratings per coach");
     } finally {
       setBusy(false);
     }
@@ -2215,6 +2259,8 @@ export default function AllStarVaultManager({
             <span className="text-zinc-500">
               {selectedCycle.accessMode === "INVITE_LIST" ? "Invite list access" : "Age-group coach access"}
               {selectedCycle.hasShowcase ? " · Showcase" : ""}
+              {" · "}
+              {selectedCycle.requiredRatingsPerCoach} ratings per coach
             </span>
           </div>
           <p className="text-xs text-zinc-500 max-w-2xl">
@@ -2668,6 +2714,40 @@ export default function AllStarVaultManager({
               Age: {selectedCycle.allStarAgeGroupLabel}
             </span>
           ) : null}
+        </div>
+        <div className="grid md:grid-cols-[minmax(0,12rem)_auto] gap-3 items-end">
+          <label className="block space-y-1">
+            <span className="text-xs text-zinc-400">Ratings per coach</span>
+            <input
+              type="number"
+              min={1}
+              max={50}
+              value={cycleRequiredRatingsPerCoach}
+              disabled={
+                manageDisabled ||
+                !selectedCycleId ||
+                selectedCycle?.status === "CLOSED" ||
+                selectedCycle?.status === "ARCHIVED"
+              }
+              onChange={(event) =>
+                setCycleRequiredRatingsPerCoach(Number.parseInt(event.target.value, 10) || 0)
+              }
+              className="w-full rounded-lg bg-zinc-900 border-2 border-zinc-600 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500 scheme-dark disabled:opacity-60"
+            />
+          </label>
+          <button
+            type="button"
+            disabled={
+              manageDisabled ||
+              !selectedCycleId ||
+              selectedCycle?.status === "CLOSED" ||
+              selectedCycle?.status === "ARCHIVED"
+            }
+            onClick={() => void saveRequiredRatingsPerCoach()}
+            className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-2 text-sm disabled:opacity-60"
+          >
+            Save ratings per coach
+          </button>
         </div>
         <div className="grid md:grid-cols-3 gap-3">
           <input

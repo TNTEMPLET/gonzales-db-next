@@ -1,4 +1,8 @@
 import {
+  DEFAULT_REQUIRED_RATINGS_PER_COACH,
+  parseRequiredRatingsPerCoachInput,
+} from "@/lib/allStar/ballotVoteRules";
+import {
   buildAllStarAgeOptionsForAgeGroup,
   requiresDyb12uAgeBandFilter,
   type ContentOrgId,
@@ -29,6 +33,7 @@ export type SetupWizardAnswers = {
   ageBandFilter: SetupAgeBandFilter;
   title: string;
   hasShowcase: boolean;
+  requiredRatingsPerCoach: number;
   accessMode: SetupAccessMode;
   rosterSource: SetupRosterSource;
   selectedCoachIds: string[];
@@ -63,6 +68,7 @@ export function createDefaultSetupAnswers(
     ageBandFilter: "BOTH",
     title: "",
     hasShowcase: true,
+    requiredRatingsPerCoach: DEFAULT_REQUIRED_RATINGS_PER_COACH,
     accessMode: "AGE_GROUP_COACHES",
     rosterSource: "teams",
     selectedCoachIds: [],
@@ -153,6 +159,7 @@ export function buildCreateCyclePayload(
     allStarAgeGroupLabel: answers.allStarAgeGroupLabel || null,
     accessMode: answers.accessMode,
     hasShowcase: answers.hasShowcase,
+    requiredRatingsPerCoach: answers.requiredRatingsPerCoach,
     autoImportAgeBandFilter: shouldUseAgeBandFilter ? answers.ageBandFilter : "BOTH",
   };
 }
@@ -224,8 +231,12 @@ export function validateSetupStep(
         return "Choose an All-Star player pool for 12U DYB.";
       }
       return null;
-    case "ballotDetails":
+    case "ballotDetails": {
+      if (!parseRequiredRatingsPerCoachInput(answers.requiredRatingsPerCoach)) {
+        return "Enter how many candidates each coach must rate (1–50).";
+      }
       return null;
+    }
     case "voterAccess":
       return null;
     case "roster":
@@ -259,6 +270,9 @@ export function validateSetupStep(
     case "review":
       if (!context.cycleId) return "Ballot cycle is missing.";
       if (context.candidateCount <= 0) return "Add candidates before publishing.";
+      if (answers.requiredRatingsPerCoach > context.candidateCount) {
+        return "Ratings per coach cannot exceed the number of candidates on the ballot.";
+      }
       return null;
     default:
       return null;

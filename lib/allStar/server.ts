@@ -47,6 +47,7 @@ export function mapAllStarCycle(row: {
   allStarAgeGroupLabel: string | null;
   title: string | null;
   hasShowcase: boolean;
+  requiredRatingsPerCoach: number;
   status: string;
   accessMode: string;
   publishedAt: Date | null;

@@ -44,6 +44,7 @@ type SetupCycle = {
   allStarAgeGroupLabel: string | null;
   title: string | null;
   hasShowcase: boolean;
+  requiredRatingsPerCoach: number;
   accessMode: "INVITE_LIST" | "AGE_GROUP_COACHES";
   status: "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
 };
@@ -216,6 +217,7 @@ export default function AllStarBallotSetupWizard({
         allStarAgeGroupLabel: cycle.allStarAgeGroupLabel || "",
         title: cycle.title || "",
         hasShowcase: cycle.hasShowcase,
+        requiredRatingsPerCoach: cycle.requiredRatingsPerCoach,
         accessMode: cycle.accessMode,
       }));
       setCurrentStep("roster");
@@ -370,6 +372,23 @@ export default function AllStarBallotSetupWizard({
     setBallotLink(link);
   }
 
+  async function syncBallotDetailsToCycle(targetCycleId: string) {
+    const response = await fetch("/api/admin/all-star/cycles", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        cycleId: targetCycleId,
+        title: answers.title.trim() || null,
+        hasShowcase: answers.hasShowcase,
+        requiredRatingsPerCoach: answers.requiredRatingsPerCoach,
+      }),
+    });
+    const json = await safeJson(response);
+    if (!response.ok) {
+      throw new Error(String(json.error || "Failed to save ballot details"));
+    }
+  }
+
   async function publishCycle(targetCycleId: string) {
     const { publishedAt, closedAt } = resolveVotingWindowFromPreset(
       answers.votingPreset,
@@ -386,6 +405,7 @@ export default function AllStarBallotSetupWizard({
         closedAt,
         accessMode: answers.accessMode,
         hasShowcase: answers.hasShowcase,
+        requiredRatingsPerCoach: answers.requiredRatingsPerCoach,
         title: answers.title.trim() || null,
       }),
     });
@@ -406,6 +426,18 @@ export default function AllStarBallotSetupWizard({
     if (validationError) {
       setError(validationError);
       return;
+    }
+
+    if (currentStep === "ballotDetails" && cycleId) {
+      setBusy(true);
+      try {
+        await syncBallotDetailsToCycle(cycleId);
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to save ballot details");
+        setBusy(false);
+        return;
+      }
+      setBusy(false);
     }
 
     if (currentStep === "voterAccess") {
@@ -635,6 +667,21 @@ export default function AllStarBallotSetupWizard({
               />
             </label>
             <label className="block space-y-2">
+              <span className="text-sm text-zinc-300">How many candidates must each coach rate?</span>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={answers.requiredRatingsPerCoach}
+                onChange={(event) =>
+                  updateAnswers({
+                    requiredRatingsPerCoach: Number.parseInt(event.target.value, 10) || 0,
+                  })
+                }
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block space-y-2">
               <span className="text-sm text-zinc-300">Will coaches score showcase events for this ballot?</span>
               <select
                 value={answers.hasShowcase ? "yes" : "no"}
@@ -860,6 +907,9 @@ export default function AllStarBallotSetupWizard({
             <p>
               <span className="text-zinc-500">Invite roster:</span>{" "}
               {buildInviteEmails(selectedCoachEmails, answers.extraInviteEmails).length} coaches
+            </p>
+            <p>
+              <span className="text-zinc-500">Ratings per coach:</span> {answers.requiredRatingsPerCoach}
             </p>
             <p>
               <span className="text-zinc-500">Showcase:</span> {answers.hasShowcase ? "Yes" : "No"}

@@ -76,6 +76,7 @@ export async function GET(request: NextRequest) {
       allStarAgeGroupLabel: cycle.allStarAgeGroupLabel,
       title: cycle.title,
       hasShowcase: cycle.hasShowcase,
+      requiredRatingsPerCoach: cycle.requiredRatingsPerCoach,
       status: cycle.status,
       accessMode: cycle.accessMode,
     },

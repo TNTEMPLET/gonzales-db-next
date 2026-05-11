@@ -1,5 +1,9 @@
+import { createRequire } from "node:module";
 import path from "node:path";
 import { defineConfig } from "prisma/config";
+
+const require = createRequire(import.meta.url);
+require("dotenv").config({ path: path.join(__dirname, ".env.local") });
 
 export default defineConfig({
   schema: path.join(__dirname, "prisma", "schema.prisma"),

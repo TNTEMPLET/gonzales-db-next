@@ -597,6 +597,7 @@ model AllStarBallotCycle {
   allStarAgeGroupLabel String?
   title         String?
   hasShowcase   Boolean           @default(true)
+  requiredRatingsPerCoach Int     @default(12)
   status        AllStarCycleStatus @default(DRAFT)
   accessMode    AllStarAccessMode  @default(AGE_GROUP_COACHES)
   activePhase   AllStarBallotPhase @default(FIRST_TEAM)

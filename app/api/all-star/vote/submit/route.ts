@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { countValidRatings } from "@/lib/allStar/ballotVoteRules";
 import {
   ensureVoterCanAccessCycle,
   resolveAllStarVoterFromRequest,
@@ -40,6 +41,17 @@ export async function POST(request: NextRequest) {
     },
   });
   if (existing) return NextResponse.json({ error: "Ballot already submitted" }, { status: 409 });
+
+  const requiredRatingsPerCoach = access.cycle.requiredRatingsPerCoach;
+  const ratedCount = countValidRatings(body.ratings);
+  if (ratedCount !== requiredRatingsPerCoach) {
+    return NextResponse.json(
+      {
+        error: `You must rate exactly ${requiredRatingsPerCoach} candidate${requiredRatingsPerCoach === 1 ? "" : "s"} before submitting.`,
+      },
+      { status: 400 },
+    );
+  }
 
   const candidateIds = Object.keys(body.ratings);
   if (!candidateIds.length) return NextResponse.json({ error: "At least one rating is required" }, { status: 400 });

@@ -22,14 +22,13 @@ type OpenResponse = {
     allStarAgeGroupLabel: string | null;
     title: string | null;
     hasShowcase: boolean;
+    requiredRatingsPerCoach: number;
     status: string;
   };
   candidates: Candidate[];
   draft: Record<string, number>;
   hasSubmitted: boolean;
 };
-
-const REQUIRED_VOTES = 12;
 
 function getCycleDisplayLabel(cycle: OpenResponse["cycle"]) {
   const explicit = cycle.title?.trim() || cycle.allStarAgeGroupLabel?.trim();
@@ -159,10 +158,14 @@ export default function AllStarVoteClient({
     }
   }
 
+  const requiredRatingsPerCoach = data?.cycle.requiredRatingsPerCoach ?? 12;
+
   async function submitBallot() {
     if (!data) return;
-    if (ratedCount !== REQUIRED_VOTES) {
-      setError(`You must rate exactly ${REQUIRED_VOTES} candidates before submitting.`);
+    if (ratedCount !== requiredRatingsPerCoach) {
+      setError(
+        `You must rate exactly ${requiredRatingsPerCoach} candidate${requiredRatingsPerCoach === 1 ? "" : "s"} before submitting.`,
+      );
       return;
     }
     setBusy(true);
@@ -212,7 +215,7 @@ export default function AllStarVoteClient({
     () => filteredCandidates.filter((candidate) => !((ratings[candidate.id] || 0) >= 1)),
     [filteredCandidates, ratings],
   );
-  const isVoteCountValid = ratedCount === REQUIRED_VOTES;
+  const isVoteCountValid = ratedCount === requiredRatingsPerCoach;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-10">
@@ -285,8 +288,10 @@ export default function AllStarVoteClient({
                         isVoteCountValid ? "text-emerald-300" : "text-amber-300"
                       }`}
                     >
-                      Vote Status: {ratedCount}/{REQUIRED_VOTES} selected
-                      {isVoteCountValid ? " (ready to submit)" : " (select exactly 12)"}
+                      Vote Status: {ratedCount}/{requiredRatingsPerCoach} selected
+                      {isVoteCountValid
+                        ? " (ready to submit)"
+                        : ` (select exactly ${requiredRatingsPerCoach})`}
                     </p>
                     {isLocked ? (
                       <p className="text-xs text-amber-300 mt-2">
@@ -314,7 +319,7 @@ export default function AllStarVoteClient({
                     rated by selecting the appropriate baseball icon:{" "}
                     <span className="text-zinc-500">1</span> shall represent the minimum score and{" "}
                     <span className="text-zinc-500">5</span> the maximum. The ballot must not be submitted until
-                    exactly <span className="text-zinc-500">{REQUIRED_VOTES}</span> players have been rated. Voters
+                    exactly <span className="text-zinc-500">{requiredRatingsPerCoach}</span> players have been rated. Voters
                     shall use <span className="text-zinc-500">Save Draft</span> to record their entries in advance
                     of final submission.
                   </p>
