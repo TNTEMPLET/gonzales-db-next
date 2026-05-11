@@ -8,6 +8,7 @@ import {
 } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AdminSocialManager from "@/components/admin/AdminSocialManager";
+import { META_PRIVACY_POLICY_URL } from "@/lib/social/constants";
 import { getSiteConfig } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -49,7 +50,17 @@ export default async function AdminSocialPage() {
             per league site. Add an optional link and image URL, then publish when ready. Requires{" "}
             <code className="text-zinc-300">FACEBOOK_PAGE_ID</code> and{" "}
             <code className="text-zinc-300">FACEBOOK_PAGE_ACCESS_TOKEN</code> in server
-            environment.
+            environment. The Meta app that issued the Page token must also be in Live mode;
+            Development mode limits API-published posts to app role holders. Use{" "}
+            <a
+              href={META_PRIVACY_POLICY_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-zinc-200 underline underline-offset-2 hover:text-white"
+            >
+              {META_PRIVACY_POLICY_URL}
+            </a>{" "}
+            as the Privacy Policy URL in Meta App settings before publishing the app.
           </p>
         </div>
         <AdminSocialManager />

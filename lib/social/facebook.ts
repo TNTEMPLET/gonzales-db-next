@@ -252,9 +252,11 @@ export async function publishPageFeedPost(
   if (input.imageUrl?.trim()) {
     url = `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/photos`;
     params.set("url", input.imageUrl.trim());
+    params.set("published", "true");
     if (message) params.set("caption", message);
   } else {
     url = `https://graph.facebook.com/${GRAPH_VERSION}/${pageId}/feed`;
+    params.set("published", "true");
     if (message) params.set("message", message);
     if (input.link?.trim()) params.set("link", input.link.trim());
   }
