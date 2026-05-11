@@ -1,0 +1,12 @@
+---
+description: Meter Git pushes to preview; each push can trigger multiple Vercel preview deployments.
+alwaysApply: true
+---
+
+# Vercel preview push metering
+
+- Each push to **`preview`** can start **about three** Vercel preview deployments.
+- Batch changes into **fewer commits**; avoid push-per-commit loops.
+- **Do not push** until the work is ready for preview verification, or the user explicitly asks.
+- Prefer local commits and state what is ready to push; confirm before pushing when unclear.
+- Follow branch rules in `AGENTS.md` (`preview` / named `feature/*`; not `main` unless requested).

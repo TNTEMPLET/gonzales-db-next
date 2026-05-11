@@ -13,6 +13,10 @@ This version has breaking changes — APIs, conventions, and file structure may 
 3. **Merge:** Do not merge **`preview`** into **`main`** unless the user gives explicit approval after a good preview build.
 4. **After a `main`-only push:** GitHub Actions (`.github/workflows/sync-preview-with-main.yml`) fast-forwards **`preview`** to **`main`**. If that workflow fails (e.g. `preview` has commits not on **`main`**), resolve manually with `git checkout preview && git merge main && git push origin preview`, or reset policy as the user directs.
 
+## Vercel preview pushes
+
+Each push to **`preview`** can trigger **about three** Vercel preview deployments. Batch work into fewer commits, avoid push-per-commit loops, and do not push until the change set is ready for preview verification or the user explicitly asks. Prefer local commits and say what is ready to push; confirm before pushing when unclear.
+
 ## Prisma
 
 Run Prisma CLI yourself when schema or migrations change (or when verifying the DB): e.g. `npx prisma migrate deploy`, `npx prisma migrate dev`, `npx prisma generate`, `npx prisma validate`, `npx prisma migrate status`, `npx prisma db push` when appropriate. **Do not** only tell the user to run these—execute them in this environment unless blocked (e.g. no `DATABASE_URL`).
