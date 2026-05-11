@@ -206,6 +206,8 @@ export async function POST(request: NextRequest) {
   if (forbid) return forbid;
 
   const body = (await request.json()) as {
+    intent?: "setup_wizard" | "legacy";
+    resumeExistingDraft?: boolean;
     organizationId?: string;
     seasonYear?: number;
     ageGroup?: string;
@@ -216,6 +218,7 @@ export async function POST(request: NextRequest) {
     hasShowcase?: boolean;
     autoImportAgeBandFilter?: "11U" | "12U" | "BOTH";
   };
+  const isSetupWizardIntent = body.intent === "setup_wizard";
 
   const organizationId = resolveAdminTargetOrg(body.organizationId);
   const seasonYear = parseSeasonYear(String(body.seasonYear ?? ""));
@@ -247,6 +250,58 @@ export async function POST(request: NextRequest) {
   });
 
   if (existingCycle) {
+    const submissionCount = await prisma.allStarVoteSubmission.count({
+      where: { ballotCycleId: existingCycle.id },
+    });
+    const hasVoteSubmissions = submissionCount > 0;
+
+    if (isSetupWizardIntent) {
+      if (!body.resumeExistingDraft) {
+        return NextResponse.json(
+          {
+            error:
+              "A ballot with these settings already exists. Choose a different title or resume the existing draft.",
+            reusedExisting: true,
+            hasVoteSubmissions,
+            cycle: mapAllStarCycle(existingCycle),
+          },
+          { status: 409 },
+        );
+      }
+      if (existingCycle.status !== "DRAFT" || hasVoteSubmissions) {
+        return NextResponse.json(
+          {
+            error:
+              "Only draft ballots without submitted votes can be resumed from setup.",
+            reusedExisting: true,
+            hasVoteSubmissions,
+            cycle: mapAllStarCycle(existingCycle),
+          },
+          { status: 409 },
+        );
+      }
+
+      const updated = await prisma.allStarBallotCycle.update({
+        where: { id: existingCycle.id },
+        data: {
+          title: normalizedTitle,
+          accessMode: body.accessMode || "AGE_GROUP_COACHES",
+          allStarAgeGroupId: normalizedAllStarAgeGroupId,
+          allStarAgeGroupLabel: normalizedAllStarAgeGroupLabel,
+          hasShowcase:
+            typeof body.hasShowcase === "boolean" ? body.hasShowcase : undefined,
+        },
+      });
+      return NextResponse.json({
+        success: true,
+        cycle: mapAllStarCycle(updated),
+        reusedExisting: true,
+        resumedExistingDraft: true,
+        hasVoteSubmissions,
+        autoImport: { created: 0, skipped: 0, processed: 0, imported: false },
+      });
+    }
+
     const updated = await prisma.allStarBallotCycle.update({
       where: { id: existingCycle.id },
       data: {
@@ -261,6 +316,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({
       success: true,
       cycle: mapAllStarCycle(updated),
+      reusedExisting: true,
+      hasVoteSubmissions,
       autoImport: { created: 0, skipped: 0, processed: 0, imported: false },
     });
   }

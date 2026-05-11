@@ -6,6 +6,11 @@ import {
   readAdminViewPreviewRole,
   type AdminViewPreviewRole,
 } from "@/components/admin/AdminRolePreviewControl";
+import {
+  formatOrganizationLabel,
+  requiresDyb12uAgeBandFilter,
+  safeJson,
+} from "@/lib/allStar/cycleSetupHelpers";
 
 function EditCycleIcon({ className }: { className?: string }) {
   return (
@@ -60,31 +65,6 @@ type Cycle = {
   closedAt: string | null;
   ballotLinkToken?: string | null;
 };
-
-type AllStarAgeOption = {
-  id: string;
-  label: string;
-};
-
-function parsePrimaryAgeFromAgeGroup(ageGroup: string) {
-  const match = ageGroup.trim().toUpperCase().match(/^(\d{1,2})U\b/);
-  if (!match?.[1]) return null;
-  const age = Number.parseInt(match[1], 10);
-  if (!Number.isFinite(age) || age < 4 || age > 18) return null;
-  return age;
-}
-
-function buildAllStarAgeOptionsForAgeGroup(ageGroup: string): AllStarAgeOption[] {
-  const primaryAge = parsePrimaryAgeFromAgeGroup(ageGroup);
-  if (!primaryAge) return [];
-  const secondaryAge = primaryAge - 1;
-  const options: AllStarAgeOption[] = [];
-  if (secondaryAge >= 4) {
-    options.push({ id: `${secondaryAge}U`, label: `${secondaryAge}U` });
-  }
-  options.push({ id: `${primaryAge}U`, label: `${primaryAge}U` });
-  return options;
-}
 
 type Candidate = {
   id: string;
@@ -232,6 +212,7 @@ type AllStarVaultManagerProps = {
   initialOrg: "gonzales" | "ascension";
   isMasterMode: boolean;
   initialSelectedCycleId?: string;
+  initialOpenEditModules?: boolean;
   showSnapshotBoardOnInitialFullAccess?: boolean;
   /** Org admins with the All-Star module, or vault Full Access. Limited vault grants use false. */
   canManageAllStarVault?: boolean;
@@ -241,10 +222,6 @@ type AllStarVaultManagerProps = {
    */
   isLimitedVaultAccess?: boolean;
 };
-
-function formatOrganizationLabel(org: "gonzales" | "ascension") {
-  return org === "gonzales" ? "Gonzales DYB" : "Ascension LLB";
-}
 
 function getCycleTierLabel(title: string | null) {
   return (title || "").toLowerCase().includes("second team")
@@ -356,10 +333,6 @@ function getTop12WithCutoffTies(rows: VoteSummaryRow[]) {
   return rows.slice(0, end);
 }
 
-function requiresDyb12uAgeBandFilter(orgId: "gonzales" | "ascension", ageGroup: string) {
-  return orgId === "gonzales" && ageGroup.trim().toUpperCase().startsWith("12U");
-}
-
 function BaseballRatingIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -418,6 +391,7 @@ export default function AllStarVaultManager({
   initialOrg,
   isMasterMode,
   initialSelectedCycleId = "",
+  initialOpenEditModules = false,
   showSnapshotBoardOnInitialFullAccess = true,
   canManageAllStarVault = true,
   isLimitedVaultAccess = false,
@@ -483,22 +457,9 @@ export default function AllStarVaultManager({
   const [notice, setNotice] = useState("");
   const manageDisabled = busy || !canManageAllStarVaultUi;
 
-  const [newCycleAgeGroup, setNewCycleAgeGroup] = useState("12U LLB");
-  const [ageGroupOptions, setAgeGroupOptions] = useState<string[]>([]);
-  const [createCycleWizardStep, setCreateCycleWizardStep] = useState<1 | 2>(1);
-  const [newCycleTitle, setNewCycleTitle] = useState("");
-  const [newCycleAllStarAgeGroupId, setNewCycleAllStarAgeGroupId] = useState("");
-  const [newCycleAccessMode, setNewCycleAccessMode] = useState<"INVITE_LIST" | "AGE_GROUP_COACHES">("AGE_GROUP_COACHES");
-  const [newCycleHasShowcase, setNewCycleHasShowcase] = useState(true);
-  const [newCycleAgeBandFilter, setNewCycleAgeBandFilter] = useState<"11U" | "12U" | "BOTH">("BOTH");
   const [teamsReimportAgeBandFilter, setTeamsReimportAgeBandFilter] = useState<"11U" | "12U" | "BOTH">("BOTH");
   const [cycleOpenAt, setCycleOpenAt] = useState("");
   const [cycleCloseAt, setCycleCloseAt] = useState("");
-  const ageDrivenAllStarOptions = useMemo(
-    () => buildAllStarAgeOptionsForAgeGroup(newCycleAgeGroup),
-    [newCycleAgeGroup],
-  );
-
   const [candidateFile, setCandidateFile] = useState<File | null>(null);
   const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
   const [candidateName, setCandidateName] = useState("");
@@ -585,21 +546,18 @@ export default function AllStarVaultManager({
   }, [initialOrg]);
 
   useEffect(() => {
+    if (!initialOpenEditModules) return;
+    setShowEditModules(true);
+    scrollEditModulesIntoViewAfterExpand.current = true;
+  }, [initialOpenEditModules]);
+
+  useEffect(() => {
     if (isLimitedVaultAccess) {
       setModuleVisibility(getVisibilityForLimitedVaultBallotToolkit());
       return;
     }
     setModuleVisibility(getVisibilityForPreset(modulePreset));
   }, [modulePreset, isLimitedVaultAccess]);
-
-  useEffect(() => {
-    if (
-      newCycleAllStarAgeGroupId &&
-      !ageDrivenAllStarOptions.some((option) => option.id === newCycleAllStarAgeGroupId)
-    ) {
-      setNewCycleAllStarAgeGroupId("");
-    }
-  }, [ageDrivenAllStarOptions, newCycleAllStarAgeGroupId]);
 
   useEffect(() => {
     if (cycles.length === 0) return;
@@ -645,7 +603,6 @@ export default function AllStarVaultManager({
   /* eslint-disable react-hooks/exhaustive-deps */
   useEffect(() => {
     void loadCycles();
-    void loadAgeGroups();
     if (canManageAllStarVault) {
       void loadVaultAccess();
       void loadUserOptions();
@@ -704,9 +661,6 @@ export default function AllStarVaultManager({
     const cycle = cycles.find((entry) => entry.id === selectedCycleId);
     setCycleOpenAt(toDateTimeLocalValue(cycle?.publishedAt || null));
     setCycleCloseAt(toDateTimeLocalValue(cycle?.closedAt || null));
-    if (cycle) {
-      setNewCycleHasShowcase(Boolean(cycle.hasShowcase));
-    }
   }, [cycles, selectedCycleId]);
 
   useEffect(() => {
@@ -722,18 +676,6 @@ export default function AllStarVaultManager({
     return () => window.clearInterval(timer);
   }, [selectedCycleId, cycles]);
   /* eslint-enable react-hooks/exhaustive-deps */
-
-  async function safeJson(response: Response) {
-    const text = await response.text();
-    if (!text.trim()) return {};
-    try {
-      return JSON.parse(text) as Record<string, unknown>;
-    } catch {
-      throw new Error(
-        `Request failed (${response.status}): response was not valid JSON.`,
-      );
-    }
-  }
 
   async function loadCycles() {
     try {
@@ -775,33 +717,6 @@ export default function AllStarVaultManager({
         console.error("[AllStarVault] loadCycles failed", err);
       }
       setError(err instanceof Error ? err.message : "Failed to load cycles");
-    }
-  }
-
-  async function loadAgeGroups() {
-    try {
-      const response = await fetch(`/api/admin/age-groups?org=${org}`, {
-        cache: "no-store",
-      });
-      const json = await safeJson(response);
-      if (!response.ok) {
-        throw new Error(String(json.error || "Failed to load age groups"));
-      }
-      const options = Array.isArray(json.ageGroups)
-        ? (json.ageGroups as unknown[])
-            .filter(
-              (value): value is string =>
-                typeof value === "string" && value.trim().length > 0,
-            )
-            .map((value) => value.trim())
-        : [];
-      setAgeGroupOptions(options);
-      if (!newCycleAgeGroup || !options.includes(newCycleAgeGroup)) {
-        setNewCycleAgeGroup(options[0] || "");
-      }
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load age groups");
-      setAgeGroupOptions([]);
     }
   }
 
@@ -1052,75 +967,6 @@ export default function AllStarVaultManager({
         ? (json.meta as { submissionCount: number }).submissionCount
         : 0;
     setVoteSummarySubmissionCount(count);
-  }
-
-  async function createCycle() {
-    const shouldUseAgeBandFilter = requiresDyb12uAgeBandFilter(org, newCycleAgeGroup);
-    if (shouldUseAgeBandFilter && !newCycleAgeBandFilter) {
-      setError("Choose 11U, 12U, or BOTH before creating a 12U DYB cycle.");
-      return;
-    }
-    const autoTitle =
-      shouldUseAgeBandFilter && newCycleAgeBandFilter === "11U" && org === "gonzales"
-        ? "11U DYB"
-        : undefined;
-    const selectedAllStarAge = ageDrivenAllStarOptions.find(
-      (option) => option.id === newCycleAllStarAgeGroupId,
-    );
-    const normalizedTitle = newCycleTitle.trim() || autoTitle;
-    setBusy(true);
-    setError("");
-    setNotice("");
-    try {
-      const response = await fetch("/api/admin/all-star/cycles", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          organizationId: org,
-          seasonYear,
-          ageGroup: newCycleAgeGroup,
-          title: normalizedTitle,
-          allStarAgeGroupId: selectedAllStarAge?.id || null,
-          allStarAgeGroupLabel: selectedAllStarAge?.label || null,
-          accessMode: newCycleAccessMode,
-          hasShowcase: newCycleHasShowcase,
-          autoImportAgeBandFilter: shouldUseAgeBandFilter
-            ? newCycleAgeBandFilter
-            : "BOTH",
-        }),
-      });
-      const json = await safeJson(response);
-      if (!response.ok) {
-        throw new Error(
-          String((json as { error?: unknown }).error || "Failed to create cycle"),
-        );
-      }
-      const autoImport = json.autoImport as
-        | { created?: number; skipped?: number; processed?: number; imported?: boolean }
-        | undefined;
-      const cycleId = String(
-        ((json as { cycle?: { id?: unknown } }).cycle?.id as string | undefined) || "",
-      );
-      if (!cycleId) {
-        throw new Error("Failed to create cycle");
-      }
-      if (autoImport?.imported) {
-        setNotice(
-          `Ballot cycle saved. Imported ${autoImport.created || 0} players from teams (${autoImport.skipped || 0} skipped).`,
-        );
-      } else {
-        setNotice("Ballot cycle saved.");
-      }
-      await loadCycles();
-      setCreateCycleWizardStep(1);
-      setNewCycleTitle("");
-      setNewCycleAllStarAgeGroupId("");
-      setSelectedCycleId(cycleId);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create cycle");
-    } finally {
-      setBusy(false);
-    }
   }
 
   async function updateCycleStatus(status: Cycle["status"]) {
@@ -1670,7 +1516,7 @@ export default function AllStarVaultManager({
 
   function createNewCycleFromBoard() {
     const params = new URLSearchParams({ org });
-    router.push(`/admin/all-star/cycle-management?${params.toString()}`);
+    router.push(`/admin/all-star/setup?${params.toString()}`);
   }
 
   function backToCycleSnapshotBoard() {
@@ -2737,104 +2583,16 @@ export default function AllStarVaultManager({
               </option>
             ))}
           </select>
-          {createCycleWizardStep === 1 ? (
-            <>
-              <input
-                value={newCycleTitle}
-                onChange={(e) => setNewCycleTitle(e.target.value)}
-                placeholder="Cycle title (optional)"
-                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[220px]"
-              />
-              <select
-                value={newCycleAccessMode}
-                onChange={(e) =>
-                  setNewCycleAccessMode(
-                    e.target.value as "INVITE_LIST" | "AGE_GROUP_COACHES",
-                  )
-                }
-                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[210px]"
-              >
-                <option value="AGE_GROUP_COACHES">Age-group coaches only</option>
-                <option value="INVITE_LIST">Invite-list only</option>
-              </select>
-              <select
-                value={newCycleHasShowcase ? "yes" : "no"}
-                onChange={(e) => setNewCycleHasShowcase(e.target.value === "yes")}
-                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[150px]"
-              >
-                <option value="yes">Showcase: Yes</option>
-                <option value="no">Showcase: No</option>
-              </select>
-              <button
-                type="button"
-                disabled={manageDisabled}
-                onClick={() => setCreateCycleWizardStep(2)}
-                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 disabled:opacity-60"
-              >
-                Next: Age Setup
-              </button>
-            </>
-          ) : (
-            <>
-              <select
-                value={newCycleAgeGroup}
-                onChange={(e) => setNewCycleAgeGroup(e.target.value)}
-                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[160px] max-w-[220px]"
-              >
-                {ageGroupOptions.length === 0 ? (
-                  <option value="">No age groups available</option>
-                ) : (
-                  ageGroupOptions.map((ageGroup) => (
-                    <option key={ageGroup} value={ageGroup}>
-                      {ageGroup}
-                    </option>
-                  ))
-                )}
-              </select>
-              <select
-                value={newCycleAllStarAgeGroupId}
-                onChange={(e) => setNewCycleAllStarAgeGroupId(e.target.value)}
-                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[180px]"
-              >
-                <option value="">All-Star Age: Global (all ages)</option>
-                {ageDrivenAllStarOptions.map((ageOption) => (
-                  <option key={ageOption.id} value={ageOption.id}>
-                    All-Star Age: {ageOption.label}
-                  </option>
-                ))}
-              </select>
-              {requiresDyb12uAgeBandFilter(org, newCycleAgeGroup) &&
-              !newCycleAllStarAgeGroupId ? (
-                <select
-                  value={newCycleAgeBandFilter}
-                  onChange={(e) =>
-                    setNewCycleAgeBandFilter(e.target.value as "11U" | "12U" | "BOTH")
-                  }
-                  className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]"
-                >
-                  <option value="BOTH">All-Star pool: 11U + 12U</option>
-                  <option value="11U">All-Star pool: 11U only</option>
-                  <option value="12U">All-Star pool: 12U only</option>
-                </select>
-              ) : null}
-              <button
-                type="button"
-                disabled={manageDisabled}
-                onClick={() => setCreateCycleWizardStep(1)}
-                className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-60"
-              >
-                Back
-              </button>
-              <button
-                type="button"
-                disabled={manageDisabled || !newCycleAgeGroup}
-                onClick={() => void createCycle()}
-                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
-              >
-                Save Cycle
-              </button>
-            </>
-          )}
+          {canManageAllStarVaultUi ? (
+            <button
+              type="button"
+              disabled={manageDisabled}
+              onClick={createNewCycleFromBoard}
+              className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+            >
+              Set up a new ballot
+            </button>
+          ) : null}
         </div>
         <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
           <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">

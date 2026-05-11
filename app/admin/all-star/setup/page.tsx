@@ -1,40 +1,40 @@
 import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
+import AllStarBallotSetupWizard from "@/components/admin/AllStarBallotSetupWizard";
+import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import {
-  canViewAllStarVault,
   canManageAllStarVault,
+  canViewAllStarVault,
 } from "@/lib/allStar/auth";
 import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
-import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import AllStarVaultManager from "@/components/admin/AllStarVaultManager";
 import prisma from "@/lib/prisma";
 import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
   return {
-    title: `Cycle Management | ${site.name}`,
-    description: "Create and edit All-Star ballot cycles.",
+    title: `Ballot Setup | ${site.name}`,
+    description: "Create a new All-Star ballot with guided setup questions.",
   };
 }
 
-export default async function AdminAllStarCycleManagementPage({
+export default async function AdminAllStarSetupPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string; cycleId?: string; openModules?: string }>;
+  searchParams: Promise<{ org?: string; cycleId?: string }>;
 }) {
-  const { org, cycleId, openModules } = await searchParams;
+  const { org, cycleId } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org);
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
   if (!adminUser) {
-    redirect("/admin/login?next=/admin/all-star/cycle-management");
+    redirect("/admin/login?next=/admin/all-star/setup");
   }
 
   const effectiveRole = await getEffectiveAdminRoleForOrg(
@@ -64,23 +64,24 @@ export default async function AdminAllStarCycleManagementPage({
   }
 
   const canManageAllStarVaultUi = moduleAllStar || vaultManage;
-  const isLimitedVaultAccess = vaultView && !canManageAllStarVaultUi;
+  if (!canManageAllStarVaultUi) {
+    redirect(`/admin/all-star?org=${currentOrg}`);
+  }
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
-      <section className="max-w-6xl mx-auto px-6">
+      <section className="max-w-3xl mx-auto px-6">
         <div className="mb-8">
           <AdminSectionHeader
             badge="ALL-STAR VAULT"
             currentOrg={currentOrg}
-            currentPath="/admin/all-star/cycle-management"
+            currentPath="/admin/all-star/setup"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           />
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
-            All-Star Cycle Management
-          </h1>
-          <p className="text-zinc-400 max-w-3xl">
-            Create and edit ballot cycles, then manage status windows, roster imports, invites, and exports.
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">Set Up a Ballot</h1>
+          <p className="text-zinc-400 max-w-2xl">
+            Answer a short series of questions to create and publish a new ballot. Existing ballots and submitted votes
+            are not changed by this flow.
           </p>
           <div className="mt-4 flex flex-wrap gap-3">
             <Link
@@ -89,26 +90,20 @@ export default async function AdminAllStarCycleManagementPage({
             >
               Back to Snapshot Board
             </Link>
-            {canManageAllStarVaultUi ? (
-              <Link
-                href={`/admin/all-star/setup?org=${currentOrg}`}
-                className="inline-flex items-center rounded-lg border border-emerald-700 px-3 py-2 text-sm text-emerald-200 hover:bg-emerald-950/40"
-              >
-                Set up a new ballot
-              </Link>
-            ) : null}
+            <Link
+              href={`/admin/all-star/cycle-management?org=${currentOrg}`}
+              className="inline-flex items-center rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
+            >
+              Open Cycle Management
+            </Link>
           </div>
         </div>
 
-        <AllStarVaultManager
+        <AllStarBallotSetupWizard
           key={`${currentOrg}-${cycleId ?? "new"}`}
           initialOrg={currentOrg}
           isMasterMode={isMasterDeployment()}
-          initialSelectedCycleId={cycleId ?? ""}
-          initialOpenEditModules={openModules === "1"}
-          showSnapshotBoardOnInitialFullAccess={false}
-          canManageAllStarVault={canManageAllStarVaultUi}
-          isLimitedVaultAccess={isLimitedVaultAccess}
+          initialCycleId={cycleId ?? ""}
         />
       </section>
     </main>
