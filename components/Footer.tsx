@@ -189,8 +189,7 @@ export default function Footer({ brand }: FooterProps) {
         {/* Column 4: Social & Legal */}
         <div>
           <h4 className="font-semibold mb-4 text-brand-gold">Follow Us</h4>
-          <div className="flex gap-4 mb-8">
-            {/* Add your actual social links here when ready */}
+          <div className="flex flex-wrap gap-4 mb-8">
             <a
               href="https://www.facebook.com/APBaseball"
               target="_blank"
@@ -199,6 +198,14 @@ export default function Footer({ brand }: FooterProps) {
             >
               Facebook
             </a>
+            {isMaster ? (
+              <a
+                href="/privacy"
+                className="text-zinc-100 hover:text-brand-gold"
+              >
+                Privacy
+              </a>
+            ) : null}
           </div>
 
           <div className="text-xs text-zinc-500">

@@ -8,7 +8,7 @@ import {
 } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AdminSocialManager from "@/components/admin/AdminSocialManager";
-import { META_PRIVACY_POLICY_URL } from "@/lib/social/constants";
+import { getMetaPrivacyPolicyUrl } from "@/lib/privacy/metaPrivacyPolicyUrl";
 import { getSiteConfig } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -34,6 +34,8 @@ export default async function AdminSocialPage() {
     redirect("/admin?denied=social");
   }
 
+  const metaPrivacyPolicyUrl = getMetaPrivacyPolicyUrl();
+
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14 pb-24">
       <section className="max-w-6xl mx-auto px-6">
@@ -53,12 +55,12 @@ export default async function AdminSocialPage() {
             environment. The Meta app that issued the Page token must also be in Live mode;
             Development mode limits API-published posts to app role holders. Use{" "}
             <a
-              href={META_PRIVACY_POLICY_URL}
+              href={metaPrivacyPolicyUrl}
               target="_blank"
               rel="noopener noreferrer"
               className="text-zinc-200 underline underline-offset-2 hover:text-white"
             >
-              {META_PRIVACY_POLICY_URL}
+              {metaPrivacyPolicyUrl}
             </a>{" "}
             as the Privacy Policy URL in Meta App settings before publishing the app.
           </p>
