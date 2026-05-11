@@ -1592,6 +1592,16 @@ export default function AllStarVaultManager({
     if (meta && meta.seasonYear !== seasonYear) {
       setSeasonYear(meta.seasonYear);
     }
+    if (
+      showSnapshotBoardOnInitialFullAccess &&
+      showFullAdminView &&
+      canManageAllStarVaultUi
+    ) {
+      router.push(
+        `/admin/all-star/cycle-management?org=${encodeURIComponent(org)}&cycleId=${encodeURIComponent(cycleId)}&tab=overview`,
+      );
+      return;
+    }
     setSelectedCycleId(cycleId);
     if (showSnapshotBoardOnInitialFullAccess) {
       setShowEditModules(true);
