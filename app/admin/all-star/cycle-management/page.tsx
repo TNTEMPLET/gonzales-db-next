@@ -25,9 +25,9 @@ export function generateMetadata() {
 export default async function AdminAllStarCycleManagementPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string; cycleId?: string; openModules?: string }>;
+  searchParams: Promise<{ org?: string; cycleId?: string; openModules?: string; tab?: string }>;
 }) {
-  const { org, cycleId, openModules } = await searchParams;
+  const { org, cycleId, openModules, tab } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org);
 
   const cookieStore = await cookies();
@@ -106,6 +106,7 @@ export default async function AdminAllStarCycleManagementPage({
           isMasterMode={isMasterDeployment()}
           initialSelectedCycleId={cycleId ?? ""}
           initialOpenEditModules={openModules === "1"}
+          initialWorkspaceTab={tab}
           showSnapshotBoardOnInitialFullAccess={false}
           canManageAllStarVault={canManageAllStarVaultUi}
           isLimitedVaultAccess={isLimitedVaultAccess}

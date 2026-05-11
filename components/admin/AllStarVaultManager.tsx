@@ -1,7 +1,13 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
+import AllStarCycleWorkspace from "@/components/admin/allStar/AllStarCycleWorkspace";
+import {
+  allowedWorkspaceTabs,
+  parseWorkspaceTab,
+  type AllStarWorkspaceTab,
+} from "@/components/admin/allStar/workspaceTypes";
 import {
   readAdminViewPreviewRole,
   type AdminViewPreviewRole,
@@ -11,6 +17,7 @@ import {
   requiresDyb12uAgeBandFilter,
   safeJson,
 } from "@/lib/allStar/cycleSetupHelpers";
+import { getCycleStatusChipLabel, isPublishedCycleWithinOpenWindow } from "@/lib/allStar/cycleType";
 
 function EditCycleIcon({ className }: { className?: string }) {
   return (
@@ -214,6 +221,7 @@ type AllStarVaultManagerProps = {
   isMasterMode: boolean;
   initialSelectedCycleId?: string;
   initialOpenEditModules?: boolean;
+  initialWorkspaceTab?: string;
   showSnapshotBoardOnInitialFullAccess?: boolean;
   /** Org admins with the All-Star module, or vault Full Access. Limited vault grants use false. */
   canManageAllStarVault?: boolean;
@@ -373,13 +381,7 @@ function displayNameFromCoachFields(
 }
 
 function isCycleOpenAndPublished(cycle: Cycle | null) {
-  if (!cycle || cycle.status !== "PUBLISHED") return false;
-  const now = Date.now();
-  const openAt = cycle.publishedAt ? new Date(cycle.publishedAt).getTime() : null;
-  const closeAt = cycle.closedAt ? new Date(cycle.closedAt).getTime() : null;
-  if (openAt !== null && !Number.isNaN(openAt) && now < openAt) return false;
-  if (closeAt !== null && !Number.isNaN(closeAt) && now >= closeAt) return false;
-  return true;
+  return cycle ? isPublishedCycleWithinOpenWindow(cycle) : false;
 }
 
 function hasVisibleJerseyNumber(value: string | null | undefined) {
@@ -393,11 +395,14 @@ export default function AllStarVaultManager({
   isMasterMode,
   initialSelectedCycleId = "",
   initialOpenEditModules = false,
+  initialWorkspaceTab = "",
   showSnapshotBoardOnInitialFullAccess = true,
   canManageAllStarVault = true,
   isLimitedVaultAccess = false,
 }: AllStarVaultManagerProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const usesTabbedWorkspace = !showSnapshotBoardOnInitialFullAccess;
   const latestCycleIdRef = useRef("");
   const cycleManagementRef = useRef<HTMLDivElement | null>(null);
   const vaultShellRef = useRef<HTMLElement | null>(null);
@@ -437,6 +442,11 @@ export default function AllStarVaultManager({
   );
   const [canDeleteCycles, setCanDeleteCycles] = useState(false);
   const [showEditModules, setShowEditModules] = useState(false);
+  const [activeWorkspaceTab, setActiveWorkspaceTab] = useState<AllStarWorkspaceTab>(() => {
+    if (initialWorkspaceTab) return parseWorkspaceTab(initialWorkspaceTab);
+    if (initialOpenEditModules) return "overview";
+    return isLimitedVaultAccess ? "ballots" : "overview";
+  });
   const [modulePreset, setModulePreset] = useState<ModulePreset>("OPERATIONS");
   const [moduleVisibility, setModuleVisibility] = useState<EditModuleVisibility>(
     getVisibilityForPreset("OPERATIONS"),
@@ -542,16 +552,24 @@ export default function AllStarVaultManager({
 
   useEffect(() => {
     setOrg(initialOrg);
-    setSelectedCycleId("");
+    setSelectedCycleId(initialSelectedCycleId);
     setError("");
     setNotice("");
-  }, [initialOrg]);
+  }, [initialOrg, initialSelectedCycleId]);
 
   useEffect(() => {
     if (!initialOpenEditModules) return;
     setShowEditModules(true);
     scrollEditModulesIntoViewAfterExpand.current = true;
+    setActiveWorkspaceTab("overview");
   }, [initialOpenEditModules]);
+
+  useEffect(() => {
+    if (!usesTabbedWorkspace) return;
+    const fromUrl = parseWorkspaceTab(searchParams.get("tab"));
+    const allowed = allowedWorkspaceTabs(isLimitedVaultAccess);
+    setActiveWorkspaceTab(allowed.includes(fromUrl) ? fromUrl : (allowed[0] ?? "overview"));
+  }, [searchParams, isLimitedVaultAccess, usesTabbedWorkspace]);
 
   useEffect(() => {
     if (isLimitedVaultAccess) {
@@ -1544,6 +1562,29 @@ export default function AllStarVaultManager({
     }
   }
 
+  function setWorkspaceTab(tab: AllStarWorkspaceTab) {
+    setActiveWorkspaceTab(tab);
+    if (!usesTabbedWorkspace) return;
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tab);
+    params.set("org", org);
+    if (selectedCycleId) params.set("cycleId", selectedCycleId);
+    router.replace(`/admin/all-star/cycle-management?${params.toString()}`, { scroll: false });
+  }
+
+  function showsEditorPanel(panel: EditModuleKey) {
+    if (usesTabbedWorkspace && selectedCycle) {
+      if (panel === "cycle") return activeWorkspaceTab === "overview";
+      if (panel === "candidates" || panel === "coaches") return activeWorkspaceTab === "roster";
+      if (panel === "submitted" || panel === "votes" || panel === "sample") {
+        return activeWorkspaceTab === "ballots";
+      }
+      if (panel === "access" || panel === "invites") return activeWorkspaceTab === "access";
+      return false;
+    }
+    return showEditModules && moduleVisibility[panel];
+  }
+
   function openCycleFromCard(cycleId: string) {
     const meta =
       limitedOverviewCycles.find((c) => c.id === cycleId) || cycles.find((c) => c.id === cycleId);
@@ -1552,7 +1593,20 @@ export default function AllStarVaultManager({
       setSeasonYear(meta.seasonYear);
     }
     setSelectedCycleId(cycleId);
+    if (showSnapshotBoardOnInitialFullAccess) {
+      setShowEditModules(true);
+      scrollEditModulesIntoViewAfterExpand.current = true;
+      setActiveWorkspaceTab(isLimitedVaultAccess ? "ballots" : "overview");
+      return;
+    }
+    if (showFullAdminView && canManageAllStarVaultUi) {
+      router.push(
+        `/admin/all-star/cycle-management?org=${encodeURIComponent(org)}&cycleId=${encodeURIComponent(cycleId)}&tab=overview`,
+      );
+      return;
+    }
     setShowEditModules(false);
+    setActiveWorkspaceTab(isLimitedVaultAccess ? "ballots" : "overview");
   }
 
   /** Full and limited admins: emerald icon toggles edit/view modules (scroll into view when opening). */
@@ -1980,7 +2034,7 @@ export default function AllStarVaultManager({
     showSnapshotBoardOnInitialFullAccess && Boolean(selectedCycleId);
   const showManagementEditChrome =
     showFullAdminManagementChrome &&
-    (!vaultSnapshotDetailActive || showEditModules);
+    (!vaultSnapshotDetailActive || showEditModules || usesTabbedWorkspace);
 
   return (
     <section ref={vaultShellRef} className="space-y-6" data-admin-vault-interactive="true">
@@ -2076,7 +2130,7 @@ export default function AllStarVaultManager({
                         {formatOrganizationLabel(cycle.organizationId)} · {cycle.seasonYear} · {getDisplayedCycleAgeGroupWithAllStarAge(cycle)} · {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}
                       </p>
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(cycle.status)}`}>
-                        {cycle.status}
+                        {getCycleStatusChipLabel(cycle)}
                       </span>
                     </div>
                     <p className="text-xs text-zinc-400">
@@ -2207,7 +2261,7 @@ export default function AllStarVaultManager({
               <span
                 className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(selectedCycle.status)}`}
               >
-                {selectedCycle.status}
+                {getCycleStatusChipLabel(selectedCycle)}
               </span>
             </div>
           </div>
@@ -2533,6 +2587,69 @@ export default function AllStarVaultManager({
       <>
       {showManagementEditChrome ? (
       <>
+      {usesTabbedWorkspace && selectedCycle ? (
+        <AllStarCycleWorkspace
+          cycle={selectedCycle}
+          displayTitle={getCycleDisplayTitle(selectedCycle)}
+          displayAgeGroup={getDisplayedCycleAgeGroupWithAllStarAge(selectedCycle)}
+          tierLabel={getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
+          statusBadgeClass={getCycleStatusBadgeClass(selectedCycle.status)}
+          candidateCount={candidates.length}
+          submittedCount={ballotRosterStatus?.submittedCount ?? null}
+          rosterTotal={ballotRosterStatus?.total ?? null}
+          standingsCount={voteSummary.length}
+          activeTab={activeWorkspaceTab}
+          onTabChange={setWorkspaceTab}
+          isLimitedVaultAccess={isLimitedVaultAccess}
+          canManage={canManageAllStarVaultUi}
+          manageDisabled={manageDisabled}
+          onPublish={() => void updateCycleStatus("PUBLISHED")}
+          onClose={() => void updateCycleStatus("CLOSED")}
+          cycleSwitcher={
+            <>
+              <select
+                value={selectedCycleId}
+                onChange={(e) => setSelectedCycleId(e.target.value)}
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-60"
+              >
+                <option value="">Select cycle…</option>
+                {cycles.map((cycle) => (
+                  <option key={cycle.id} value={cycle.id}>
+                    {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} |{" "}
+                    {getDisplayedCycleAgeGroup(cycle)}
+                    {cycle.allStarAgeGroupLabel ? ` [${cycle.allStarAgeGroupLabel}]` : ""}
+                    {" | "}
+                    {getCycleStatusChipLabel(cycle)} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}
+                    {getCycleOptionSuffix(cycle)}
+                  </option>
+                ))}
+              </select>
+              {isMasterMode ? (
+                <select
+                  value={org}
+                  onChange={(e) => setOrg(e.target.value as "gonzales" | "ascension")}
+                  className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]"
+                >
+                  <option value="gonzales">Gonzales DYB</option>
+                  <option value="ascension">Ascension LLB</option>
+                </select>
+              ) : null}
+              <select
+                value={seasonYear}
+                onChange={(e) => setSeasonYear(Number(e.target.value))}
+                className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[120px]"
+              >
+                {seasonOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </>
+          }
+        />
+      ) : null}
+      {!usesTabbedWorkspace ? (
       <div ref={editModulesShellRef} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -2612,9 +2729,10 @@ export default function AllStarVaultManager({
           </div>
         )}
       </div>
-      {showEditModules && moduleVisibility.cycle ? (
+      ) : null}
+      {showsEditorPanel("cycle") ? (
       <div ref={cycleManagementRef} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-        <h2 className="text-lg font-semibold">Cycle Management</h2>
+        <h2 className="text-lg font-semibold">{usesTabbedWorkspace ? "Ballot settings" : "Cycle Management"}</h2>
         <div className="flex flex-wrap items-center justify-start gap-3">
           {isMasterMode ? (
             <select value={org} onChange={(e) => setOrg(e.target.value as "gonzales" | "ascension")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]">
@@ -2660,7 +2778,7 @@ export default function AllStarVaultManager({
                 {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {getDisplayedCycleAgeGroup(cycle)}
                 {cycle.allStarAgeGroupLabel ? ` [${cycle.allStarAgeGroupLabel}]` : ""}
                 {" | "}
-                {cycle.status} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
+                {getCycleStatusChipLabel(cycle)} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
               </option>
             ))}
           </select>
@@ -2801,7 +2919,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules && moduleVisibility.candidates ? (
+      {showsEditorPanel("candidates") ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Candidates Import</h2>
@@ -3111,7 +3229,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules && moduleVisibility.coaches ? (
+      {showsEditorPanel("coaches") ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Coaches</h2>
         <div className="grid md:grid-cols-3 gap-3">
@@ -3153,7 +3271,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules && moduleVisibility.submitted ? (
+      {showsEditorPanel("submitted") ? (
       <div
         id="vault-submitted-ballots-panel"
         className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4"
@@ -3262,7 +3380,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules && moduleVisibility.votes ? (
+      {showsEditorPanel("votes") ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Votes Panel</h2>
         <div className="flex items-start justify-between gap-3 flex-wrap">
@@ -3349,7 +3467,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules && moduleVisibility.sample ? (
+      {showsEditorPanel("sample") ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
         <h2 className="text-lg font-semibold">Sample Ballot</h2>
         <p className="text-xs text-zinc-400">
@@ -3389,7 +3507,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules && moduleVisibility.access ? (
+      {showsEditorPanel("access") ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">All-Star Vault Access</h2>
         {isMasterMode ? (
@@ -3458,7 +3576,7 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
-      {showEditModules && moduleVisibility.invites ? (
+      {showsEditorPanel("invites") ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">
           {isLimitedVaultAccess ? "Ballot link & invite roster" : "Invites And Exports"}

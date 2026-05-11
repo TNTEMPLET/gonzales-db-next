@@ -469,7 +469,7 @@ export default function AllStarBallotSetupWizard({
         const params = new URLSearchParams({
           org: answers.organizationId,
           cycleId,
-          openModules: "1",
+          tab: "overview",
         });
         router.push(`/admin/all-star/cycle-management?${params.toString()}`);
       } catch (err: unknown) {

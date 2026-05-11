@@ -15,3 +15,26 @@ export function isFrozenFirstTeamCycle(cycle: {
 }) {
   return cycle.status === "CLOSED" && !isSecondTeamCycleTitle(cycle.title);
 }
+
+type CycleStatus = "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
+
+type CycleVotingWindow = {
+  status: CycleStatus;
+  publishedAt?: string | null;
+  closedAt?: string | null;
+};
+
+export function isPublishedCycleWithinOpenWindow(cycle: CycleVotingWindow) {
+  if (cycle.status !== "PUBLISHED") return false;
+  const now = Date.now();
+  const openAt = cycle.publishedAt ? new Date(cycle.publishedAt).getTime() : null;
+  const closeAt = cycle.closedAt ? new Date(cycle.closedAt).getTime() : null;
+  if (openAt !== null && !Number.isNaN(openAt) && now < openAt) return false;
+  if (closeAt !== null && !Number.isNaN(closeAt) && now >= closeAt) return false;
+  return true;
+}
+
+export function getCycleStatusChipLabel(cycle: CycleVotingWindow) {
+  if (isPublishedCycleWithinOpenWindow(cycle)) return "Opened";
+  return cycle.status;
+}
