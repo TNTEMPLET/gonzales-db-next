@@ -45,7 +45,7 @@ export const SETUP_WIZARD_STEP_LABELS: Record<SetupWizardStepId, string> = {
   ballotDetails: "Ballot details",
   voterAccess: "Who can vote",
   roster: "Candidate roster",
-  coachAccess: "Coach access",
+  coachAccess: "Invite roster",
   schedule: "Voting window",
   review: "Review and publish",
 };
@@ -169,17 +169,12 @@ export function parseExtraInviteEmails(value: string) {
 }
 
 export function buildInviteEmails(
-  accessMode: SetupAccessMode,
   selectedCoachEmails: string[],
   extraInviteEmails: string,
 ) {
   const manualEmails = parseExtraInviteEmails(extraInviteEmails);
   const selected = Array.from(new Set(selectedCoachEmails.map((email) => email.trim().toLowerCase()).filter(Boolean)));
-  const combined = Array.from(new Set([...selected, ...manualEmails]));
-  if (accessMode === "INVITE_LIST") {
-    return combined;
-  }
-  return combined;
+  return Array.from(new Set([...selected, ...manualEmails]));
 }
 
 export function resolveVotingWindowFromPreset(
@@ -244,11 +239,7 @@ export function validateSetupStep(
       return null;
     case "coachAccess": {
       if (answers.accessMode === "INVITE_LIST") {
-        const emails = buildInviteEmails(
-          answers.accessMode,
-          context.selectedCoachEmails,
-          answers.extraInviteEmails,
-        );
+        const emails = buildInviteEmails(context.selectedCoachEmails, answers.extraInviteEmails);
         if (emails.length === 0) {
           return "Select at least one coach or enter at least one email for invite-only voting.";
         }

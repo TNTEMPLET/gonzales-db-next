@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { isFrozenFirstTeamCycle } from "@/lib/allStar/cycleType";
+import { deleteVoteSubmissionsForCycleCoachEmail } from "@/lib/allStar/voteSubmissions";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
 import {
@@ -185,18 +186,25 @@ export async function DELETE(request: NextRequest) {
   if (existing.ballotCycle.organizationId !== targetOrg) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (isFrozenFirstTeamCycle(existing.ballotCycle)) {
-    return NextResponse.json(
-      { error: "First-team cycle is frozen while closed. Reopen cycle to edit." },
-      { status: 409 },
+  const removedSubmissions = await prisma.$transaction(async (tx) => {
+    const removed = await deleteVoteSubmissionsForCycleCoachEmail(
+      tx,
+      existing.ballotCycleId,
+      existing.invitedEmail,
+      existing.ballotCycle.organizationId,
     );
-  }
-
-  const invite = await prisma.allStarInvite.update({
-    where: { id: body.inviteId },
-    data: { revokedAt: new Date() },
+    await tx.allStarInvite.update({
+      where: { id: body.inviteId },
+      data: { revokedAt: new Date() },
+    });
+    return removed;
   });
-  return NextResponse.json({ success: true, inviteId: invite.id });
+
+  return NextResponse.json({
+    success: true,
+    inviteId: body.inviteId,
+    removedSubmissions,
+  });
 }
 
 export async function PATCH(request: NextRequest) {
@@ -224,13 +232,6 @@ export async function PATCH(request: NextRequest) {
   if (existing.ballotCycle.organizationId !== targetOrg) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (isFrozenFirstTeamCycle(existing.ballotCycle)) {
-    return NextResponse.json(
-      { error: "First-team cycle is frozen while closed. Reopen cycle to edit." },
-      { status: 409 },
-    );
-  }
-
   const invite = await prisma.allStarInvite.update({
     where: { id: body.inviteId },
     data: { revokedAt: null },

@@ -884,7 +884,15 @@ export default function AllStarVaultManager({
       if (!response.ok) {
         throw new Error(String(json.error || "Failed to revoke invite"));
       }
-      setNotice("Invite revoked.");
+      const removedSubmissions =
+        typeof (json as { removedSubmissions?: unknown }).removedSubmissions === "number"
+          ? (json as { removedSubmissions: number }).removedSubmissions
+          : 0;
+      setNotice(
+        removedSubmissions > 0
+          ? `Coach access revoked and ${removedSubmissions} submitted ballot${removedSubmissions === 1 ? "" : "s"} removed.`
+          : "Coach access revoked.",
+      );
       await loadInvites(selectedCycleId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to revoke invite");

@@ -143,6 +143,25 @@ export default function AllStarBallotSetupWizard({
     }
   }, [allStarAgeOptions, answers.allStarAgeGroupId]);
 
+  useEffect(() => {
+    if (currentStep !== "coachAccess" || coachOptions.length === 0) return;
+    setAnswers((current) => {
+      const optionIds = coachOptions.map((coach) => coach.id);
+      const retained = current.selectedCoachIds.filter((id) => optionIds.includes(id));
+      if (current.accessMode === "AGE_GROUP_COACHES") {
+        if (retained.length > 0) {
+          return retained.length === current.selectedCoachIds.length
+            ? current
+            : { ...current, selectedCoachIds: retained };
+        }
+        return { ...current, selectedCoachIds: optionIds };
+      }
+      return retained.length === current.selectedCoachIds.length
+        ? current
+        : { ...current, selectedCoachIds: retained };
+    });
+  }, [coachOptions, currentStep, answers.accessMode]);
+
   async function loadAgeGroups(org: ContentOrgId) {
     try {
       const response = await fetch(`/api/admin/age-groups?org=${org}`, { cache: "no-store" });
@@ -315,14 +334,7 @@ export default function AllStarBallotSetupWizard({
   }
 
   async function saveInvites(targetCycleId: string) {
-    const emails =
-      answers.accessMode === "INVITE_LIST"
-        ? buildInviteEmails(answers.accessMode, selectedCoachEmails, answers.extraInviteEmails)
-        : buildInviteEmails(
-            answers.accessMode,
-            coachOptions.map((coach) => coach.email.trim().toLowerCase()).filter(Boolean),
-            answers.extraInviteEmails,
-          );
+    const emails = buildInviteEmails(selectedCoachEmails, answers.extraInviteEmails);
     if (emails.length === 0) return;
     const response = await fetch("/api/admin/all-star/invites", {
       method: "POST",
@@ -643,7 +655,12 @@ export default function AllStarBallotSetupWizard({
               <input
                 type="radio"
                 checked={answers.accessMode === "AGE_GROUP_COACHES"}
-                onChange={() => updateAnswers({ accessMode: "AGE_GROUP_COACHES" })}
+                onChange={() =>
+                  updateAnswers({
+                    accessMode: "AGE_GROUP_COACHES",
+                    selectedCoachIds: coachOptions.map((coach) => coach.id),
+                  })
+                }
               />
               <span className="text-sm">
                 <span className="font-semibold text-zinc-100">Age-group coaches</span>
@@ -656,7 +673,7 @@ export default function AllStarBallotSetupWizard({
               <input
                 type="radio"
                 checked={answers.accessMode === "INVITE_LIST"}
-                onChange={() => updateAnswers({ accessMode: "INVITE_LIST" })}
+                onChange={() => updateAnswers({ accessMode: "INVITE_LIST", selectedCoachIds: [] })}
               />
               <span className="text-sm">
                 <span className="font-semibold text-zinc-100">Invite list only</span>
@@ -725,12 +742,14 @@ export default function AllStarBallotSetupWizard({
 
         {currentStep === "coachAccess" ? (
           <div className="space-y-4">
-            {answers.accessMode === "INVITE_LIST" ? (
-              <div className="space-y-2">
-                <p className="text-sm text-zinc-300">Which coaches should receive ballot access?</p>
-                <div className="max-h-56 overflow-auto rounded-lg border border-zinc-800">
+            <p className="text-sm text-zinc-300">
+              {answers.accessMode === "INVITE_LIST"
+                ? "Choose which coaches in this age group should be on the invite roster before publish."
+                : "Review coaches in this age group. Everyone checked is saved to the invite roster before publish; uncheck anyone you want to leave off the roster."}
+            </p>
+            <div className="max-h-72 overflow-auto rounded-lg border border-zinc-800">
                   {coachOptions.length === 0 ? (
-                    <p className="px-3 py-2 text-sm text-zinc-500">No coaches found for this cycle yet.</p>
+                    <p className="px-3 py-2 text-sm text-zinc-500">No coaches found for this age group yet.</p>
                   ) : (
                     coachOptions.map((coach) => (
                       <label
@@ -755,13 +774,6 @@ export default function AllStarBallotSetupWizard({
                     ))
                   )}
                 </div>
-              </div>
-            ) : (
-              <p className="text-sm text-zinc-400">
-                Age-group coaches can vote automatically. You can still save an invite roster for tracking or add extra
-                emails below.
-              </p>
-            )}
             <label className="block space-y-2">
               <span className="text-sm text-zinc-300">Extra coach emails (optional)</span>
               <textarea
@@ -844,6 +856,10 @@ export default function AllStarBallotSetupWizard({
             <p>
               <span className="text-zinc-500">Voter access:</span>{" "}
               {answers.accessMode === "INVITE_LIST" ? "Invite list only" : "Age-group coaches"}
+            </p>
+            <p>
+              <span className="text-zinc-500">Invite roster:</span>{" "}
+              {buildInviteEmails(selectedCoachEmails, answers.extraInviteEmails).length} coaches
             </p>
             <p>
               <span className="text-zinc-500">Showcase:</span> {answers.hasShowcase ? "Yes" : "No"}

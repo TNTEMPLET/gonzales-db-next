@@ -295,5 +295,20 @@ export async function ensureVoterCanAccessCycle(
     }
   }
 
+  const revokedRosterEntry = await prisma.allStarInvite.findFirst({
+    where: {
+      ballotCycleId: cycle.id,
+      invitedEmail: { equals: voter.email, mode: "insensitive" },
+      revokedAt: { not: null },
+    },
+    select: { id: true },
+  });
+  if (revokedRosterEntry) {
+    return {
+      error: "This email is not authorized for this ballot",
+      status: 403 as const,
+    };
+  }
+
   return { cycle, invite: null };
 }
