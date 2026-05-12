@@ -5,8 +5,6 @@ import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar
 import { importCandidatesFromTeamsForCycle } from "@/lib/allStar/candidates";
 import { resolveAllStarAgeGroupMetadata } from "@/lib/allStar/cycleSetupHelpers";
 import { mapAllStarCycle, parseSeasonYear } from "@/lib/allStar/server";
-import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import { hasAdminRoleAtLeast } from "@/lib/auth/adminRoles";
 import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
@@ -110,16 +108,9 @@ function getAutoCycleTitleForAgeBandPool(
 async function canDeleteCycles(request: NextRequest) {
   const admin = await getAdminUserFromRequest(request);
   if (!admin) return false;
-  const orgId = resolveAuthOrganizationId(request);
-  const effectiveRole = await getEffectiveAdminRoleForOrg(
-    admin.id,
-    admin.isMaster,
-    orgId,
-  );
-  if (effectiveRole && hasAdminRoleAtLeast(effectiveRole, "ADMIN")) {
-    return true;
-  }
+  if (admin.isMaster) return true;
 
+  const orgId = resolveAuthOrganizationId(request);
   const linkedRegisteredUsers = await prisma.registeredUser.findMany({
     where: {
       email: { equals: admin.email, mode: "insensitive" },

@@ -1,14 +1,13 @@
 import type { NextRequest } from "next/server";
 
-import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import prisma from "@/lib/prisma";
 
 /**
- * Changing ballots, cycles, invites, etc. Allowed for org admins with the All-Star module
- * or for registered users granted Full Access on the vault.
+ * Changing ballots, cycles, invites, etc. Allowed for Master Admins or registered
+ * users granted Full Access on the vault.
  */
 export async function ensureAllStarVaultAdmin(request: NextRequest) {
   return ensureAllStarVaultAccess(request, { needsManage: true });
@@ -28,13 +27,7 @@ export async function ensureAllStarVaultAccess(
   }
 
   const orgId = resolveAuthOrganizationId(request);
-  const effectiveRole = await getEffectiveAdminRoleForOrg(
-    adminUser.id,
-    adminUser.isMaster,
-    orgId,
-  );
-
-  if (effectiveRole && canAccessAdminModule(effectiveRole, "ALL_STAR_VAULT")) {
+  if (adminUser.isMaster) {
     return { ok: true, status: 200 };
   }
 
@@ -111,8 +104,48 @@ export async function canManageAllStarVault(
   return role === "FULL_ACCESS";
 }
 
+export async function resolveAllStarVaultAccessForAdmin(options: {
+  isMaster: boolean;
+  email: string;
+  organizationId: "gonzales" | "ascension";
+}) {
+  if (options.isMaster) {
+    return {
+      vaultView: true,
+      vaultManage: true,
+      canManageAllStarVaultUi: true,
+      isLimitedVaultAccess: false,
+    };
+  }
+
+  const vaultLinkedUsers = await prisma.registeredUser.findMany({
+    where: {
+      email: { equals: options.email, mode: "insensitive" },
+      organizationId: options.organizationId,
+    },
+    select: { id: true },
+  });
+
+  let vaultView = false;
+  let vaultManage = false;
+  for (const row of vaultLinkedUsers) {
+    if (await canViewAllStarVault(row.id, options.organizationId)) vaultView = true;
+    if (await canManageAllStarVault(row.id, options.organizationId)) vaultManage = true;
+  }
+
+  const canManageAllStarVaultUi = vaultManage;
+  const isLimitedVaultAccess = vaultView && !canManageAllStarVaultUi;
+
+  return {
+    vaultView,
+    vaultManage,
+    canManageAllStarVaultUi,
+    isLimitedVaultAccess,
+  };
+}
+
 /**
- * Delete a submitted ballot: full vault admins or org admins with the All-Star module.
+ * Delete a submitted ballot: Master Admins or vault Full Access only.
  * Limited vault access (LIMITED_ADMIN) is read-only for submissions.
  */
 export async function ensureAllStarVaultCanDeleteVoteSubmission(request: NextRequest) {
@@ -122,13 +155,7 @@ export async function ensureAllStarVaultCanDeleteVoteSubmission(request: NextReq
   }
 
   const orgId = resolveAuthOrganizationId(request);
-  const effectiveRole = await getEffectiveAdminRoleForOrg(
-    adminUser.id,
-    adminUser.isMaster,
-    orgId,
-  );
-
-  if (effectiveRole && canAccessAdminModule(effectiveRole, "ALL_STAR_VAULT")) {
+  if (adminUser.isMaster) {
     return { ok: true as const, status: 200 };
   }
 

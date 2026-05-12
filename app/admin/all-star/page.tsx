@@ -1,16 +1,12 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import {
-  canViewAllStarVault,
-  canManageAllStarVault,
-} from "@/lib/allStar/auth";
-import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { resolveAllStarVaultAccessForAdmin } from "@/lib/allStar/auth";
+import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarVaultManager from "@/components/admin/AllStarVaultManager";
-import prisma from "@/lib/prisma";
 import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -42,28 +38,16 @@ export default async function AdminAllStarPage({
     currentOrg,
   );
   const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
-  const moduleAllStar = canAccessAdminModule(role, "ALL_STAR_VAULT");
-
-  const vaultLinkedUsers = await prisma.registeredUser.findMany({
-    where: {
-      email: { equals: adminUser.email, mode: "insensitive" },
+  const { vaultView, canManageAllStarVaultUi, isLimitedVaultAccess } =
+    await resolveAllStarVaultAccessForAdmin({
+      isMaster: adminUser.isMaster,
+      email: adminUser.email,
       organizationId: currentOrg,
-    },
-    select: { id: true },
-  });
-  let vaultView = false;
-  let vaultManage = false;
-  for (const row of vaultLinkedUsers) {
-    if (await canViewAllStarVault(row.id, currentOrg)) vaultView = true;
-    if (await canManageAllStarVault(row.id, currentOrg)) vaultManage = true;
-  }
+    });
 
-  if (!moduleAllStar && !vaultView) {
+  if (!vaultView) {
     redirect("/admin?denied=all-star");
   }
-
-  const canManageAllStarVaultUi = moduleAllStar || vaultManage;
-  const isLimitedVaultAccess = vaultView && !canManageAllStarVaultUi;
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
