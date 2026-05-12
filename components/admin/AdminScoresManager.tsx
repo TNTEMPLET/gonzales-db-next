@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useMemo, type Dispatch, type SetStateAction } from "react";
+import { useEffect, useRef, useState, useMemo, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -141,6 +141,43 @@ async function safeJson(response: Response) {
   return response.json().catch(() => ({}));
 }
 
+function getReviewRowSelectedGameId(
+  row: ScoresImportReviewRow,
+  rowMappings: Record<string, string>,
+) {
+  return (
+    rowMappings[String(row.rowNumber)]?.trim() ||
+    row.autoMatchedGameId?.trim() ||
+    row.matchedGameId?.trim() ||
+    ""
+  );
+}
+
+function isReviewRowResolved(
+  row: ScoresImportReviewRow,
+  rowMappings: Record<string, string>,
+) {
+  return Boolean(getReviewRowSelectedGameId(row, rowMappings));
+}
+
+function mergeSuggestedRowMappings(
+  reviewRows: ScoresImportReviewRow[],
+  rowMappings: Record<string, string>,
+) {
+  const next = { ...rowMappings };
+
+  for (const row of reviewRows) {
+    const rowKey = String(row.rowNumber);
+    if (next[rowKey]?.trim()) continue;
+    const suggested = row.suggestedGameExternalId?.trim();
+    if (suggested) {
+      next[rowKey] = suggested;
+    }
+  }
+
+  return next;
+}
+
 function formatGameDate(value: string | null) {
   if (!value) return "Date TBD";
   const parsed = new Date(value);
@@ -264,10 +301,9 @@ export default function AdminScoresManager({
   }, [ageGroupMappings, importAgeGroups]);
 
   const unresolvedReviewRows = useMemo(() => {
-    return (importPreview?.reviewRows ?? []).filter((row) => {
-      if (row.outcome !== "unmatched") return false;
-      return !rowMappings[String(row.rowNumber)]?.trim();
-    });
+    return (importPreview?.reviewRows ?? []).filter(
+      (row) => !isReviewRowResolved(row, rowMappings),
+    );
   }, [importPreview?.reviewRows, rowMappings]);
 
   const nonRainoutGames = useMemo(
@@ -462,6 +498,9 @@ export default function AdminScoresManager({
       }
 
       setImportPreview(json);
+      setRowMappings((current) =>
+        mergeSuggestedRowMappings(json.reviewRows ?? [], current),
+      );
       setNotice(
         `Refreshed matches. Matched ${json.summary.matched}, unmatched ${json.summary.unmatched}.`,
       );
@@ -502,7 +541,9 @@ export default function AdminScoresManager({
       setParkMappings(json.suggestedMappings.parkMappings ?? {});
       setFieldMappings(json.suggestedMappings.fieldMappings ?? {});
       setAgeGroupMappings(json.suggestedMappings.ageGroupMappings ?? {});
-      setRowMappings({});
+      setRowMappings(
+        mergeSuggestedRowMappings(json.reviewRows ?? [], {}),
+      );
       setAcknowledgedCancelledGames(false);
       setNotice(
         `Parsed ${json.rowCount} rows. Matched ${json.summary.matched}, unmatched ${json.summary.unmatched}, missing scores ${json.summary.skippedMissingScore}, rained-out skipped ${json.summary.skippedRainedOut}.`,
@@ -668,6 +709,7 @@ export default function AdminScoresManager({
             summary={importPreview.summary}
             reviewRows={importPreview.reviewRows}
             unresolvedReviewCount={unresolvedReviewRows.length}
+            unresolvedReviewRows={unresolvedReviewRows}
             venues={importPreview.venues}
           />
         ) : null}
@@ -994,11 +1036,28 @@ function ScoresImportMappingPanel(props: {
   cancelledRows: ScoresImportPreviewSample[];
   reviewRows: ScoresImportReviewRow[];
   unresolvedReviewCount: number;
+  unresolvedReviewRows: ScoresImportReviewRow[];
   requiresCancelledAcknowledgement: boolean;
   acknowledgedCancelledGames: boolean;
   setAcknowledgedCancelledGames: Dispatch<SetStateAction<boolean>>;
   onRefreshPreview: () => void;
 }) {
+  const [showOnlyUnresolved, setShowOnlyUnresolved] = useState(
+    () => props.unresolvedReviewCount > 0,
+  );
+
+  useEffect(() => {
+    if (props.unresolvedReviewCount > 0) {
+      setShowOnlyUnresolved(true);
+      return;
+    }
+    setShowOnlyUnresolved(false);
+  }, [props.unresolvedReviewCount]);
+
+  const visibleReviewRows = showOnlyUnresolved
+    ? props.unresolvedReviewRows
+    : props.reviewRows;
+
   return (
     <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 text-sm">
@@ -1013,6 +1072,11 @@ function ScoresImportMappingPanel(props: {
         <div>
           <p className="text-xs uppercase tracking-wide text-zinc-500">Unmatched</p>
           <p className="font-semibold text-amber-300">{props.summary.unmatched}</p>
+          {props.unresolvedReviewCount > 0 ? (
+            <p className="mt-1 text-xs text-amber-300">
+              {props.unresolvedReviewCount} still need a manual match
+            </p>
+          ) : null}
         </div>
         <div>
           <p className="text-xs uppercase tracking-wide text-zinc-500">
@@ -1031,6 +1095,38 @@ function ScoresImportMappingPanel(props: {
           </p>
         </div>
       </div>
+
+      {props.unresolvedReviewCount > 0 ? (
+        <div className="rounded-xl border border-amber-700/60 bg-amber-950/20 p-4 space-y-3">
+          <div>
+            <h3 className="text-sm font-semibold text-amber-200">
+              {props.unresolvedReviewCount} upload row
+              {props.unresolvedReviewCount === 1 ? "" : "s"} still need a match
+            </h3>
+            <p className="mt-1 text-xs text-amber-100/80">
+              Pick an Assignr game for each row below, then refresh if you changed
+              age group or venue mappings.
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {props.unresolvedReviewRows.map((row) => (
+              <button
+                key={`unresolved-${row.rowNumber}`}
+                type="button"
+                onClick={() => {
+                  document
+                    .getElementById(`scores-import-row-${row.rowNumber}`)
+                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
+                }}
+                className="rounded-full border border-amber-600/60 px-3 py-1 text-xs text-amber-100 hover:bg-amber-900/30"
+              >
+                Row {row.rowNumber}: {row.homeTeam || "Home"} vs{" "}
+                {row.awayTeam || "Away"}
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {props.importAgeGroups.length > 0 ? (
         <div className="rounded-xl border border-zinc-800 overflow-hidden">
@@ -1276,23 +1372,44 @@ function ScoresImportMappingPanel(props: {
             <p className="mt-1 text-xs text-zinc-400">
               Auto-matching uses date, age group, and teams. Start time is only
               used to rank suggestions. Override any row before confirming.
-              {props.unresolvedReviewCount > 0
-                ? ` ${props.unresolvedReviewCount} row${props.unresolvedReviewCount === 1 ? "" : "s"} still need a match.`
-                : ""}
             </p>
-            <button
-              type="button"
-              onClick={props.onRefreshPreview}
-              className="mt-3 text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-2"
-            >
-              Refresh match suggestions
-            </button>
+            <div className="mt-3 flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={props.onRefreshPreview}
+                className="text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-2"
+              >
+                Refresh match suggestions
+              </button>
+              {props.unresolvedReviewCount > 0 ? (
+                <button
+                  type="button"
+                  onClick={() => setShowOnlyUnresolved((current) => !current)}
+                  className={`text-xs rounded-lg border px-3 py-2 ${
+                    showOnlyUnresolved
+                      ? "border-amber-600 text-amber-200 bg-amber-950/30"
+                      : "border-zinc-600 text-zinc-200 hover:bg-zinc-800"
+                  }`}
+                >
+                  {showOnlyUnresolved
+                    ? `Showing ${props.unresolvedReviewCount} unmatched row${props.unresolvedReviewCount === 1 ? "" : "s"}`
+                    : `Show unmatched only (${props.unresolvedReviewCount})`}
+                </button>
+              ) : null}
+            </div>
           </div>
-          <ScoresImportReviewTable
-            rowMappings={props.rowMappings}
-            rows={props.reviewRows}
-            setRowMappings={props.setRowMappings}
-          />
+          {visibleReviewRows.length > 0 ? (
+            <ScoresImportReviewTable
+              rowMappings={props.rowMappings}
+              rows={visibleReviewRows}
+              setRowMappings={props.setRowMappings}
+            />
+          ) : (
+            <p className="px-4 py-6 text-sm text-zinc-400">
+              No unmatched rows in this view. Turn off the unmatched filter to
+              review auto-matched rows.
+            </p>
+          )}
         </div>
       ) : null}
 
@@ -1339,21 +1456,21 @@ function ScoresImportReviewTable(props: {
         <tbody>
           {props.rows.map((row) => {
             const rowKey = String(row.rowNumber);
-            const selectedGameId =
-              props.rowMappings[rowKey] ||
-              row.autoMatchedGameId ||
-              row.matchedGameId ||
-              "";
+            const selectedGameId = getReviewRowSelectedGameId(row, props.rowMappings);
+            const resolved = isReviewRowResolved(row, props.rowMappings);
 
             return (
               <tr
+                id={`scores-import-row-${row.rowNumber}`}
                 key={`${row.rowNumber}-${row.matchId}-${row.date}`}
-                className="border-t border-zinc-800 align-top"
+                className={`border-t border-zinc-800 align-top ${
+                  resolved ? "" : "bg-amber-950/20"
+                }`}
               >
                 <td className="px-4 py-2">{row.rowNumber}</td>
                 <td className="px-4 py-2">
-                  {row.outcome === "matched" ? (
-                    <span className="text-emerald-300">Matched</span>
+                  {resolved ? (
+                    <span className="text-emerald-300">Ready</span>
                   ) : (
                     <span className="text-amber-300">Needs match</span>
                   )}
