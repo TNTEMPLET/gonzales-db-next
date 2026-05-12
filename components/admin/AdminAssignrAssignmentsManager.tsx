@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { ContentOrgId } from "@/lib/siteConfig";
+import { todayIsoDate } from "@/lib/admin/assignrDeskDateRange";
 
 type OfficialOption = {
   id?: string | number;
@@ -44,7 +45,7 @@ type AssignmentGame = {
 type AssignmentStatus = "accepted" | "declined" | "pending";
 
 function defaultDateRange() {
-  return { startDate: "2026-03-01", endDate: "2026-06-30" };
+  return { startDate: todayIsoDate(), endDate: "" };
 }
 
 function officialLabel(official?: OfficialOption) {
@@ -232,11 +233,15 @@ export default function AdminAssignrAssignmentsManager({
     try {
       const params = new URLSearchParams({
         org: targetOrg,
-        startDate,
-        endDate,
         scope: "site",
         view,
       });
+      if (startDate.trim()) {
+        params.set("startDate", startDate);
+      }
+      if (endDate.trim()) {
+        params.set("endDate", endDate);
+      }
       const response = await fetch(`/api/admin/assignr/assignments?${params}`);
       const json = (await response.json()) as {
         error?: string;

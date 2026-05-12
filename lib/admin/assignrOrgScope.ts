@@ -3,6 +3,7 @@ import {
   filterAssignrGamesWithOpenAssignmentSlots,
   listAssignrGames,
 } from "@/lib/assignr/games";
+import { resolveAssignrDeskDateRange } from "@/lib/admin/assignrDeskDateRange";
 import type { ListAssignrGamesOptions } from "@/lib/assignr/games";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import {
@@ -76,9 +77,10 @@ export async function fetchUnassignedAssignrGamesForContentOrg(
   org: ContentOrgId,
   params: { startDate?: string; endDate?: string; siteId?: string },
 ) {
+  const { startDate, endDate } = resolveAssignrDeskDateRange(params);
   const games = await fetchAssignrGamesForContentOrg(org, {
-    startDate: params.startDate ?? "2026-03-01",
-    endDate: params.endDate ?? "2026-06-30",
+    startDate,
+    endDate,
     cache: "no-store",
     ...(params.siteId ? { siteId: params.siteId } : {}),
   });
