@@ -178,10 +178,13 @@ export async function ensureVoterCanAccessCycle(
   }
 
   const now = new Date();
-  if (cycle.publishedAt && cycle.publishedAt > now) {
+  if (!cycle.publishedAt || !cycle.closedAt) {
+    return { error: "Ballot voting is not open yet", status: 403 as const };
+  }
+  if (cycle.publishedAt > now) {
     return { error: "Ballot is not open yet", status: 403 as const };
   }
-  if (cycle.closedAt && cycle.closedAt <= now) {
+  if (cycle.closedAt <= now) {
     return { error: "Ballot window has closed", status: 403 as const };
   }
 

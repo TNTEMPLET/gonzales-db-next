@@ -843,8 +843,13 @@ export default function AllStarBallotSetupWizard({
                 value={answers.votingPreset}
                 onChange={(event) => {
                   const preset = event.target.value as SetupWizardAnswers["votingPreset"];
-                  if (preset === "custom") {
-                    updateAnswers({ votingPreset: preset });
+                  if (preset === "custom" || preset === "later") {
+                    updateAnswers({
+                      votingPreset: preset,
+                      ...(preset === "later"
+                        ? { publishedAtLocal: "", closedAtLocal: "" }
+                        : {}),
+                    });
                     return;
                   }
                   const window = resolveVotingWindowFromPreset(preset, "", "");
@@ -856,6 +861,7 @@ export default function AllStarBallotSetupWizard({
                 }}
                 className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
               >
+                <option value="later">Publish now; set open window later</option>
                 <option value="1h">Open now for 1 hour</option>
                 <option value="4h">Open now for 4 hours</option>
                 <option value="24h">Open now for 24 hours</option>

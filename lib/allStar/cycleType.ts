@@ -26,11 +26,13 @@ type CycleVotingWindow = {
 
 export function isPublishedCycleWithinOpenWindow(cycle: CycleVotingWindow) {
   if (cycle.status !== "PUBLISHED") return false;
+  if (!cycle.publishedAt || !cycle.closedAt) return false;
   const now = Date.now();
-  const openAt = cycle.publishedAt ? new Date(cycle.publishedAt).getTime() : null;
-  const closeAt = cycle.closedAt ? new Date(cycle.closedAt).getTime() : null;
-  if (openAt !== null && !Number.isNaN(openAt) && now < openAt) return false;
-  if (closeAt !== null && !Number.isNaN(closeAt) && now >= closeAt) return false;
+  const openAt = new Date(cycle.publishedAt).getTime();
+  const closeAt = new Date(cycle.closedAt).getTime();
+  if (Number.isNaN(openAt) || Number.isNaN(closeAt)) return false;
+  if (now < openAt) return false;
+  if (now >= closeAt) return false;
   return true;
 }
 
