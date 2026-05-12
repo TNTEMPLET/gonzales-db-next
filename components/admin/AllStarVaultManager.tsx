@@ -2037,7 +2037,7 @@ export default function AllStarVaultManager({
   const boardTitle = showFullAdminView
     ? "Cycle Snapshot Board"
     : isAuditorFocusedPreview
-      ? "Observer Snapshot (limited admin)"
+      ? "Observer Snapshot"
       : `Limited Overview (${previewRole.replaceAll("_", " ")})`;
   const showCycleSnapshotBoard =
     (showFullAdminView &&
@@ -2075,7 +2075,7 @@ export default function AllStarVaultManager({
       {!canManageAllStarVaultUi && !isAuditorFocusedPreview ? (
         <div className="rounded-lg border border-sky-800 bg-sky-950/30 p-3 text-sm text-sky-200">
           {isLimitedVaultAccess
-            ? "Limited admin vault access: you can open ballot tools below for the selected cycle — who has submitted, vote standings, and the shared ballot link. Submitted ballots are read-only here. Cycle setup, candidates, and roster edits stay disabled."
+            ? "Open ballot tools below for the selected cycle — who has submitted, vote standings, and the shared ballot link. Submitted ballots are read-only here. Cycle setup, candidates, and roster edits stay disabled."
             : "Some management actions are hidden for your current preview or role."}
         </div>
       ) : null}
