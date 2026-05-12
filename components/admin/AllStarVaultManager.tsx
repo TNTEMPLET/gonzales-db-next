@@ -2044,7 +2044,7 @@ export default function AllStarVaultManager({
   const showsVoteStandingsRanks =
     canViewAllStarVault &&
     previewCanViewAllStar &&
-    (canManageAllStarVaultUi || isLimitedVaultAccess);
+    (canManageAllStarVaultUi || isLimitedVaultAccess || isAuditorFocusedPreview);
   const voteStandingsForDisplay = showsVoteStandingsRanks
     ? voteSummary
     : sortVoteSummaryRowsByLastName(voteSummary);

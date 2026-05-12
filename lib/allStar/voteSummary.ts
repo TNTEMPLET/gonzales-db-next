@@ -120,6 +120,13 @@ export function computeSecondTeamInclusion(
   });
 }
 
+export function getPlayerFirstLastName(playerFullName: string) {
+  const parts = playerFullName.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return playerFullName.trim();
+  if (parts.length === 1) return parts[0]!;
+  return `${parts[0]} ${parts[parts.length - 1]}`;
+}
+
 export function getPlayerLastNameForSort(playerFullName: string) {
   const normalized = playerFullName.trim();
   if (!normalized) return "";
@@ -158,6 +165,6 @@ export type NameOnlyRankRow = { rank: string; displayLine: string };
 export function buildNameOnlyVotePdfRows(sorted: VoteSummaryRow[]): NameOnlyRankRow[] {
   return sortVoteSummaryRowsByLastName(selectVoteSummaryNameOnlyPool(sorted)).map((row) => ({
     rank: "",
-    displayLine: row.playerFullName,
+    displayLine: getPlayerFirstLastName(row.playerFullName),
   }));
 }
