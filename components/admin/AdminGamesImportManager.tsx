@@ -2,7 +2,17 @@
 
 import { useMemo, useRef, useState } from "react";
 
-import type { ContentOrgId } from "@/lib/siteConfig";
+import {
+  assignrScopeLabel,
+  assignrScopeToQueryParam,
+  isAllSitesAssignrScope,
+  type AdminAssignrScope,
+} from "@/lib/admin/assignrOrgScope";
+import {
+  CONTENT_ORGS,
+  getOrgDisplayName,
+  type ContentOrgId,
+} from "@/lib/siteConfig";
 
 type VenueCatalogEntry = {
   venue: string;
@@ -44,16 +54,19 @@ type FieldOption = {
 };
 
 type PreviewResponse = {
+  scope: AdminAssignrScope;
   seasonYear: number;
   parsedCount: number;
   tournaments: string[];
   parks: string[];
   fields: FieldOption[];
   ageGroups: string[];
+  ageGroupsByOrg: Record<ContentOrgId, string[]>;
   venues: string[];
   venueCatalog: VenueCatalogEntry[];
   suggestedMappings: {
     ageGroupMappings: Record<string, string>;
+    contentOrgMappings: Record<string, string>;
     parkMappings: Record<string, string>;
     fieldMappings: Record<string, string>;
   };
@@ -66,14 +79,19 @@ async function safeJson(response: Response) {
 }
 
 export default function AdminGamesImportManager({
-  targetOrg,
+  scope,
 }: {
-  targetOrg: ContentOrgId;
+  scope: AdminAssignrScope;
 }) {
-  const orgQuery = `org=${targetOrg}`;
+  const orgQuery = assignrScopeToQueryParam(scope);
+  const allSites = isAllSitesAssignrScope(scope);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [seasonYear, setSeasonYear] = useState("2026");
   const [league, setLeague] = useState("");
+  const [leagueByOrg, setLeagueByOrg] = useState<Record<ContentOrgId, string>>({
+    gonzales: "",
+    ascension: "",
+  });
   const [gameType, setGameType] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -83,6 +101,9 @@ export default function AdminGamesImportManager({
   const [ageGroupMappings, setAgeGroupMappings] = useState<Record<string, string>>(
     {},
   );
+  const [contentOrgMappings, setContentOrgMappings] = useState<
+    Record<string, ContentOrgId>
+  >({});
   const [parkMappings, setParkMappings] = useState<Record<string, string>>({});
   const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
   const [tournamentFilter, setTournamentFilter] = useState("");
@@ -122,6 +143,13 @@ export default function AdminGamesImportManager({
     });
   }, [preview?.rows, showWarningsOnly, tournamentFilter]);
 
+  const missingSites = useMemo(() => {
+    if (!allSites) return [];
+    return (preview?.tournaments ?? []).filter(
+      (tournament) => !contentOrgMappings[tournament]?.trim(),
+    );
+  }, [allSites, contentOrgMappings, preview?.tournaments]);
+
   const missingAgeGroups = useMemo(() => {
     return (preview?.tournaments ?? []).filter(
       (tournament) => !ageGroupMappings[tournament]?.trim(),
@@ -148,7 +176,9 @@ export default function AdminGamesImportManager({
       formData.append("seasonYear", seasonYear);
 
       const response = await fetch(
-        `/api/admin/games/import/preview?${orgQuery}`,
+        orgQuery
+          ? `/api/admin/games/import/preview?${orgQuery}`
+          : "/api/admin/games/import/preview",
         {
           method: "POST",
           body: formData,
@@ -161,6 +191,12 @@ export default function AdminGamesImportManager({
 
       setPreview(json);
       setAgeGroupMappings(json.suggestedMappings.ageGroupMappings ?? {});
+      setContentOrgMappings(
+        (json.suggestedMappings.contentOrgMappings ?? {}) as Record<
+          string,
+          ContentOrgId
+        >,
+      );
       setParkMappings(json.suggestedMappings.parkMappings ?? {});
       setFieldMappings(json.suggestedMappings.fieldMappings ?? {});
       setNotice(`Parsed ${json.parsedCount} tournament games.`);
@@ -177,8 +213,13 @@ export default function AdminGamesImportManager({
       setError("Upload a tournament schedule file before exporting.");
       return;
     }
-    if (missingAgeGroups.length > 0 || missingParks.length > 0 || missingFields.length > 0) {
-      setError("Complete age group, venue, and field mappings before exporting.");
+    if (
+      missingAgeGroups.length > 0 ||
+      missingSites.length > 0 ||
+      missingParks.length > 0 ||
+      missingFields.length > 0
+    ) {
+      setError("Complete site, age group, venue, and field mappings before exporting.");
       return;
     }
 
@@ -190,13 +231,19 @@ export default function AdminGamesImportManager({
       formData.append("file", uploadedFile);
       formData.append("seasonYear", seasonYear);
       formData.append("ageGroupMappings", JSON.stringify(ageGroupMappings));
+      if (allSites) {
+        formData.append("contentOrgMappings", JSON.stringify(contentOrgMappings));
+        formData.append("leagueByOrg", JSON.stringify(leagueByOrg));
+      }
       formData.append("parkMappings", JSON.stringify(parkMappings));
       formData.append("fieldMappings", JSON.stringify(fieldMappings));
       formData.append("league", league);
       formData.append("gameType", gameType);
 
       const response = await fetch(
-        `/api/admin/games/import/export?${orgQuery}`,
+        orgQuery
+          ? `/api/admin/games/import/export?${orgQuery}`
+          : "/api/admin/games/import/export",
         {
           method: "POST",
           body: formData,
@@ -234,16 +281,19 @@ export default function AdminGamesImportManager({
 
   return (
     <section className="mt-10 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 space-y-6">
-      <ImportHeader />
+      <ImportHeader scope={scope} />
 
       <ImportUploadControls
+        allSites={allSites}
         busy={busy}
         fileInputRef={fileInputRef}
         gameType={gameType}
         league={league}
+        leagueByOrg={leagueByOrg}
         seasonYear={seasonYear}
         setGameType={setGameType}
         setLeague={setLeague}
+        setLeagueByOrg={setLeagueByOrg}
         setSeasonYear={setSeasonYear}
         onFileSelected={(file) => {
           setUploadedFile(file);
@@ -263,14 +313,19 @@ export default function AdminGamesImportManager({
           <ImportMappingSection
             ageGroupMappings={ageGroupMappings}
             ageGroups={preview.ageGroups}
+            ageGroupsByOrg={preview.ageGroupsByOrg}
+            allSites={allSites}
+            contentOrgMappings={contentOrgMappings}
             fieldMappings={fieldMappings}
             fields={preview.fields}
             missingAgeGroups={missingAgeGroups}
             missingFields={missingFields}
             missingParks={missingParks}
+            missingSites={missingSites}
             parkMappings={parkMappings}
             parks={preview.parks}
             setAgeGroupMappings={setAgeGroupMappings}
+            setContentOrgMappings={setContentOrgMappings}
             setFieldMappings={setFieldMappings}
             setParkMappings={setParkMappings}
             subVenueOptionsByVenue={subVenueOptionsByVenue}
@@ -303,7 +358,7 @@ export default function AdminGamesImportManager({
   );
 }
 
-function ImportHeader() {
+function ImportHeader({ scope }: { scope: AdminAssignrScope }) {
   return (
     <div className="space-y-2">
       <h2 className="text-2xl font-semibold tracking-tight">
@@ -314,33 +369,45 @@ function ImportHeader() {
         Assignr age groups, normalize parks and fields against the live schedule
         catalog, then download an Assignr bulk-import file.
       </p>
+      <p className="text-xs uppercase tracking-wide text-zinc-500">
+        Assignr scope: {assignrScopeLabel(scope)}
+      </p>
     </div>
   );
 }
 
 function ImportUploadControls({
+  allSites,
   busy,
   fileInputRef,
   seasonYear,
   setSeasonYear,
   league,
   setLeague,
+  leagueByOrg,
+  setLeagueByOrg,
   gameType,
   setGameType,
   onFileSelected,
 }: {
+  allSites: boolean;
   busy: boolean;
   fileInputRef: React.RefObject<HTMLInputElement | null>;
   seasonYear: string;
   setSeasonYear: (value: string) => void;
   league: string;
   setLeague: (value: string) => void;
+  leagueByOrg: Record<ContentOrgId, string>;
+  setLeagueByOrg: React.Dispatch<
+    React.SetStateAction<Record<ContentOrgId, string>>
+  >;
   gameType: string;
   setGameType: (value: string) => void;
   onFileSelected: (file: File) => void;
 }) {
   return (
-    <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr_auto]">
+    <div className="space-y-4">
+      <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr_auto]">
       <label className="space-y-1">
         <span className="block text-xs uppercase tracking-wide text-zinc-400">
           Tournament schedule file
@@ -374,9 +441,9 @@ function ImportUploadControls({
         </span>
         <input
           value={league}
-          disabled={busy}
+          disabled={busy || allSites}
           onChange={(event) => setLeague(event.target.value)}
-          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm disabled:opacity-50"
         />
       </label>
       <label className="space-y-1">
@@ -390,6 +457,29 @@ function ImportUploadControls({
           className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
         />
       </label>
+      </div>
+      {allSites ? (
+        <div className="grid gap-4 md:grid-cols-2">
+          {CONTENT_ORGS.map((org) => (
+            <label key={org} className="space-y-1">
+              <span className="block text-xs uppercase tracking-wide text-zinc-400">
+                Default league ({getOrgDisplayName(org)})
+              </span>
+              <input
+                value={leagueByOrg[org]}
+                disabled={busy}
+                onChange={(event) =>
+                  setLeagueByOrg((current) => ({
+                    ...current,
+                    [org]: event.target.value,
+                  }))
+                }
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+              />
+            </label>
+          ))}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -413,6 +503,9 @@ function ImportNotice({ message }: { message: string }) {
 function ImportMappingSection(props: {
   tournaments: string[];
   ageGroups: string[];
+  ageGroupsByOrg: Record<ContentOrgId, string[]>;
+  allSites: boolean;
+  contentOrgMappings: Record<string, ContentOrgId>;
   parks: string[];
   venues: string[];
   fields: FieldOption[];
@@ -422,12 +515,16 @@ function ImportMappingSection(props: {
   setAgeGroupMappings: React.Dispatch<
     React.SetStateAction<Record<string, string>>
   >;
+  setContentOrgMappings: React.Dispatch<
+    React.SetStateAction<Record<string, ContentOrgId>>
+  >;
   setParkMappings: React.Dispatch<React.SetStateAction<Record<string, string>>>;
   setFieldMappings: React.Dispatch<
     React.SetStateAction<Record<string, string>>
   >;
   subVenueOptionsByVenue: Map<string, string[]>;
   missingAgeGroups: string[];
+  missingSites: string[];
   missingParks: string[];
   missingFields: FieldOption[];
 }) {
@@ -438,6 +535,12 @@ function ImportMappingSection(props: {
           <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
             Tournament to age group mapping
           </h3>
+          {props.missingSites.length > 0 ? (
+            <p className="mt-1 text-xs text-amber-300">
+              {props.missingSites.length} tournament section
+              {props.missingSites.length === 1 ? "" : "s"} still need a site.
+            </p>
+          ) : null}
           {props.missingAgeGroups.length > 0 ? (
             <p className="mt-1 text-xs text-amber-300">
               {props.missingAgeGroups.length} tournament section
@@ -450,6 +553,7 @@ function ImportMappingSection(props: {
           <thead className="bg-zinc-950">
             <tr className="text-left text-zinc-400">
               <th className="px-4 py-2">Imported tournament</th>
+              {props.allSites ? <th className="px-4 py-2">Site</th> : null}
               <th className="px-4 py-2">Assignr age group</th>
             </tr>
           </thead>
@@ -457,6 +561,27 @@ function ImportMappingSection(props: {
             {props.tournaments.map((tournament) => (
               <tr key={tournament} className="border-t border-zinc-800">
                 <td className="px-4 py-2">{tournament}</td>
+                {props.allSites ? (
+                  <td className="px-4 py-2">
+                    <select
+                      value={props.contentOrgMappings[tournament] || ""}
+                      onChange={(event) =>
+                        props.setContentOrgMappings((current) => ({
+                          ...current,
+                          [tournament]: event.target.value as ContentOrgId,
+                        }))
+                      }
+                      className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                    >
+                      <option value="">Select site…</option>
+                      {CONTENT_ORGS.map((org) => (
+                        <option key={org} value={org}>
+                          {getOrgDisplayName(org)}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                ) : null}
                 <td className="px-4 py-2">
                   <select
                     value={props.ageGroupMappings[tournament] || ""}
@@ -469,11 +594,21 @@ function ImportMappingSection(props: {
                     className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
                   >
                     <option value="">Select age group…</option>
-                    {props.ageGroups.map((option) => (
-                      <option key={option} value={option}>
-                        {option}
-                      </option>
-                    ))}
+                    {props.allSites
+                      ? CONTENT_ORGS.map((org) => (
+                          <optgroup key={org} label={getOrgDisplayName(org)}>
+                            {(props.ageGroupsByOrg[org] ?? []).map((option) => (
+                              <option key={`${org}-${option}`} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </optgroup>
+                        ))
+                      : props.ageGroups.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
                   </select>
                 </td>
               </tr>

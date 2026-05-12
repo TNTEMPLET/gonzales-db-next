@@ -5,7 +5,7 @@ import { isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
 
 type AdminSectionHeaderProps = {
   badge: string;
-  currentOrg?: ContentOrgId;
+  currentOrg?: ContentOrgId | null;
   currentPath?: string;
   allowRolePreview?: boolean;
 };
@@ -33,9 +33,9 @@ export default function AdminSectionHeader({
             </p>
           </div>
           <div className="flex flex-col gap-3 xl:items-end">
-            {currentOrg && currentPath ? (
+            {currentPath ? (
               <AdminOrgSwitcher
-                currentOrg={currentOrg}
+                currentOrg={currentOrg ?? null}
                 currentPath={currentPath}
               />
             ) : null}

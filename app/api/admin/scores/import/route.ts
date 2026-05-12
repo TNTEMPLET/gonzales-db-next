@@ -2,10 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { fetchGames, type Game } from "@/lib/fetchGames";
+import { type Game } from "@/lib/fetchGames";
+import {
+  fetchAssignrGamesForScope,
+  inferContentOrgFromGame,
+  resolveAdminAssignrScope,
+} from "@/lib/admin/assignrOrgScope";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 type CsvRow = Record<string, string | number | boolean | null | undefined>;
 
@@ -119,10 +123,9 @@ function buildFallbackKeyWithTime(
 }
 
 export async function POST(request: NextRequest) {
-  const targetOrg = resolveAdminTargetOrg(
+  const scope = resolveAdminAssignrScope(
     request.nextUrl.searchParams.get("org"),
   );
-  const leagueId = getAssignrLeagueId(targetOrg);
   const auth = await ensureAdminModule(request, "SCORES");
   if (!auth.ok) {
     return NextResponse.json(
@@ -167,10 +170,10 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const allSeasonGames = await fetchGames({
+    const allSeasonGames = await fetchAssignrGamesForScope({
       startDate: "2026-03-01",
       endDate: "2026-06-30",
-      leagueId,
+      scope,
     });
 
     const gameById = new Map<string, Game>();
@@ -300,6 +303,12 @@ export async function POST(request: NextRequest) {
         parsedDateFromGame && !Number.isNaN(parsedDateFromGame.valueOf())
           ? parsedDateFromGame
           : null;
+
+      const targetOrg = inferContentOrgFromGame(game);
+      if (!targetOrg) {
+        unmatched += 1;
+        continue;
+      }
 
       await prisma.gameScore.upsert({
         where: {

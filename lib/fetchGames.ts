@@ -17,7 +17,12 @@ export type Game = {
     venue?: {
       name?: string;
     };
+    league?: {
+      id?: string | number;
+      name?: string;
+    };
   };
+  league_id?: string | number;
   [key: string]: string | number | boolean | object | undefined | null;
 };
 

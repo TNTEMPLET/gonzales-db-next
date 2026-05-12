@@ -1,3 +1,4 @@
+import { inferContentOrgFromAgeGroup } from "@/lib/admin/assignrOrgScope";
 import type {
   AssignrGameImportRow,
   TournamentGameDraft,
@@ -13,9 +14,11 @@ import {
 
 export type GamesImportMappingInput = {
   ageGroupMappings: Record<string, string>;
+  contentOrgMappings?: Record<string, string>;
   parkMappings: Record<string, string>;
   fieldMappings: Record<string, string>;
   league?: string;
+  leagueByOrg?: Record<string, string>;
   gameType?: string;
   includeSourceNotes?: boolean;
 };
@@ -43,10 +46,20 @@ export function mapDraftToAssignrRow(
   const venue = mappings.parkMappings[draft.sourcePark.trim()]?.trim();
   const fieldKey = fieldMappingKey(draft.sourcePark, draft.sourceField);
   const subVenue = mappings.fieldMappings[fieldKey]?.trim();
+  const mappedOrg =
+    mappings.contentOrgMappings?.[draft.sourceTournament.trim()]?.trim() ||
+    inferContentOrgFromAgeGroup(ageGroup);
+  const league =
+    (mappedOrg && mappings.leagueByOrg?.[mappedOrg]?.trim()) ||
+    mappings.league?.trim() ||
+    "";
 
   if (!ageGroup) warnings.push("Missing age group mapping");
   if (!venue) warnings.push("Missing venue mapping");
   if (!subVenue) warnings.push("Missing sub-venue mapping");
+  if (mappings.contentOrgMappings && !mappedOrg) {
+    warnings.push("Missing site mapping");
+  }
 
   const notes =
     mappings.includeSourceNotes === false
@@ -63,7 +76,7 @@ export function mapDraftToAssignrRow(
     gender: "",
     homeTeam: draft.homeTeam,
     awayTeam: draft.awayTeam,
-    league: mappings.league?.trim() ?? "",
+    league,
     gameType: mappings.gameType?.trim() ?? "",
     pattern: "",
     paidBy: "",

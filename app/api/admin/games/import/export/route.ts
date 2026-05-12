@@ -28,9 +28,11 @@ export async function POST(request: NextRequest) {
     const file = formData.get("file");
     const seasonYear = parseSeasonYear(formData.get("seasonYear"));
     const ageGroupMappings = parseJsonRecord(formData.get("ageGroupMappings"));
+    const contentOrgMappings = parseJsonRecord(formData.get("contentOrgMappings"));
     const parkMappings = parseJsonRecord(formData.get("parkMappings"));
     const fieldMappings = parseJsonRecord(formData.get("fieldMappings"));
     const league = String(formData.get("league") || "").trim();
+    const leagueByOrg = parseJsonRecord(formData.get("leagueByOrg"));
     const gameType = String(formData.get("gameType") || "").trim();
     const includeUnmapped = String(formData.get("includeUnmapped") || "false")
       .trim()
@@ -56,9 +58,11 @@ export async function POST(request: NextRequest) {
       drafts,
       {
         ageGroupMappings,
+        contentOrgMappings,
         parkMappings,
         fieldMappings,
         league,
+        leagueByOrg,
         gameType,
       },
       seasonYear,

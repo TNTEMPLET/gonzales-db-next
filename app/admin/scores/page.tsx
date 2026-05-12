@@ -3,6 +3,10 @@ import { redirect } from "next/navigation";
 
 import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import {
+  fetchAssignrGamesForScope,
+  resolveAdminAssignrScope,
+} from "@/lib/admin/assignrOrgScope";
 import AdminGamesImportManager from "@/components/admin/AdminGamesImportManager";
 import AdminScoresManager from "@/components/admin/AdminScoresManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
@@ -10,12 +14,13 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { fetchGames } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
 import {
-  getAssignrLeagueId,
+  CONTENT_ORGS,
+  getDefaultContentOrg,
   getSiteConfig,
-  resolveAdminTargetOrg,
+  isMasterDeployment,
+  type ContentOrgId,
 } from "@/lib/siteConfig";
 import { buildScoreEntryGames } from "@/lib/admin/scoreEntryGames";
 
@@ -33,8 +38,13 @@ export default async function AdminScoresPage({
   searchParams: Promise<{ org?: string }>;
 }) {
   const { org } = await searchParams;
-  const orgId = resolveAdminTargetOrg(org);
-  const leagueId = getAssignrLeagueId(orgId);
+  const masterMode = isMasterDeployment();
+  const requestedOrg =
+    org && CONTENT_ORGS.includes(org as ContentOrgId)
+      ? (org as ContentOrgId)
+      : null;
+  const scope = resolveAdminAssignrScope(org);
+  const currentOrg = masterMode ? requestedOrg : getDefaultContentOrg();
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
@@ -44,19 +54,36 @@ export default async function AdminScoresPage({
     redirect("/admin/login?next=/admin/scores");
   }
 
-  const effectiveRole = await getEffectiveAdminRoleForOrg(
-    adminUser.id,
-    adminUser.isMaster,
-    orgId,
-  );
+  const effectiveRole = currentOrg
+    ? await getEffectiveAdminRoleForOrg(
+        adminUser.id,
+        adminUser.isMaster,
+        currentOrg,
+      )
+    : toAdminRole(adminUser.role, adminUser.isMaster);
   const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
-  if (!canAccessAdminModule(role, "SCORES")) {
+  const orgRoles = await Promise.all(
+    CONTENT_ORGS.map((orgId) =>
+      getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, orgId),
+    ),
+  );
+  const canAccessScores =
+    canAccessAdminModule(role, "SCORES") ||
+    (masterMode &&
+      !currentOrg &&
+      orgRoles.some(
+        (orgRole) => orgRole && canAccessAdminModule(orgRole, "SCORES"),
+      ));
+  if (!canAccessScores) {
     redirect("/admin?denied=scores");
   }
 
   const [scores, games] = await Promise.all([
     prisma.gameScore.findMany({
-      where: { organizationId: orgId },
+      where:
+        scope === "all"
+          ? { organizationId: { in: [...CONTENT_ORGS] } }
+          : { organizationId: scope },
       select: {
         gameExternalId: true,
         homeScore: true,
@@ -64,41 +91,56 @@ export default async function AdminScoresPage({
       },
       orderBy: { updatedAt: "desc" },
     }),
-    fetchGames({
+    fetchAssignrGamesForScope({
+      scope,
       startDate: "2026-03-01",
       endDate: "2026-06-30",
-      leagueId,
     }),
   ]);
 
-  const scoreEntryGames = buildScoreEntryGames(games);
+  const scoreEntryGames = buildScoreEntryGames(games, scope);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
       <section className="max-w-6xl mx-auto px-6">
-        <div className="mb-8">
-          <AdminSectionHeader
-            badge="SCORE ENTRY"
-            currentOrg={orgId}
-            currentPath="/admin/scores"
-            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
-          />
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
-            Enter Game Scores
-          </h1>
-          <p className="text-zinc-400 max-w-2xl">
-            Save final scores for completed games. Standings update from these
-            scores by age group.
-          </p>
-        </div>
+        <ScoresPageHeader
+          allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+          currentOrg={currentOrg}
+        />
 
         <AdminScoresManager
           games={scoreEntryGames}
           existingScores={scores}
-          targetOrg={orgId}
+          scope={scope}
         />
-        <AdminGamesImportManager targetOrg={orgId} />
+        <AdminGamesImportManager scope={scope} />
       </section>
     </main>
+  );
+}
+
+function ScoresPageHeader({
+  currentOrg,
+  allowRolePreview,
+}: {
+  currentOrg: ContentOrgId | null;
+  allowRolePreview: boolean;
+}) {
+  return (
+    <div className="mb-8">
+      <AdminSectionHeader
+        badge="SCORE ENTRY"
+        currentOrg={currentOrg}
+        currentPath="/admin/scores"
+        allowRolePreview={allowRolePreview}
+      />
+      <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
+        Enter Game Scores
+      </h1>
+      <p className="text-zinc-400 max-w-2xl">
+        Save final scores for completed games. Standings update from these scores
+        by age group.
+      </p>
+    </div>
   );
 }

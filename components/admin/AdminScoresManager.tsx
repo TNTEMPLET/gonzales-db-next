@@ -2,10 +2,16 @@
 
 import { useRef, useState, useMemo } from "react";
 import { useRouter } from "next/navigation";
-import type { ContentOrgId } from "@/lib/siteConfig";
+
+import {
+  assignrScopeToQueryParam,
+  type AdminAssignrScope,
+} from "@/lib/admin/assignrOrgScope";
+import { getOrgDisplayName, type ContentOrgId } from "@/lib/siteConfig";
 
 type GameRow = {
   gameExternalId: string;
+  organizationId: ContentOrgId;
   ageGroup: string;
   homeTeam: string;
   awayTeam: string;
@@ -24,7 +30,7 @@ type ExistingScore = {
 type Props = {
   games: GameRow[];
   existingScores: ExistingScore[];
-  targetOrg: ContentOrgId;
+  scope: AdminAssignrScope;
 };
 
 type ScoreState = {
@@ -62,10 +68,10 @@ function sortAgeGroups(a: string, b: string) {
 export default function AdminScoresManager({
   games,
   existingScores,
-  targetOrg,
+  scope,
 }: Props) {
   const router = useRouter();
-  const orgQuery = `org=${targetOrg}`;
+  const orgQuery = assignrScopeToQueryParam(scope);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const initialScoresMap = useMemo(() => {
     const map = new Map<string, ScoreState>();
@@ -211,11 +217,14 @@ export default function AdminScoresManager({
     setNotice("");
 
     try {
-      const response = await fetch(`/api/admin/scores?${orgQuery}`, {
+      const response = await fetch(
+        orgQuery ? `/api/admin/scores?${orgQuery}` : "/api/admin/scores",
+        {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameExternalId: game.gameExternalId,
+          organizationId: game.organizationId,
           ageGroup: game.ageGroup,
           homeTeam: game.homeTeam,
           awayTeam: game.awayTeam,
@@ -224,7 +233,8 @@ export default function AdminScoresManager({
           homeScore,
           awayScore,
         }),
-      });
+      },
+      );
 
       const json = await response.json();
       if (!response.ok) {
@@ -264,10 +274,15 @@ export default function AdminScoresManager({
       const formData = new FormData();
       formData.append("file", file);
 
-      const response = await fetch(`/api/admin/scores/import?${orgQuery}`, {
+      const response = await fetch(
+        orgQuery
+          ? `/api/admin/scores/import?${orgQuery}`
+          : "/api/admin/scores/import",
+        {
         method: "POST",
         body: formData,
-      });
+      },
+      );
       const json = (await response.json()) as {
         error?: string;
         processed?: number;
@@ -403,6 +418,11 @@ export default function AdminScoresManager({
                         <p className="text-sm font-medium truncate">
                           {game.homeTeam} vs {game.awayTeam}
                         </p>
+                        {scope === "all" ? (
+                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                            {getOrgDisplayName(game.organizationId)}
+                          </p>
+                        ) : null}
                         <p className="text-xs text-zinc-500">
                           {formatGameDate(game.gameDate)}
                         </p>
@@ -516,6 +536,11 @@ export default function AdminScoresManager({
                         <p className="text-sm font-medium truncate">
                           {game.homeTeam} vs {game.awayTeam}
                         </p>
+                        {scope === "all" ? (
+                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
+                            {getOrgDisplayName(game.organizationId)}
+                          </p>
+                        ) : null}
                         <p className="text-xs text-zinc-500">
                           {formatGameDate(game.gameDate)}
                         </p>
