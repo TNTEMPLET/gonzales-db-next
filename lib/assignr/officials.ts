@@ -1,13 +1,22 @@
 import { assignrFetch, assignrFetchAllPages } from "@/lib/assignr/client";
+import { getAssignrSiteId } from "@/lib/assignr/config";
 import type { AssignrUser, AssignrUserUpdatePayload } from "@/lib/assignr/types";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 export async function listAssignrUsers(params?: {
+  org?: ContentOrgId;
+  siteId?: string;
   page?: number;
   limit?: number;
   search?: string;
 }) {
+  const siteId = params?.siteId || getAssignrSiteId(params?.org);
+  if (!siteId) {
+    throw new Error("Missing Assignr site id");
+  }
+
   return assignrFetchAllPages<AssignrUser>({
-    path: "/api/v2/users",
+    path: `/api/v2/sites/${siteId}/users`,
     collectionKey: "users",
     limit: params?.limit ?? 50,
     searchParams: {

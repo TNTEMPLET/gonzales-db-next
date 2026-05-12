@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAssignrAdmin } from "@/lib/assignr/adminAuth";
-import { getAssignrLeagueIdForOrg } from "@/lib/assignr/config";
-import { listGlobalUnassignedGames, listUnassignedOfficialGamesForSite } from "@/lib/assignr/games";
+import {
+  fetchAssignrGamesForContentOrg,
+  fetchUnassignedAssignrGamesForContentOrg,
+} from "@/lib/admin/assignrOrgScope";
+import { listGlobalUnassignedGames } from "@/lib/assignr/games";
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAssignrAdmin(request);
@@ -13,17 +16,23 @@ export async function GET(request: NextRequest) {
   const startDate = request.nextUrl.searchParams.get("startDate") || undefined;
   const endDate = request.nextUrl.searchParams.get("endDate") || undefined;
   const scope = request.nextUrl.searchParams.get("scope") || "site";
+  const view = request.nextUrl.searchParams.get("view") || "all";
 
   try {
     const games =
-      scope === "global"
-        ? await listGlobalUnassignedGames()
-        : await listUnassignedOfficialGamesForSite({
-            startDate,
-            endDate,
-            leagueId: getAssignrLeagueIdForOrg(auth.organizationId),
+      view === "unassigned"
+        ? scope === "global"
+          ? await listGlobalUnassignedGames()
+          : await fetchUnassignedAssignrGamesForContentOrg(auth.organizationId, {
+              startDate,
+              endDate,
+            })
+        : await fetchAssignrGamesForContentOrg(auth.organizationId, {
+            startDate: startDate ?? "2026-03-01",
+            endDate: endDate ?? "2026-06-30",
+            cache: "no-store",
           });
-    return NextResponse.json({ data: games });
+    return NextResponse.json({ data: games, view, count: games.length });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 502 });

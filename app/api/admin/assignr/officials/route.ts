@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
 
   const search = request.nextUrl.searchParams.get("search") || undefined;
   try {
-    const users = await listAssignrUsers({ search });
+    const users = await listAssignrUsers({ org: auth.organizationId, search });
     return NextResponse.json({
       data: users.map((user) => ({
         ...user,

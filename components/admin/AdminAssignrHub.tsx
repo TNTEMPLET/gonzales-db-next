@@ -72,7 +72,7 @@ export default function AdminAssignrHub({ targetOrg }: { targetOrg: ContentOrgId
           <div>
             <h2 className="text-lg font-semibold text-white">Connection</h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Server-side Assignr OAuth with read/write scope.
+              Server-side Assignr OAuth with read/write scope for the active organization league.
             </p>
           </div>
           <div className="text-sm">

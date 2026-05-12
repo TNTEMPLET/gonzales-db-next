@@ -27,11 +27,7 @@ type AssignmentGame = {
 };
 
 function defaultDateRange() {
-  const start = new Date();
-  const end = new Date();
-  end.setDate(end.getDate() + 14);
-  const format = (value: Date) => value.toISOString().slice(0, 10);
-  return { startDate: format(start), endDate: format(end) };
+  return { startDate: "2026-03-01", endDate: "2026-06-30" };
 }
 
 export default function AdminAssignrAssignmentsManager({
@@ -42,6 +38,7 @@ export default function AdminAssignrAssignmentsManager({
   const defaults = useMemo(() => defaultDateRange(), []);
   const [startDate, setStartDate] = useState(defaults.startDate);
   const [endDate, setEndDate] = useState(defaults.endDate);
+  const [view, setView] = useState<"all" | "unassigned">("all");
   const [games, setGames] = useState<AssignmentGame[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -56,6 +53,7 @@ export default function AdminAssignrAssignmentsManager({
         startDate,
         endDate,
         scope: "site",
+        view,
       });
       const response = await fetch(`/api/admin/assignr/assignments?${params}`);
       const json = (await response.json()) as {
@@ -76,7 +74,7 @@ export default function AdminAssignrAssignmentsManager({
 
   useEffect(() => {
     void loadGames();
-  }, [targetOrg, startDate, endDate]);
+  }, [targetOrg, startDate, endDate, view]);
 
   async function unassignGame(gameId: string | number) {
     setBusy(true);
@@ -150,6 +148,17 @@ export default function AdminAssignrAssignmentsManager({
             className="mt-1 block rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
           />
         </label>
+        <label className="text-sm text-zinc-300">
+          View
+          <select
+            value={view}
+            onChange={(event) => setView(event.target.value as "all" | "unassigned")}
+            className="mt-1 block rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+          >
+            <option value="all">All games</option>
+            <option value="unassigned">Unassigned only</option>
+          </select>
+        </label>
         <button
           type="button"
           disabled={busy}
@@ -178,7 +187,11 @@ export default function AdminAssignrAssignmentsManager({
             {games.length === 0 ? (
               <tr>
                 <td className="px-4 py-4 text-zinc-500" colSpan={5}>
-                  {busy ? "Loading…" : "No unassigned games in this range."}
+                  {busy
+                    ? "Loading…"
+                    : view === "unassigned"
+                      ? "No unassigned games in this range."
+                      : "No games in this range."}
                 </td>
               </tr>
             ) : (

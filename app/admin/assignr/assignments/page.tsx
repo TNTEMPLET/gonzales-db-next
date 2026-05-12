@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import AdminAssignrAssignmentsManager from "@/components/admin/AdminAssignrAssignmentsManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import { assignrHubHref } from "@/lib/admin/assignrOrgScope";
 import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
@@ -48,6 +49,8 @@ export default async function AdminAssignrAssignmentsPage({
           currentPath="/admin/assignr/assignments"
           allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           allowViewByUser={adminUser.isMaster}
+          moduleHubHref={assignrHubHref(orgId)}
+          moduleHubLabel="Assignr Hub"
         />
         <h1 className="text-3xl font-bold mb-6">Assignment desk</h1>
         <AdminAssignrAssignmentsManager targetOrg={orgId} />
