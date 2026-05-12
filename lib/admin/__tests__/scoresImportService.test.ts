@@ -55,7 +55,7 @@ const baseGames: Game[] = [
     status: "A",
     subvenue: "Field Two",
     _embedded: { venue: { name: "Stevens Park" } },
-    age_group: "7U CP",
+    age_group: "8U CP",
   }),
   gameFixture({
     id: "rain-1",
@@ -89,7 +89,12 @@ test("matches rows by Match ID", () => {
   const result = matchScoresImportRow({
     row,
     indexes,
-    mappings: { parkMappings: {}, fieldMappings: {} },
+    mappings: {
+      parkMappings: {},
+      fieldMappings: {},
+      ageGroupMappings: {},
+      rowMappings: {},
+    },
   });
 
   assert.equal(result.kind, "matched");
@@ -117,7 +122,12 @@ test("falls back to home, away, date, and time matching", () => {
   const result = matchScoresImportRow({
     row,
     indexes,
-    mappings: { parkMappings: {}, fieldMappings: {} },
+    mappings: {
+      parkMappings: {},
+      fieldMappings: {},
+      ageGroupMappings: {},
+      rowMappings: {},
+    },
   });
 
   assert.equal(result.kind, "matched");
@@ -126,15 +136,14 @@ test("falls back to home, away, date, and time matching", () => {
   }
 });
 
-test("disambiguates duplicate team and date rows with mapped sub-venue", () => {
+test("disambiguates duplicate team and date rows with mapped age group", () => {
   const indexes = buildScoresImportGameIndexes(baseGames);
   const row = parseScoresImportRow(
     {
       "Home Team": "Team A",
       "Away Team": "Team B",
       Date: "03/10/2026",
-      Location: "Stevens Park",
-      Field: "Field Two",
+      "Group Name": "8U Majors",
       "Home Team Score": "2",
       "Away Team Score": "1",
     },
@@ -145,8 +154,10 @@ test("disambiguates duplicate team and date rows with mapped sub-venue", () => {
     row,
     indexes,
     mappings: {
-      parkMappings: { "Stevens Park": "Stevens Park" },
-      fieldMappings: { "stevens park::field two": "Field Two" },
+      parkMappings: {},
+      fieldMappings: {},
+      ageGroupMappings: { "8U Majors": "8U CP" },
+      rowMappings: {},
     },
   });
 
@@ -170,7 +181,12 @@ test("skips rows with missing scores", () => {
   const result = matchScoresImportRow({
     row,
     indexes,
-    mappings: { parkMappings: {}, fieldMappings: {} },
+    mappings: {
+      parkMappings: {},
+      fieldMappings: {},
+      ageGroupMappings: {},
+      rowMappings: {},
+    },
   });
 
   assert.equal(result.kind, "skippedMissingScore");
@@ -192,10 +208,44 @@ test("skips non-active games after matching", () => {
   const result = matchScoresImportRow({
     row,
     indexes,
-    mappings: { parkMappings: {}, fieldMappings: {} },
+    mappings: {
+      parkMappings: {},
+      fieldMappings: {},
+      ageGroupMappings: {},
+      rowMappings: {},
+    },
   });
 
   assert.equal(result.kind, "skippedRainedOut");
+});
+
+test("matches rows with manual row mapping", () => {
+  const indexes = buildScoresImportGameIndexes(baseGames);
+  const row = parseScoresImportRow(
+    {
+      "Home Team": "Unknown Home",
+      "Away Team": "Unknown Away",
+      "Home Team Score": "3",
+      "Away Team Score": "2",
+    },
+    5,
+  );
+
+  const result = matchScoresImportRow({
+    row,
+    indexes,
+    mappings: {
+      parkMappings: {},
+      fieldMappings: {},
+      ageGroupMappings: {},
+      rowMappings: { "5": "13422195" },
+    },
+  });
+
+  assert.equal(result.kind, "matched");
+  if (result.kind === "matched") {
+    assert.equal(String(result.game.id), "13422195");
+  }
 });
 
 test("buildScoresImportPreview summarizes row outcomes", () => {

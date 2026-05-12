@@ -52,10 +52,14 @@ export async function POST(request: NextRequest) {
 
     const parkMappings = parseJsonRecord(formData.get("parkMappings"));
     const fieldMappings = parseJsonRecord(formData.get("fieldMappings"));
+    const ageGroupMappings = parseJsonRecord(formData.get("ageGroupMappings"));
+    const rowMappings = parseJsonRecord(formData.get("rowMappings"));
     const mappings =
       Object.keys(parkMappings).length > 0 ||
-      Object.keys(fieldMappings).length > 0
-        ? { parkMappings, fieldMappings }
+      Object.keys(fieldMappings).length > 0 ||
+      Object.keys(ageGroupMappings).length > 0 ||
+      Object.keys(rowMappings).length > 0
+        ? { parkMappings, fieldMappings, ageGroupMappings, rowMappings }
         : undefined;
     const acknowledgeCancelledGames =
       String(formData.get("acknowledgeCancelledGames") || "")
