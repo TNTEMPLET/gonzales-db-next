@@ -58,6 +58,7 @@ export default async function AdminCommunicationsPage({
             currentOrg={currentOrg}
             currentPath="/admin/communications"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+            allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Centralized Communications

@@ -54,6 +54,7 @@ export default async function AdminTeamsPage({
             currentOrg={currentOrg}
             currentPath="/admin/teams"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+            allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Teams Management

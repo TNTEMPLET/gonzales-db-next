@@ -89,10 +89,12 @@ export default function AdminRolePreviewControl({
   enabled,
   currentOrg,
   allowViewByUser = false,
+  viewByUserOrgScope = "all",
 }: {
   enabled: boolean;
   currentOrg?: ContentOrgId;
   allowViewByUser?: boolean;
+  viewByUserOrgScope?: "all" | "current";
 }) {
   const [context, setContext] = useState<AdminViewPreviewContext>({
     mode: "role",
@@ -138,9 +140,10 @@ export default function AdminRolePreviewControl({
     let cancelled = false;
     (async () => {
       try {
-        const endpoint = currentOrg
-          ? `/api/admin/preview/users?org=${encodeURIComponent(currentOrg)}`
-          : "/api/admin/preview/users";
+        const endpoint =
+          viewByUserOrgScope === "current" && currentOrg
+            ? `/api/admin/preview/users?org=${encodeURIComponent(currentOrg)}`
+            : "/api/admin/preview/users";
         const response = await fetch(endpoint);
         if (!response.ok) return;
         const data = (await response.json()) as { users?: PreviewUserSnapshot[] };
@@ -152,7 +155,7 @@ export default function AdminRolePreviewControl({
     return () => {
       cancelled = true;
     };
-  }, [enabled, allowViewByUser, currentOrg]);
+  }, [enabled, allowViewByUser, currentOrg, viewByUserOrgScope]);
 
   if (!enabled) return null;
 
