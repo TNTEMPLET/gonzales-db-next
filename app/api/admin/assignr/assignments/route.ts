@@ -5,6 +5,7 @@ import {
   fetchAssignrGamesForContentOrg,
   fetchUnassignedAssignrGamesForContentOrg,
 } from "@/lib/admin/assignrOrgScope";
+import { resolveAssignrDeskDateRange } from "@/lib/admin/assignrDeskDateRange";
 import {
   enrichAssignrGamesWithAssignmentDetails,
   listGlobalUnassignedGames,
@@ -22,17 +23,18 @@ export async function GET(request: NextRequest) {
   const view = request.nextUrl.searchParams.get("view") || "all";
 
   try {
+    const resolvedRange = resolveAssignrDeskDateRange({ startDate, endDate });
     const games =
       view === "unassigned"
         ? scope === "global"
           ? await listGlobalUnassignedGames()
           : await fetchUnassignedAssignrGamesForContentOrg(auth.organizationId, {
-              startDate,
-              endDate,
+              startDate: resolvedRange.startDate,
+              endDate: resolvedRange.endDate,
             })
         : await fetchAssignrGamesForContentOrg(auth.organizationId, {
-            startDate: startDate ?? "2026-03-01",
-            endDate: endDate ?? "2026-06-30",
+            startDate: resolvedRange.startDate,
+            endDate: resolvedRange.endDate,
             cache: "no-store",
           });
     const detailedGames = await enrichAssignrGamesWithAssignmentDetails(games);
