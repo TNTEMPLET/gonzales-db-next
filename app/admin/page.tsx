@@ -107,7 +107,7 @@ export default async function AdminDashboardPage({
   const currentSite = currentOrg ? getSiteConfigForOrg(currentOrg) : null;
   const hasModuleAccess = (orgId: ContentOrgId, module: AdminModule) => {
     if (module === "ALL_STAR_VAULT") {
-      return canAccessAdminModule(roleByOrg[orgId], module) || allStarVaultViewByOrg[orgId];
+      return adminUser.isMaster || allStarVaultViewByOrg[orgId];
     }
     return canAccessAdminModule(roleByOrg[orgId], module);
   };
