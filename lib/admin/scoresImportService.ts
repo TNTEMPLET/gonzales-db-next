@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx";
 
+import { normalizeAgeGroup } from "@/lib/ageGroupAliases";
 import { suggestParkVenue } from "@/lib/assignr/gamesImportAliases";
 import { fieldMappingKey } from "@/lib/assignr/gamesImportTypes";
 import type { VenueCatalogEntry } from "@/lib/assignr/gamesImportTypes";
@@ -42,6 +43,24 @@ export type ScoresFieldOption = {
 export type ScoresImportMappings = {
   parkMappings: Record<string, string>;
   fieldMappings: Record<string, string>;
+  ageGroupMappings: Record<string, string>;
+  rowMappings: Record<string, string>;
+};
+
+export type ScoresImportCandidateGame = {
+  gameExternalId: string;
+  ageGroup: string;
+  homeTeam: string;
+  awayTeam: string;
+  dateLabel: string;
+  startTime: string;
+  reason: string;
+};
+
+export type ScoresImportUnmatchedRow = ScoresImportPreviewSample & {
+  ageGroup: string;
+  candidateGames: ScoresImportCandidateGame[];
+  suggestedGameExternalId?: string;
 };
 
 export type ScoresImportSummary = {
@@ -62,6 +81,7 @@ export type ScoresImportPreviewSample = {
   startTime: string;
   location: string;
   field: string;
+  ageGroup: string;
   homeScore: number | null;
   awayScore: number | null;
   outcome:
@@ -93,10 +113,12 @@ export type ScoresImportPreview = {
   venueCatalog: VenueCatalogEntry[];
   suggestedMappings: ScoresImportMappings;
   summary: Omit<ScoresImportSummary, "saved">;
+  ageGroups: string[];
+  importAgeGroups: string[];
   assignrCancelledGames: AssignrCancelledGameSummary[];
   excludedCancelledDates: string[];
   requiresCancelledAcknowledgement: boolean;
-  unmatchedRows: ScoresImportPreviewSample[];
+  unmatchedRows: ScoresImportUnmatchedRow[];
   cancelledRows: ScoresImportPreviewSample[];
   samples: {
     matched: ScoresImportPreviewSample[];
@@ -464,10 +486,195 @@ export function collectDistinctFieldsFromRows(rows: ScoresImportRow[]) {
   return fields.sort((a, b) => a.key.localeCompare(b.key));
 }
 
+export function collectDistinctAgeGroupsFromRows(rows: ScoresImportRow[]) {
+  return Array.from(
+    new Set(rows.map((row) => row.group.trim()).filter(Boolean)),
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+export function listScheduleAgeGroups(games: Game[]) {
+  return Array.from(
+    new Set(
+      games
+        .map((game) =>
+          typeof game.age_group === "string" ? game.age_group.trim() : "",
+        )
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+function normalizeAgeGroupKey(value: string) {
+  return value.trim().toLowerCase();
+}
+
+export function buildSuggestedAgeGroupMappings(
+  rows: ScoresImportRow[],
+  scheduleAgeGroups: string[],
+) {
+  const mappings: Record<string, string> = {};
+
+  for (const group of collectDistinctAgeGroupsFromRows(rows)) {
+    const normalized = normalizeAgeGroup(group);
+    const candidates = [normalized, group].filter(
+      (value): value is string => Boolean(value?.trim()),
+    );
+
+    for (const candidate of candidates) {
+      const exact = scheduleAgeGroups.find(
+        (option) =>
+          normalizeAgeGroupKey(option) === normalizeAgeGroupKey(candidate),
+      );
+      if (exact) {
+        mappings[group] = exact;
+        break;
+      }
+    }
+
+    if (mappings[group]) continue;
+
+    const loose = scheduleAgeGroups.find((option) => {
+      const optionNorm = normalizeAgeGroupKey(option);
+      const groupNorm = normalizeAgeGroupKey(group);
+      return groupNorm.includes(optionNorm) || optionNorm.includes(groupNorm);
+    });
+    if (loose) {
+      mappings[group] = loose;
+    }
+  }
+
+  return mappings;
+}
+
+export function resolveMappedAgeGroup(
+  row: ScoresImportRow,
+  mappings: ScoresImportMappings,
+) {
+  const rawGroup = row.group.trim();
+  if (!rawGroup) return null;
+  const mapped = mappings.ageGroupMappings[rawGroup]?.trim();
+  if (mapped) return mapped;
+  return normalizeAgeGroup(rawGroup);
+}
+
+function teamNamesCompatible(csvTeam: string, gameTeam: string) {
+  const csvNorm = normalizeText(csvTeam);
+  const gameNorm = normalizeText(gameTeam);
+  if (!csvNorm || !gameNorm) return false;
+  return csvNorm === gameNorm || csvNorm.includes(gameNorm) || gameNorm.includes(csvNorm);
+}
+
+function ageGroupsCompatible(gameAgeGroup: string | undefined, mappedAgeGroup: string | null) {
+  if (!mappedAgeGroup) return true;
+  if (!gameAgeGroup?.trim()) return false;
+  return (
+    normalizeAgeGroupKey(gameAgeGroup) === normalizeAgeGroupKey(mappedAgeGroup)
+  );
+}
+
+export function suggestCandidateGamesForRow(
+  row: ScoresImportRow,
+  games: Game[],
+  mappings: ScoresImportMappings,
+) {
+  const mappedAgeGroup = resolveMappedAgeGroup(row, mappings);
+  const dateKey = rowDateKey(row);
+  const timeKey = gameTimeKeyFromDate(parseCsvDateTime(row.date, row.startTime));
+  const scoredCandidates: Array<{ game: Game; score: number; reason: string }> = [];
+
+  for (const game of games) {
+    if (game.status?.trim().toUpperCase() !== "A") continue;
+
+    let score = 0;
+    const reasons: string[] = [];
+    const gameDateKey =
+      gameDateKeyFromString(game.start_time) ||
+      gameDateKeyFromString(game.localized_date);
+    const gameTimeKey =
+      gameTimeKeyFromString(game.start_time) ||
+      gameTimeKeyFromString(game.localized_time);
+
+    if (dateKey && gameDateKey === dateKey) {
+      score += 4;
+      reasons.push("same date");
+    }
+    if (timeKey && gameTimeKey === timeKey) {
+      score += 3;
+      reasons.push("same start time");
+    }
+    if (
+      row.homeTeam &&
+      row.awayTeam &&
+      teamNamesCompatible(row.homeTeam, game.home_team || "") &&
+      teamNamesCompatible(row.awayTeam, game.away_team || "")
+    ) {
+      score += 6;
+      reasons.push("same teams");
+    } else if (
+      row.homeTeam &&
+      row.awayTeam &&
+      teamNamesCompatible(row.homeTeam, game.away_team || "") &&
+      teamNamesCompatible(row.awayTeam, game.home_team || "")
+    ) {
+      score += 4;
+      reasons.push("teams swapped");
+    } else if (
+      row.homeTeam &&
+      (teamNamesCompatible(row.homeTeam, game.home_team || "") ||
+        teamNamesCompatible(row.homeTeam, game.away_team || ""))
+    ) {
+      score += 2;
+      reasons.push("home team similar");
+    } else if (
+      row.awayTeam &&
+      (teamNamesCompatible(row.awayTeam, game.away_team || "") ||
+        teamNamesCompatible(row.awayTeam, game.home_team || ""))
+    ) {
+      score += 2;
+      reasons.push("away team similar");
+    }
+
+    if (mappedAgeGroup && ageGroupsCompatible(game.age_group, mappedAgeGroup)) {
+      score += 5;
+      reasons.push("age group match");
+    }
+
+    if (row.matchId && String(game.id || "").trim() === row.matchId.trim()) {
+      score += 8;
+      reasons.push("match ID");
+    }
+
+    if (score < 4) continue;
+
+    scoredCandidates.push({
+      game,
+      score,
+      reason: reasons.join(", "),
+    });
+  }
+
+  return scoredCandidates
+    .sort((a, b) => {
+      if (b.score !== a.score) return b.score - a.score;
+      return String(a.game.id || "").localeCompare(String(b.game.id || ""));
+    })
+    .slice(0, 8)
+    .map(({ game, reason }) => ({
+      gameExternalId: String(game.id || "").trim(),
+      ageGroup: (game.age_group || "Unassigned").trim() || "Unassigned",
+      homeTeam: (game.home_team || "Home Team").trim(),
+      awayTeam: (game.away_team || "Away Team").trim(),
+      dateLabel: formatGameDateLabel(game),
+      startTime: formatGameStartTimeLabel(game),
+      reason,
+    }));
+}
+
 export function buildSuggestedScoresMappings(params: {
   rows: ScoresImportRow[];
   venues: string[];
   venueCatalog: VenueCatalogEntry[];
+  scheduleAgeGroups: string[];
 }) {
   const parkMappings: Record<string, string> = {};
   for (const park of collectDistinctParksFromRows(params.rows)) {
@@ -487,8 +694,12 @@ export function buildSuggestedScoresMappings(params: {
     parkMappings,
     catalog: params.venueCatalog,
   });
+  const ageGroupMappings = buildSuggestedAgeGroupMappings(
+    params.rows,
+    params.scheduleAgeGroups,
+  );
 
-  return { parkMappings, fieldMappings };
+  return { parkMappings, fieldMappings, ageGroupMappings, rowMappings: {} };
 }
 
 export function buildScoresImportGameIndexes(games: Game[]): GameIndexes {
@@ -535,14 +746,29 @@ export function resolveMappedSubVenue(
 
 function pickCandidateGame(
   candidates: Game[],
-  mappedSubVenue: string | null,
+  params: {
+    mappedAgeGroup: string | null;
+    mappedSubVenue: string | null;
+  },
 ) {
   if (candidates.length === 0) return undefined;
   if (candidates.length === 1) return candidates[0];
 
-  if (!mappedSubVenue) return undefined;
+  if (params.mappedAgeGroup) {
+    const filtered = candidates.filter((game) =>
+      ageGroupsCompatible(game.age_group, params.mappedAgeGroup),
+    );
+    if (filtered.length === 1) return filtered[0];
+    if (filtered.length > 1) {
+      candidates = filtered;
+    }
+  }
 
-  const normalizedTarget = normalizeVenueLabel(mappedSubVenue);
+  if (candidates.length === 1) return candidates[0];
+
+  if (!params.mappedSubVenue) return undefined;
+
+  const normalizedTarget = normalizeVenueLabel(params.mappedSubVenue);
   const filtered = candidates.filter(
     (game) => normalizeVenueLabel(getGameSubVenue(game)) === normalizedTarget,
   );
@@ -564,9 +790,15 @@ export function matchScoresImportRow(params: {
   }
 
   const mappedSubVenue = resolveMappedSubVenue(row, mappings);
+  const mappedAgeGroup = resolveMappedAgeGroup(row, mappings);
+  const manualGameId = mappings.rowMappings[String(row.rowNumber)]?.trim();
   let game: Game | undefined;
 
-  if (row.matchId) {
+  if (manualGameId) {
+    game = indexes.byId.get(manualGameId);
+  }
+
+  if (!game && row.matchId) {
     game = indexes.byId.get(row.matchId);
   }
 
@@ -581,7 +813,7 @@ export function matchScoresImportRow(params: {
           indexes.byFallbackWithTime.get(
             buildFallbackKeyWithTime(row.homeTeam, row.awayTeam, dateKey, timeKey),
           ) ?? [],
-          mappedSubVenue,
+          { mappedAgeGroup, mappedSubVenue },
         );
       }
       if (!game) {
@@ -589,7 +821,7 @@ export function matchScoresImportRow(params: {
           indexes.byFallback.get(
             buildFallbackKey(row.homeTeam, row.awayTeam, dateKey),
           ) ?? [],
-          mappedSubVenue,
+          { mappedAgeGroup, mappedSubVenue },
         );
       }
     }
@@ -639,6 +871,7 @@ function toPreviewSample(
     startTime: result.row.startTime,
     location: result.row.location,
     field: result.row.field,
+    ageGroup: result.row.group,
     homeScore,
     awayScore,
   };
@@ -689,6 +922,7 @@ function buildCancelledPreviewSample(
     startTime: row.startTime,
     location: row.location,
     field: row.field,
+    ageGroup: row.group,
     homeScore: toScore(row.homeScoreRaw),
     awayScore: toScore(row.awayScoreRaw),
     outcome: "skippedRainedOut",
@@ -728,6 +962,34 @@ function shouldExcludeRowForAssignrCancellation(
   };
 }
 
+function buildUnmatchedPreviewRow(
+  row: ScoresImportRow,
+  games: Game[],
+  mappings: ScoresImportMappings,
+): ScoresImportUnmatchedRow {
+  const candidateGames = suggestCandidateGamesForRow(row, games, mappings);
+  const suggestedGameExternalId =
+    candidateGames.length === 1 ? candidateGames[0]?.gameExternalId : undefined;
+
+  return {
+    rowNumber: row.rowNumber,
+    matchId: row.matchId,
+    homeTeam: row.homeTeam,
+    awayTeam: row.awayTeam,
+    date: row.date,
+    startTime: row.startTime,
+    location: row.location,
+    field: row.field,
+    ageGroup: row.group,
+    homeScore: toScore(row.homeScoreRaw),
+    awayScore: toScore(row.awayScoreRaw),
+    outcome: "unmatched",
+    reason: "No matching Assignr game for this row",
+    candidateGames,
+    suggestedGameExternalId,
+  };
+}
+
 export function buildScoresImportPreview(params: {
   rows: CsvRow[];
   games: Game[];
@@ -738,12 +1000,28 @@ export function buildScoresImportPreview(params: {
   );
   const venueCatalog = buildVenueCatalog(params.games);
   const venues = listDistinctVenues(venueCatalog);
+  const ageGroups = listScheduleAgeGroups(params.games);
   const suggestedMappings = buildSuggestedScoresMappings({
     rows: parsedRows,
     venues,
     venueCatalog,
+    scheduleAgeGroups: ageGroups,
   });
-  const mappings = params.mappings ?? suggestedMappings;
+  const mappings = {
+    parkMappings: {
+      ...suggestedMappings.parkMappings,
+      ...params.mappings?.parkMappings,
+    },
+    fieldMappings: {
+      ...suggestedMappings.fieldMappings,
+      ...params.mappings?.fieldMappings,
+    },
+    ageGroupMappings: {
+      ...suggestedMappings.ageGroupMappings,
+      ...params.mappings?.ageGroupMappings,
+    },
+    rowMappings: params.mappings?.rowMappings ?? {},
+  };
   const indexes = buildScoresImportGameIndexes(params.games);
   const assignrCancelledGames = listAssignrCancelledGamesForUpload(
     params.games,
@@ -760,7 +1038,7 @@ export function buildScoresImportPreview(params: {
     skippedMissingScore: 0,
     skippedRainedOut: 0,
   };
-  const unmatchedRows: ScoresImportPreviewSample[] = [];
+  const unmatchedRows: ScoresImportUnmatchedRow[] = [];
   const cancelledRows: ScoresImportPreviewSample[] = [];
   const samples = {
     matched: [] as ScoresImportPreviewSample[],
@@ -803,8 +1081,9 @@ export function buildScoresImportPreview(params: {
     }
     if (result.kind === "unmatched") {
       summary.unmatched += 1;
-      if (sample) unmatchedRows.push(sample);
-      pushSample(samples.unmatched, sample);
+      const unmatchedRow = buildUnmatchedPreviewRow(row, params.games, mappings);
+      unmatchedRows.push(unmatchedRow);
+      pushSample(samples.unmatched, unmatchedRow);
       continue;
     }
 
@@ -831,6 +1110,8 @@ export function buildScoresImportPreview(params: {
     venueCatalog,
     suggestedMappings,
     summary,
+    ageGroups,
+    importAgeGroups: collectDistinctAgeGroupsFromRows(parsedRows),
     assignrCancelledGames,
     excludedCancelledDates,
     requiresCancelledAcknowledgement:
@@ -877,12 +1158,28 @@ export async function applyScoresImport(params: {
   );
   const venueCatalog = buildVenueCatalog(params.games);
   const venues = listDistinctVenues(venueCatalog);
+  const ageGroups = listScheduleAgeGroups(params.games);
   const suggestedMappings = buildSuggestedScoresMappings({
     rows: parsedRows,
     venues,
     venueCatalog,
+    scheduleAgeGroups: ageGroups,
   });
-  const mappings = params.mappings ?? suggestedMappings;
+  const mappings = {
+    parkMappings: {
+      ...suggestedMappings.parkMappings,
+      ...params.mappings?.parkMappings,
+    },
+    fieldMappings: {
+      ...suggestedMappings.fieldMappings,
+      ...params.mappings?.fieldMappings,
+    },
+    ageGroupMappings: {
+      ...suggestedMappings.ageGroupMappings,
+      ...params.mappings?.ageGroupMappings,
+    },
+    rowMappings: params.mappings?.rowMappings ?? {},
+  };
   const indexes = buildScoresImportGameIndexes(params.games);
   const assignrCancelledGames = listAssignrCancelledGamesForUpload(
     params.games,

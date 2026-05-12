@@ -58,6 +58,7 @@ type ScoresImportPreviewSample = {
   startTime: string;
   location: string;
   field: string;
+  ageGroup: string;
   homeScore: number | null;
   awayScore: number | null;
   outcome:
@@ -68,6 +69,21 @@ type ScoresImportPreviewSample = {
   matchedGameId?: string;
   matchedSubVenue?: string;
   reason?: string;
+};
+
+type ScoresImportCandidateGame = {
+  gameExternalId: string;
+  ageGroup: string;
+  homeTeam: string;
+  awayTeam: string;
+  dateLabel: string;
+  startTime: string;
+  reason: string;
+};
+
+type ScoresImportUnmatchedRow = ScoresImportPreviewSample & {
+  candidateGames: ScoresImportCandidateGame[];
+  suggestedGameExternalId?: string;
 };
 
 type AssignrCancelledGameSummary = {
@@ -90,7 +106,11 @@ type ScoresImportPreview = {
   suggestedMappings: {
     parkMappings: Record<string, string>;
     fieldMappings: Record<string, string>;
+    ageGroupMappings: Record<string, string>;
+    rowMappings: Record<string, string>;
   };
+  ageGroups: string[];
+  importAgeGroups: string[];
   summary: {
     processed: number;
     matched: number;
@@ -101,7 +121,7 @@ type ScoresImportPreview = {
   assignrCancelledGames: AssignrCancelledGameSummary[];
   excludedCancelledDates: string[];
   requiresCancelledAcknowledgement: boolean;
-  unmatchedRows: ScoresImportPreviewSample[];
+  unmatchedRows: ScoresImportUnmatchedRow[];
   cancelledRows: ScoresImportPreviewSample[];
   samples: {
     matched: ScoresImportPreviewSample[];
@@ -195,6 +215,8 @@ export default function AdminScoresManager({
   );
   const [parkMappings, setParkMappings] = useState<Record<string, string>>({});
   const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
+  const [ageGroupMappings, setAgeGroupMappings] = useState<Record<string, string>>({});
+  const [rowMappings, setRowMappings] = useState<Record<string, string>>({});
   const [acknowledgedCancelledGames, setAcknowledgedCancelledGames] =
     useState(false);
   const [notice, setNotice] = useState("");
@@ -227,6 +249,20 @@ export default function AdminScoresManager({
       (field) => !fieldMappings[field.key]?.trim(),
     );
   }, [fieldMappings, importPreview?.fields]);
+
+  const importAgeGroups = useMemo(() => {
+    return importPreview?.importAgeGroups ?? [];
+  }, [importPreview?.importAgeGroups]);
+
+  const missingAgeGroups = useMemo(() => {
+    return importAgeGroups.filter((group) => !ageGroupMappings[group]?.trim());
+  }, [ageGroupMappings, importAgeGroups]);
+
+  const unresolvedUnmatchedRows = useMemo(() => {
+    return (importPreview?.unmatchedRows ?? []).filter(
+      (row) => !rowMappings[String(row.rowNumber)]?.trim(),
+    );
+  }, [importPreview?.unmatchedRows, rowMappings]);
 
   const nonRainoutGames = useMemo(
     () => games.filter((game) => game.status !== "C"),
@@ -384,9 +420,51 @@ export default function AdminScoresManager({
     setImportPreview(null);
     setParkMappings({});
     setFieldMappings({});
+    setAgeGroupMappings({});
+    setRowMappings({});
     setAcknowledgedCancelledGames(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
+    }
+  }
+
+  async function refreshImportPreview() {
+    if (!uploadedFile) return;
+
+    setImportBusy(true);
+    setError("");
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+      formData.append("parkMappings", JSON.stringify(parkMappings));
+      formData.append("fieldMappings", JSON.stringify(fieldMappings));
+      formData.append("ageGroupMappings", JSON.stringify(ageGroupMappings));
+      formData.append("rowMappings", JSON.stringify(rowMappings));
+
+      const response = await fetch(
+        orgQuery
+          ? `/api/admin/scores/import/preview?${orgQuery}`
+          : "/api/admin/scores/import/preview",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      const json = (await safeJson(response)) as ScoresImportPreview;
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to refresh import preview"));
+      }
+
+      setImportPreview(json);
+      setNotice(
+        `Refreshed matches. Matched ${json.summary.matched}, unmatched ${json.summary.unmatched}.`,
+      );
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to refresh import preview",
+      );
+    } finally {
+      setImportBusy(false);
     }
   }
 
@@ -417,6 +495,8 @@ export default function AdminScoresManager({
       setImportPreview(json);
       setParkMappings(json.suggestedMappings.parkMappings ?? {});
       setFieldMappings(json.suggestedMappings.fieldMappings ?? {});
+      setAgeGroupMappings(json.suggestedMappings.ageGroupMappings ?? {});
+      setRowMappings({});
       setAcknowledgedCancelledGames(false);
       setNotice(
         `Parsed ${json.rowCount} rows. Matched ${json.summary.matched}, unmatched ${json.summary.unmatched}, missing scores ${json.summary.skippedMissingScore}, rained-out skipped ${json.summary.skippedRainedOut}.`,
@@ -457,6 +537,8 @@ export default function AdminScoresManager({
       formData.append("file", uploadedFile);
       formData.append("parkMappings", JSON.stringify(parkMappings));
       formData.append("fieldMappings", JSON.stringify(fieldMappings));
+      formData.append("ageGroupMappings", JSON.stringify(ageGroupMappings));
+      formData.append("rowMappings", JSON.stringify(rowMappings));
       if (acknowledgedCancelledGames) {
         formData.append("acknowledgeCancelledGames", "true");
       }
@@ -552,25 +634,34 @@ export default function AdminScoresManager({
 
         {importPreview ? (
           <ScoresImportMappingPanel
+            ageGroupMappings={ageGroupMappings}
+            ageGroups={importPreview.ageGroups}
             assignrCancelledGames={importPreview.assignrCancelledGames}
             acknowledgedCancelledGames={acknowledgedCancelledGames}
             cancelledRows={importPreview.cancelledRows}
             excludedCancelledDates={importPreview.excludedCancelledDates}
             fields={importPreview.fields}
             fieldMappings={fieldMappings}
+            importAgeGroups={importAgeGroups}
+            missingAgeGroups={missingAgeGroups}
             missingFields={missingFields}
             missingParks={missingParks}
+            onRefreshPreview={() => void refreshImportPreview()}
             parkMappings={parkMappings}
             parks={importPreview.parks}
             requiresCancelledAcknowledgement={
               importPreview.requiresCancelledAcknowledgement
             }
+            rowMappings={rowMappings}
             setAcknowledgedCancelledGames={setAcknowledgedCancelledGames}
+            setAgeGroupMappings={setAgeGroupMappings}
             setFieldMappings={setFieldMappings}
             setParkMappings={setParkMappings}
+            setRowMappings={setRowMappings}
             subVenueOptionsByVenue={subVenueOptionsByVenue}
             summary={importPreview.summary}
             unmatchedRows={importPreview.unmatchedRows}
+            unresolvedUnmatchedCount={unresolvedUnmatchedRows.length}
             venues={importPreview.venues}
           />
         ) : null}
@@ -881,16 +972,25 @@ function ScoresImportMappingPanel(props: {
   setParkMappings: Dispatch<SetStateAction<Record<string, string>>>;
   fieldMappings: Record<string, string>;
   setFieldMappings: Dispatch<SetStateAction<Record<string, string>>>;
+  ageGroupMappings: Record<string, string>;
+  setAgeGroupMappings: Dispatch<SetStateAction<Record<string, string>>>;
+  ageGroups: string[];
+  importAgeGroups: string[];
+  missingAgeGroups: string[];
+  rowMappings: Record<string, string>;
+  setRowMappings: Dispatch<SetStateAction<Record<string, string>>>;
   subVenueOptionsByVenue: Map<string, string[]>;
   missingParks: string[];
   missingFields: ScoresFieldOption[];
   assignrCancelledGames: AssignrCancelledGameSummary[];
   excludedCancelledDates: string[];
   cancelledRows: ScoresImportPreviewSample[];
-  unmatchedRows: ScoresImportPreviewSample[];
+  unmatchedRows: ScoresImportUnmatchedRow[];
+  unresolvedUnmatchedCount: number;
   requiresCancelledAcknowledgement: boolean;
   acknowledgedCancelledGames: boolean;
   setAcknowledgedCancelledGames: Dispatch<SetStateAction<boolean>>;
+  onRefreshPreview: () => void;
 }) {
   return (
     <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
@@ -924,6 +1024,57 @@ function ScoresImportMappingPanel(props: {
           </p>
         </div>
       </div>
+
+      {props.importAgeGroups.length > 0 ? (
+        <div className="rounded-xl border border-zinc-800 overflow-hidden">
+          <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+              Age group mapping
+            </h3>
+            {props.missingAgeGroups.length > 0 ? (
+              <p className="mt-1 text-xs text-amber-300">
+                {props.missingAgeGroups.length} imported age group
+                {props.missingAgeGroups.length === 1 ? "" : "s"} still need an
+                Assignr age group.
+              </p>
+            ) : null}
+          </div>
+          <table className="w-full text-sm">
+            <thead className="bg-zinc-950">
+              <tr className="text-left text-zinc-400">
+                <th className="px-4 py-2">Imported age group</th>
+                <th className="px-4 py-2">Assignr age group</th>
+              </tr>
+            </thead>
+            <tbody>
+              {props.importAgeGroups.map((group) => (
+                <tr key={group} className="border-t border-zinc-800">
+                  <td className="px-4 py-2">{group}</td>
+                  <td className="px-4 py-2">
+                    <select
+                      value={props.ageGroupMappings[group] || ""}
+                      onChange={(event) =>
+                        props.setAgeGroupMappings((current) => ({
+                          ...current,
+                          [group]: event.target.value,
+                        }))
+                      }
+                      className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                    >
+                      <option value="">Select age group…</option>
+                      {props.ageGroups.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      ) : null}
 
       {props.parks.length > 0 || props.fields.length > 0 ? (
         <div className="grid gap-6 lg:grid-cols-2">
@@ -1044,7 +1195,7 @@ function ScoresImportMappingPanel(props: {
       ) : (
         <p className="text-sm text-zinc-500">
           No park or field labels were found in the upload. Matching will use
-          match IDs and team/date/time fallbacks.
+          match IDs, age groups, and team/date/time fallbacks.
         </p>
       )}
 
@@ -1116,11 +1267,25 @@ function ScoresImportMappingPanel(props: {
               Unmatched upload rows
             </h3>
             <p className="mt-1 text-xs text-zinc-400">
-              Review these rows to see whether the issue is in the import sheet or
-              in Assignr matching.
+              Map each row to a likely Assignr game. Age group is the primary
+              matching signal; venue is secondary.
+              {props.unresolvedUnmatchedCount > 0
+                ? ` ${props.unresolvedUnmatchedCount} row${props.unresolvedUnmatchedCount === 1 ? "" : "s"} still unmapped.`
+                : ""}
             </p>
+            <button
+              type="button"
+              onClick={props.onRefreshPreview}
+              className="mt-3 text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-2"
+            >
+              Refresh match suggestions
+            </button>
           </div>
-          <ScoresImportIssueTable rows={props.unmatchedRows} />
+          <ScoresImportUnmatchedTable
+            rowMappings={props.rowMappings}
+            rows={props.unmatchedRows}
+            setRowMappings={props.setRowMappings}
+          />
         </div>
       ) : null}
 
@@ -1140,6 +1305,87 @@ function ScoresImportMappingPanel(props: {
           </span>
         </label>
       ) : null}
+    </div>
+  );
+}
+
+function ScoresImportUnmatchedTable(props: {
+  rows: ScoresImportUnmatchedRow[];
+  rowMappings: Record<string, string>;
+  setRowMappings: Dispatch<SetStateAction<Record<string, string>>>;
+}) {
+  return (
+    <div className="max-h-80 overflow-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-zinc-950">
+          <tr className="text-left text-zinc-400">
+            <th className="px-4 py-2">Row</th>
+            <th className="px-4 py-2">Age group</th>
+            <th className="px-4 py-2">Matchup</th>
+            <th className="px-4 py-2">Date</th>
+            <th className="px-4 py-2">Scores</th>
+            <th className="px-4 py-2">Match</th>
+            <th className="px-4 py-2">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.map((row) => {
+            const rowKey = String(row.rowNumber);
+            const selectedGameId = props.rowMappings[rowKey] || "";
+
+            return (
+              <tr
+                key={`${row.rowNumber}-${row.matchId}-${row.date}`}
+                className="border-t border-zinc-800 align-top"
+              >
+                <td className="px-4 py-2">{row.rowNumber}</td>
+                <td className="px-4 py-2">{row.ageGroup || "—"}</td>
+                <td className="px-4 py-2">
+                  {row.homeTeam || "—"} vs {row.awayTeam || "—"}
+                </td>
+                <td className="px-4 py-2 whitespace-nowrap">
+                  {row.date || "—"}
+                  {row.startTime ? ` · ${row.startTime}` : ""}
+                </td>
+                <td className="px-4 py-2 whitespace-nowrap">
+                  {row.homeScore ?? "—"} - {row.awayScore ?? "—"}
+                </td>
+                <td className="px-4 py-2 min-w-72">
+                  <select
+                    value={selectedGameId}
+                    onChange={(event) =>
+                      props.setRowMappings((current) => ({
+                        ...current,
+                        [rowKey]: event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                  >
+                    <option value="">Select Assignr game…</option>
+                    {row.candidateGames.map((candidate) => (
+                      <option
+                        key={candidate.gameExternalId}
+                        value={candidate.gameExternalId}
+                      >
+                        {candidate.ageGroup} · {candidate.homeTeam} vs{" "}
+                        {candidate.awayTeam} · {candidate.dateLabel}
+                        {candidate.startTime ? ` ${candidate.startTime}` : ""}
+                      </option>
+                    ))}
+                  </select>
+                  {row.candidateGames.length === 0 ? (
+                    <p className="mt-1 text-xs text-zinc-500">
+                      No likely Assignr games found. Adjust age group mapping and
+                      refresh suggestions.
+                    </p>
+                  ) : null}
+                </td>
+                <td className="px-4 py-2 text-zinc-400">{row.reason || "—"}</td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }

@@ -10,6 +10,7 @@ import {
   SCORES_IMPORT_SEASON_END,
   SCORES_IMPORT_SEASON_START,
 } from "@/lib/admin/scoresImportService";
+import { parseJsonRecord } from "@/lib/assignr/gamesImportService";
 import { ensureAdminModule } from "@/lib/news/auth";
 
 export async function POST(request: NextRequest) {
@@ -43,13 +44,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    const parkMappings = parseJsonRecord(formData.get("parkMappings"));
+    const fieldMappings = parseJsonRecord(formData.get("fieldMappings"));
+    const ageGroupMappings = parseJsonRecord(formData.get("ageGroupMappings"));
+    const rowMappings = parseJsonRecord(formData.get("rowMappings"));
+    const mappings =
+      Object.keys(parkMappings).length > 0 ||
+      Object.keys(fieldMappings).length > 0 ||
+      Object.keys(ageGroupMappings).length > 0 ||
+      Object.keys(rowMappings).length > 0
+        ? { parkMappings, fieldMappings, ageGroupMappings, rowMappings }
+        : undefined;
+
     const games = await fetchAssignrGamesForScope({
       startDate: SCORES_IMPORT_SEASON_START,
       endDate: SCORES_IMPORT_SEASON_END,
       scope,
     });
 
-    const preview = buildScoresImportPreview({ rows, games });
+    const preview = buildScoresImportPreview({ rows, games, mappings });
 
     return NextResponse.json({
       scope,
