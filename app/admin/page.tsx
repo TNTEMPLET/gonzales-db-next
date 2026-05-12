@@ -205,8 +205,7 @@ export default async function AdminDashboardPage({
         description: masterMode
           ? "Connect roster, schedule, and registration workflows with Assignr read/write access."
           : "Connect roster, schedule, and registration workflows with Assignr.",
-        action: "Coming soon",
-        comingSoon: true,
+        action: masterMode ? "Open Assignr Hub" : "Open Assignr",
       },
       {
         module: "USERS" as AdminModule,
@@ -244,8 +243,8 @@ export default async function AdminDashboardPage({
       .filter((card) =>
         card.module === "ASSIGNR"
           ? currentOrg
-            ? hasModuleAccess(currentOrg, "TEAMS")
-            : hasModuleAnyOrg("TEAMS")
+            ? hasModuleAccess(currentOrg, "ASSIGNR")
+            : hasModuleAnyOrg("ASSIGNR")
           : currentOrg
             ? hasModuleAccess(currentOrg, card.module)
             : hasModuleAnyOrg(card.module),

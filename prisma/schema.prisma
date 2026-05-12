@@ -192,6 +192,8 @@ model AdminUser {
   communicationsApproved  CommunicationApproval[] @relation("CommunicationApprovedBy")
   communicationRecipientSnapshots CommunicationRecipientSnapshot[] @relation("CommunicationRecipientAdminUser")
   communicationDeliveries CommunicationDelivery[] @relation("CommunicationDeliveryAdminUser")
+  assignrSyncJobsCreated  AssignrSyncJob[]        @relation("AssignrSyncJobCreatedBy")
+  assignrAuditLogs        AssignrAuditLog[]       @relation("AssignrAuditActor")
 }
 
 /// Effective admin role for a specific organization (gonzales | ascension).
@@ -948,6 +950,62 @@ model SponsorPlacement {
 
   @@unique([sponsorId, organizationId])
   @@index([organizationId, showInFooterScroller, sortOrder])
+}
+
+enum AssignrSyncJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum AssignrSyncJobKind {
+  GAMES_PUBLISH
+  GAMES_BULK_UPDATE
+}
+
+model AssignrSyncJob {
+  id               String               @id @default(cuid())
+  organizationId   String
+  kind             AssignrSyncJobKind
+  status           AssignrSyncJobStatus @default(PENDING)
+  totalCount       Int                  @default(0)
+  successCount     Int                  @default(0)
+  failedCount      Int                  @default(0)
+  payload          Json?
+  results          Json?
+  errorMessage     String?
+  createdByAdminId String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+  completedAt      DateTime?
+
+  createdByAdmin AdminUser?        @relation("AssignrSyncJobCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  auditLogs      AssignrAuditLog[]
+
+  @@index([organizationId, status, createdAt])
+}
+
+model AssignrAuditLog {
+  id                String   @id @default(cuid())
+  organizationId    String
+  action            String
+  assignrResource   String
+  assignrResourceId String?
+  requestSummary    Json?
+  responseSummary   Json?
+  success           Boolean
+  errorMessage      String?
+  adminUserId       String?
+  syncJobId         String?
+  createdAt         DateTime @default(now())
+
+  adminUser AdminUser?      @relation("AssignrAuditActor", fields: [adminUserId], references: [id], onDelete: SetNull)
+  syncJob   AssignrSyncJob? @relation(fields: [syncJobId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([syncJobId])
 }
 
 model SocialPost {
