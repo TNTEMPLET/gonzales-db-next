@@ -1,8 +1,30 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import type { ContentOrgId } from "@/lib/siteConfig";
+
+type OfficialOption = {
+  id?: string | number;
+  displayName?: string;
+  first_name?: string;
+  last_name?: string;
+};
+
+type AssignmentSlot = {
+  id?: string | number;
+  sort_order?: number;
+  status?: string;
+  position?: string;
+  position_abbreviation?: string;
+  accepted?: boolean;
+  declined?: boolean;
+  assigned?: boolean;
+  _embedded?: {
+    official?: OfficialOption;
+    position?: { id?: string | number; name?: string };
+  };
+};
 
 type AssignmentGame = {
   id?: string | number;
@@ -15,19 +37,153 @@ type AssignmentGame = {
   status?: string;
   _embedded?: {
     venue?: { name?: string };
-    assignments?: Array<{
-      id?: string | number;
-      status?: string;
-      _embedded?: {
-        official?: { id?: string | number; first_name?: string; last_name?: string };
-        position?: { name?: string };
-      };
-    }>;
+    assignments?: AssignmentSlot[];
   };
 };
 
+type AssignmentStatus = "accepted" | "declined" | "pending";
+
 function defaultDateRange() {
   return { startDate: "2026-03-01", endDate: "2026-06-30" };
+}
+
+function officialLabel(official?: OfficialOption) {
+  if (!official) return "";
+  const displayName = official.displayName?.trim();
+  if (displayName) return displayName;
+  return `${official.first_name || ""} ${official.last_name || ""}`.trim();
+}
+
+function positionPrefix(assignment: AssignmentSlot) {
+  const abbreviation = assignment.position_abbreviation?.trim().toUpperCase();
+  if (abbreviation) return `${abbreviation}:`;
+
+  const positionName =
+    assignment.position?.trim() ||
+    assignment._embedded?.position?.name?.trim() ||
+    "";
+  if (/plate/i.test(positionName)) return "P:";
+  if (/field/i.test(positionName)) return "F:";
+  return positionName ? `${positionName.slice(0, 1).toUpperCase()}:` : "U:";
+}
+
+function assignmentStatus(assignment: AssignmentSlot): AssignmentStatus {
+  if (assignment.declined || assignment.status === "D") return "declined";
+  if (assignment.accepted || assignment.status === "A") return "accepted";
+  return "pending";
+}
+
+function sortAssignments(assignments: AssignmentSlot[]) {
+  return [...assignments].sort((left, right) => {
+    const leftOrder = left.sort_order ?? Number.MAX_SAFE_INTEGER;
+    const rightOrder = right.sort_order ?? Number.MAX_SAFE_INTEGER;
+    if (leftOrder !== rightOrder) return leftOrder - rightOrder;
+    return String(left.id ?? "").localeCompare(String(right.id ?? ""));
+  });
+}
+
+function CheckIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden className="h-4 w-4" fill="none" stroke="currentColor">
+      <path d="M5 10.5 8 13.5 15 6.5" strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function XIcon() {
+  return (
+    <svg viewBox="0 0 20 20" aria-hidden className="h-4 w-4" fill="none" stroke="currentColor">
+      <path d="m6 6 8 8M14 6l-8 8" strokeLinecap="round" strokeWidth="1.8" />
+    </svg>
+  );
+}
+
+function StatusActionButton({
+  label,
+  tone,
+  active,
+  disabled,
+  onClick,
+  children,
+}: {
+  label: string;
+  tone: "accept" | "decline";
+  active?: boolean;
+  disabled?: boolean;
+  onClick?: () => void;
+  children: ReactNode;
+}) {
+  const toneClasses =
+    tone === "accept"
+      ? active
+        ? "border-emerald-400/70 bg-emerald-500/20 text-emerald-100 shadow-[0_0_0_1px_rgba(16,185,129,0.15)]"
+        : "border-emerald-500/30 bg-emerald-500/5 text-emerald-200 hover:border-emerald-400/60 hover:bg-emerald-500/15"
+      : active
+        ? "border-red-400/70 bg-red-500/20 text-red-100 shadow-[0_0_0_1px_rgba(248,113,113,0.15)]"
+        : "border-red-500/30 bg-red-500/5 text-red-200 hover:border-red-400/60 hover:bg-red-500/15";
+
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      title={label}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex h-8 w-8 items-center justify-center rounded-full border transition disabled:cursor-not-allowed disabled:opacity-40 ${toneClasses}`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function AssignmentStatusActions({
+  assignment,
+  busy,
+  onConfirm,
+}: {
+  assignment: AssignmentSlot;
+  busy: boolean;
+  onConfirm: (status: "A" | "D") => void;
+}) {
+  const status = assignmentStatus(assignment);
+  if (!assignment.id) return null;
+
+  if (status === "accepted") {
+    return (
+      <StatusActionButton label="Accepted" tone="accept" active disabled={busy}>
+        <CheckIcon />
+      </StatusActionButton>
+    );
+  }
+
+  if (status === "declined") {
+    return (
+      <StatusActionButton label="Declined" tone="decline" active disabled={busy}>
+        <XIcon />
+      </StatusActionButton>
+    );
+  }
+
+  return (
+    <>
+      <StatusActionButton
+        label="Accept assignment"
+        tone="accept"
+        disabled={busy}
+        onClick={() => onConfirm("A")}
+      >
+        <CheckIcon />
+      </StatusActionButton>
+      <StatusActionButton
+        label="Decline assignment"
+        tone="decline"
+        disabled={busy}
+        onClick={() => onConfirm("D")}
+      >
+        <XIcon />
+      </StatusActionButton>
+    </>
+  );
 }
 
 export default function AdminAssignrAssignmentsManager({
@@ -40,9 +196,35 @@ export default function AdminAssignrAssignmentsManager({
   const [endDate, setEndDate] = useState(defaults.endDate);
   const [view, setView] = useState<"all" | "unassigned">("all");
   const [games, setGames] = useState<AssignmentGame[]>([]);
+  const [officials, setOfficials] = useState<OfficialOption[]>([]);
+  const [officialSelections, setOfficialSelections] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+
+  const officialOptions = useMemo(
+    () =>
+      [...officials].sort((left, right) =>
+        officialLabel(left).localeCompare(officialLabel(right)),
+      ),
+    [officials],
+  );
+
+  async function loadOfficials() {
+    try {
+      const response = await fetch(`/api/admin/assignr/officials?org=${targetOrg}`);
+      const json = (await response.json()) as {
+        error?: string;
+        data?: OfficialOption[];
+      };
+      if (!response.ok) {
+        throw new Error(json.error || "Failed to load officials");
+      }
+      setOfficials(json.data ?? []);
+    } catch {
+      setOfficials([]);
+    }
+  }
 
   async function loadGames() {
     setBusy(true);
@@ -61,16 +243,33 @@ export default function AdminAssignrAssignmentsManager({
         data?: AssignmentGame[];
       };
       if (!response.ok) {
-        throw new Error(json.error || "Failed to load unassigned games");
+        throw new Error(json.error || "Failed to load assignments");
       }
-      setGames(json.data ?? []);
+      const nextGames = json.data ?? [];
+      setGames(nextGames);
+
+      const nextSelections: Record<string, string> = {};
+      for (const game of nextGames) {
+        for (const assignment of game._embedded?.assignments ?? []) {
+          if (!assignment.id) continue;
+          const officialId = assignment._embedded?.official?.id;
+          nextSelections[String(assignment.id)] =
+            officialId !== undefined && officialId !== null ? String(officialId) : "";
+        }
+      }
+      setOfficialSelections(nextSelections);
     } catch (err: unknown) {
       setGames([]);
-      setError(err instanceof Error ? err.message : "Failed to load unassigned games");
+      setOfficialSelections({});
+      setError(err instanceof Error ? err.message : "Failed to load assignments");
     } finally {
       setBusy(false);
     }
   }
+
+  useEffect(() => {
+    void loadOfficials();
+  }, [targetOrg]);
 
   useEffect(() => {
     void loadGames();
@@ -118,7 +317,9 @@ export default function AdminAssignrAssignmentsManager({
       if (!response.ok) {
         throw new Error(json.error || "Failed to update assignment");
       }
-      setNotice(`Assignment ${assignmentId} marked ${status === "A" ? "accepted" : "declined"}.`);
+      setNotice(
+        `Assignment ${assignmentId} marked ${status === "A" ? "accepted" : "declined"}.`,
+      );
       await loadGames();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update assignment");
@@ -129,14 +330,14 @@ export default function AdminAssignrAssignmentsManager({
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-wrap items-end gap-3">
+      <div className="flex flex-wrap items-end gap-3 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
         <label className="text-sm text-zinc-300">
           Start
           <input
             type="date"
             value={startDate}
             onChange={(event) => setStartDate(event.target.value)}
-            className="mt-1 block rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+            className="mt-1 block rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white"
           />
         </label>
         <label className="text-sm text-zinc-300">
@@ -145,7 +346,7 @@ export default function AdminAssignrAssignmentsManager({
             type="date"
             value={endDate}
             onChange={(event) => setEndDate(event.target.value)}
-            className="mt-1 block rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+            className="mt-1 block rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white"
           />
         </label>
         <label className="text-sm text-zinc-300">
@@ -153,7 +354,7 @@ export default function AdminAssignrAssignmentsManager({
           <select
             value={view}
             onChange={(event) => setView(event.target.value as "all" | "unassigned")}
-            className="mt-1 block rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2"
+            className="mt-1 block rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white"
           >
             <option value="all">All games</option>
             <option value="unassigned">Unassigned only</option>
@@ -163,7 +364,7 @@ export default function AdminAssignrAssignmentsManager({
           type="button"
           disabled={busy}
           onClick={() => void loadGames()}
-          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800 disabled:opacity-50"
+          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 transition hover:bg-zinc-800 disabled:opacity-50"
         >
           Refresh
         </button>
@@ -172,21 +373,21 @@ export default function AdminAssignrAssignmentsManager({
       {error ? <p className="text-sm text-red-300">{error}</p> : null}
       {notice ? <p className="text-sm text-emerald-300">{notice}</p> : null}
 
-      <div className="overflow-hidden rounded-2xl border border-zinc-800">
+      <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-900/30 shadow-[0_20px_60px_rgba(0,0,0,0.25)]">
         <table className="w-full text-sm">
-          <thead className="bg-zinc-950 text-left text-zinc-400">
+          <thead className="bg-zinc-950/90 text-left text-xs uppercase tracking-[0.18em] text-zinc-500">
             <tr>
-              <th className="px-4 py-2">Date</th>
-              <th className="px-4 py-2">Matchup</th>
-              <th className="px-4 py-2">Venue</th>
-              <th className="px-4 py-2">Assignments</th>
-              <th className="px-4 py-2">Actions</th>
+              <th className="px-4 py-3">Date</th>
+              <th className="px-4 py-3">Matchup</th>
+              <th className="px-4 py-3">Venue</th>
+              <th className="px-4 py-3">Assignments</th>
+              <th className="px-4 py-3">Actions</th>
             </tr>
           </thead>
           <tbody>
             {games.length === 0 ? (
               <tr>
-                <td className="px-4 py-4 text-zinc-500" colSpan={5}>
+                <td className="px-4 py-8 text-zinc-500" colSpan={5}>
                   {busy
                     ? "Loading…"
                     : view === "unassigned"
@@ -196,65 +397,92 @@ export default function AdminAssignrAssignmentsManager({
               </tr>
             ) : (
               games.map((game) => (
-                <tr key={String(game.id)} className="border-t border-zinc-800 align-top">
-                  <td className="px-4 py-3">
-                    <div>{game.localized_date || "—"}</div>
-                    <div className="text-xs text-zinc-500">{game.localized_time || "TBD"}</div>
+                <tr
+                  key={String(game.id)}
+                  className="border-t border-zinc-800/80 align-top transition hover:bg-zinc-950/40"
+                >
+                  <td className="px-4 py-4">
+                    <div className="font-medium text-white">{game.localized_date || "—"}</div>
+                    <div className="mt-1 text-xs text-zinc-500">{game.localized_time || "TBD"}</div>
                   </td>
-                  <td className="px-4 py-3">
-                    {game.home_team} vs {game.away_team}
-                    <div className="text-xs text-zinc-500">{game.age_group}</div>
+                  <td className="px-4 py-4">
+                    <div className="font-medium text-zinc-100">
+                      {game.home_team} vs {game.away_team}
+                    </div>
+                    <div className="mt-1 text-xs text-zinc-500">{game.age_group}</div>
                   </td>
-                  <td className="px-4 py-3">
-                    {game._embedded?.venue?.name || "—"}
-                    <div className="text-xs text-zinc-500">{game.subvenue || ""}</div>
+                  <td className="px-4 py-4">
+                    <div className="text-zinc-200">{game._embedded?.venue?.name || "—"}</div>
+                    <div className="mt-1 text-xs text-zinc-500">{game.subvenue || ""}</div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-4">
                     {(game._embedded?.assignments ?? []).length === 0 ? (
                       <span className="text-zinc-500">No assignment slots</span>
                     ) : (
-                      <ul className="space-y-2">
-                        {(game._embedded?.assignments ?? []).map((assignment) => {
-                          const official = assignment._embedded?.official;
-                          const name = official
-                            ? `${official.first_name || ""} ${official.last_name || ""}`.trim()
-                            : "Unfilled";
+                      <div className="space-y-2">
+                        {sortAssignments(game._embedded?.assignments ?? []).map((assignment) => {
+                          const assignmentId = assignment.id ? String(assignment.id) : "";
+                          const selectedOfficialId =
+                            officialSelections[assignmentId] ??
+                            (assignment._embedded?.official?.id !== undefined &&
+                            assignment._embedded?.official?.id !== null
+                              ? String(assignment._embedded.official.id)
+                              : "");
+
                           return (
-                            <li key={String(assignment.id)} className="text-xs text-zinc-300">
-                              {assignment._embedded?.position?.name || "Position"}: {name}
-                              {assignment.id ? (
-                                <span className="ml-2 inline-flex gap-1">
-                                  <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={() => void confirmAssignment(assignment.id!, "A")}
-                                    className="rounded border border-emerald-500/40 px-2 py-0.5 text-emerald-200"
-                                  >
-                                    Accept
-                                  </button>
-                                  <button
-                                    type="button"
-                                    disabled={busy}
-                                    onClick={() => void confirmAssignment(assignment.id!, "D")}
-                                    className="rounded border border-amber-500/40 px-2 py-0.5 text-amber-200"
-                                  >
-                                    Decline
-                                  </button>
-                                </span>
-                              ) : null}
-                            </li>
+                            <div
+                              key={assignmentId || `${game.id}-${assignment.sort_order}`}
+                              className="flex items-center gap-2 rounded-xl border border-zinc-800/90 bg-zinc-950/70 px-2.5 py-2"
+                            >
+                              <span className="w-7 shrink-0 font-mono text-xs font-semibold text-brand-gold">
+                                {positionPrefix(assignment)}
+                              </span>
+                              <select
+                                value={selectedOfficialId}
+                                disabled={busy || !assignmentId}
+                                onChange={(event) => {
+                                  if (!assignmentId) return;
+                                  setOfficialSelections((current) => ({
+                                    ...current,
+                                    [assignmentId]: event.target.value,
+                                  }));
+                                }}
+                                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-sm text-zinc-100 outline-none transition focus:border-brand-gold/60 focus:ring-2 focus:ring-brand-gold/20 disabled:opacity-50"
+                              >
+                                <option value="">Unassigned</option>
+                                {officialOptions.map((official) => {
+                                  const id = official.id;
+                                  if (id === undefined || id === null) return null;
+                                  return (
+                                    <option key={String(id)} value={String(id)}>
+                                      {officialLabel(official) || `Official ${id}`}
+                                    </option>
+                                  );
+                                })}
+                              </select>
+                              <div className="flex shrink-0 items-center gap-1.5">
+                                <AssignmentStatusActions
+                                  assignment={assignment}
+                                  busy={busy}
+                                  onConfirm={(status) => {
+                                    if (!assignment.id) return;
+                                    void confirmAssignment(assignment.id, status);
+                                  }}
+                                />
+                              </div>
+                            </div>
                           );
                         })}
-                      </ul>
+                      </div>
                     )}
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-4 py-4">
                     {game.id ? (
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() => void unassignGame(game.id!)}
-                        className="rounded border border-zinc-700 px-3 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+                        className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-200 transition hover:border-zinc-500 hover:bg-zinc-800 disabled:opacity-50"
                       >
                         Unassign all
                       </button>

@@ -38,6 +38,10 @@ export type AssignrAssignment = {
   sort_order?: number;
   status?: string;
   position?: string;
+  position_abbreviation?: string;
+  accepted?: boolean;
+  declined?: boolean;
+  assigned?: boolean;
   lock_version?: string | number;
   _embedded?: {
     official?: AssignrOfficial;
