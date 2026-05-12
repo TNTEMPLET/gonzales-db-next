@@ -17,6 +17,7 @@ export const SCORES_IMPORT_SEASON_START = "2026-03-01";
 export const SCORES_IMPORT_SEASON_END = "2026-06-30";
 
 const PREVIEW_SAMPLE_LIMIT = 25;
+const SCORES_IMPORT_TIME_ZONE = "America/Chicago";
 
 type CsvRow = Record<string, string | number | boolean | null | undefined>;
 
@@ -61,6 +62,10 @@ export type ScoresImportUnmatchedRow = ScoresImportPreviewSample & {
   ageGroup: string;
   candidateGames: ScoresImportCandidateGame[];
   suggestedGameExternalId?: string;
+};
+
+export type ScoresImportReviewRow = ScoresImportUnmatchedRow & {
+  autoMatchedGameId?: string;
 };
 
 export type ScoresImportSummary = {
@@ -119,6 +124,7 @@ export type ScoresImportPreview = {
   excludedCancelledDates: string[];
   requiresCancelledAcknowledgement: boolean;
   unmatchedRows: ScoresImportUnmatchedRow[];
+  reviewRows: ScoresImportReviewRow[];
   cancelledRows: ScoresImportPreviewSample[];
   samples: {
     matched: ScoresImportPreviewSample[];
@@ -130,7 +136,6 @@ export type ScoresImportPreview = {
 
 type GameIndexes = {
   byId: Map<string, Game>;
-  byFallbackWithTime: Map<string, Game[]>;
   byFallback: Map<string, Game[]>;
 };
 
@@ -232,28 +237,136 @@ function parseCsvDateTime(dateValue: string, timeValue: string) {
   return dt;
 }
 
+function formatDateKeyInTimeZone(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(value);
+  const year = parts.find((part) => part.type === "year")?.value;
+  const month = parts.find((part) => part.type === "month")?.value;
+  const day = parts.find((part) => part.type === "day")?.value;
+  if (!year || !month || !day) return "";
+  return `${year}-${month}-${day}`;
+}
+
+function formatTimeKeyInTimeZone(value: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone,
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  }).formatToParts(value);
+  const hour = parts.find((part) => part.type === "hour")?.value;
+  const minute = parts.find((part) => part.type === "minute")?.value;
+  if (!hour || !minute) return "";
+  return `${hour}:${minute}`;
+}
+
+function parseDisplayDateKey(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const mmddyyyy = /^(\d{1,2})\/(\d{1,2})\/(\d{4})$/;
+  const match = trimmed.match(mmddyyyy);
+  if (match) {
+    const month = Number(match[1]);
+    const day = Number(match[2]);
+    const year = Number(match[3]);
+    return `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.valueOf())) return "";
+  return formatDateKeyInTimeZone(parsed, SCORES_IMPORT_TIME_ZONE);
+}
+
+function parseDisplayTimeKey(value: string) {
+  const trimmed = value.trim();
+  if (!trimmed) return "";
+
+  const match = trimmed.match(/^(\d{1,2}):(\d{2})\s*([AP]M)$/i);
+  if (match) {
+    let hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    const period = match[3].toUpperCase();
+
+    if (period === "PM" && hours < 12) hours += 12;
+    if (period === "AM" && hours === 12) hours = 0;
+
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
+  }
+
+  const parsed = new Date(trimmed);
+  if (Number.isNaN(parsed.valueOf())) return "";
+  return formatTimeKeyInTimeZone(parsed, SCORES_IMPORT_TIME_ZONE);
+}
+
 function gameDateKeyFromString(value?: string) {
   if (!value) return "";
+  const displayKey = parseDisplayDateKey(value);
+  if (displayKey) return displayKey;
+
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf())) return "";
-  return `${parsed.getUTCFullYear()}-${String(parsed.getUTCMonth() + 1).padStart(2, "0")}-${String(parsed.getUTCDate()).padStart(2, "0")}`;
+  return formatDateKeyInTimeZone(parsed, SCORES_IMPORT_TIME_ZONE);
 }
 
 function gameDateKeyFromDate(value: Date | null) {
   if (!value) return "";
-  return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, "0")}-${String(value.getUTCDate()).padStart(2, "0")}`;
+  return formatDateKeyInTimeZone(value, SCORES_IMPORT_TIME_ZONE);
+}
+
+function gameDateKeyFromGame(game: Game) {
+  const localizedDate =
+    typeof game.localized_date === "string" ? game.localized_date.trim() : "";
+  if (localizedDate) {
+    const localizedKey = parseDisplayDateKey(localizedDate);
+    if (localizedKey) return localizedKey;
+  }
+
+  if (game.start_time) {
+    const parsed = new Date(game.start_time);
+    if (!Number.isNaN(parsed.valueOf())) {
+      return formatDateKeyInTimeZone(parsed, SCORES_IMPORT_TIME_ZONE);
+    }
+  }
+
+  return "";
 }
 
 function gameTimeKeyFromString(value?: string) {
   if (!value) return "";
+  const displayKey = parseDisplayTimeKey(value);
+  if (displayKey) return displayKey;
+
   const parsed = new Date(value);
   if (Number.isNaN(parsed.valueOf())) return "";
-  return `${String(parsed.getUTCHours()).padStart(2, "0")}:${String(parsed.getUTCMinutes()).padStart(2, "0")}`;
+  return formatTimeKeyInTimeZone(parsed, SCORES_IMPORT_TIME_ZONE);
 }
 
 function gameTimeKeyFromDate(value: Date | null) {
   if (!value) return "";
-  return `${String(value.getUTCHours()).padStart(2, "0")}:${String(value.getUTCMinutes()).padStart(2, "0")}`;
+  return formatTimeKeyInTimeZone(value, SCORES_IMPORT_TIME_ZONE);
+}
+
+function gameTimeKeyFromGame(game: Game) {
+  const localizedTime =
+    typeof game.localized_time === "string" ? game.localized_time.trim() : "";
+  if (localizedTime) {
+    const localizedKey = parseDisplayTimeKey(localizedTime);
+    if (localizedKey) return localizedKey;
+  }
+
+  if (game.start_time) {
+    const parsed = new Date(game.start_time);
+    if (!Number.isNaN(parsed.valueOf())) {
+      return formatTimeKeyInTimeZone(parsed, SCORES_IMPORT_TIME_ZONE);
+    }
+  }
+
+  return "";
 }
 
 function toScore(value: string) {
@@ -285,27 +398,33 @@ function isAssignrCancelledGame(game: Game) {
 }
 
 function formatGameDateLabel(game: Game) {
-  const source = game.start_time || game.localized_date;
-  if (!source) return "Date TBD";
-  const parsed = new Date(source);
+  const localizedDate =
+    typeof game.localized_date === "string" ? game.localized_date.trim() : "";
+  if (localizedDate) return localizedDate;
+
+  if (!game.start_time) return "Date TBD";
+  const parsed = new Date(game.start_time);
   if (Number.isNaN(parsed.valueOf())) return "Date TBD";
   return parsed.toLocaleDateString("en-US", {
     month: "2-digit",
     day: "2-digit",
     year: "numeric",
-    timeZone: "UTC",
+    timeZone: SCORES_IMPORT_TIME_ZONE,
   });
 }
 
 function formatGameStartTimeLabel(game: Game) {
-  const source = game.start_time || game.localized_time;
-  if (!source) return "";
-  const parsed = new Date(source);
+  const localizedTime =
+    typeof game.localized_time === "string" ? game.localized_time.trim() : "";
+  if (localizedTime) return localizedTime;
+
+  if (!game.start_time) return "";
+  const parsed = new Date(game.start_time);
   if (Number.isNaN(parsed.valueOf())) return "";
   return parsed.toLocaleTimeString("en-US", {
     hour: "numeric",
     minute: "2-digit",
-    timeZone: "UTC",
+    timeZone: SCORES_IMPORT_TIME_ZONE,
   });
 }
 
@@ -330,7 +449,7 @@ export function summarizeAssignrCancelledGame(game: Game): AssignrCancelledGameS
 function collectUploadDateKeys(rows: ScoresImportRow[]) {
   const dateKeys = new Set<string>();
   for (const row of rows) {
-    const dateKey = gameDateKeyFromDate(parseCsvDate(row.date));
+    const dateKey = rowDateKey(row);
     if (dateKey) dateKeys.add(dateKey);
   }
   return dateKeys;
@@ -356,9 +475,7 @@ export function listAssignrCancelledGamesForUpload(
     const gameExternalId = String(game.id || "").trim();
     if (!gameExternalId || seen.has(gameExternalId)) continue;
 
-    const dateKey =
-      gameDateKeyFromString(game.start_time) ||
-      gameDateKeyFromString(game.localized_date);
+    const dateKey = gameDateKeyFromGame(game);
     const inUpload =
       uploadMatchIds.has(gameExternalId) ||
       (dateKey ? uploadDateKeys.has(dateKey) : false);
@@ -388,7 +505,11 @@ export function collectExcludedCancelledDates(
 }
 
 function rowDateKey(row: ScoresImportRow) {
-  return gameDateKeyFromDate(parseCsvDate(row.date));
+  return parseDisplayDateKey(row.date);
+}
+
+function rowTimeKey(row: ScoresImportRow) {
+  return parseDisplayTimeKey(row.startTime);
 }
 
 function rowMatchesCancelledUploadContext(
@@ -407,7 +528,7 @@ function rowMatchesCancelledUploadContext(
   if (!dateKey) return false;
 
   return cancelledGames.some((game) => {
-    const cancelledDateKey = gameDateKeyFromDate(parseCsvDate(game.dateLabel));
+    const cancelledDateKey = parseDisplayDateKey(game.dateLabel);
     return cancelledDateKey === dateKey;
   });
 }
@@ -579,28 +700,25 @@ export function suggestCandidateGamesForRow(
 ) {
   const mappedAgeGroup = resolveMappedAgeGroup(row, mappings);
   const dateKey = rowDateKey(row);
-  const timeKey = gameTimeKeyFromDate(parseCsvDateTime(row.date, row.startTime));
-  const scoredCandidates: Array<{ game: Game; score: number; reason: string }> = [];
+  const timeKey = rowTimeKey(row);
+  const scoredCandidates: Array<{
+    game: Game;
+    score: number;
+    reason: string;
+    timeKey: string;
+  }> = [];
 
   for (const game of games) {
     if (game.status?.trim().toUpperCase() !== "A") continue;
 
     let score = 0;
     const reasons: string[] = [];
-    const gameDateKey =
-      gameDateKeyFromString(game.start_time) ||
-      gameDateKeyFromString(game.localized_date);
-    const gameTimeKey =
-      gameTimeKeyFromString(game.start_time) ||
-      gameTimeKeyFromString(game.localized_time);
+    const gameDateKey = gameDateKeyFromGame(game);
+    const gameTimeKey = gameTimeKeyFromGame(game);
 
     if (dateKey && gameDateKey === dateKey) {
       score += 4;
       reasons.push("same date");
-    }
-    if (timeKey && gameTimeKey === timeKey) {
-      score += 3;
-      reasons.push("same start time");
     }
     if (
       row.homeTeam &&
@@ -644,18 +762,29 @@ export function suggestCandidateGamesForRow(
       reasons.push("match ID");
     }
 
+    if (timeKey && gameTimeKey === timeKey) {
+      score += 1;
+      reasons.push("same start time");
+    }
+
     if (score < 4) continue;
 
     scoredCandidates.push({
       game,
       score,
       reason: reasons.join(", "),
+      timeKey: gameTimeKey,
     });
   }
 
   return scoredCandidates
     .sort((a, b) => {
       if (b.score !== a.score) return b.score - a.score;
+      if (timeKey) {
+        const aExact = a.timeKey === timeKey;
+        const bExact = b.timeKey === timeKey;
+        if (aExact !== bExact) return aExact ? -1 : 1;
+      }
       return String(a.game.id || "").localeCompare(String(b.game.id || ""));
     })
     .slice(0, 8)
@@ -704,7 +833,6 @@ export function buildSuggestedScoresMappings(params: {
 
 export function buildScoresImportGameIndexes(games: Game[]): GameIndexes {
   const byId = new Map<string, Game>();
-  const byFallbackWithTime = new Map<string, Game[]>();
   const byFallback = new Map<string, Game[]>();
 
   for (const game of games) {
@@ -713,25 +841,13 @@ export function buildScoresImportGameIndexes(games: Game[]): GameIndexes {
 
     const home = (game.home_team || "").trim();
     const away = (game.away_team || "").trim();
-    const dateKey =
-      gameDateKeyFromString(game.start_time) ||
-      gameDateKeyFromString(game.localized_date);
-    const timeKey =
-      gameTimeKeyFromString(game.start_time) ||
-      gameTimeKeyFromString(game.localized_time);
+    const dateKey = gameDateKeyFromGame(game);
     if (home && away && dateKey) {
       pushGameIndex(byFallback, buildFallbackKey(home, away, dateKey), game);
-      if (timeKey) {
-        pushGameIndex(
-          byFallbackWithTime,
-          buildFallbackKeyWithTime(home, away, dateKey, timeKey),
-          game,
-        );
-      }
     }
   }
 
-  return { byId, byFallbackWithTime, byFallback };
+  return { byId, byFallback };
 }
 
 export function resolveMappedSubVenue(
@@ -746,31 +862,15 @@ export function resolveMappedSubVenue(
 
 function pickCandidateGame(
   candidates: Game[],
-  params: {
-    mappedAgeGroup: string | null;
-    mappedSubVenue: string | null;
-  },
+  mappedAgeGroup: string | null,
 ) {
   if (candidates.length === 0) return undefined;
   if (candidates.length === 1) return candidates[0];
 
-  if (params.mappedAgeGroup) {
-    const filtered = candidates.filter((game) =>
-      ageGroupsCompatible(game.age_group, params.mappedAgeGroup),
-    );
-    if (filtered.length === 1) return filtered[0];
-    if (filtered.length > 1) {
-      candidates = filtered;
-    }
-  }
+  if (!mappedAgeGroup) return undefined;
 
-  if (candidates.length === 1) return candidates[0];
-
-  if (!params.mappedSubVenue) return undefined;
-
-  const normalizedTarget = normalizeVenueLabel(params.mappedSubVenue);
-  const filtered = candidates.filter(
-    (game) => normalizeVenueLabel(getGameSubVenue(game)) === normalizedTarget,
+  const filtered = candidates.filter((game) =>
+    ageGroupsCompatible(game.age_group, mappedAgeGroup),
   );
   if (filtered.length === 1) return filtered[0];
   return undefined;
@@ -789,7 +889,6 @@ export function matchScoresImportRow(params: {
     return { kind: "skippedMissingScore", row };
   }
 
-  const mappedSubVenue = resolveMappedSubVenue(row, mappings);
   const mappedAgeGroup = resolveMappedAgeGroup(row, mappings);
   const manualGameId = mappings.rowMappings[String(row.rowNumber)]?.trim();
   let game: Game | undefined;
@@ -803,27 +902,14 @@ export function matchScoresImportRow(params: {
   }
 
   if (!game && row.homeTeam && row.awayTeam) {
-    const parsedDate = parseCsvDate(row.date);
-    const dateKey = gameDateKeyFromDate(parsedDate);
-    const dateTime = parseCsvDateTime(row.date, row.startTime);
-    const timeKey = gameTimeKeyFromDate(dateTime);
+    const dateKey = rowDateKey(row);
     if (dateKey) {
-      if (timeKey) {
-        game = pickCandidateGame(
-          indexes.byFallbackWithTime.get(
-            buildFallbackKeyWithTime(row.homeTeam, row.awayTeam, dateKey, timeKey),
-          ) ?? [],
-          { mappedAgeGroup, mappedSubVenue },
-        );
-      }
-      if (!game) {
-        game = pickCandidateGame(
-          indexes.byFallback.get(
-            buildFallbackKey(row.homeTeam, row.awayTeam, dateKey),
-          ) ?? [],
-          { mappedAgeGroup, mappedSubVenue },
-        );
-      }
+      game = pickCandidateGame(
+        indexes.byFallback.get(
+          buildFallbackKey(row.homeTeam, row.awayTeam, dateKey),
+        ) ?? [],
+        mappedAgeGroup,
+      );
     }
   }
 
@@ -962,12 +1048,36 @@ function shouldExcludeRowForAssignrCancellation(
   };
 }
 
-function buildUnmatchedPreviewRow(
+function buildReviewPreviewRow(
   row: ScoresImportRow,
   games: Game[],
   mappings: ScoresImportMappings,
-): ScoresImportUnmatchedRow {
+  params: {
+    outcome: ScoresImportPreviewSample["outcome"];
+    matchedGameId?: string;
+    reason?: string;
+  },
+): ScoresImportReviewRow {
   const candidateGames = suggestCandidateGamesForRow(row, games, mappings);
+  const matchedGame = params.matchedGameId
+    ? games.find((game) => String(game.id || "").trim() === params.matchedGameId)
+    : undefined;
+  if (
+    matchedGame &&
+    !candidateGames.some(
+      (candidate) => candidate.gameExternalId === params.matchedGameId,
+    )
+  ) {
+    candidateGames.unshift({
+      gameExternalId: String(matchedGame.id || "").trim(),
+      ageGroup: (matchedGame.age_group || "Unassigned").trim() || "Unassigned",
+      homeTeam: (matchedGame.home_team || "Home Team").trim(),
+      awayTeam: (matchedGame.away_team || "Away Team").trim(),
+      dateLabel: formatGameDateLabel(matchedGame),
+      startTime: formatGameStartTimeLabel(matchedGame),
+      reason: "current match",
+    });
+  }
   const suggestedGameExternalId =
     candidateGames.length === 1 ? candidateGames[0]?.gameExternalId : undefined;
 
@@ -983,11 +1093,24 @@ function buildUnmatchedPreviewRow(
     ageGroup: row.group,
     homeScore: toScore(row.homeScoreRaw),
     awayScore: toScore(row.awayScoreRaw),
-    outcome: "unmatched",
-    reason: "No matching Assignr game for this row",
+    outcome: params.outcome,
+    matchedGameId: params.matchedGameId,
+    reason: params.reason,
     candidateGames,
     suggestedGameExternalId,
+    autoMatchedGameId: params.matchedGameId,
   };
+}
+
+function buildUnmatchedPreviewRow(
+  row: ScoresImportRow,
+  games: Game[],
+  mappings: ScoresImportMappings,
+): ScoresImportUnmatchedRow {
+  return buildReviewPreviewRow(row, games, mappings, {
+    outcome: "unmatched",
+    reason: "No matching Assignr game for this row",
+  });
 }
 
 export function buildScoresImportPreview(params: {
@@ -1039,6 +1162,7 @@ export function buildScoresImportPreview(params: {
     skippedRainedOut: 0,
   };
   const unmatchedRows: ScoresImportUnmatchedRow[] = [];
+  const reviewRows: ScoresImportReviewRow[] = [];
   const cancelledRows: ScoresImportPreviewSample[] = [];
   const samples = {
     matched: [] as ScoresImportPreviewSample[],
@@ -1083,6 +1207,7 @@ export function buildScoresImportPreview(params: {
       summary.unmatched += 1;
       const unmatchedRow = buildUnmatchedPreviewRow(row, params.games, mappings);
       unmatchedRows.push(unmatchedRow);
+      reviewRows.push(unmatchedRow);
       pushSample(samples.unmatched, unmatchedRow);
       continue;
     }
@@ -1099,7 +1224,16 @@ export function buildScoresImportPreview(params: {
       continue;
     }
 
-    pushSample(samples.matched, sample);
+    const matchedSample = toPreviewSample(result);
+    if (matchedSample) {
+      reviewRows.push(
+        buildReviewPreviewRow(row, params.games, mappings, {
+          outcome: "matched",
+          matchedGameId: matchedSample.matchedGameId,
+        }),
+      );
+    }
+    pushSample(samples.matched, matchedSample);
   }
 
   return {
@@ -1117,6 +1251,7 @@ export function buildScoresImportPreview(params: {
     requiresCancelledAcknowledgement:
       assignrCancelledGames.length > 0 || cancelledRows.length > 0,
     unmatchedRows,
+    reviewRows,
     cancelledRows,
     samples,
   };
