@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useMemo } from "react";
+import { useRef, useState, useMemo, type Dispatch, type SetStateAction } from "react";
 import { useRouter } from "next/navigation";
 
 import {
@@ -37,6 +37,67 @@ type ScoreState = {
   homeScore: string;
   awayScore: string;
 };
+
+type VenueCatalogEntry = {
+  venue: string;
+  subVenue: string;
+};
+
+type ScoresFieldOption = {
+  sourcePark: string;
+  sourceField: string;
+  key: string;
+};
+
+type ScoresImportPreviewSample = {
+  rowNumber: number;
+  matchId: string;
+  homeTeam: string;
+  awayTeam: string;
+  date: string;
+  startTime: string;
+  location: string;
+  field: string;
+  homeScore: number | null;
+  awayScore: number | null;
+  outcome:
+    | "matched"
+    | "unmatched"
+    | "skippedMissingScore"
+    | "skippedRainedOut";
+  matchedGameId?: string;
+  matchedSubVenue?: string;
+};
+
+type ScoresImportPreview = {
+  rowCount: number;
+  parks: string[];
+  fields: ScoresFieldOption[];
+  venues: string[];
+  venueCatalog: VenueCatalogEntry[];
+  suggestedMappings: {
+    parkMappings: Record<string, string>;
+    fieldMappings: Record<string, string>;
+  };
+  summary: {
+    processed: number;
+    matched: number;
+    unmatched: number;
+    skippedMissingScore: number;
+    skippedRainedOut: number;
+  };
+  samples: {
+    matched: ScoresImportPreviewSample[];
+    unmatched: ScoresImportPreviewSample[];
+    skippedMissingScore: ScoresImportPreviewSample[];
+    skippedRainedOut: ScoresImportPreviewSample[];
+  };
+  error?: string;
+};
+
+async function safeJson(response: Response) {
+  return response.json().catch(() => ({}));
+}
 
 function formatGameDate(value: string | null) {
   if (!value) return "Date TBD";
@@ -111,8 +172,42 @@ export default function AdminScoresManager({
   const [activeAgeGroup, setActiveAgeGroup] = useState<string>("");
   const [savingGameId, setSavingGameId] = useState<string | null>(null);
   const [importBusy, setImportBusy] = useState(false);
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
+  const [importPreview, setImportPreview] = useState<ScoresImportPreview | null>(
+    null,
+  );
+  const [parkMappings, setParkMappings] = useState<Record<string, string>>({});
+  const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+
+  const subVenueOptionsByVenue = useMemo(() => {
+    const map = new Map<string, string[]>();
+    for (const entry of importPreview?.venueCatalog ?? []) {
+      const current = map.get(entry.venue) ?? [];
+      if (!current.includes(entry.subVenue)) {
+        current.push(entry.subVenue);
+      }
+      map.set(entry.venue, current);
+    }
+    for (const [venue, values] of map.entries()) {
+      map.set(
+        venue,
+        values.sort((a, b) => a.localeCompare(b)),
+      );
+    }
+    return map;
+  }, [importPreview?.venueCatalog]);
+
+  const missingParks = useMemo(() => {
+    return (importPreview?.parks ?? []).filter((park) => !parkMappings[park]?.trim());
+  }, [importPreview?.parks, parkMappings]);
+
+  const missingFields = useMemo(() => {
+    return (importPreview?.fields ?? []).filter(
+      (field) => !fieldMappings[field.key]?.trim(),
+    );
+  }, [fieldMappings, importPreview?.fields]);
 
   const nonRainoutGames = useMemo(
     () => games.filter((game) => game.status !== "C"),
@@ -265,7 +360,17 @@ export default function AdminScoresManager({
     window.location.href = "/api/admin/scores/template";
   }
 
-  async function handleCsvUpload(file: File) {
+  function resetImportState() {
+    setUploadedFile(null);
+    setImportPreview(null);
+    setParkMappings({});
+    setFieldMappings({});
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  }
+
+  async function handleImportPreview(file: File) {
     setImportBusy(true);
     setError("");
     setNotice("");
@@ -276,14 +381,65 @@ export default function AdminScoresManager({
 
       const response = await fetch(
         orgQuery
+          ? `/api/admin/scores/import/preview?${orgQuery}`
+          : "/api/admin/scores/import/preview",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      const json = (await safeJson(response)) as ScoresImportPreview;
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to preview scores import"));
+      }
+
+      setUploadedFile(file);
+      setImportPreview(json);
+      setParkMappings(json.suggestedMappings.parkMappings ?? {});
+      setFieldMappings(json.suggestedMappings.fieldMappings ?? {});
+      setNotice(
+        `Parsed ${json.rowCount} rows. Matched ${json.summary.matched}, unmatched ${json.summary.unmatched}, missing scores ${json.summary.skippedMissingScore}, rained-out skipped ${json.summary.skippedRainedOut}.`,
+      );
+    } catch (err: unknown) {
+      resetImportState();
+      setError(
+        err instanceof Error ? err.message : "Failed to preview scores import",
+      );
+    } finally {
+      setImportBusy(false);
+    }
+  }
+
+  async function handleConfirmImport() {
+    if (!uploadedFile) {
+      setError("Upload a scores file before importing.");
+      return;
+    }
+    if (missingParks.length > 0 || missingFields.length > 0) {
+      setError("Complete park and field mappings before importing.");
+      return;
+    }
+
+    setImportBusy(true);
+    setError("");
+    setNotice("");
+
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+      formData.append("parkMappings", JSON.stringify(parkMappings));
+      formData.append("fieldMappings", JSON.stringify(fieldMappings));
+
+      const response = await fetch(
+        orgQuery
           ? `/api/admin/scores/import?${orgQuery}`
           : "/api/admin/scores/import",
         {
-        method: "POST",
-        body: formData,
-      },
+          method: "POST",
+          body: formData,
+        },
       );
-      const json = (await response.json()) as {
+      const json = (await safeJson(response)) as {
         error?: string;
         processed?: number;
         matched?: number;
@@ -300,14 +456,12 @@ export default function AdminScoresManager({
       setNotice(
         `Import complete. Processed ${json.processed || 0}, matched ${json.matched || 0}, saved ${json.saved || 0}, unmatched ${json.unmatched || 0}, missing scores ${json.skippedMissingScore || 0}, rained-out skipped ${json.skippedRainedOut || 0}.`,
       );
+      resetImportState();
       router.refresh();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to import CSV");
     } finally {
       setImportBusy(false);
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
     }
   }
 
@@ -341,7 +495,7 @@ export default function AdminScoresManager({
             onChange={(event) => {
               const file = event.target.files?.[0];
               if (file) {
-                void handleCsvUpload(file);
+                void handleImportPreview(file);
               }
             }}
           />
@@ -351,9 +505,50 @@ export default function AdminScoresManager({
             onClick={() => fileInputRef.current?.click()}
             className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-3 py-2 disabled:opacity-60"
           >
-            {importBusy ? "Importing..." : "Upload Scores CSV"}
+            {importBusy ? "Working..." : "Upload Scores CSV"}
           </button>
+          {importPreview ? (
+            <button
+              type="button"
+              disabled={importBusy}
+              onClick={resetImportState}
+              className="text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-2 disabled:opacity-60"
+            >
+              Cancel import
+            </button>
+          ) : null}
         </div>
+
+        {importPreview ? (
+          <ScoresImportMappingPanel
+            fields={importPreview.fields}
+            fieldMappings={fieldMappings}
+            missingFields={missingFields}
+            missingParks={missingParks}
+            parkMappings={parkMappings}
+            parks={importPreview.parks}
+            setFieldMappings={setFieldMappings}
+            setParkMappings={setParkMappings}
+            subVenueOptionsByVenue={subVenueOptionsByVenue}
+            summary={importPreview.summary}
+            venues={importPreview.venues}
+          />
+        ) : null}
+
+        {importPreview ? (
+        <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={
+                importBusy || missingParks.length > 0 || missingFields.length > 0
+              }
+              onClick={() => void handleConfirmImport()}
+              className="text-xs rounded-lg border border-emerald-600 text-emerald-300 hover:bg-emerald-900/20 px-3 py-2 disabled:opacity-60"
+            >
+              {importBusy ? "Importing..." : "Confirm import"}
+            </button>
+          </div>
+        ) : null}
 
         <div className="flex flex-wrap gap-2">
           {ageGroups.map((ageGroup) =>
@@ -630,5 +825,177 @@ export default function AdminScoresManager({
         </div>
       </div>
     </section>
+  );
+}
+
+function ScoresImportMappingPanel(props: {
+  summary: ScoresImportPreview["summary"];
+  parks: string[];
+  venues: string[];
+  fields: ScoresFieldOption[];
+  parkMappings: Record<string, string>;
+  setParkMappings: Dispatch<SetStateAction<Record<string, string>>>;
+  fieldMappings: Record<string, string>;
+  setFieldMappings: Dispatch<SetStateAction<Record<string, string>>>;
+  subVenueOptionsByVenue: Map<string, string[]>;
+  missingParks: string[];
+  missingFields: ScoresFieldOption[];
+}) {
+  return (
+    <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 text-sm">
+        <div>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">Processed</p>
+          <p className="font-semibold text-zinc-100">{props.summary.processed}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">Matched</p>
+          <p className="font-semibold text-emerald-300">{props.summary.matched}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">Unmatched</p>
+          <p className="font-semibold text-amber-300">{props.summary.unmatched}</p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">
+            Missing scores
+          </p>
+          <p className="font-semibold text-zinc-100">
+            {props.summary.skippedMissingScore}
+          </p>
+        </div>
+        <div>
+          <p className="text-xs uppercase tracking-wide text-zinc-500">
+            Rained-out skipped
+          </p>
+          <p className="font-semibold text-zinc-100">
+            {props.summary.skippedRainedOut}
+          </p>
+        </div>
+      </div>
+
+      {props.parks.length > 0 || props.fields.length > 0 ? (
+        <div className="grid gap-6 lg:grid-cols-2">
+          {props.parks.length > 0 ? (
+            <div className="rounded-xl border border-zinc-800 overflow-hidden">
+              <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+                  Park to venue mapping
+                </h3>
+                {props.missingParks.length > 0 ? (
+                  <p className="mt-1 text-xs text-amber-300">
+                    {props.missingParks.length} park label
+                    {props.missingParks.length === 1 ? "" : "s"} still need a
+                    venue.
+                  </p>
+                ) : null}
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-950">
+                  <tr className="text-left text-zinc-400">
+                    <th className="px-4 py-2">Imported park</th>
+                    <th className="px-4 py-2">Assignr venue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.parks.map((park) => (
+                    <tr key={park} className="border-t border-zinc-800">
+                      <td className="px-4 py-2">{park}</td>
+                      <td className="px-4 py-2">
+                        <select
+                          value={props.parkMappings[park] || ""}
+                          onChange={(event) =>
+                            props.setParkMappings((current) => ({
+                              ...current,
+                              [park]: event.target.value,
+                            }))
+                          }
+                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                        >
+                          <option value="">Select venue…</option>
+                          {props.venues.map((option) => (
+                            <option key={option} value={option}>
+                              {option}
+                            </option>
+                          ))}
+                        </select>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+
+          {props.fields.length > 0 ? (
+            <div className="rounded-xl border border-zinc-800 overflow-hidden">
+              <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+                <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+                  Field to sub-venue mapping
+                </h3>
+                {props.missingFields.length > 0 ? (
+                  <p className="mt-1 text-xs text-amber-300">
+                    {props.missingFields.length} field label
+                    {props.missingFields.length === 1 ? "" : "s"} still need a
+                    sub-venue.
+                  </p>
+                ) : null}
+              </div>
+              <table className="w-full text-sm">
+                <thead className="bg-zinc-950">
+                  <tr className="text-left text-zinc-400">
+                    <th className="px-4 py-2">Imported field</th>
+                    <th className="px-4 py-2">Assignr sub-venue</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {props.fields.map((field) => {
+                    const mappedVenue = props.parkMappings[field.sourcePark] || "";
+                    const scopedOptions = mappedVenue
+                      ? props.subVenueOptionsByVenue.get(mappedVenue) ?? []
+                      : Array.from(props.subVenueOptionsByVenue.values()).flat();
+
+                    return (
+                      <tr key={field.key} className="border-t border-zinc-800">
+                        <td className="px-4 py-2">
+                          <div>{field.sourceField}</div>
+                          <div className="text-xs text-zinc-500">
+                            {field.sourcePark}
+                          </div>
+                        </td>
+                        <td className="px-4 py-2">
+                          <select
+                            value={props.fieldMappings[field.key] || ""}
+                            onChange={(event) =>
+                              props.setFieldMappings((current) => ({
+                                ...current,
+                                [field.key]: event.target.value,
+                              }))
+                            }
+                            className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                          >
+                            <option value="">Select sub-venue…</option>
+                            {scopedOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option}
+                              </option>
+                            ))}
+                          </select>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
+        </div>
+      ) : (
+        <p className="text-sm text-zinc-500">
+          No park or field labels were found in the upload. Matching will use
+          match IDs and team/date/time fallbacks.
+        </p>
+      )}
+    </div>
   );
 }
