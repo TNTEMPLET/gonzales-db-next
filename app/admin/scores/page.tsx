@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import AdminGamesImportManager from "@/components/admin/AdminGamesImportManager";
 import AdminScoresManager from "@/components/admin/AdminScoresManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import {
@@ -96,6 +97,7 @@ export default async function AdminScoresPage({
           existingScores={scores}
           targetOrg={orgId}
         />
+        <AdminGamesImportManager targetOrg={orgId} />
       </section>
     </main>
   );

@@ -20,7 +20,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
-    "admin:create": "tsx scripts/createAdmin.ts",
+    "test": "tsx --test lib/assignr/__tests__/*.test.ts",
     "coach:test": "tsx scripts/create-test-coach.ts",
     "facebook:exchange-tokens": "node scripts/exchange-facebook-token.mjs"
   },
