@@ -71,6 +71,18 @@ export type ScoresImportPreviewSample = {
     | "skippedRainedOut";
   matchedGameId?: string;
   matchedSubVenue?: string;
+  reason?: string;
+};
+
+export type AssignrCancelledGameSummary = {
+  gameExternalId: string;
+  dateLabel: string;
+  startTime: string;
+  homeTeam: string;
+  awayTeam: string;
+  venue: string | null;
+  subvenue: string | null;
+  ageGroup: string | null;
 };
 
 export type ScoresImportPreview = {
@@ -81,6 +93,11 @@ export type ScoresImportPreview = {
   venueCatalog: VenueCatalogEntry[];
   suggestedMappings: ScoresImportMappings;
   summary: Omit<ScoresImportSummary, "saved">;
+  assignrCancelledGames: AssignrCancelledGameSummary[];
+  excludedCancelledDates: string[];
+  requiresCancelledAcknowledgement: boolean;
+  unmatchedRows: ScoresImportPreviewSample[];
+  cancelledRows: ScoresImportPreviewSample[];
   samples: {
     matched: ScoresImportPreviewSample[];
     unmatched: ScoresImportPreviewSample[];
@@ -239,6 +256,138 @@ function buildFallbackKeyWithTime(
 
 function getGameSubVenue(game: Game) {
   return typeof game.subvenue === "string" ? game.subvenue.trim() : "";
+}
+
+function isAssignrCancelledGame(game: Game) {
+  return game.status?.trim().toUpperCase() === "C";
+}
+
+function formatGameDateLabel(game: Game) {
+  const source = game.start_time || game.localized_date;
+  if (!source) return "Date TBD";
+  const parsed = new Date(source);
+  if (Number.isNaN(parsed.valueOf())) return "Date TBD";
+  return parsed.toLocaleDateString("en-US", {
+    month: "2-digit",
+    day: "2-digit",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
+function formatGameStartTimeLabel(game: Game) {
+  const source = game.start_time || game.localized_time;
+  if (!source) return "";
+  const parsed = new Date(source);
+  if (Number.isNaN(parsed.valueOf())) return "";
+  return parsed.toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: "UTC",
+  });
+}
+
+export function summarizeAssignrCancelledGame(game: Game): AssignrCancelledGameSummary {
+  const venue =
+    typeof game._embedded?.venue?.name === "string"
+      ? game._embedded.venue.name.trim()
+      : null;
+  return {
+    gameExternalId: String(game.id || "").trim(),
+    dateLabel: formatGameDateLabel(game),
+    startTime: formatGameStartTimeLabel(game),
+    homeTeam: (game.home_team || "").trim() || "Home Team",
+    awayTeam: (game.away_team || "").trim() || "Away Team",
+    venue,
+    subvenue: getGameSubVenue(game) || null,
+    ageGroup:
+      typeof game.age_group === "string" ? game.age_group.trim() || null : null,
+  };
+}
+
+function collectUploadDateKeys(rows: ScoresImportRow[]) {
+  const dateKeys = new Set<string>();
+  for (const row of rows) {
+    const dateKey = gameDateKeyFromDate(parseCsvDate(row.date));
+    if (dateKey) dateKeys.add(dateKey);
+  }
+  return dateKeys;
+}
+
+function collectUploadMatchIds(rows: ScoresImportRow[]) {
+  return new Set(
+    rows.map((row) => row.matchId.trim()).filter(Boolean),
+  );
+}
+
+export function listAssignrCancelledGamesForUpload(
+  games: Game[],
+  rows: ScoresImportRow[],
+) {
+  const uploadDateKeys = collectUploadDateKeys(rows);
+  const uploadMatchIds = collectUploadMatchIds(rows);
+  const seen = new Set<string>();
+  const summaries: AssignrCancelledGameSummary[] = [];
+
+  for (const game of games) {
+    if (!isAssignrCancelledGame(game)) continue;
+    const gameExternalId = String(game.id || "").trim();
+    if (!gameExternalId || seen.has(gameExternalId)) continue;
+
+    const dateKey =
+      gameDateKeyFromString(game.start_time) ||
+      gameDateKeyFromString(game.localized_date);
+    const inUpload =
+      uploadMatchIds.has(gameExternalId) ||
+      (dateKey ? uploadDateKeys.has(dateKey) : false);
+    if (!inUpload) continue;
+
+    seen.add(gameExternalId);
+    summaries.push(summarizeAssignrCancelledGame(game));
+  }
+
+  return summaries.sort((a, b) => {
+    const dateCompare = a.dateLabel.localeCompare(b.dateLabel);
+    if (dateCompare !== 0) return dateCompare;
+    return a.startTime.localeCompare(b.startTime);
+  });
+}
+
+export function collectExcludedCancelledDates(
+  cancelledGames: AssignrCancelledGameSummary[],
+) {
+  return Array.from(
+    new Set(
+      cancelledGames
+        .map((game) => game.dateLabel.trim())
+        .filter(Boolean),
+    ),
+  ).sort((a, b) => a.localeCompare(b));
+}
+
+function rowDateKey(row: ScoresImportRow) {
+  return gameDateKeyFromDate(parseCsvDate(row.date));
+}
+
+function rowMatchesCancelledUploadContext(
+  row: ScoresImportRow,
+  cancelledGames: AssignrCancelledGameSummary[],
+) {
+  const rowMatchId = row.matchId.trim();
+  if (
+    rowMatchId &&
+    cancelledGames.some((game) => game.gameExternalId === rowMatchId)
+  ) {
+    return true;
+  }
+
+  const dateKey = rowDateKey(row);
+  if (!dateKey) return false;
+
+  return cancelledGames.some((game) => {
+    const cancelledDateKey = gameDateKeyFromDate(parseCsvDate(game.dateLabel));
+    return cancelledDateKey === dateKey;
+  });
 }
 
 function pushGameIndex(map: Map<string, Game[]>, key: string, game: Game) {
@@ -466,6 +615,7 @@ export function matchScoresImportRow(params: {
 
 function toPreviewSample(
   result: RowMatchResult,
+  reason?: string,
 ): ScoresImportPreviewSample | null {
   const homeScore =
     result.kind === "skippedMissingScore"
@@ -497,7 +647,7 @@ function toPreviewSample(
     return { ...base, outcome: "skippedMissingScore" };
   }
   if (result.kind === "unmatched") {
-    return { ...base, outcome: "unmatched" };
+    return { ...base, outcome: "unmatched", reason };
   }
   if (result.kind === "skippedRainedOut") {
     return {
@@ -505,6 +655,7 @@ function toPreviewSample(
       outcome: "skippedRainedOut",
       matchedGameId: String(result.game.id || ""),
       matchedSubVenue: getGameSubVenue(result.game) || undefined,
+      reason: reason || "Assignr cancelled game",
     };
   }
 
@@ -524,6 +675,59 @@ function pushSample(
   bucket.push(sample);
 }
 
+function buildCancelledPreviewSample(
+  row: ScoresImportRow,
+  reason: string,
+  game?: Game,
+): ScoresImportPreviewSample {
+  return {
+    rowNumber: row.rowNumber,
+    matchId: row.matchId,
+    homeTeam: row.homeTeam,
+    awayTeam: row.awayTeam,
+    date: row.date,
+    startTime: row.startTime,
+    location: row.location,
+    field: row.field,
+    homeScore: toScore(row.homeScoreRaw),
+    awayScore: toScore(row.awayScoreRaw),
+    outcome: "skippedRainedOut",
+    matchedGameId: game ? String(game.id || "") : undefined,
+    matchedSubVenue: game ? getGameSubVenue(game) || undefined : undefined,
+    reason,
+  };
+}
+
+function shouldExcludeRowForAssignrCancellation(
+  row: ScoresImportRow,
+  cancelledGames: AssignrCancelledGameSummary[],
+  indexes: GameIndexes,
+) {
+  const byId = row.matchId ? indexes.byId.get(row.matchId) : undefined;
+  if (byId && isAssignrCancelledGame(byId)) {
+    return {
+      exclude: true,
+      game: byId,
+      reason: "Assignr cancelled game removed from import",
+    };
+  }
+
+  if (!rowMatchesCancelledUploadContext(row, cancelledGames)) {
+    return { exclude: false as const };
+  }
+
+  const homeScore = toScore(row.homeScoreRaw);
+  const awayScore = toScore(row.awayScoreRaw);
+  if (homeScore !== null && awayScore !== null) {
+    return { exclude: false as const };
+  }
+
+  return {
+    exclude: true,
+    reason: "Assignr cancelled date removed from import",
+  };
+}
+
 export function buildScoresImportPreview(params: {
   rows: CsvRow[];
   games: Game[];
@@ -541,6 +745,13 @@ export function buildScoresImportPreview(params: {
   });
   const mappings = params.mappings ?? suggestedMappings;
   const indexes = buildScoresImportGameIndexes(params.games);
+  const assignrCancelledGames = listAssignrCancelledGamesForUpload(
+    params.games,
+    parsedRows,
+  );
+  const excludedCancelledDates = collectExcludedCancelledDates(
+    assignrCancelledGames,
+  );
 
   const summary = {
     processed: 0,
@@ -549,6 +760,8 @@ export function buildScoresImportPreview(params: {
     skippedMissingScore: 0,
     skippedRainedOut: 0,
   };
+  const unmatchedRows: ScoresImportPreviewSample[] = [];
+  const cancelledRows: ScoresImportPreviewSample[] = [];
   const samples = {
     matched: [] as ScoresImportPreviewSample[],
     unmatched: [] as ScoresImportPreviewSample[],
@@ -558,8 +771,30 @@ export function buildScoresImportPreview(params: {
 
   for (const row of parsedRows) {
     summary.processed += 1;
+    const cancellation = shouldExcludeRowForAssignrCancellation(
+      row,
+      assignrCancelledGames,
+      indexes,
+    );
+    if (cancellation.exclude) {
+      summary.skippedRainedOut += 1;
+      const sample = buildCancelledPreviewSample(
+        row,
+        cancellation.reason,
+        cancellation.game,
+      );
+      cancelledRows.push(sample);
+      pushSample(samples.skippedRainedOut, sample);
+      continue;
+    }
+
     const result = matchScoresImportRow({ row, indexes, mappings });
-    const sample = toPreviewSample(result);
+    const sample = toPreviewSample(
+      result,
+      result.kind === "unmatched"
+        ? "No matching Assignr game for this row"
+        : undefined,
+    );
 
     if (result.kind === "skippedMissingScore") {
       summary.skippedMissingScore += 1;
@@ -568,6 +803,7 @@ export function buildScoresImportPreview(params: {
     }
     if (result.kind === "unmatched") {
       summary.unmatched += 1;
+      if (sample) unmatchedRows.push(sample);
       pushSample(samples.unmatched, sample);
       continue;
     }
@@ -575,7 +811,12 @@ export function buildScoresImportPreview(params: {
     summary.matched += 1;
     if (result.kind === "skippedRainedOut") {
       summary.skippedRainedOut += 1;
-      pushSample(samples.skippedRainedOut, sample);
+      const cancelledSample = toPreviewSample(
+        result,
+        "Assignr cancelled game removed from import",
+      );
+      if (cancelledSample) cancelledRows.push(cancelledSample);
+      pushSample(samples.skippedRainedOut, cancelledSample);
       continue;
     }
 
@@ -590,6 +831,12 @@ export function buildScoresImportPreview(params: {
     venueCatalog,
     suggestedMappings,
     summary,
+    assignrCancelledGames,
+    excludedCancelledDates,
+    requiresCancelledAcknowledgement:
+      assignrCancelledGames.length > 0 || cancelledRows.length > 0,
+    unmatchedRows,
+    cancelledRows,
     samples,
   };
 }
@@ -637,6 +884,10 @@ export async function applyScoresImport(params: {
   });
   const mappings = params.mappings ?? suggestedMappings;
   const indexes = buildScoresImportGameIndexes(params.games);
+  const assignrCancelledGames = listAssignrCancelledGamesForUpload(
+    params.games,
+    parsedRows,
+  );
 
   const summary: ScoresImportSummary = {
     processed: 0,
@@ -649,6 +900,16 @@ export async function applyScoresImport(params: {
 
   for (const row of parsedRows) {
     summary.processed += 1;
+    const cancellation = shouldExcludeRowForAssignrCancellation(
+      row,
+      assignrCancelledGames,
+      indexes,
+    );
+    if (cancellation.exclude) {
+      summary.skippedRainedOut += 1;
+      continue;
+    }
+
     const result = matchScoresImportRow({ row, indexes, mappings });
 
     if (result.kind === "skippedMissingScore") {

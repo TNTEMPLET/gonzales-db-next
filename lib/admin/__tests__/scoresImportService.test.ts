@@ -6,6 +6,7 @@ import type { Game } from "@/lib/fetchGames";
 import {
   buildScoresImportGameIndexes,
   buildScoresImportPreview,
+  listAssignrCancelledGamesForUpload,
   matchScoresImportRow,
   parseScoresImportRow,
 } from "@/lib/admin/scoresImportService";
@@ -225,8 +226,46 @@ test("buildScoresImportPreview summarizes row outcomes", () => {
   });
 
   assert.equal(preview.summary.processed, 4);
-  assert.equal(preview.summary.matched, 2);
+  assert.equal(preview.summary.matched, 1);
   assert.equal(preview.summary.unmatched, 1);
   assert.equal(preview.summary.skippedMissingScore, 1);
   assert.equal(preview.summary.skippedRainedOut, 1);
+  assert.equal(preview.unmatchedRows.length, 1);
+  assert.equal(preview.cancelledRows.length, 1);
+  assert.equal(preview.assignrCancelledGames.length, 1);
+  assert.equal(preview.requiresCancelledAcknowledgement, true);
+});
+
+test("lists assignr cancelled games that overlap the upload", () => {
+  const rows = [
+    parseScoresImportRow(
+      {
+        "Match ID": "rain-1",
+        Date: "03/11/2026",
+      },
+      2,
+    ),
+  ];
+
+  const cancelledGames = listAssignrCancelledGamesForUpload(baseGames, rows);
+  assert.equal(cancelledGames.length, 1);
+  assert.equal(cancelledGames[0]?.gameExternalId, "rain-1");
+});
+
+test("excludes unscored rows on assignr cancelled dates from import matching", () => {
+  const preview = buildScoresImportPreview({
+    rows: [
+      {
+        "Match ID": "rain-1",
+        Date: "03/11/2026",
+        "Home Team Score": "",
+        "Away Team Score": "",
+      },
+    ],
+    games: baseGames,
+  });
+
+  assert.equal(preview.summary.unmatched, 0);
+  assert.equal(preview.summary.skippedRainedOut, 1);
+  assert.equal(preview.cancelledRows[0]?.reason, "Assignr cancelled game removed from import");
 });
