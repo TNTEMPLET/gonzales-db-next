@@ -24,6 +24,7 @@ type Game = {
 };
 
 type Props = {
+  siteName: string;
   initialGames: Game[];
   initialError: string | null;
   currentViewMode: "thisWeek" | "nextWeek" | "fullSeason";
@@ -81,6 +82,7 @@ const compareAgeGroup = (a: Game, b: Game) => {
 };
 
 export default function ScheduleTable({
+  siteName,
   initialGames,
   initialError,
   currentViewMode,
@@ -554,6 +556,7 @@ export default function ScheduleTable({
   return (
     <section id="schedule" className="py-20 bg-zinc-950">
       <RainoutPopup
+        siteName={siteName}
         rainedOutVenues={rainedOutVenues}
         allParksRainedOut={allParksRainedOut}
         _preview={previewRainout}

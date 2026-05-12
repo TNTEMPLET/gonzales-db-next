@@ -24,6 +24,7 @@ export default async function SchedulePage({
 }) {
   const resolvedSearchParams = await searchParams;
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
+  const site = getSiteConfig();
   const leagueId = getAssignrLeagueId();
   const orgId = getOrgId();
 
@@ -109,6 +110,7 @@ export default async function SchedulePage({
         </p>
       </div>
       <ScheduleTable
+        siteName={site.name}
         initialGames={games}
         initialError={error}
         currentViewMode={viewMode}
