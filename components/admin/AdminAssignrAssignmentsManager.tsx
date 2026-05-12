@@ -357,7 +357,7 @@ export default function AdminAssignrAssignmentsManager({
             className="mt-1 block rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white"
           >
             <option value="all">All games</option>
-            <option value="unassigned">Unassigned only</option>
+            <option value="unassigned">Open slots only</option>
           </select>
         </label>
         <button
@@ -391,7 +391,7 @@ export default function AdminAssignrAssignmentsManager({
                   {busy
                     ? "Loading…"
                     : view === "unassigned"
-                      ? "No unassigned games in this range."
+                      ? "No games with open assignment slots in this range."
                       : "No games in this range."}
                 </td>
               </tr>

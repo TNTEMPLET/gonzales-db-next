@@ -4,6 +4,7 @@ import {
   getAssignrSiteId,
 } from "@/lib/assignr/config";
 import type {
+  AssignrAssignment,
   AssignrGame,
   AssignrGameCreatePayload,
   AssignrGameUpdatePayload,
@@ -84,6 +85,23 @@ export async function enrichAssignrGamesWithAssignmentDetails(games: AssignrGame
       }
     }),
   );
+}
+
+export function assignrAssignmentSlotIsOpen(assignment: AssignrAssignment) {
+  if (assignment._embedded?.official?.id !== undefined && assignment._embedded?.official?.id !== null) {
+    return false;
+  }
+  return assignment.assigned !== true;
+}
+
+export function assignrGameHasOpenAssignmentSlots(game: AssignrGame) {
+  const assignments = game._embedded?.assignments ?? [];
+  if (assignments.length === 0) return true;
+  return assignments.some((assignment) => assignrAssignmentSlotIsOpen(assignment));
+}
+
+export function filterAssignrGamesWithOpenAssignmentSlots(games: AssignrGame[]) {
+  return games.filter((game) => assignrGameHasOpenAssignmentSlots(game));
 }
 
 export function mapImportRowToCreatePayload(
