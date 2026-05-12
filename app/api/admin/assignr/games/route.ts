@@ -1,15 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { fetchAssignrGamesForContentOrg } from "@/lib/admin/assignrOrgScope";
 import { ensureAssignrAdmin } from "@/lib/assignr/adminAuth";
 import {
   createAssignrGame,
-  listAssignrGames,
   mapImportRowToCreatePayload,
 } from "@/lib/assignr/games";
 import { revalidateAssignrGamesCache } from "@/lib/assignr/invalidation";
 import { recordAssignrAuditLog } from "@/lib/assignr/jobs";
 import type { AssignrGameImportRow } from "@/lib/assignr/gamesImportTypes";
-import { getAssignrLeagueIdForOrg } from "@/lib/assignr/config";
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAssignrAdmin(request);
@@ -27,10 +26,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const games = await listAssignrGames({
+    const games = await fetchAssignrGamesForContentOrg(auth.organizationId, {
       startDate,
       endDate,
-      leagueId: getAssignrLeagueIdForOrg(auth.organizationId),
       cache: "no-store",
     });
     return NextResponse.json({ data: games });

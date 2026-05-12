@@ -5,6 +5,7 @@ import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/au
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   fetchAssignrGamesForScope,
+  assignrHubHref,
   resolveAdminAssignrScope,
 } from "@/lib/admin/assignrOrgScope";
 import AdminGamesImportManager from "@/components/admin/AdminGamesImportManager";
@@ -78,6 +79,15 @@ export default async function AdminScoresPage({
     redirect("/admin?denied=scores");
   }
 
+  const assignrHubOrg = currentOrg ?? getDefaultContentOrg();
+  const canAccessAssignr =
+    canAccessAdminModule(role, "ASSIGNR") ||
+    (masterMode &&
+      !currentOrg &&
+      orgRoles.some(
+        (orgRole) => orgRole && canAccessAdminModule(orgRole, "ASSIGNR"),
+      ));
+
   const [scores, games] = await Promise.all([
     prisma.gameScore.findMany({
       where:
@@ -107,6 +117,7 @@ export default async function AdminScoresPage({
           allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           allowViewByUser={adminUser.isMaster}
           currentOrg={currentOrg}
+          moduleHubHref={canAccessAssignr ? assignrHubHref(assignrHubOrg) : undefined}
         />
 
         <AdminScoresManager
@@ -124,10 +135,12 @@ function ScoresPageHeader({
   currentOrg,
   allowRolePreview,
   allowViewByUser,
+  moduleHubHref,
 }: {
   currentOrg: ContentOrgId | null;
   allowRolePreview: boolean;
   allowViewByUser: boolean;
+  moduleHubHref?: string;
 }) {
   return (
     <div className="mb-8">
@@ -137,6 +150,8 @@ function ScoresPageHeader({
         currentPath="/admin/scores"
         allowRolePreview={allowRolePreview}
         allowViewByUser={allowViewByUser}
+        moduleHubHref={moduleHubHref}
+        moduleHubLabel="Assignr Hub"
       />
       <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
         Enter Game Scores

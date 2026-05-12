@@ -1,3 +1,5 @@
+import { listAssignrGames, listUnassignedOfficialGamesForSite } from "@/lib/assignr/games";
+import type { ListAssignrGamesOptions } from "@/lib/assignr/games";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import {
   CONTENT_ORGS,
@@ -32,9 +34,50 @@ export function assignrScopeToQueryParam(scope: AdminAssignrScope): string {
   return scope === "all" ? "" : `org=${scope}`;
 }
 
+export function assignrHubHref(org?: ContentOrgId | null) {
+  return org ? `/admin/assignr?org=${org}` : "/admin/assignr";
+}
+
 export function assignrScopeLabel(scope: AdminAssignrScope) {
   if (scope === "all") return "All Sites";
   return getOrgDisplayName(scope);
+}
+
+export function gameBelongsToContentOrg(game: Game, org: ContentOrgId) {
+  const inferred = inferContentOrgFromGame(game);
+  if (inferred) return inferred === org;
+
+  const leagueId = readLeagueId(game);
+  if (leagueId) return leagueId === getAssignrLeagueId(org);
+
+  return false;
+}
+
+export function filterAssignrGamesForContentOrg(games: Game[], org: ContentOrgId) {
+  return games.filter((game) => gameBelongsToContentOrg(game, org));
+}
+
+export async function fetchAssignrGamesForContentOrg(
+  org: ContentOrgId,
+  options: Omit<ListAssignrGamesOptions, "leagueId">,
+) {
+  const games = await listAssignrGames({
+    ...options,
+    leagueId: undefined,
+  });
+  return filterAssignrGamesForContentOrg(games, org);
+}
+
+export async function fetchUnassignedAssignrGamesForContentOrg(
+  org: ContentOrgId,
+  params: { startDate?: string; endDate?: string; siteId?: string },
+) {
+  const games = await listUnassignedOfficialGamesForSite({
+    siteId: params.siteId,
+    startDate: params.startDate,
+    endDate: params.endDate,
+  });
+  return filterAssignrGamesForContentOrg(games, org);
 }
 
 export async function fetchAssignrGamesForScope(params: {

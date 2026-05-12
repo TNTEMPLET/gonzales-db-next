@@ -199,7 +199,8 @@ export async function assignrFetchAllPages<TItem>(params: {
 
     const pageItems = data._embedded?.[params.collectionKey] ?? [];
     items.push(...pageItems);
-    if (pageItems.length === 0 || page >= (data.page?.pages || 1)) {
+    const totalPages = data.page?.pages ?? 1;
+    if (pageItems.length === 0 || page >= totalPages) {
       break;
     }
   }

@@ -9,6 +9,8 @@ type AdminSectionHeaderProps = {
   currentPath?: string;
   allowRolePreview?: boolean;
   allowViewByUser?: boolean;
+  moduleHubHref?: string;
+  moduleHubLabel?: string;
 };
 
 export default function AdminSectionHeader({
@@ -17,6 +19,8 @@ export default function AdminSectionHeader({
   currentPath,
   allowRolePreview = false,
   allowViewByUser = false,
+  moduleHubHref,
+  moduleHubLabel = "Module hub",
 }: AdminSectionHeaderProps) {
   const adminHref = currentOrg ? `/admin?org=${currentOrg}` : "/admin";
 
@@ -46,6 +50,15 @@ export default function AdminSectionHeader({
               currentOrg={currentOrg ?? undefined}
               allowViewByUser={allowViewByUser}
             />
+            {moduleHubHref ? (
+              <Link
+                href={moduleHubHref}
+                className="inline-flex items-center gap-2 text-sm font-semibold text-red-200 transition hover:text-red-100"
+              >
+                <span aria-hidden="true">←</span>
+                {moduleHubLabel}
+              </Link>
+            ) : null}
             <Link
               href={adminHref}
               className="inline-flex items-center gap-2 text-sm font-semibold text-red-200 transition hover:text-red-100"
@@ -72,6 +85,11 @@ export default function AdminSectionHeader({
         />
         {isMasterDeployment() && currentOrg && currentPath ? (
           <AdminOrgSwitcher currentOrg={currentOrg} currentPath={currentPath} />
+        ) : null}
+        {moduleHubHref ? (
+          <Link href={moduleHubHref} className="text-brand-gold hover:text-brand-gold/80">
+            {moduleHubLabel}
+          </Link>
         ) : null}
         <Link
           href={adminHref}

@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import AdminAssignrPayManager from "@/components/admin/AdminAssignrPayManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import { assignrHubHref } from "@/lib/admin/assignrOrgScope";
 import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
@@ -48,6 +49,8 @@ export default async function AdminAssignrPayPage({
           currentPath="/admin/assignr/pay"
           allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           allowViewByUser={adminUser.isMaster}
+          moduleHubHref={assignrHubHref(orgId)}
+          moduleHubLabel="Assignr Hub"
         />
         <h1 className="text-3xl font-bold mb-6">Pay & statements</h1>
         <AdminAssignrPayManager targetOrg={orgId} />

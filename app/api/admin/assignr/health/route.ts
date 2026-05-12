@@ -1,9 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAssignrAdmin } from "@/lib/assignr/adminAuth";
+import { fetchAssignrGamesForContentOrg } from "@/lib/admin/assignrOrgScope";
 import { getAssignrAccessToken } from "@/lib/assignr/client";
 import { getAssignrOAuthScope } from "@/lib/assignr/config";
-import { listAssignrGames } from "@/lib/assignr/games";
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAssignrAdmin(request);
@@ -20,7 +20,7 @@ export async function GET(request: NextRequest) {
     end.setDate(end.getDate() + 7);
 
     const format = (value: Date) => value.toISOString().slice(0, 10);
-    const games = await listAssignrGames({
+    const games = await fetchAssignrGamesForContentOrg(auth.organizationId, {
       startDate: format(start),
       endDate: format(end),
       cache: "no-store",
