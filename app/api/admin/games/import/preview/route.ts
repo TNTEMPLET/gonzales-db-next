@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { fetchGames } from "@/lib/fetchGames";
+import {
+  buildAgeGroupsByOrg,
+  fetchAssignrGamesForScope,
+  listAgeGroupsForScope,
+  resolveAdminAssignrScope,
+} from "@/lib/admin/assignrOrgScope";
 import {
   buildImportCatalog,
   buildSuggestedMappings,
@@ -13,7 +18,6 @@ import {
 import { mapDraftToAssignrRow } from "@/lib/assignr/gamesImportCsv";
 import { parseTournamentScheduleBuffer } from "@/lib/assignr/tournamentScheduleParser";
 import { ensureAdminModule } from "@/lib/news/auth";
-import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export async function POST(request: NextRequest) {
   const auth = await ensureAdminModule(request, "SCORES");
@@ -24,10 +28,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const targetOrg = resolveAdminTargetOrg(
+  const scope = resolveAdminAssignrScope(
     request.nextUrl.searchParams.get("org"),
   );
-  const leagueId = getAssignrLeagueId(targetOrg);
 
   try {
     const formData = await request.formData();
@@ -50,17 +53,19 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const games = await fetchGames({
+    const games = await fetchAssignrGamesForScope({
+      scope,
       startDate: `${seasonYear}-01-01`,
       endDate: `${seasonYear}-12-31`,
-      leagueId,
     });
     const catalog = buildImportCatalog(games);
+    const ageGroups = listAgeGroupsForScope(games, scope);
     const suggestions = buildSuggestedMappings({
       drafts,
-      ageGroups: catalog.ageGroups,
+      ageGroups,
       venues: catalog.venues,
       venueCatalog: catalog.venueCatalog,
+      scope,
     });
 
     const previewRows = drafts.map((draft) => {
@@ -68,6 +73,7 @@ export async function POST(request: NextRequest) {
         draft,
         {
           ageGroupMappings: suggestions.ageGroupMappings,
+          contentOrgMappings: suggestions.contentOrgMappings,
           parkMappings: suggestions.parkMappings,
           fieldMappings: suggestions.fieldMappings,
         },
@@ -83,12 +89,14 @@ export async function POST(request: NextRequest) {
     });
 
     return NextResponse.json({
+      scope,
       seasonYear,
       parsedCount: drafts.length,
       tournaments: collectDistinctTournaments(drafts),
       parks: collectDistinctParks(drafts),
       fields: collectDistinctFields(drafts),
-      ageGroups: catalog.ageGroups,
+      ageGroups,
+      ageGroupsByOrg: buildAgeGroupsByOrg(games),
       venues: catalog.venues,
       venueCatalog: catalog.venueCatalog,
       suggestedMappings: suggestions,

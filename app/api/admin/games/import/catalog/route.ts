@@ -1,12 +1,24 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { fetchGames } from "@/lib/fetchGames";
+import {
+  buildAgeGroupsByOrg,
+  fetchAssignrGamesForScope,
+  isAllSitesAssignrScope,
+  listAgeGroupsForScope,
+  resolveAdminAssignrScope,
+} from "@/lib/admin/assignrOrgScope";
 import {
   buildImportCatalog,
+  buildSuggestedMappings,
+  collectDistinctFields,
+  collectDistinctParks,
+  collectDistinctTournaments,
   parseSeasonYear,
+  serializeDraftForPreview,
 } from "@/lib/assignr/gamesImportService";
+import { mapDraftToAssignrRow } from "@/lib/assignr/gamesImportCsv";
+import { parseTournamentScheduleBuffer } from "@/lib/assignr/tournamentScheduleParser";
 import { ensureAdminModule } from "@/lib/news/auth";
-import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAdminModule(request, "SCORES");
@@ -17,25 +29,26 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const targetOrg = resolveAdminTargetOrg(
+  const scope = resolveAdminAssignrScope(
     request.nextUrl.searchParams.get("org"),
   );
   const seasonYear = parseSeasonYear(
     request.nextUrl.searchParams.get("seasonYear"),
   );
-  const leagueId = getAssignrLeagueId(targetOrg);
 
   try {
-    const games = await fetchGames({
+    const games = await fetchAssignrGamesForScope({
+      scope,
       startDate: `${seasonYear}-01-01`,
       endDate: `${seasonYear}-12-31`,
-      leagueId,
     });
     const catalog = buildImportCatalog(games);
 
     return NextResponse.json({
+      scope,
       seasonYear,
-      ageGroups: catalog.ageGroups,
+      ageGroups: listAgeGroupsForScope(games, scope),
+      ageGroupsByOrg: buildAgeGroupsByOrg(games),
       venues: catalog.venues,
       venueCatalog: catalog.venueCatalog,
     });

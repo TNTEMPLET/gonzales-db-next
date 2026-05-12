@@ -1,8 +1,13 @@
 import type { Game } from "@/lib/fetchGames";
 
 import {
+  type AdminAssignrScope,
+  isAllSitesAssignrScope,
+} from "@/lib/admin/assignrOrgScope";
+import {
   suggestAgeGroupForTournament,
   suggestParkVenue,
+  suggestTournamentContentOrg,
 } from "@/lib/assignr/gamesImportAliases";
 import type { TournamentGameDraft } from "@/lib/assignr/gamesImportTypes";
 import { fieldMappingKey } from "@/lib/assignr/gamesImportTypes";
@@ -95,10 +100,21 @@ export function buildSuggestedMappings(params: {
   ageGroups: string[];
   venues: string[];
   venueCatalog: ReturnType<typeof buildVenueCatalog>;
+  scope?: AdminAssignrScope;
 }) {
   const ageGroupMappings: Record<string, string> = {};
+  const contentOrgMappings: Record<string, string> = {};
   for (const tournament of collectDistinctTournaments(params.drafts)) {
-    const suggestion = suggestAgeGroupForTournament(tournament, params.ageGroups);
+    const suggestedOrg = suggestTournamentContentOrg(tournament);
+    if (suggestedOrg && params.scope && isAllSitesAssignrScope(params.scope)) {
+      contentOrgMappings[tournament] = suggestedOrg;
+    }
+
+    const suggestion = suggestAgeGroupForTournament(
+      tournament,
+      params.ageGroups,
+      suggestedOrg,
+    );
     if (suggestion) {
       ageGroupMappings[tournament] = suggestion;
     }
@@ -120,6 +136,7 @@ export function buildSuggestedMappings(params: {
 
   return {
     ageGroupMappings,
+    contentOrgMappings,
     parkMappings,
     fieldMappings,
   };

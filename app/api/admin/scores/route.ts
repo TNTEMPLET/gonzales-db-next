@@ -1,12 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
+import { resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { CONTENT_ORGS, isContentOrgId } from "@/lib/siteConfig";
 
 type SaveScorePayload = {
   gameExternalId?: string;
+  organizationId?: string;
   ageGroup?: string | null;
   homeTeam?: string;
   awayTeam?: string;
@@ -31,9 +33,12 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const orgId = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
+  const scope = resolveAdminAssignrScope(request.nextUrl.searchParams.get("org"));
   const scores = await prisma.gameScore.findMany({
-    where: { organizationId: orgId },
+    where:
+      scope === "all"
+        ? { organizationId: { in: [...CONTENT_ORGS] } }
+        : { organizationId: scope },
     orderBy: [{ gameDate: "asc" }, { updatedAt: "desc" }],
   });
 
@@ -90,9 +95,22 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const orgId = resolveAdminTargetOrg(
+    const scope = resolveAdminAssignrScope(
       request.nextUrl.searchParams.get("org"),
     );
+    const requestedOrg = body.organizationId?.trim();
+    const orgId =
+      scope === "all"
+        ? isContentOrgId(requestedOrg)
+          ? requestedOrg
+          : null
+        : scope;
+    if (!orgId) {
+      return NextResponse.json(
+        { error: "organizationId is required when saving scores in All Sites mode" },
+        { status: 400 },
+      );
+    }
     const score = await prisma.gameScore.upsert({
       where: {
         organizationId_gameExternalId: {

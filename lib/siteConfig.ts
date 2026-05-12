@@ -82,6 +82,8 @@ function isContentOrgId(
   return value === "gonzales" || value === "ascension";
 }
 
+export { isContentOrgId };
+
 export function getSiteConfig(): SiteConfig {
   const orgId = (process.env.SITE_ORG ?? "gonzales") as OrgId;
   return configs[orgId] ?? configs.gonzales;

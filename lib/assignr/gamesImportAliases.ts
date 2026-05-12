@@ -1,4 +1,6 @@
 import { normalizeAgeGroup } from "@/lib/ageGroupAliases";
+import { inferContentOrgFromAgeGroup } from "@/lib/admin/assignrOrgScope";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 const TOURNAMENT_AGE_GROUP_ALIASES: Record<string, string> = {
   "9 year old diamond city tournament": "9U DYB",
@@ -38,16 +40,46 @@ function extractAgeGroupFromTitle(title: string) {
   return null;
 }
 
+export function suggestTournamentContentOrg(
+  sourceTournament: string,
+): ContentOrgId | null {
+  const normalized = normalizeTournamentKey(sourceTournament);
+  if (
+    normalized.includes("little league") ||
+    normalized.includes("llb") ||
+    normalized.includes("dixie pre majors")
+  ) {
+    return "ascension";
+  }
+  if (
+    normalized.includes("diamond city") ||
+    normalized.includes("dyb") ||
+    normalized.includes("dbb") ||
+    normalized.includes("coaches pitch")
+  ) {
+    return "gonzales";
+  }
+  return null;
+}
+
 export function suggestAgeGroupForTournament(
   sourceTournament: string,
   scheduleAgeGroups: string[],
+  preferredOrg?: ContentOrgId | null,
 ) {
   const trimmed = sourceTournament.trim();
   if (!trimmed) return null;
 
+  const scopedAgeGroups = preferredOrg
+    ? scheduleAgeGroups.filter((option) => {
+        const org = inferContentOrgFromAgeGroup(option);
+        return !org || org === preferredOrg;
+      })
+    : scheduleAgeGroups;
+
   const alias = TOURNAMENT_AGE_GROUP_ALIASES[normalizeTournamentKey(trimmed)];
   if (alias) {
-    const exact = scheduleAgeGroups.find(
+    const exact = scopedAgeGroups.find(
       (option) => option.trim().toLowerCase() === alias.toLowerCase(),
     );
     if (exact) return exact;
@@ -55,7 +87,7 @@ export function suggestAgeGroupForTournament(
 
   const normalized = normalizeAgeGroup(trimmed);
   if (normalized) {
-    const exact = scheduleAgeGroups.find(
+    const exact = scopedAgeGroups.find(
       (option) => option.trim().toLowerCase() === normalized.toLowerCase(),
     );
     if (exact) return exact;
@@ -63,19 +95,19 @@ export function suggestAgeGroupForTournament(
 
   const extracted = extractAgeGroupFromTitle(trimmed);
   if (extracted) {
-    const exact = scheduleAgeGroups.find(
+    const exact = scopedAgeGroups.find(
       (option) => option.trim().toLowerCase() === extracted.toLowerCase(),
     );
     if (exact) return exact;
 
-    const fuzzy = scheduleAgeGroups.find((option) => {
+    const fuzzy = scopedAgeGroups.find((option) => {
       const optionNorm = option.trim().toUpperCase();
       return optionNorm.startsWith(extracted.toUpperCase());
     });
     if (fuzzy) return fuzzy;
   }
 
-  const loose = scheduleAgeGroups.find((option) => {
+  const loose = scopedAgeGroups.find((option) => {
     const optionNorm = option.trim().toLowerCase();
     const titleNorm = trimmed.toLowerCase();
     return titleNorm.includes(optionNorm) || optionNorm.includes(titleNorm);
