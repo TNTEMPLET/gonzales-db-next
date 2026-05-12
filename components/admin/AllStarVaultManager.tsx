@@ -2444,16 +2444,18 @@ export default function AllStarVaultManager({
                   >
                     PDF (full)
                   </a>
-                  <a
-                    href={
-                      selectedCycleId
-                        ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${orgQuery}`
-                        : "#"
-                    }
-                    className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
-                  >
-                    Showcase Score Card (fillable PDF)
-                  </a>
+                  {selectedCycle?.hasShowcase ? (
+                    <a
+                      href={
+                        selectedCycleId
+                          ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${orgQuery}`
+                          : "#"
+                      }
+                      className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
+                    >
+                      Showcase Score Card (fillable PDF)
+                    </a>
+                  ) : null}
                 </div>
               </div>
 
@@ -3506,16 +3508,18 @@ export default function AllStarVaultManager({
             >
               PDF (full)
             </a>
-            <a
-              href={
-                selectedCycleId
-                  ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
-                  : "#"
-              }
-              className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
-            >
-              Showcase Score Card (fillable PDF)
-            </a>
+            {selectedCycle?.hasShowcase ? (
+              <a
+                href={
+                  selectedCycleId
+                    ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
+                    : "#"
+                }
+                className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
+              >
+                Showcase Score Card (fillable PDF)
+              </a>
+            ) : null}
             <button
               type="button"
               disabled={busy || !selectedCycleId || !canRefreshVoteSummary}
@@ -3863,16 +3867,18 @@ export default function AllStarVaultManager({
           >
             Export PDF
           </a>
-          <a
-            href={
-              selectedCycleId
-                ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}`
-                : "#"
-            }
-            className="rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-4 py-2 text-sm"
-          >
-            Showcase Score Card (fillable PDF)
-          </a>
+          {selectedCycle?.hasShowcase ? (
+            <a
+              href={
+                selectedCycleId
+                  ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}`
+                  : "#"
+              }
+              className="rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-4 py-2 text-sm"
+            >
+              Showcase Score Card (fillable PDF)
+            </a>
+          ) : null}
         </div>
         {inviteLinks.length > 0 ? (
           <div className="rounded-lg border border-zinc-800 max-h-56 overflow-auto">
