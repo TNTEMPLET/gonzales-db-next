@@ -31,6 +31,7 @@ export type AssignrFetchOptions = {
   cache?: RequestCache;
   next?: { revalidate?: number | false; tags?: string[] };
   retryOnConflict?: boolean;
+  contentType?: "hal" | "json";
 };
 
 function sleep(ms: number) {
@@ -129,7 +130,8 @@ export async function assignrFetch<T>(
       Authorization: `Bearer ${token}`,
     };
     if (options.body !== undefined) {
-      headers["Content-Type"] = HAL_ACCEPT;
+      headers["Content-Type"] =
+        options.contentType === "json" ? "application/json" : HAL_ACCEPT;
     }
 
     const response = await fetch(buildAssignrUrl(path, options.searchParams), {

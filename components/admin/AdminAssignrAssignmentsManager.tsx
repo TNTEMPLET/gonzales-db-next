@@ -74,34 +74,14 @@ function assignmentStatus(assignment: AssignmentSlot): AssignmentStatus {
   return "pending";
 }
 
-function patchAssignmentStatus(
-  games: AssignmentGame[],
-  assignmentId: string | number,
-  status: "A" | "D",
-) {
-  const id = String(assignmentId);
-  return games.map((game) => {
-    const assignments = game._embedded?.assignments;
-    if (!assignments?.some((assignment) => String(assignment.id) === id)) {
-      return game;
-    }
+function embeddedOfficialId(assignment: AssignmentSlot) {
+  const id = assignment._embedded?.official?.id;
+  return id !== undefined && id !== null ? String(id) : "";
+}
 
-    return {
-      ...game,
-      _embedded: {
-        ...game._embedded,
-        assignments: assignments.map((assignment) => {
-          if (String(assignment.id) !== id) return assignment;
-          return {
-            ...assignment,
-            accepted: status === "A",
-            declined: status === "D",
-            status,
-          };
-        }),
-      },
-    };
-  });
+function assignmentNeedsApply(assignment: AssignmentSlot, selectedOfficialId: string) {
+  if (!selectedOfficialId.trim()) return false;
+  return selectedOfficialId !== embeddedOfficialId(assignment);
 }
 
 function sortAssignments(assignments: AssignmentSlot[]) {
@@ -167,20 +147,36 @@ function StatusActionButton({
   );
 }
 
-function AssignmentStatusActions({
+function AssignmentSlotActions({
   assignment,
+  selectedOfficialId,
   busy,
   pending,
-  onConfirm,
+  onAssign,
 }: {
   assignment: AssignmentSlot;
+  selectedOfficialId: string;
   busy: boolean;
   pending: boolean;
-  onConfirm: (status: "A" | "D") => void;
+  onAssign: () => void;
 }) {
   const status = assignmentStatus(assignment);
-  if (!assignment.id) return null;
+  const hasEmbeddedOfficial = Boolean(embeddedOfficialId(assignment));
+  const needsApply = assignmentNeedsApply(assignment, selectedOfficialId);
   const disabled = busy || pending;
+
+  if (!hasEmbeddedOfficial) {
+    return (
+      <StatusActionButton
+        label="Apply selected umpire"
+        tone="accept"
+        disabled={disabled || !needsApply}
+        onClick={onAssign}
+      >
+        <CheckIcon />
+      </StatusActionButton>
+    );
+  }
 
   if (status === "accepted") {
     return (
@@ -198,26 +194,20 @@ function AssignmentStatusActions({
     );
   }
 
-  return (
-    <>
+  if (needsApply) {
+    return (
       <StatusActionButton
-        label="Accept assignment"
+        label="Apply selected umpire"
         tone="accept"
         disabled={disabled}
-        onClick={() => onConfirm("A")}
+        onClick={onAssign}
       >
         <CheckIcon />
       </StatusActionButton>
-      <StatusActionButton
-        label="Decline assignment"
-        tone="decline"
-        disabled={disabled}
-        onClick={() => onConfirm("D")}
-      >
-        <XIcon />
-      </StatusActionButton>
-    </>
-  );
+    );
+  }
+
+  return <span className="px-1 text-xs text-zinc-500">Awaiting official response</span>;
 }
 
 export default function AdminAssignrAssignmentsManager({
@@ -336,37 +326,27 @@ export default function AdminAssignrAssignmentsManager({
     }
   }
 
-  async function confirmAssignment(
-    assignmentId: string | number,
-    status: "A" | "D",
-  ) {
-    const assignmentKey = String(assignmentId);
-    const previousGames = games;
-    setPendingAssignmentId(assignmentKey);
+  async function assignOfficial(assignmentId: string | number, officialId: string) {
+    setPendingAssignmentId(String(assignmentId));
     setError("");
     setNotice("");
-    setGames((current) => patchAssignmentStatus(current, assignmentId, status));
-
     try {
       const response = await fetch(
-        `/api/admin/assignr/assignments/${assignmentId}/confirm?org=${targetOrg}`,
+        `/api/admin/assignr/assignments/${assignmentId}/assign?org=${targetOrg}`,
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ status }),
+          body: JSON.stringify({ officialId }),
         },
       );
       const json = (await response.json()) as { error?: string };
       if (!response.ok) {
-        throw new Error(json.error || "Failed to update assignment");
+        throw new Error(json.error || "Failed to assign umpire");
       }
-      setNotice(
-        `Assignment ${assignmentId} marked ${status === "A" ? "accepted" : "declined"}.`,
-      );
+      setNotice(`Assignment ${assignmentId} updated in Assignr.`);
       await loadGames();
     } catch (err: unknown) {
-      setGames(previousGames);
-      setError(err instanceof Error ? err.message : "Failed to update assignment");
+      setError(err instanceof Error ? err.message : "Failed to assign umpire");
     } finally {
       setPendingAssignmentId(null);
     }
@@ -505,13 +485,14 @@ export default function AdminAssignrAssignmentsManager({
                                 })}
                               </select>
                               <div className="flex shrink-0 items-center gap-1.5">
-                                <AssignmentStatusActions
+                                <AssignmentSlotActions
                                   assignment={assignment}
+                                  selectedOfficialId={selectedOfficialId}
                                   busy={busy}
                                   pending={pendingAssignmentId === assignmentId}
-                                  onConfirm={(status) => {
-                                    if (!assignment.id) return;
-                                    void confirmAssignment(assignment.id, status);
+                                  onAssign={() => {
+                                    if (!assignment.id || !selectedOfficialId) return;
+                                    void assignOfficial(assignment.id, selectedOfficialId);
                                   }}
                                 />
                               </div>
