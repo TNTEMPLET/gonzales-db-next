@@ -24,6 +24,7 @@ export const ADMIN_MODULES = [
   "COMMUNICATIONS",
   "SOCIAL_MEDIA",
   "ORG_DOCUMENTS",
+  "ASSIGNR",
 ] as const;
 
 export type AdminModule = (typeof ADMIN_MODULES)[number];
@@ -48,6 +49,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   COMMUNICATIONS: "ADMIN",
   SOCIAL_MEDIA: "BOARD_MEMBER",
   ORG_DOCUMENTS: "BOARD_MEMBER",
+  ASSIGNR: "ADMIN",
 };
 
 const MASTER_ONLY_MODULES = new Set<AdminModule>([

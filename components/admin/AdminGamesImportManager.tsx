@@ -279,6 +279,114 @@ export default function AdminGamesImportManager({
     }
   }
 
+  async function handlePublish() {
+    if (!uploadedFile) {
+      setError("Upload a schedule file before publishing.");
+      return;
+    }
+    if (
+      missingAgeGroups.length > 0 ||
+      missingSites.length > 0 ||
+      missingParks.length > 0 ||
+      missingFields.length > 0
+    ) {
+      setError("Complete site, age group, venue, and field mappings before publishing.");
+      return;
+    }
+
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const formData = new FormData();
+      formData.append("file", uploadedFile);
+      formData.append("seasonYear", seasonYear);
+      formData.append("ageGroupMappings", JSON.stringify(ageGroupMappings));
+      if (allSites) {
+        formData.append("contentOrgMappings", JSON.stringify(contentOrgMappings));
+        formData.append("leagueByOrg", JSON.stringify(leagueByOrg));
+      }
+      formData.append("parkMappings", JSON.stringify(parkMappings));
+      formData.append("fieldMappings", JSON.stringify(fieldMappings));
+      formData.append("league", league);
+      formData.append("gameType", gameType);
+
+      const rowsResponse = await fetch(
+        orgQuery
+          ? `/api/admin/games/import/rows?${orgQuery}`
+          : "/api/admin/games/import/rows",
+        {
+          method: "POST",
+          body: formData,
+        },
+      );
+      const rowsJson = (await safeJson(rowsResponse)) as {
+        error?: string;
+        organizationId?: string;
+        seasonYear?: number;
+        rows?: Array<{
+          date: string;
+          time: string;
+          venue: string;
+          subVenue: string;
+          ageGroup: string;
+          gender: string;
+          homeTeam: string;
+          awayTeam: string;
+          league: string;
+          gameType: string;
+          pattern: string;
+          paidBy: string;
+          assignorName: string;
+          notes: string;
+          assignorNotes: string;
+          gameId: string;
+        }>;
+      };
+      if (!rowsResponse.ok) {
+        throw new Error(String(rowsJson.error || "Failed to prepare publish rows"));
+      }
+
+      const publishResponse = await fetch(
+        orgQuery
+          ? `/api/admin/assignr/games/publish?${orgQuery}`
+          : "/api/admin/assignr/games/publish",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            organizationId: rowsJson.organizationId,
+            seasonYear: rowsJson.seasonYear,
+            rows: rowsJson.rows,
+          }),
+        },
+      );
+      const publishJson = (await safeJson(publishResponse)) as {
+        error?: string;
+        data?: {
+          successCount?: number;
+          failedCount?: number;
+          job?: { id?: string };
+        };
+      };
+      if (!publishResponse.ok) {
+        throw new Error(String(publishJson.error || "Failed to publish games"));
+      }
+
+      setNotice(
+        `Published ${publishJson.data?.successCount ?? 0} games${
+          publishJson.data?.failedCount
+            ? ` (${publishJson.data.failedCount} failed)`
+            : ""
+        }.`,
+      );
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to publish games");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="mt-10 rounded-2xl border border-zinc-800 bg-zinc-900/40">
       <details className="group/details">
@@ -342,7 +450,15 @@ export default function AdminGamesImportManager({
                 tournaments={preview.tournaments}
               />
 
-              <div className="flex justify-end">
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handlePublish()}
+                  className="rounded-lg border border-emerald-400/60 px-4 py-2 text-sm font-medium text-emerald-200 hover:bg-emerald-500/10 disabled:opacity-50"
+                >
+                  {busy ? "Working..." : "Publish to Assignr"}
+                </button>
                 <button
                   type="button"
                   disabled={busy}
