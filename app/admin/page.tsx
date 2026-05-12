@@ -28,6 +28,10 @@ import {
 import { isCommunicationsModuleEnabled } from "@/lib/communications/config";
 import prisma from "@/lib/prisma";
 import { inferDefaultAdminTargetOrgForMasterDashboard } from "@/lib/auth/inferDefaultAdminTargetOrg";
+import {
+  getAdminDashboardCategory,
+  sortAdminDashboardCards,
+} from "@/lib/admin/dashboardModules";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -120,111 +124,133 @@ export default async function AdminDashboardPage({
   };
   const moduleHref = (basePath: string, module: AdminModule) =>
     `${basePath}?org=${preferredOrgForModule(module)}`;
-  const cards = [
-    {
-      module: "USERS" as AdminModule,
-      href: moduleHref("/admin/users", "USERS"),
-      title: "User Management",
-      description: masterMode
-        ? "Control admin access, role elevation, and account governance for the active organization."
-        : "Promote/demote admins and manage user access roles.",
-      action: masterMode ? "Open Access Console" : "Open Users",
-    },
-    {
-      module: "TEAMS" as AdminModule,
-      href: moduleHref("/admin/teams", "TEAMS"),
-      title: "Teams Management",
-      description: masterMode
-        ? "Import players, build rosters, assign coaches, and maintain team operations by site."
-        : "Manage team rosters, coach assignments, and season setup.",
-      action: masterMode ? "Open Teams Console" : "Open Teams",
-    },
-    {
-      module: "SPONSORS" as AdminModule,
-      href: moduleHref("/admin/sponsors", "SPONSORS"),
-      title: "Sponsors",
-      description: masterMode
-        ? "Manage sponsorship packages, logo assets, and site placements for footer sponsorship visibility."
-        : "Manage sponsors, package enrollments, and footer logo display.",
-      action: masterMode ? "Open Sponsors Console" : "Open Sponsors",
-    },
-    {
-      module: "SCORES" as AdminModule,
-      href: moduleHref("/admin/scores", "SCORES"),
-      title: "Scores & Standings",
-      description: masterMode
-        ? "Capture game outcomes, correct results, and keep standings accurate for the selected site."
-        : "Enter game scores and automatically power standings by age group.",
-      action: masterMode ? "Open Game Ops" : "Open Score Entry",
-    },
-    {
-      module: "NEWS_ADMIN" as AdminModule,
-      href: moduleHref("/news/admin", "NEWS_ADMIN"),
-      title: "News Management",
-      description: masterMode
-        ? "Coordinate announcements, featured stories, and publishing cadence from the AP Baseball desk."
-        : "Create, edit, publish, and delete site news posts.",
-      action: masterMode ? "Open Content Desk" : "Open News Admin",
-    },
-    {
-      module: "SOCIAL_MEDIA" as AdminModule,
-      href: "/admin/social",
-      title: "Social media",
-      description: masterMode
-        ? "Draft posts for the shared AP Baseball Facebook Page (not per league site)."
-        : "Compose posts and publish to your Facebook Page (Meta credentials required).",
-      action: masterMode ? "Open Social Desk" : "Open Social Media",
-    },
-    {
-      module: "ORG_DOCUMENTS" as AdminModule,
-      href: "/admin/documents",
-      title: "Organization documents",
-      description: masterMode
-        ? "Open the shared AP Baseball Google Drive folder (policies, templates, org files)."
-        : "Open the shared Google Drive folder for organizational documents.",
-      action: masterMode ? "Open Drive" : "Open Documents",
-    },
-    {
-      module: "DUGOUT_MODERATION" as AdminModule,
-      href: moduleHref("/admin/dugout", "DUGOUT_MODERATION"),
-      title: "Dugout Moderation",
-      description: masterMode
-        ? "Monitor internal coach conversations and enforce moderation standards from one command post."
-        : "Edit or remove any post in The Dugout feed.",
-      action: masterMode ? "Open Dugout Watch" : "Open Dugout Moderation",
-    },
-    {
-      module: "REPORTS" as AdminModule,
-      href: moduleHref("/admin/reports", "REPORTS"),
-      title: "Reporting",
-      description: masterMode
-        ? "Run umpire payout reports and operational summaries from the AP Baseball reporting desk."
-        : "Generate umpire reports and payout summaries.",
-      action: masterMode ? "Open Reporting Desk" : "Open Reports",
-    },
-    {
-      module: "ALL_STAR_VAULT" as AdminModule,
-      href: moduleHref("/admin/all-star", "ALL_STAR_VAULT"),
-      title: "All-Star Vault",
-      description: masterMode
-        ? "Manage All-Star voting cycles, invitations, and exports for both organizations."
-        : "Manage All-Star voting cycles and ballot administration.",
-      action: masterMode ? "Open All-Star Vault" : "Open All-Star",
-    },
-    {
-      module: "COMMUNICATIONS" as AdminModule,
-      href: moduleHref("/admin/communications", "COMMUNICATIONS"),
-      title: "Communications",
-      description: masterMode
-        ? "Coordinate approved broadcast communications across organizations with audience targeting."
-        : "Send approved organization communications by audience rules and roles.",
-      action: masterMode ? "Open Comms Hub" : "Open Communications",
-    },
-  ]
-    .filter((card) => (card.module === "COMMUNICATIONS" ? communicationsEnabled : true))
-    .filter((card) =>
-      currentOrg ? hasModuleAccess(currentOrg, card.module) : hasModuleAnyOrg(card.module),
-    );
+  const cards = sortAdminDashboardCards(
+    [
+      {
+        module: "TEAMS" as AdminModule,
+        href: moduleHref("/admin/teams", "TEAMS"),
+        title: "Teams Management",
+        description: masterMode
+          ? "Import players, build rosters, assign coaches, and maintain team operations by site."
+          : "Manage team rosters, coach assignments, and season setup.",
+        action: masterMode ? "Open Teams Console" : "Open Teams",
+      },
+      {
+        module: "SCORES" as AdminModule,
+        href: moduleHref("/admin/scores", "SCORES"),
+        title: "Scores & Standings",
+        description: masterMode
+          ? "Capture game outcomes, correct results, and keep standings accurate for the selected site."
+          : "Enter game scores and automatically power standings by age group.",
+        action: masterMode ? "Open Game Ops" : "Open Score Entry",
+      },
+      {
+        module: "ALL_STAR_VAULT" as AdminModule,
+        href: moduleHref("/admin/all-star", "ALL_STAR_VAULT"),
+        title: "All-Star Vault",
+        description: masterMode
+          ? "Manage All-Star voting cycles, invitations, and exports for both organizations."
+          : "Manage All-Star voting cycles and ballot administration.",
+        action: masterMode ? "Open All-Star Vault" : "Open All-Star",
+      },
+      {
+        module: "SPONSORS" as AdminModule,
+        href: moduleHref("/admin/sponsors", "SPONSORS"),
+        title: "Sponsors",
+        description: masterMode
+          ? "Manage sponsorship packages, logo assets, and site placements for footer sponsorship visibility."
+          : "Manage sponsors, package enrollments, and footer logo display.",
+        action: masterMode ? "Open Sponsors Console" : "Open Sponsors",
+      },
+      {
+        module: "NEWS_ADMIN" as AdminModule,
+        href: moduleHref("/news/admin", "NEWS_ADMIN"),
+        title: "News Management",
+        description: masterMode
+          ? "Coordinate announcements, featured stories, and publishing cadence from the AP Baseball desk."
+          : "Create, edit, publish, and delete site news posts.",
+        action: masterMode ? "Open Content Desk" : "Open News Admin",
+      },
+      {
+        module: "SOCIAL_MEDIA" as AdminModule,
+        href: "/admin/social",
+        title: "Social media",
+        description: masterMode
+          ? "Draft posts for the shared AP Baseball Facebook Page (not per league site)."
+          : "Compose posts and publish to your Facebook Page (Meta credentials required).",
+        action: masterMode ? "Open Social Desk" : "Open Social Media",
+      },
+      {
+        module: "COMMUNICATIONS" as AdminModule,
+        href: moduleHref("/admin/communications", "COMMUNICATIONS"),
+        title: "Communications",
+        description: masterMode
+          ? "Coordinate approved broadcast communications across organizations with audience targeting."
+          : "Send approved organization communications by audience rules and roles.",
+        action: masterMode ? "Open Comms Hub" : "Open Communications",
+      },
+      {
+        module: "ORG_DOCUMENTS" as AdminModule,
+        href: "/admin/documents",
+        title: "Google Drive",
+        description: masterMode
+          ? "Open the shared AP Baseball Google Drive folder for policies, templates, and org files."
+          : "Open the shared Google Drive folder for organizational documents.",
+        action: masterMode ? "Open Google Drive" : "Open Google Drive",
+      },
+      {
+        module: "ASSIGNR" as const,
+        href: "/admin/assignr",
+        title: "Assignr",
+        description: masterMode
+          ? "Connect roster, schedule, and registration workflows with Assignr read/write access."
+          : "Connect roster, schedule, and registration workflows with Assignr.",
+        action: "Coming soon",
+        comingSoon: true,
+      },
+      {
+        module: "USERS" as AdminModule,
+        href: moduleHref("/admin/users", "USERS"),
+        title: "User Management",
+        description: masterMode
+          ? "Control admin access, role elevation, and account governance for the active organization."
+          : "Promote/demote admins and manage user access roles.",
+        action: masterMode ? "Open Access Console" : "Open Users",
+      },
+      {
+        module: "REPORTS" as AdminModule,
+        href: moduleHref("/admin/reports", "REPORTS"),
+        title: "Reporting",
+        description: masterMode
+          ? "Run umpire payout reports and operational summaries from the AP Baseball reporting desk."
+          : "Generate umpire reports and payout summaries.",
+        action: masterMode ? "Open Reporting Desk" : "Open Reports",
+      },
+      {
+        module: "DUGOUT_MODERATION" as AdminModule,
+        href: moduleHref("/admin/dugout", "DUGOUT_MODERATION"),
+        title: "Dugout Moderation",
+        description: masterMode
+          ? "Monitor internal coach conversations and enforce moderation standards from one command post."
+          : "Edit or remove any post in The Dugout feed.",
+        action: masterMode ? "Open Dugout Watch" : "Open Dugout Moderation",
+      },
+    ]
+      .map((card) => ({
+        ...card,
+        category: getAdminDashboardCategory(card.module)!,
+      }))
+      .filter((card) => (card.module === "COMMUNICATIONS" ? communicationsEnabled : true))
+      .filter((card) =>
+        card.module === "ASSIGNR"
+          ? currentOrg
+            ? hasModuleAccess(currentOrg, "TEAMS")
+            : hasModuleAnyOrg("TEAMS")
+          : currentOrg
+            ? hasModuleAccess(currentOrg, card.module)
+            : hasModuleAnyOrg(card.module),
+      ),
+  );
 
   const statusChips = [
     {

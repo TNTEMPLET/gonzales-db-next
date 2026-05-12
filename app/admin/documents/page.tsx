@@ -19,7 +19,7 @@ import { getSiteConfig } from "@/lib/siteConfig";
 export function generateMetadata() {
   const site = getSiteConfig();
   return {
-    title: `Organization documents | ${site.name}`,
+    title: `Google Drive | ${site.name}`,
     description:
       "AP Baseball shared Google Drive folder for bylaws, policies, and organizational files.",
   };
@@ -48,12 +48,12 @@ export default async function AdminDocumentsPage() {
       <section className="max-w-6xl mx-auto px-6">
         <div className="mb-8">
           <AdminSectionHeader
-            badge="ORG DOCUMENTS"
+            badge="GOOGLE DRIVE"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
-            Organization documents
+            Google Drive
           </h1>
           <p className="text-zinc-400 max-w-3xl">
             Browse the shared AP Baseball Google Drive here. <strong>Click a file name</strong> to open

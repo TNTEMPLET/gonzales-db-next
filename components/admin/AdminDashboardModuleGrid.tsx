@@ -8,19 +8,22 @@ import {
   readAdminViewPreviewRole,
   type AdminViewPreviewRole,
 } from "@/components/admin/AdminRolePreviewControl";
+import {
+  ADMIN_DASHBOARD_CATEGORY_META,
+  groupAdminDashboardCards,
+  type AdminDashboardCardDescriptor,
+} from "@/lib/admin/dashboardModules";
+import type { AdminDashboardCardModule } from "@/lib/admin/dashboardModules";
 import { resolvePreviewUserAccess, type PreviewUserSnapshot } from "@/lib/admin/viewPreview";
 import type { AdminModule } from "@/lib/auth/adminRoles";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
-type AdminDashboardCard = {
-  module: AdminModule;
-  href: string;
-  title: string;
-  description: string;
-  action: string;
-};
+type AdminDashboardCard = AdminDashboardCardDescriptor;
 
-const moduleMinimumRole: Record<AdminModule, "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR"> = {
+const previewModuleMinimumRole: Record<
+  AdminDashboardCardModule,
+  "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR"
+> = {
   DASHBOARD: "PARK_DIRECTOR",
   USERS: "ADMIN",
   TEAMS: "ADMIN",
@@ -33,6 +36,7 @@ const moduleMinimumRole: Record<AdminModule, "MASTER_ADMIN" | "ADMIN" | "BOARD_M
   COMMUNICATIONS: "ADMIN",
   SOCIAL_MEDIA: "BOARD_MEMBER",
   ORG_DOCUMENTS: "BOARD_MEMBER",
+  ASSIGNR: "ADMIN",
 };
 
 const roleRank: Record<"MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR", number> = {
@@ -59,7 +63,7 @@ const previewRoleLabel: Record<AdminViewPreviewRole, string> = {
 
 function canPreviewAccessModule(
   previewRole: AdminViewPreviewRole,
-  module: AdminModule,
+  module: AdminDashboardCardModule,
   masterMode: boolean,
   allStarVaultView: boolean,
 ) {
@@ -70,7 +74,7 @@ function canPreviewAccessModule(
   if (module === "ALL_STAR_VAULT" && previewRole !== "ADMIN") {
     return false;
   }
-  if (masterOnlyModules.has(module) && !masterMode) {
+  if (module !== "ASSIGNR" && masterOnlyModules.has(module) && !masterMode) {
     return false;
   }
   const previewAs =
@@ -79,12 +83,12 @@ function canPreviewAccessModule(
       : previewRole === "BOARD_MEMBER"
         ? "BOARD_MEMBER"
         : "PARK_DIRECTOR";
-  return roleRank[previewAs] >= roleRank[moduleMinimumRole[module]];
+  return roleRank[previewAs] >= roleRank[previewModuleMinimumRole[module]];
 }
 
 function canPreviewUserAccessModule(
   user: PreviewUserSnapshot,
-  module: AdminModule,
+  module: AdminDashboardCardModule,
   masterMode: boolean,
   organizationId: ContentOrgId | null,
 ) {
@@ -166,6 +170,11 @@ export default function AdminDashboardModuleGrid({
     currentOrg,
   ]);
 
+  const groupedCards = useMemo(
+    () => groupAdminDashboardCards(visibleCards),
+    [visibleCards],
+  );
+
   if (visibleCards.length === 0) {
     return (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 text-sm text-zinc-300">
@@ -175,7 +184,18 @@ export default function AdminDashboardModuleGrid({
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-8">
+      <div className="space-y-2">
+        <h2 className="text-2xl font-semibold tracking-tight text-white">
+          {masterMode ? "Control modules" : "Admin modules"}
+        </h2>
+        <p className="max-w-3xl text-sm text-zinc-400">
+          {masterMode
+            ? "Open the administrative surface for each operational area, grouped by how work is organized across AP Baseball."
+            : "Open the administrative tools available for your organization."}
+        </p>
+      </div>
+
       {allowRolePreview ? (
         <div className="text-xs text-zinc-400">
           Previewing module access as{" "}
@@ -187,33 +207,56 @@ export default function AdminDashboardModuleGrid({
           .
         </div>
       ) : null}
-      <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-4">
-        {visibleCards.map((card) => (
-          <article
-            key={card.href}
-            className={`rounded-3xl border p-6 ${
-              masterMode
-                ? "border-zinc-800 bg-[linear-gradient(180deg,rgba(24,24,27,0.9),rgba(9,9,11,0.95))] shadow-[0_18px_50px_rgba(0,0,0,0.18)]"
-                : "border-zinc-800 bg-zinc-900/70"
-            }`}
-          >
-            <div className="mb-3 inline-flex rounded-full border border-zinc-700 px-3 py-1 text-[10px] uppercase tracking-[0.22em] text-zinc-400">
-              {masterMode ? "Control Module" : "Admin"}
-            </div>
-            <h2 className="text-2xl font-semibold mb-2">{card.title}</h2>
-            <p className="text-zinc-400 text-sm mb-5">{card.description}</p>
-            <Link
-              href={card.href}
-              className={`inline-block text-sm font-semibold ${
-                masterMode
-                  ? "text-red-100 hover:text-red-50"
-                  : "text-brand-gold hover:text-brand-gold/80"
-              }`}
-            >
-              {card.action}
-            </Link>
-          </article>
-        ))}
+
+      <div className="space-y-8">
+        {groupedCards.map((group) => {
+          const categoryMeta = ADMIN_DASHBOARD_CATEGORY_META[group.category];
+
+          return (
+            <section key={group.category} className="space-y-4">
+              <div className="space-y-1">
+                <h3 className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
+                  {categoryMeta.label}
+                </h3>
+                <p className="text-sm text-zinc-400">{categoryMeta.description}</p>
+              </div>
+
+              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                {group.cards.map((card) => (
+                  <article
+                    key={card.href}
+                    className={`rounded-2xl border p-4 ${
+                      masterMode
+                        ? "border-zinc-800 bg-[linear-gradient(180deg,rgba(24,24,27,0.9),rgba(9,9,11,0.95))] shadow-[0_12px_36px_rgba(0,0,0,0.16)]"
+                        : "border-zinc-800 bg-zinc-900/70"
+                    }`}
+                  >
+                    <h4 className="text-lg font-semibold text-white">{card.title}</h4>
+                    <p className="mt-2 line-clamp-2 text-sm text-zinc-400">
+                      {card.description}
+                    </p>
+                    {card.comingSoon ? (
+                      <span className="mt-4 inline-block text-sm font-semibold text-zinc-500">
+                        {card.action}
+                      </span>
+                    ) : (
+                      <Link
+                        href={card.href}
+                        className={`mt-4 inline-block text-sm font-semibold ${
+                          masterMode
+                            ? "text-red-100 hover:text-red-50"
+                            : "text-brand-gold hover:text-brand-gold/80"
+                        }`}
+                      >
+                        {card.action}
+                      </Link>
+                    )}
+                  </article>
+                ))}
+              </div>
+            </section>
+          );
+        })}
       </div>
     </div>
   );
