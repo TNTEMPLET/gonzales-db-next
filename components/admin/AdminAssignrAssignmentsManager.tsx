@@ -74,6 +74,36 @@ function assignmentStatus(assignment: AssignmentSlot): AssignmentStatus {
   return "pending";
 }
 
+function patchAssignmentStatus(
+  games: AssignmentGame[],
+  assignmentId: string | number,
+  status: "A" | "D",
+) {
+  const id = String(assignmentId);
+  return games.map((game) => {
+    const assignments = game._embedded?.assignments;
+    if (!assignments?.some((assignment) => String(assignment.id) === id)) {
+      return game;
+    }
+
+    return {
+      ...game,
+      _embedded: {
+        ...game._embedded,
+        assignments: assignments.map((assignment) => {
+          if (String(assignment.id) !== id) return assignment;
+          return {
+            ...assignment,
+            accepted: status === "A",
+            declined: status === "D",
+            status,
+          };
+        }),
+      },
+    };
+  });
+}
+
 function sortAssignments(assignments: AssignmentSlot[]) {
   return [...assignments].sort((left, right) => {
     const leftOrder = left.sort_order ?? Number.MAX_SAFE_INTEGER;
@@ -140,18 +170,21 @@ function StatusActionButton({
 function AssignmentStatusActions({
   assignment,
   busy,
+  pending,
   onConfirm,
 }: {
   assignment: AssignmentSlot;
   busy: boolean;
+  pending: boolean;
   onConfirm: (status: "A" | "D") => void;
 }) {
   const status = assignmentStatus(assignment);
   if (!assignment.id) return null;
+  const disabled = busy || pending;
 
   if (status === "accepted") {
     return (
-      <StatusActionButton label="Accepted" tone="accept" active disabled={busy}>
+      <StatusActionButton label="Accepted" tone="accept" active disabled={disabled}>
         <CheckIcon />
       </StatusActionButton>
     );
@@ -159,7 +192,7 @@ function AssignmentStatusActions({
 
   if (status === "declined") {
     return (
-      <StatusActionButton label="Declined" tone="decline" active disabled={busy}>
+      <StatusActionButton label="Declined" tone="decline" active disabled={disabled}>
         <XIcon />
       </StatusActionButton>
     );
@@ -170,7 +203,7 @@ function AssignmentStatusActions({
       <StatusActionButton
         label="Accept assignment"
         tone="accept"
-        disabled={busy}
+        disabled={disabled}
         onClick={() => onConfirm("A")}
       >
         <CheckIcon />
@@ -178,7 +211,7 @@ function AssignmentStatusActions({
       <StatusActionButton
         label="Decline assignment"
         tone="decline"
-        disabled={busy}
+        disabled={disabled}
         onClick={() => onConfirm("D")}
       >
         <XIcon />
@@ -200,6 +233,7 @@ export default function AdminAssignrAssignmentsManager({
   const [officials, setOfficials] = useState<OfficialOption[]>([]);
   const [officialSelections, setOfficialSelections] = useState<Record<string, string>>({});
   const [busy, setBusy] = useState(false);
+  const [pendingAssignmentId, setPendingAssignmentId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -306,9 +340,13 @@ export default function AdminAssignrAssignmentsManager({
     assignmentId: string | number,
     status: "A" | "D",
   ) {
-    setBusy(true);
+    const assignmentKey = String(assignmentId);
+    const previousGames = games;
+    setPendingAssignmentId(assignmentKey);
     setError("");
     setNotice("");
+    setGames((current) => patchAssignmentStatus(current, assignmentId, status));
+
     try {
       const response = await fetch(
         `/api/admin/assignr/assignments/${assignmentId}/confirm?org=${targetOrg}`,
@@ -327,9 +365,10 @@ export default function AdminAssignrAssignmentsManager({
       );
       await loadGames();
     } catch (err: unknown) {
+      setGames(previousGames);
       setError(err instanceof Error ? err.message : "Failed to update assignment");
     } finally {
-      setBusy(false);
+      setPendingAssignmentId(null);
     }
   }
 
@@ -469,6 +508,7 @@ export default function AdminAssignrAssignmentsManager({
                                 <AssignmentStatusActions
                                   assignment={assignment}
                                   busy={busy}
+                                  pending={pendingAssignmentId === assignmentId}
                                   onConfirm={(status) => {
                                     if (!assignment.id) return;
                                     void confirmAssignment(assignment.id, status);
