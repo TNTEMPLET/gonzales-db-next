@@ -56,12 +56,14 @@ export async function GET(request: NextRequest) {
   doc.text(`${orgLabel} · Generated: ${new Date().toLocaleString()}`, 40, 62);
 
   if (layout === "full") {
+    const head = ["Rank", "Player", "Team", "Votes", "Avg Rating"];
     autoTable(doc, {
       startY: 78,
-      head: [["Rank", "Player", "Votes", "Avg Rating"]],
+      head: [head],
       body: rows.map((row, index) => [
         String(index + 1),
         row.playerFullName,
+        row.team,
         String(row.voteCount),
         row.averageRating.toFixed(2),
       ]),
