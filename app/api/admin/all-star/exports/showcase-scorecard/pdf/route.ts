@@ -8,15 +8,11 @@ import {
 } from "pdf-lib";
 
 import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
+import {
+  buildAllStarExportFilename,
+  getAllStarCycleDisplayName,
+} from "@/lib/allStar/exportFormat";
 import prisma from "@/lib/prisma";
-import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
-
-function filenameSlug(parts: string[]) {
-  return parts
-    .join("-")
-    .replace(/[^a-zA-Z0-9.-]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
 
 function fitText(value: string, maxChars: number) {
   const trimmed = value.trim();
@@ -53,22 +49,8 @@ function getCycleTierLabel(title: string | null) {
     : "FIRST_TEAM";
 }
 
-function getDisplayAgeGroup(organizationId: string, ageGroup: string, title: string | null) {
-  const normalizedTitle = (title || "").trim().toUpperCase();
-  if (
-    organizationId === "gonzales" &&
-    ageGroup.trim().toUpperCase().startsWith("12U") &&
-    normalizedTitle === "11U DYB"
-  ) {
-    return "11U DYB";
-  }
-  return ageGroup;
-}
-
 function getCycleName(cycle: { title: string | null; seasonYear: number; ageGroup: string }) {
-  const title = cycle.title?.trim();
-  if (title) return title;
-  return `${cycle.seasonYear} ${cycle.ageGroup}`;
+  return getAllStarCycleDisplayName(cycle);
 }
 
 function getScorecardPalette(organizationId: string, title: string | null) {
@@ -261,10 +243,8 @@ export async function GET(request: NextRequest) {
   if (pageChunks.length === 0) pageChunks.push([]);
 
   const generatedAt = new Date().toLocaleString();
-  const orgLabel = formatOrganizationIdDisplay(cycle.organizationId);
-  const displayAgeGroup = getDisplayAgeGroup(cycle.organizationId, cycle.ageGroup, cycle.title);
   const cycleName = getCycleName(cycle);
-  const cycleLabel = `${orgLabel} · ${cycleName} · ${displayAgeGroup} · ${cycle.seasonYear}`;
+  const cycleLabel = cycleName;
   const palette = getScorecardPalette(cycle.organizationId, cycle.title);
 
   pageChunks.forEach((chunk, pageIdx) => {
@@ -420,13 +400,7 @@ export async function GET(request: NextRequest) {
   });
 
   const bytes = await pdf.save();
-  const baseName = filenameSlug([
-    "showcase-score-card",
-    cycle.organizationId,
-    String(cycle.seasonYear),
-    cycleName,
-    displayAgeGroup,
-  ]);
+  const baseName = buildAllStarExportFilename(cycleName, "showcase-score-card");
   return new NextResponse(Buffer.from(bytes), {
     status: 200,
     headers: {
