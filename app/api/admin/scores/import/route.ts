@@ -7,7 +7,9 @@ import {
 } from "@/lib/admin/assignrOrgScope";
 import {
   applyScoresImport,
+  listAssignrCancelledGamesForUpload,
   parseScoresImportBuffer,
+  parseScoresImportRow,
   SCORES_IMPORT_SEASON_END,
   SCORES_IMPORT_SEASON_START,
 } from "@/lib/admin/scoresImportService";
@@ -55,12 +57,29 @@ export async function POST(request: NextRequest) {
       Object.keys(fieldMappings).length > 0
         ? { parkMappings, fieldMappings }
         : undefined;
+    const acknowledgeCancelledGames =
+      String(formData.get("acknowledgeCancelledGames") || "")
+        .trim()
+        .toLowerCase() === "true";
 
     const games = await fetchAssignrGamesForScope({
       startDate: SCORES_IMPORT_SEASON_START,
       endDate: SCORES_IMPORT_SEASON_END,
       scope,
     });
+    const parsedRows = rows.map((row, index) =>
+      parseScoresImportRow(row, index + 2),
+    );
+    const assignrCancelledGames = listAssignrCancelledGamesForUpload(
+      games,
+      parsedRows,
+    );
+    if (assignrCancelledGames.length > 0 && !acknowledgeCancelledGames) {
+      return NextResponse.json(
+        { error: "Confirm Assignr cancelled games before importing." },
+        { status: 400 },
+      );
+    }
 
     const summary = await applyScoresImport({
       rows,

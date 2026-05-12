@@ -67,6 +67,18 @@ type ScoresImportPreviewSample = {
     | "skippedRainedOut";
   matchedGameId?: string;
   matchedSubVenue?: string;
+  reason?: string;
+};
+
+type AssignrCancelledGameSummary = {
+  gameExternalId: string;
+  dateLabel: string;
+  startTime: string;
+  homeTeam: string;
+  awayTeam: string;
+  venue: string | null;
+  subvenue: string | null;
+  ageGroup: string | null;
 };
 
 type ScoresImportPreview = {
@@ -86,6 +98,11 @@ type ScoresImportPreview = {
     skippedMissingScore: number;
     skippedRainedOut: number;
   };
+  assignrCancelledGames: AssignrCancelledGameSummary[];
+  excludedCancelledDates: string[];
+  requiresCancelledAcknowledgement: boolean;
+  unmatchedRows: ScoresImportPreviewSample[];
+  cancelledRows: ScoresImportPreviewSample[];
   samples: {
     matched: ScoresImportPreviewSample[];
     unmatched: ScoresImportPreviewSample[];
@@ -178,6 +195,8 @@ export default function AdminScoresManager({
   );
   const [parkMappings, setParkMappings] = useState<Record<string, string>>({});
   const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
+  const [acknowledgedCancelledGames, setAcknowledgedCancelledGames] =
+    useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -365,6 +384,7 @@ export default function AdminScoresManager({
     setImportPreview(null);
     setParkMappings({});
     setFieldMappings({});
+    setAcknowledgedCancelledGames(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -397,6 +417,7 @@ export default function AdminScoresManager({
       setImportPreview(json);
       setParkMappings(json.suggestedMappings.parkMappings ?? {});
       setFieldMappings(json.suggestedMappings.fieldMappings ?? {});
+      setAcknowledgedCancelledGames(false);
       setNotice(
         `Parsed ${json.rowCount} rows. Matched ${json.summary.matched}, unmatched ${json.summary.unmatched}, missing scores ${json.summary.skippedMissingScore}, rained-out skipped ${json.summary.skippedRainedOut}.`,
       );
@@ -419,6 +440,13 @@ export default function AdminScoresManager({
       setError("Complete park and field mappings before importing.");
       return;
     }
+    if (
+      importPreview?.requiresCancelledAcknowledgement &&
+      !acknowledgedCancelledGames
+    ) {
+      setError("Confirm Assignr cancelled games before importing.");
+      return;
+    }
 
     setImportBusy(true);
     setError("");
@@ -429,6 +457,9 @@ export default function AdminScoresManager({
       formData.append("file", uploadedFile);
       formData.append("parkMappings", JSON.stringify(parkMappings));
       formData.append("fieldMappings", JSON.stringify(fieldMappings));
+      if (acknowledgedCancelledGames) {
+        formData.append("acknowledgeCancelledGames", "true");
+      }
 
       const response = await fetch(
         orgQuery
@@ -521,26 +552,39 @@ export default function AdminScoresManager({
 
         {importPreview ? (
           <ScoresImportMappingPanel
+            assignrCancelledGames={importPreview.assignrCancelledGames}
+            acknowledgedCancelledGames={acknowledgedCancelledGames}
+            cancelledRows={importPreview.cancelledRows}
+            excludedCancelledDates={importPreview.excludedCancelledDates}
             fields={importPreview.fields}
             fieldMappings={fieldMappings}
             missingFields={missingFields}
             missingParks={missingParks}
             parkMappings={parkMappings}
             parks={importPreview.parks}
+            requiresCancelledAcknowledgement={
+              importPreview.requiresCancelledAcknowledgement
+            }
+            setAcknowledgedCancelledGames={setAcknowledgedCancelledGames}
             setFieldMappings={setFieldMappings}
             setParkMappings={setParkMappings}
             subVenueOptionsByVenue={subVenueOptionsByVenue}
             summary={importPreview.summary}
+            unmatchedRows={importPreview.unmatchedRows}
             venues={importPreview.venues}
           />
         ) : null}
 
         {importPreview ? (
-        <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
               disabled={
-                importBusy || missingParks.length > 0 || missingFields.length > 0
+                importBusy ||
+                missingParks.length > 0 ||
+                missingFields.length > 0 ||
+                (importPreview.requiresCancelledAcknowledgement &&
+                  !acknowledgedCancelledGames)
               }
               onClick={() => void handleConfirmImport()}
               className="text-xs rounded-lg border border-emerald-600 text-emerald-300 hover:bg-emerald-900/20 px-3 py-2 disabled:opacity-60"
@@ -840,6 +884,13 @@ function ScoresImportMappingPanel(props: {
   subVenueOptionsByVenue: Map<string, string[]>;
   missingParks: string[];
   missingFields: ScoresFieldOption[];
+  assignrCancelledGames: AssignrCancelledGameSummary[];
+  excludedCancelledDates: string[];
+  cancelledRows: ScoresImportPreviewSample[];
+  unmatchedRows: ScoresImportPreviewSample[];
+  requiresCancelledAcknowledgement: boolean;
+  acknowledgedCancelledGames: boolean;
+  setAcknowledgedCancelledGames: Dispatch<SetStateAction<boolean>>;
 }) {
   return (
     <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
@@ -866,7 +917,7 @@ function ScoresImportMappingPanel(props: {
         </div>
         <div>
           <p className="text-xs uppercase tracking-wide text-zinc-500">
-            Rained-out skipped
+            Assignr cancelled skipped
           </p>
           <p className="font-semibold text-zinc-100">
             {props.summary.skippedRainedOut}
@@ -996,6 +1047,144 @@ function ScoresImportMappingPanel(props: {
           match IDs and team/date/time fallbacks.
         </p>
       )}
+
+      {props.assignrCancelledGames.length > 0 ? (
+        <div className="rounded-xl border border-zinc-800 overflow-hidden">
+          <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+              Assignr cancelled games
+            </h3>
+            <p className="mt-1 text-xs text-zinc-400">
+              These Assignr games are cancelled and will be removed from import.
+              {props.excludedCancelledDates.length > 0
+                ? ` Cancelled dates in this upload: ${props.excludedCancelledDates.join(", ")}.`
+                : ""}
+            </p>
+          </div>
+          <div className="max-h-64 overflow-auto">
+            <table className="w-full text-sm">
+              <thead className="bg-zinc-950">
+                <tr className="text-left text-zinc-400">
+                  <th className="px-4 py-2">Date</th>
+                  <th className="px-4 py-2">Matchup</th>
+                  <th className="px-4 py-2">Venue</th>
+                  <th className="px-4 py-2">Match ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {props.assignrCancelledGames.map((game) => (
+                  <tr key={game.gameExternalId} className="border-t border-zinc-800">
+                    <td className="px-4 py-2 whitespace-nowrap">
+                      {game.dateLabel}
+                      {game.startTime ? ` · ${game.startTime}` : ""}
+                    </td>
+                    <td className="px-4 py-2">
+                      {game.homeTeam} vs {game.awayTeam}
+                    </td>
+                    <td className="px-4 py-2">
+                      {[game.venue, game.subvenue].filter(Boolean).join(" · ") ||
+                        "—"}
+                    </td>
+                    <td className="px-4 py-2">{game.gameExternalId}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      ) : null}
+
+      {props.cancelledRows.length > 0 ? (
+        <div className="rounded-xl border border-zinc-800 overflow-hidden">
+          <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+              Upload rows removed for Assignr cancellations
+            </h3>
+            <p className="mt-1 text-xs text-zinc-400">
+              {props.cancelledRows.length} row
+              {props.cancelledRows.length === 1 ? "" : "s"} will not be imported.
+            </p>
+          </div>
+          <ScoresImportIssueTable rows={props.cancelledRows} />
+        </div>
+      ) : null}
+
+      {props.unmatchedRows.length > 0 ? (
+        <div className="rounded-xl border border-zinc-800 overflow-hidden">
+          <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
+            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+              Unmatched upload rows
+            </h3>
+            <p className="mt-1 text-xs text-zinc-400">
+              Review these rows to see whether the issue is in the import sheet or
+              in Assignr matching.
+            </p>
+          </div>
+          <ScoresImportIssueTable rows={props.unmatchedRows} />
+        </div>
+      ) : null}
+
+      {props.requiresCancelledAcknowledgement ? (
+        <label className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-300">
+          <input
+            type="checkbox"
+            checked={props.acknowledgedCancelledGames}
+            onChange={(event) =>
+              props.setAcknowledgedCancelledGames(event.target.checked)
+            }
+            className="mt-1"
+          />
+          <span>
+            I reviewed the Assignr cancelled games and understand those games and
+            cancelled dates will be removed from this import.
+          </span>
+        </label>
+      ) : null}
+    </div>
+  );
+}
+
+function ScoresImportIssueTable(props: { rows: ScoresImportPreviewSample[] }) {
+  return (
+    <div className="max-h-72 overflow-auto">
+      <table className="w-full text-sm">
+        <thead className="bg-zinc-950">
+          <tr className="text-left text-zinc-400">
+            <th className="px-4 py-2">Row</th>
+            <th className="px-4 py-2">Matchup</th>
+            <th className="px-4 py-2">Date</th>
+            <th className="px-4 py-2">Scores</th>
+            <th className="px-4 py-2">Venue</th>
+            <th className="px-4 py-2">Match ID</th>
+            <th className="px-4 py-2">Reason</th>
+          </tr>
+        </thead>
+        <tbody>
+          {props.rows.map((row) => (
+            <tr
+              key={`${row.rowNumber}-${row.matchId}-${row.date}`}
+              className="border-t border-zinc-800"
+            >
+              <td className="px-4 py-2">{row.rowNumber}</td>
+              <td className="px-4 py-2">
+                {row.homeTeam || "—"} vs {row.awayTeam || "—"}
+              </td>
+              <td className="px-4 py-2 whitespace-nowrap">
+                {row.date || "—"}
+                {row.startTime ? ` · ${row.startTime}` : ""}
+              </td>
+              <td className="px-4 py-2 whitespace-nowrap">
+                {row.homeScore ?? "—"} - {row.awayScore ?? "—"}
+              </td>
+              <td className="px-4 py-2">
+                {[row.location, row.field].filter(Boolean).join(" · ") || "—"}
+              </td>
+              <td className="px-4 py-2">{row.matchId || "—"}</td>
+              <td className="px-4 py-2 text-zinc-400">{row.reason || "—"}</td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
     </div>
   );
 }
