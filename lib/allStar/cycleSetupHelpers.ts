@@ -33,6 +33,30 @@ export function requiresDyb12uAgeBandFilter(orgId: ContentOrgId, ageGroup: strin
   return orgId === "gonzales" && ageGroup.trim().toUpperCase().startsWith("12U");
 }
 
+export function resolveAllStarAgeGroupMetadata(args: {
+  organizationId: string;
+  ageGroup: string;
+  allStarAgeGroupId?: string | null;
+  allStarAgeGroupLabel?: string | null;
+  ageBandFilter?: string | null;
+}) {
+  const explicitId = String(args.allStarAgeGroupId || "").trim();
+  if (explicitId) {
+    const explicitLabel = String(args.allStarAgeGroupLabel || "").trim();
+    return { id: explicitId, label: explicitLabel || explicitId };
+  }
+
+  const bandFilter = String(args.ageBandFilter || "").trim().toUpperCase();
+  if (
+    requiresDyb12uAgeBandFilter(args.organizationId as ContentOrgId, args.ageGroup) &&
+    (bandFilter === "11U" || bandFilter === "12U")
+  ) {
+    return { id: bandFilter, label: bandFilter };
+  }
+
+  return { id: null, label: null };
+}
+
 export function buildSeasonYearOptions(anchorYear: number, extraYears: number[] = []) {
   return Array.from(new Set([anchorYear - 1, anchorYear, anchorYear + 1, anchorYear + 2, ...extraYears])).sort(
     (a, b) => b - a,

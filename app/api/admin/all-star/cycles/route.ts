@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { parseRequiredRatingsPerCoachInput } from "@/lib/allStar/ballotVoteRules";
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { importCandidatesFromTeamsForCycle } from "@/lib/allStar/candidates";
+import { resolveAllStarAgeGroupMetadata } from "@/lib/allStar/cycleSetupHelpers";
 import { mapAllStarCycle, parseSeasonYear } from "@/lib/allStar/server";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { hasAdminRoleAtLeast } from "@/lib/auth/adminRoles";
@@ -241,11 +242,18 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
-  const normalizedAllStarAgeGroupId = body.allStarAgeGroupId?.trim() || null;
-  const normalizedAllStarAgeGroupLabel = body.allStarAgeGroupLabel?.trim() || null;
   const ageBandFilter = requiresAgeBandFilterForCycle(organizationId, ageGroup)
     ? normalizeAgeBandFilter(body.autoImportAgeBandFilter) || "BOTH"
     : "BOTH";
+  const resolvedAllStarAgeGroup = resolveAllStarAgeGroupMetadata({
+    organizationId,
+    ageGroup,
+    allStarAgeGroupId: body.allStarAgeGroupId,
+    allStarAgeGroupLabel: body.allStarAgeGroupLabel,
+    ageBandFilter,
+  });
+  const normalizedAllStarAgeGroupId = resolvedAllStarAgeGroup.id;
+  const normalizedAllStarAgeGroupLabel = resolvedAllStarAgeGroup.label;
 
   const autoTitle = getAutoCycleTitleForAgeBandPool(organizationId, ageGroup, ageBandFilter);
   const normalizedTitle = (body.title?.trim() || autoTitle || "").trim() || null;

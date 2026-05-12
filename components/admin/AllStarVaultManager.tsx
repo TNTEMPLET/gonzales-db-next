@@ -329,6 +329,9 @@ function getDisplayedCycleAgeGroupWithAllStarAge(cycle: {
   const baseAgeGroup = getDisplayedCycleAgeGroup(cycle);
   const allStarAge = cycle.allStarAgeGroupLabel?.trim();
   if (!allStarAge) return baseAgeGroup;
+  if (baseAgeGroup.toUpperCase().includes(allStarAge.toUpperCase())) {
+    return baseAgeGroup;
+  }
   return `${baseAgeGroup} [${allStarAge}]`;
 }
 

@@ -5,6 +5,7 @@ import {
 import {
   buildAllStarAgeOptionsForAgeGroup,
   requiresDyb12uAgeBandFilter,
+  resolveAllStarAgeGroupMetadata,
   type ContentOrgId,
 } from "@/lib/allStar/cycleSetupHelpers";
 
@@ -140,13 +141,25 @@ export function resolveAutoCycleTitle(
   return "";
 }
 
+export function resolveSetupWizardCycleTitle(answers: SetupWizardAnswers) {
+  const explicitTitle = answers.title.trim();
+  if (explicitTitle) return explicitTitle;
+  return resolveAutoCycleTitle(answers.organizationId, answers.ageGroup, answers.ageBandFilter);
+}
+
 export function buildCreateCyclePayload(
   answers: SetupWizardAnswers,
   options?: { resumeExistingDraft?: boolean },
 ) {
   const shouldUseAgeBandFilter = requiresDyb12uAgeBandFilter(answers.organizationId, answers.ageGroup);
-  const autoTitle = resolveAutoCycleTitle(answers.organizationId, answers.ageGroup, answers.ageBandFilter);
-  const normalizedTitle = answers.title.trim() || autoTitle;
+  const resolvedAllStarAgeGroup = resolveAllStarAgeGroupMetadata({
+    organizationId: answers.organizationId,
+    ageGroup: answers.ageGroup,
+    allStarAgeGroupId: answers.allStarAgeGroupId,
+    allStarAgeGroupLabel: answers.allStarAgeGroupLabel,
+    ageBandFilter: answers.ageBandFilter,
+  });
+  const normalizedTitle = resolveSetupWizardCycleTitle(answers);
 
   return {
     intent: "setup_wizard" as const,
@@ -155,8 +168,8 @@ export function buildCreateCyclePayload(
     seasonYear: answers.seasonYear,
     ageGroup: answers.ageGroup,
     title: normalizedTitle || undefined,
-    allStarAgeGroupId: answers.allStarAgeGroupId || null,
-    allStarAgeGroupLabel: answers.allStarAgeGroupLabel || null,
+    allStarAgeGroupId: resolvedAllStarAgeGroup.id,
+    allStarAgeGroupLabel: resolvedAllStarAgeGroup.label,
     accessMode: answers.accessMode,
     hasShowcase: answers.hasShowcase,
     requiredRatingsPerCoach: answers.requiredRatingsPerCoach,
