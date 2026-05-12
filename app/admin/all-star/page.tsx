@@ -73,6 +73,7 @@ export default async function AdminAllStarPage({
           initialOrg={currentOrg}
           isMasterMode={isMasterDeployment()}
           canManageAllStarVault={canManageAllStarVaultUi}
+          canViewAllStarVault={vaultView}
           isLimitedVaultAccess={isLimitedVaultAccess}
         />
       </section>

@@ -94,6 +94,7 @@ export default async function AdminAllStarCycleManagementPage({
           initialWorkspaceTab={tab}
           showSnapshotBoardOnInitialFullAccess={false}
           canManageAllStarVault={canManageAllStarVaultUi}
+          canViewAllStarVault={vaultView}
           isLimitedVaultAccess={isLimitedVaultAccess}
         />
       </section>
