@@ -2034,11 +2034,10 @@ export default function AllStarVaultManager({
     if (b.seasonYear !== a.seasonYear) return b.seasonYear - a.seasonYear;
     return b.id.localeCompare(a.id);
   });
-  const boardTitle = showFullAdminView
-    ? "Cycle Snapshot Board"
-    : isAuditorFocusedPreview
-      ? "Observer Snapshot"
-      : `Limited Overview (${previewRole.replaceAll("_", " ")})`;
+  const boardTitle =
+    showFullAdminView && canManageAllStarVaultUi && !isLimitedVaultAccess
+      ? "Cycle Snapshot Board"
+      : "Observer Snapshot";
   const showCycleSnapshotBoard =
     (showFullAdminView &&
       (showSnapshotBoardOnInitialFullAccess && !selectedCycleId)) ||
