@@ -4,6 +4,7 @@
 import { useEffect, useRef, useState } from "react";
 
 type Props = {
+  siteName: string;
   rainedOutVenues: string[];
   allParksRainedOut: boolean;
   /** Dev-only: forces the popup open with fake data, overrides real props */
@@ -13,6 +14,7 @@ type Props = {
 const PREVIEW_VENUES = ["Diamond Park #1", "Gonzales Main Field"];
 
 export default function RainoutPopup({
+  siteName,
   rainedOutVenues: realVenues,
   allParksRainedOut: realAllOut,
   _preview = false,
@@ -68,7 +70,7 @@ export default function RainoutPopup({
           <div className="bg-red-700 px-8 py-5 flex items-center gap-3">
             <span className="text-3xl">⛈️</span>
             <h2 className="text-xl font-bold tracking-wide">
-              Rainout Alert – Gonzales Diamond Baseball
+              Rainout Alert – {siteName}
             </h2>
           </div>
 

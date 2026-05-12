@@ -371,6 +371,7 @@ export default async function Home({
 
       {/* Schedule Table */}
       <ScheduleTable
+        siteName={site.name}
         initialGames={games}
         initialError={error}
         currentViewMode={viewMode}
