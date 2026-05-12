@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAssignrAdmin } from "@/lib/assignr/adminAuth";
-import { confirmAssignrAssignment, formatAssignrApiError } from "@/lib/assignr/assignments";
+import {
+  assignOfficialToAssignment,
+  formatAssignrApiError,
+} from "@/lib/assignr/assignments";
 import { revalidateAssignrGamesCache } from "@/lib/assignr/invalidation";
 import { recordAssignrAuditLog } from "@/lib/assignr/jobs";
-import type { AssignrAssignmentConfirmPayload } from "@/lib/assignr/types";
 
 export async function POST(
   request: NextRequest,
@@ -16,16 +18,16 @@ export async function POST(
   }
 
   const { id } = await params;
-  const body = (await request.json()) as AssignrAssignmentConfirmPayload;
-  if (body.status !== "A" && body.status !== "D") {
-    return NextResponse.json({ error: "status must be A or D" }, { status: 400 });
+  const body = (await request.json()) as { officialId?: string | number };
+  if (body.officialId === undefined || body.officialId === null || body.officialId === "") {
+    return NextResponse.json({ error: "officialId is required" }, { status: 400 });
   }
 
   try {
-    await confirmAssignrAssignment(id, body);
+    await assignOfficialToAssignment(id, body.officialId);
     await recordAssignrAuditLog({
       organizationId: auth.organizationId,
-      action: "assignment.confirm",
+      action: "assignment.assign",
       assignrResource: "assignment",
       assignrResourceId: id,
       requestSummary: body,
@@ -36,9 +38,13 @@ export async function POST(
     return NextResponse.json({ success: true });
   } catch (error) {
     const message = formatAssignrApiError(error);
+    const friendlyMessage =
+      /not found|invalid_route|not supported/i.test(message)
+        ? "Assignr did not accept this umpire assignment through API. Assign the umpire in Assignr, then refresh."
+        : message;
     await recordAssignrAuditLog({
       organizationId: auth.organizationId,
-      action: "assignment.confirm",
+      action: "assignment.assign",
       assignrResource: "assignment",
       assignrResourceId: id,
       requestSummary: body,
@@ -46,6 +52,6 @@ export async function POST(
       errorMessage: message,
       adminUserId: auth.adminUserId,
     });
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json({ error: friendlyMessage }, { status: 502 });
   }
 }
