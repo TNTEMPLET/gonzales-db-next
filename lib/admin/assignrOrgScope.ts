@@ -1,4 +1,8 @@
-import { listAssignrGames, listUnassignedOfficialGamesForSite } from "@/lib/assignr/games";
+import {
+  enrichAssignrGamesWithAssignmentDetails,
+  filterAssignrGamesWithOpenAssignmentSlots,
+  listAssignrGames,
+} from "@/lib/assignr/games";
 import type { ListAssignrGamesOptions } from "@/lib/assignr/games";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import {
@@ -72,12 +76,14 @@ export async function fetchUnassignedAssignrGamesForContentOrg(
   org: ContentOrgId,
   params: { startDate?: string; endDate?: string; siteId?: string },
 ) {
-  const games = await listUnassignedOfficialGamesForSite({
-    siteId: params.siteId,
-    startDate: params.startDate,
-    endDate: params.endDate,
+  const games = await fetchAssignrGamesForContentOrg(org, {
+    startDate: params.startDate ?? "2026-03-01",
+    endDate: params.endDate ?? "2026-06-30",
+    cache: "no-store",
+    ...(params.siteId ? { siteId: params.siteId } : {}),
   });
-  return filterAssignrGamesForContentOrg(games, org);
+  const detailedGames = await enrichAssignrGamesWithAssignmentDetails(games);
+  return filterAssignrGamesWithOpenAssignmentSlots(detailedGames);
 }
 
 export async function fetchAssignrGamesForScope(params: {
