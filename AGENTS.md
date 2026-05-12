@@ -6,18 +6,24 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Git (default for agent commits and pushes)
 
-**Branch rule:** The user merges to **`main`** only when they say so. Until then, all agent work ships on **`preview`** (or a **`feature/*`** branch they name—still push that branch, not **`main`**).
+**Branch rule:** Default agent work ships on **`preview`** (or a user-named **`feature/*`** branch). **`main`** is updated only through the post-push preview workflow below, or when the user explicitly asks for a different promotion path.
 
 1. **Before committing:** Be on **`preview`**. If you are on **`main`** with changes, switch (or create) **`preview`** and commit there—e.g. `git checkout preview` (create with `git checkout -b preview` if missing), then commit. Prefer **not** leaving new commits only on **`main`**.
-2. **Push:** Run `git push origin preview` (or `git push origin <feature-branch>`). **Do not** run `git push origin main` unless the user explicitly asks to update **`main`** / production / merge from preview.
-3. **Merge:** After each **`preview`** push, check Vercel preview deployments for the repo (Vercel MCP or dashboard). When the preview deployment for that push is **Ready**, merge **`preview`** into **`main`** and push **`main`**. Do not merge on Error/Canceled builds; wait or fix and re-push **`preview`**. Do not push **`main`** for other reasons unless the user asks.
+2. **Push:** Run `git push origin preview` (or `git push origin <feature-branch>`). **Do not** run `git push origin main` unless the user explicitly asks to update **`main`** / production outside the workflow below.
+3. **Push commands include preview verification (Vercel-linked repos):** When the user asks to **commit/push**, **push**, or equivalent and the agent pushes **`preview`** (or a **`feature/*`** branch wired to preview), that request **includes** the full post-push workflow in the **same task**. Do **not** stop after `git push` with only a note to verify later.
+   - Find the deployment for that commit (Vercel MCP or dashboard; use `.vercel/project.json` for project/team ids).
+   - Poll until the deployment is **Ready**. On **Error** or **Canceled**, inspect build logs, fix when clear, re-push **`preview`**, and repeat; do not merge.
+   - When **Ready** for a **`preview`** push, merge **`preview`** into **`main`** and push **`main`**.
+   - Report commit SHA, preview URL/state, and whether **`main`** was promoted.
+   - **`feature/*`:** push and confirm the preview deployment; merge to **`main`** only if the user clearly wants production promotion.
+   - **No Vercel link** (no `.vercel/project.json`): push as requested; skip deployment checks.
 4. **After a `main`-only push:** GitHub Actions (`.github/workflows/sync-preview-with-main.yml`) fast-forwards **`preview`** to **`main`**. If that workflow fails (e.g. `preview` has commits not on **`main`**), resolve manually with `git checkout preview && git merge main && git push origin preview`, or reset policy as the user directs.
 
 ## Vercel preview pushes
 
 Each push to **`preview`** can trigger **about three** Vercel preview deployments. Batch work into fewer commits, avoid push-per-commit loops, and do not push until the change set is ready for preview verification or the user explicitly asks. Prefer local commits and say what is ready to push; confirm before pushing when unclear.
 
-After pushing **`preview`**, check Vercel deployments for this repo (`.vercel/project.json` plus Vercel MCP or dashboard). When the preview deployment for that push is **Ready**, merge **`preview`** into **`main`** and push **`main`**.
+When the user asks to **commit/push**, **push**, or equivalent, the post-push workflow in **Git** above is part of the same task: check deployments, wait for **Ready**, then promote **`preview`** to **`main`** when applicable. Do not end the task after `git push` alone.
 
 ## Prisma
 
