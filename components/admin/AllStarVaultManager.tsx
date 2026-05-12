@@ -225,6 +225,8 @@ type AllStarVaultManagerProps = {
   showSnapshotBoardOnInitialFullAccess?: boolean;
   /** Org admins with the All-Star module, or vault Full Access. Limited vault grants use false. */
   canManageAllStarVault?: boolean;
+  /** Live vault view grant (limited or full), or master admin. */
+  canViewAllStarVault?: boolean;
   /**
    * Vault grant is LIMITED_ADMIN only (no org All-Star module, no FULL_ACCESS vault).
    * Enables ballot tools: submissions, vote standings, shared link, ballot deletion.
@@ -401,6 +403,7 @@ export default function AllStarVaultManager({
   initialWorkspaceTab = "",
   showSnapshotBoardOnInitialFullAccess = true,
   canManageAllStarVault = true,
+  canViewAllStarVault = true,
   isLimitedVaultAccess = false,
 }: AllStarVaultManagerProps) {
   const router = useRouter();
@@ -1608,6 +1611,7 @@ export default function AllStarVaultManager({
   }
 
   function openCycleFromCard(cycleId: string) {
+    if (!canOpenCycleFromSnapshotBoard) return;
     const meta =
       limitedOverviewCycles.find((c) => c.id === cycleId) || cycles.find((c) => c.id === cycleId);
     setLimitedOverviewMoreCycleId("");
@@ -1669,6 +1673,7 @@ export default function AllStarVaultManager({
   }
 
   function openLimitedOverviewMore(cycleId: string) {
+    if (!canOpenCycleFromSnapshotBoard) return;
     const rows = limitedOverviewSnapshots[cycleId] || [];
     if (rows.length === 0) return;
     setLimitedOverviewMoreCycleId((current) => (current === cycleId ? "" : cycleId));
@@ -2038,6 +2043,10 @@ export default function AllStarVaultManager({
     showFullAdminView && canManageAllStarVaultUi && !isLimitedVaultAccess
       ? "Cycle Snapshot Board"
       : "Observer Snapshot";
+  const canOpenCycleFromSnapshotBoard =
+    canViewAllStarVault &&
+    previewCanViewAllStar &&
+    (previewRole === "NONE" || previewRole === "ALL_STAR_VIEW_ONLY");
   const showCycleSnapshotBoard =
     (showFullAdminView &&
       (showSnapshotBoardOnInitialFullAccess && !selectedCycleId)) ||
@@ -2138,23 +2147,34 @@ export default function AllStarVaultManager({
               const top12Rows = getTop12WithCutoffTies(rows);
               const isExpanded = limitedOverviewMoreCycleId === cycle.id;
               const hasVoteData = rows.length > 0;
+              const cycleCardInteractive = canOpenCycleFromSnapshotBoard;
               return (
                 <div
                   key={cycle.id}
                   className="rounded-xl border border-emerald-800/35 bg-emerald-950/10 text-sm flex flex-col overflow-hidden"
                 >
                   <div
-                    role="button"
-                    tabIndex={0}
-                    data-admin-preview-allow="true"
-                    onClick={() => openCycleFromCard(cycle.id)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        openCycleFromCard(cycle.id);
-                      }
-                    }}
-                    className="p-4 space-y-2 cursor-pointer text-left hover:bg-emerald-950/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/45 focus-visible:ring-inset"
+                    role={cycleCardInteractive ? "button" : undefined}
+                    tabIndex={cycleCardInteractive ? 0 : undefined}
+                    data-admin-preview-allow={cycleCardInteractive ? "true" : undefined}
+                    onClick={
+                      cycleCardInteractive ? () => openCycleFromCard(cycle.id) : undefined
+                    }
+                    onKeyDown={
+                      cycleCardInteractive
+                        ? (e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              openCycleFromCard(cycle.id);
+                            }
+                          }
+                        : undefined
+                    }
+                    className={`p-4 space-y-2 text-left ${
+                      cycleCardInteractive
+                        ? "cursor-pointer hover:bg-emerald-950/25 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500/45 focus-visible:ring-inset"
+                        : "cursor-default"
+                    }`}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-zinc-200 font-medium">
@@ -2183,8 +2203,14 @@ export default function AllStarVaultManager({
                     <button
                       type="button"
                       data-admin-preview-allow="true"
-                      disabled={!hasVoteData}
-                      title={hasVoteData ? undefined : "Vote standings available after votes come in"}
+                      disabled={!hasVoteData || !canOpenCycleFromSnapshotBoard}
+                      title={
+                        !canOpenCycleFromSnapshotBoard
+                          ? "Vault access is required to open cycle details"
+                          : hasVoteData
+                            ? undefined
+                            : "Vote standings available after votes come in"
+                      }
                       onClick={(e) => {
                         e.stopPropagation();
                         openLimitedOverviewMore(cycle.id);
