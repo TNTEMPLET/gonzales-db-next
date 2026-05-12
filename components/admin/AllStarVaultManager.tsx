@@ -1068,8 +1068,12 @@ export default function AllStarVaultManager({
     if (!selectedCycleId) return;
     const publishedAt = cycleOpenAt ? new Date(cycleOpenAt).toISOString() : null;
     const closedAt = cycleCloseAt ? new Date(cycleCloseAt).toISOString() : null;
+    if (!publishedAt && !closedAt) {
+      await saveCycleOpenWindowByIso(null, null, "Open time period cleared.");
+      return;
+    }
     if (!publishedAt || !closedAt) {
-      setError("Open and close date/time are required.");
+      setError("Set both open and close date/time, or clear both.");
       return;
     }
     if (new Date(closedAt) <= new Date(publishedAt)) {
@@ -1078,6 +1082,13 @@ export default function AllStarVaultManager({
     }
 
     await saveCycleOpenWindowByIso(publishedAt, closedAt, "Cycle open window saved.");
+  }
+
+  async function clearCycleOpenWindow() {
+    if (!selectedCycleId) return;
+    setCycleOpenAt("");
+    setCycleCloseAt("");
+    await saveCycleOpenWindowByIso(null, null, "Open time period cleared.");
   }
 
   async function setOpenNowForHours(hours: number) {
@@ -1097,8 +1108,8 @@ export default function AllStarVaultManager({
   }
 
   async function saveCycleOpenWindowByIso(
-    publishedAt: string,
-    closedAt: string,
+    publishedAt: string | null,
+    closedAt: string | null,
     successNotice: string,
   ) {
     if (!selectedCycleId) return;
@@ -1107,15 +1118,23 @@ export default function AllStarVaultManager({
     setError("");
     setNotice("");
     try {
+      const payload: {
+        cycleId: string;
+        status?: "PUBLISHED";
+        publishedAt: string | null;
+        closedAt: string | null;
+      } = {
+        cycleId: selectedCycleId,
+        publishedAt,
+        closedAt,
+      };
+      if (publishedAt && closedAt) {
+        payload.status = "PUBLISHED";
+      }
       const response = await fetch("/api/admin/all-star/cycles", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          cycleId: selectedCycleId,
-          status: "PUBLISHED",
-          publishedAt,
-          closedAt,
-        }),
+        body: JSON.stringify(payload),
       });
       const json = await safeJson(response);
       if (!response.ok) throw new Error(String(json.error || "Failed to save cycle window"));
@@ -2880,26 +2899,48 @@ export default function AllStarVaultManager({
             Save ratings per coach
           </button>
         </div>
-        <div className="grid md:grid-cols-3 gap-3">
-          <input
-            type="datetime-local"
-            value={cycleOpenAt}
-            onChange={(e) => setCycleOpenAt(e.target.value)}
-            className="rounded-lg bg-zinc-900 border-2 border-zinc-600 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500 scheme-dark"
-          />
-          <input
-            type="datetime-local"
-            value={cycleCloseAt}
-            onChange={(e) => setCycleCloseAt(e.target.value)}
-            className="rounded-lg bg-zinc-900 border-2 border-zinc-600 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500 scheme-dark"
-          />
+        <div className="grid md:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto_auto] gap-3 items-end">
+          <label className="block space-y-1">
+            <span className="text-xs text-zinc-400">Opens</span>
+            <input
+              type="datetime-local"
+              value={cycleOpenAt}
+              onChange={(e) => setCycleOpenAt(e.target.value)}
+              className="w-full rounded-lg bg-zinc-900 border-2 border-zinc-600 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500 scheme-dark"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs text-zinc-400">Closes</span>
+            <input
+              type="datetime-local"
+              value={cycleCloseAt}
+              onChange={(e) => setCycleCloseAt(e.target.value)}
+              className="w-full rounded-lg bg-zinc-900 border-2 border-zinc-600 px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-zinc-500 scheme-dark"
+            />
+          </label>
           <button
             type="button"
-            disabled={manageDisabled || !selectedCycleId || !cycleOpenAt || !cycleCloseAt}
+            disabled={
+              manageDisabled ||
+              !selectedCycleId ||
+              Boolean(cycleOpenAt) !== Boolean(cycleCloseAt)
+            }
             onClick={() => void saveCycleOpenWindow()}
             className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-2 text-sm disabled:opacity-60"
           >
             Set Open Time Period
+          </button>
+          <button
+            type="button"
+            disabled={
+              manageDisabled ||
+              !selectedCycleId ||
+              (!selectedCycle?.publishedAt && !selectedCycle?.closedAt)
+            }
+            onClick={() => void clearCycleOpenWindow()}
+            className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-2 text-sm disabled:opacity-60"
+          >
+            Clear Open Window
           </button>
         </div>
         <div className="flex flex-wrap gap-2">

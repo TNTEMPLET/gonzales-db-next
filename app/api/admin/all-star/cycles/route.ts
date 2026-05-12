@@ -479,18 +479,24 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  const effectivePublishedAt =
-    parsedPublishedAt !== undefined
-      ? parsedPublishedAt
-      : body.status === "PUBLISHED"
-        ? new Date()
-        : undefined;
+  const effectivePublishedAt = parsedPublishedAt;
   const effectiveClosedAt =
     parsedClosedAt !== undefined
       ? parsedClosedAt
       : body.status === "CLOSED"
         ? new Date()
         : undefined;
+
+  if (
+    effectivePublishedAt !== undefined &&
+    effectiveClosedAt !== undefined &&
+    ((effectivePublishedAt === null) !== (effectiveClosedAt === null))
+  ) {
+    return NextResponse.json(
+      { error: "Set both open and close times, or clear both." },
+      { status: 400 },
+    );
+  }
 
   if (
     effectivePublishedAt instanceof Date &&

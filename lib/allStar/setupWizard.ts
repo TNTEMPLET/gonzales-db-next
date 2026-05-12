@@ -23,7 +23,7 @@ export type SetupWizardStepId =
 export type SetupAccessMode = "INVITE_LIST" | "AGE_GROUP_COACHES";
 export type SetupAgeBandFilter = "11U" | "12U" | "BOTH";
 export type SetupRosterSource = "teams" | "spreadsheet" | "empty";
-export type SetupVotingPreset = "1h" | "4h" | "24h" | "custom";
+export type SetupVotingPreset = "later" | "1h" | "4h" | "24h" | "custom";
 
 export type SetupWizardAnswers = {
   organizationId: ContentOrgId;
@@ -74,7 +74,7 @@ export function createDefaultSetupAnswers(
     rosterSource: "teams",
     selectedCoachIds: [],
     extraInviteEmails: "",
-    votingPreset: "24h",
+    votingPreset: "later",
     publishedAtLocal: "",
     closedAtLocal: "",
   };
@@ -202,6 +202,10 @@ export function resolveVotingWindowFromPreset(
   publishedAtLocal: string,
   closedAtLocal: string,
 ) {
+  if (preset === "later") {
+    return { publishedAt: null, closedAt: null };
+  }
+
   if (preset === "custom") {
     const publishedAt = publishedAtLocal ? new Date(publishedAtLocal).toISOString() : null;
     const closedAt = closedAtLocal ? new Date(closedAtLocal).toISOString() : null;
@@ -271,11 +275,13 @@ export function validateSetupStep(
       return null;
     }
     case "schedule": {
+      if (answers.votingPreset === "later") return null;
       const { publishedAt, closedAt } = resolveVotingWindowFromPreset(
         answers.votingPreset,
         answers.publishedAtLocal,
         answers.closedAtLocal,
       );
+      if (answers.votingPreset === "custom" && !publishedAt && !closedAt) return null;
       if (!publishedAt || !closedAt) return "Set both open and close times.";
       if (new Date(closedAt) <= new Date(publishedAt)) return "Close time must be later than open time.";
       return null;
