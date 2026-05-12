@@ -105,6 +105,7 @@ export default async function AdminScoresPage({
       <section className="max-w-6xl mx-auto px-6">
         <ScoresPageHeader
           allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+          allowViewByUser={adminUser.isMaster}
           currentOrg={currentOrg}
         />
 
@@ -122,9 +123,11 @@ export default async function AdminScoresPage({
 function ScoresPageHeader({
   currentOrg,
   allowRolePreview,
+  allowViewByUser,
 }: {
   currentOrg: ContentOrgId | null;
   allowRolePreview: boolean;
+  allowViewByUser: boolean;
 }) {
   return (
     <div className="mb-8">
@@ -133,6 +136,7 @@ function ScoresPageHeader({
         currentOrg={currentOrg}
         currentPath="/admin/scores"
         allowRolePreview={allowRolePreview}
+        allowViewByUser={allowViewByUser}
       />
       <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
         Enter Game Scores

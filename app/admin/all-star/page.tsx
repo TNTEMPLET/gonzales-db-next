@@ -58,6 +58,7 @@ export default async function AdminAllStarPage({
             currentOrg={currentOrg}
             currentPath="/admin/all-star"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+            allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             All-Star Voting Management

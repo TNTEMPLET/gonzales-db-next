@@ -62,6 +62,7 @@ export default async function AdminAllStarSetupPage({
             currentOrg={currentOrg}
             currentPath="/admin/all-star/setup"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+            allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">Set Up a Ballot</h1>
           <p className="text-zinc-400 max-w-2xl">

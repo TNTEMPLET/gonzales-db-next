@@ -59,6 +59,7 @@ export default async function AdminAllStarCycleManagementPage({
             currentOrg={currentOrg}
             currentPath="/admin/all-star/cycle-management"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+            allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             All-Star Cycle Management

@@ -58,6 +58,7 @@ export default async function NewsAdminPage({
             currentOrg={currentOrg}
             currentPath="/news/admin"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+            allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             News Admin

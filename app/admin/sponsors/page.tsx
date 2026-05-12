@@ -54,6 +54,7 @@ export default async function AdminSponsorsPage({
             currentOrg={currentOrg}
             currentPath="/admin/sponsors"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
+            allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Sponsors Management
