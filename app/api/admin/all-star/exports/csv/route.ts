@@ -1,16 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
+import {
+  buildAllStarExportFilename,
+  getAllStarCycleDisplayName,
+} from "@/lib/allStar/exportFormat";
 import prisma from "@/lib/prisma";
 
 function csvEscape(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
-}
-
-function getCycleName(cycle: { title: string | null; seasonYear: number; ageGroup: string }) {
-  const title = cycle.title?.trim();
-  if (title) return title;
-  return `${cycle.seasonYear} ${cycle.ageGroup}`;
 }
 
 export async function GET(request: NextRequest) {
@@ -79,13 +77,14 @@ export async function GET(request: NextRequest) {
   const csv = [header, ...rows]
     .map((row) => row.map((cell) => csvEscape(cell)).join(","))
     .join("\n");
-  const cycleName = getCycleName(cycle);
+  const cycleName = getAllStarCycleDisplayName(cycle);
+  const baseName = buildAllStarExportFilename(cycleName, "ballot");
 
   return new NextResponse(csv, {
     status: 200,
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="all-star-${cycle.organizationId}-${cycle.seasonYear}-${cycleName.replace(/[^a-zA-Z0-9.-]+/g, "-")}.csv"`,
+      "Content-Disposition": `attachment; filename="${baseName}.csv"`,
     },
   });
 }

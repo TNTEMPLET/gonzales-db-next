@@ -120,41 +120,44 @@ export function computeSecondTeamInclusion(
   });
 }
 
+export function getPlayerLastNameForSort(playerFullName: string) {
+  const normalized = playerFullName.trim();
+  if (!normalized) return "";
+  const parts = normalized.split(/\s+/);
+  return parts[parts.length - 1] || normalized;
+}
+
+export function sortVoteSummaryRowsByLastName(rows: VoteSummaryRow[]) {
+  return [...rows].sort((left, right) => {
+    const lastNameCompare = getPlayerLastNameForSort(left.playerFullName).localeCompare(
+      getPlayerLastNameForSort(right.playerFullName),
+      undefined,
+      { sensitivity: "base" },
+    );
+    if (lastNameCompare !== 0) return lastNameCompare;
+    return left.playerFullName.localeCompare(right.playerFullName, undefined, {
+      sensitivity: "base",
+    });
+  });
+}
+
+/** Same cutoff as the vault name-only snapshot: top 12 vote tier plus ties at the cutoff. */
+export function selectVoteSummaryNameOnlyPool(sorted: VoteSummaryRow[]) {
+  if (sorted.length <= 12) return sorted;
+  const cutoffVotes = sorted[11]!.voteCount;
+  let end = 12;
+  while (end < sorted.length && sorted[end]!.voteCount === cutoffVotes) {
+    end += 1;
+  }
+  return sorted.slice(0, end);
+}
+
 export type NameOnlyRankRow = { rank: string; displayLine: string };
 
-/**
- * PDF “Name only”: ranks 1–11 as name-only; rank 12 is everyone tied at the same vote count as the 12th
- * sorted player (index 11). If multiple players share rank 12, append avg rating next to each name; all labeled #12.
- */
+/** Public name-only export rows: no ranks, last-name order. */
 export function buildNameOnlyVotePdfRows(sorted: VoteSummaryRow[]): NameOnlyRankRow[] {
-  const out: NameOnlyRankRow[] = [];
-  const n = sorted.length;
-  if (n === 0) return out;
-
-  const rankOneThroughElevenCount = Math.min(11, n);
-  for (let i = 0; i < rankOneThroughElevenCount; i++) {
-    const rank = i + 1;
-    out.push({
-      rank: String(rank),
-      displayLine: sorted[i]!.playerFullName,
-    });
-  }
-
-  if (n <= 11) return out;
-
-  const thresholdVotes = sorted[11]!.voteCount;
-  const rank12Group = sorted.filter((_, idx) => idx >= 11 && sorted[idx]!.voteCount === thresholdVotes);
-  const tieAtTwelve = rank12Group.length > 1;
-
-  for (const row of rank12Group) {
-    const displayLine = tieAtTwelve
-      ? `${row.playerFullName} (avg ${row.averageRating.toFixed(2)})`
-      : row.playerFullName;
-    out.push({
-      rank: "12",
-      displayLine,
-    });
-  }
-
-  return out;
+  return sortVoteSummaryRowsByLastName(selectVoteSummaryNameOnlyPool(sorted)).map((row) => ({
+    rank: "",
+    displayLine: row.playerFullName,
+  }));
 }

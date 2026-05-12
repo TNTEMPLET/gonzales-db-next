@@ -1,25 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
+import {
+  buildAllStarExportFilename,
+  getAllStarCycleDisplayName,
+} from "@/lib/allStar/exportFormat";
 import { parseAllStarPhase } from "@/lib/allStar/phase";
 import { computeVoteSummaryRows } from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
 
 function csvEscape(value: string) {
   return `"${value.replaceAll('"', '""')}"`;
-}
-
-function filenameSlug(parts: string[]) {
-  return parts
-    .join("-")
-    .replace(/[^a-zA-Z0-9.-]+/g, "-")
-    .replace(/^-|-$/g, "");
-}
-
-function getCycleName(cycle: { title: string | null; seasonYear: number; ageGroup: string }) {
-  const title = cycle.title?.trim();
-  if (title) return title;
-  return `${cycle.seasonYear} ${cycle.ageGroup}`;
 }
 
 /** CSV matches Votes Panel: sort order and columns (rank, player, team, jersey, optional bib, votes, avg). */
@@ -56,14 +47,8 @@ export async function GET(request: NextRequest) {
   });
 
   const csv = [header, ...body].map((line) => line.map((cell) => csvEscape(cell)).join(",")).join("\n");
-  const cycleName = getCycleName(cycle);
-
-  const baseName = filenameSlug([
-    "votes-panel",
-    cycle.organizationId,
-    String(cycle.seasonYear),
-    cycleName,
-  ]);
+  const cycleName = getAllStarCycleDisplayName(cycle);
+  const baseName = buildAllStarExportFilename(cycleName, "standings");
 
   return new NextResponse(csv, {
     status: 200,

@@ -18,6 +18,10 @@ import {
   safeJson,
 } from "@/lib/allStar/cycleSetupHelpers";
 import { getCycleStatusChipLabel, isPublishedCycleWithinOpenWindow } from "@/lib/allStar/cycleType";
+import {
+  selectVoteSummaryNameOnlyPool,
+  sortVoteSummaryRowsByLastName,
+} from "@/lib/allStar/voteSummary";
 
 function EditCycleIcon({ className }: { className?: string }) {
   return (
@@ -335,16 +339,6 @@ function getDisplayedCycleAgeGroupWithAllStarAge(cycle: {
     return baseAgeGroup;
   }
   return `${baseAgeGroup} [${allStarAge}]`;
-}
-
-function getTop12WithCutoffTies(rows: VoteSummaryRow[]) {
-  if (rows.length <= 12) return rows;
-  const cutoffVotes = rows[11]!.voteCount;
-  let end = 12;
-  while (end < rows.length && rows[end]!.voteCount === cutoffVotes) {
-    end += 1;
-  }
-  return rows.slice(0, end);
 }
 
 function BaseballRatingIcon({ className }: { className?: string }) {
@@ -2047,6 +2041,13 @@ export default function AllStarVaultManager({
     canViewAllStarVault &&
     previewCanViewAllStar &&
     (previewRole === "NONE" || previewRole === "ALL_STAR_VIEW_ONLY");
+  const showsVoteStandingsRanks =
+    canViewAllStarVault &&
+    previewCanViewAllStar &&
+    (canManageAllStarVaultUi || isLimitedVaultAccess);
+  const voteStandingsForDisplay = showsVoteStandingsRanks
+    ? voteSummary
+    : sortVoteSummaryRowsByLastName(voteSummary);
   const showCycleSnapshotBoard =
     (showFullAdminView &&
       (showSnapshotBoardOnInitialFullAccess && !selectedCycleId)) ||
@@ -2143,10 +2144,12 @@ export default function AllStarVaultManager({
           <div className="space-y-3">
             {limitedOverviewCycles.map((cycle) => {
               const rows = limitedOverviewSnapshots[cycle.id] || [];
-              const topFive = rows.slice(0, 5);
-              const top12Rows = getTop12WithCutoffTies(rows);
+              const publicNameRows = sortVoteSummaryRowsByLastName(
+                selectVoteSummaryNameOnlyPool(rows),
+              );
+              const previewNameRows = publicNameRows.slice(0, 5);
               const isExpanded = limitedOverviewMoreCycleId === cycle.id;
-              const hasVoteData = rows.length > 0;
+              const hasVoteData = publicNameRows.length > 0;
               const cycleCardInteractive = canOpenCycleFromSnapshotBoard;
               return (
                 <div
@@ -2188,12 +2191,12 @@ export default function AllStarVaultManager({
                       Submitted ballots: {limitedOverviewSubmissionCounts[cycle.id] || 0}
                     </p>
                     <div className="space-y-1">
-                      {topFive.length === 0 ? (
+                      {previewNameRows.length === 0 ? (
                         <p className="text-zinc-500 text-xs">No vote data yet.</p>
                       ) : (
-                        topFive.map((row, index) => (
+                        previewNameRows.map((row) => (
                           <p key={row.candidateId} className="text-zinc-200 text-xs">
-                            #{index + 1} {row.playerFullName} · {row.team}
+                            {row.playerFullName} · {row.team}
                           </p>
                         ))
                       )}
@@ -2224,11 +2227,11 @@ export default function AllStarVaultManager({
                       {isExpanded ? "Collapse" : "...more"}
                     </button>
                   </div>
-                  {isExpanded && top12Rows.length > 0 ? (
+                  {isExpanded && publicNameRows.length > 0 ? (
                     <div className="rounded-lg border border-zinc-700 bg-zinc-900/70 p-3 space-y-2 mx-3 mb-3">
                       <div className="flex items-center justify-between gap-2">
                         <p className="text-xs uppercase tracking-wide text-zinc-400">
-                          Top 12 Snapshot (Names Only)
+                          Player snapshot (names only)
                         </p>
                         <button
                           type="button"
@@ -2240,9 +2243,9 @@ export default function AllStarVaultManager({
                         </button>
                       </div>
                       <div className="rounded-lg border border-zinc-800 overflow-hidden">
-                        {top12Rows.map((row, index) => (
+                        {publicNameRows.map((row) => (
                           <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0">
-                            <p className="text-sm text-zinc-200">#{index + 1} {row.playerFullName} · {row.team}</p>
+                            <p className="text-sm text-zinc-200">{row.playerFullName} · {row.team}</p>
                           </div>
                         ))}
                       </div>
@@ -2556,19 +2559,23 @@ export default function AllStarVaultManager({
                   ) : voteSummary.length === 0 ? (
                     <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
                   ) : (
-                    voteSummary.map((row, index) => (
+                    voteStandingsForDisplay.map((row, index) => (
                       <div
                         key={row.candidateId}
                         className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
                       >
                         <p className="min-w-0 truncate">
-                          <span className="text-zinc-500 mr-2">#{index + 1}</span>
+                          {showsVoteStandingsRanks ? (
+                            <span className="text-zinc-500 mr-2">#{index + 1}</span>
+                          ) : null}
                           <span className="font-medium">{row.playerFullName}</span> · {row.team}
                           {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
                         </p>
-                        <p className="text-xs text-zinc-300 whitespace-nowrap">
-                          Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
-                        </p>
+                        {showsVoteStandingsRanks ? (
+                          <p className="text-xs text-zinc-300 whitespace-nowrap">
+                            Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+                          </p>
+                        ) : null}
                       </div>
                     ))
                   )}
@@ -3526,19 +3533,23 @@ export default function AllStarVaultManager({
           ) : voteSummary.length === 0 ? (
             <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
           ) : (
-            voteSummary.map((row, index) => (
+            voteStandingsForDisplay.map((row, index) => (
               <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3">
                 <p className="min-w-0 truncate">
-                  <span className="text-zinc-500 mr-2">#{index + 1}</span>
+                  {showsVoteStandingsRanks ? (
+                    <span className="text-zinc-500 mr-2">#{index + 1}</span>
+                  ) : null}
                   <span className="font-medium">{row.playerFullName}</span> · {row.team}
                   {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
                   {selectedCycle?.hasShowcase && row.showcaseBibNumber
                     ? ` · Bib ${row.showcaseBibNumber}`
                     : ""}
                 </p>
-                <p className="text-xs text-zinc-300 whitespace-nowrap">
-                  Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
-                </p>
+                {showsVoteStandingsRanks ? (
+                  <p className="text-xs text-zinc-300 whitespace-nowrap">
+                    Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+                  </p>
+                ) : null}
               </div>
             ))
           )}
