@@ -8,7 +8,9 @@ import {
   readAdminViewPreviewRole,
   type AdminViewPreviewRole,
 } from "@/components/admin/AdminRolePreviewControl";
+import { resolvePreviewUserAccess, type PreviewUserSnapshot } from "@/lib/admin/viewPreview";
 import type { AdminModule } from "@/lib/auth/adminRoles";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 type AdminDashboardCard = {
   module: AdminModule;
@@ -80,16 +82,41 @@ function canPreviewAccessModule(
   return roleRank[previewAs] >= roleRank[moduleMinimumRole[module]];
 }
 
+function canPreviewUserAccessModule(
+  user: PreviewUserSnapshot,
+  module: AdminModule,
+  masterMode: boolean,
+  organizationId: ContentOrgId | null,
+) {
+  const organizationIds: ContentOrgId[] = organizationId
+    ? [organizationId]
+    : ["gonzales", "ascension"];
+  return organizationIds.some((orgId) => {
+    const access = resolvePreviewUserAccess(user, orgId);
+    if (module === "ALL_STAR_VAULT") return access.allStarVaultView;
+    const previewAs =
+      access.effectiveRole === "MASTER_ADMIN" ? "ADMIN" : access.effectiveRole;
+    return canPreviewAccessModule(
+      previewAs,
+      module,
+      masterMode,
+      access.allStarVaultView,
+    );
+  });
+}
+
 export default function AdminDashboardModuleGrid({
   cards,
   masterMode,
   allowRolePreview,
   allStarVaultView,
+  currentOrg = null,
 }: {
   cards: AdminDashboardCard[];
   masterMode: boolean;
   allowRolePreview: boolean;
   allStarVaultView: boolean;
+  currentOrg?: ContentOrgId | null;
 }) {
   const [previewRole, setPreviewRole] = useState<AdminViewPreviewRole>("NONE");
   const [previewContext, setPreviewContext] = useState<ReturnType<typeof readAdminViewPreviewContext>>({
@@ -101,7 +128,7 @@ export default function AdminDashboardModuleGrid({
   useEffect(() => {
     if (!allowRolePreview) return;
     const sync = () => {
-      setPreviewRole(readAdminViewPreviewRole());
+      setPreviewRole(readAdminViewPreviewRole(currentOrg));
       setPreviewContext(readAdminViewPreviewContext());
     };
     sync();
@@ -111,28 +138,33 @@ export default function AdminDashboardModuleGrid({
       window.removeEventListener("admin-view-preview-updated", sync);
       window.removeEventListener("storage", sync);
     };
-  }, [allowRolePreview]);
+  }, [allowRolePreview, currentOrg]);
 
   const visibleCards = useMemo(() => {
     if (!allowRolePreview || previewRole === "NONE") return cards;
     if (previewContext.mode === "user" && previewContext.user) {
       const previewUser = previewContext.user;
-      return cards.filter((card) => {
-        if (card.module === "ALL_STAR_VAULT") return previewUser.allStarVaultView;
-        return canPreviewAccessModule(
-          previewUser.effectiveRole === "MASTER_ADMIN"
-            ? "ADMIN"
-            : previewUser.effectiveRole,
+      return cards.filter((card) =>
+        canPreviewUserAccessModule(
+          previewUser,
           card.module,
           masterMode,
-          previewUser.allStarVaultView,
-        );
-      });
+          currentOrg,
+        ),
+      );
     }
     return cards.filter((card) =>
       canPreviewAccessModule(previewRole, card.module, masterMode, allStarVaultView),
     );
-  }, [allowRolePreview, cards, masterMode, previewRole, allStarVaultView, previewContext]);
+  }, [
+    allowRolePreview,
+    cards,
+    masterMode,
+    previewRole,
+    allStarVaultView,
+    previewContext,
+    currentOrg,
+  ]);
 
   if (visibleCards.length === 0) {
     return (

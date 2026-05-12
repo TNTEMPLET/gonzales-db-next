@@ -1,9 +1,14 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
+import { canViewAllStarVault } from "@/lib/allStar/auth";
+import {
+  formatPreviewUserLabel,
+  type PreviewUserMembershipSnapshot,
+  type PreviewUserSnapshot,
+} from "@/lib/admin/viewPreview";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { canViewAllStarVault } from "@/lib/allStar/auth";
 import prisma from "@/lib/prisma";
 import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 
@@ -20,84 +25,70 @@ export async function GET(request: NextRequest) {
       ? [requestedOrg]
       : CONTENT_ORGS;
 
-  const users: Array<{
-    id: string;
-    label: string;
-    effectiveRole: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR";
-    allStarVaultView: boolean;
-  }> = [];
+  const admins = await prisma.adminUser.findMany({
+    where: {
+      OR: [
+        { isMaster: true },
+        { orgMemberships: { some: { organizationId: { in: targetOrgs } } } },
+      ],
+    },
+    select: {
+      id: true,
+      email: true,
+      firstName: true,
+      lastName: true,
+      name: true,
+      isMaster: true,
+    },
+    orderBy: [{ email: "asc" }],
+  });
 
-  for (const org of targetOrgs) {
-    const memberships = await prisma.adminOrgMembership.findMany({
-      where: { organizationId: org },
-      include: {
-        adminUser: {
-          select: {
-            id: true,
-            email: true,
-            firstName: true,
-            lastName: true,
-            name: true,
-            isMaster: true,
-          },
+  const users: PreviewUserSnapshot[] = [];
+
+  for (const admin of admins) {
+    const memberships: PreviewUserMembershipSnapshot[] = [];
+
+    for (const org of targetOrgs) {
+      const effectiveRole = await getEffectiveAdminRoleForOrg(
+        admin.id,
+        admin.isMaster,
+        org,
+      );
+      if (!effectiveRole) continue;
+
+      const linkedUsers = await prisma.registeredUser.findMany({
+        where: {
+          email: { equals: admin.email, mode: "insensitive" },
+          organizationId: org,
         },
-      },
-      orderBy: [{ role: "asc" }, { adminUser: { email: "asc" } }],
-    });
+        select: { id: true },
+      });
 
-    const orgUsers = await Promise.all(
-      memberships.map(async (membership) => {
-        const user = membership.adminUser;
-        const effectiveRole = await getEffectiveAdminRoleForOrg(
-          user.id,
-          user.isMaster,
-          org,
-        );
-        if (!effectiveRole) return null;
-
-        const linkedUsers = await prisma.registeredUser.findMany({
-          where: {
-            email: { equals: user.email, mode: "insensitive" },
-            organizationId: org,
-          },
-          select: { id: true },
-        });
-        let allStarVaultView = false;
-        for (const linked of linkedUsers) {
-          if (await canViewAllStarVault(linked.id, org)) {
-            allStarVaultView = true;
-            break;
-          }
+      let allStarVaultView = false;
+      for (const linked of linkedUsers) {
+        if (await canViewAllStarVault(linked.id, org)) {
+          allStarVaultView = true;
+          break;
         }
+      }
 
-        const labelName =
-          [user.firstName, user.lastName].filter(Boolean).join(" ").trim() ||
-          user.name ||
-          user.email;
-        const orgLabel = org === "ascension" ? "Ascension LL" : "Gonzales DYB";
-        return {
-          id: `${user.id}::${org}`,
-          label: `${labelName} (${user.email}) · ${orgLabel}`,
-          effectiveRole,
-          allStarVaultView,
-        };
-      }),
-    );
-    users.push(
-      ...orgUsers.filter(
-        (
-          value,
-        ): value is {
-          id: string;
-          label: string;
-          effectiveRole: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR";
-          allStarVaultView: boolean;
-        } => Boolean(value),
-      ),
-    );
+      memberships.push({
+        organizationId: org,
+        effectiveRole,
+        allStarVaultView,
+      });
+    }
+
+    if (memberships.length === 0) continue;
+
+    users.push({
+      id: admin.id,
+      label: formatPreviewUserLabel(admin),
+      memberships,
+    });
   }
 
-  return NextResponse.json({
-    users,
-  });
+  users.sort((left, right) => left.label.localeCompare(right.label));
+
+  return NextResponse.json({ users });
 }

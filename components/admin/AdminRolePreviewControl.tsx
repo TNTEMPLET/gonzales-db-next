@@ -2,6 +2,12 @@
 
 import { useEffect, useState } from "react";
 import type { ContentOrgId } from "@/lib/siteConfig";
+import {
+  resolvePreviewUserAccess,
+  type PreviewUserSnapshot,
+} from "@/lib/admin/viewPreview";
+
+export type { PreviewUserSnapshot } from "@/lib/admin/viewPreview";
 
 export type AdminViewPreviewRole =
   | "NONE"
@@ -12,13 +18,6 @@ export type AdminViewPreviewRole =
 
 export const ADMIN_VIEW_PREVIEW_SESSION_KEY = "admin-view-preview-role";
 export const ADMIN_VIEW_PREVIEW_CONTEXT_SESSION_KEY = "admin-view-preview-context";
-
-type PreviewUserSnapshot = {
-  id: string;
-  label: string;
-  effectiveRole: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR";
-  allStarVaultView: boolean;
-};
 
 export type AdminViewPreviewContext = {
   mode: "role" | "user";
@@ -38,27 +37,78 @@ function isPreviewRole(value: string): value is AdminViewPreviewRole {
   return OPTIONS.some((option) => option.id === value);
 }
 
+function isPreviewUserEffectiveRole(
+  value: unknown,
+): value is PreviewUserSnapshot["memberships"][number]["effectiveRole"] {
+  return (
+    value === "MASTER_ADMIN" ||
+    value === "ADMIN" ||
+    value === "BOARD_MEMBER" ||
+    value === "PARK_DIRECTOR"
+  );
+}
+
+function normalizePreviewUser(raw: unknown): PreviewUserSnapshot | null {
+  if (!raw || typeof raw !== "object") return null;
+  const parsed = raw as Record<string, unknown>;
+  if (typeof parsed.id !== "string" || typeof parsed.label !== "string") return null;
+
+  if (Array.isArray(parsed.memberships)) {
+    const memberships = parsed.memberships
+      .map((entry) => {
+        if (!entry || typeof entry !== "object") return null;
+        const row = entry as Record<string, unknown>;
+        if (row.organizationId !== "gonzales" && row.organizationId !== "ascension") {
+          return null;
+        }
+        if (!isPreviewUserEffectiveRole(row.effectiveRole)) return null;
+        return {
+          organizationId: row.organizationId,
+          effectiveRole: row.effectiveRole,
+          allStarVaultView: Boolean(row.allStarVaultView),
+        };
+      })
+      .filter(
+        (
+          value,
+        ): value is PreviewUserSnapshot["memberships"][number] => value !== null,
+      );
+    if (memberships.length > 0) {
+      return { id: parsed.id, label: parsed.label, memberships };
+    }
+  }
+
+  if (
+    parsed.id.includes("::") &&
+    isPreviewUserEffectiveRole(parsed.effectiveRole)
+  ) {
+    const [legacyUserId, organizationId] = parsed.id.split("::");
+    if (organizationId !== "gonzales" && organizationId !== "ascension") {
+      return null;
+    }
+    return {
+      id: legacyUserId,
+      label: parsed.label,
+      memberships: [
+        {
+          organizationId,
+          effectiveRole: parsed.effectiveRole,
+          allStarVaultView: Boolean(parsed.allStarVaultView),
+        },
+      ],
+    };
+  }
+
+  return null;
+}
+
 function normalizePreviewContext(raw: string | null): AdminViewPreviewContext {
   if (!raw) return { mode: "role", role: "NONE", user: null };
   try {
     const parsed = JSON.parse(raw) as Partial<AdminViewPreviewContext>;
     const mode = parsed.mode === "user" ? "user" : "role";
     const role = isPreviewRole(parsed.role || "") ? parsed.role! : "NONE";
-    const user =
-      parsed.user &&
-      typeof parsed.user.id === "string" &&
-      typeof parsed.user.label === "string" &&
-      (parsed.user.effectiveRole === "MASTER_ADMIN" ||
-        parsed.user.effectiveRole === "ADMIN" ||
-        parsed.user.effectiveRole === "BOARD_MEMBER" ||
-        parsed.user.effectiveRole === "PARK_DIRECTOR")
-        ? {
-            id: parsed.user.id,
-            label: parsed.user.label,
-            effectiveRole: parsed.user.effectiveRole,
-            allStarVaultView: Boolean(parsed.user.allStarVaultView),
-          }
-        : null;
+    const user = parsed.user ? normalizePreviewUser(parsed.user) : null;
     return { mode, role, user };
   } catch {
     return { mode: "role", role: "NONE", user: null };
@@ -75,12 +125,15 @@ export function readAdminViewPreviewContext(): AdminViewPreviewContext {
   return { mode: "role", role, user: null };
 }
 
-export function readAdminViewPreviewRole(): AdminViewPreviewRole {
+export function readAdminViewPreviewRole(
+  organizationId?: ContentOrgId | null,
+): AdminViewPreviewRole {
   const context = readAdminViewPreviewContext();
   if (context.mode === "user" && context.user) {
-    if (context.user.allStarVaultView) return "ALL_STAR_VIEW_ONLY";
-    if (context.user.effectiveRole === "MASTER_ADMIN") return "ADMIN";
-    return context.user.effectiveRole;
+    const access = resolvePreviewUserAccess(context.user, organizationId);
+    if (access.allStarVaultView) return "ALL_STAR_VIEW_ONLY";
+    if (access.effectiveRole === "MASTER_ADMIN") return "ADMIN";
+    return access.effectiveRole;
   }
   return context.role;
 }
@@ -121,9 +174,7 @@ export default function AdminRolePreviewControl({
     const cls = "admin-preview-readonly";
     const previewRole =
       context.mode === "user" && context.user
-        ? context.user.allStarVaultView
-          ? "ALL_STAR_VIEW_ONLY"
-          : context.user.effectiveRole
+        ? readAdminViewPreviewRole(currentOrg)
         : context.role;
     if (previewRole === "ALL_STAR_VIEW_ONLY") {
       document.body.classList.add(cls);
@@ -133,7 +184,7 @@ export default function AdminRolePreviewControl({
     return () => {
       document.body.classList.remove(cls);
     };
-  }, [enabled, context]);
+  }, [enabled, context, currentOrg]);
 
   useEffect(() => {
     if (!enabled || !allowViewByUser) return;
@@ -203,14 +254,15 @@ export default function AdminRolePreviewControl({
               }
               const selectedUser = userOptions.find((option) => option.id === selectedId) || null;
               if (!selectedUser) return;
+              const access = resolvePreviewUserAccess(selectedUser, currentOrg);
+              const previewRole: AdminViewPreviewRole = access.allStarVaultView
+                ? "ALL_STAR_VIEW_ONLY"
+                : access.effectiveRole === "MASTER_ADMIN"
+                  ? "ADMIN"
+                  : access.effectiveRole;
               saveContext({
                 mode: "user",
-                role:
-                  selectedUser.allStarVaultView
-                    ? "ALL_STAR_VIEW_ONLY"
-                    : selectedUser.effectiveRole === "MASTER_ADMIN"
-                      ? "ADMIN"
-                      : selectedUser.effectiveRole,
+                role: previewRole,
                 user: selectedUser,
               });
             }}

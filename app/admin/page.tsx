@@ -392,6 +392,7 @@ export default async function AdminDashboardPage({
           masterMode={masterMode}
           allowRolePreview={allowRolePreview}
           allStarVaultView={allStarVaultView}
+          currentOrg={currentOrg}
         />
       </section>
     </main>

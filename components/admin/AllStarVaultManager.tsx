@@ -530,15 +530,15 @@ export default function AllStarVaultManager({
   const [limitedOverviewMoreCycleId, setLimitedOverviewMoreCycleId] = useState("");
 
   useEffect(() => {
-    setPreviewRole(readAdminViewPreviewRole());
-    const onPreviewUpdate = () => setPreviewRole(readAdminViewPreviewRole());
+    setPreviewRole(readAdminViewPreviewRole(org));
+    const onPreviewUpdate = () => setPreviewRole(readAdminViewPreviewRole(org));
     window.addEventListener("admin-view-preview-updated", onPreviewUpdate);
     window.addEventListener("storage", onPreviewUpdate);
     return () => {
       window.removeEventListener("admin-view-preview-updated", onPreviewUpdate);
       window.removeEventListener("storage", onPreviewUpdate);
     };
-  }, []);
+  }, [org]);
 
   useEffect(() => {
     if (!showEditModules || !scrollEditModulesIntoViewAfterExpand.current) return;
