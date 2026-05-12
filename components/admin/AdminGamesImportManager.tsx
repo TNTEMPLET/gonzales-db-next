@@ -199,7 +199,7 @@ export default function AdminGamesImportManager({
       );
       setParkMappings(json.suggestedMappings.parkMappings ?? {});
       setFieldMappings(json.suggestedMappings.fieldMappings ?? {});
-      setNotice(`Parsed ${json.parsedCount} tournament games.`);
+      setNotice(`Parsed ${json.parsedCount} games.`);
     } catch (err: unknown) {
       setPreview(null);
       setError(err instanceof Error ? err.message : "Failed to preview import");
@@ -210,7 +210,7 @@ export default function AdminGamesImportManager({
 
   async function handleExport() {
     if (!uploadedFile) {
-      setError("Upload a tournament schedule file before exporting.");
+      setError("Upload a schedule file before exporting.");
       return;
     }
     if (
@@ -280,98 +280,122 @@ export default function AdminGamesImportManager({
   }
 
   return (
-    <section className="mt-10 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 space-y-6">
-      <ImportHeader scope={scope} />
+    <section className="mt-10 rounded-2xl border border-zinc-800 bg-zinc-900/40">
+      <details className="group/details">
+        <summary className="cursor-pointer list-none p-6 [&::-webkit-details-marker]:hidden">
+          <ImportHeader scope={scope} />
+        </summary>
 
-      <ImportUploadControls
-        allSites={allSites}
-        busy={busy}
-        fileInputRef={fileInputRef}
-        gameType={gameType}
-        league={league}
-        leagueByOrg={leagueByOrg}
-        seasonYear={seasonYear}
-        setGameType={setGameType}
-        setLeague={setLeague}
-        setLeagueByOrg={setLeagueByOrg}
-        setSeasonYear={setSeasonYear}
-        onFileSelected={(file) => {
-          setUploadedFile(file);
-          void handlePreview(file);
-        }}
-      />
-
-      {error ? (
-        <ImportError message={error} />
-      ) : null}
-      {notice ? (
-        <ImportNotice message={notice} />
-      ) : null}
-
-      {preview ? (
-        <>
-          <ImportMappingSection
-            ageGroupMappings={ageGroupMappings}
-            ageGroups={preview.ageGroups}
-            ageGroupsByOrg={preview.ageGroupsByOrg}
+        <div className="space-y-6 border-t border-zinc-800 px-6 pb-6 pt-6">
+          <ImportUploadControls
             allSites={allSites}
-            contentOrgMappings={contentOrgMappings}
-            fieldMappings={fieldMappings}
-            fields={preview.fields}
-            missingAgeGroups={missingAgeGroups}
-            missingFields={missingFields}
-            missingParks={missingParks}
-            missingSites={missingSites}
-            parkMappings={parkMappings}
-            parks={preview.parks}
-            setAgeGroupMappings={setAgeGroupMappings}
-            setContentOrgMappings={setContentOrgMappings}
-            setFieldMappings={setFieldMappings}
-            setParkMappings={setParkMappings}
-            subVenueOptionsByVenue={subVenueOptionsByVenue}
-            tournaments={preview.tournaments}
-            venues={preview.venues}
+            busy={busy}
+            fileInputRef={fileInputRef}
+            gameType={gameType}
+            league={league}
+            leagueByOrg={leagueByOrg}
+            seasonYear={seasonYear}
+            setGameType={setGameType}
+            setLeague={setLeague}
+            setLeagueByOrg={setLeagueByOrg}
+            setSeasonYear={setSeasonYear}
+            onFileSelected={(file) => {
+              setUploadedFile(file);
+              void handlePreview(file);
+            }}
           />
 
-          <ImportPreviewSection
-            filteredRows={filteredRows}
-            showWarningsOnly={showWarningsOnly}
-            setShowWarningsOnly={setShowWarningsOnly}
-            setTournamentFilter={setTournamentFilter}
-            tournamentFilter={tournamentFilter}
-            tournaments={preview.tournaments}
-          />
+          {error ? <ImportError message={error} /> : null}
+          {notice ? <ImportNotice message={notice} /> : null}
 
-          <div className="flex justify-end">
-            <button
-              type="button"
-              disabled={busy}
-              onClick={() => void handleExport()}
-              className="rounded-lg border border-brand-gold px-4 py-2 text-sm font-medium text-brand-gold hover:bg-brand-gold/10 disabled:opacity-50"
-            >
-              {busy ? "Working..." : "Download Assignr CSV"}
-            </button>
-          </div>
-        </>
-      ) : null}
+          {preview ? (
+            <>
+              <ImportMappingSection
+                ageGroupMappings={ageGroupMappings}
+                ageGroups={preview.ageGroups}
+                ageGroupsByOrg={preview.ageGroupsByOrg}
+                allSites={allSites}
+                contentOrgMappings={contentOrgMappings}
+                fieldMappings={fieldMappings}
+                fields={preview.fields}
+                missingAgeGroups={missingAgeGroups}
+                missingFields={missingFields}
+                missingParks={missingParks}
+                missingSites={missingSites}
+                parkMappings={parkMappings}
+                parks={preview.parks}
+                setAgeGroupMappings={setAgeGroupMappings}
+                setContentOrgMappings={setContentOrgMappings}
+                setFieldMappings={setFieldMappings}
+                setParkMappings={setParkMappings}
+                subVenueOptionsByVenue={subVenueOptionsByVenue}
+                tournaments={preview.tournaments}
+                venues={preview.venues}
+              />
+
+              <ImportPreviewSection
+                filteredRows={filteredRows}
+                showWarningsOnly={showWarningsOnly}
+                setShowWarningsOnly={setShowWarningsOnly}
+                setTournamentFilter={setTournamentFilter}
+                tournamentFilter={tournamentFilter}
+                tournaments={preview.tournaments}
+              />
+
+              <div className="flex justify-end">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => void handleExport()}
+                  className="rounded-lg border border-brand-gold px-4 py-2 text-sm font-medium text-brand-gold hover:bg-brand-gold/10 disabled:opacity-50"
+                >
+                  {busy ? "Working..." : "Download Assignr CSV"}
+                </button>
+              </div>
+            </>
+          ) : null}
+        </div>
+      </details>
     </section>
+  );
+}
+
+function ChevronDownIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.8"
+      className={className ?? "h-4 w-4"}
+      aria-hidden="true"
+    >
+      <path d="m6 9 6 6 6-6" />
+    </svg>
   );
 }
 
 function ImportHeader({ scope }: { scope: AdminAssignrScope }) {
   return (
-    <div className="space-y-2">
-      <h2 className="text-2xl font-semibold tracking-tight">
-        Bulk games import (Assignr CSV)
-      </h2>
-      <p className="text-sm text-zinc-400 max-w-3xl">
-        Upload a tournament schedule spreadsheet, map tournament sections to
-        Assignr age groups, normalize parks and fields against the live schedule
-        catalog, then download an Assignr bulk-import file.
-      </p>
-      <p className="text-xs uppercase tracking-wide text-zinc-500">
-        Assignr scope: {assignrScopeLabel(scope)}
-      </p>
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0 flex-1 space-y-2">
+        <h2 className="text-2xl font-semibold tracking-tight">
+          Create Assignr Import CSV
+        </h2>
+        <p className="text-sm text-zinc-400 group-open/details:hidden">
+          Turn a games schedule spreadsheet into an Assignr bulk-import file.
+        </p>
+        <p className="hidden max-w-3xl text-sm text-zinc-400 group-open/details:block">
+          Upload a games schedule spreadsheet, map schedule sections to Assignr
+          age groups, normalize parks and fields against the live schedule
+          catalog, then download an Assignr bulk-import file.
+        </p>
+        <p className="hidden text-xs uppercase tracking-wide text-zinc-500 group-open/details:block">
+          Assignr scope: {assignrScopeLabel(scope)}
+        </p>
+      </div>
+      <ChevronDownIcon className="mt-1 h-4 w-4 shrink-0 text-zinc-400 transition-transform group-open/details:rotate-180" />
     </div>
   );
 }
@@ -410,7 +434,7 @@ function ImportUploadControls({
       <div className="grid gap-4 md:grid-cols-[1.2fr_1fr_1fr_auto]">
       <label className="space-y-1">
         <span className="block text-xs uppercase tracking-wide text-zinc-400">
-          Tournament schedule file
+          Schedule file
         </span>
         <input
           ref={fileInputRef}
@@ -533,17 +557,17 @@ function ImportMappingSection(props: {
       <div className="rounded-xl border border-zinc-800 overflow-hidden">
         <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
           <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
-            Tournament to age group mapping
+            Section to age group mapping
           </h3>
           {props.missingSites.length > 0 ? (
             <p className="mt-1 text-xs text-amber-300">
-              {props.missingSites.length} tournament section
+              {props.missingSites.length} schedule section
               {props.missingSites.length === 1 ? "" : "s"} still need a site.
             </p>
           ) : null}
           {props.missingAgeGroups.length > 0 ? (
             <p className="mt-1 text-xs text-amber-300">
-              {props.missingAgeGroups.length} tournament section
+              {props.missingAgeGroups.length} schedule section
               {props.missingAgeGroups.length === 1 ? "" : "s"} still need an age
               group.
             </p>
@@ -552,7 +576,7 @@ function ImportMappingSection(props: {
         <table className="w-full text-sm">
           <thead className="bg-zinc-950">
             <tr className="text-left text-zinc-400">
-              <th className="px-4 py-2">Imported tournament</th>
+              <th className="px-4 py-2">Imported section</th>
               {props.allSites ? <th className="px-4 py-2">Site</th> : null}
               <th className="px-4 py-2">Assignr age group</th>
             </tr>
@@ -846,7 +870,7 @@ function ImportPreviewSectionHeader({
           onChange={(event) => setTournamentFilter(event.target.value)}
           className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
         >
-          <option value="">All tournaments</option>
+          <option value="">All sections</option>
           {tournaments.map((tournament) => (
             <option key={tournament} value={tournament}>
               {tournament}
