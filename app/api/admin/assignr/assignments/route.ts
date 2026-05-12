@@ -5,7 +5,10 @@ import {
   fetchAssignrGamesForContentOrg,
   fetchUnassignedAssignrGamesForContentOrg,
 } from "@/lib/admin/assignrOrgScope";
-import { listGlobalUnassignedGames } from "@/lib/assignr/games";
+import {
+  enrichAssignrGamesWithAssignmentDetails,
+  listGlobalUnassignedGames,
+} from "@/lib/assignr/games";
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAssignrAdmin(request);
@@ -32,7 +35,8 @@ export async function GET(request: NextRequest) {
             endDate: endDate ?? "2026-06-30",
             cache: "no-store",
           });
-    return NextResponse.json({ data: games, view, count: games.length });
+    const detailedGames = await enrichAssignrGamesWithAssignmentDetails(games);
+    return NextResponse.json({ data: detailedGames, view, count: detailedGames.length });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 502 });

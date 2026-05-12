@@ -51,6 +51,41 @@ export async function getAssignrGame(gameId: string | number) {
   return assignrFetch<AssignrGame>(`/api/v2/games/${gameId}`);
 }
 
+function assignmentNeedsDetail(game: AssignrGame) {
+  const assignments = game._embedded?.assignments ?? [];
+  if (assignments.length === 0) return false;
+  return assignments.some((assignment) => {
+    return (
+      assignment.position === undefined &&
+      assignment.position_abbreviation === undefined &&
+      !assignment._embedded?.position?.name
+    );
+  });
+}
+
+export async function enrichAssignrGamesWithAssignmentDetails(games: AssignrGame[]) {
+  return Promise.all(
+    games.map(async (game) => {
+      if (!game.id || !assignmentNeedsDetail(game)) {
+        return game;
+      }
+
+      try {
+        const detailed = await getAssignrGame(game.id);
+        return {
+          ...game,
+          _embedded: {
+            ...game._embedded,
+            assignments: detailed._embedded?.assignments ?? game._embedded?.assignments,
+          },
+        };
+      } catch {
+        return game;
+      }
+    }),
+  );
+}
+
 export function mapImportRowToCreatePayload(
   row: AssignrGameImportRow,
   org: ContentOrgId,
