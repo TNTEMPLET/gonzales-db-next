@@ -31,7 +31,9 @@ const baseGames: Game[] = [
     id: "13422195",
     home_team: "Bayou Glove Works - Todd",
     away_team: "Ascension Parks - Bennett",
-    start_time: "2026-03-09T18:00:00.000Z",
+    start_time: "2026-03-09T23:00:00.000Z",
+    localized_date: "03/09/2026",
+    localized_time: "6:00 PM",
     status: "A",
     subvenue: "3 - Gauthier and Amedee Field",
     _embedded: { venue: { name: "Stevens Park" } },
@@ -41,7 +43,9 @@ const baseGames: Game[] = [
     id: "dup-1",
     home_team: "Team A",
     away_team: "Team B",
-    start_time: "2026-03-10T18:00:00.000Z",
+    start_time: "2026-03-10T23:00:00.000Z",
+    localized_date: "03/10/2026",
+    localized_time: "6:00 PM",
     status: "A",
     subvenue: "Field One",
     _embedded: { venue: { name: "Stevens Park" } },
@@ -51,7 +55,9 @@ const baseGames: Game[] = [
     id: "dup-2",
     home_team: "Team A",
     away_team: "Team B",
-    start_time: "2026-03-10T18:00:00.000Z",
+    start_time: "2026-03-10T23:00:00.000Z",
+    localized_date: "03/10/2026",
+    localized_time: "6:00 PM",
     status: "A",
     subvenue: "Field Two",
     _embedded: { venue: { name: "Stevens Park" } },
@@ -61,7 +67,9 @@ const baseGames: Game[] = [
     id: "rain-1",
     home_team: "Team C",
     away_team: "Team D",
-    start_time: "2026-03-11T18:00:00.000Z",
+    start_time: "2026-03-11T23:00:00.000Z",
+    localized_date: "03/11/2026",
+    localized_time: "6:00 PM",
     status: "C",
     subvenue: "Field Three",
     _embedded: { venue: { name: "Stevens Park" } },
@@ -105,7 +113,7 @@ test("matches rows by Match ID", () => {
   }
 });
 
-test("falls back to home, away, date, and time matching", () => {
+test("falls back to home, away, and date matching", () => {
   const indexes = buildScoresImportGameIndexes(baseGames);
   const row = parseScoresImportRow(
     {
@@ -281,6 +289,7 @@ test("buildScoresImportPreview summarizes row outcomes", () => {
   assert.equal(preview.summary.skippedMissingScore, 1);
   assert.equal(preview.summary.skippedRainedOut, 1);
   assert.equal(preview.unmatchedRows.length, 1);
+  assert.equal(preview.reviewRows.length, 2);
   assert.equal(preview.cancelledRows.length, 1);
   assert.equal(preview.assignrCancelledGames.length, 1);
   assert.equal(preview.requiresCancelledAcknowledgement, true);

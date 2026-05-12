@@ -86,6 +86,10 @@ type ScoresImportUnmatchedRow = ScoresImportPreviewSample & {
   suggestedGameExternalId?: string;
 };
 
+type ScoresImportReviewRow = ScoresImportUnmatchedRow & {
+  autoMatchedGameId?: string;
+};
+
 type AssignrCancelledGameSummary = {
   gameExternalId: string;
   dateLabel: string;
@@ -122,6 +126,7 @@ type ScoresImportPreview = {
   excludedCancelledDates: string[];
   requiresCancelledAcknowledgement: boolean;
   unmatchedRows: ScoresImportUnmatchedRow[];
+  reviewRows: ScoresImportReviewRow[];
   cancelledRows: ScoresImportPreviewSample[];
   samples: {
     matched: ScoresImportPreviewSample[];
@@ -258,11 +263,12 @@ export default function AdminScoresManager({
     return importAgeGroups.filter((group) => !ageGroupMappings[group]?.trim());
   }, [ageGroupMappings, importAgeGroups]);
 
-  const unresolvedUnmatchedRows = useMemo(() => {
-    return (importPreview?.unmatchedRows ?? []).filter(
-      (row) => !rowMappings[String(row.rowNumber)]?.trim(),
-    );
-  }, [importPreview?.unmatchedRows, rowMappings]);
+  const unresolvedReviewRows = useMemo(() => {
+    return (importPreview?.reviewRows ?? []).filter((row) => {
+      if (row.outcome !== "unmatched") return false;
+      return !rowMappings[String(row.rowNumber)]?.trim();
+    });
+  }, [importPreview?.reviewRows, rowMappings]);
 
   const nonRainoutGames = useMemo(
     () => games.filter((game) => game.status !== "C"),
@@ -660,8 +666,8 @@ export default function AdminScoresManager({
             setRowMappings={setRowMappings}
             subVenueOptionsByVenue={subVenueOptionsByVenue}
             summary={importPreview.summary}
-            unmatchedRows={importPreview.unmatchedRows}
-            unresolvedUnmatchedCount={unresolvedUnmatchedRows.length}
+            reviewRows={importPreview.reviewRows}
+            unresolvedReviewCount={unresolvedReviewRows.length}
             venues={importPreview.venues}
           />
         ) : null}
@@ -674,6 +680,7 @@ export default function AdminScoresManager({
                 importBusy ||
                 missingParks.length > 0 ||
                 missingFields.length > 0 ||
+                unresolvedReviewRows.length > 0 ||
                 (importPreview.requiresCancelledAcknowledgement &&
                   !acknowledgedCancelledGames)
               }
@@ -985,8 +992,8 @@ function ScoresImportMappingPanel(props: {
   assignrCancelledGames: AssignrCancelledGameSummary[];
   excludedCancelledDates: string[];
   cancelledRows: ScoresImportPreviewSample[];
-  unmatchedRows: ScoresImportUnmatchedRow[];
-  unresolvedUnmatchedCount: number;
+  reviewRows: ScoresImportReviewRow[];
+  unresolvedReviewCount: number;
   requiresCancelledAcknowledgement: boolean;
   acknowledgedCancelledGames: boolean;
   setAcknowledgedCancelledGames: Dispatch<SetStateAction<boolean>>;
@@ -1195,7 +1202,7 @@ function ScoresImportMappingPanel(props: {
       ) : (
         <p className="text-sm text-zinc-500">
           No park or field labels were found in the upload. Matching will use
-          match IDs, age groups, and team/date/time fallbacks.
+          match IDs, age groups, and team/date fallbacks.
         </p>
       )}
 
@@ -1260,17 +1267,17 @@ function ScoresImportMappingPanel(props: {
         </div>
       ) : null}
 
-      {props.unmatchedRows.length > 0 ? (
+      {props.reviewRows.length > 0 ? (
         <div className="rounded-xl border border-zinc-800 overflow-hidden">
           <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
             <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
-              Unmatched upload rows
+              Review game matches
             </h3>
             <p className="mt-1 text-xs text-zinc-400">
-              Map each row to a likely Assignr game. Age group is the primary
-              matching signal; venue is secondary.
-              {props.unresolvedUnmatchedCount > 0
-                ? ` ${props.unresolvedUnmatchedCount} row${props.unresolvedUnmatchedCount === 1 ? "" : "s"} still unmapped.`
+              Auto-matching uses date, age group, and teams. Start time is only
+              used to rank suggestions. Override any row before confirming.
+              {props.unresolvedReviewCount > 0
+                ? ` ${props.unresolvedReviewCount} row${props.unresolvedReviewCount === 1 ? "" : "s"} still need a match.`
                 : ""}
             </p>
             <button
@@ -1281,9 +1288,9 @@ function ScoresImportMappingPanel(props: {
               Refresh match suggestions
             </button>
           </div>
-          <ScoresImportUnmatchedTable
+          <ScoresImportReviewTable
             rowMappings={props.rowMappings}
-            rows={props.unmatchedRows}
+            rows={props.reviewRows}
             setRowMappings={props.setRowMappings}
           />
         </div>
@@ -1309,8 +1316,8 @@ function ScoresImportMappingPanel(props: {
   );
 }
 
-function ScoresImportUnmatchedTable(props: {
-  rows: ScoresImportUnmatchedRow[];
+function ScoresImportReviewTable(props: {
+  rows: ScoresImportReviewRow[];
   rowMappings: Record<string, string>;
   setRowMappings: Dispatch<SetStateAction<Record<string, string>>>;
 }) {
@@ -1320,18 +1327,23 @@ function ScoresImportUnmatchedTable(props: {
         <thead className="bg-zinc-950">
           <tr className="text-left text-zinc-400">
             <th className="px-4 py-2">Row</th>
+            <th className="px-4 py-2">Status</th>
             <th className="px-4 py-2">Age group</th>
             <th className="px-4 py-2">Matchup</th>
             <th className="px-4 py-2">Date</th>
             <th className="px-4 py-2">Scores</th>
-            <th className="px-4 py-2">Match</th>
+            <th className="px-4 py-2">Assignr game</th>
             <th className="px-4 py-2">Reason</th>
           </tr>
         </thead>
         <tbody>
           {props.rows.map((row) => {
             const rowKey = String(row.rowNumber);
-            const selectedGameId = props.rowMappings[rowKey] || "";
+            const selectedGameId =
+              props.rowMappings[rowKey] ||
+              row.autoMatchedGameId ||
+              row.matchedGameId ||
+              "";
 
             return (
               <tr
@@ -1339,6 +1351,13 @@ function ScoresImportUnmatchedTable(props: {
                 className="border-t border-zinc-800 align-top"
               >
                 <td className="px-4 py-2">{row.rowNumber}</td>
+                <td className="px-4 py-2">
+                  {row.outcome === "matched" ? (
+                    <span className="text-emerald-300">Matched</span>
+                  ) : (
+                    <span className="text-amber-300">Needs match</span>
+                  )}
+                </td>
                 <td className="px-4 py-2">{row.ageGroup || "—"}</td>
                 <td className="px-4 py-2">
                   {row.homeTeam || "—"} vs {row.awayTeam || "—"}
