@@ -21,6 +21,7 @@ import {
   getPreviousSetupStep,
   getSetupStepIndex,
   getSetupStepLabel,
+  resolveSetupWizardCycleTitle,
   resolveVotingWindowFromPreset,
   validateSetupStep,
   type SetupWizardAnswers,
@@ -378,7 +379,7 @@ export default function AllStarBallotSetupWizard({
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         cycleId: targetCycleId,
-        title: answers.title.trim() || null,
+        title: resolveSetupWizardCycleTitle(answers) || null,
         hasShowcase: answers.hasShowcase,
         requiredRatingsPerCoach: answers.requiredRatingsPerCoach,
       }),
@@ -406,7 +407,7 @@ export default function AllStarBallotSetupWizard({
         accessMode: answers.accessMode,
         hasShowcase: answers.hasShowcase,
         requiredRatingsPerCoach: answers.requiredRatingsPerCoach,
-        title: answers.title.trim() || null,
+        title: resolveSetupWizardCycleTitle(answers) || null,
       }),
     });
     const json = await safeJson(response);
