@@ -11,6 +11,7 @@ import { parseAllStarPhase } from "@/lib/allStar/phase";
 import {
   buildNameOnlyVotePdfRows,
   computeVoteSummaryRows,
+  splitVoteSummaryRowsForRunoff,
 } from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
 import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
@@ -57,19 +58,66 @@ export async function GET(request: NextRequest) {
 
   if (layout === "full") {
     const head = ["Rank", "Player", "Team", "Votes", "Avg Rating"];
-    autoTable(doc, {
-      startY: 78,
-      head: [head],
-      body: rows.map((row, index) => [
-        String(index + 1),
-        row.playerFullName,
-        row.team,
-        String(row.voteCount),
-        row.averageRating.toFixed(2),
-      ]),
-      styles: { fontSize: 9 },
-      headStyles: { fillColor: [45, 45, 55] },
-    });
+    const isRunoffSplit =
+      cycle.runoffFirstTeamSize != null &&
+      cycle.runoffFirstTeamSize > 0 &&
+      cycle.runoffPoolSize != null;
+
+    if (isRunoffSplit) {
+      const { firstTeam, secondTeam } = splitVoteSummaryRowsForRunoff(
+        rows,
+        cycle.runoffFirstTeamSize!,
+      );
+      let startY = 78;
+      doc.setFontSize(11);
+      doc.text("First team", 40, startY);
+      startY += 14;
+      autoTable(doc, {
+        startY,
+        head: [head],
+        body: firstTeam.map((row, index) => [
+          String(index + 1),
+          row.playerFullName,
+          row.team,
+          String(row.voteCount),
+          row.averageRating.toFixed(2),
+        ]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [45, 45, 55] },
+      });
+      const afterFirst = (doc as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? startY;
+      startY = afterFirst + 20;
+      doc.setFontSize(11);
+      doc.text("Second team", 40, startY);
+      startY += 14;
+      autoTable(doc, {
+        startY,
+        head: [head],
+        body: secondTeam.map((row, index) => [
+          String(firstTeam.length + index + 1),
+          row.playerFullName,
+          row.team,
+          String(row.voteCount),
+          row.averageRating.toFixed(2),
+        ]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [45, 45, 55] },
+      });
+    } else {
+      autoTable(doc, {
+        startY: 78,
+        head: [head],
+        body: rows.map((row, index) => [
+          String(index + 1),
+          row.playerFullName,
+          row.team,
+          String(row.voteCount),
+          row.averageRating.toFixed(2),
+        ]),
+        styles: { fontSize: 9 },
+        headStyles: { fillColor: [45, 45, 55] },
+      });
+    }
   } else {
     const nameRows = buildNameOnlyVotePdfRows(rows);
     autoTable(doc, {

@@ -52,6 +52,9 @@ export function mapAllStarCycle(row: {
   accessMode: string;
   publishedAt: Date | null;
   closedAt: Date | null;
+  parentBallotCycleId?: string | null;
+  runoffPoolSize?: number | null;
+  runoffFirstTeamSize?: number | null;
   ballotLinkToken?: string | null;
   ballotLinkTokenHash?: string | null;
   createdAt: Date;

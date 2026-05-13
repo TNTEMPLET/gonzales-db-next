@@ -21,6 +21,7 @@ import { getCycleStatusChipLabel, isPublishedCycleWithinOpenWindow } from "@/lib
 import {
   selectVoteSummaryNameOnlyPool,
   sortVoteSummaryRowsByLastName,
+  splitVoteSummaryRowsForRunoff,
 } from "@/lib/allStar/voteSummary";
 
 function EditCycleIcon({ className }: { className?: string }) {
@@ -76,6 +77,9 @@ type Cycle = {
   publishedAt: string | null;
   closedAt: string | null;
   ballotLinkToken?: string | null;
+  parentBallotCycleId?: string | null;
+  runoffPoolSize?: number | null;
+  runoffFirstTeamSize?: number | null;
 };
 
 type Candidate = {
@@ -452,6 +456,10 @@ export default function AllStarVaultManager({
     getVisibilityForPreset("OPERATIONS"),
   );
   const [showAdvancedCycleActions, setShowAdvancedCycleActions] = useState(false);
+  const [showRunoffModal, setShowRunoffModal] = useState(false);
+  const [runoffModalPoolSize, setRunoffModalPoolSize] = useState("24");
+  const [runoffModalRatingsPerCoach, setRunoffModalRatingsPerCoach] = useState("12");
+  const [runoffModalFirstTeamSize, setRunoffModalFirstTeamSize] = useState("12");
 
   const previewCanViewAllStar =
     previewRole === "BOARD_MEMBER" || previewRole === "PARK_DIRECTOR" ? false : true;
@@ -1655,6 +1663,67 @@ export default function AllStarVaultManager({
     router.push(`/admin/all-star/setup?${params.toString()}`);
   }
 
+  async function generateRunoffBallot() {
+    if (!selectedCycleId) return;
+    const poolSize = Number.parseInt(runoffModalPoolSize, 10);
+    const requiredRatings = Number.parseInt(runoffModalRatingsPerCoach, 10);
+    const firstTeamSize = Number.parseInt(runoffModalFirstTeamSize, 10);
+    if (!Number.isInteger(poolSize) || poolSize < 1 || poolSize > 50) {
+      setError("Pool size must be an integer between 1 and 50.");
+      return;
+    }
+    if (!Number.isInteger(requiredRatings) || requiredRatings < 1 || requiredRatings > 50) {
+      setError("Ratings per coach must be an integer between 1 and 50.");
+      return;
+    }
+    if (!Number.isInteger(firstTeamSize) || firstTeamSize < 1 || firstTeamSize > 50) {
+      setError("First team size must be an integer between 1 and 50.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/second-phase", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          cycleId: selectedCycleId,
+          action: "generate",
+          mode: "runoff",
+          poolSize,
+          requiredRatingsPerCoach: requiredRatings,
+          firstTeamSize,
+        }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to generate runoff ballot"));
+      }
+      const secondCycleId =
+        typeof (json as { secondCycleId?: unknown }).secondCycleId === "string"
+          ? (json as { secondCycleId: string }).secondCycleId
+          : "";
+      setShowRunoffModal(false);
+      setNotice(
+        typeof (json as { created?: unknown }).created === "boolean" &&
+          (json as { created: boolean }).created === false
+          ? "Runoff cycle already exists. Switched to existing cycle."
+          : "Runoff ballot created from current vote standings.",
+      );
+      await loadCycles();
+      if (secondCycleId) {
+        setSelectedCycleId(secondCycleId);
+      } else {
+        await loadCycleDetails(selectedCycleId);
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to generate runoff ballot");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function backToCycleSnapshotBoard() {
     setLimitedOverviewMoreCycleId("");
     setSelectedCycleId("");
@@ -2048,6 +2117,24 @@ export default function AllStarVaultManager({
   const voteStandingsForDisplay = showsVoteStandingsRanks
     ? voteSummary
     : sortVoteSummaryRowsByLastName(voteSummary);
+  const runoffVoteStandingsSplit = useMemo(() => {
+    const firstSize = selectedCycle?.runoffFirstTeamSize;
+    const poolSize = selectedCycle?.runoffPoolSize;
+    if (
+      firstSize == null ||
+      poolSize == null ||
+      !showsVoteStandingsRanks ||
+      voteSummary.length === 0
+    ) {
+      return null;
+    }
+    return splitVoteSummaryRowsForRunoff(voteSummary, firstSize);
+  }, [
+    selectedCycle?.runoffFirstTeamSize,
+    selectedCycle?.runoffPoolSize,
+    showsVoteStandingsRanks,
+    voteSummary,
+  ]);
   const showCycleSnapshotBoard =
     (showFullAdminView &&
       (showSnapshotBoardOnInitialFullAccess && !selectedCycleId)) ||
@@ -2079,6 +2166,76 @@ export default function AllStarVaultManager({
 
   return (
     <section ref={vaultShellRef} className="space-y-6" data-admin-vault-interactive="true">
+      {showRunoffModal ? (
+        <div
+          className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/70"
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="runoff-modal-title"
+        >
+          <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 shadow-xl">
+            <h3 id="runoff-modal-title" className="text-lg font-semibold text-zinc-100">
+              Generate runoff ballot
+            </h3>
+            <p className="text-xs text-zinc-400">
+              Creates a new draft cycle with the top vote getters from the selected ballot (ties at the cutoff are
+              included). Coaches will rate the number of players you set below; exports split standings into first and
+              second team at the rank you choose.
+            </p>
+            <label className="block space-y-1">
+              <span className="text-xs text-zinc-400">Pool size (top vote getters)</span>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={runoffModalPoolSize}
+                onChange={(e) => setRunoffModalPoolSize(e.target.value)}
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs text-zinc-400">Ratings per coach (ballot rule)</span>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={runoffModalRatingsPerCoach}
+                onChange={(e) => setRunoffModalRatingsPerCoach(e.target.value)}
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
+              />
+            </label>
+            <label className="block space-y-1">
+              <span className="text-xs text-zinc-400">First team size (split rank; e.g. 12)</span>
+              <input
+                type="number"
+                min={1}
+                max={50}
+                value={runoffModalFirstTeamSize}
+                onChange={(e) => setRunoffModalFirstTeamSize(e.target.value)}
+                className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
+              />
+            </label>
+            <div className="flex flex-wrap justify-end gap-2 pt-2">
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => setShowRunoffModal(false)}
+                className="rounded-lg border border-zinc-600 text-zinc-300 px-4 py-2 text-sm hover:bg-zinc-800 disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={manageDisabled || !selectedCycleId}
+                onClick={() => void generateRunoffBallot()}
+                className="rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                Generate
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
       {!canManageAllStarVaultUi && !isAuditorFocusedPreview ? (
@@ -2560,6 +2717,55 @@ export default function AllStarVaultManager({
                     <p className="text-zinc-500 text-sm p-3">Select a cycle to view vote standings.</p>
                   ) : voteSummary.length === 0 ? (
                     <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
+                  ) : runoffVoteStandingsSplit ? (
+                    <div className="space-y-3 p-2">
+                      <p className="text-xs text-zinc-400 px-1">
+                        Runoff ballot: ranks 1–{selectedCycle?.runoffFirstTeamSize} = first team; remainder = second team
+                        (pool {selectedCycle?.runoffPoolSize}).
+                      </p>
+                      <div>
+                        <p className="text-xs font-semibold text-sky-300 px-3 py-1">First team</p>
+                        <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                          {runoffVoteStandingsSplit.firstTeam.map((row, index) => (
+                            <div
+                              key={row.candidateId}
+                              className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
+                            >
+                              <p className="min-w-0 truncate">
+                                <span className="text-zinc-500 mr-2">#{index + 1}</span>
+                                <span className="font-medium">{row.playerFullName}</span> · {row.team}
+                                {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
+                              </p>
+                              <p className="text-xs text-zinc-300 whitespace-nowrap">
+                                Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs font-semibold text-amber-300 px-3 py-1">Second team</p>
+                        <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                          {runoffVoteStandingsSplit.secondTeam.map((row, index) => (
+                            <div
+                              key={row.candidateId}
+                              className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
+                            >
+                              <p className="min-w-0 truncate">
+                                <span className="text-zinc-500 mr-2">
+                                  #{runoffVoteStandingsSplit.firstTeam.length + index + 1}
+                                </span>
+                                <span className="font-medium">{row.playerFullName}</span> · {row.team}
+                                {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
+                              </p>
+                              <p className="text-xs text-zinc-300 whitespace-nowrap">
+                                Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+                              </p>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
                   ) : (
                     voteStandingsForDisplay.map((row, index) => (
                       <div
@@ -2880,6 +3086,19 @@ export default function AllStarVaultManager({
                 className="rounded-lg border border-indigo-700 text-indigo-300 px-3 py-2 text-sm disabled:opacity-60"
               >
                 Generate Second Team
+              </button>
+              <button
+                type="button"
+                disabled={manageDisabled || !selectedCycleId}
+                onClick={() => {
+                  setRunoffModalPoolSize("24");
+                  setRunoffModalRatingsPerCoach("12");
+                  setRunoffModalFirstTeamSize("12");
+                  setShowRunoffModal(true);
+                }}
+                className="rounded-lg border border-sky-700 text-sky-300 px-3 py-2 text-sm disabled:opacity-60"
+              >
+                Generate runoff ballot…
               </button>
             </div>
           </div>
@@ -3536,6 +3755,61 @@ export default function AllStarVaultManager({
             <p className="text-zinc-500 text-sm p-3">Select a cycle to view vote standings.</p>
           ) : voteSummary.length === 0 ? (
             <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
+          ) : runoffVoteStandingsSplit ? (
+            <div className="space-y-3 p-2">
+              <p className="text-xs text-zinc-400 px-1">
+                Runoff ballot: ranks 1–{selectedCycle?.runoffFirstTeamSize} = first team; remainder = second team (pool{" "}
+                {selectedCycle?.runoffPoolSize}).
+              </p>
+              <div>
+                <p className="text-xs font-semibold text-sky-300 px-3 py-1">First team</p>
+                <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                  {runoffVoteStandingsSplit.firstTeam.map((row, index) => (
+                    <div
+                      key={row.candidateId}
+                      className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
+                    >
+                      <p className="min-w-0 truncate">
+                        <span className="text-zinc-500 mr-2">#{index + 1}</span>
+                        <span className="font-medium">{row.playerFullName}</span> · {row.team}
+                        {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
+                        {selectedCycle?.hasShowcase && row.showcaseBibNumber
+                          ? ` · Bib ${row.showcaseBibNumber}`
+                          : ""}
+                      </p>
+                      <p className="text-xs text-zinc-300 whitespace-nowrap">
+                        Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-amber-300 px-3 py-1">Second team</p>
+                <div className="rounded-lg border border-zinc-800 overflow-hidden">
+                  {runoffVoteStandingsSplit.secondTeam.map((row, index) => (
+                    <div
+                      key={row.candidateId}
+                      className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
+                    >
+                      <p className="min-w-0 truncate">
+                        <span className="text-zinc-500 mr-2">
+                          #{runoffVoteStandingsSplit.firstTeam.length + index + 1}
+                        </span>
+                        <span className="font-medium">{row.playerFullName}</span> · {row.team}
+                        {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
+                        {selectedCycle?.hasShowcase && row.showcaseBibNumber
+                          ? ` · Bib ${row.showcaseBibNumber}`
+                          : ""}
+                      </p>
+                      <p className="text-xs text-zinc-300 whitespace-nowrap">
+                        Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+                      </p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            </div>
           ) : (
             voteStandingsForDisplay.map((row, index) => (
               <div key={row.candidateId} className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3">

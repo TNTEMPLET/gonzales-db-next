@@ -18,6 +18,9 @@ export type VoteSummaryCycleMeta = {
   hasShowcase: boolean;
   title: string | null;
   activePhase: AllStarBallotPhase;
+  parentBallotCycleId: string | null;
+  runoffPoolSize: number | null;
+  runoffFirstTeamSize: number | null;
 };
 
 /**
@@ -89,12 +92,53 @@ export async function computeVoteSummaryRows(
       hasShowcase: cycle.hasShowcase,
       title: cycle.title ?? null,
       activePhase: cycle.activePhase,
+      parentBallotCycleId: cycle.parentBallotCycleId ?? null,
+      runoffPoolSize: cycle.runoffPoolSize ?? null,
+      runoffFirstTeamSize: cycle.runoffFirstTeamSize ?? null,
     },
   };
 }
 
+/** Strict top `count` by current standings order (no tie expansion). Used for remainder second-team exclusions. */
+export function getTopVoteGetterCandidateIds(sortedRows: VoteSummaryRow[], count: number): Set<string> {
+  if (count <= 0) return new Set();
+  return new Set(sortedRows.slice(0, count).map((row) => row.candidateId));
+}
+
 export function getSecondTeamAutoExclusionCandidateIds(firstPhaseRows: VoteSummaryRow[]) {
-  return new Set(firstPhaseRows.slice(0, 12).map((row) => row.candidateId));
+  return getTopVoteGetterCandidateIds(firstPhaseRows, 12);
+}
+
+/**
+ * Top `poolSize` rows plus any additional rows tied at the same vote count as the last included row
+ * (same tie policy as {@link selectVoteSummaryNameOnlyPool} for a configurable cutoff index).
+ */
+export function expandVoteSummaryTopByVoteCountCutoff(sorted: VoteSummaryRow[], poolSize: number): VoteSummaryRow[] {
+  if (sorted.length === 0 || poolSize <= 0) return [];
+  if (sorted.length <= poolSize) return [...sorted];
+  const lastIndex = poolSize - 1;
+  const cutoffVotes = sorted[lastIndex]!.voteCount;
+  let end = poolSize;
+  while (end < sorted.length && sorted[end]!.voteCount === cutoffVotes) {
+    end += 1;
+  }
+  return sorted.slice(0, end);
+}
+
+export function getRunoffPoolCandidateIds(sortedRows: VoteSummaryRow[], poolSize: number): Set<string> {
+  return new Set(expandVoteSummaryTopByVoteCountCutoff(sortedRows, poolSize).map((row) => row.candidateId));
+}
+
+/** Split runoff standings into first team (top `firstTeamSize`) vs second team (remaining rows). */
+export function splitVoteSummaryRowsForRunoff(
+  rows: VoteSummaryRow[],
+  firstTeamSize: number,
+): { firstTeam: VoteSummaryRow[]; secondTeam: VoteSummaryRow[] } {
+  if (firstTeamSize <= 0) return { firstTeam: [], secondTeam: rows };
+  return {
+    firstTeam: rows.slice(0, firstTeamSize),
+    secondTeam: rows.slice(firstTeamSize),
+  };
 }
 
 export function computeSecondTeamInclusion(
@@ -150,13 +194,7 @@ export function sortVoteSummaryRowsByLastName(rows: VoteSummaryRow[]) {
 
 /** Same cutoff as the vault name-only snapshot: top 12 vote tier plus ties at the cutoff. */
 export function selectVoteSummaryNameOnlyPool(sorted: VoteSummaryRow[]) {
-  if (sorted.length <= 12) return sorted;
-  const cutoffVotes = sorted[11]!.voteCount;
-  let end = 12;
-  while (end < sorted.length && sorted[end]!.voteCount === cutoffVotes) {
-    end += 1;
-  }
-  return sorted.slice(0, end);
+  return expandVoteSummaryTopByVoteCountCutoff(sorted, 12);
 }
 
 export type NameOnlyRankRow = { rank: string; displayLine: string };
