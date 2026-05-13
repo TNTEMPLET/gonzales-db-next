@@ -3,8 +3,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
 import {
   buildAllStarExportFilename,
-  getAllStarCycleDisplayName,
 } from "@/lib/allStar/exportFormat";
+import {
+  formatAllStarCyclePipeListLabelFromOrgMeta,
+  getRunoffVotePanelPrimaryTeamHeading,
+  getRunoffVotePanelSecondaryTeamHeading,
+} from "@/lib/allStar/cycleUiLabels";
 import { parseAllStarPhase } from "@/lib/allStar/phase";
 import { computeVoteSummaryRows, splitVoteSummaryRowsForRunoff } from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
@@ -28,6 +32,7 @@ export async function GET(request: NextRequest) {
   if (!computed) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
   const { rows, cycle } = computed;
+  const orgId = cycle.organizationId === "ascension" ? "ascension" : "gonzales";
   const isRunoffSplit =
     cycle.runoffFirstTeamSize != null &&
     cycle.runoffFirstTeamSize > 0 &&
@@ -56,19 +61,21 @@ export async function GET(request: NextRequest) {
       rows,
       cycle.runoffFirstTeamSize!,
     );
-    const splitHeader = ["Team tier", ...header];
+    const primaryHeading = getRunoffVotePanelPrimaryTeamHeading(orgId, cycle.title);
+    const secondaryHeading = getRunoffVotePanelSecondaryTeamHeading(orgId);
+    const splitHeader = ["Team color", ...header];
     const splitBody = [
       ...firstTeam.map((row, index) => [
-        csvEscape("First team"),
+        csvEscape(primaryHeading),
         ...rowToCsvLine(row, index + 1).map((cell) => csvEscape(cell)),
       ]),
       ...secondTeam.map((row, index) => [
-        csvEscape("Second team"),
+        csvEscape(secondaryHeading),
         ...rowToCsvLine(row, firstTeam.length + index + 1).map((cell) => csvEscape(cell)),
       ]),
     ].map((line) => line.join(","));
     const csv = [splitHeader.map((cell) => csvEscape(cell)).join(","), ...splitBody].join("\n");
-    const cycleName = getAllStarCycleDisplayName(cycle);
+    const cycleName = formatAllStarCyclePipeListLabelFromOrgMeta(cycle);
     const baseName = buildAllStarExportFilename(cycleName, "standings");
     return new NextResponse(csv, {
       status: 200,
@@ -82,7 +89,7 @@ export async function GET(request: NextRequest) {
   const body = rows.map((row, index) => rowToCsvLine(row, index + 1));
 
   const csv = [header, ...body].map((line) => line.map((cell) => csvEscape(cell)).join(",")).join("\n");
-  const cycleName = getAllStarCycleDisplayName(cycle);
+  const cycleName = formatAllStarCyclePipeListLabelFromOrgMeta(cycle);
   const baseName = buildAllStarExportFilename(cycleName, "standings");
 
   return new NextResponse(csv, {
