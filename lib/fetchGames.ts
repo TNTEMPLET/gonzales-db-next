@@ -1,6 +1,6 @@
 // lib/fetchGames.ts
 import { listAssignrGames } from "@/lib/assignr/games";
-import { ASSIGNR_GAMES_CACHE_TAG } from "@/lib/assignr/invalidation";
+import { ASSIGNR_GAMES_CACHE_TAG } from "@/lib/assignr/cacheTags";
 import type { AssignrGame } from "@/lib/assignr/types";
 import { getSiteConfig } from "@/lib/siteConfig";
 
