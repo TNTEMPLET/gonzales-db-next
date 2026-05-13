@@ -1,6 +1,6 @@
 import type { AllStarBallotPhase, PrismaClient } from "@prisma/client";
 
-/** Matches All-Star Votes Panel ordering and filters (active candidates with ≥1 rating only). */
+/** Matches All-Star Votes Panel ordering; non-runoff ballots list only candidates with ≥1 rating. */
 export type VoteSummaryRow = {
   candidateId: string;
   playerFullName: string;
@@ -25,6 +25,7 @@ export type VoteSummaryCycleMeta = {
 
 /**
  * Same logic as GET `/api/admin/all-star/votes-summary`: vote count desc, avg rating desc, then name.
+ * Runoff cycles include the full candidate pool (zero-vote rows sort last) so first/second team splits match roster size.
  */
 export async function computeVoteSummaryRows(
   prisma: PrismaClient,
@@ -58,7 +59,13 @@ export async function computeVoteSummaryRows(
     }
   }
 
-  const rows = cycle.candidates
+  const sortVoteSummary = (a: VoteSummaryRow, b: VoteSummaryRow) => {
+    if (b.voteCount !== a.voteCount) return b.voteCount - a.voteCount;
+    if (b.averageRating !== a.averageRating) return b.averageRating - a.averageRating;
+    return a.playerFullName.localeCompare(b.playerFullName);
+  };
+
+  const allRows = cycle.candidates
     .map((candidate) => {
       const ratings = ratingsByCandidate.get(candidate.id) || [];
       const voteCount = ratings.length;
@@ -75,12 +82,13 @@ export async function computeVoteSummaryRows(
         averageRating: Number(averageRating.toFixed(3)),
       };
     })
-    .filter((row) => row.voteCount > 0)
-    .sort((a, b) => {
-      if (b.voteCount !== a.voteCount) return b.voteCount - a.voteCount;
-      if (b.averageRating !== a.averageRating) return b.averageRating - a.averageRating;
-      return a.playerFullName.localeCompare(b.playerFullName);
-    });
+    .sort(sortVoteSummary);
+
+  const isRunoffCycle =
+    cycle.runoffFirstTeamSize != null && cycle.runoffPoolSize != null;
+
+  /** Runoff ballots often rate only M of N players; still show full pool split with zero-vote rows at the bottom. */
+  const rows = isRunoffCycle ? allRows : allRows.filter((row) => row.voteCount > 0);
 
   return {
     rows,
