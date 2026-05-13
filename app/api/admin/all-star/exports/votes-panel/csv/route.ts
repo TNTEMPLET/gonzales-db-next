@@ -6,7 +6,7 @@ import {
   getAllStarCycleDisplayName,
 } from "@/lib/allStar/exportFormat";
 import { parseAllStarPhase } from "@/lib/allStar/phase";
-import { computeVoteSummaryRows } from "@/lib/allStar/voteSummary";
+import { computeVoteSummaryRows, splitVoteSummaryRowsForRunoff } from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
 
 function csvEscape(value: string) {
@@ -28,13 +28,14 @@ export async function GET(request: NextRequest) {
   if (!computed) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
   const { rows, cycle } = computed;
-  const header = ["Rank", "Player Full Name", "Team", "Jersey Number"];
-  if (cycle.hasShowcase) header.push("Showcase Bib #");
-  header.push("Votes", "Avg Rating");
+  const isRunoffSplit =
+    cycle.runoffFirstTeamSize != null &&
+    cycle.runoffFirstTeamSize > 0 &&
+    cycle.runoffPoolSize != null;
 
-  const body = rows.map((row, index) => {
+  function rowToCsvLine(row: (typeof rows)[0], rank: number) {
     const base = [
-      String(index + 1),
+      String(rank),
       row.playerFullName,
       row.team,
       row.jerseyNumber,
@@ -44,7 +45,41 @@ export async function GET(request: NextRequest) {
     }
     base.push(String(row.voteCount), row.averageRating.toFixed(2));
     return base;
-  });
+  }
+
+  const header = ["Rank", "Player Full Name", "Team", "Jersey Number"];
+  if (cycle.hasShowcase) header.push("Showcase Bib #");
+  header.push("Votes", "Avg Rating");
+
+  if (isRunoffSplit) {
+    const { firstTeam, secondTeam } = splitVoteSummaryRowsForRunoff(
+      rows,
+      cycle.runoffFirstTeamSize!,
+    );
+    const splitHeader = ["Team tier", ...header];
+    const splitBody = [
+      ...firstTeam.map((row, index) => [
+        csvEscape("First team"),
+        ...rowToCsvLine(row, index + 1).map((cell) => csvEscape(cell)),
+      ]),
+      ...secondTeam.map((row, index) => [
+        csvEscape("Second team"),
+        ...rowToCsvLine(row, firstTeam.length + index + 1).map((cell) => csvEscape(cell)),
+      ]),
+    ].map((line) => line.join(","));
+    const csv = [splitHeader.map((cell) => csvEscape(cell)).join(","), ...splitBody].join("\n");
+    const cycleName = getAllStarCycleDisplayName(cycle);
+    const baseName = buildAllStarExportFilename(cycleName, "standings");
+    return new NextResponse(csv, {
+      status: 200,
+      headers: {
+        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Disposition": `attachment; filename="${baseName}.csv"`,
+      },
+    });
+  }
+
+  const body = rows.map((row, index) => rowToCsvLine(row, index + 1));
 
   const csv = [header, ...body].map((line) => line.map((cell) => csvEscape(cell)).join(",")).join("\n");
   const cycleName = getAllStarCycleDisplayName(cycle);

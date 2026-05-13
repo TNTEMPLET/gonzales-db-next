@@ -609,11 +609,19 @@ model AllStarBallotCycle {
   /// One shared voting link per ballot; coaches authenticate with an email on the invite roster.
   ballotLinkToken     String?  @unique
   ballotLinkTokenHash String?  @unique
+  /// When this cycle was generated as a runoff from another ballot, links to the parent cycle.
+  parentBallotCycleId String?
+  /// Declared runoff pool size (may exceed requested N when ties expand the pool at cutoff).
+  runoffPoolSize      Int?
+  /// Standings ranks 1..this size are "first team"; remainder are "second team" for exports and vault.
+  runoffFirstTeamSize Int?
   createdByAdminId String?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
 
   createdByAdmin      AdminUser?                  @relation("AllStarCycleCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  parentBallotCycle   AllStarBallotCycle?         @relation("AllStarBallotRunoffParent", fields: [parentBallotCycleId], references: [id], onDelete: SetNull)
+  runoffChildCycles   AllStarBallotCycle[]        @relation("AllStarBallotRunoffParent")
   candidates          AllStarCandidate[]
   headCoachAssignments AllStarHeadCoachAssignment[]
   voteDrafts          AllStarVoteDraft[]
@@ -623,6 +631,7 @@ model AllStarBallotCycle {
   @@index([organizationId, seasonYear, ageGroup])
   @@index([organizationId, status, ageGroup])
   @@index([organizationId, seasonYear, allStarAgeGroupId])
+  @@index([parentBallotCycleId])
 }
 
 model AllStarCandidate {
