@@ -72,9 +72,13 @@ export default function AllStarCycleWorkspace({
           <div className="min-w-0 space-y-1">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Selected ballot</p>
             <h2 className="text-lg font-semibold text-zinc-100 leading-snug">{displayTitle}</h2>
-            <p className="text-sm text-zinc-400">
-              {displayAgeGroup} · {tierLabel} · {cycle.seasonYear}
-            </p>
+            {(displayAgeGroup || tierLabel) && (
+              <p className="text-sm text-zinc-400">
+                {[displayAgeGroup, tierLabel, String(cycle.seasonYear)]
+                  .filter((part) => part != null && String(part).trim() !== "")
+                  .join(" · ")}
+              </p>
+            )}
           </div>
           <div className="flex flex-wrap items-center gap-2 shrink-0">
             <span className={`rounded-full border px-2.5 py-1 text-[11px] font-semibold tracking-wide ${statusBadgeClass}`}>

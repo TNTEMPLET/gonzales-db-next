@@ -17,6 +17,12 @@ import {
   requiresDyb12uAgeBandFilter,
   safeJson,
 } from "@/lib/allStar/cycleSetupHelpers";
+import {
+  formatAllStarCyclePipeListLabel,
+  getCycleTierDisplayLabel,
+  getRunoffVotePanelPrimaryTeamHeading,
+  getRunoffVotePanelSecondaryTeamHeading,
+} from "@/lib/allStar/cycleUiLabels";
 import { getCycleStatusChipLabel, isPublishedCycleWithinOpenWindow } from "@/lib/allStar/cycleType";
 import {
   selectVoteSummaryNameOnlyPool,
@@ -242,27 +248,6 @@ type AllStarVaultManagerProps = {
   isLimitedVaultAccess?: boolean;
 };
 
-function getCycleTierLabel(title: string | null) {
-  return (title || "").toLowerCase().includes("second team")
-    ? "SECOND_TEAM"
-    : "FIRST_TEAM";
-}
-
-function getCycleTierDisplayLabel(
-  organizationId: "gonzales" | "ascension",
-  title: string | null,
-) {
-  const normalizedTitle = (title || "").trim().toUpperCase();
-  if (organizationId === "gonzales" && normalizedTitle === "11U DYB") {
-    return "GOLD";
-  }
-  const tier = getCycleTierLabel(title);
-  if (organizationId === "ascension") {
-    return tier === "SECOND_TEAM" ? "RED" : "NAVY";
-  }
-  return tier === "SECOND_TEAM" ? "GOLD" : "PURPLE";
-}
-
 function getCycleTierBadgeClass(
   organizationId: "gonzales" | "ascension",
   title: string | null,
@@ -291,58 +276,6 @@ function getCycleStatusBadgeClass(status: Cycle["status"]) {
     return "border-sky-700 bg-sky-950/40 text-sky-200";
   }
   return "border-zinc-700 bg-zinc-950 text-zinc-300";
-}
-
-function getCycleDisplayTitle(cycle: { title: string | null; seasonYear: number; ageGroup: string } | null) {
-  if (!cycle) return "No cycle selected";
-  const title = cycle.title?.trim();
-  if (title) return title;
-  return `${cycle.seasonYear} ${cycle.ageGroup}`;
-}
-
-function getCycleOptionSuffix(cycle: {
-  organizationId: "gonzales" | "ascension";
-  title: string | null;
-  seasonYear: number;
-  ageGroup: string;
-}) {
-  const title = cycle.title?.trim();
-  if (!title) return "";
-  const tier = getCycleTierLabel(cycle.title);
-  if (tier === "SECOND_TEAM" && title.toLowerCase() === "second team") return "";
-  if (title.toLowerCase() === getDisplayedCycleAgeGroup(cycle).trim().toLowerCase()) return "";
-  return ` | ${title}`;
-}
-
-function getDisplayedCycleAgeGroup(cycle: {
-  organizationId: "gonzales" | "ascension";
-  ageGroup: string;
-  title: string | null;
-}) {
-  const normalizedTitle = (cycle.title || "").trim().toUpperCase();
-  if (
-    cycle.organizationId === "gonzales" &&
-    cycle.ageGroup.trim().toUpperCase().startsWith("12U") &&
-    normalizedTitle === "11U DYB"
-  ) {
-    return "11U DYB";
-  }
-  return cycle.ageGroup;
-}
-
-function getDisplayedCycleAgeGroupWithAllStarAge(cycle: {
-  organizationId: "gonzales" | "ascension";
-  ageGroup: string;
-  title: string | null;
-  allStarAgeGroupLabel?: string | null;
-}) {
-  const baseAgeGroup = getDisplayedCycleAgeGroup(cycle);
-  const allStarAge = cycle.allStarAgeGroupLabel?.trim();
-  if (!allStarAge) return baseAgeGroup;
-  if (baseAgeGroup.toUpperCase().includes(allStarAge.toUpperCase())) {
-    return baseAgeGroup;
-  }
-  return `${baseAgeGroup} [${allStarAge}]`;
 }
 
 function BaseballRatingIcon({ className }: { className?: string }) {
@@ -2338,7 +2271,7 @@ export default function AllStarVaultManager({
                   >
                     <div className="flex flex-wrap items-center justify-between gap-2">
                       <p className="text-zinc-200 font-medium">
-                        {formatOrganizationLabel(cycle.organizationId)} · {cycle.seasonYear} · {getDisplayedCycleAgeGroupWithAllStarAge(cycle)} · {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}
+                        {formatAllStarCyclePipeListLabel(cycle, { omitStatus: true })}
                       </p>
                       <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold tracking-wide ${getCycleStatusBadgeClass(cycle.status)}`}>
                         {getCycleStatusChipLabel(cycle)}
@@ -2436,13 +2369,8 @@ export default function AllStarVaultManager({
                 Selected cycle (vault view)
               </p>
               <h2 className="text-lg font-semibold text-zinc-100 leading-snug">
-                {formatOrganizationLabel(selectedCycle.organizationId)} · {selectedCycle.seasonYear} ·{" "}
-                {getDisplayedCycleAgeGroupWithAllStarAge(selectedCycle)} ·{" "}
-                {getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
+                {formatAllStarCyclePipeListLabel(selectedCycle, { omitStatus: true })}
               </h2>
-              <p className="text-sm text-zinc-400 truncate" title={getCycleDisplayTitle(selectedCycle)}>
-                {getCycleDisplayTitle(selectedCycle)}
-              </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {isAuditorFocusedPreview ||
@@ -2720,11 +2648,28 @@ export default function AllStarVaultManager({
                   ) : runoffVoteStandingsSplit ? (
                     <div className="space-y-3 p-2">
                       <p className="text-xs text-zinc-400 px-1">
-                        Runoff ballot: ranks 1–{selectedCycle?.runoffFirstTeamSize} = first team; remainder = second team
+                        Runoff ballot: ranks 1–{selectedCycle?.runoffFirstTeamSize} ={" "}
+                        {selectedCycle
+                          ? getRunoffVotePanelPrimaryTeamHeading(
+                              selectedCycle.organizationId,
+                              selectedCycle.title,
+                            )
+                          : ""}
+                        ; remainder ={" "}
+                        {selectedCycle
+                          ? getRunoffVotePanelSecondaryTeamHeading(selectedCycle.organizationId)
+                          : ""}{" "}
                         (pool {selectedCycle?.runoffPoolSize}).
                       </p>
                       <div>
-                        <p className="text-xs font-semibold text-sky-300 px-3 py-1">First team</p>
+                        <p className="text-xs font-semibold text-sky-300 px-3 py-1">
+                          {selectedCycle
+                            ? getRunoffVotePanelPrimaryTeamHeading(
+                                selectedCycle.organizationId,
+                                selectedCycle.title,
+                              )
+                            : ""}
+                        </p>
                         <div className="rounded-lg border border-zinc-800 overflow-hidden">
                           {runoffVoteStandingsSplit.firstTeam.map((row, index) => (
                             <div
@@ -2744,7 +2689,11 @@ export default function AllStarVaultManager({
                         </div>
                       </div>
                       <div>
-                        <p className="text-xs font-semibold text-amber-300 px-3 py-1">Second team</p>
+                        <p className="text-xs font-semibold text-amber-300 px-3 py-1">
+                          {selectedCycle
+                            ? getRunoffVotePanelSecondaryTeamHeading(selectedCycle.organizationId)
+                            : ""}
+                        </p>
                         <div className="rounded-lg border border-zinc-800 overflow-hidden">
                           {runoffVoteStandingsSplit.secondTeam.map((row, index) => (
                             <div
@@ -2862,9 +2811,9 @@ export default function AllStarVaultManager({
       {usesTabbedWorkspace && selectedCycle ? (
         <AllStarCycleWorkspace
           cycle={selectedCycle}
-          displayTitle={getCycleDisplayTitle(selectedCycle)}
-          displayAgeGroup={getDisplayedCycleAgeGroupWithAllStarAge(selectedCycle)}
-          tierLabel={getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
+          displayTitle={formatAllStarCyclePipeListLabel(selectedCycle)}
+          displayAgeGroup=""
+          tierLabel=""
           statusBadgeClass={getCycleStatusBadgeClass(selectedCycle.status)}
           candidateCount={candidates.length}
           submittedCount={ballotRosterStatus?.submittedCount ?? null}
@@ -2887,12 +2836,7 @@ export default function AllStarVaultManager({
                 <option value="">Select cycle…</option>
                 {cycles.map((cycle) => (
                   <option key={cycle.id} value={cycle.id}>
-                    {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} |{" "}
-                    {getDisplayedCycleAgeGroup(cycle)}
-                    {cycle.allStarAgeGroupLabel ? ` [${cycle.allStarAgeGroupLabel}]` : ""}
-                    {" | "}
-                    {getCycleStatusChipLabel(cycle)} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}
-                    {getCycleOptionSuffix(cycle)}
+                    {formatAllStarCyclePipeListLabel(cycle)}
                   </option>
                 ))}
               </select>
@@ -3047,10 +2991,7 @@ export default function AllStarVaultManager({
             <option value="">Select cycle…</option>
             {cycles.map((cycle) => (
               <option key={cycle.id} value={cycle.id}>
-                {formatOrganizationLabel(cycle.organizationId)} | {cycle.seasonYear} | {getDisplayedCycleAgeGroup(cycle)}
-                {cycle.allStarAgeGroupLabel ? ` [${cycle.allStarAgeGroupLabel}]` : ""}
-                {" | "}
-                {getCycleStatusChipLabel(cycle)} | {getCycleTierDisplayLabel(cycle.organizationId, cycle.title)}{getCycleOptionSuffix(cycle)}
+                {formatAllStarCyclePipeListLabel(cycle)}
               </option>
             ))}
           </select>
@@ -3105,18 +3046,11 @@ export default function AllStarVaultManager({
         ) : null}
         <div className="flex flex-wrap items-center gap-2 text-xs text-zinc-500">
           <span>
-            Cycle: <span className="text-zinc-300 font-medium">{getCycleDisplayTitle(selectedCycle)}</span>
+            Cycle:{" "}
+            <span className="text-zinc-300 font-medium">
+              {selectedCycle ? formatAllStarCyclePipeListLabel(selectedCycle) : "—"}
+            </span>
           </span>
-          {selectedCycle ? (
-            <span className={`rounded-full border px-2 py-0.5 font-semibold tracking-wide ${getCycleTierBadgeClass(selectedCycle.organizationId, selectedCycle.title)}`}>
-              {getCycleTierDisplayLabel(selectedCycle.organizationId, selectedCycle.title)}
-            </span>
-          ) : null}
-          {selectedCycle?.allStarAgeGroupLabel ? (
-            <span className="rounded-full border border-amber-700/70 bg-amber-950/30 px-2 py-0.5 font-semibold tracking-wide text-amber-200">
-              Age: {selectedCycle.allStarAgeGroupLabel}
-            </span>
-          ) : null}
         </div>
         <div className="grid md:grid-cols-[minmax(0,12rem)_auto] gap-3 items-end">
           <label className="block space-y-1">
@@ -3758,11 +3692,22 @@ export default function AllStarVaultManager({
           ) : runoffVoteStandingsSplit ? (
             <div className="space-y-3 p-2">
               <p className="text-xs text-zinc-400 px-1">
-                Runoff ballot: ranks 1–{selectedCycle?.runoffFirstTeamSize} = first team; remainder = second team (pool{" "}
-                {selectedCycle?.runoffPoolSize}).
+                Runoff ballot: ranks 1–{selectedCycle?.runoffFirstTeamSize} ={" "}
+                {selectedCycle
+                  ? getRunoffVotePanelPrimaryTeamHeading(selectedCycle.organizationId, selectedCycle.title)
+                  : ""}
+                ; remainder ={" "}
+                {selectedCycle
+                  ? getRunoffVotePanelSecondaryTeamHeading(selectedCycle.organizationId)
+                  : ""}{" "}
+                (pool {selectedCycle?.runoffPoolSize}).
               </p>
               <div>
-                <p className="text-xs font-semibold text-sky-300 px-3 py-1">First team</p>
+                <p className="text-xs font-semibold text-sky-300 px-3 py-1">
+                  {selectedCycle
+                    ? getRunoffVotePanelPrimaryTeamHeading(selectedCycle.organizationId, selectedCycle.title)
+                    : ""}
+                </p>
                 <div className="rounded-lg border border-zinc-800 overflow-hidden">
                   {runoffVoteStandingsSplit.firstTeam.map((row, index) => (
                     <div
@@ -3785,7 +3730,11 @@ export default function AllStarVaultManager({
                 </div>
               </div>
               <div>
-                <p className="text-xs font-semibold text-amber-300 px-3 py-1">Second team</p>
+                <p className="text-xs font-semibold text-amber-300 px-3 py-1">
+                  {selectedCycle
+                    ? getRunoffVotePanelSecondaryTeamHeading(selectedCycle.organizationId)
+                    : ""}
+                </p>
                 <div className="rounded-lg border border-zinc-800 overflow-hidden">
                   {runoffVoteStandingsSplit.secondTeam.map((row, index) => (
                     <div

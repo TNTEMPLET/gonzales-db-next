@@ -15,6 +15,10 @@ export type VoteSummaryCycleMeta = {
   organizationId: string;
   seasonYear: number;
   ageGroup: string;
+  allStarAgeGroupLabel: string | null;
+  status: "DRAFT" | "PUBLISHED" | "CLOSED" | "ARCHIVED";
+  publishedAt: string | null;
+  closedAt: string | null;
   hasShowcase: boolean;
   title: string | null;
   activePhase: AllStarBallotPhase;
@@ -97,6 +101,10 @@ export async function computeVoteSummaryRows(
       organizationId: cycle.organizationId,
       seasonYear: cycle.seasonYear,
       ageGroup: cycle.ageGroup,
+      allStarAgeGroupLabel: cycle.allStarAgeGroupLabel ?? null,
+      status: cycle.status,
+      publishedAt: cycle.publishedAt?.toISOString() ?? null,
+      closedAt: cycle.closedAt?.toISOString() ?? null,
       hasShowcase: cycle.hasShowcase,
       title: cycle.title ?? null,
       activePhase: cycle.activePhase,

@@ -5,8 +5,12 @@ import autoTable from "jspdf-autotable";
 import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
 import {
   buildAllStarExportFilename,
-  getAllStarCycleDisplayName,
 } from "@/lib/allStar/exportFormat";
+import {
+  formatAllStarCyclePipeListLabelFromOrgMeta,
+  getRunoffVotePanelPrimaryTeamHeading,
+  getRunoffVotePanelSecondaryTeamHeading,
+} from "@/lib/allStar/cycleUiLabels";
 import { parseAllStarPhase } from "@/lib/allStar/phase";
 import {
   buildNameOnlyVotePdfRows,
@@ -44,7 +48,8 @@ export async function GET(request: NextRequest) {
 
   const { rows, cycle } = computed;
   const orgLabel = formatOrganizationIdDisplay(cycle.organizationId);
-  const cycleName = getAllStarCycleDisplayName(cycle);
+  const orgId = cycle.organizationId === "ascension" ? "ascension" : "gonzales";
+  const cycleName = formatAllStarCyclePipeListLabelFromOrgMeta(cycle);
   const title =
     layout === "name"
       ? cycleName
@@ -68,9 +73,11 @@ export async function GET(request: NextRequest) {
         rows,
         cycle.runoffFirstTeamSize!,
       );
+      const primaryHeading = getRunoffVotePanelPrimaryTeamHeading(orgId, cycle.title);
+      const secondaryHeading = getRunoffVotePanelSecondaryTeamHeading(orgId);
       let startY = 78;
       doc.setFontSize(11);
-      doc.text("First team", 40, startY);
+      doc.text(primaryHeading, 40, startY);
       startY += 14;
       autoTable(doc, {
         startY,
@@ -88,7 +95,7 @@ export async function GET(request: NextRequest) {
       const afterFirst = (doc as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? startY;
       startY = afterFirst + 20;
       doc.setFontSize(11);
-      doc.text("Second team", 40, startY);
+      doc.text(secondaryHeading, 40, startY);
       startY += 14;
       autoTable(doc, {
         startY,
