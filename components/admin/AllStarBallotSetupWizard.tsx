@@ -274,9 +274,12 @@ export default function AllStarBallotSetupWizard({
     setCoachOptions(coaches);
   }
 
-  async function ensureCycleCreated() {
+  async function ensureCycleCreated(options?: { manageBusy?: boolean }) {
     if (cycleId) return cycleId;
-    setBusy(true);
+    const manageBusy = options?.manageBusy !== false;
+    if (manageBusy) {
+      setBusy(true);
+    }
     setError("");
     setNotice("");
     try {
@@ -324,7 +327,9 @@ export default function AllStarBallotSetupWizard({
       setError(err instanceof Error ? err.message : "Failed to create ballot cycle");
       return "";
     } finally {
-      setBusy(false);
+      if (manageBusy) {
+        setBusy(false);
+      }
     }
   }
 
@@ -432,33 +437,41 @@ export default function AllStarBallotSetupWizard({
     setError("");
     setNotice("");
     let rosterValidationCandidateCount = candidateCount;
+    let validationCycleId = cycleId;
 
-    if (currentStep === "roster" && cycleId) {
-      const runTeamImport = answers.rosterSource === "teams";
-      const runSpreadsheetImport = answers.rosterSource === "spreadsheet" && candidateFile;
-      if (runTeamImport || runSpreadsheetImport) {
-        setBusy(true);
-        try {
-          if (runTeamImport) {
-            const json = await importTeamRostersForCycle(cycleId);
-            rosterValidationCandidateCount = await refreshCandidateCount(cycleId);
-            setNotice(
-              `Imported ${Number(json.created || 0)} players from teams (${Number(json.skipped || 0)} skipped).`,
-            );
-          } else if (runSpreadsheetImport) {
-            rosterValidationCandidateCount = await uploadSpreadsheet(cycleId, candidateFile);
-          }
-        } catch (err: unknown) {
-          setError(err instanceof Error ? err.message : "Failed to import candidates");
+    if (currentStep === "roster") {
+      setBusy(true);
+      try {
+        const rosterCycleId = await ensureCycleCreated({ manageBusy: false });
+        if (!rosterCycleId) {
           setBusy(false);
           return;
         }
+        validationCycleId = rosterCycleId;
+
+        const runTeamImport = answers.rosterSource === "teams";
+        const runSpreadsheetImport = answers.rosterSource === "spreadsheet" && candidateFile;
+        if (runTeamImport) {
+          const json = await importTeamRostersForCycle(rosterCycleId);
+          rosterValidationCandidateCount = await refreshCandidateCount(rosterCycleId);
+          setNotice(
+            `Imported ${Number(json.created || 0)} players from teams (${Number(json.skipped || 0)} skipped).`,
+          );
+        } else if (runSpreadsheetImport) {
+          rosterValidationCandidateCount = await uploadSpreadsheet(rosterCycleId, candidateFile);
+        } else {
+          rosterValidationCandidateCount = await refreshCandidateCount(rosterCycleId);
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Failed to import candidates");
         setBusy(false);
+        return;
       }
+      setBusy(false);
     }
 
     const validationError = validateSetupStep(currentStep, answers, {
-      cycleId,
+      cycleId: validationCycleId,
       candidateCount: rosterValidationCandidateCount,
       selectedCoachEmails,
     });
@@ -477,11 +490,6 @@ export default function AllStarBallotSetupWizard({
         return;
       }
       setBusy(false);
-    }
-
-    if (currentStep === "voterAccess") {
-      const createdId = await ensureCycleCreated();
-      if (!createdId) return;
     }
 
     if (currentStep === "coachAccess" && cycleId) {
@@ -529,6 +537,55 @@ export default function AllStarBallotSetupWizard({
     }
   }
 
+  function resetWizardToNew() {
+    setAnswers(createDefaultSetupAnswers(initialOrg, currentYear));
+    setCurrentStep("context");
+    setCycleId("");
+    setCandidateCount(0);
+    setCandidateFile(null);
+    setBallotLink("");
+    setDuplicateConflict(null);
+    setResumeExistingDraft(false);
+    setCoachOptions([]);
+    setError("");
+    setNotice("");
+  }
+
+  async function handleCancelSetup() {
+    if (busy) return;
+    const hasDraft = Boolean(cycleId);
+    const ok = window.confirm(
+      hasDraft
+        ? "Cancel setup and delete this draft ballot? Candidates and invites saved on the draft will be removed."
+        : "Cancel ballot setup? Your answers will be discarded.",
+    );
+    if (!ok) return;
+
+    if (hasDraft) {
+      setBusy(true);
+      setError("");
+      try {
+        const response = await fetch("/api/admin/all-star/cycles", {
+          method: "DELETE",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cycleId }),
+        });
+        const json = await safeJson(response);
+        if (!response.ok) {
+          throw new Error(String(json.error || "Could not delete draft ballot"));
+        }
+      } catch (err: unknown) {
+        setError(err instanceof Error ? err.message : "Could not delete draft ballot");
+        setBusy(false);
+        return;
+      }
+      setBusy(false);
+    }
+
+    resetWizardToNew();
+    router.replace(`/admin/all-star/setup?org=${encodeURIComponent(initialOrg)}`);
+  }
+
   async function handleResumeDuplicate() {
     if (!duplicateConflict?.cycle || duplicateConflict.hasVoteSubmissions) return;
     if (duplicateConflict.cycle.status !== "DRAFT") return;
@@ -553,7 +610,10 @@ export default function AllStarBallotSetupWizard({
         </p>
         <h2 className="text-2xl font-semibold">{getSetupStepLabel(currentStep)}</h2>
         <p className="text-sm text-zinc-400">
-          Answer each question to build a custom All-Star ballot without touching existing active ballots.
+          Answer each question to build a custom All-Star ballot without touching existing active ballots. A draft
+          ballot is only created in the database when you continue past{" "}
+          <span className="text-zinc-300">Candidate roster</span> (after org, season, age group, ballot details, who
+          can vote, and how you want the roster built).
         </p>
       </div>
 
@@ -965,14 +1025,24 @@ export default function AllStarBallotSetupWizard({
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <button
-          type="button"
-          disabled={busy || !getPreviousSetupStep(currentStep, answers)}
-          onClick={handleBack}
-          className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-60"
-        >
-          Back
-        </button>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleCancelSetup()}
+            className="rounded-lg border border-red-900/50 bg-red-950/20 px-4 py-2 text-sm font-semibold text-red-200 hover:bg-red-950/40 disabled:opacity-60"
+          >
+            Cancel setup
+          </button>
+          <button
+            type="button"
+            disabled={busy || !getPreviousSetupStep(currentStep, answers)}
+            onClick={handleBack}
+            className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-60"
+          >
+            Back
+          </button>
+        </div>
         <button
           type="button"
           disabled={busy}
