@@ -230,7 +230,7 @@ export default function AllStarBallotSetupWizard({
     }
   }
 
-  async function refreshCandidateCount(targetCycleId: string) {
+  async function refreshCandidateCount(targetCycleId: string): Promise<number> {
     const response = await fetch(`/api/admin/all-star/candidates?cycleId=${targetCycleId}`, {
       cache: "no-store",
     });
@@ -239,7 +239,27 @@ export default function AllStarBallotSetupWizard({
       throw new Error(String(json.error || "Failed to load candidates"));
     }
     const rows = Array.isArray(json.data) ? json.data : [];
-    setCandidateCount(rows.length);
+    const count = rows.length;
+    setCandidateCount(count);
+    return count;
+  }
+
+  async function importTeamRostersForCycle(targetCycleId: string) {
+    const form = new FormData();
+    form.append("cycleId", targetCycleId);
+    form.append("source", "teams");
+    if (requiresDyb12uAgeBandFilter(answers.organizationId, answers.ageGroup) && !answers.allStarAgeGroupId) {
+      form.append("ageBandFilter", answers.ageBandFilter);
+    }
+    const response = await fetch("/api/admin/all-star/candidates/import", {
+      method: "POST",
+      body: form,
+    });
+    const json = await safeJson(response);
+    if (!response.ok) {
+      throw new Error(String(json.error || "Failed to import candidates from teams"));
+    }
+    return json as { created?: number; skipped?: number; processed?: number };
   }
 
   async function loadCoaches(targetCycleId: string) {
@@ -308,32 +328,24 @@ export default function AllStarBallotSetupWizard({
     }
   }
 
-  async function uploadSpreadsheet(targetCycleId: string) {
-    if (!candidateFile) return;
-    setBusy(true);
+  async function uploadSpreadsheet(targetCycleId: string, file: File): Promise<number> {
     setError("");
-    try {
-      const form = new FormData();
-      form.append("cycleId", targetCycleId);
-      form.append("file", candidateFile);
-      const response = await fetch("/api/admin/all-star/candidates/import", {
-        method: "POST",
-        body: form,
-      });
-      const json = await safeJson(response);
-      if (!response.ok) {
-        throw new Error(String(json.error || "Failed to import candidates"));
-      }
-      setCandidateFile(null);
-      setNotice(
-        `Spreadsheet import complete: ${Number(json.created || 0)} created, ${Number(json.skipped || 0)} skipped.`,
-      );
-      await refreshCandidateCount(targetCycleId);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to import candidates");
-    } finally {
-      setBusy(false);
+    const form = new FormData();
+    form.append("cycleId", targetCycleId);
+    form.append("file", file);
+    const response = await fetch("/api/admin/all-star/candidates/import", {
+      method: "POST",
+      body: form,
+    });
+    const json = await safeJson(response);
+    if (!response.ok) {
+      throw new Error(String(json.error || "Failed to import candidates"));
     }
+    setCandidateFile(null);
+    setNotice(
+      `Spreadsheet import complete: ${Number(json.created || 0)} created, ${Number(json.skipped || 0)} skipped.`,
+    );
+    return refreshCandidateCount(targetCycleId);
   }
 
   async function saveInvites(targetCycleId: string) {
@@ -419,9 +431,35 @@ export default function AllStarBallotSetupWizard({
   async function handleContinue() {
     setError("");
     setNotice("");
+    let rosterValidationCandidateCount = candidateCount;
+
+    if (currentStep === "roster" && cycleId) {
+      const runTeamImport = answers.rosterSource === "teams";
+      const runSpreadsheetImport = answers.rosterSource === "spreadsheet" && candidateFile;
+      if (runTeamImport || runSpreadsheetImport) {
+        setBusy(true);
+        try {
+          if (runTeamImport) {
+            const json = await importTeamRostersForCycle(cycleId);
+            rosterValidationCandidateCount = await refreshCandidateCount(cycleId);
+            setNotice(
+              `Imported ${Number(json.created || 0)} players from teams (${Number(json.skipped || 0)} skipped).`,
+            );
+          } else if (runSpreadsheetImport) {
+            rosterValidationCandidateCount = await uploadSpreadsheet(cycleId, candidateFile);
+          }
+        } catch (err: unknown) {
+          setError(err instanceof Error ? err.message : "Failed to import candidates");
+          setBusy(false);
+          return;
+        }
+        setBusy(false);
+      }
+    }
+
     const validationError = validateSetupStep(currentStep, answers, {
       cycleId,
-      candidateCount,
+      candidateCount: rosterValidationCandidateCount,
       selectedCoachEmails,
     });
     if (validationError) {
@@ -444,10 +482,6 @@ export default function AllStarBallotSetupWizard({
     if (currentStep === "voterAccess") {
       const createdId = await ensureCycleCreated();
       if (!createdId) return;
-    }
-
-    if (currentStep === "roster" && cycleId && candidateFile) {
-      await uploadSpreadsheet(cycleId);
     }
 
     if (currentStep === "coachAccess" && cycleId) {

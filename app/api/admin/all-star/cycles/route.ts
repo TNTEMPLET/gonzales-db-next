@@ -362,26 +362,38 @@ export async function POST(request: NextRequest) {
     created.organizationId === "gonzales" ||
     created.organizationId === "ascension"
   ) {
-    // Ensure player age bands are present before immediate auto-import on create.
+    // Ensure player age bands are present before team roster import.
     await backfillAllStarAgeBandsForCyclePublish(
       created.organizationId,
       created.seasonYear,
       created.ageGroup,
     );
   }
-  const autoImport = await importCandidatesFromTeamsForCycle(prisma, {
-    id: created.id,
-    organizationId: created.organizationId,
-    seasonYear: created.seasonYear,
-    ageGroup: created.ageGroup,
-    allStarAgeGroupId: created.allStarAgeGroupId,
-    allStarAgeGroupLabel: created.allStarAgeGroupLabel,
-  }, ageBandFilter);
+
+  // Setup wizard creates the cycle before the roster step; importing here ran on screen load
+  // before the admin chose teams vs spreadsheet vs empty. Legacy creates still auto-import.
+  let autoImport: { created: number; skipped: number; processed: number; imported: boolean } = {
+    created: 0,
+    skipped: 0,
+    processed: 0,
+    imported: false,
+  };
+  if (!isSetupWizardIntent) {
+    const importResult = await importCandidatesFromTeamsForCycle(prisma, {
+      id: created.id,
+      organizationId: created.organizationId,
+      seasonYear: created.seasonYear,
+      ageGroup: created.ageGroup,
+      allStarAgeGroupId: created.allStarAgeGroupId,
+      allStarAgeGroupLabel: created.allStarAgeGroupLabel,
+    }, ageBandFilter);
+    autoImport = { ...importResult, imported: true };
+  }
 
   return NextResponse.json({
     success: true,
     cycle: mapAllStarCycle(created),
-    autoImport: { ...autoImport, imported: true },
+    autoImport,
   });
 }
 
