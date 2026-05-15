@@ -154,6 +154,14 @@ export default async function AdminDashboardPage({
         action: masterMode ? "Open All-Star Vault" : "Open All-Star",
       },
       {
+        module: "TOURNAMENT_BRACKETS" as AdminModule,
+        href: "/admin/tournament-brackets",
+        title: "Tournament Brackets",
+        description:
+          "Master-only: tournament brackets for any event—auto single-elim from seeds, preview, optional XLSX import, HTML export, flyer PDF.",
+        action: "Open Bracket Creator",
+      },
+      {
         module: "SPONSORS" as AdminModule,
         href: moduleHref("/admin/sponsors", "SPONSORS"),
         title: "Sponsors",

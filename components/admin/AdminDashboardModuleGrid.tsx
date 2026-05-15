@@ -37,6 +37,7 @@ const previewModuleMinimumRole: Record<
   SOCIAL_MEDIA: "BOARD_MEMBER",
   ORG_DOCUMENTS: "BOARD_MEMBER",
   ASSIGNR: "ADMIN",
+  TOURNAMENT_BRACKETS: "MASTER_ADMIN",
 };
 
 const roleRank: Record<"MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR", number> = {
@@ -51,6 +52,7 @@ const masterOnlyModules = new Set<AdminModule>([
   "NEWS_ADMIN",
   "SOCIAL_MEDIA",
   "ORG_DOCUMENTS",
+  "TOURNAMENT_BRACKETS",
 ]);
 
 const previewRoleLabel: Record<AdminViewPreviewRole, string> = {

@@ -43,3 +43,7 @@ next-env.d.ts
 # prisma local db
 /prisma/dev.db
 /prisma/dev.db-journal
+
+# Tournament bracket builder: local logo uploads (folder kept via .gitkeep)
+/public/uploads/tournament-brackets/*
+!/public/uploads/tournament-brackets/.gitkeep

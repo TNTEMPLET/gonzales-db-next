@@ -11,7 +11,6 @@ import {
   type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
-import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 
 type DugoutMeResponse = {
   user: {
@@ -225,7 +224,8 @@ export default function Header({ brand }: HeaderProps) {
       | "SCORES"
       | "DUGOUT_MODERATION"
       | "SOCIAL_MEDIA"
-      | "ORG_DOCUMENTS",
+      | "ORG_DOCUMENTS"
+      | "TOURNAMENT_BRACKETS",
   ) => {
     if (!masterRole) return true;
     return canAccessAdminModule(masterRole, module);
@@ -246,6 +246,14 @@ export default function Header({ brand }: HeaderProps) {
               : []),
             ...(allowModule("ORG_DOCUMENTS")
               ? [{ href: "/admin/documents", label: "Documents" }]
+              : []),
+            ...(allowModule("TOURNAMENT_BRACKETS")
+              ? [
+                  {
+                    href: "/admin/tournament-brackets",
+                    label: "Brackets",
+                  },
+                ]
               : []),
             { href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" },
           ],

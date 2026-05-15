@@ -7,6 +7,8 @@ type AdminSectionHeaderProps = {
   badge: string;
   currentOrg?: ContentOrgId | null;
   currentPath?: string;
+  /** Passed to AdminOrgSwitcher on master; default true. */
+  orgSwitcherShowAllSites?: boolean;
   allowRolePreview?: boolean;
   allowViewByUser?: boolean;
   moduleHubHref?: string;
@@ -17,6 +19,7 @@ export default function AdminSectionHeader({
   badge,
   currentOrg,
   currentPath,
+  orgSwitcherShowAllSites = true,
   allowRolePreview = false,
   allowViewByUser = false,
   moduleHubHref,
@@ -43,6 +46,7 @@ export default function AdminSectionHeader({
               <AdminOrgSwitcher
                 currentOrg={currentOrg ?? null}
                 currentPath={currentPath}
+                showAllSites={orgSwitcherShowAllSites}
               />
             ) : null}
             <AdminRolePreviewControl

@@ -1,0 +1,925 @@
+/**
+ * Tournament “program sheet” look: light surface, navy headings, accent stripe, card-style games.
+ * (Palette inspired in part by public World Series bracket layouts such as littleleague.org bracket pages.)
+ */
+.root {
+  --bracket-bg: #eef2f7;
+  --bracket-surface: #ffffff;
+  --bracket-border: #c5d0e0;
+  --bracket-fg: #002f6c;
+  --bracket-muted: #4a667f;
+  --bracket-accent: #c8102e;
+  --bracket-navy-deep: #001a3d;
+  --bracket-round-divider: rgb(0 47 108 / 0.12);
+  --bracket-card-shadow: 0 1px 2px rgb(0 47 108 / 0.06), 0 2px 8px rgb(0 26 61 / 0.06);
+  --bracket-card-shadow-hover: 0 2px 4px rgb(0 47 108 / 0.08), 0 6px 16px rgb(0 26 61 / 0.08);
+  --bracket-connector-opacity: 0.48;
+  /* Shared strip height so Final 3rd-place game and Champion 3rd-place plaque share one vertical center. */
+  --bracket-podium-third-band-min-height: 7rem;
+  position: relative;
+  isolation: isolate;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background: var(--bracket-bg);
+  color: var(--bracket-fg);
+  border-radius: 0.5rem;
+  border: 1px solid var(--bracket-border);
+  padding: 1.125rem 1.25rem;
+  min-height: 8rem;
+  overflow: hidden;
+}
+
+.rootForeground {
+  position: relative;
+  z-index: 1;
+}
+
+.watermarkImg {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  width: min(88%, 26rem);
+  max-height: 78%;
+  object-fit: contain;
+  opacity: 0.052;
+  pointer-events: none;
+  z-index: 0;
+  user-select: none;
+}
+
+.parkAside {
+  margin: 0 0 0.85rem;
+  padding: 0.55rem 0.65rem 0.6rem;
+  border-radius: 0.35rem;
+  border: 1px solid var(--bracket-border);
+  background: rgba(255, 255, 255, 0.72);
+  box-shadow: 0 1px 2px rgb(0 47 108 / 0.05);
+}
+
+.parkHeading {
+  margin: 0 0 0.35rem;
+  font-size: 0.6875rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--bracket-navy-deep);
+}
+
+.parkBody {
+  margin: 0;
+}
+
+.parkLine {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.45;
+  color: var(--bracket-muted);
+}
+
+.parkLine + .parkLine {
+  margin-top: 0.2rem;
+}
+
+.parkContacts {
+  margin-top: 0.55rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgb(0 47 108 / 0.1);
+}
+
+.parkContactsHeading {
+  font-size: 0.625rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--bracket-navy-deep);
+  margin: 0 0 0.35rem;
+}
+
+.parkContactList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.parkContactItem {
+  margin: 0;
+  font-size: 0.6875rem;
+  line-height: 1.35;
+}
+
+.parkContactName {
+  font-weight: 700;
+  color: var(--bracket-navy-deep);
+}
+
+.parkContactPhone {
+  font-weight: 600;
+  color: var(--bracket-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.parkContactItem .parkContactPhone {
+  margin-top: 0.08rem;
+}
+
+.title {
+  font-size: clamp(0.95rem, 2.5vw, 1.125rem);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bracket-navy-deep);
+  margin: 0 0 1rem;
+  line-height: 1.25;
+  text-align: center;
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+  border-bottom: 3px solid var(--bracket-accent);
+  padding-bottom: 0.5rem;
+}
+
+.emptyMessage {
+  font-size: 0.875rem;
+  color: var(--bracket-muted);
+  line-height: 1.55;
+  padding: 0.35rem 0;
+}
+
+/* --- Tree (classic columns) --- */
+.tree {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  overflow-x: visible;
+  padding-bottom: 0.25rem;
+}
+
+.round {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1 1 0;
+  /* Avoid crushing schedule / team copy when many rounds share one viewport width */
+  min-width: 11rem;
+  padding: 0 0.875rem;
+  border-right: 1px solid var(--bracket-round-divider, rgb(0 47 108 / 0.12));
+}
+
+.round:first-child {
+  padding-left: 0;
+}
+
+.round:last-child {
+  border-right: none;
+  padding-right: 0;
+}
+
+.roundLabel {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #fff;
+  background: var(--bracket-fg);
+  margin: 0 0 0.35rem;
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.25rem;
+  flex-shrink: 0;
+  text-align: center;
+  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.12);
+}
+
+.matchList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.match {
+  border: 1px solid var(--bracket-border);
+  border-radius: 0.375rem;
+  border-left: 4px solid var(--bracket-accent);
+  background: var(--bracket-surface);
+  overflow: hidden;
+  box-shadow: var(--bracket-card-shadow);
+}
+
+.matchGameBadge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bracket-accent);
+  padding: 0.35rem 0.55rem 0.25rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(to bottom, #fff, #fafbfd);
+  text-align: left;
+}
+
+.slot {
+  position: relative;
+  padding: 0.5rem 0.65rem 0.5rem 1.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--bracket-navy-deep);
+  border-bottom: 1px solid #e2e8f0;
+  text-align: left;
+  min-width: 0;
+}
+
+.slotLabel {
+  display: block;
+  flex: 1 1 0;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.slotWithScore {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.slotScoreRead,
+.slotScoreInput {
+  flex: 0 0 auto;
+  width: 2rem;
+  min-width: 2rem;
+  text-align: center;
+  font-size: 0.75rem;
+  font-weight: 700;
+  line-height: 1.2;
+  color: var(--bracket-navy-deep);
+  border: 1px solid var(--bracket-border);
+  border-radius: 0.25rem;
+  background: #fff;
+  box-sizing: border-box;
+}
+
+.slotScoreRead {
+  padding: 0.2rem 0.15rem;
+}
+
+.slotScoreInput {
+  padding: 0.15rem 0.1rem;
+}
+
+.slotScoreInput:focus {
+  outline: 2px solid var(--bracket-fg);
+  outline-offset: 1px;
+}
+
+.tiePicker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  padding: 0.35rem 0.5rem 0.45rem;
+  border-top: 1px solid #e2e8f0;
+  background: #f8fafc;
+}
+
+.tiePickerBtn {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.625rem;
+  font-weight: 700;
+  line-height: 1.25;
+  padding: 0.3rem 0.4rem;
+  border-radius: 0.3rem;
+  border: 1px solid var(--bracket-border);
+  background: #fff;
+  color: var(--bracket-navy-deep);
+  cursor: pointer;
+}
+
+.tiePickerBtn:hover {
+  border-color: var(--bracket-fg);
+  background: #f4f7fb;
+}
+
+.slot::before {
+  content: "";
+  position: absolute;
+  left: 0.55rem;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 999px;
+  background: var(--bracket-fg);
+  opacity: 0.35;
+}
+
+.slot:last-child {
+  border-bottom: none;
+}
+
+.slotAway {
+  background: #f7fafc;
+  font-weight: 500;
+}
+
+.slotBye {
+  font-style: italic;
+  font-weight: 500;
+  color: var(--bracket-muted);
+}
+
+.matchScheduleMeta {
+  padding: 0.35rem 0.55rem 0.45rem;
+  font-size: 0.625rem;
+  line-height: 1.4;
+  font-weight: 500;
+  color: var(--bracket-muted);
+  background: rgb(248 250 252 / 0.95);
+  min-width: 0;
+}
+
+.matchScheduleLine {
+  margin: 0;
+}
+
+.matchScheduleLineFit {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin: 0;
+  min-width: 0;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.matchScheduleLineFitText {
+  display: inline-block;
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  vertical-align: bottom;
+}
+
+.matchScheduleLineFit + .matchScheduleLineFit {
+  margin-top: 0.12rem;
+}
+
+.matchScheduleLine + .matchScheduleLine {
+  margin-top: 0.12rem;
+}
+
+.matchGameInfoBetweenTeams {
+  text-align: center;
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 1px solid #e2e8f0;
+  min-width: 0;
+}
+
+.matchScheduleMetaPlaceholder {
+  font-style: italic;
+  color: var(--bracket-muted);
+}
+
+/* --- Match grid (schedule-style) --- */
+.grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.75rem;
+}
+
+.gameCard {
+  border: 1px solid var(--bracket-border);
+  border-radius: 0.375rem;
+  border-left: 4px solid var(--bracket-fg);
+  background: var(--bracket-surface);
+  padding: 0.65rem 0.85rem;
+  font-size: 0.8125rem;
+  box-shadow: var(--bracket-card-shadow);
+}
+
+.gameMeta {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bracket-accent);
+  margin-bottom: 0.45rem;
+}
+
+.gameTeams {
+  font-weight: 600;
+  line-height: 1.45;
+  color: var(--bracket-navy-deep);
+}
+
+.vs {
+  color: var(--bracket-muted);
+  font-weight: 600;
+  font-size: 0.6875rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  margin: 0.15rem 0;
+}
+
+/* --- Connected elimination grid (columns + SVG gutters) --- */
+.bracketGrid {
+  align-items: stretch;
+  width: 100%;
+  min-width: 0;
+}
+
+.bracketGridScroll {
+  width: 100%;
+  min-width: 0;
+  overflow-x: visible;
+  overflow-y: visible;
+  padding-bottom: 0.35rem;
+}
+
+.gridColumnScheduleHdr {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 0.12rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: var(--bracket-navy-deep);
+  background: rgba(255, 255, 255, 0.88);
+  border: 1px solid var(--bracket-border);
+  border-radius: 0.35rem;
+  padding: 0.38rem 0.45rem;
+  text-align: center;
+  align-self: stretch;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  min-height: 2.5rem;
+  box-sizing: border-box;
+  box-shadow: 0 1px 2px rgb(0 47 108 / 0.05);
+}
+
+.gridColumnScheduleHdrPlaceholder {
+  color: var(--bracket-muted);
+  font-weight: 500;
+  font-style: italic;
+}
+
+.gridColumnScheduleLine {
+  margin: 0;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.gridConnHdrSpacer {
+  min-height: 2.5rem;
+}
+
+.gridParkAsideCell {
+  align-self: stretch;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+}
+
+.gridParkAsideCell .parkAside {
+  margin: 0;
+}
+
+.roundScheduleHdr {
+  margin: 0 0 0.5rem;
+}
+
+.gridMatchWrap {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-height: 100%;
+}
+
+/* Final column when podium: championship vertically centered, 3rd-place game bottom-anchored. */
+.finalRoundPodiumGridWrap {
+  justify-content: stretch;
+  position: relative;
+  /* Keep this grid cell from collapsing to a sliver when tracks use minmax(0, 1fr). */
+  min-width: 9rem;
+}
+
+.finalRoundPodiumGridWrap .finalRoundPodiumInner {
+  flex: 1 1 0;
+  min-height: 100%;
+  height: 100%;
+  width: 100%;
+}
+
+.finalRoundPodiumInner {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 100%;
+  width: 100%;
+}
+
+.finalRoundChampionshipSlot {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: center;
+  box-sizing: border-box;
+  pointer-events: none;
+}
+
+.finalRoundChampionshipSlot > .match {
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  pointer-events: auto;
+}
+
+.thirdPlaceGameBottomRow,
+.thirdPlacePlaqueBottomRow {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  width: 100%;
+  min-width: 0;
+  min-height: var(--bracket-podium-third-band-sync-height, var(--bracket-podium-third-band-min-height));
+  box-sizing: border-box;
+  padding-top: 0.25rem;
+  background: linear-gradient(to top, var(--bracket-bg) 70%, transparent);
+}
+
+.thirdPlacePlaqueBottomRow {
+  justify-content: center;
+  padding-left: 0.2rem;
+  padding-right: 0.2rem;
+}
+
+.thirdPlaceGameBottomRow .thirdPlaceMatch {
+  width: 100%;
+  flex: 0 1 auto;
+  align-self: center;
+}
+
+/* Match cards in the connected grid: tighter program typography + long-name safety */
+.gridMatchWrap .match {
+  border-radius: 0.5rem;
+  border-left-width: 3px;
+  border-color: var(--bracket-border);
+  transition:
+    box-shadow 0.15s ease,
+    border-color 0.15s ease;
+}
+
+@media (hover: hover) {
+  .gridMatchWrap:hover .match {
+    border-color: var(--bracket-fg);
+    box-shadow: var(--bracket-card-shadow-hover);
+  }
+}
+
+.gridMatchWrap .matchGameBadge {
+  font-size: 0.625rem;
+  letter-spacing: 0.06em;
+  padding: 0.3rem 0.5rem 0.22rem;
+}
+
+.gridMatchWrap .slot {
+  padding: 0.55rem 0.65rem 0.55rem 1.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  line-height: 1.4;
+  text-align: left;
+}
+
+.gridMatchWrap .matchScheduleMeta {
+  font-size: 0.6rem;
+  padding: 0.28rem 0.45rem 0.35rem;
+}
+
+/* Canonical grid band where a bye-only match was removed (keeps connector alignment). */
+.gridSlotFiller {
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.connectorCell {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  align-self: stretch;
+  min-height: 100%;
+  height: 100%;
+  color: var(--bracket-fg);
+  opacity: var(--bracket-connector-opacity);
+  min-width: 0;
+}
+
+/* Final → Champion gutter: champion midline + measured 3rd-place pairing line. */
+.connectorCellPodiumStack {
+  position: relative;
+  flex: 1 1 auto;
+  align-self: stretch;
+  width: 100%;
+  min-height: 100%;
+  height: 100%;
+}
+
+.connectorCellPodiumStack > .connectorDynamicWrap {
+  position: absolute;
+  inset: 0;
+}
+
+.connectorDynamicWrap {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  min-height: max(3.5rem, 100%);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.connectorSvgDynamic {
+  display: block;
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  overflow: visible;
+}
+
+.connectorSvg {
+  width: 100%;
+  height: 100%;
+  min-height: 3.5rem;
+  flex: 1;
+}
+
+/* --- Champion round (single elim opt-in): flat tree + connected grid cell --- */
+.bracketBodyRow {
+  display: flex;
+  flex-direction: row;
+  align-items: stretch;
+  gap: 0.35rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.bracketMainPane {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
+.flatChampionGutter {
+  flex: 0 0 minmax(1.25rem, 0.28fr);
+  max-width: 3.5rem;
+  min-width: 1.1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  align-self: stretch;
+}
+
+.flatChampionColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  min-width: 0;
+  flex: 0 1 minmax(10rem, 1fr);
+  align-self: stretch;
+}
+
+.flatChampionParkSlot {
+  flex: 0 0 auto;
+  margin-bottom: 0.35rem;
+}
+
+.flatChampionParkSlot .parkAside {
+  margin: 0;
+}
+
+.connectorCellFlat {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: stretch;
+  min-height: 100%;
+  min-width: 0;
+  color: var(--bracket-fg);
+  opacity: var(--bracket-connector-opacity);
+}
+
+.connectorCellFlat .connectorCellPodiumStack {
+  flex: 1 1 auto;
+  min-height: 100%;
+  width: 100%;
+}
+
+.championRoundGridCell {
+  position: relative;
+  align-self: stretch;
+  min-width: 0;
+  min-height: 100%;
+  height: 100%;
+  width: 100%;
+}
+
+.championRoundColumn {
+  position: relative;
+  align-self: stretch;
+  min-height: 100%;
+  min-width: 0;
+  width: 100%;
+}
+
+.flatChampionColumn .championRoundColumn {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+}
+
+.bracketBodyRow > .championRoundColumn {
+  flex: 0 1 min(15rem, 42%);
+  max-width: 18rem;
+  min-width: 9.5rem;
+}
+
+.championPlaqueWrap {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.15rem 0.2rem;
+  z-index: 1;
+  pointer-events: none;
+}
+
+.championPlaqueWrap .championPlaque {
+  pointer-events: auto;
+}
+
+.championPlaque {
+  border: 1px solid var(--bracket-border);
+  border-radius: 0.5rem;
+  border-left: 4px solid var(--bracket-fg);
+  background: linear-gradient(165deg, #fff 0%, #f4f7fb 100%);
+  box-shadow: var(--bracket-card-shadow);
+  padding: 0.55rem 0.65rem 0.65rem;
+  text-align: center;
+  width: 100%;
+  max-width: 100%;
+}
+
+.championPlaqueTitle {
+  font-size: 0.625rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--bracket-muted);
+  margin: 0 0 0.35rem;
+}
+
+.championPlaqueName {
+  font-size: clamp(0.85rem, 2vw, 1.05rem);
+  font-weight: 800;
+  line-height: 1.2;
+  color: var(--bracket-navy-deep);
+  margin: 0;
+}
+
+/* No “TBD” copy: only the heading, vertically centered in the plaque. */
+.championPlaqueUndecided {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  align-items: center;
+  min-height: 3.75rem;
+  padding-top: 0.1rem;
+  padding-bottom: 0.1rem;
+}
+
+/* Single headline when champion not yet decided — stronger than the small “title” row in the decided layout. */
+.championPlaqueTitleCentered {
+  margin: 0;
+  font-size: clamp(0.8125rem, 2.1vw, 1.05rem);
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.055em;
+  color: var(--bracket-navy-deep);
+  text-align: center;
+  line-height: 1.28;
+  text-wrap: balance;
+  max-width: 12rem;
+}
+
+.thirdPlaceMatch {
+  flex: 1 1 0;
+  min-width: 0;
+  border-left-color: var(--bracket-fg);
+}
+
+.thirdPlaceMatchBadge {
+  font-size: 0.6875rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bracket-fg);
+  padding: 0.35rem 0.55rem 0.25rem;
+  border-bottom: 1px solid #e2e8f0;
+  background: linear-gradient(to bottom, #fff, #fafbfd);
+  text-align: center;
+}
+
+/* Same chrome and width as the champion plaque; quieter type hierarchy. */
+.thirdPlacePlaque {
+  composes: championPlaque;
+  width: 100%;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 0.45rem 0.55rem 0.5rem;
+}
+
+.thirdPlacePlaqueBottomRow .thirdPlacePlaque {
+  align-self: center;
+  width: 100%;
+  max-width: 100%;
+}
+
+.thirdPlacePlaqueUndecided {
+  composes: championPlaqueUndecided;
+  min-height: 3.75rem;
+}
+
+.thirdPlacePlaque .championPlaqueTitle {
+  font-size: 0.5625rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+}
+
+.thirdPlacePlaque .championPlaqueName {
+  font-size: clamp(0.75rem, 1.6vw, 0.875rem);
+  font-weight: 700;
+  color: var(--bracket-muted);
+}
+
+.thirdPlacePlaque .championPlaqueTitleCentered {
+  font-size: clamp(0.6875rem, 1.5vw, 0.8125rem);
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  color: var(--bracket-muted);
+}
+
+@media print {
+  .bracketGridScroll {
+    overflow: visible !important;
+    max-width: none !important;
+  }
+  .bracketGrid {
+    max-width: none !important;
+  }
+  .bracketBodyRow {
+    flex-wrap: nowrap;
+  }
+  .gridMatchWrap,
+  .connectorCell,
+  .match {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .bracketPodium,
+  .championPlaque,
+  .finalRoundPodiumGridWrap,
+  .thirdPlacePlaque,
+  .thirdPlaceMatch {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .root {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}

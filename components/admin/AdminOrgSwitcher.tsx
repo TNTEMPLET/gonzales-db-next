@@ -11,11 +11,14 @@ import {
 type AdminOrgSwitcherProps = {
   currentOrg: ContentOrgId | null;
   currentPath: string;
+  /** When false, hide the aggregate "All Sites" control (e.g. modules that always need a concrete org). */
+  showAllSites?: boolean;
 };
 
 export default function AdminOrgSwitcher({
   currentOrg,
   currentPath,
+  showAllSites = true,
 }: AdminOrgSwitcherProps) {
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-950/80 p-1.5">
@@ -26,16 +29,18 @@ export default function AdminOrgSwitcher({
         </span>
       </div>
       <div className="flex flex-wrap items-center gap-2">
-        <Link
-          href={currentPath}
-          className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
-            currentOrg === null
-              ? "border-red-500/60 bg-red-500/10 text-red-100 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.24)]"
-              : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500 hover:text-white"
-          }`}
-        >
-          All Sites
-        </Link>
+        {showAllSites ? (
+          <Link
+            href={currentPath}
+            className={`rounded-xl border px-3 py-2 text-xs font-semibold transition ${
+              currentOrg === null
+                ? "border-red-500/60 bg-red-500/10 text-red-100 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.24)]"
+                : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500 hover:text-white"
+            }`}
+          >
+            All Sites
+          </Link>
+        ) : null}
         {CONTENT_ORGS.map((org) => {
           const selected = org === currentOrg;
           return (

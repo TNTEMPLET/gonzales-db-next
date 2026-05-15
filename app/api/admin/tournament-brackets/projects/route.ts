@@ -1,0 +1,107 @@
+import { NextRequest, NextResponse } from "next/server";
+
+import { ensureTournamentBracketsMaster } from "@/lib/tournament-brackets/auth";
+import { defaultBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
+import prisma from "@/lib/prisma";
+import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
+
+export async function GET(request: NextRequest) {
+  try {
+    const auth = await ensureTournamentBracketsMaster(request);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message }, { status: auth.status });
+    }
+
+    const org = request.nextUrl.searchParams.get("organizationId");
+    const where =
+      org && isContentOrgId(org) ? { organizationId: org as ContentOrgId } : {};
+
+    const projects = await prisma.bracketProject.findMany({
+      where,
+      orderBy: { updatedAt: "desc" },
+      take: 50,
+      select: {
+        id: true,
+        organizationId: true,
+        seasonYear: true,
+        name: true,
+        status: true,
+        updatedAt: true,
+        createdAt: true,
+      },
+    });
+
+    return NextResponse.json({ data: projects });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      {
+        error: message,
+        hint:
+          /does not exist|Unknown model|BracketProject/i.test(message)
+            ? "Apply database migrations: npx prisma migrate deploy"
+            : undefined,
+      },
+      { status: 500 },
+    );
+  }
+}
+
+export async function POST(request: NextRequest) {
+  try {
+    const auth = await ensureTournamentBracketsMaster(request);
+    if (!auth.ok) {
+      return NextResponse.json({ error: auth.message }, { status: auth.status });
+    }
+
+    let body: {
+      organizationId?: string;
+      seasonYear?: number;
+      name?: string;
+    };
+    try {
+      body = (await request.json()) as typeof body;
+    } catch {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    if (!body.organizationId || !isContentOrgId(body.organizationId)) {
+      return NextResponse.json(
+        { error: "organizationId must be gonzales or ascension" },
+        { status: 400 },
+      );
+    }
+    const seasonYear =
+      typeof body.seasonYear === "number" && Number.isFinite(body.seasonYear)
+        ? body.seasonYear
+        : new Date().getFullYear();
+    const name = body.name?.trim() || `Bracket ${seasonYear}`;
+
+    const spec = defaultBracketSpec();
+
+    const created = await prisma.bracketProject.create({
+      data: {
+        organizationId: body.organizationId,
+        seasonYear,
+        name,
+        spec: JSON.parse(JSON.stringify(spec)),
+        sourceArtifactUrls: [],
+        createdByAdminId: auth.adminUserId,
+      },
+    });
+
+    return NextResponse.json({ data: created });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    return NextResponse.json(
+      {
+        error: message,
+        hint:
+          /does not exist|Unknown model|BracketProject/i.test(message)
+            ? "Apply database migrations: npx prisma migrate deploy"
+            : undefined,
+      },
+      { status: 500 },
+    );
+  }
+}

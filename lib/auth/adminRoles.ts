@@ -25,6 +25,7 @@ export const ADMIN_MODULES = [
   "SOCIAL_MEDIA",
   "ORG_DOCUMENTS",
   "ASSIGNR",
+  "TOURNAMENT_BRACKETS",
 ] as const;
 
 export type AdminModule = (typeof ADMIN_MODULES)[number];
@@ -50,6 +51,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   SOCIAL_MEDIA: "BOARD_MEMBER",
   ORG_DOCUMENTS: "BOARD_MEMBER",
   ASSIGNR: "ADMIN",
+  TOURNAMENT_BRACKETS: "MASTER_ADMIN",
 };
 
 const MASTER_ONLY_MODULES = new Set<AdminModule>([
@@ -57,6 +59,7 @@ const MASTER_ONLY_MODULES = new Set<AdminModule>([
   "NEWS_ADMIN",
   "SOCIAL_MEDIA",
   "ORG_DOCUMENTS",
+  "TOURNAMENT_BRACKETS",
 ]);
 
 export function isAdminRole(
