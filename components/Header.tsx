@@ -11,6 +11,7 @@ import {
   type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
+import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 
 type DugoutMeResponse = {
   user: {
