@@ -1,0 +1,395 @@
+import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
+import type { BracketMatch, BracketSpec, BracketThirdPlaceGame } from "@/lib/tournament-brackets/bracketSpec";
+import type { LayoutRound } from "@/lib/tournament-brackets/bracketLayout";
+
+function isHalvingEliminationBracket(rounds: LayoutRound[]): boolean {
+  const r = rounds.filter((x) => x.matches.length > 0);
+  if (r.length < 2) return false;
+  for (let i = 1; i < r.length; i++) {
+    if (r[i - 1]!.matches.length !== 2 * r[i]!.matches.length) return false;
+  }
+  return true;
+}
+
+export const BRACKET_THIRD_PLACE_MATCH_ID = "__bracket_third_place__";
+
+export type BracketWinnerSide = "home" | "away";
+
+export type BracketMatchScores = {
+  homeScore?: number;
+  awayScore?: number;
+  winnerSide?: BracketWinnerSide;
+};
+
+export type BracketMatchOutcome = {
+  winnerSide: BracketWinnerSide;
+  winnerName: string;
+  loserName: string | null;
+};
+
+const FEEDER_PLACEHOLDER = /^(W\d+|L\d+|TBD|BYE|Winner\s+\d+)$/i;
+
+export function isBracketFeederPlaceholder(label: string): boolean {
+  const t = label.trim();
+  if (!t) return true;
+  return FEEDER_PLACEHOLDER.test(t);
+}
+
+export function isByeSide(label: string): boolean {
+  return label.trim() === BYE_SLOT_LABEL;
+}
+
+export function isByeBracketMatch(m: Pick<BracketMatch, "home" | "away">): boolean {
+  return isByeSide(m.home) || isByeSide(m.away);
+}
+
+function teamNameForSide(m: Pick<BracketMatch, "home" | "away">, side: BracketWinnerSide): string {
+  return side === "home" ? m.home.trim() : m.away.trim();
+}
+
+export function isBracketMatchScoringComplete(
+  m: Pick<BracketMatch, "home" | "away" | "homeScore" | "awayScore" | "winnerSide">,
+  scores?: BracketMatchScores,
+): boolean {
+  if (isByeBracketMatch(m)) return true;
+  const hs = scores?.homeScore ?? m.homeScore;
+  const as = scores?.awayScore ?? m.awayScore;
+  if (hs == null || as == null) return false;
+  if (hs !== as) return true;
+  return Boolean(scores?.winnerSide ?? m.winnerSide);
+}
+
+export function resolveBracketMatchOutcome(
+  m: Pick<BracketMatch, "home" | "away" | "homeScore" | "awayScore" | "winnerSide">,
+  scores?: BracketMatchScores,
+): BracketMatchOutcome | null {
+  if (isByeBracketMatch(m)) {
+    const h = m.home.trim();
+    const a = m.away.trim();
+    if (h === BYE_SLOT_LABEL && a === BYE_SLOT_LABEL) return null;
+    if (h === BYE_SLOT_LABEL) {
+      return { winnerSide: "away", winnerName: m.away, loserName: null };
+    }
+    if (a === BYE_SLOT_LABEL) {
+      return { winnerSide: "home", winnerName: m.home, loserName: null };
+    }
+  }
+
+  const hs = scores?.homeScore ?? m.homeScore;
+  const as = scores?.awayScore ?? m.awayScore;
+  if (hs == null || as == null) return null;
+
+  if (hs > as) {
+    return {
+      winnerSide: "home",
+      winnerName: teamNameForSide(m, "home"),
+      loserName: teamNameForSide(m, "away"),
+    };
+  }
+  if (as > hs) {
+    return {
+      winnerSide: "away",
+      winnerName: teamNameForSide(m, "away"),
+      loserName: teamNameForSide(m, "home"),
+    };
+  }
+
+  const pick = scores?.winnerSide ?? m.winnerSide;
+  if (!pick) return null;
+  const loserSide: BracketWinnerSide = pick === "home" ? "away" : "home";
+  return {
+    winnerSide: pick,
+    winnerName: teamNameForSide(m, pick),
+    loserName: teamNameForSide(m, loserSide),
+  };
+}
+
+export function resolveThirdPlaceOutcome(
+  game: BracketThirdPlaceGame,
+  scores?: BracketMatchScores,
+): BracketMatchOutcome | null {
+  return resolveBracketMatchOutcome(
+    {
+      home: game.home,
+      away: game.away,
+      homeScore: scores?.homeScore ?? game.homeScore,
+      awayScore: scores?.awayScore ?? game.awayScore,
+      winnerSide: scores?.winnerSide ?? game.winnerSide,
+    },
+    scores,
+  );
+}
+
+function layoutRoundsFromSpec(spec: BracketSpec): LayoutRound[] {
+  return spec.rounds
+    .filter((r) => r.matches.length > 0)
+    .map((r) => ({
+      id: r.id,
+      label: r.label,
+      matches: r.matches.map((m) => ({
+        id: m.id,
+        home: m.home,
+        away: m.away,
+        slotHome: m.home,
+        slotAway: m.away,
+      })),
+    }));
+}
+
+function cloneSpecRounds(spec: BracketSpec): BracketSpec["rounds"] {
+  return spec.rounds.map((r) => ({
+    ...r,
+    matches: r.matches.map((m) => ({ ...m })),
+  }));
+}
+
+function clearScoresOnMatch(m: BracketMatch): void {
+  delete m.homeScore;
+  delete m.awayScore;
+  delete m.winnerSide;
+}
+
+/** Match (ri,j) is an ancestor of (cr,cj) in a halving tree. */
+export function isBracketMatchAncestor(
+  ancestorRi: number,
+  ancestorJ: number,
+  ri: number,
+  j: number,
+): boolean {
+  let cr = ri;
+  let cj = j;
+  while (cr > ancestorRi) {
+    cj = Math.floor(cj / 2);
+    cr -= 1;
+  }
+  return cr === ancestorRi && cj === ancestorJ;
+}
+
+function applyWinnerToChild(
+  rounds: BracketSpec["rounds"],
+  childRi: number,
+  childJ: number,
+  feederJ: number,
+  winnerName: string,
+): void {
+  const child = rounds[childRi]?.matches[childJ];
+  if (!child) return;
+  if (feederJ % 2 === 0) {
+    child.home = winnerName;
+  } else {
+    child.away = winnerName;
+  }
+}
+
+export function advanceHalvingTree(spec: BracketSpec): BracketSpec {
+  const layoutRounds = layoutRoundsFromSpec(spec);
+  if (!isHalvingEliminationBracket(layoutRounds) || layoutRounds.length < 1) {
+    return spec;
+  }
+
+  const rounds = cloneSpecRounds(spec);
+  const R = layoutRounds.length;
+
+  for (let ri = 0; ri < R; ri++) {
+    const slotCount = layoutRounds[ri]!.matches.length;
+    for (let j = 0; j < slotCount; j++) {
+      const m = rounds[ri]?.matches[j];
+      if (!m) continue;
+      const outcome = resolveBracketMatchOutcome(m);
+      if (!outcome) continue;
+      if (ri + 1 < R) {
+        const childJ = Math.floor(j / 2);
+        applyWinnerToChild(rounds, ri + 1, childJ, j, outcome.winnerName);
+      }
+    }
+  }
+
+  let thirdPlaceGame = spec.thirdPlaceGame ? { ...spec.thirdPlaceGame } : undefined;
+  if (spec.singleElimIncludeThirdPlace && R >= 2) {
+    const semiRi = R - 2;
+    const semi0 = rounds[semiRi]?.matches[0];
+    const semi1 = rounds[semiRi]?.matches[1];
+    const o0 = semi0 ? resolveBracketMatchOutcome(semi0) : null;
+    const o1 = semi1 ? resolveBracketMatchOutcome(semi1) : null;
+    if (o0?.loserName && o1?.loserName) {
+      thirdPlaceGame = {
+        ...(thirdPlaceGame ?? {}),
+        home: o0.loserName,
+        away: o1.loserName,
+      };
+    }
+  }
+
+  return { ...spec, rounds, ...(thirdPlaceGame ? { thirdPlaceGame } : {}) };
+}
+
+function applyScorePatchToMatch(m: BracketMatch, u: BracketMatchScores): void {
+  if ("homeScore" in u) {
+    if (u.homeScore === undefined) delete m.homeScore;
+    else m.homeScore = u.homeScore;
+  }
+  if ("awayScore" in u) {
+    if (u.awayScore === undefined) delete m.awayScore;
+    else m.awayScore = u.awayScore;
+  }
+  if ("winnerSide" in u) {
+    if (u.winnerSide === undefined) delete m.winnerSide;
+    else m.winnerSide = u.winnerSide;
+  }
+}
+
+export function mergeMatchScoresIntoSpec(
+  spec: BracketSpec,
+  updates: Record<string, BracketMatchScores>,
+): BracketSpec {
+  const rounds = cloneSpecRounds(spec);
+  for (const r of rounds) {
+    for (const m of r.matches) {
+      const u = updates[m.id];
+      if (u) applyScorePatchToMatch(m, u);
+    }
+  }
+
+  let thirdPlaceGame = spec.thirdPlaceGame ? { ...spec.thirdPlaceGame } : undefined;
+  const thirdPatch = updates[BRACKET_THIRD_PLACE_MATCH_ID];
+  if (thirdPatch && thirdPlaceGame) {
+    applyScorePatchToMatch(thirdPlaceGame as BracketMatch, thirdPatch);
+  }
+
+  let next: BracketSpec = { ...spec, rounds, ...(thirdPlaceGame ? { thirdPlaceGame } : {}) };
+  return advanceHalvingTree(next);
+}
+
+export function scoresFromSpec(spec: BracketSpec): Record<string, BracketMatchScores> {
+  const out: Record<string, BracketMatchScores> = {};
+  for (const r of spec.rounds) {
+    for (const m of r.matches) {
+      const entry: BracketMatchScores = {};
+      if (m.homeScore != null) entry.homeScore = m.homeScore;
+      if (m.awayScore != null) entry.awayScore = m.awayScore;
+      if (m.winnerSide) entry.winnerSide = m.winnerSide;
+      if (Object.keys(entry).length > 0) out[m.id] = entry;
+    }
+  }
+  if (spec.thirdPlaceGame) {
+    const t = spec.thirdPlaceGame;
+    const entry: BracketMatchScores = {};
+    if (t.homeScore != null) entry.homeScore = t.homeScore;
+    if (t.awayScore != null) entry.awayScore = t.awayScore;
+    if (t.winnerSide) entry.winnerSide = t.winnerSide;
+    if (Object.keys(entry).length > 0) out[BRACKET_THIRD_PLACE_MATCH_ID] = entry;
+  }
+  return out;
+}
+
+/** True when any match or 3rd-place game has score-related fields saved on the spec. */
+export function specHasSavedScores(spec: BracketSpec): boolean {
+  for (const r of spec.rounds) {
+    for (const m of r.matches) {
+      if (m.homeScore != null || m.awayScore != null || m.winnerSide) return true;
+    }
+  }
+  const t = spec.thirdPlaceGame;
+  if (t && (t.homeScore != null || t.awayScore != null || t.winnerSide)) return true;
+  return false;
+}
+
+/**
+ * Clears all bracket scores. For single-elimination halving trees, resets round 2+ to `TBD`/`TBD`,
+ * removes the 3rd-place game block, and re-runs first-round BYE advancement.
+ * For other formats, only score fields are stripped (team names in later rounds are left as-is).
+ */
+export function clearBracketScoringFromSpec(spec: BracketSpec): BracketSpec {
+  const layoutRounds = layoutRoundsFromSpec(spec);
+  const fullReset =
+    spec.bracketFormat === "single_elimination" && isHalvingEliminationBracket(layoutRounds);
+
+  const rounds = cloneSpecRounds(spec);
+  for (let ri = 0; ri < rounds.length; ri++) {
+    const row = rounds[ri];
+    if (!row) continue;
+    for (const m of row.matches) {
+      clearScoresOnMatch(m);
+      if (fullReset && ri > 0) {
+        m.home = "TBD";
+        m.away = "TBD";
+      }
+    }
+  }
+
+  const next: BracketSpec = { ...spec, rounds };
+  delete next.thirdPlaceGame;
+
+  return advanceHalvingTree(next);
+}
+
+export function canUseConnectedBracketScoring(
+  spec: BracketSpec,
+  layout: { mode: string; treeLayout?: string },
+): boolean {
+  if (layout.mode !== "tree" || layout.treeLayout !== "connected") return false;
+  if (spec.bracketFormat !== "single_elimination") return false;
+  return isHalvingEliminationBracket(layoutRoundsFromSpec(spec));
+}
+
+export function getDownstreamMatchIdsForRescore(spec: BracketSpec, matchId: string): string[] {
+  const layoutRounds = layoutRoundsFromSpec(spec);
+  if (!isHalvingEliminationBracket(layoutRounds)) return [];
+
+  if (matchId === BRACKET_THIRD_PLACE_MATCH_ID) return [];
+
+  let ri = -1;
+  let j = -1;
+  for (let r = 0; r < layoutRounds.length; r++) {
+    const idx = spec.rounds[r]?.matches.findIndex((m) => m.id === matchId) ?? -1;
+    if (idx >= 0) {
+      ri = r;
+      j = idx;
+      break;
+    }
+  }
+  if (ri < 0) return [];
+
+  const ids: string[] = [];
+  const R = layoutRounds.length;
+  for (let r = ri + 1; r < R; r++) {
+    for (let jj = 0; jj < layoutRounds[r]!.matches.length; jj++) {
+      if (isBracketMatchAncestor(ri, j, r, jj)) {
+        const id = spec.rounds[r]?.matches[jj]?.id;
+        if (id) ids.push(id);
+      }
+    }
+  }
+  if (spec.singleElimIncludeThirdPlace && ri === R - 2) {
+    ids.push(BRACKET_THIRD_PLACE_MATCH_ID);
+  }
+  return ids;
+}
+
+export function clearDownstreamBracketScores(spec: BracketSpec, matchIds: string[]): BracketSpec {
+  const idSet = new Set(matchIds);
+  const rounds = cloneSpecRounds(spec);
+  for (const r of rounds) {
+    for (const m of r.matches) {
+      if (!idSet.has(m.id)) continue;
+      clearScoresOnMatch(m);
+      m.home = "TBD";
+      m.away = "TBD";
+    }
+  }
+  let thirdPlaceGame = spec.thirdPlaceGame ? { ...spec.thirdPlaceGame } : undefined;
+  if (idSet.has(BRACKET_THIRD_PLACE_MATCH_ID) && thirdPlaceGame) {
+    delete thirdPlaceGame.homeScore;
+    delete thirdPlaceGame.awayScore;
+    delete thirdPlaceGame.winnerSide;
+  }
+  return advanceHalvingTree({ ...spec, rounds, ...(thirdPlaceGame ? { thirdPlaceGame } : {}) });
+}
+
+export function clampBracketScoreInput(raw: string): number | undefined {
+  const t = raw.trim();
+  if (t === "") return undefined;
+  const n = Number.parseInt(t, 10);
+  if (!Number.isFinite(n) || n < 0 || n > 99) return undefined;
+  return n;
+}

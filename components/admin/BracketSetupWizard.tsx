@@ -1,0 +1,521 @@
+"use client";
+
+import { useCallback, useEffect, useMemo, useState } from "react";
+
+import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
+import {
+  BYE_SLOT_LABEL,
+  canAutoGenerateSingleEliminationRounds,
+  countByesForTeamList,
+  generateSingleEliminationRoundsFromTeams,
+  nextPowerOfTwoAtLeast,
+} from "@/lib/tournament-brackets/generateSingleElimFromTeams";
+
+type BracketFormat = BracketSpec["bracketFormat"];
+
+type Step = "format" | "division" | "champion" | "teams" | "byes" | "confirm" | "non_single_done";
+
+type Props = {
+  spec: BracketSpec;
+  projectId: string;
+  busy: boolean;
+  /** When true, bracket structure + preview are visible; wizard can be collapsed or reopened to adjust answers. */
+  setupComplete: boolean;
+  onApply: (patch: Record<string, unknown>) => Promise<void>;
+  /** Unlocks structure/preview without generating rounds (empty or imported projects). */
+  onSkipGuidedSetup: () => Promise<void>;
+};
+
+function teamsFromLines(text: string): string[] {
+  return text
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+}
+
+export default function BracketSetupWizard({
+  spec,
+  projectId,
+  busy,
+  setupComplete,
+  onApply,
+  onSkipGuidedSetup,
+}: Props) {
+  const [showWizardSession, setShowWizardSession] = useState(false);
+  const [step, setStep] = useState<Step>("format");
+  const [bracketFormat, setBracketFormat] = useState<BracketFormat>("single_elimination");
+  const [divisionLabel, setDivisionLabel] = useState("");
+  const [championAgeGroupDraft, setChampionAgeGroupDraft] = useState("");
+  const [includeThirdPlaceDraft, setIncludeThirdPlaceDraft] = useState(false);
+  const [teamsText, setTeamsText] = useState("");
+  const [byeAck, setByeAck] = useState(false);
+
+  const seedFromSpec = useCallback(() => {
+    setBracketFormat(spec.bracketFormat === "unknown" ? "single_elimination" : spec.bracketFormat);
+    setDivisionLabel(spec.divisionLabel ?? "");
+    setChampionAgeGroupDraft(spec.championAgeGroupLabel?.trim() || spec.divisionLabel?.trim() || "");
+    setIncludeThirdPlaceDraft(Boolean(spec.singleElimIncludeThirdPlace));
+    setTeamsText(spec.teams.filter(Boolean).join("\n"));
+    setByeAck(false);
+    setStep("format");
+  }, [
+    spec.bracketFormat,
+    spec.championAgeGroupLabel,
+    spec.divisionLabel,
+    spec.singleElimIncludeThirdPlace,
+    spec.teams,
+  ]);
+
+  useEffect(() => {
+    seedFromSpec();
+    setShowWizardSession(false);
+  }, [projectId, seedFromSpec]);
+
+  const teams = useMemo(() => teamsFromLines(teamsText), [teamsText]);
+  const byeCount = useMemo(() => countByesForTeamList(teams), [teams]);
+  const slotN = useMemo(() => (teams.length >= 1 ? nextPowerOfTwoAtLeast(teams.length) : 0), [teams.length]);
+  const canBuildSingle = useMemo(
+    () => canAutoGenerateSingleEliminationRounds(teams, "single_elimination"),
+    [teams],
+  );
+
+  const previewRounds = useMemo(() => {
+    if (!canBuildSingle || teams.length < 1) return null;
+    try {
+      return generateSingleEliminationRoundsFromTeams(teams);
+    } catch {
+      return null;
+    }
+  }, [canBuildSingle, teams]);
+
+  const showFullWizard = !setupComplete || showWizardSession;
+
+  function openUpdateAnswers() {
+    seedFromSpec();
+    setShowWizardSession(true);
+  }
+
+  async function applySingleElim() {
+    if (!previewRounds) return;
+    const label = divisionLabel.trim();
+    await onApply({
+      bracketFormat: "single_elimination",
+      divisionLabel: label.length > 0 ? label : "",
+      championAgeGroupLabel: championAgeGroupDraft.trim() || null,
+      singleElimIncludeThirdPlace: includeThirdPlaceDraft,
+      teams,
+      rounds: previewRounds,
+      setupWizardCompleted: true,
+    });
+    setShowWizardSession(false);
+  }
+
+  async function applyNonSingle() {
+    const label = divisionLabel.trim();
+    await onApply({
+      bracketFormat,
+      divisionLabel: label.length > 0 ? label : "",
+      setupWizardCompleted: true,
+    });
+    setShowWizardSession(false);
+  }
+
+  function goNextFromFormat() {
+    if (bracketFormat === "single_elimination") {
+      setStep("division");
+    } else {
+      setStep("non_single_done");
+    }
+  }
+
+  function goNextFromTeams() {
+    if (teams.length < 1) return;
+    if (!canBuildSingle) return;
+    if (byeCount > 0) {
+      setByeAck(false);
+      setStep("byes");
+    } else {
+      setStep("confirm");
+    }
+  }
+
+  function goNextFromByes() {
+    if (byeCount > 0 && !byeAck) return;
+    setStep("confirm");
+  }
+
+  if (!showFullWizard && setupComplete) {
+    return (
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Guided bracket setup</h2>
+        <p className="mt-1 text-xs text-zinc-500">
+          Questionnaire finished. Bracket structure and preview are available below. Open again if you need to change
+          answers and rebuild.
+        </p>
+        <button
+          type="button"
+          disabled={busy}
+          className="mt-3 rounded-lg border border-violet-700/60 bg-violet-950/40 px-3 py-2 text-xs font-semibold text-violet-100 hover:bg-violet-900/50 disabled:opacity-40"
+          onClick={() => openUpdateAnswers()}
+        >
+          Review or change answers
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="rounded-2xl border border-violet-900/40 bg-violet-950/15 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-2">
+        <h2 className="text-sm font-semibold uppercase tracking-wide text-violet-300">Guided bracket setup</h2>
+        {setupComplete ? (
+          <button
+            type="button"
+            disabled={busy}
+            className="text-xs text-zinc-500 hover:text-zinc-300"
+            onClick={() => setShowWizardSession(false)}
+          >
+            Close
+          </button>
+        ) : null}
+      </div>
+
+      {!setupComplete ? (
+        <p className="mt-2 text-xs text-zinc-500">
+          Answer each step, confirm on the last screen, then use <strong className="text-zinc-400">Build bracket</strong>{" "}
+          to unlock Bracket structure and Preview for this project.
+        </p>
+      ) : null}
+
+      <ol className="mt-3 flex flex-wrap gap-2 text-[11px] text-zinc-500">
+        <li className={step === "format" ? "text-violet-300" : ""}>1. Format</li>
+        {bracketFormat === "single_elimination" ? (
+          <>
+            <li className={step === "division" ? "text-violet-300" : ""}>2. Division</li>
+            <li className={step === "champion" ? "text-violet-300" : ""}>3. Champion / 3rd</li>
+            <li className={step === "teams" ? "text-violet-300" : ""}>4. Teams</li>
+            {byeCount > 0 ? <li className={step === "byes" ? "text-violet-300" : ""}>5. Byes</li> : null}
+            <li className={step === "confirm" ? "text-violet-300" : ""}>
+              {byeCount > 0 ? "6" : "5"}. Confirm &amp; build
+            </li>
+          </>
+        ) : (
+          <li className={step === "non_single_done" ? "text-violet-300" : ""}>2. Confirm &amp; build</li>
+        )}
+      </ol>
+
+      {step === "format" ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm text-zinc-300">What kind of bracket is this?</p>
+          <select
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
+            value={bracketFormat}
+            disabled={busy}
+            onChange={(e) => setBracketFormat(e.target.value as BracketFormat)}
+          >
+            <option value="single_elimination">Single elimination</option>
+            <option value="double_elimination">Double elimination</option>
+            <option value="pool_play">Pool play</option>
+            <option value="custom">Custom</option>
+            <option value="unknown">Unknown / not set</option>
+          </select>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600 disabled:opacity-40"
+              onClick={() => goNextFromFormat()}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === "division" ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm text-zinc-300">Optional division or bracket title (shown above the bracket).</p>
+          <input
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+            value={divisionLabel}
+            disabled={busy}
+            onChange={(e) => setDivisionLabel(e.target.value)}
+            placeholder="e.g. 12U Majors"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg border border-zinc-600 px-3 py-2 text-xs hover:bg-zinc-800"
+              onClick={() => setStep("format")}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600"
+              onClick={() => setStep("champion")}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === "champion" ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm text-zinc-300">
+            Optional <strong className="font-medium text-zinc-200">champion banner</strong> and{" "}
+            <strong className="font-medium text-zinc-200">third-place game</strong> (single elimination with two
+            semifinals only).
+          </p>
+          <label className="block text-xs font-medium text-zinc-500">
+            Champion heading uses this age group or label (e.g. <span className="font-mono text-zinc-400">12U</span>).
+            Leave blank to reuse the division title when set.
+            <input
+              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+              value={championAgeGroupDraft}
+              disabled={busy}
+              onChange={(e) => setChampionAgeGroupDraft(e.target.value)}
+              placeholder={divisionLabel.trim() || "e.g. 12U"}
+            />
+          </label>
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-zinc-300">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={includeThirdPlaceDraft}
+              disabled={busy}
+              onChange={(e) => setIncludeThirdPlaceDraft(e.target.checked)}
+            />
+            <span>
+              Include a <strong className="font-medium text-zinc-200">3rd place</strong> game between the two semifinal
+              losers (shown beside the bracket, no connector lines).
+            </span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg border border-zinc-600 px-3 py-2 text-xs hover:bg-zinc-800"
+              onClick={() => setStep("division")}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600"
+              onClick={() => setStep("teams")}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === "teams" ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm text-zinc-300">
+            Enter competitors in <strong className="font-medium text-zinc-200">seed order</strong>: best seed first,
+            one per line. Blank lines are ignored.
+          </p>
+          <textarea
+            className="min-h-32 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 font-mono text-xs"
+            value={teamsText}
+            disabled={busy}
+            onChange={(e) => setTeamsText(e.target.value)}
+            placeholder={"Thunder\nLightning\nStorm\n…"}
+          />
+          {!canBuildSingle && teams.length >= 1 ? (
+            <p className="text-xs text-amber-300">
+              This list cannot be auto-built as single elimination (need 1–32 teams so the padded bracket fits in 32
+              slots). Trim the list or skip the questionnaire and define rounds by hand.
+            </p>
+          ) : null}
+          {teams.length < 1 ? <p className="text-xs text-zinc-500">Add at least one team to continue.</p> : null}
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg border border-zinc-600 px-3 py-2 text-xs hover:bg-zinc-800"
+              onClick={() => setStep("champion")}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              disabled={busy || teams.length < 1 || !canBuildSingle}
+              className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600 disabled:opacity-40"
+              onClick={() => goNextFromTeams()}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === "byes" ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm text-zinc-300">
+            You have <strong className="text-zinc-100">{teams.length}</strong> teams. The next power-of-two field size
+            is <strong className="text-zinc-100">{slotN}</strong>, so{" "}
+            <strong className="text-zinc-100">{byeCount}</strong> first-round{" "}
+            {byeCount === 1 ? "slot is" : "slots are"} filled with <strong className="text-zinc-100">{BYE_SLOT_LABEL}</strong>
+            .
+          </p>
+          <p className="text-xs text-zinc-500">
+            Trailing empty slots are assigned {BYE_SLOT_LABEL} after your list; the standard bracket shell pairs them so
+            higher seeds (lines closer to the top) receive first-round byes when the shell allows.
+          </p>
+          <label className="flex cursor-pointer items-start gap-2 text-sm text-zinc-300">
+            <input
+              type="checkbox"
+              className="mt-1"
+              checked={byeAck}
+              disabled={busy}
+              onChange={(e) => setByeAck(e.target.checked)}
+            />
+            <span>I understand how automatic byes are placed.</span>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg border border-zinc-600 px-3 py-2 text-xs hover:bg-zinc-800"
+              onClick={() => setStep("teams")}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              disabled={busy || (byeCount > 0 && !byeAck)}
+              className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600 disabled:opacity-40"
+              onClick={() => goNextFromByes()}
+            >
+              Next
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === "confirm" ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm font-medium text-zinc-200">Confirm your answers</p>
+          <p className="text-xs text-zinc-500">Final step: verify everything below, then build the bracket.</p>
+          <ul className="list-inside list-disc text-xs text-zinc-400">
+            <li>Format: single elimination</li>
+            {divisionLabel.trim() ? <li>Title: {divisionLabel.trim()}</li> : <li>Title: (none)</li>}
+            <li>
+              Champion label:{" "}
+              {championAgeGroupDraft.trim()
+                ? championAgeGroupDraft.trim()
+                : divisionLabel.trim()
+                  ? `(use division title: ${divisionLabel.trim()})`
+                  : "(default: Tournament)"}
+            </li>
+            <li>3rd place game: {includeThirdPlaceDraft ? "yes" : "no"}</li>
+            <li>
+              Teams: {teams.length} ({slotN}-slot bracket{byeCount > 0 ? `, ${byeCount} BYE${byeCount === 1 ? "" : "s"}` : ""})
+            </li>
+          </ul>
+          <div className="rounded-lg border border-zinc-700 bg-zinc-950/50 p-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Seeded list</p>
+            <pre className="mt-1 max-h-32 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-zinc-300">
+              {teamsText.trim() || "(none)"}
+            </pre>
+          </div>
+          {previewRounds ? (
+            <div className="rounded-lg border border-zinc-700 bg-zinc-950/50 p-2">
+              <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Round 1 (preview)</p>
+              <ul className="mt-1 space-y-1 font-mono text-[11px] text-zinc-300">
+                {previewRounds[0]?.matches.map((m) => (
+                  <li key={m.id}>
+                    {m.home} vs {m.away}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : (
+            <p className="text-xs text-red-400">Could not build preview.</p>
+          )}
+          <p className="text-xs text-amber-200/90">
+            This replaces the project&apos;s <strong className="font-medium">teams</strong> and{" "}
+            <strong className="font-medium">rounds</strong> with the generated bracket and unlocks Bracket structure and
+            Preview.
+          </p>
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg border border-zinc-600 px-3 py-2 text-xs hover:bg-zinc-800"
+              onClick={() => setStep(byeCount > 0 ? "byes" : "teams")}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              disabled={busy || !previewRounds}
+              className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-40"
+              onClick={() => void applySingleElim()}
+            >
+              Build bracket
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {step === "non_single_done" ? (
+        <div className="mt-4 space-y-3">
+          <p className="text-sm font-medium text-zinc-200">Confirm</p>
+          <p className="text-xs text-zinc-500">
+            For non–single-elimination formats, rounds are defined in Bracket structure after you continue.
+          </p>
+          <ul className="list-inside list-disc text-xs text-zinc-400">
+            <li>Format: {bracketFormat.replace(/_/g, " ")}</li>
+            {divisionLabel.trim() ? <li>Title: {divisionLabel.trim()}</li> : <li>Title: (none)</li>}
+          </ul>
+          <input
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+            value={divisionLabel}
+            disabled={busy}
+            onChange={(e) => setDivisionLabel(e.target.value)}
+            placeholder="Optional division title"
+          />
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg border border-zinc-600 px-3 py-2 text-xs hover:bg-zinc-800"
+              onClick={() => setStep("format")}
+            >
+              Back
+            </button>
+            <button
+              type="button"
+              disabled={busy}
+              className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600"
+              onClick={() => void applyNonSingle()}
+            >
+              Build bracket
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {!setupComplete ? (
+        <div className="mt-6 border-t border-zinc-800 pt-4">
+          <button
+            type="button"
+            disabled={busy}
+            className="text-xs text-zinc-500 underline decoration-zinc-600 underline-offset-2 hover:text-zinc-300"
+            onClick={() => void onSkipGuidedSetup()}
+          >
+            Skip questionnaire — unlock Bracket structure and Preview without guided answers
+          </button>
+        </div>
+      ) : null}
+    </div>
+  );
+}

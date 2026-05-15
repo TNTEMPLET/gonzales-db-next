@@ -1,0 +1,15 @@
+---
+description: Ask clarifying questions with clickable options (AskQuestion), not prose-only
+alwaysApply: true
+---
+
+# Clarifying questions (clickable options)
+
+When requirements are ambiguous, under-specified, or have multiple valid approaches, **do not** close with open-ended, prose-only questions (“Which do you prefer?” with no UI).
+
+1. **Use the `AskQuestion` tool** with **2–6 labeled options** so the user gets **clickable choices** in Cursor (same idea as Plan Mode).
+2. Each option needs a stable **`id`** and a short human **`label`**. Use **`allow_multiple: true`** only when more than one answer can apply.
+3. Prefer **several focused `AskQuestion` calls** over one long mixed list.
+4. If free-form input might still be needed, include an explicit option such as **“Other — I’ll reply in chat”** alongside concrete choices—do not rely on that as the only path.
+
+If `AskQuestion` is not available in the environment, use a **compact Markdown list** of lettered/numbered choices and ask the user to reply with the letter(s)—still avoid optionless prompts.

@@ -20,7 +20,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
-    "test": "tsx --test lib/assignr/__tests__/*.test.ts lib/admin/__tests__/*.test.ts",
+    "test": "tsx --test lib/assignr/__tests__/*.test.ts lib/admin/__tests__/*.test.ts lib/tournament-brackets/__tests__/*.test.ts lib/communications/policy.test.ts",
     "coach:test": "tsx scripts/create-test-coach.ts",
     "facebook:exchange-tokens": "node scripts/exchange-facebook-token.mjs"
   },
@@ -31,6 +31,7 @@
     "@vercel/speed-insights": "^2.0.0",
     "bcryptjs": "^3.0.3",
     "google-auth-library": "^10.6.2",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.7",
     "next": "16.2.3",
@@ -38,7 +39,8 @@
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "vercel": "^53.1.0",
-    "xlsx": "^0.18.5"
+    "xlsx": "^0.18.5",
+    "zod": "^4.4.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

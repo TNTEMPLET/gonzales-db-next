@@ -66,6 +66,7 @@ const moduleCatalog: Record<
   COMMUNICATIONS: { category: "publishing", sortOrder: 30 },
   ORG_DOCUMENTS: { category: "integrations", sortOrder: 10 },
   ASSIGNR: { category: "integrations", sortOrder: 20 },
+  TOURNAMENT_BRACKETS: { category: "program", sortOrder: 25 },
   USERS: { category: "operations", sortOrder: 10 },
   REPORTS: { category: "operations", sortOrder: 20 },
   DUGOUT_MODERATION: { category: "community", sortOrder: 10 },

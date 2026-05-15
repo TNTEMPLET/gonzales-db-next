@@ -101,6 +101,12 @@ export function getDefaultContentOrg(): ContentOrgId {
   return getOrgId() === "ascension" ? "ascension" : "gonzales";
 }
 
+/** Primary / accent hex for this content org (tournament bracket LLBWS-style theme defaults). */
+export function getContentOrgBrandColors(org: ContentOrgId): { primaryHex: string; accentHex: string } {
+  const c = configs[org];
+  return { primaryHex: c.colorPrimary, accentHex: c.colorAccent };
+}
+
 /** Org bucket for `RegisteredUser` rows on this deployment (matches Dugout local auth). */
 export function getDugoutRegisteredUserOrgId(): ContentOrgId {
   const org = getOrgId();
