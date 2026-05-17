@@ -46,6 +46,7 @@ export type BracketLayoutPodium = {
   finalMatch: LayoutMatch;
   thirdPlaceSlotHome: string;
   thirdPlaceSlotAway: string;
+  thirdPlaceGameInfo?: Pick<LayoutMatch, "officialGameNumber" | "dateLabel" | "time" | "venue" | "field">;
   thirdPlaceScores?: {
     homeScore?: number;
     awayScore?: number;
@@ -248,6 +249,15 @@ export function computePodiumForSingleElimTree(
     finalMatch,
     thirdPlaceSlotHome: thirdHome,
     thirdPlaceSlotAway: thirdAway,
+    thirdPlaceGameInfo: spec.thirdPlaceGame
+      ? {
+          officialGameNumber: spec.thirdPlaceGame.officialGameNumber,
+          dateLabel: spec.thirdPlaceGame.dateLabel,
+          time: spec.thirdPlaceGame.time,
+          venue: spec.thirdPlaceGame.venue,
+          field: spec.thirdPlaceGame.field,
+        }
+      : undefined,
     thirdPlaceScores: spec.thirdPlaceGame
       ? {
           homeScore: spec.thirdPlaceGame.homeScore,

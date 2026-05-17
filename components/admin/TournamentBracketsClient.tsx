@@ -26,6 +26,7 @@ import {
   CONTENT_ORGS,
   getContentOrgBrandColors,
   getOrgDisplayName,
+  getTournamentBracketBrandingForOrg,
   type ContentOrgId,
 } from "@/lib/siteConfig";
 
@@ -34,9 +35,11 @@ type ProjectRow = {
   organizationId: string;
   seasonYear: number;
   name: string;
-  status: string;
+  status: ProjectStatus;
   updatedAt: string;
 };
+
+type ProjectStatus = "DRAFT" | "READY" | "ARCHIVED";
 
 type ProjectDetail = ProjectRow & {
   spec: unknown;
@@ -334,6 +337,10 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     () => getContentOrgBrandColors(organizationId),
     [organizationId],
   );
+  const bracketBranding = useMemo(
+    () => getTournamentBracketBrandingForOrg(organizationId),
+    [organizationId],
+  );
 
   const resolvedBracketTheme = useMemo(
     () => resolveBracketThemeColors(spec, siteThemeDefaults),
@@ -355,6 +362,13 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     { name: "", phone: "" },
   ]);
   const [championAgeGroupDraft, setChampionAgeGroupDraft] = useState("");
+  const [thirdPlaceInfoDraft, setThirdPlaceInfoDraft] = useState({
+    officialGameNumber: "",
+    dateLabel: "",
+    time: "",
+    venue: "",
+    field: "",
+  });
 
   useEffect(() => {
     if (!spec) {
@@ -365,6 +379,13 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
         { name: "", phone: "" },
       ]);
       setChampionAgeGroupDraft("");
+      setThirdPlaceInfoDraft({
+        officialGameNumber: "",
+        dateLabel: "",
+        time: "",
+        venue: "",
+        field: "",
+      });
       return;
     }
     setParkHeadingDraft(spec.parkInfo?.heading ?? "");
@@ -375,6 +396,13 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       { name: c[1]?.name ?? "", phone: c[1]?.phone ?? "" },
     ]);
     setChampionAgeGroupDraft(spec.championAgeGroupLabel ?? "");
+    setThirdPlaceInfoDraft({
+      officialGameNumber: spec.thirdPlaceGame?.officialGameNumber ?? "",
+      dateLabel: spec.thirdPlaceGame?.dateLabel ?? "",
+      time: spec.thirdPlaceGame?.time ?? "",
+      venue: spec.thirdPlaceGame?.venue ?? "",
+      field: spec.thirdPlaceGame?.field ?? "",
+    });
   }, [spec]);
 
   async function saveParkInfo() {
@@ -413,6 +441,41 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     try {
       await patchSpec({ championAgeGroupLabel: championAgeGroupDraft.trim() || null });
       setNotice("Champion banner label saved.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveThirdPlaceGameInfo() {
+    if (!projectId || !spec) return;
+    const podium = bracketLayout?.mode === "tree" ? bracketLayout.podium : null;
+    const current = spec.thirdPlaceGame;
+    const nextThirdPlaceGame: NonNullable<BracketSpec["thirdPlaceGame"]> = {
+      home: current?.home?.trim() || podium?.thirdPlaceSlotHome || "TBD",
+      away: current?.away?.trim() || podium?.thirdPlaceSlotAway || "TBD",
+    };
+    if (current?.homeScore != null) nextThirdPlaceGame.homeScore = current.homeScore;
+    if (current?.awayScore != null) nextThirdPlaceGame.awayScore = current.awayScore;
+    if (current?.winnerSide) nextThirdPlaceGame.winnerSide = current.winnerSide;
+
+    const officialGameNumber = thirdPlaceInfoDraft.officialGameNumber.trim();
+    const dateLabel = thirdPlaceInfoDraft.dateLabel.trim();
+    const time = thirdPlaceInfoDraft.time.trim();
+    const venue = thirdPlaceInfoDraft.venue.trim();
+    const field = thirdPlaceInfoDraft.field.trim();
+    if (officialGameNumber) nextThirdPlaceGame.officialGameNumber = officialGameNumber;
+    if (dateLabel) nextThirdPlaceGame.dateLabel = dateLabel;
+    if (time) nextThirdPlaceGame.time = time;
+    if (venue) nextThirdPlaceGame.venue = venue;
+    if (field) nextThirdPlaceGame.field = field;
+
+    setBusy(true);
+    setError("");
+    try {
+      await patchSpec({ thirdPlaceGame: nextThirdPlaceGame });
+      setNotice("3rd place game information saved.");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -508,6 +571,39 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       await loadProject(projectId);
       await loadProjects();
       setNotice("Project name saved.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updateProjectStatus(nextStatus: ProjectStatus) {
+    if (!projectId || !project) return;
+    if (project.status === nextStatus) {
+      setNotice(`Project is already ${nextStatus}.`);
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch(`/api/admin/tournament-brackets/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const json = await readApiJson<{ error?: string; hint?: string }>(res);
+      if (!res.ok) throw new Error(apiErrorMessage(json, "Could not update project status"));
+      await loadProject(projectId);
+      await loadProjects();
+      setNotice(
+        nextStatus === "READY"
+          ? "Bracket posted to the public Tournaments page."
+          : nextStatus === "ARCHIVED"
+            ? "Bracket archived and hidden from the public Tournaments page."
+            : "Bracket returned to draft and hidden from the public Tournaments page.",
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -894,7 +990,11 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   function exportBracketHtml() {
     if (!project || !bracketLayout) return;
     const html = buildBracketExportHtmlDocument(project.name, bracketLayout, resolvedBracketTheme, {
-      logoWatermarkUrl: spec?.flyer?.logoUrl,
+      logoWatermarkUrl: bracketBranding.targetLogoPath,
+      parentOrganizationLogo: {
+        src: bracketBranding.parentLogoPath,
+        name: bracketBranding.parentName,
+      },
       parkInfo: spec?.parkInfo,
       surfaceHeadingLabel: project.name,
     });
@@ -907,6 +1007,55 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     a.click();
     URL.revokeObjectURL(url);
     setNotice("Bracket HTML downloaded.");
+  }
+
+  function renderTournamentPageControls() {
+    if (!project) return null;
+    return (
+      <div className="mt-4 space-y-2 rounded-lg border border-zinc-700/80 bg-zinc-950/40 p-3">
+        <div className="flex flex-wrap items-start justify-between gap-2">
+          <div>
+            <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Tournament page</h3>
+            <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+              Current status: <span className="font-semibold text-zinc-300">{project.status}</span>. READY brackets
+              appear on the public Tournaments page.
+            </p>
+          </div>
+          <a
+            href="/tournaments"
+            className="text-xs font-semibold text-brand-gold hover:text-brand-gold/80"
+          >
+            Open page
+          </a>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy || project.status === "DRAFT"}
+            onClick={() => void updateProjectStatus("DRAFT")}
+            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
+          >
+            Save as draft
+          </button>
+          <button
+            type="button"
+            disabled={busy || project.status === "READY"}
+            onClick={() => void updateProjectStatus("READY")}
+            className="rounded-lg border border-emerald-600/80 bg-emerald-900/80 px-3 py-2 text-xs font-semibold text-emerald-50 hover:bg-emerald-800 disabled:opacity-40"
+          >
+            Post to Tournaments
+          </button>
+          <button
+            type="button"
+            disabled={busy || project.status === "ARCHIVED"}
+            onClick={() => void updateProjectStatus("ARCHIVED")}
+            className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-300 hover:border-amber-700 hover:bg-amber-950/40 hover:text-amber-100 disabled:opacity-40"
+          >
+            Archive
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -1000,33 +1149,35 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
             ))}
           </ul>
           {projectId && project ? (
-            <div className="mt-4 space-y-2 rounded-lg border border-zinc-700/80 bg-zinc-950/40 p-3">
-              <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Rename this project</h3>
-              <p className="text-[11px] leading-relaxed text-zinc-500">
-                This name appears in the list above, as the <strong className="text-zinc-400">bracket title</strong> on
-                the preview, and at the top of flyer / HTML exports.
-              </p>
-              <div className="flex flex-wrap items-center gap-2">
-                <input
-                  value={projectNameDraft}
-                  onChange={(e) => setProjectNameDraft(e.target.value)}
-                  disabled={busy}
-                  className="min-w-[200px] flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-                  placeholder="Project name"
-                  spellCheck={false}
-                />
-                <button
-                  type="button"
-                  disabled={
-                    busy ||
-                    !projectNameDraft.trim() ||
-                    projectNameDraft.trim() === project.name
-                  }
-                  onClick={() => void saveProjectName()}
-                  className="shrink-0 rounded-lg bg-zinc-700 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-600 disabled:opacity-40"
-                >
-                  Save name
-                </button>
+            <div className="mt-4 space-y-3">
+              <div className="space-y-2 rounded-lg border border-zinc-700/80 bg-zinc-950/40 p-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Rename this project</h3>
+                <p className="text-[11px] leading-relaxed text-zinc-500">
+                  This name appears in the list above, as the <strong className="text-zinc-400">bracket title</strong>{" "}
+                  on the preview, and at the top of flyer / HTML exports.
+                </p>
+                <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    value={projectNameDraft}
+                    onChange={(e) => setProjectNameDraft(e.target.value)}
+                    disabled={busy}
+                    className="min-w-[200px] flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    placeholder="Project name"
+                    spellCheck={false}
+                  />
+                  <button
+                    type="button"
+                    disabled={
+                      busy ||
+                      !projectNameDraft.trim() ||
+                      projectNameDraft.trim() === project.name
+                    }
+                    onClick={() => void saveProjectName()}
+                    className="shrink-0 rounded-lg bg-zinc-700 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-600 disabled:opacity-40"
+                  >
+                    Save name
+                  </button>
+                </div>
               </div>
             </div>
           ) : null}
@@ -1500,6 +1651,92 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         >
                           Save champion label
                         </button>
+                        {spec.singleElimIncludeThirdPlace ? (
+                          <div className="mt-3 space-y-3 rounded-lg border border-zinc-800/80 bg-zinc-950/35 p-3">
+                            <div>
+                              <h5 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                3rd place game information
+                              </h5>
+                              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                                Updates the game number, date, time, park, and field shown on the 3rd place game in
+                                the bracket preview and HTML export.
+                              </p>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              <label className="block text-[11px] text-zinc-500">
+                                Game #
+                                <input
+                                  value={thirdPlaceInfoDraft.officialGameNumber}
+                                  onChange={(e) =>
+                                    setThirdPlaceInfoDraft((prev) => ({
+                                      ...prev,
+                                      officialGameNumber: e.target.value,
+                                    }))
+                                  }
+                                  disabled={busy}
+                                  placeholder="37"
+                                  className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+                                />
+                              </label>
+                              <label className="block text-[11px] text-zinc-500">
+                                Date label
+                                <input
+                                  value={thirdPlaceInfoDraft.dateLabel}
+                                  onChange={(e) =>
+                                    setThirdPlaceInfoDraft((prev) => ({ ...prev, dateLabel: e.target.value }))
+                                  }
+                                  disabled={busy}
+                                  placeholder="Sat 6/7"
+                                  className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+                                />
+                              </label>
+                              <label className="block text-[11px] text-zinc-500">
+                                Time
+                                <input
+                                  value={thirdPlaceInfoDraft.time}
+                                  onChange={(e) =>
+                                    setThirdPlaceInfoDraft((prev) => ({ ...prev, time: e.target.value }))
+                                  }
+                                  disabled={busy}
+                                  placeholder="6:00 PM"
+                                  className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+                                />
+                              </label>
+                              <label className="block text-[11px] text-zinc-500">
+                                Park / venue
+                                <input
+                                  value={thirdPlaceInfoDraft.venue}
+                                  onChange={(e) =>
+                                    setThirdPlaceInfoDraft((prev) => ({ ...prev, venue: e.target.value }))
+                                  }
+                                  disabled={busy}
+                                  placeholder="Tee Joe Gonzales Park"
+                                  className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+                                />
+                              </label>
+                              <label className="block text-[11px] text-zinc-500">
+                                Field
+                                <input
+                                  value={thirdPlaceInfoDraft.field}
+                                  onChange={(e) =>
+                                    setThirdPlaceInfoDraft((prev) => ({ ...prev, field: e.target.value }))
+                                  }
+                                  disabled={busy}
+                                  placeholder="Field 2"
+                                  className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+                                />
+                              </label>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void saveThirdPlaceGameInfo()}
+                              className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold text-zinc-100 hover:bg-zinc-800 disabled:opacity-40"
+                            >
+                              Save 3rd place game info
+                            </button>
+                          </div>
+                        ) : null}
                       </div>
                     ) : null}
                   </div>
@@ -1586,7 +1823,11 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                           <TournamentBracketView
                             layout={bracketLayout}
                             themeColors={resolvedBracketTheme}
-                            logoWatermarkUrl={spec?.flyer?.logoUrl}
+                            logoWatermarkUrl={bracketBranding.targetLogoPath}
+                            parentOrganizationLogo={{
+                              src: bracketBranding.parentLogoPath,
+                              name: bracketBranding.parentName,
+                            }}
                             parkInfo={spec?.parkInfo}
                             scoring={scoringView}
                             surfaceTitleOverride={projectNameDraft.trim() || project.name}
@@ -1602,6 +1843,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       dangerouslySetInnerHTML={{ __html: svgMarkup }}
                     />
                   </details>
+                  {renderTournamentPageControls()}
                 </div>
               </>
             ) : (

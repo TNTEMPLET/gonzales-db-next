@@ -285,6 +285,7 @@ export default function Header({ brand }: HeaderProps) {
 
   const publicNavLinks = [
     { href: "/schedule", label: "Schedules & Standings" },
+    { href: "/tournaments", label: "Tournaments" },
     ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
     ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
     { href: "/#fields", label: "Fields & Status" },
