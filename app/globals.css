@@ -14,6 +14,8 @@ input[type="date"]::-webkit-input-placeholder {
 /* Always dark UI: public pages ignore OS light/dark so contrast stays correct (esp. iOS / Safari). */
 html {
   color-scheme: dark;
+  overflow-x: clip;
+  -webkit-text-size-adjust: 100%;
 }
 
 /* Org-specific brand color defaults (overridden per deployment via layout.tsx <style>) */
@@ -40,6 +42,32 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: Arial, Helvetica, sans-serif;
+  min-width: 0;
+  overflow-x: clip;
+}
+
+main,
+section,
+article,
+aside,
+header,
+footer {
+  min-width: 0;
+}
+
+input,
+select,
+textarea,
+button {
+  max-width: 100%;
+}
+
+button,
+a,
+input,
+select,
+textarea {
+  touch-action: manipulation;
 }
 
 .scrollbar-hide {
@@ -120,5 +148,36 @@ body {
 
 /* Reserve space when sponsor bar is docked so footer/content can scroll clear */
 body.has-sponsor-dock {
-  padding-bottom: calc(3.25rem + env(safe-area-inset-bottom, 0px));
+  padding-bottom: calc(3.75rem + env(safe-area-inset-bottom, 0px));
+}
+
+@media (max-width: 640px) {
+  .sponsor-strip {
+    padding: 0.35rem 0;
+  }
+
+  .sponsor-strip-mask {
+    mask-image: linear-gradient(
+      to right,
+      transparent 0%,
+      black 5%,
+      black 95%,
+      transparent 100%
+    );
+  }
+
+  .sponsor-marquee-track {
+    gap: 0.35rem;
+  }
+
+  body.has-sponsor-dock {
+    padding-bottom: calc(3.4rem + env(safe-area-inset-bottom, 0px));
+  }
+
+  input[class*="min-w-"],
+  select[class*="min-w-"],
+  textarea[class*="min-w-"] {
+    min-width: 0 !important;
+    width: 100%;
+  }
 }

@@ -338,8 +338,8 @@ export default function AccountSetupPage() {
       : "We’ve filled in what we already have on file. Edit anything that needs updating, then create your password below if you have not set one yet.";
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white py-14 px-6">
-      <section className="max-w-xl mx-auto rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 space-y-5">
+    <main className="min-h-screen bg-zinc-950 px-4 py-10 text-white sm:px-6 sm:py-14">
+      <section className="mx-auto max-w-xl space-y-5 rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-6">
         <div>
           <h1 className="text-2xl font-bold">{title}</h1>
           <p className="text-zinc-400 text-sm mt-1">{subtitle}</p>

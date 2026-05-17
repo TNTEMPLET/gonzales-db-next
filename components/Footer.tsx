@@ -22,11 +22,11 @@ export default function Footer({ brand }: FooterProps) {
   const isMaster = brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
 
   return (
-    <footer className="bg-zinc-950 border-t border-zinc-800 py-16">
-      <div className="max-w-7xl mx-auto px-6 grid md:grid-cols-4 gap-10">
+    <footer className="border-t border-zinc-800 bg-zinc-950 py-10 sm:py-14 md:py-16">
+      <div className="mx-auto grid max-w-7xl gap-8 px-4 sm:grid-cols-2 sm:px-6 md:grid-cols-4 md:gap-10">
         {/* Column 1: Logo & About */}
         <div>
-          <div className="flex items-center gap-3 mb-4">
+          <div className="mb-4 flex min-w-0 items-center gap-3">
             <div className="relative w-10 h-10">
               <Image
                 src={logoSrc}
@@ -37,9 +37,9 @@ export default function Footer({ brand }: FooterProps) {
                 onError={() => setLogoSrc("/images/logo.png")}
               />
             </div>
-            <div>
-              <div className="font-bold text-xl text-white">{brand.shortName}</div>
-              <div className="text-xs text-brand-gold">
+            <div className="min-w-0">
+              <div className="truncate text-xl font-bold text-white">{brand.shortName}</div>
+              <div className="truncate text-xs text-brand-gold">
                 {brand.displayNameLine2}
               </div>
             </div>
@@ -189,7 +189,7 @@ export default function Footer({ brand }: FooterProps) {
         {/* Column 4: Social & Legal */}
         <div>
           <h4 className="font-semibold mb-4 text-brand-gold">Follow Us</h4>
-          <div className="flex flex-wrap gap-4 mb-8">
+          <div className="mb-8 flex flex-wrap gap-x-4 gap-y-3">
             <a
               href="https://www.facebook.com/APBaseball"
               target="_blank"

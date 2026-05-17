@@ -47,13 +47,13 @@ export default async function CoachCornerPage({
     : false;
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white py-14">
-      <section className="max-w-6xl mx-auto px-6">
+    <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
+      <section className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mb-8">
-          <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-4">
+          <div className="mb-4 inline-block rounded-full bg-brand-purple px-4 py-2 text-[11px] tracking-[2px] sm:px-6 sm:text-xs sm:tracking-[3px]">
             COACH&apos;S CORNER
           </div>
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
+          <h1 className="mb-3 text-3xl font-bold tracking-tight md:text-5xl">
             Team Operations Workspace
           </h1>
           <p className="text-zinc-400 max-w-3xl">

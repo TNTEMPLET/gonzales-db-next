@@ -300,17 +300,17 @@ export default async function AdminDashboardPage({
 
   return (
     <main
-      className={`min-h-screen text-white py-14 ${
+      className={`min-h-screen py-10 text-white sm:py-14 ${
         masterMode
           ? "bg-[radial-gradient(circle_at_top_left,rgba(239,68,68,0.14),transparent_22%),radial-gradient(circle_at_top_right,rgba(255,255,255,0.06),transparent_24%),linear-gradient(180deg,#09090b,#111827_45%,#09090b)]"
           : "bg-zinc-950"
       }`}
     >
-      <section className="max-w-6xl mx-auto px-6">
+      <section className="mx-auto max-w-6xl px-4 sm:px-6">
         <div
           className={`mb-8 ${
             masterMode
-              ? "rounded-4xl border border-zinc-800 bg-[linear-gradient(180deg,rgba(24,24,27,0.92),rgba(9,9,11,0.98))] p-8 shadow-[0_30px_120px_rgba(0,0,0,0.35)]"
+              ? "rounded-3xl border border-zinc-800 bg-[linear-gradient(180deg,rgba(24,24,27,0.92),rgba(9,9,11,0.98))] p-4 shadow-[0_30px_120px_rgba(0,0,0,0.35)] sm:rounded-4xl sm:p-8"
               : ""
           }`}
         >
@@ -323,7 +323,7 @@ export default async function AdminDashboardPage({
           >
             <div>
               <div
-                className={`inline-flex items-center gap-2 rounded-full px-6 py-2 text-xs tracking-[3px] mb-4 ${
+                className={`mb-4 inline-flex items-center gap-2 rounded-full px-4 py-2 text-[11px] tracking-[2px] sm:px-6 sm:text-xs sm:tracking-[3px] ${
                   masterMode
                     ? "border border-red-500/30 bg-red-500/10 text-red-100"
                     : "bg-brand-purple"
@@ -334,7 +334,7 @@ export default async function AdminDashboardPage({
                 ) : null}
                 {masterMode ? "AP BASEBALL CONTROL CENTER" : "ADMIN DASHBOARD"}
               </div>
-              <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
+              <h1 className="mb-3 text-3xl font-bold tracking-tight md:text-5xl">
                 {masterMode
                   ? "Command and Control for AP Baseball"
                   : `Welcome, ${displayName}`}
@@ -346,7 +346,7 @@ export default async function AdminDashboardPage({
               </p>
             </div>
 
-            <div className="flex flex-col gap-4 xl:min-w-[320px] xl:max-w-90">
+            <div className="flex min-w-0 flex-col gap-4 xl:min-w-[320px] xl:max-w-90">
               {masterMode ? (
                 <AdminOrgSwitcher currentOrg={currentOrg} currentPath="/admin" />
               ) : null}
@@ -372,11 +372,11 @@ export default async function AdminDashboardPage({
           </div>
 
           {masterMode ? (
-            <div className="mt-8 grid gap-4 md:grid-cols-3">
+            <div className="mt-8 grid gap-3 md:grid-cols-3 md:gap-4">
               {oversightCards.map((item) => (
                 <div
                   key={item.title}
-                  className="rounded-2xl border border-zinc-800 bg-zinc-950/75 p-5"
+                  className="rounded-2xl border border-zinc-800 bg-zinc-950/75 p-4 sm:p-5"
                 >
                   <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">
                     {item.title}
@@ -392,11 +392,11 @@ export default async function AdminDashboardPage({
         </div>
 
         {masterMode ? (
-          <div className="mb-8 flex flex-wrap gap-3">
+          <div className="mb-8 flex flex-wrap gap-2 sm:gap-3">
             {statusChips.map((item) => (
               <div
                 key={item.label}
-                className="rounded-full border border-zinc-800 bg-zinc-900/70 px-4 py-2"
+                className="rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-2 sm:px-4"
               >
                 <span className="mr-2 text-[10px] uppercase tracking-[0.24em] text-zinc-500">
                   {item.label}

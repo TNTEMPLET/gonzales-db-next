@@ -111,8 +111,8 @@ export default async function AdminScoresPage({
   const scoreEntryGames = buildScoreEntryGames(games, scope);
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white py-14">
-      <section className="max-w-6xl mx-auto px-6">
+    <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
+      <section className="mx-auto max-w-6xl px-4 sm:px-6">
         <ScoresPageHeader
           allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
           allowViewByUser={adminUser.isMaster}

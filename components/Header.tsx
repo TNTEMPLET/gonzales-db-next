@@ -62,7 +62,7 @@ export default function Header({ brand }: HeaderProps) {
 
   const headerInnerClassName = isMasterHeader
     ? "mx-auto grid w-full max-w-7xl grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-4 lg:gap-6"
-    : "max-w-7xl mx-auto px-6 py-4 flex items-center justify-between";
+    : "mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4";
 
   const logoFrameClassName = isMasterHeader
     ? "relative h-12 w-12 overflow-hidden rounded-full border-2 border-red-500/70 bg-zinc-900/60 ring-2 ring-red-900/50 md:h-14 md:w-14"
@@ -73,8 +73,8 @@ export default function Header({ brand }: HeaderProps) {
     : "text-[10px] text-brand-gold -mt-1";
 
   const brandTitleClassName = isMasterHeader
-    ? "font-bold text-2xl tracking-[0.06em] text-white uppercase"
-    : "font-bold text-2xl tracking-tight text-white uppercase";
+    ? "text-xl font-bold uppercase tracking-[0.06em] text-white sm:text-2xl"
+    : "text-xl font-bold uppercase tracking-tight text-white sm:text-2xl";
 
   const desktopNavClassName = isMasterHeader
     ? "flex min-w-0 items-center justify-end gap-1 lg:gap-2 text-[12px] font-semibold tracking-wide xl:text-[13px]"
@@ -301,7 +301,7 @@ export default function Header({ brand }: HeaderProps) {
         {/* Logo */}
         <Link
           href="/#"
-          className={`flex min-w-0 items-center gap-3 ${isMasterHeader ? "justify-self-start md:col-start-1 md:row-start-1" : ""}`}
+          className={`flex min-w-0 items-center gap-2 sm:gap-3 ${isMasterHeader ? "justify-self-start md:col-start-1 md:row-start-1" : ""}`}
         >
           <div className={logoFrameClassName}>
             <Image
@@ -320,9 +320,11 @@ export default function Header({ brand }: HeaderProps) {
               }}
             />
           </div>
-          <div className="hidden sm:block">
+          <div className="block min-w-0">
             <div className={brandTitleClassName}>{brand.displayNameLine1}</div>
-            <div className={subLabelClassName}>{brand.displayNameLine2}</div>
+            <div className={`${subLabelClassName} max-w-[11rem] truncate sm:max-w-none`}>
+              {brand.displayNameLine2}
+            </div>
           </div>
         </Link>
 
@@ -426,7 +428,7 @@ export default function Header({ brand }: HeaderProps) {
         <button
           type="button"
           onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className={`justify-self-end text-2xl text-white md:hidden ${isMasterHeader ? "col-start-2 row-start-1" : ""}`}
+          className={`inline-flex h-11 w-11 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900/80 text-2xl text-white md:hidden ${isMasterHeader ? "col-start-2 row-start-1 justify-self-end" : ""}`}
           aria-expanded={isMenuOpen}
           aria-label={isMenuOpen ? "Close menu" : "Open menu"}
         >
@@ -438,7 +440,7 @@ export default function Header({ brand }: HeaderProps) {
       {isMenuOpen && (
         <div className={mobileMenuClassName}>
           <div
-            className={`flex flex-col px-6 py-8 ${isMasterHeader ? "gap-5 text-base" : "gap-6 text-lg"}`}
+            className={`flex max-h-[calc(100dvh-4.5rem)] flex-col overflow-y-auto px-4 py-5 sm:px-6 ${isMasterHeader ? "gap-4 text-base" : "gap-4 text-base sm:text-lg"}`}
           >
             {isMasterHeader ? (
               <>
@@ -494,7 +496,7 @@ export default function Header({ brand }: HeaderProps) {
               <Link
                 href="/#register"
                 onClick={() => setIsMenuOpen(false)}
-                className="bg-brand-purple hover:bg-brand-purple-dark py-3 text-center rounded-lg font-semibold text-white mt-4"
+                className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
               >
                 Register for Spring 2026
               </Link>

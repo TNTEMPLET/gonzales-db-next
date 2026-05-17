@@ -35,7 +35,7 @@ export default function HeroNewsRotator({ items }: HeroNewsRotatorProps) {
   if (!activeItem) return null;
 
   return (
-    <section className="relative h-[75vh] bg-black overflow-hidden px-3 sm:px-4 md:px-6 lg:px-8 py-4 md:py-6">
+    <section className="relative min-h-[70svh] overflow-hidden bg-black px-3 py-3 sm:px-4 sm:py-4 md:min-h-[75vh] md:px-6 md:py-6 lg:px-8">
       <div className="relative mx-auto h-full w-full max-w-420">
         <Link
           href={`/news/${activeItem.slug}`}
@@ -52,26 +52,26 @@ export default function HeroNewsRotator({ items }: HeroNewsRotatorProps) {
           />
           <div className="absolute inset-0 bg-linear-to-t from-black/80 via-black/40 to-black/25" />
 
-          <div className="absolute left-0 right-0 bottom-0 p-6 md:p-8">
-            <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-4 py-2 rounded-full mb-4 text-white">
+          <div className="absolute inset-x-0 bottom-0 p-4 sm:p-6 md:p-8">
+            <div className="mb-3 inline-block rounded-full bg-brand-purple px-4 py-2 text-[11px] tracking-[2px] text-white sm:mb-4 sm:text-xs sm:tracking-[3px]">
               FEATURED NEWS
             </div>
-            <h1 className="text-3xl md:text-5xl font-bold tracking-tight max-w-3xl text-white">
+            <h1 className="max-w-3xl text-2xl font-bold tracking-tight text-white sm:text-3xl md:text-5xl">
               {activeItem.title}
             </h1>
             {activeItem.excerpt ? (
-              <p className="mt-3 text-zinc-200 max-w-2xl text-base md:text-lg">
+              <p className="mt-3 line-clamp-3 max-w-2xl text-sm text-zinc-200 sm:text-base md:text-lg">
                 {activeItem.excerpt}
               </p>
             ) : null}
-            <p className="mt-5 text-brand-gold font-semibold text-sm md:text-base">
+            <p className="mt-4 text-sm font-semibold text-brand-gold md:mt-5 md:text-base">
               Read Article
             </p>
           </div>
         </Link>
 
         {items.length > 1 ? (
-          <div className="absolute bottom-5 right-5 md:bottom-7 md:right-7 z-10 flex gap-2">
+          <div className="absolute bottom-4 right-4 z-10 flex gap-2 md:bottom-7 md:right-7">
             {items.map((item, index) => (
               <button
                 key={item.id}

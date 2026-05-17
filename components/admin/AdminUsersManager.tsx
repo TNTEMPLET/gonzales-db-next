@@ -475,22 +475,26 @@ export default function AdminUsersManager({
   }, [paginatedCoachUsers, coachAgeGroupFilter]);
 
   useEffect(() => {
-    setUserPage(1);
+    const id = window.setTimeout(() => setUserPage(1), 0);
+    return () => window.clearTimeout(id);
   }, [userSearch, userPageSize, targetOrg]);
 
   useEffect(() => {
-    setCoachPage(1);
+    const id = window.setTimeout(() => setCoachPage(1), 0);
+    return () => window.clearTimeout(id);
   }, [coachSearch, coachAgeGroupFilter, coachPageSize, targetOrg]);
 
   useEffect(() => {
     if (userPage > registeredUsersTotalPages) {
-      setUserPage(registeredUsersTotalPages);
+      const id = window.setTimeout(() => setUserPage(registeredUsersTotalPages), 0);
+      return () => window.clearTimeout(id);
     }
   }, [userPage, registeredUsersTotalPages]);
 
   useEffect(() => {
     if (coachPage > coachTotalPages) {
-      setCoachPage(coachTotalPages);
+      const id = window.setTimeout(() => setCoachPage(coachTotalPages), 0);
+      return () => window.clearTimeout(id);
     }
   }, [coachPage, coachTotalPages]);
 
@@ -1838,7 +1842,7 @@ export default function AdminUsersManager({
           </button>
         </div>
 
-        <div className="grid md:grid-cols-[1fr_160px_160px_auto_auto] gap-3">
+        <div className="grid gap-3 md:grid-cols-[minmax(0,1fr)_160px_160px_auto_auto]">
           <input
             value={logSearchInput}
             onChange={(event) => setLogSearchInput(event.target.value)}
@@ -1860,14 +1864,14 @@ export default function AdminUsersManager({
           <button
             type="button"
             onClick={applyLogFilters}
-            className="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800"
+            className="min-h-10 rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800"
           >
             Apply
           </button>
           <button
             type="button"
             onClick={clearLogFilters}
-            className="rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800"
+            className="min-h-10 rounded-lg border border-zinc-700 px-3 py-2 text-sm hover:bg-zinc-800"
           >
             Clear
           </button>
@@ -1884,7 +1888,7 @@ export default function AdminUsersManager({
                 key={log.id}
                 className="px-3 py-3 border-b border-zinc-800 last:border-b-0"
               >
-                <div className="flex items-center justify-between gap-3">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                   <p className="text-sm font-medium">
                     {log.action === "PROMOTE" ? "Promoted" : "Demoted"}{" "}
                     {log.targetEmail}
@@ -1953,10 +1957,10 @@ export default function AdminUsersManager({
 
       {confirmAction ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
+          <div className="w-full max-w-md space-y-4 rounded-2xl border border-zinc-700 bg-zinc-900 p-4 sm:p-5">
             <h3 className="text-lg font-semibold">Confirm Action</h3>
             <p className="text-sm text-zinc-300">{confirmAction.label}</p>
-            <div className="flex justify-end gap-3">
+            <div className="grid gap-2 sm:flex sm:justify-end sm:gap-3">
               <button
                 type="button"
                 onClick={() => setConfirmAction(null)}
@@ -1989,7 +1993,7 @@ export default function AdminUsersManager({
 
       {editingUser ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
-          <div className="w-full max-w-md rounded-2xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
+          <div className="w-full max-w-md space-y-4 rounded-2xl border border-zinc-700 bg-zinc-900 p-4 sm:p-5">
             <h3 className="text-lg font-semibold">Edit User Details</h3>
             <p className="text-sm text-zinc-400">{editingUser.email}</p>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
