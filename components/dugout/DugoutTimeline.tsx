@@ -465,8 +465,6 @@ export default function DugoutTimeline({
   orgId,
   isAdmin = false,
   currentUserId = null,
-  currentUserName = null,
-  currentUserAvatarUrl = null,
   initialView = "timeline",
   initialFocusPostId = null,
 }: DugoutTimelineProps) {
@@ -577,7 +575,8 @@ export default function DugoutTimeline({
   const editTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   useEffect(() => {
-    setIsClientMounted(true);
+    const id = window.setTimeout(() => setIsClientMounted(true), 0);
+    return () => window.clearTimeout(id);
   }, []);
 
   function replacePreviewUrl(nextUrl: string | null) {
@@ -949,14 +948,16 @@ export default function DugoutTimeline({
   }
 
   useEffect(() => {
-    void fetchNotifications();
-    const id = window.setInterval(() => {
+    const initialId = window.setTimeout(() => void fetchNotifications(), 0);
+    const intervalId = window.setInterval(() => {
       void fetchNotifications();
     }, 60000);
 
     return () => {
-      window.clearInterval(id);
+      window.clearTimeout(initialId);
+      window.clearInterval(intervalId);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -968,11 +969,13 @@ export default function DugoutTimeline({
       return;
     }
 
-    setHighlightedPostId(initialFocusPostId);
-    setExpandedCommentsByPost((prev) => ({
-      ...prev,
-      [initialFocusPostId]: true,
-    }));
+    const stateUpdateId = window.setTimeout(() => {
+      setHighlightedPostId(initialFocusPostId);
+      setExpandedCommentsByPost((prev) => ({
+        ...prev,
+        [initialFocusPostId]: true,
+      }));
+    }, 0);
 
     if (
       !commentsByPost[initialFocusPostId] &&
@@ -995,8 +998,11 @@ export default function DugoutTimeline({
     }, 3500);
 
     return () => {
+      window.clearTimeout(stateUpdateId);
       window.clearTimeout(timerId);
     };
+  // `loadComments` is intentionally omitted to keep the initial focus effect tied to route state.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     commentsByPost,
     commentsLoadingByPost,
@@ -2814,8 +2820,8 @@ export default function DugoutTimeline({
     <div className="flex h-full flex-col gap-0">
       {/* ── Feed fills remaining space ── */}
       {showingNotificationsView ? (
-        <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
-          <div className="mb-4 flex items-center justify-between gap-3">
+        <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70 p-3 sm:p-4 md:p-5">
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <h3 className="text-base font-semibold">Notifications</h3>
             <button
               type="button"
@@ -2823,7 +2829,7 @@ export default function DugoutTimeline({
               disabled={
                 notificationBusy || notifications.totalUnreadCount === 0
               }
-              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+              className="min-h-10 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
             >
               {notificationBusy ? "Updating..." : "Mark all as read"}
             </button>
@@ -2833,7 +2839,7 @@ export default function DugoutTimeline({
             <p className="text-xs uppercase tracking-[0.14em] text-zinc-500">
               Unread Activity
             </p>
-            <div className="mt-3 flex flex-wrap gap-4 text-sm text-zinc-200">
+            <div className="mt-3 grid gap-2 text-sm text-zinc-200 sm:flex sm:flex-wrap sm:gap-4">
               <p>
                 Likes:{" "}
                 <span className="font-semibold">
@@ -2899,7 +2905,7 @@ export default function DugoutTimeline({
                         {icon}
                       </div>
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-2">
+                        <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-2">
                           <p className="truncate text-sm text-zinc-100">
                             {headline}
                           </p>
@@ -2946,7 +2952,7 @@ export default function DugoutTimeline({
           )}
         </section>
       ) : showingScheduleView ? (
-        <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70 p-4 md:p-5">
+        <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70 p-3 sm:p-4 md:p-5">
           <div className="mb-4">
             <h3 className="text-base font-semibold">Schedule</h3>
             <p className="mt-1 text-sm text-zinc-400">
@@ -3037,8 +3043,8 @@ export default function DugoutTimeline({
             </div>
           )}
 
-          <div className="mt-7 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
+          <div className="mt-7 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-3 sm:p-4">
+            <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
               <h4 className="text-sm font-semibold uppercase tracking-[0.14em] text-zinc-300">
                 Standings Snapshot
               </h4>
@@ -3099,7 +3105,7 @@ export default function DugoutTimeline({
                       setIsDragOver(false);
                     }
                   }}
-                  className={`min-w-0 flex-1 rounded-none px-2.5 pt-1.5 sm:rounded-[1.75rem] sm:px-5 sm:pt-4 transition ${
+                  className={`min-w-0 flex-1 rounded-none px-1.5 pt-1.5 transition sm:rounded-[1.75rem] sm:px-5 sm:pt-4 ${
                     isDragOver
                       ? "bg-zinc-900 ring-1 ring-brand-gold/60"
                       : "bg-transparent"
@@ -3227,7 +3233,7 @@ export default function DugoutTimeline({
 
                   {gifSearchOpen && composerExpanded && (
                     <div className="mb-3 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-3">
-                      <div className="flex gap-2">
+                      <div className="grid gap-2 sm:flex">
                         <input
                           value={gifQuery}
                           onChange={(event) => setGifQuery(event.target.value)}
@@ -3239,14 +3245,14 @@ export default function DugoutTimeline({
                           type="button"
                           onClick={() => void searchGifs()}
                           disabled={gifBusy || !gifQuery.trim()}
-                          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+                          className="min-h-10 rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
                         >
                           {gifBusy ? "..." : "Find"}
                         </button>
                       </div>
                       {gifResults.length > 0 ? (
                         <>
-                          <div className="mt-3 grid grid-cols-3 gap-2">
+                          <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                             {gifResults.map((gif) => (
                               <button
                                 key={gif.id}
@@ -3420,7 +3426,7 @@ export default function DugoutTimeline({
                       </div>
                     </div>
 
-                    <div className="ml-auto flex shrink-0 items-center gap-2 sm:gap-3">
+                    <div className="ml-auto flex shrink-0 items-center gap-1.5 sm:gap-3">
                       {composerExpanded && (
                         <CharacterMeter
                           current={content.length}
@@ -3439,7 +3445,7 @@ export default function DugoutTimeline({
                             !mediaFile &&
                             !selectedGif)
                         }
-                        className="rounded-full bg-violet-500 px-4 py-1.5 text-[15px] font-bold leading-5 text-zinc-950 hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-50 sm:px-5 sm:text-sm"
+                        className="min-h-9 rounded-full bg-violet-500 px-3 py-1.5 text-sm font-bold leading-5 text-zinc-950 hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-50 sm:px-5"
                       >
                         {busy
                           ? threadEntries.length > 0

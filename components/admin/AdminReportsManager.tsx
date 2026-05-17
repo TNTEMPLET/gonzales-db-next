@@ -780,7 +780,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
           Reports Manager
         </h2>
 
-        <div className="mb-4 grid gap-4 sm:grid-cols-3">
+        <div className="mb-4 grid gap-3 sm:grid-cols-3 sm:gap-4">
           <div>
             <label
               htmlFor="startDate"
@@ -833,7 +833,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
           </div>
         </div>
 
-        <div className="mb-4 flex flex-wrap gap-3">
+        <div className="mb-4 grid gap-2 sm:flex sm:flex-wrap sm:gap-3">
           <button
             onClick={() => runReport("main")}
             disabled={busy}
@@ -877,7 +877,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               <button
                 onClick={downloadCsv}
                 disabled={exportBusy}
-                className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+                className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
               >
                 <DownloadIcon />
                 Export CSV
@@ -887,7 +887,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                 <button
                   onClick={downloadPdf}
                   disabled={exportBusy}
-                  className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
                 >
                   <PrinterIcon />
                   Export PDF
@@ -898,7 +898,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                 <button
                   onClick={downloadUmpirePdf}
                   disabled={exportBusy}
-                  className="flex items-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+                  className="flex min-h-11 items-center justify-center gap-2 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
                 >
                   <PrinterIcon />
                   Export PDF
@@ -932,7 +932,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               key={parkGroup.park}
               className="rounded-xl border border-zinc-800 bg-zinc-900/40"
             >
-              <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+              <div className="flex flex-col gap-2 border-b border-zinc-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <h3 className="text-sm font-semibold text-zinc-100">
                   {parkGroup.park}
                 </h3>
@@ -947,12 +947,12 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                 {parkGroup.days.map((day) => (
                   <div
                     key={`${parkGroup.park}-${day.date}`}
-                    className="overflow-hidden rounded-lg border border-zinc-800"
+                    className="overflow-x-auto rounded-lg border border-zinc-800"
                   >
                     <div className="bg-zinc-900/80 px-3 py-2 text-xs font-semibold text-zinc-200">
                       {day.dayName}
                     </div>
-                    <table className="min-w-full text-sm">
+                    <table className="min-w-[920px] text-sm">
                       <thead className="border-y border-zinc-800 bg-zinc-950/70 text-zinc-400">
                         <tr>
                           <th className="px-3 py-2 text-left">Date</th>
@@ -1043,7 +1043,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               key={parkGroup.park}
               className="rounded-xl border border-zinc-800 bg-zinc-900/40"
             >
-              <div className="flex items-center justify-between border-b border-zinc-800 px-4 py-3">
+              <div className="flex flex-col gap-2 border-b border-zinc-800 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
                 <h3 className="text-sm font-semibold text-zinc-100">
                   {parkGroup.park}
                 </h3>
@@ -1056,13 +1056,13 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                 {parkGroup.days.map((day) => (
                   <div
                     key={`${parkGroup.park}-${day.date}`}
-                    className="overflow-hidden rounded-lg border border-zinc-800"
+                    className="overflow-x-auto rounded-lg border border-zinc-800"
                   >
                     <div className="bg-zinc-900/80 px-3 py-2 text-xs font-semibold text-zinc-200">
                       {getDayName(day.date)} — {day.date} —{" "}
                       {formatMoney(day.totalPay)}
                     </div>
-                    <table className="min-w-full text-sm">
+                    <table className="min-w-[420px] text-sm sm:min-w-full">
                       <thead className="border-y border-zinc-800 bg-zinc-950/70 text-zinc-400">
                         <tr>
                           <th className="px-3 py-2 text-left">Umpire Name</th>

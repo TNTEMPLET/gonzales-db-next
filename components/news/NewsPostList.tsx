@@ -125,7 +125,7 @@ export default function NewsPostList({
           {posts.map((post) => (
             <article
               key={post.id}
-              className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-6 hover:border-zinc-700 transition"
+              className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 transition hover:border-zinc-700 sm:p-6"
             >
               <div className="flex flex-col lg:flex-row lg:items-start gap-5">
                 {post.imageUrl ? (
@@ -141,7 +141,7 @@ export default function NewsPostList({
                 ) : null}
 
                 <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-4 mb-3">
+                  <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <p className="text-xs uppercase tracking-[0.16em] text-zinc-500">
                       {formatPublishedDate(post.publishedAt)}
                     </p>
@@ -153,16 +153,16 @@ export default function NewsPostList({
                       ) : null}
                     </div>
                   </div>
-                  <h2 className="text-2xl font-semibold mb-2">{post.title}</h2>
+                  <h2 className="mb-2 text-xl font-semibold sm:text-2xl">{post.title}</h2>
                   {post.excerpt ? (
                     <p className="text-zinc-300 mb-4">{post.excerpt}</p>
                   ) : null}
-                  <div className="flex items-center justify-between gap-4">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
                     <p className="text-zinc-500 text-sm">
                       By {post.author || "League Staff"}
                     </p>
-                    <div className="flex flex-col items-end gap-1">
-                      <div className="flex items-center gap-4">
+                    <div className="flex flex-col gap-2 sm:items-end">
+                      <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
                         {isAdmin ? (
                           <>
                             <Link

@@ -57,10 +57,10 @@ export default async function StandingsPage() {
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      <section className="max-w-6xl mx-auto px-6 py-12 space-y-6">
-        <div className="flex items-center justify-between gap-4">
+      <section className="mx-auto max-w-6xl space-y-6 px-4 py-10 sm:px-6 sm:py-12">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-2">
+            <h1 className="mb-2 text-3xl font-bold tracking-tight md:text-5xl">
               League Standings
             </h1>
             <p className="text-zinc-400">
@@ -69,7 +69,7 @@ export default async function StandingsPage() {
           </div>
           <Link
             href="/schedule"
-            className="text-sm rounded-lg border border-zinc-700 px-4 py-2 text-zinc-200 hover:bg-zinc-800"
+            className="inline-flex min-h-11 items-center justify-center rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-200 hover:bg-zinc-800 sm:self-auto"
           >
             View Schedule
           </Link>

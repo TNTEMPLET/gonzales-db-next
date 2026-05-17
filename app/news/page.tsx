@@ -29,14 +29,14 @@ export default async function NewsPage() {
   const posts = await getPublishedNewsPosts();
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white py-14">
-      <section className="max-w-5xl mx-auto px-6">
-        <div className="flex items-end justify-between gap-4 mb-10">
+    <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
+      <section className="mx-auto max-w-5xl px-4 sm:px-6">
+        <div className="mb-8 flex flex-col gap-4 sm:mb-10 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-4">
+            <div className="mb-4 inline-block rounded-full bg-brand-purple px-4 py-2 text-[11px] tracking-[2px] sm:px-6 sm:text-xs sm:tracking-[3px]">
               LEAGUE UPDATES
             </div>
-            <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
+            <h1 className="mb-3 text-3xl font-bold tracking-tight md:text-5xl">
               News & Announcements
             </h1>
             <p className="text-zinc-400 max-w-2xl">
@@ -46,7 +46,7 @@ export default async function NewsPage() {
           {isAdmin ? (
             <Link
               href="/news/admin"
-              className="text-sm text-brand-gold hover:text-brand-gold/80 transition"
+              className="inline-flex min-h-11 items-center text-sm text-brand-gold transition hover:text-brand-gold/80"
             >
               + New Post
             </Link>

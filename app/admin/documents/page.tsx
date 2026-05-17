@@ -44,8 +44,8 @@ export default async function AdminDocumentsPage() {
   const driveApiEnabled = isDriveServiceAccountConfigured();
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white py-14 pb-24">
-      <section className="max-w-6xl mx-auto px-6">
+    <main className="min-h-screen bg-zinc-950 py-10 pb-24 text-white sm:py-14">
+      <section className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mb-8">
           <AdminSectionHeader
             badge="GOOGLE DRIVE"

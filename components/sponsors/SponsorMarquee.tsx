@@ -34,7 +34,7 @@ export function SponsorMarquee({
           {railItems.map((entry, index) => {
             const key = `${entry.sponsorId}-${index}`;
             const logo = (
-              <div className="sponsor-pill h-9 w-[132px] sm:w-[148px]">
+              <div className="sponsor-pill h-8 w-[116px] sm:h-9 sm:w-[148px]">
                 <Image
                   src={entry.logoUrl}
                   alt={entry.logoAlt || `${entry.businessName} logo`}

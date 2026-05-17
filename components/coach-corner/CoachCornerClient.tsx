@@ -170,52 +170,64 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
   }
 
   useEffect(() => {
-    void loadTeams();
+    const id = window.setTimeout(() => void loadTeams(), 0);
+    return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
-    setError("");
-    setNotice("");
-    setTeams([]);
-    setSelectedTeamId("");
-    setTeamFilterSeasonYear("");
-    setTeamFilterAgeGroup("");
-    setTeamContactNotes("");
-    setTeamPracticePlan("");
-    setScheduleGames([]);
-    setGameNotes({});
-    setAvailabilityNotes({});
-    setIsEditingTeamProfile(false);
-    setIsEditingRoster(false);
-    setActiveProfilePlayerId(null);
-    setActiveProfileSummaryPlayerId(null);
-    void loadTeams();
+    const id = window.setTimeout(() => {
+      setError("");
+      setNotice("");
+      setTeams([]);
+      setSelectedTeamId("");
+      setTeamFilterSeasonYear("");
+      setTeamFilterAgeGroup("");
+      setTeamContactNotes("");
+      setTeamPracticePlan("");
+      setScheduleGames([]);
+      setGameNotes({});
+      setAvailabilityNotes({});
+      setIsEditingTeamProfile(false);
+      setIsEditingRoster(false);
+      setActiveProfilePlayerId(null);
+      setActiveProfileSummaryPlayerId(null);
+      void loadTeams();
+    }, 0);
+    return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetOrg]);
 
   useEffect(() => {
+    let id: number;
     if (!selectedTeamId) {
-      setScheduleGames([]);
-      setGameNotes({});
-      setAvailabilityNotes({});
-      return;
+      id = window.setTimeout(() => {
+        setScheduleGames([]);
+        setGameNotes({});
+        setAvailabilityNotes({});
+      }, 0);
+      return () => window.clearTimeout(id);
     }
-    void loadSchedule(selectedTeamId);
+    id = window.setTimeout(() => void loadSchedule(selectedTeamId), 0);
+    return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTeamId]);
 
   useEffect(() => {
     if (teamFilterSeasonYear || teamFilterSeasonOptions.length === 0) return;
-    setTeamFilterSeasonYear(String(teamFilterSeasonOptions[0]));
+    const id = window.setTimeout(() => setTeamFilterSeasonYear(String(teamFilterSeasonOptions[0])), 0);
+    return () => window.clearTimeout(id);
   }, [teamFilterSeasonYear, teamFilterSeasonOptions]);
 
   useEffect(() => {
-    setSelectedTeamId((current) =>
-      current && filteredTeamOptions.some((team) => team.id === current)
-        ? current
-        : filteredTeamOptions[0]?.id || "",
-    );
+    const id = window.setTimeout(() => {
+      setSelectedTeamId((current) =>
+        current && filteredTeamOptions.some((team) => team.id === current)
+          ? current
+          : filteredTeamOptions[0]?.id || "",
+      );
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [filteredTeamOptions]);
 
   async function safeJson(response: Response) {
@@ -335,12 +347,15 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
 
   useEffect(() => {
     if (!selectedTeam) return;
-    setTeamContactNotes(selectedTeam.contactNotes || "");
-    setTeamPracticePlan(selectedTeam.practicePlan || "");
-    setIsEditingTeamProfile(false);
-    setIsEditingRoster(false);
-    setActiveProfilePlayerId(null);
-    setActiveProfileSummaryPlayerId(null);
+    const id = window.setTimeout(() => {
+      setTeamContactNotes(selectedTeam.contactNotes || "");
+      setTeamPracticePlan(selectedTeam.practicePlan || "");
+      setIsEditingTeamProfile(false);
+      setIsEditingRoster(false);
+      setActiveProfilePlayerId(null);
+      setActiveProfileSummaryPlayerId(null);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [selectedTeam]);
 
   const activeProfilePlayer = useMemo(
@@ -366,9 +381,9 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+      <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
         <h2 className="text-lg font-semibold">Team Selection</h2>
-        <div className="grid md:grid-cols-[180px_1fr_1fr] gap-3">
+        <div className="grid gap-3 md:grid-cols-[180px_minmax(0,1fr)_minmax(0,1fr)]">
           <select
             value={teamFilterSeasonYear}
             onChange={(event) => {
@@ -400,7 +415,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
         <select
           value={selectedTeamId}
           onChange={(event) => setSelectedTeamId(event.target.value)}
-          className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-80"
+          className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
         >
           <option value="">Select your team…</option>
           {filteredTeamOptions.map((team) => (
@@ -413,8 +428,8 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
 
       {selectedTeam ? (
         <>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
+          <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-semibold">Roster</h2>
               <button
                 type="button"
@@ -442,7 +457,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                     return (
                       <div
                         key={assignment.id}
-                        className="px-3 py-2 border-b border-zinc-800 last:border-b-0 flex items-center justify-between gap-3"
+                        className="flex flex-col gap-2 border-b border-zinc-800 px-3 py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
                       >
                         <p className="text-sm">
                           {label} ({coach.email})
@@ -474,7 +489,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
               {selectedTeam.players.length === 0 ? (
                 <p className="text-zinc-500 text-sm p-3">No players assigned yet.</p>
               ) : (
-                <table className="w-full text-sm">
+                <table className="min-w-[760px] text-sm">
                   <thead className="sticky top-0 z-10 bg-zinc-900 text-zinc-300">
                     <tr className="text-center">
                       <th className="px-3 py-2">#</th>
@@ -570,7 +585,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                           </td>
                           {isEditingRoster ? (
                             <td className="px-3 py-2">
-                              <div className="flex items-center justify-end gap-2">
+                              <div className="flex flex-wrap items-center justify-end gap-2">
                                 <input
                                   value={player.rosterStatus || ""}
                                   onChange={(event) =>
@@ -590,7 +605,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                                     )
                                   }
                                   placeholder="Roster status"
-                                  className="w-44 rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm"
+                                  className="w-36 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm sm:w-44"
                                 />
                                 <button
                                   type="button"
@@ -612,7 +627,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+          <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
             <h2 className="text-lg font-semibold">Schedule + Game Notes</h2>
             <div className="max-h-96 overflow-auto rounded-lg border border-zinc-800">
               {scheduleGames.length === 0 ? (
@@ -621,7 +636,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                 scheduleGames.map((game) => {
                   const gameId = String(game.id);
                   return (
-                    <div key={gameId} className="px-3 py-3 border-b border-zinc-800 last:border-b-0 space-y-2">
+                    <div key={gameId} className="space-y-2 border-b border-zinc-800 px-3 py-3 last:border-b-0">
                       <p className="text-sm font-medium">
                         {game.home_team || "Home"} vs {game.away_team || "Away"}
                       </p>
@@ -651,12 +666,12 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                         placeholder="Availability note"
                         className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm"
                       />
-                      <div className="flex justify-end">
+                      <div className="flex justify-stretch sm:justify-end">
                         <button
                           type="button"
                           disabled={busy}
                           onClick={() => void saveGameNote(gameId)}
-                          className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5 disabled:opacity-60"
+                          className="min-h-10 w-full rounded-lg border border-zinc-600 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-60 sm:w-auto"
                         >
                           Save Game Note
                         </button>
@@ -668,8 +683,8 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
             </div>
           </div>
 
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
+          <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h2 className="text-lg font-semibold">Team Profile</h2>
               <button
                 type="button"
@@ -699,7 +714,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                   type="button"
                   disabled={busy}
                   onClick={() => void saveTeamProfile()}
-                  className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  className="min-h-11 rounded-lg bg-brand-purple px-4 py-2 text-sm font-semibold hover:bg-brand-purple-dark disabled:opacity-60"
                 >
                   Save Team Info
                 </button>
@@ -725,8 +740,8 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
       ) : null}
       {activeProfilePlayer ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-4xl max-h-[90vh] overflow-auto rounded-xl border border-zinc-700 bg-zinc-950 p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
+          <div className="max-h-[90dvh] w-full max-w-4xl space-y-4 overflow-auto rounded-xl border border-zinc-700 bg-zinc-950 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-lg font-semibold">Player Profile - {activeProfilePlayer.fullName}</h3>
               <button
                 type="button"
@@ -759,8 +774,8 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
       ) : null}
       {activeProfileSummaryPlayer ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
-          <div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-950 p-5 space-y-4">
-            <div className="flex items-center justify-between gap-3">
+          <div className="w-full max-w-lg space-y-4 rounded-xl border border-zinc-700 bg-zinc-950 p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
               <h3 className="text-base font-semibold">
                 Profile Completeness - {activeProfileSummaryPlayer.fullName}
               </h3>

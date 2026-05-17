@@ -389,7 +389,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
         />
 
         {/* ── Center feed column ───────────────────────────────── */}
-        <div className="flex h-full flex-1 flex-col overflow-hidden border-r border-zinc-800 px-0 pb-24 pt-0 sm:px-4 sm:pt-4 lg:pb-4">
+        <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden border-r border-zinc-800 px-0 pb-24 pt-0 sm:px-4 sm:pt-4 lg:pb-4">
           <div className="shrink-0 border-x border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
             <div className="px-4 pt-3">
               <Link
@@ -419,7 +419,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                 {isMaster ? "Dashboard" : "Home"}
               </Link>
             </div>
-            <div className="grid grid-cols-[auto_1fr_auto] items-center px-4 py-3 pt-1">
+            <div className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center px-4 py-3 pt-1">
               <CoachAuthButton avatarOnly avatarSize={32} />
               <div className="flex justify-center">
                 <Link
@@ -453,7 +453,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                   <Link
                     key={`mobile-feed-${item.key}`}
                     href={item.href}
-                    className={`relative flex items-center justify-center px-2 py-3 text-sm font-semibold transition ${
+                  className={`relative flex min-h-11 items-center justify-center px-2 py-3 text-sm font-semibold transition ${
                       isActive
                         ? "text-white"
                         : "text-zinc-500 hover:text-zinc-200"
@@ -638,7 +638,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
 
       {/* Mobile bottom navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
-        <div className="mx-auto flex w-full max-w-330 items-center justify-between px-5 py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))]">
+        <div className="mx-auto flex w-full max-w-330 items-center justify-between px-4 py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-5">
           {/* Timeline / Dugout logo button */}
           <Link
             href="/dugout"

@@ -242,45 +242,56 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   }, []);
 
   useEffect(() => {
-    void loadProjects().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    const id = window.setTimeout(() => {
+      void loadProjects().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [loadProjects]);
 
   useEffect(() => {
+    let id: number;
     if (!projectId) {
-      setProject(null);
-      return;
+      id = window.setTimeout(() => setProject(null), 0);
+      return () => window.clearTimeout(id);
     }
-    void loadProject(projectId).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    id = window.setTimeout(() => {
+      void loadProject(projectId).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [projectId, loadProject]);
 
   const bracketSpecParse = useMemo(() => {
     if (!project) return null;
     return safeParseBracketSpec(project.spec);
-  }, [project?.id, project?.spec]);
+  }, [project]);
 
   const spec = bracketSpecParse?.spec ?? null;
   const setupComplete = useMemo(() => (spec ? isBracketSetupWizardComplete(spec) : false), [spec]);
 
   useEffect(() => {
+    let id: number;
     if (!projectId) {
-      setReferenceUrl("");
-      return;
+      id = window.setTimeout(() => setReferenceUrl(""), 0);
+      return () => window.clearTimeout(id);
     }
     if (!project || project.id !== projectId) {
-      setReferenceUrl("");
-      return;
+      id = window.setTimeout(() => setReferenceUrl(""), 0);
+      return () => window.clearTimeout(id);
     }
     const s = bracketSpecParse?.spec;
     if (!s) {
-      setReferenceUrl("");
-      return;
+      id = window.setTimeout(() => setReferenceUrl(""), 0);
+      return () => window.clearTimeout(id);
     }
-    setReferenceUrl(s.referenceUrl ?? "");
-  }, [projectId, project?.id, bracketSpecParse]);
+    id = window.setTimeout(() => setReferenceUrl(s.referenceUrl ?? ""), 0);
+    return () => window.clearTimeout(id);
+  }, [projectId, project, bracketSpecParse]);
 
   useEffect(() => {
-    if (project) setProjectNameDraft(project.name);
-  }, [project?.id, project?.name]);
+    if (!project) return;
+    const id = window.setTimeout(() => setProjectNameDraft(project.name), 0);
+    return () => window.clearTimeout(id);
+  }, [project]);
 
   const bracketPdfCaptureRef = useRef<HTMLDivElement>(null);
 
@@ -309,13 +320,19 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const [scoreDraft, setScoreDraft] = useState<Record<string, BracketMatchScores>>({});
 
   useEffect(() => {
+    let id: number;
     if (!spec || !scoringSupported) {
-      setScoreDraft({});
-      setScoreEditing(false);
-      return;
+      id = window.setTimeout(() => {
+        setScoreDraft({});
+        setScoreEditing(false);
+      }, 0);
+      return () => window.clearTimeout(id);
     }
-    setScoreDraft(scoresFromSpec(spec));
-    setScoreEditing(false);
+    id = window.setTimeout(() => {
+      setScoreDraft(scoresFromSpec(spec));
+      setScoreEditing(false);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [project?.id, project?.updatedAt, spec, scoringSupported]);
 
   const scoringView: BracketScoringViewProps | null = useMemo(() => {
@@ -351,8 +368,11 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const [bracketColorDraftAccent, setBracketColorDraftAccent] = useState(siteThemeDefaults.accentHex);
 
   useEffect(() => {
-    setBracketColorDraftPrimary(resolvedBracketTheme.primaryHex);
-    setBracketColorDraftAccent(resolvedBracketTheme.accentHex);
+    const id = window.setTimeout(() => {
+      setBracketColorDraftPrimary(resolvedBracketTheme.primaryHex);
+      setBracketColorDraftAccent(resolvedBracketTheme.accentHex);
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [resolvedBracketTheme.primaryHex, resolvedBracketTheme.accentHex]);
 
   const [parkHeadingDraft, setParkHeadingDraft] = useState("");
@@ -371,38 +391,44 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   });
 
   useEffect(() => {
+    let id: number;
     if (!spec) {
-      setParkHeadingDraft("");
-      setParkBodyDraft("");
-      setParkContactsDraft([
-        { name: "", phone: "" },
-        { name: "", phone: "" },
-      ]);
-      setChampionAgeGroupDraft("");
-      setThirdPlaceInfoDraft({
-        officialGameNumber: "",
-        dateLabel: "",
-        time: "",
-        venue: "",
-        field: "",
-      });
-      return;
+      id = window.setTimeout(() => {
+        setParkHeadingDraft("");
+        setParkBodyDraft("");
+        setParkContactsDraft([
+          { name: "", phone: "" },
+          { name: "", phone: "" },
+        ]);
+        setChampionAgeGroupDraft("");
+        setThirdPlaceInfoDraft({
+          officialGameNumber: "",
+          dateLabel: "",
+          time: "",
+          venue: "",
+          field: "",
+        });
+      }, 0);
+      return () => window.clearTimeout(id);
     }
-    setParkHeadingDraft(spec.parkInfo?.heading ?? "");
-    setParkBodyDraft(spec.parkInfo?.body ?? "");
     const c = spec.parkInfo?.contacts ?? [];
-    setParkContactsDraft([
-      { name: c[0]?.name ?? "", phone: c[0]?.phone ?? "" },
-      { name: c[1]?.name ?? "", phone: c[1]?.phone ?? "" },
-    ]);
-    setChampionAgeGroupDraft(spec.championAgeGroupLabel ?? "");
-    setThirdPlaceInfoDraft({
-      officialGameNumber: spec.thirdPlaceGame?.officialGameNumber ?? "",
-      dateLabel: spec.thirdPlaceGame?.dateLabel ?? "",
-      time: spec.thirdPlaceGame?.time ?? "",
-      venue: spec.thirdPlaceGame?.venue ?? "",
-      field: spec.thirdPlaceGame?.field ?? "",
-    });
+    id = window.setTimeout(() => {
+      setParkHeadingDraft(spec.parkInfo?.heading ?? "");
+      setParkBodyDraft(spec.parkInfo?.body ?? "");
+      setParkContactsDraft([
+        { name: c[0]?.name ?? "", phone: c[0]?.phone ?? "" },
+        { name: c[1]?.name ?? "", phone: c[1]?.phone ?? "" },
+      ]);
+      setChampionAgeGroupDraft(spec.championAgeGroupLabel ?? "");
+      setThirdPlaceInfoDraft({
+        officialGameNumber: spec.thirdPlaceGame?.officialGameNumber ?? "",
+        dateLabel: spec.thirdPlaceGame?.dateLabel ?? "",
+        time: spec.thirdPlaceGame?.time ?? "",
+        venue: spec.thirdPlaceGame?.venue ?? "",
+        field: spec.thirdPlaceGame?.field ?? "",
+      });
+    }, 0);
+    return () => window.clearTimeout(id);
   }, [spec]);
 
   async function saveParkInfo() {
@@ -1089,7 +1115,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
         </div>
       ) : null}
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+      <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
           <div className="min-w-0 flex-1">
             <h2 className="text-lg font-semibold text-zinc-100">Bracket projects</h2>
@@ -1156,12 +1182,12 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                   This name appears in the list above, as the <strong className="text-zinc-400">bracket title</strong>{" "}
                   on the preview, and at the top of flyer / HTML exports.
                 </p>
-                <div className="flex flex-wrap items-center gap-2">
+                <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
                   <input
                     value={projectNameDraft}
                     onChange={(e) => setProjectNameDraft(e.target.value)}
                     disabled={busy}
-                    className="min-w-[200px] flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
                     placeholder="Project name"
                     spellCheck={false}
                   />
@@ -1173,7 +1199,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       projectNameDraft.trim() === project.name
                     }
                     onClick={() => void saveProjectName()}
-                    className="shrink-0 rounded-lg bg-zinc-700 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-600 disabled:opacity-40"
+                    className="min-h-10 shrink-0 rounded-lg bg-zinc-700 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-600 disabled:opacity-40"
                   >
                     Save name
                   </button>
@@ -1206,7 +1232,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
         </div>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-6">
+      <div className="space-y-6 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
         <div>
           <h2 className="text-lg font-semibold text-zinc-100">Official reference &amp; branding</h2>
           <p className="mt-1 text-sm text-zinc-400">
@@ -1418,7 +1444,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
             <span className="underline decoration-zinc-600 underline-offset-2 group-open:text-zinc-100">
               Optional: import schedule spreadsheet (advanced)
             </span>
-            <span className="ml-2 text-xs font-normal text-zinc-500">— XLSX / XLS / PDF</span>
+            <span className="ml-2 text-xs font-normal text-zinc-500">- XLSX / XLS / PDF</span>
           </summary>
           <div className="mt-3 space-y-2 border-l-2 border-zinc-700 pl-4">
             <p className="text-xs leading-relaxed text-zinc-500">
@@ -1503,15 +1529,15 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                   }}
                 />
 
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Bracket preview</h2>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid gap-2 sm:flex sm:flex-wrap">
                       <button
                         type="button"
                         disabled={!bracketLayout}
                         onClick={exportBracketHtml}
-                        className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-40"
+                        className="min-h-10 rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-40"
                       >
                         Export bracket HTML
                       </button>
@@ -1519,7 +1545,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         type="button"
                         disabled={busy}
                         onClick={() => void exportFlyerPdf()}
-                        className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-40"
+                        className="min-h-10 rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-40"
                       >
                         Export flyer PDF
                       </button>
@@ -1542,7 +1568,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         accent for highlights. Overrides apply to this preview and HTML export only.
                       </p>
                     </div>
-                    <div className="flex flex-wrap items-end gap-4">
+                    <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-end sm:gap-4">
                       <label className="block text-xs font-medium text-zinc-500">
                         Primary
                         <div className="mt-1 flex items-center gap-2">
@@ -1588,12 +1614,12 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         </div>
                       </label>
                     </div>
-                    <div className="flex flex-wrap gap-2">
+                    <div className="grid gap-2 sm:flex sm:flex-wrap">
                       <button
                         type="button"
                         disabled={busy}
                         onClick={() => void applyBracketThemeColors()}
-                        className="rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-600 disabled:opacity-40"
+                        className="min-h-10 rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-600 disabled:opacity-40"
                       >
                         Apply colors
                       </button>
@@ -1601,7 +1627,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         type="button"
                         disabled={busy}
                         onClick={() => void resetBracketThemeToSiteDefaults()}
-                        className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                        className="min-h-10 rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
                       >
                         Reset to site defaults
                       </button>
@@ -1741,7 +1767,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                     ) : null}
                   </div>
                   {bracketLayout ? (
-                    <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-2 rounded-lg border border-zinc-700/50 bg-zinc-950/35 px-3 py-2 text-xs text-zinc-400">
+                    <div className="mt-2 flex flex-col gap-2 rounded-lg border border-zinc-700/50 bg-zinc-950/35 px-3 py-2 text-xs text-zinc-400 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
                       <label className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                         <span className="shrink-0 font-medium text-zinc-500">Preview zoom</span>
                         <input
@@ -1751,7 +1777,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                           step={1}
                           value={Math.round(bracketPreviewZoom * 100)}
                           onChange={(e) => setBracketPreviewZoom(Number(e.target.value) / 100)}
-                          className="h-2 min-w-28 flex-1 accent-violet-500"
+                          className="h-2 min-w-0 flex-1 accent-violet-500"
                           aria-label="Bracket preview zoom"
                         />
                         <span className="w-10 shrink-0 tabular-nums text-zinc-300">
@@ -1763,9 +1789,9 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       </p>
                     </div>
                   ) : null}
-                  <div className="relative mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-3">
+                  <div className="relative mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-2 sm:p-3">
                     {scoringSupported ? (
-                      <div className="absolute right-2 top-2 z-20 flex flex-wrap items-center justify-end gap-1.5">
+                      <div className="absolute right-2 top-2 z-20 grid gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
                         <button
                           type="button"
                           disabled={busy || !bracketHasSavedScores}
@@ -1814,7 +1840,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       </div>
                     ) : null}
                     {bracketLayout ? (
-                      <div ref={bracketPdfCaptureRef} className="inline-block min-w-0 max-w-full">
+                      <div ref={bracketPdfCaptureRef} className="inline-block min-w-full max-w-none sm:min-w-0 sm:max-w-full">
                         <div
                           {...{ [BRACKET_PREVIEW_SCALE_ATTR]: "" }}
                           className="min-w-0"

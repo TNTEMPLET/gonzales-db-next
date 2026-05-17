@@ -38,13 +38,13 @@ export default function StandingsTabs({ standings }: Props) {
 
   return (
     <section className="space-y-4">
-      <div className="flex flex-wrap gap-2">
+      <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0">
         {standings.map((group) => (
           <button
             key={group.ageGroup}
             type="button"
             onClick={() => setActiveAgeGroup(group.ageGroup)}
-            className={`rounded-full px-4 py-2 text-xs font-semibold tracking-wide border transition ${
+            className={`min-h-10 shrink-0 rounded-full border px-4 py-2 text-xs font-semibold tracking-wide transition ${
               selectedAgeGroup === group.ageGroup
                 ? "border-brand-gold text-brand-gold bg-brand-gold/10"
                 : "border-zinc-700 text-zinc-300 hover:bg-zinc-800"
@@ -56,10 +56,10 @@ export default function StandingsTabs({ standings }: Props) {
       </div>
 
       <div className="overflow-auto rounded-xl border border-zinc-800 bg-zinc-900/70">
-        <table className="min-w-full text-sm">
+        <table className="min-w-[680px] text-sm sm:min-w-full">
           <thead className="bg-zinc-900/80 text-zinc-300">
             <tr>
-              <th className="text-left px-4 py-3 font-semibold">Team</th>
+              <th className="sticky left-0 bg-zinc-900/95 px-4 py-3 text-left font-semibold">Team</th>
               <th className="text-right px-4 py-3 font-semibold">W</th>
               <th className="text-right px-4 py-3 font-semibold">L</th>
               <th className="text-right px-4 py-3 font-semibold">T</th>
@@ -72,7 +72,7 @@ export default function StandingsTabs({ standings }: Props) {
           <tbody>
             {selected?.rows.map((row) => (
               <tr key={row.team} className="border-t border-zinc-800">
-                <td className="px-4 py-3 font-medium">{row.team}</td>
+                <td className="sticky left-0 bg-zinc-900/95 px-4 py-3 font-medium">{row.team}</td>
                 <td className="px-4 py-3 text-right">{row.wins}</td>
                 <td className="px-4 py-3 text-right">{row.losses}</td>
                 <td className="px-4 py-3 text-right">{row.ties}</td>

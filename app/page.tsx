@@ -190,7 +190,7 @@ export default async function Home({
       {heroRotatorItems.length > 0 ? (
         <HeroNewsRotator items={heroRotatorItems} />
       ) : (
-        <section className="relative h-[75vh] p-4 flex items-center justify-center bg-black overflow-hidden">
+        <section className="relative flex min-h-[70svh] items-center justify-center overflow-hidden bg-black p-4 sm:min-h-[75vh]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(245,158,11,0.18),transparent_50%),radial-gradient(circle_at_80%_80%,rgba(124,58,237,0.2),transparent_55%),linear-gradient(145deg,#09090b,#18181b)]" />
           <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.12)_1px,transparent_1px)] bg-size-[48px_48px]" />
           <Image
@@ -202,16 +202,16 @@ export default async function Home({
           />
           <div className="absolute inset-0 bg-black/45" />
 
-          <div className="relative z-10 text-center px-6 max-w-5xl mx-auto">
-            <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-6 text-white">
+          <div className="relative z-10 mx-auto max-w-5xl px-4 text-center sm:px-6">
+            <div className="mb-5 inline-block rounded-full bg-brand-purple px-4 py-2 text-[11px] tracking-[2px] text-white sm:mb-6 sm:px-6 sm:text-xs sm:tracking-[3px]">
               SPRING 2026 SEASON
             </div>
 
-            <h1 className="text-6xl md:text-7xl font-bold mb-6 tracking-tighter leading-none text-white">
+            <h1 className="mb-5 text-4xl font-bold leading-none tracking-tighter text-white sm:text-5xl md:mb-6 md:text-7xl">
               {site.name}
             </h1>
 
-            <p className="text-2xl md:text-3xl mb-10 text-brand-gold max-w-2xl mx-auto">
+            <p className="mx-auto mb-8 max-w-2xl text-lg text-brand-gold sm:text-2xl md:mb-10 md:text-3xl">
               Fun, development, and competition for kids ages 9–17 in Ascension
               Parish
             </p>
@@ -220,14 +220,14 @@ export default async function Home({
               {regOpen && (
                 <a
                   href="#register"
-                  className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-xl px-12 py-5 rounded-xl transition-all active:scale-95"
+                  className="rounded-xl bg-brand-purple px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
                 >
                   Register Now
                 </a>
               )}
               <a
                 href="#schedule"
-                className="border-2 border-white text-white hover:bg-white hover:text-black font-semibold text-xl px-12 py-5 rounded-xl transition-all"
+                className="rounded-xl border-2 border-white px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-white hover:text-black sm:px-12 sm:py-5 sm:text-xl"
               >
                 View Schedules
               </a>
@@ -237,8 +237,8 @@ export default async function Home({
       )}
 
       {/* Quick Stats */}
-      <section className="py-16 bg-zinc-900 border-b border-zinc-800">
-        <div className="max-w-6xl mx-auto px-6 grid md:grid-cols-3 gap-10 text-center">
+      <section className="border-b border-zinc-800 bg-zinc-900 py-10 sm:py-16">
+        <div className="mx-auto grid max-w-6xl gap-8 px-4 text-center sm:px-6 md:grid-cols-3 md:gap-10">
           <div>
             <div className="text-6xl mb-3">🏟️</div>
             <h3 className="font-semibold text-xl mb-3 text-white">Park Status</h3>
@@ -306,20 +306,20 @@ export default async function Home({
 
       {/* Schedule Table */}
       {featuredPosts.length > 0 ? (
-        <section className="py-12 bg-zinc-950 border-b border-zinc-800">
-          <div className="max-w-6xl mx-auto px-6">
-            <div className="flex items-end justify-between gap-4 mb-6">
+        <section className="border-b border-zinc-800 bg-zinc-950 py-10 sm:py-12">
+          <div className="mx-auto max-w-6xl px-4 sm:px-6">
+            <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
               <div>
-                <div className="inline-block bg-brand-purple text-[11px] tracking-[2px] px-4 py-1.5 rounded-full mb-3">
+                <div className="mb-3 inline-block rounded-full bg-brand-purple px-4 py-1.5 text-[11px] tracking-[2px]">
                   FEATURED NEWS
                 </div>
-                <h2 className="text-3xl md:text-4xl font-bold tracking-tight text-white">
+                <h2 className="text-2xl font-bold tracking-tight text-white sm:text-3xl md:text-4xl">
                   Top League Updates
                 </h2>
               </div>
               <Link
                 href="/news"
-                className="text-sm font-semibold text-brand-gold hover:text-brand-gold/80"
+                className="inline-flex min-h-11 items-center text-sm font-semibold text-brand-gold hover:text-brand-gold/80"
               >
                 View All News
               </Link>

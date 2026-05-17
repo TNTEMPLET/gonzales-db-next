@@ -75,8 +75,11 @@ export default function AllStarVoteClient({
   const [cycleId] = useState(initialCycleId);
   const [token] = useState(initialToken);
 
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const canRender = Boolean(cycleId || token);
+  const [loading, setLoading] = useState(canRender);
+  const [error, setError] = useState(
+    canRender ? "" : "Missing ballot token in link. Use the shared URL from your league.",
+  );
   const [needsLogin, setNeedsLogin] = useState(false);
   const [notice, setNotice] = useState("");
   const [data, setData] = useState<OpenResponse | null>(null);
@@ -85,7 +88,6 @@ export default function AllStarVoteClient({
   const [candidateSearch, setCandidateSearch] = useState("");
 
   const isLocked = Boolean(data?.hasSubmitted);
-  const canRender = Boolean(cycleId || token);
 
   const loadBallot = useCallback(async () => {
     setLoading(true);
@@ -130,11 +132,10 @@ export default function AllStarVoteClient({
 
   useEffect(() => {
     if (!canRender) {
-      setLoading(false);
-      setError("Missing ballot token in link. Use the shared URL from your league.");
       return;
     }
-    void loadBallot();
+    const id = window.setTimeout(() => void loadBallot(), 0);
+    return () => window.clearTimeout(id);
   }, [canRender, loadBallot]);
 
   async function saveDraft() {
@@ -188,10 +189,7 @@ export default function AllStarVoteClient({
     }
   }
 
-  const ratedCount = useMemo(
-    () => Object.values(ratings).filter((rating) => rating >= 1 && rating <= 5).length,
-    [ratings],
-  );
+  const ratedCount = Object.values(ratings).filter((rating) => rating >= 1 && rating <= 5).length;
   const filteredCandidates = useMemo(() => {
     const query = candidateSearch.trim().toLowerCase();
     if (!data) return [];
@@ -218,8 +216,8 @@ export default function AllStarVoteClient({
   const isVoteCountValid = ratedCount === requiredRatingsPerCoach;
 
   return (
-    <main className="min-h-screen bg-zinc-950 text-white py-10">
-      <section className="max-w-4xl mx-auto px-6 space-y-6">
+    <main className="min-h-screen bg-zinc-950 py-8 text-white sm:py-10">
+      <section className="mx-auto max-w-4xl space-y-6 px-4 sm:px-6">
         <div>
           <h1 className="text-3xl font-bold">
             {data ? `${getCycleDisplayLabel(data.cycle)} Ballot` : "All-Star Ballot"}
@@ -327,7 +325,7 @@ export default function AllStarVoteClient({
               </div>
             </div>
 
-            <div className="grid lg:grid-cols-2 gap-4">
+            <div className="grid gap-4 lg:grid-cols-2">
               <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 overflow-hidden">
                 <div className="px-4 py-2 border-b border-zinc-800 text-xs uppercase tracking-wide text-zinc-400">
                   Available Candidates ({unvotedCandidates.length})
@@ -342,7 +340,7 @@ export default function AllStarVoteClient({
                   unvotedCandidates.map((candidate) => (
                     <div
                       key={candidate.id}
-                      className="px-4 py-3 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-center justify-between gap-3"
+                      className="flex flex-col gap-3 border-b border-zinc-800 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
                         <p className="text-sm font-medium">
@@ -356,7 +354,7 @@ export default function AllStarVoteClient({
                             : ""}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 self-stretch sm:self-auto">
                         {[1, 2, 3, 4, 5].map((value) => {
                           const chosen = ratings[candidate.id] ?? 0;
                           const isFilled = chosen > 0 && value <= chosen;
@@ -369,7 +367,7 @@ export default function AllStarVoteClient({
                               aria-label={`Rate ${value} of 5${value === 1 ? " — lowest" : value === 5 ? " — highest" : ""}`}
                               title={`${value} of 5`}
                               onClick={() => setRatings((prev) => ({ ...prev, [candidate.id]: value }))}
-                              className={`group inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border p-0.5 transition-colors disabled:opacity-50 ${
+                              className={`group inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border p-0.5 transition-colors disabled:opacity-50 sm:h-9 sm:w-9 ${
                                 isFilled
                                   ? isChosen
                                     ? "border-brand-purple bg-brand-purple/15 ring-2 ring-brand-purple/50 text-brand-purple"
@@ -400,7 +398,7 @@ export default function AllStarVoteClient({
                   votedCandidates.map((candidate) => (
                     <div
                       key={candidate.id}
-                      className="px-4 py-3 border-b border-zinc-800 last:border-b-0 flex flex-wrap items-center justify-between gap-3"
+                      className="flex flex-col gap-3 border-b border-zinc-800 px-4 py-3 last:border-b-0 sm:flex-row sm:items-center sm:justify-between"
                     >
                       <div>
                         <p className="text-sm font-medium">
@@ -414,7 +412,7 @@ export default function AllStarVoteClient({
                             : ""}
                         </p>
                       </div>
-                      <div className="flex items-center gap-1">
+                      <div className="flex items-center gap-1 self-stretch sm:self-auto">
                         {[1, 2, 3, 4, 5].map((value) => {
                           const chosen = ratings[candidate.id] ?? 0;
                           const isFilled = chosen > 0 && value <= chosen;
@@ -427,7 +425,7 @@ export default function AllStarVoteClient({
                               aria-label={`Rate ${value} of 5${value === 1 ? " — lowest" : value === 5 ? " — highest" : ""}`}
                               title={`${value} of 5`}
                               onClick={() => setRatings((prev) => ({ ...prev, [candidate.id]: value }))}
-                              className={`group inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border p-0.5 transition-colors disabled:opacity-50 ${
+                              className={`group inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border p-0.5 transition-colors disabled:opacity-50 sm:h-9 sm:w-9 ${
                                 isFilled
                                   ? isChosen
                                     ? "border-brand-purple bg-brand-purple/15 ring-2 ring-brand-purple/50 text-brand-purple"
@@ -464,7 +462,7 @@ export default function AllStarVoteClient({
               </div>
             </div>
 
-            <div className="flex flex-wrap gap-3">
+            <div className="grid gap-3 sm:flex sm:flex-wrap">
               <button
                 type="button"
                 disabled={busy || isLocked}

@@ -188,7 +188,7 @@ export default function AdminDashboardModuleGrid({
   return (
     <div className="space-y-8">
       <div className="space-y-2">
-        <h2 className="text-2xl font-semibold tracking-tight text-white">
+        <h2 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">
           {masterMode ? "Control modules" : "Admin modules"}
         </h2>
         <p className="max-w-3xl text-sm text-zinc-400">
@@ -223,7 +223,7 @@ export default function AdminDashboardModuleGrid({
                 <p className="text-sm text-zinc-400">{categoryMeta.description}</p>
               </div>
 
-              <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+              <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
                 {group.cards.map((card) => (
                   <article
                     key={card.href}
@@ -233,7 +233,7 @@ export default function AdminDashboardModuleGrid({
                         : "border-zinc-800 bg-zinc-900/70"
                     }`}
                   >
-                    <h4 className="text-lg font-semibold text-white">{card.title}</h4>
+                    <h4 className="text-base font-semibold text-white sm:text-lg">{card.title}</h4>
                     <p className="mt-2 line-clamp-2 text-sm text-zinc-400">
                       {card.description}
                     </p>
@@ -244,7 +244,7 @@ export default function AdminDashboardModuleGrid({
                     ) : (
                       <Link
                         href={card.href}
-                        className={`mt-4 inline-block text-sm font-semibold ${
+                        className={`mt-4 inline-flex min-h-10 items-center text-sm font-semibold ${
                           masterMode
                             ? "text-red-100 hover:text-red-50"
                             : "text-brand-gold hover:text-brand-gold/80"

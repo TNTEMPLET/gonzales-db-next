@@ -554,25 +554,25 @@ export default function ScheduleTable({
   };
 
   return (
-    <section id="schedule" className="py-20 bg-zinc-950">
+    <section id="schedule" className="bg-zinc-950 py-12 sm:py-16 lg:py-20">
       <RainoutPopup
         siteName={siteName}
         rainedOutVenues={rainedOutVenues}
         allParksRainedOut={allParksRainedOut}
         _preview={previewRainout}
       />
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between mb-8">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-center">
           <div>
-            <h2 className="text-4xl font-bold">Schedules</h2>
-            <p className="text-zinc-400">{getSubtitle()} • Live from Assignr</p>
+            <h2 className="text-3xl font-bold sm:text-4xl">Schedules</h2>
+            <p className="mt-1 text-sm text-zinc-400 sm:text-base">{getSubtitle()} • Live from Assignr</p>
           </div>
 
-          <div className="mt-6 md:mt-0 space-y-2">
-            <div className="flex gap-2 justify-start md:justify-end">
+          <div className="space-y-2">
+            <div className="grid grid-cols-3 gap-2 sm:flex sm:justify-start md:justify-end">
               <button
                 onClick={() => handleViewChange("thisWeek")}
-                className={`px-6 py-3 rounded-xl font-medium transition-all ${
+                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:px-6 sm:py-3 sm:text-base ${
                   currentViewMode === "thisWeek"
                     ? "bg-brand-purple text-white"
                     : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
@@ -582,7 +582,7 @@ export default function ScheduleTable({
               </button>
               <button
                 onClick={() => handleViewChange("nextWeek")}
-                className={`px-6 py-3 rounded-xl font-medium transition-all ${
+                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:px-6 sm:py-3 sm:text-base ${
                   currentViewMode === "nextWeek"
                     ? "bg-brand-purple text-white"
                     : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
@@ -592,7 +592,7 @@ export default function ScheduleTable({
               </button>
               <button
                 onClick={() => handleViewChange("fullSeason")}
-                className={`px-6 py-3 rounded-xl font-medium transition-all ${
+                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:px-6 sm:py-3 sm:text-base ${
                   currentViewMode === "fullSeason"
                     ? "bg-brand-purple text-white"
                     : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
@@ -604,10 +604,10 @@ export default function ScheduleTable({
 
             {(currentViewMode === "thisWeek" ||
               currentViewMode === "fullSeason") && (
-              <div className="flex gap-2 justify-start md:justify-end">
+              <div className="grid grid-cols-3 gap-2 sm:flex sm:justify-start md:justify-end">
                 <button
                   onClick={() => handleDayFilterChange("yesterday")}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  className={`min-h-10 rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:text-sm ${
                     dayFilter === "yesterday"
                       ? "bg-brand-gold text-black"
                       : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
@@ -617,7 +617,7 @@ export default function ScheduleTable({
                 </button>
                 <button
                   onClick={() => handleDayFilterChange("today")}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  className={`min-h-10 rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:text-sm ${
                     dayFilter === "today"
                       ? "bg-brand-gold text-black"
                       : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
@@ -627,7 +627,7 @@ export default function ScheduleTable({
                 </button>
                 <button
                   onClick={() => handleDayFilterChange("tomorrow")}
-                  className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+                  className={`min-h-10 rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:text-sm ${
                     dayFilter === "tomorrow"
                       ? "bg-brand-gold text-black"
                       : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
@@ -641,8 +641,8 @@ export default function ScheduleTable({
         </div>
 
         {/* Filter Section */}
-        <div className="flex flex-col md:flex-row gap-4 mb-8">
-          <div className="relative flex flex-col" ref={ageDropdownRef}>
+        <div className="mb-8 grid gap-4 md:grid-cols-2">
+          <div className="relative flex min-w-0 flex-col" ref={ageDropdownRef}>
             <label className="text-sm font-medium text-zinc-400 mb-2">
               Age Group
             </label>
@@ -652,9 +652,9 @@ export default function ScheduleTable({
                 setAgeDropdownOpen((value) => !value);
                 setTeamDropdownOpen(false);
               }}
-              className="flex items-center justify-between px-4 py-2 rounded-lg bg-zinc-800 text-white border border-zinc-700 hover:border-zinc-600 transition-colors cursor-pointer"
+              className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-white transition-colors hover:border-zinc-600"
             >
-              <span>{selectedAgeGroupLabel}</span>
+              <span className="min-w-0 truncate">{selectedAgeGroupLabel}</span>
               <span className="text-zinc-400">▾</span>
             </button>
 
@@ -663,7 +663,7 @@ export default function ScheduleTable({
                 <button
                   type="button"
                   onClick={resetAgeSelection}
-                  className="w-full px-4 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
+                  className="min-h-11 w-full px-4 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
                 >
                   All Age Groups
                 </button>
@@ -673,7 +673,7 @@ export default function ScheduleTable({
                       key={group}
                       type="button"
                       onClick={() => toggleAgeSelection(group)}
-                      className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-white hover:bg-zinc-900"
+                      className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-white hover:bg-zinc-900"
                     >
                       <span>{group}</span>
                       {selectedAgeGroup.includes(group) ? (
@@ -686,7 +686,7 @@ export default function ScheduleTable({
             )}
           </div>
 
-          <div className="relative flex flex-col" ref={teamDropdownRef}>
+          <div className="relative flex min-w-0 flex-col" ref={teamDropdownRef}>
             <label className="text-sm font-medium text-zinc-400 mb-2">
               Team
             </label>
@@ -696,9 +696,9 @@ export default function ScheduleTable({
                 setTeamDropdownOpen((value) => !value);
                 setAgeDropdownOpen(false);
               }}
-              className="flex items-center justify-between px-4 py-2 rounded-lg bg-zinc-800 text-white border border-zinc-700 hover:border-zinc-600 transition-colors cursor-pointer"
+              className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-white transition-colors hover:border-zinc-600"
             >
-              <span>{selectedTeamLabel}</span>
+              <span className="min-w-0 truncate">{selectedTeamLabel}</span>
               <span className="text-zinc-400">▾</span>
             </button>
 
@@ -707,7 +707,7 @@ export default function ScheduleTable({
                 <button
                   type="button"
                   onClick={resetTeamSelection}
-                  className="w-full px-4 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
+                  className="min-h-11 w-full px-4 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
                 >
                   All Teams
                 </button>
@@ -717,7 +717,7 @@ export default function ScheduleTable({
                       key={team}
                       type="button"
                       onClick={() => toggleTeamSelection(team)}
-                      className="flex w-full items-center justify-between px-4 py-2 text-left text-sm text-white hover:bg-zinc-900"
+                      className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-white hover:bg-zinc-900"
                     >
                       <span>{team}</span>
                       {selectedTeam.includes(team) ? (
@@ -733,31 +733,31 @@ export default function ScheduleTable({
 
         {/* Download Section */}
         {filteredGames.length > 0 && (
-          <div className="flex flex-col sm:flex-row gap-3 mb-8">
-            <div className="flex items-center gap-2">
+          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-medium text-zinc-400">
                 Download:
               </span>
               <button
                 onClick={() => downloadCSV(sortedGames)}
-                className="px-4 py-2 rounded-lg bg-zinc-800 text-white hover:bg-zinc-700 transition-colors text-sm font-medium"
+                className="min-h-10 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
               >
                 CSV
               </button>
               <button
                 onClick={() => downloadXLSX(sortedGames)}
-                className="px-4 py-2 rounded-lg bg-zinc-800 text-white hover:bg-zinc-700 transition-colors text-sm font-medium"
+                className="min-h-10 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
               >
                 Excel
               </button>
               <button
                 onClick={() => downloadPDF(sortedGames)}
-                className="px-4 py-2 rounded-lg bg-zinc-800 text-white hover:bg-zinc-700 transition-colors text-sm font-medium"
+                className="min-h-10 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
               >
                 PDF
               </button>
             </div>
-            <div className="text-xs text-zinc-500 flex items-center">
+            <div className="flex items-center text-xs text-zinc-500">
               {sortedGames.length} games • {getSubtitle()}
             </div>
           </div>
@@ -768,27 +768,27 @@ export default function ScheduleTable({
             <p className="text-red-400">Error: {initialError}</p>
           </div>
         ) : filteredGames.length === 0 ? (
-          <div className="bg-zinc-900 rounded-2xl p-12 text-center">
+          <div className="rounded-2xl bg-zinc-900 p-8 text-center sm:p-12">
             <p className="text-zinc-400">
               No games found for the selected filters.
             </p>
           </div>
         ) : (
           <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900">
-            <table className="w-full text-sm">
+            <table className="min-w-[720px] w-full text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-800">
-                  <th className="py-5 px-6 text-left font-semibold">Time</th>
-                  <th className="py-5 px-6 text-left font-semibold">
+                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">Time</th>
+                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">
                     Age Group
                   </th>
-                  <th className="py-5 px-6 text-left font-semibold">
+                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">
                     Home Team
                   </th>
-                  <th className="py-5 px-6 text-left font-semibold">
+                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">
                     Away Team
                   </th>
-                  <th className="py-5 px-6 text-left font-semibold">Field</th>
+                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">Field</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-zinc-800">
@@ -797,7 +797,7 @@ export default function ScheduleTable({
                     <tr key={`park-${park}`}>
                       <td
                         colSpan={5}
-                        className="py-3 px-6 text-xs font-semibold uppercase tracking-widest text-zinc-400 bg-zinc-800/60"
+                        className="bg-zinc-800/60 px-4 py-3 text-xs font-semibold uppercase tracking-widest text-zinc-400 sm:px-6"
                       >
                         {park.replace(/\s*Parks?$/i, "").trim() || park}
                       </td>
@@ -807,7 +807,7 @@ export default function ScheduleTable({
                         <tr key={`day-${park}-${dayLabel}`}>
                           <td
                             colSpan={5}
-                            className="py-2 px-8 text-xs font-semibold text-brand-gold/80 bg-zinc-900/80 tracking-wide"
+                            className="bg-zinc-900/80 px-5 py-2 text-xs font-semibold tracking-wide text-brand-gold/80 sm:px-8"
                           >
                             {dayLabel}
                           </td>
@@ -825,7 +825,7 @@ export default function ScheduleTable({
                               }`}
                             >
                               <td
-                                className={`py-4 px-6 font-medium whitespace-nowrap ${isCancelled ? "line-through text-red-400" : ""}`}
+                                className={`whitespace-nowrap px-4 py-4 font-medium sm:px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
                               >
                                 {game.localized_time || "TBD"}
                                 {isCancelled && (
@@ -838,22 +838,22 @@ export default function ScheduleTable({
                                 )}
                               </td>
                               <td
-                                className={`py-4 px-6 font-medium ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
+                                className={`px-4 py-4 font-medium sm:px-6 ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
                               >
                                 {game.age_group || "—"}
                               </td>
                               <td
-                                className={`py-4 px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
+                                className={`px-4 py-4 sm:px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
                               >
                                 {game.home_team || "TBD"}
                               </td>
                               <td
-                                className={`py-4 px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
+                                className={`px-4 py-4 sm:px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
                               >
                                 {game.away_team || "TBD"}
                               </td>
                               <td
-                                className={`py-4 px-6 font-medium ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
+                                className={`px-4 py-4 font-medium sm:px-6 ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
                               >
                                 {fieldName}
                               </td>
@@ -876,8 +876,8 @@ export default function ScheduleTable({
           Data refreshes every 5 minutes • Last updated: {lastUpdateTime}
         </p>
 
-        <div className="mt-14">
-          <h2 className="text-4xl font-bold mb-2">Standings</h2>
+        <div className="mt-12 sm:mt-14">
+          <h2 className="mb-2 text-3xl font-bold sm:text-4xl">Standings</h2>
           <p className="text-zinc-400 mb-6">
             League standings by age group from scored games.
           </p>

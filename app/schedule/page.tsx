@@ -101,8 +101,8 @@ export default async function SchedulePage({
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      <div className="max-w-6xl mx-auto px-6 pt-10 pb-4">
-        <h1 className="text-3xl font-bold tracking-tight mb-1">
+      <div className="mx-auto max-w-6xl px-4 pb-4 pt-8 sm:px-6 sm:pt-10">
+        <h1 className="mb-1 text-2xl font-bold tracking-tight sm:text-3xl">
           Schedule &amp; Standings
         </h1>
         <p className="text-zinc-400 text-sm">
