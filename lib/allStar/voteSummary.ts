@@ -27,6 +27,15 @@ export type VoteSummaryCycleMeta = {
   runoffFirstTeamSize: number | null;
 };
 
+export const DEFAULT_VOTE_EXPORT_TOP_COUNT = 12;
+export const MAX_VOTE_EXPORT_TOP_COUNT = 200;
+
+export function parseVoteExportTopCount(value: string | null | undefined) {
+  const parsed = Number.parseInt(String(value ?? ""), 10);
+  if (!Number.isFinite(parsed)) return DEFAULT_VOTE_EXPORT_TOP_COUNT;
+  return Math.min(MAX_VOTE_EXPORT_TOP_COUNT, Math.max(1, parsed));
+}
+
 /**
  * Same logic as GET `/api/admin/all-star/votes-summary`: vote count desc, avg rating desc, then name.
  * Runoff cycles include the full candidate pool (zero-vote rows sort last) so first/second team splits match roster size.
@@ -208,16 +217,29 @@ export function sortVoteSummaryRowsByLastName(rows: VoteSummaryRow[]) {
   });
 }
 
-/** Same cutoff as the vault name-only snapshot: top 12 vote tier plus ties at the cutoff. */
-export function selectVoteSummaryNameOnlyPool(sorted: VoteSummaryRow[]) {
-  return expandVoteSummaryTopByVoteCountCutoff(sorted, 12);
+/** Same cutoff as the vault name-only snapshot: top vote tier plus ties at the cutoff. */
+export function selectVoteSummaryTopVoteGetterPool(
+  sorted: VoteSummaryRow[],
+  count = DEFAULT_VOTE_EXPORT_TOP_COUNT,
+) {
+  return expandVoteSummaryTopByVoteCountCutoff(sorted, count);
+}
+
+export function selectVoteSummaryNameOnlyPool(
+  sorted: VoteSummaryRow[],
+  count = DEFAULT_VOTE_EXPORT_TOP_COUNT,
+) {
+  return selectVoteSummaryTopVoteGetterPool(sorted, count);
 }
 
 export type NameOnlyRankRow = { rank: string; displayLine: string };
 
 /** Public name-only export rows: no ranks, last-name order. */
-export function buildNameOnlyVotePdfRows(sorted: VoteSummaryRow[]): NameOnlyRankRow[] {
-  return sortVoteSummaryRowsByLastName(selectVoteSummaryNameOnlyPool(sorted)).map((row) => ({
+export function buildNameOnlyVotePdfRows(
+  sorted: VoteSummaryRow[],
+  count = DEFAULT_VOTE_EXPORT_TOP_COUNT,
+): NameOnlyRankRow[] {
+  return sortVoteSummaryRowsByLastName(selectVoteSummaryNameOnlyPool(sorted, count)).map((row) => ({
     rank: "",
     displayLine: getPlayerFirstLastName(row.playerFullName),
   }));
