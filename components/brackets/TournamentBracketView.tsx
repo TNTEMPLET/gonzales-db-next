@@ -53,12 +53,19 @@ type Props = {
   logoWatermarkUrl?: string | null;
   /** Park / venue copy shown under the bracket title. */
   parkInfo?: BracketParkInfo | null;
+  /** Parent organization badge shown at the bottom-right of the bracket surface. */
+  parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   scoring?: BracketScoringViewProps | null;
   /**
    * When set (trimmed), used as the main H3 label source instead of `spec.divisionLabel`
    * (e.g. BracketProject.name from the admin list). Normalized with `bracketSurfaceTitle` (label only, or `— suffix` when used).
    */
   surfaceTitleOverride?: string | null;
+};
+
+export type BracketParentOrganizationLogo = {
+  src: string;
+  name?: string;
 };
 
 function mergeRootStyle(themeColors: BracketThemeColors | null | undefined, style?: CSSProperties): CSSProperties {
@@ -405,18 +412,24 @@ function ThirdPlaceMatchArticle({
     away: podium.thirdPlaceSlotAway,
     slotHome: podium.thirdPlaceSlotHome,
     slotAway: podium.thirdPlaceSlotAway,
+    ...(podium.thirdPlaceGameInfo?.officialGameNumber ? { officialGameNumber: podium.thirdPlaceGameInfo.officialGameNumber } : {}),
+    ...(podium.thirdPlaceGameInfo?.dateLabel ? { dateLabel: podium.thirdPlaceGameInfo.dateLabel } : {}),
+    ...(podium.thirdPlaceGameInfo?.time ? { time: podium.thirdPlaceGameInfo.time } : {}),
+    ...(podium.thirdPlaceGameInfo?.venue ? { venue: podium.thirdPlaceGameInfo.venue } : {}),
+    ...(podium.thirdPlaceGameInfo?.field ? { field: podium.thirdPlaceGameInfo.field } : {}),
     ...(podium.thirdPlaceScores?.homeScore != null ? { homeScore: podium.thirdPlaceScores.homeScore } : {}),
     ...(podium.thirdPlaceScores?.awayScore != null ? { awayScore: podium.thirdPlaceScores.awayScore } : {}),
     ...(podium.thirdPlaceScores?.winnerSide ? { winnerSide: podium.thirdPlaceScores.winnerSide } : {}),
   };
   const showTie = bracketTieState(match.id, match, scoring);
+  const badgeLabel = ["3rd place", matchGameBadge(match)].filter(Boolean).join(" · ");
   return (
     <article
       className={`${styles.match} ${styles.thirdPlaceMatch}`}
       {...{ [BRACKET_PODIUM_THIRD_SOURCE_ATTR]: "" }}
       aria-label={`Third place: ${podium.thirdPlaceSlotHome} versus ${podium.thirdPlaceSlotAway}`}
     >
-      <div className={styles.thirdPlaceMatchBadge}>3rd place</div>
+      <div className={styles.thirdPlaceMatchBadge}>{badgeLabel}</div>
       <BracketMatchSlotRow
         label={podium.thirdPlaceSlotHome}
         side="home"
@@ -424,7 +437,7 @@ function ThirdPlaceMatchArticle({
         matchMeta={match}
         scoring={scoring}
       />
-      <MatchGameInfoBetweenTeams meta={{}} />
+      <MatchGameInfoBetweenTeams meta={match} />
       <BracketMatchSlotRow
         label={podium.thirdPlaceSlotAway}
         side="away"
@@ -517,6 +530,7 @@ function BracketSurface({
   title,
   parkInfo,
   logoWatermarkUrl,
+  parentOrganizationLogo,
   podium,
   parkBelowTitle = true,
   children,
@@ -527,12 +541,17 @@ function BracketSurface({
   title: ReactNode;
   parkInfo?: BracketParkInfo | null;
   logoWatermarkUrl?: string | null;
+  parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   podium?: BracketLayoutPodium | null;
   /** When false, park is rendered in the grid or champion column instead of under the title. */
   parkBelowTitle?: boolean;
   children: ReactNode;
 }) {
   const src = logoWatermarkUrl?.trim();
+  const parentLogoSrc = parentOrganizationLogo?.src.trim();
+  const parentLogoAlt = parentOrganizationLogo?.name?.trim()
+    ? `${parentOrganizationLogo.name.trim()} logo`
+    : "Parent organization logo";
   const showParkAboveChampion = podium != null && hasBracketParkInfo(parkInfo);
   const body =
     podium != null ? (
@@ -565,6 +584,12 @@ function BracketSurface({
         {parkBelowTitle ? <ParkAside park={parkInfo} /> : null}
         {body}
       </div>
+      {parentLogoSrc ? (
+        <div className={styles.poweredByBadge} aria-label="Powered by parent organization">
+          <span className={styles.poweredByText}>powered by:</span>
+          <img src={parentLogoSrc} alt={parentLogoAlt} className={styles.poweredByLogo} draggable={false} decoding="async" />
+        </div>
+      ) : null}
     </section>
   );
 }
@@ -632,6 +657,7 @@ function ConnectedBracketGrid({
   style,
   parkInfo,
   logoWatermarkUrl,
+  parentOrganizationLogo,
   podium,
   scoring,
 }: {
@@ -643,6 +669,7 @@ function ConnectedBracketGrid({
   style?: CSSProperties;
   parkInfo?: BracketParkInfo | null;
   logoWatermarkUrl?: string | null;
+  parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   podium?: BracketLayoutPodium | null;
   scoring?: BracketScoringViewProps | null;
 }) {
@@ -844,6 +871,7 @@ function ConnectedBracketGrid({
       title={title ? <h3 className={styles.title}>{title}</h3> : null}
       parkInfo={parkInfo}
       logoWatermarkUrl={logoWatermarkUrl}
+      parentOrganizationLogo={parentOrganizationLogo}
       podium={null}
       parkBelowTitle={!parkInPodiumHeader}
     >
@@ -860,6 +888,7 @@ export default function TournamentBracketView({
   style,
   themeColors,
   logoWatermarkUrl,
+  parentOrganizationLogo,
   parkInfo,
   scoring,
   surfaceTitleOverride,
@@ -878,6 +907,7 @@ export default function TournamentBracketView({
         title={layout.title ? <h3 className={styles.title}>{layout.title}</h3> : null}
         parkInfo={parkInfo}
         logoWatermarkUrl={logoWatermarkUrl}
+        parentOrganizationLogo={parentOrganizationLogo}
         podium={null}
       >
         <p className={styles.emptyMessage}>{layout.message}</p>
@@ -897,6 +927,7 @@ export default function TournamentBracketView({
         }
         parkInfo={parkInfo}
         logoWatermarkUrl={logoWatermarkUrl}
+        parentOrganizationLogo={parentOrganizationLogo}
         podium={null}
       >
         <ul className={styles.grid}>
@@ -935,6 +966,7 @@ export default function TournamentBracketView({
         style={rootStyle}
         parkInfo={parkInfo}
         logoWatermarkUrl={logoWatermarkUrl}
+        parentOrganizationLogo={parentOrganizationLogo}
         podium={podium}
         scoring={scoring}
       />
@@ -949,6 +981,7 @@ export default function TournamentBracketView({
       title={bracketTitle ? <h3 className={styles.title}>{bracketTitle}</h3> : null}
       parkInfo={parkInfo}
       logoWatermarkUrl={logoWatermarkUrl}
+      parentOrganizationLogo={parentOrganizationLogo}
       podium={podium}
       parkBelowTitle={!(podium != null && hasBracketParkInfo(parkInfo))}
     >

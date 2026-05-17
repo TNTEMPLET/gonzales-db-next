@@ -70,21 +70,53 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
   color: var(--bracket-fg);
   border: 1px solid var(--bracket-border);
   border-radius: 8px;
-  padding: 1.125rem 1.25rem;
+  padding: 1.125rem 1.25rem 3.35rem;
 }
 .bracket-title {
-  font-size: clamp(0.95rem, 2.5vw, 1.125rem);
-  font-weight: 800;
+  position: relative;
+  font-size: clamp(1.05rem, 2.8vw, 1.45rem);
+  font-weight: 950;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--bracket-navy-deep);
-  margin: 0 0 1rem;
-  line-height: 1.25;
+  letter-spacing: 0.075em;
+  color: #ffffff;
+  margin: 0 0 1.15rem;
+  line-height: 1.12;
   text-align: center;
   text-wrap: balance;
   overflow-wrap: anywhere;
-  border-bottom: 3px solid var(--bracket-accent);
-  padding-bottom: 0.5rem;
+  padding: 0.7rem 3.25rem 0.72rem;
+  border: 1px solid rgb(255 255 255 / 0.18);
+  border-bottom: 4px solid var(--bracket-accent);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.12), transparent 34%),
+    linear-gradient(90deg, var(--bracket-navy-deep), var(--bracket-fg) 52%, var(--bracket-navy-deep));
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.22),
+    inset 0 -1px 0 rgb(0 0 0 / 0.28),
+    0 0.55rem 1.1rem rgb(0 26 61 / 0.16);
+  text-shadow: 0 2px 0 rgb(0 0 0 / 0.32), 0 0 1rem rgb(0 0 0 / 0.22);
+}
+.bracket-title::before,
+.bracket-title::after {
+  position: absolute;
+  top: 50%;
+  width: 1.45rem;
+  height: 1.45rem;
+  transform: translateY(-50%);
+  border-radius: 999px;
+  border: 2px solid rgb(255 255 255 / 0.85);
+  background:
+    linear-gradient(90deg, transparent 44%, var(--bracket-accent) 44% 56%, transparent 56%),
+    #ffffff;
+  box-shadow: inset 0 0 0 2px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.22);
+  content: "";
+}
+.bracket-title::before {
+  left: 1rem;
+}
+.bracket-title::after {
+  right: 1rem;
 }
 .bracket-root-foreground { position: relative; z-index: 1; }
 .bracket-watermark-img {
@@ -92,12 +124,45 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
   left: 50%;
   top: 52%;
   transform: translate(-50%, -50%);
-  width: min(88%, 26rem);
-  max-height: 78%;
+  width: min(118%, 42rem);
+  max-height: 96%;
   object-fit: contain;
   opacity: 0.052;
   pointer-events: none;
   z-index: 0;
+  user-select: none;
+}
+.bracket-powered-by {
+  position: absolute;
+  right: 0.95rem;
+  bottom: 0.85rem;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: min(50%, 15rem);
+  padding: 0.25rem 0.35rem 0.25rem 0.45rem;
+  border-radius: 999px;
+  border: 1px solid rgb(0 47 108 / 0.1);
+  background: rgb(255 255 255 / 0.64);
+  box-shadow: 0 1px 3px rgb(0 26 61 / 0.08);
+}
+.bracket-powered-by-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  font-size: 0.52rem;
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.045em;
+  color: var(--bracket-muted);
+  white-space: nowrap;
+}
+.bracket-powered-by-logo {
+  width: auto;
+  height: 1.35rem;
+  max-width: 4.5rem;
+  object-fit: contain;
   user-select: none;
 }
 .bracket-park {
@@ -726,6 +791,10 @@ function matchGameBadgeHtml(m: { officialGameNumber?: string }): string {
 
 export type BracketExportViewOptions = {
   logoWatermarkUrl?: string | null;
+  parentOrganizationLogo?: {
+    src: string;
+    name?: string;
+  } | null;
   parkInfo?: BracketParkInfo | null;
   /** Optional label for the bracket surface H2 (e.g. project name); else `layout.divisionLabel`. */
   surfaceHeadingLabel?: string | null;
@@ -813,10 +882,18 @@ function thirdPlaceMatchArticleHtml(podium: BracketLayoutPodium): string {
     away: podium.thirdPlaceSlotAway,
     slotHome: podium.thirdPlaceSlotHome,
     slotAway: podium.thirdPlaceSlotAway,
+    officialGameNumber: podium.thirdPlaceGameInfo?.officialGameNumber,
+    dateLabel: podium.thirdPlaceGameInfo?.dateLabel,
+    time: podium.thirdPlaceGameInfo?.time,
+    venue: podium.thirdPlaceGameInfo?.venue,
+    field: podium.thirdPlaceGameInfo?.field,
   });
   const hs = podium.thirdPlaceScores?.homeScore;
   const as = podium.thirdPlaceScores?.awayScore;
-  return `<article class="match third-place-match" ${BRACKET_PODIUM_THIRD_SOURCE_ATTR} aria-label="${aria3}"><div class="third-place-match-badge">3rd place</div>${slotLabelHtml(podium.thirdPlaceSlotHome, ch, hs)}${gameInfo}${slotLabelHtml(podium.thirdPlaceSlotAway, ca, as)}</article>`;
+  const badgeLabel = ["3rd place", formatBracketGameBadge(podium.thirdPlaceGameInfo?.officialGameNumber)]
+    .filter(Boolean)
+    .join(" · ");
+  return `<article class="match third-place-match" ${BRACKET_PODIUM_THIRD_SOURCE_ATTR} aria-label="${aria3}"><div class="third-place-match-badge">${esc(badgeLabel)}</div>${slotLabelHtml(podium.thirdPlaceSlotHome, ch, hs)}${gameInfo}${slotLabelHtml(podium.thirdPlaceSlotAway, ca, as)}</article>`;
 }
 function championRoundColumnHtmlExport(
   podium: BracketLayoutPodium,
@@ -878,6 +955,13 @@ function bracketRootDocumentInner(
   const wm = watermark
     ? `<img src="${esc(watermark)}" alt="" class="bracket-watermark-img" draggable="false" decoding="async" />`
     : "";
+  const parentLogo = options?.parentOrganizationLogo?.src.trim();
+  const parentLogoAlt = options?.parentOrganizationLogo?.name?.trim()
+    ? `${options.parentOrganizationLogo.name.trim()} logo`
+    : "Parent organization logo";
+  const poweredBy = parentLogo
+    ? `<div class="bracket-powered-by" aria-label="Powered by parent organization"><span class="bracket-powered-by-text">powered by:</span><img src="${esc(parentLogo)}" alt="${esc(parentLogoAlt)}" class="bracket-powered-by-logo" draggable="false" decoding="async" /></div>`
+    : "";
   const park = parkBelowTitle ? parkInfoAsideHtml(options?.parkInfo) : "";
   const titleBlock = bracketTitle.trim()
     ? `<h2 class="bracket-title">${esc(bracketTitle)}</h2>`
@@ -889,6 +973,7 @@ ${titleBlock}
 ${park}
 ${bodyInner}
 </div>
+${poweredBy}
 </section>`;
 }
 

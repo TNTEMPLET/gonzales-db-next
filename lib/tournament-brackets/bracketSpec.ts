@@ -104,6 +104,13 @@ export const bracketMatchSchema = bracketMatchInputSchema.transform(
 export const bracketThirdPlaceGameSchema = z.object({
   home: z.string(),
   away: z.string(),
+  /** Optional published/schedule game number for the third-place game. */
+  officialGameNumber: z.string().max(32).optional(),
+  /** Optional schedule / location lines shown on the bracket game card. */
+  dateLabel: z.string().max(80).optional(),
+  time: z.string().max(48).optional(),
+  venue: z.string().max(160).optional(),
+  field: z.string().max(160).optional(),
   homeScore: bracketScoreSchema.optional(),
   awayScore: bracketScoreSchema.optional(),
   winnerSide: z.enum(["home", "away"]).optional(),

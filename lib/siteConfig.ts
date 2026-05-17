@@ -146,6 +146,18 @@ export function getSiteConfigForOrg(org: ContentOrgId): SiteConfig {
   return configs[org];
 }
 
+export function getTournamentBracketBrandingForOrg(org: ContentOrgId): {
+  targetLogoPath: string;
+  parentLogoPath: string;
+  parentName: string;
+} {
+  return {
+    targetLogoPath: configs[org].logoPath,
+    parentLogoPath: configs.master.logoPath,
+    parentName: configs.master.shortName,
+  };
+}
+
 /**
  * Default month/day cutoff used to derive All-Star ages by org.
  * Month is 1-based (January = 1).
