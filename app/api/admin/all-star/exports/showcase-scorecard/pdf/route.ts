@@ -12,13 +12,12 @@ import {
   buildAllStarExportFilename,
   getAllStarCycleDisplayName,
 } from "@/lib/allStar/exportFormat";
+import {
+  computeVoteSummaryRows,
+  parseVoteExportTopCount,
+  selectVoteSummaryTopVoteGetterPool,
+} from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
-
-function fitText(value: string, maxChars: number) {
-  const trimmed = value.trim();
-  if (trimmed.length <= maxChars) return trimmed;
-  return `${trimmed.slice(0, Math.max(0, maxChars - 1)).trimEnd()}…`;
-}
 
 function clamp(value: number, min: number, max: number) {
   return Math.min(max, Math.max(min, value));
@@ -150,6 +149,13 @@ export async function GET(request: NextRequest) {
     },
   });
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
+  const topCount = parseVoteExportTopCount(request.nextUrl.searchParams.get("topCount"));
+  const computed = await computeVoteSummaryRows(prisma, cycleId);
+  const exportCandidateIds = new Set(
+    computed
+      ? selectVoteSummaryTopVoteGetterPool(computed.rows, topCount).map((row) => row.candidateId)
+      : [],
+  );
 
   const pdf = await PDFDocument.create();
   const font = await pdf.embedFont(StandardFonts.Helvetica);
@@ -163,7 +169,7 @@ export async function GET(request: NextRequest) {
   const tableBottom = 42;
   const rowHeight = 24;
   const maxRowsPerPage = Math.max(1, Math.floor((tableTop - tableBottom) / rowHeight) - 1);
-  const candidates = cycle.candidates;
+  const candidates = cycle.candidates.filter((candidate) => exportCandidateIds.has(candidate.id));
   const rowFontSize = 9;
   const headerFontSize = 8.5;
   const measureWidth = (text: string, size: number) => font.widthOfTextAtSize(text, size) + 10;

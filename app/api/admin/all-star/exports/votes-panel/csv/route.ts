@@ -10,7 +10,12 @@ import {
   getRunoffVotePanelSecondaryTeamHeading,
 } from "@/lib/allStar/cycleUiLabels";
 import { parseAllStarPhase } from "@/lib/allStar/phase";
-import { computeVoteSummaryRows, splitVoteSummaryRowsForRunoff } from "@/lib/allStar/voteSummary";
+import {
+  computeVoteSummaryRows,
+  parseVoteExportTopCount,
+  selectVoteSummaryTopVoteGetterPool,
+  splitVoteSummaryRowsForRunoff,
+} from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
 
 function csvEscape(value: string) {
@@ -31,7 +36,9 @@ export async function GET(request: NextRequest) {
   const computed = await computeVoteSummaryRows(prisma, cycleId, phase ?? undefined);
   if (!computed) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
+  const topCount = parseVoteExportTopCount(request.nextUrl.searchParams.get("topCount"));
   const { rows, cycle } = computed;
+  const exportRows = selectVoteSummaryTopVoteGetterPool(rows, topCount);
   const orgId = cycle.organizationId === "ascension" ? "ascension" : "gonzales";
   const isRunoffSplit =
     cycle.runoffFirstTeamSize != null &&
@@ -58,7 +65,7 @@ export async function GET(request: NextRequest) {
 
   if (isRunoffSplit) {
     const { firstTeam, secondTeam } = splitVoteSummaryRowsForRunoff(
-      rows,
+      exportRows,
       cycle.runoffFirstTeamSize!,
     );
     const primaryHeading = getRunoffVotePanelPrimaryTeamHeading(orgId, cycle.title);
@@ -86,7 +93,7 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const body = rows.map((row, index) => rowToCsvLine(row, index + 1));
+  const body = exportRows.map((row, index) => rowToCsvLine(row, index + 1));
 
   const csv = [header, ...body].map((line) => line.map((cell) => csvEscape(cell)).join(",")).join("\n");
   const cycleName = formatAllStarCyclePipeListLabelFromOrgMeta(cycle);

@@ -5,6 +5,11 @@ import {
   buildAllStarExportFilename,
   getAllStarCycleDisplayName,
 } from "@/lib/allStar/exportFormat";
+import {
+  computeVoteSummaryRows,
+  parseVoteExportTopCount,
+  selectVoteSummaryTopVoteGetterPool,
+} from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
 
 function csvEscape(value: string) {
@@ -29,6 +34,16 @@ export async function GET(request: NextRequest) {
   });
 
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
+  const topCount = parseVoteExportTopCount(request.nextUrl.searchParams.get("topCount"));
+  const computed = await computeVoteSummaryRows(prisma, cycleId);
+  const exportIds = computed
+    ? selectVoteSummaryTopVoteGetterPool(computed.rows, topCount).map((row) => row.candidateId)
+    : [];
+  const candidatesById = new Map(cycle.candidates.map((candidate) => [candidate.id, candidate]));
+  const exportCandidates = exportIds.flatMap((id) => {
+    const candidate = candidatesById.get(id);
+    return candidate ? [candidate] : [];
+  });
 
   const header = [
     "Organization",
@@ -53,7 +68,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const rows = cycle.candidates.map((candidate) => {
+  const rows = exportCandidates.map((candidate) => {
     const ratings = ratingMap.get(candidate.id) || [];
     const avg = ratings.length
       ? (ratings.reduce((sum, value) => sum + value, 0) / ratings.length).toFixed(2)

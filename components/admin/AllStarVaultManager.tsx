@@ -25,6 +25,8 @@ import {
 } from "@/lib/allStar/cycleUiLabels";
 import { getCycleStatusChipLabel, isPublishedCycleWithinOpenWindow } from "@/lib/allStar/cycleType";
 import {
+  DEFAULT_VOTE_EXPORT_TOP_COUNT,
+  MAX_VOTE_EXPORT_TOP_COUNT,
   selectVoteSummaryNameOnlyPool,
   sortVoteSummaryRowsByLastName,
   splitVoteSummaryRowsForRunoff,
@@ -393,6 +395,9 @@ export default function AllStarVaultManager({
   const [runoffModalPoolSize, setRunoffModalPoolSize] = useState("24");
   const [runoffModalRatingsPerCoach, setRunoffModalRatingsPerCoach] = useState("12");
   const [runoffModalFirstTeamSize, setRunoffModalFirstTeamSize] = useState("12");
+  const [voteExportTopCount, setVoteExportTopCount] = useState(
+    String(DEFAULT_VOTE_EXPORT_TOP_COUNT),
+  );
 
   const previewCanViewAllStar =
     previewRole === "BOARD_MEMBER" || previewRole === "PARK_DIRECTOR" ? false : true;
@@ -2028,6 +2033,13 @@ export default function AllStarVaultManager({
     canManageAllStarVaultUi || (canManageAllStarVault && isAuditorFocusedPreview);
   const showFullAdminView = previewCanViewAllStar && !isAuditorFocusedPreview;
   const orgQuery = isMasterMode ? `&org=${encodeURIComponent(org)}` : "";
+  const parsedVoteExportTopCount = Number.parseInt(voteExportTopCount, 10);
+  const normalizedVoteExportTopCount = Number.isFinite(parsedVoteExportTopCount)
+    ? Math.min(MAX_VOTE_EXPORT_TOP_COUNT, Math.max(1, parsedVoteExportTopCount))
+    : DEFAULT_VOTE_EXPORT_TOP_COUNT;
+  const voteExportTopCountQuery = `&topCount=${encodeURIComponent(
+    String(normalizedVoteExportTopCount),
+  )}`;
   const sampleBallotCandidates = candidates
     .filter((candidate) => candidate.isActive !== false)
     .slice(0, 12);
@@ -2096,6 +2108,21 @@ export default function AllStarVaultManager({
   const showManagementEditChrome =
     showFullAdminManagementChrome &&
     (!vaultSnapshotDetailActive || showEditModules || usesTabbedWorkspace);
+  const renderExportTopCountControl = () => (
+    <label className="flex items-center gap-2 text-xs text-zinc-400">
+      <span>Top vote getters</span>
+      <input
+        type="number"
+        min={1}
+        max={MAX_VOTE_EXPORT_TOP_COUNT}
+        value={voteExportTopCount}
+        onChange={(e) => setVoteExportTopCount(e.target.value)}
+        className="w-20 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-xs text-zinc-100"
+        aria-label="Top vote getters to include in exports"
+      />
+      <span className="text-zinc-500">ties included</span>
+    </label>
+  );
 
   return (
     <section ref={vaultShellRef} className="space-y-6" data-admin-vault-interactive="true">
@@ -2498,11 +2525,12 @@ export default function AllStarVaultManager({
                     ? `${ballotRosterStatus.submittedCount}/${ballotRosterStatus.total} submitted (${ballotRosterStatus.rosterLabelShort}) — see Submitted Ballots below for columns.`
                     : "No roster progress available"}
                 </p>
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap items-center gap-2">
+                  {renderExportTopCountControl()}
                   <a
                     href={
                       selectedCycleId
-                        ? `/api/admin/all-star/exports/votes-panel/csv?cycleId=${selectedCycleId}${orgQuery}`
+                        ? `/api/admin/all-star/exports/votes-panel/csv?cycleId=${selectedCycleId}${voteExportTopCountQuery}${orgQuery}`
                         : "#"
                     }
                     className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
@@ -2512,7 +2540,7 @@ export default function AllStarVaultManager({
                   <a
                     href={
                       selectedCycleId
-                        ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${orgQuery}`
+                        ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${voteExportTopCountQuery}${orgQuery}`
                         : "#"
                     }
                     className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
@@ -2522,7 +2550,7 @@ export default function AllStarVaultManager({
                   <a
                     href={
                       selectedCycleId
-                        ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=full${orgQuery}`
+                        ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=full${voteExportTopCountQuery}${orgQuery}`
                         : "#"
                     }
                     className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
@@ -2533,7 +2561,7 @@ export default function AllStarVaultManager({
                     <a
                       href={
                         selectedCycleId
-                          ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${orgQuery}`
+                          ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${voteExportTopCountQuery}${orgQuery}`
                           : "#"
                       }
                       className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
@@ -3631,10 +3659,11 @@ export default function AllStarVaultManager({
               : "Live candidate standings sorted by vote count, then average rating. Auto-refresh runs every 15 seconds while a cycle is open and published."}
           </p>
           <div className="flex flex-wrap items-center gap-2 justify-end shrink-0">
+            {renderExportTopCountControl()}
             <a
               href={
                 selectedCycleId
-                  ? `/api/admin/all-star/exports/votes-panel/csv?cycleId=${selectedCycleId}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
+                  ? `/api/admin/all-star/exports/votes-panel/csv?cycleId=${selectedCycleId}${voteExportTopCountQuery}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
                   : "#"
               }
               className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
@@ -3644,7 +3673,7 @@ export default function AllStarVaultManager({
             <a
               href={
                 selectedCycleId
-                  ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
+                  ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${voteExportTopCountQuery}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
                   : "#"
               }
               className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
@@ -3654,7 +3683,7 @@ export default function AllStarVaultManager({
             <a
               href={
                 selectedCycleId
-                  ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=full${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
+                  ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=full${voteExportTopCountQuery}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
                   : "#"
               }
               className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
@@ -3665,7 +3694,7 @@ export default function AllStarVaultManager({
               <a
                 href={
                   selectedCycleId
-                    ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
+                    ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${voteExportTopCountQuery}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
                     : "#"
                 }
                 className="text-xs rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-3 py-1.5"
@@ -4067,7 +4096,7 @@ export default function AllStarVaultManager({
             className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm read-only:opacity-60"
           />
         ) : null}
-        <div className="flex flex-wrap gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           {!isLimitedVaultAccess ? (
             <button
               type="button"
@@ -4078,14 +4107,23 @@ export default function AllStarVaultManager({
               Save invite roster
             </button>
           ) : null}
+          {renderExportTopCountControl()}
           <a
-            href={selectedCycleId ? `/api/admin/all-star/exports/csv?cycleId=${selectedCycleId}` : "#"}
+            href={
+              selectedCycleId
+                ? `/api/admin/all-star/exports/csv?cycleId=${selectedCycleId}${voteExportTopCountQuery}`
+                : "#"
+            }
             className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm"
           >
             Export CSV
           </a>
           <a
-            href={selectedCycleId ? `/api/admin/all-star/exports/pdf?cycleId=${selectedCycleId}` : "#"}
+            href={
+              selectedCycleId
+                ? `/api/admin/all-star/exports/pdf?cycleId=${selectedCycleId}${voteExportTopCountQuery}`
+                : "#"
+            }
             className="rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-4 py-2 text-sm"
           >
             Export PDF
@@ -4094,7 +4132,7 @@ export default function AllStarVaultManager({
             <a
               href={
                 selectedCycleId
-                  ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}`
+                  ? `/api/admin/all-star/exports/showcase-scorecard/pdf?cycleId=${selectedCycleId}${voteExportTopCountQuery}`
                   : "#"
               }
               className="rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-4 py-2 text-sm"
