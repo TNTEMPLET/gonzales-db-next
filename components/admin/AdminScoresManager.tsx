@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import {
   assignrScopeToQueryParam,
   type AdminAssignrScope,
-} from "@/lib/admin/assignrOrgScope";
+} from "@/lib/admin/assignrScopeShared";
 import { getOrgDisplayName, type ContentOrgId } from "@/lib/siteConfig";
 
 type GameRow = {
