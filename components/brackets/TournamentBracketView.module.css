@@ -1222,11 +1222,14 @@
   }
 
   .fullBracketDiagramBody {
+    --mobile-full-bracket-scale: 0.39;
     overflow: auto;
     overscroll-behavior-inline: contain;
     padding: 0.45rem;
     max-height: min(72dvh, 36rem);
     -webkit-overflow-scrolling: touch;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
   }
 
   .desktopBracketDiagram[data-mobile-expanded="false"] .fullBracketDiagramBody {
@@ -1239,7 +1242,8 @@
 
   .fullBracketDiagramBody > .bracketGridScroll,
   .fullBracketDiagramBody > .tree {
-    zoom: 0.39;
+    transform: scale(var(--mobile-full-bracket-scale));
+    transform-origin: top left;
   }
 
   .fullBracketDiagramBody > .bracketGridScroll {
@@ -1371,16 +1375,14 @@
 }
 
 @media (max-width: 390px) {
-  .fullBracketDiagramBody > .bracketGridScroll,
-  .fullBracketDiagramBody > .tree {
-    zoom: 0.32;
+  .fullBracketDiagramBody {
+    --mobile-full-bracket-scale: 0.32;
   }
 }
 
 @media (min-width: 391px) and (max-width: 480px) {
-  .fullBracketDiagramBody > .bracketGridScroll,
-  .fullBracketDiagramBody > .tree {
-    zoom: 0.34;
+  .fullBracketDiagramBody {
+    --mobile-full-bracket-scale: 0.34;
   }
 }
 
