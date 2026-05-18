@@ -70,6 +70,12 @@ function bracketConnectorMeasuredFeedersFromSize({
   return { viewBox: `0 0 40 ${vbH}`, d };
 }
 
+function visualToLayoutScale(el: HTMLElement, rect: DOMRect): number {
+  const layoutHeight = el.offsetHeight;
+  if (layoutHeight <= 0 || rect.height <= 0) return 1;
+  return rect.height / layoutHeight;
+}
+
 function useConnectorCellRect(wrapRef: React.RefObject<HTMLDivElement | null>) {
   return () => {
     const el = wrapRef.current;
@@ -250,6 +256,9 @@ function PodiumThirdConnector() {
         const tr = target.getBoundingClientRect();
         const frameTop = sr.top;
         const frameHeight = Math.max(4, sr.height);
+        const visualScale = visualToLayoutScale(cell as HTMLElement, cr);
+        const cssTop = visualScale > 0 ? (frameTop - cr.top) / visualScale : frameTop - cr.top;
+        const cssHeight = visualScale > 0 ? frameHeight / visualScale : frameHeight;
         const sourceYPercent = bracketConnectorYPercentForCenter(
           frameTop,
           frameHeight,
@@ -263,10 +272,10 @@ function PodiumThirdConnector() {
         setGeom({
           ...bracketConnectorMeasuredLineFromSize(w, frameHeight, sourceYPercent, targetYPercent, false),
           frameStyle: {
-            top: `${frameTop - cr.top}px`,
+            top: `${cssTop}px`,
             bottom: "auto",
-            height: `${frameHeight}px`,
-            minHeight: `${frameHeight}px`,
+            height: `${cssHeight}px`,
+            minHeight: `${cssHeight}px`,
           },
         });
         return;
@@ -322,7 +331,11 @@ function PodiumThirdConnector() {
 /** Final match → champion plaque (Final → Champion gutter only). */
 function PodiumChampionConnector() {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [{ viewBox, d }, setGeom] = useState(() => bracketConnectorHorizontalAtPercentFromSize(40, 100, 50));
+  const [{ viewBox, d, frameStyle }, setGeom] = useState<{
+    viewBox: string;
+    d: string;
+    frameStyle?: CSSProperties;
+  }>(() => bracketConnectorHorizontalAtPercentFromSize(40, 100, 50));
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -341,25 +354,44 @@ function PodiumChampionConnector() {
       if (source && target) {
         const sr = source.getBoundingClientRect();
         const tr = target.getBoundingClientRect();
+        const sourceCenter = (sr.top + sr.bottom) / 2;
+        const targetCenter = (tr.top + tr.bottom) / 2;
+        const frameTop = Math.min(sourceCenter, targetCenter) - 2;
+        const frameHeight = Math.max(4, Math.abs(targetCenter - sourceCenter) + 4);
+        const visualScale = visualToLayoutScale(cell as HTMLElement, cr);
+        const cssTop = visualScale > 0 ? (frameTop - cr.top) / visualScale : frameTop - cr.top;
+        const cssHeight = visualScale > 0 ? frameHeight / visualScale : frameHeight;
         const sourceYPercent = bracketConnectorYPercentForCenter(
-          cr.top,
-          cr.height,
-          (sr.top + sr.bottom) / 2,
+          frameTop,
+          frameHeight,
+          sourceCenter,
         );
         const targetYPercent = bracketConnectorYPercentForCenter(
-          cr.top,
-          cr.height,
-          (tr.top + tr.bottom) / 2,
+          frameTop,
+          frameHeight,
+          targetCenter,
         );
-        setGeom(bracketConnectorMeasuredLineFromSize(w, h, sourceYPercent, targetYPercent));
+        setGeom({
+          ...bracketConnectorMeasuredLineFromSize(w, frameHeight, sourceYPercent, targetYPercent, false),
+          frameStyle: {
+            top: `${cssTop}px`,
+            bottom: "auto",
+            height: `${cssHeight}px`,
+            minHeight: `${cssHeight}px`,
+          },
+        });
         return;
       } else {
-        setGeom(bracketConnectorCenterFeederFromSize(w, h));
+        setGeom({ ...bracketConnectorCenterFeederFromSize(w, h), frameStyle: undefined });
         return;
       }
     };
     measure();
-    const raf = window.requestAnimationFrame(measure);
+    let raf2: number | undefined;
+    const raf = window.requestAnimationFrame(() => {
+      measure();
+      raf2 = window.requestAnimationFrame(measure);
+    });
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     if (el.parentElement) ro.observe(el.parentElement);
@@ -372,12 +404,19 @@ function PodiumChampionConnector() {
     if (target) ro.observe(target);
     return () => {
       window.cancelAnimationFrame(raf);
+      if (raf2 != null) window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
   }, []);
 
   return (
-    <div ref={wrapRef} className={styles.connectorDynamicWrap} data-bracket-connector="center" aria-hidden>
+    <div
+      ref={wrapRef}
+      className={styles.connectorDynamicWrap}
+      style={frameStyle}
+      data-bracket-connector="center"
+      aria-hidden
+    >
       <svg
         className={styles.connectorSvgDynamic}
         viewBox={viewBox}
