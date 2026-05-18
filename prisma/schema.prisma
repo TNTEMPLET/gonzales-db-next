@@ -237,6 +237,8 @@ model BracketProject {
   seasonYear            Int
   name                  String
   status                BracketProjectStatus @default(DRAFT)
+  /// Lower numbers sort first when bracket priority ordering is used.
+  priority              Int                  @default(0)
   /// Versioned bracket spec (structure, games, flyer options, ingestion warnings).
   spec                  Json                 @default("{}")
   /// Vercel Blob (or other) URLs for originals: templates, screenshots, logos, sponsor assets.
@@ -250,6 +252,7 @@ model BracketProject {
   createdByAdmin        AdminUser?             @relation("BracketProjectCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, status, updatedAt])
+  @@index([organizationId, priority])
   @@index([createdByAdminId])
 }
 

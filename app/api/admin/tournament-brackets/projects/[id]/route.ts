@@ -38,6 +38,7 @@ export async function PATCH(request: NextRequest, ctx: RouteParams) {
     let body: {
       name?: string;
       status?: "DRAFT" | "READY" | "ARCHIVED";
+      priority?: number;
       specPatch?: Record<string, unknown>;
       sourceArtifactUrls?: string[];
     };
@@ -53,12 +54,16 @@ export async function PATCH(request: NextRequest, ctx: RouteParams) {
     const data: {
       name?: string;
       status?: "DRAFT" | "READY" | "ARCHIVED";
+      priority?: number;
       spec?: object;
       sourceArtifactUrls?: object;
     } = {};
 
     if (typeof body.name === "string" && body.name.trim()) data.name = body.name.trim();
     if (body.status) data.status = body.status;
+    if (typeof body.priority === "number" && Number.isFinite(body.priority)) {
+      data.priority = Math.trunc(body.priority);
+    }
 
     if (body.specPatch && typeof body.specPatch === "object") {
       const existingProbe = safeParseBracketSpec(existing.spec);

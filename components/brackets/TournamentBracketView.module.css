@@ -31,6 +31,11 @@
   overflow: hidden;
 }
 
+.rootCompactSixTeam {
+  min-height: 47rem;
+  padding-bottom: 6rem;
+}
+
 .rootForeground {
   position: relative;
   z-index: 1;
@@ -289,6 +294,10 @@
 }
 
 .matchGameBadge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -298,6 +307,22 @@
   border-bottom: 1px solid #e2e8f0;
   background: linear-gradient(to bottom, #fff, #fafbfd);
   text-align: left;
+}
+
+.matchGameBadgeLabel {
+  min-width: 0;
+}
+
+.matchLiveStatus {
+  margin-left: auto;
+  flex: 0 0 auto;
+  max-width: 60%;
+  overflow: hidden;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--bracket-navy-deep);
+  font-variant-numeric: tabular-nums;
 }
 
 .slot {
@@ -586,12 +611,25 @@
   min-height: 100%;
 }
 
+.gridMatchWrapAlignStart {
+  justify-content: flex-start;
+}
+
+.gridMatchWrapAlignEnd {
+  justify-content: flex-end;
+}
+
 /* Final column when podium: championship vertically centered, 3rd-place game bottom-anchored. */
 .finalRoundPodiumGridWrap {
   justify-content: stretch;
   position: relative;
   /* Keep this grid cell from collapsing to a sliver when tracks use minmax(0, 1fr). */
   min-width: 9rem;
+}
+
+.finalRoundPodiumGridWrapCompactSix .thirdPlaceGameBottomRow {
+  bottom: -6.25rem;
+  background: transparent;
 }
 
 .finalRoundPodiumGridWrap .finalRoundPodiumInner {
@@ -825,6 +863,12 @@
   width: 100%;
 }
 
+.championRoundGridCellCompactSix .thirdPlacePlaqueBottomRow {
+  bottom: -6.25rem;
+  background: transparent;
+  transform: translateY(var(--bracket-podium-third-align-y, 0px));
+}
+
 .championRoundColumn {
   position: relative;
   align-self: stretch;
@@ -921,6 +965,10 @@
 }
 
 .thirdPlaceMatchBadge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
   font-size: 0.6875rem;
   font-weight: 700;
   text-transform: uppercase;

@@ -11,6 +11,7 @@ import { buildBracketExportHtmlDocument } from "@/lib/tournament-brackets/bracke
 import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { buildBracketSvgPreview } from "@/lib/tournament-brackets/bracketSvgPreview";
 import { isBracketSetupWizardComplete, safeParseBracketSpec, type BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
+import { comparePublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
 import {
   canUseConnectedBracketScoring,
   clearBracketScoringFromSpec,
@@ -36,10 +37,20 @@ type ProjectRow = {
   seasonYear: number;
   name: string;
   status: ProjectStatus;
+  priority: number;
   updatedAt: string;
 };
 
 type ProjectStatus = "DRAFT" | "READY" | "ARCHIVED";
+type ProjectSortMode = "priority" | "recent" | "season" | "name";
+type ProjectSortDirection = "asc" | "desc";
+
+const PROJECT_STATUS_PRIORITY: Record<ProjectStatus, number> = {
+  READY: 0,
+  DRAFT: 1,
+  ARCHIVED: 2,
+};
+const PROJECT_PRIORITY_OPTION_FLOOR = 20;
 
 type ProjectDetail = ProjectRow & {
   spec: unknown;
@@ -75,6 +86,41 @@ async function readApiJson<T extends Record<string, unknown>>(res: Response): Pr
 function apiErrorMessage(json: { error?: string; hint?: string }, fallback: string) {
   const base = json.error || fallback;
   return json.hint ? `${base} — ${json.hint}` : base;
+}
+
+function compareByProjectName(left: ProjectRow, right: ProjectRow): number {
+  return left.name.localeCompare(right.name, "en-US", {
+    numeric: true,
+    sensitivity: "base",
+  });
+}
+
+function compareByUpdatedAtAsc(left: ProjectRow, right: ProjectRow): number {
+  const leftTime = Date.parse(left.updatedAt);
+  const rightTime = Date.parse(right.updatedAt);
+  return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
+}
+
+function sortProjectsForAdmin(
+  projects: ProjectRow[],
+  sortMode: ProjectSortMode,
+  sortDirection: ProjectSortDirection,
+): ProjectRow[] {
+  return [...projects].sort((left, right) => {
+    let result: number;
+    if (sortMode === "recent") {
+      result = compareByUpdatedAtAsc(left, right) || compareByProjectName(left, right);
+    } else if (sortMode === "season") {
+      result = left.seasonYear - right.seasonYear || comparePublishedBrackets(left, right);
+    } else if (sortMode === "name") {
+      result = compareByProjectName(left, right) || left.seasonYear - right.seasonYear;
+    } else {
+      const priorityCompare = (left.priority ?? 0) - (right.priority ?? 0);
+      const statusCompare = PROJECT_STATUS_PRIORITY[left.status] - PROJECT_STATUS_PRIORITY[right.status];
+      result = priorityCompare || statusCompare || comparePublishedBrackets(left, right);
+    }
+    return sortDirection === "asc" ? result : -result;
+  });
 }
 
 /** html2canvas 1.x cannot parse CSS Color 4 `color()` / `lab()` strings from computed styles; canvas normalizes to rgb/hex. */
@@ -212,6 +258,8 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const router = useRouter();
   const pathname = usePathname();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
+  const [projectSortMode, setProjectSortMode] = useState<ProjectSortMode>("priority");
+  const [projectSortDirection, setProjectSortDirection] = useState<ProjectSortDirection>("asc");
   const [projectId, setProjectId] = useState<string | null>(null);
   const [project, setProject] = useState<ProjectDetail | null>(null);
   const [busy, setBusy] = useState(false);
@@ -220,6 +268,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const [draftName, setDraftName] = useState("End of Year Bracket");
   const [seasonYear, setSeasonYear] = useState(new Date().getFullYear());
   const [projectNameDraft, setProjectNameDraft] = useState("");
+  const [projectPriorityDraft, setProjectPriorityDraft] = useState("0");
   const [referenceUrl, setReferenceUrl] = useState("");
   /** 0.6–1.0; only affects on-screen admin preview (`zoom`). Stripped for PDF raster capture. */
   const [bracketPreviewZoom, setBracketPreviewZoom] = useState(0.88);
@@ -267,6 +316,19 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
 
   const spec = bracketSpecParse?.spec ?? null;
   const setupComplete = useMemo(() => (spec ? isBracketSetupWizardComplete(spec) : false), [spec]);
+  const sortedProjects = useMemo(
+    () => sortProjectsForAdmin(projects, projectSortMode, projectSortDirection),
+    [projects, projectSortMode, projectSortDirection],
+  );
+  const projectPriorityOptions = useMemo(() => {
+    const current = Number(projectPriorityDraft);
+    const maxPriority = Math.max(
+      PROJECT_PRIORITY_OPTION_FLOOR,
+      projects.length - 1,
+      Number.isFinite(current) ? Math.trunc(current) : 0,
+    );
+    return Array.from({ length: maxPriority + 1 }, (_, priority) => priority);
+  }, [projectPriorityDraft, projects.length]);
 
   useEffect(() => {
     let id: number;
@@ -290,6 +352,12 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   useEffect(() => {
     if (!project) return;
     const id = window.setTimeout(() => setProjectNameDraft(project.name), 0);
+    return () => window.clearTimeout(id);
+  }, [project]);
+
+  useEffect(() => {
+    if (!project) return;
+    const id = window.setTimeout(() => setProjectPriorityDraft(String(project.priority ?? 0)), 0);
     return () => window.clearTimeout(id);
   }, [project]);
 
@@ -521,6 +589,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           organizationId,
           seasonYear,
           name: draftName,
+          priority: 0,
         }),
       });
       const json = await readApiJson<{ data?: { id: string }; error?: string; hint?: string }>(res);
@@ -597,6 +666,39 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       await loadProject(projectId);
       await loadProjects();
       setNotice("Project name saved.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveProjectPriority() {
+    if (!projectId || !project) return;
+    const priority = Number(projectPriorityDraft);
+    if (!Number.isFinite(priority)) {
+      setError("Priority must be a number.");
+      return;
+    }
+    const normalized = Math.trunc(priority);
+    if (normalized === (project.priority ?? 0)) {
+      setNotice("Project priority unchanged.");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch(`/api/admin/tournament-brackets/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ priority: normalized }),
+      });
+      const json = await readApiJson<{ error?: string; hint?: string }>(res);
+      if (!res.ok) throw new Error(apiErrorMessage(json, "Could not save project priority"));
+      await loadProject(projectId);
+      await loadProjects();
+      setNotice("Project priority saved.");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1145,9 +1247,44 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           </label>
         </div>
         <div className="border-t border-zinc-800 pt-4">
-          <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Open or create</h3>
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Open or create</h3>
+              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                Priority uses the saved project number first. Lower numbers appear first when direction is ascending.
+              </p>
+            </div>
+            <div className="grid shrink-0 gap-2 sm:grid-cols-[minmax(190px,1fr)_minmax(150px,auto)]">
+              <label className="flex flex-col gap-1 text-xs text-zinc-500">
+                <span className="font-semibold uppercase tracking-wide">Sort projects</span>
+                <select
+                  value={projectSortMode}
+                  onChange={(e) => setProjectSortMode(e.target.value as ProjectSortMode)}
+                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                  aria-label="Sort bracket projects"
+                >
+                  <option value="priority">Priority</option>
+                  <option value="recent">Updated date</option>
+                  <option value="season">Season year</option>
+                  <option value="name">Name</option>
+                </select>
+              </label>
+              <label className="flex flex-col gap-1 text-xs text-zinc-500">
+                <span className="font-semibold uppercase tracking-wide">Direction</span>
+                <select
+                  value={projectSortDirection}
+                  onChange={(e) => setProjectSortDirection(e.target.value as ProjectSortDirection)}
+                  className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
+                  aria-label="Sort bracket projects ascending or descending"
+                >
+                  <option value="asc">Ascending</option>
+                  <option value="desc">Descending</option>
+                </select>
+              </label>
+            </div>
+          </div>
           <ul className="mt-2 max-h-48 space-y-1 overflow-y-auto text-sm">
-            {projects.map((p) => (
+            {sortedProjects.map((p) => (
               <li key={p.id} className="flex gap-1">
                 <button
                   type="button"
@@ -1156,7 +1293,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                 >
                   {p.name}{" "}
                   <span className="text-zinc-500">
-                    ({p.seasonYear}) {p.status}
+                    ({p.seasonYear}) {p.status} · Priority {p.priority ?? 0}
                   </span>
                 </button>
                 <button
@@ -1202,6 +1339,40 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                     className="min-h-10 shrink-0 rounded-lg bg-zinc-700 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-600 disabled:opacity-40"
                   >
                     Save name
+                  </button>
+                </div>
+              </div>
+              <div className="space-y-2 rounded-lg border border-zinc-700/80 bg-zinc-950/40 p-3">
+                <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Project priority</h3>
+                <p className="text-[11px] leading-relaxed text-zinc-500">
+                  Used by Priority sorting in this list and on the public tournament tabs. Lower numbers sort first.
+                </p>
+                <div className="grid gap-2 sm:flex sm:flex-wrap sm:items-center">
+                  <select
+                    value={projectPriorityDraft}
+                    onChange={(e) => setProjectPriorityDraft(e.target.value)}
+                    disabled={busy}
+                    className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm tabular-nums"
+                    aria-label="Project priority"
+                  >
+                    {projectPriorityOptions.map((priority) => (
+                      <option key={priority} value={String(priority)}>
+                        Priority {priority}
+                        {priority === 0 ? " (highest)" : ""}
+                      </option>
+                    ))}
+                  </select>
+                  <button
+                    type="button"
+                    disabled={
+                      busy ||
+                      !Number.isFinite(Number(projectPriorityDraft)) ||
+                      Math.trunc(Number(projectPriorityDraft)) === (project.priority ?? 0)
+                    }
+                    onClick={() => void saveProjectPriority()}
+                    className="min-h-10 shrink-0 rounded-lg bg-zinc-700 px-3 py-2 text-xs font-semibold text-white hover:bg-zinc-600 disabled:opacity-40"
+                  >
+                    Save priority
                   </button>
                 </div>
               </div>

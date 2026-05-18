@@ -72,6 +72,10 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
   border-radius: 8px;
   padding: 1.125rem 1.25rem 3.35rem;
 }
+.bracket-root-compact-six-team {
+  min-height: 47rem;
+  padding-bottom: 6rem;
+}
 .bracket-title {
   position: relative;
   font-size: clamp(1.05rem, 2.8vw, 1.45rem);
@@ -458,6 +462,11 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
   padding-left: 0.2rem;
   padding-right: 0.2rem;
 }
+.champion-round-grid-cell-compact-six .third-place-plaque-bottom-row {
+  bottom: -6.25rem;
+  background: transparent;
+  transform: translateY(var(--bracket-podium-third-align-y, 0px));
+}
 .third-place-game-bottom-row .third-place-match { width: 100%; flex: 0 1 auto; align-self: center; }
 .third-place-plaque-bottom-row .third-place-plaque-slot {
   width: 100%;
@@ -589,7 +598,13 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
 .flat-champion-column .champion-round-column { flex: 1 1 auto; min-height: 0; }
 .bracket-html-round-schedule-hdr { margin: 0 0 0.5rem; }
 .bracket-html-match-wrap { display: flex; flex-direction: column; justify-content: center; min-height: 100%; }
+.bracket-html-match-wrap-align-start { justify-content: flex-start; }
+.bracket-html-match-wrap-align-end { justify-content: flex-end; }
 .bracket-html-final-round-podium-wrap { justify-content: stretch; position: relative; min-width: 9rem; }
+.bracket-html-final-round-podium-wrap-compact-six .third-place-game-bottom-row {
+  bottom: -6.25rem;
+  background: transparent;
+}
 .bracket-html-final-round-podium-wrap .bracket-html-final-round-podium-inner {
   flex: 1 1 0;
   min-height: 100%;
@@ -783,6 +798,30 @@ function matchAtCanonicalSlotHtml(round: LayoutRound, slotIndex: number): Layout
   return round.matches[slotIndex] ?? null;
 }
 
+function incomingFeederVariantHtml(rounds: LayoutRound[], roundIndex: number, slotIndex: number) {
+  if (roundIndex <= 0) return "both";
+  const prevRound = rounds[roundIndex - 1];
+  if (!prevRound) return "both";
+  const topHas = matchAtCanonicalSlotHtml(prevRound, 2 * slotIndex) != null;
+  const bottomHas = matchAtCanonicalSlotHtml(prevRound, 2 * slotIndex + 1) != null;
+  return getBracketConnectorVariant(topHas, bottomHas);
+}
+
+function matchWrapAlignmentClassHtml(variant: ReturnType<typeof incomingFeederVariantHtml>) {
+  if (variant === "top") return " bracket-html-match-wrap-align-start";
+  if (variant === "bottom") return " bracket-html-match-wrap-align-end";
+  return "";
+}
+
+function isSixTeamEightSlotByeLayoutHtml(rounds: LayoutRound[], laneRows: number) {
+  const firstRound = rounds[0];
+  return (
+    laneRows === 4 &&
+    firstRound?.layoutSlotCount === 4 &&
+    firstRound.matches.length === 2
+  );
+}
+
 function matchGameBadgeHtml(m: { officialGameNumber?: string }): string {
   const badge = formatBracketGameBadge(m.officialGameNumber);
   if (!badge) return "";
@@ -897,7 +936,7 @@ function thirdPlaceMatchArticleHtml(podium: BracketLayoutPodium): string {
 }
 function championRoundColumnHtmlExport(
   podium: BracketLayoutPodium,
-  opts?: { gridStyle?: string },
+  opts?: { gridStyle?: string; compactSix?: boolean },
 ): string {
   const champ = declaredChampionFromFinalSlots(
     podium.finalMatch.slotHome,
@@ -921,7 +960,9 @@ function championRoundColumnHtmlExport(
     ? "third-place-plaque-slot champion-plaque champion-plaque-undecided"
     : "third-place-plaque-slot champion-plaque";
   const thirdAria = isThirdTbd ? ` aria-label="${esc("Third place not yet decided.")}"` : "";
-  const rootCls = opts?.gridStyle ? "champion-round-column champion-round-grid-cell" : "champion-round-column";
+  const rootCls = opts?.gridStyle
+    ? `champion-round-column champion-round-grid-cell${opts.compactSix ? " champion-round-grid-cell-compact-six" : ""}`
+    : "champion-round-column";
   const rootStyle = opts?.gridStyle ? ` style="${opts.gridStyle}"` : "";
   return `<div class="${rootCls}"${rootStyle} aria-label="Champion round">
   <div class="champion-plaque-wrap">
@@ -950,6 +991,7 @@ function bracketRootDocumentInner(
   options: BracketExportViewOptions | undefined,
   themeStyle: string,
   parkBelowTitle = true,
+  rootExtraClass = "",
 ): string {
   const watermark = options?.logoWatermarkUrl?.trim();
   const wm = watermark
@@ -966,7 +1008,7 @@ function bracketRootDocumentInner(
   const titleBlock = bracketTitle.trim()
     ? `<h2 class="bracket-title">${esc(bracketTitle)}</h2>`
     : "";
-  return `<section class="bracket-root" style="${themeStyle}" aria-label="Tournament bracket">
+  return `<section class="bracket-root${rootExtraClass}" style="${themeStyle}" aria-label="Tournament bracket">
 ${wm}
 <div class="bracket-root-foreground">
 ${titleBlock}
@@ -993,6 +1035,8 @@ function buildConnectedBracketHtml(
   const podium = layout.podium ?? null;
   const hasPodium = Boolean(podium);
   const baseCols = 2 * R - 1;
+  const useCompactSixTeamByeLayout = isSixTeamEightSlotByeLayoutHtml(rounds, N);
+  const laneMinHeight = useCompactSixTeamByeLayout ? "1rem" : "2.5rem";
   const gridTemplateColumns = [
     ...Array.from({ length: baseCols }, (_, i) =>
       i % 2 === 0 ? "minmax(11rem, 1fr)" : "minmax(1.25rem, 0.28fr)",
@@ -1000,7 +1044,7 @@ function buildConnectedBracketHtml(
     ...(hasPodium ? (["minmax(1.25rem, 0.28fr)", "minmax(11rem, 1fr)"] as const) : []),
   ].join(" ");
   const parts: string[] = [];
-  const gridStyle = `display:grid;grid-template-columns:${gridTemplateColumns};grid-template-rows:auto repeat(${N}, minmax(2.5rem, auto));column-gap:0.35rem;row-gap:0.45rem;align-items:stretch;width:100%;min-width:0;max-width:100%`;
+  const gridStyle = `display:grid;grid-template-columns:${gridTemplateColumns};grid-template-rows:auto repeat(${N}, minmax(${laneMinHeight}, auto));column-gap:0.35rem;row-gap:0.45rem;align-items:stretch;width:100%;min-width:0;max-width:100%`;
 
   const parkInPodiumHeader = hasPodium && hasBracketParkInfo(options?.parkInfo);
   for (let ri = 0; ri < R; ri++) {
@@ -1040,15 +1084,19 @@ function buildConnectedBracketHtml(
     for (let j = 0; j < slotCount; j++) {
       const m = matchAtCanonicalSlotHtml(round, j);
       const rowStart = 2 + j * span;
+      const alignClass = useCompactSixTeamByeLayout
+        ? matchWrapAlignmentClassHtml(incomingFeederVariantHtml(rounds, ri, j))
+        : "";
       if (m) {
         if (isFinalPodium) {
           const p = podium!;
+          const compactSixClass = useCompactSixTeamByeLayout ? " bracket-html-final-round-podium-wrap-compact-six" : "";
           parts.push(
-            `<div class="bracket-html-match-wrap bracket-html-final-round-podium-wrap" style="grid-column:${col};grid-row:${rowStart} / span ${span}"><div class="bracket-html-final-round-podium-inner"><div class="bracket-html-final-championship-slot">${matchArticleHtml(m)}</div><div class="third-place-game-bottom-row" data-bracket-podium-third-band="game">${thirdPlaceMatchArticleHtml(p)}</div></div></div>`,
+            `<div class="bracket-html-match-wrap bracket-html-final-round-podium-wrap${compactSixClass}" style="grid-column:${col};grid-row:${rowStart} / span ${span}"><div class="bracket-html-final-round-podium-inner"><div class="bracket-html-final-championship-slot">${matchArticleHtml(m)}</div><div class="third-place-game-bottom-row" data-bracket-podium-third-band="game">${thirdPlaceMatchArticleHtml(p)}</div></div></div>`,
           );
         } else {
           parts.push(
-            `<div class="bracket-html-match-wrap" style="grid-column:${col};grid-row:${rowStart} / span ${span}">${matchArticleHtml(m)}</div>`,
+            `<div class="bracket-html-match-wrap${alignClass}" style="grid-column:${col};grid-row:${rowStart} / span ${span}">${matchArticleHtml(m)}</div>`,
           );
         }
       } else {
@@ -1090,12 +1138,20 @@ function buildConnectedBracketHtml(
     parts.push(
       championRoundColumnHtmlExport(podium, {
         gridStyle: `grid-column:${2 * R + 1};grid-row:${rowStartFinal} / span ${spanFinal}`,
+        compactSix: useCompactSixTeamByeLayout,
       }),
     );
   }
 
   const gridHtml = `<div class="bracket-html-grid bracket-html-grid-scroll" style="${gridStyle}">${parts.join("")}</div>`;
-  return bracketRootDocumentInner(bracketTitle, gridHtml, options, themeStyle, !parkInPodiumHeader);
+  return bracketRootDocumentInner(
+    bracketTitle,
+    gridHtml,
+    options,
+    themeStyle,
+    !parkInPodiumHeader,
+    useCompactSixTeamByeLayout ? " bracket-root-compact-six-team" : "",
+  );
 }
 
 function layoutToInnerHtml(

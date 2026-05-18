@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
 
 import {
   BRACKET_PODIUM_CHAMPION_SOURCE_ATTR,
@@ -33,12 +33,13 @@ function bracketConnectorMeasuredLineFromSize(
   heightPx: number,
   sourceYPercent: number,
   targetYPercent: number,
+  clampY = true,
 ): { viewBox: string; d: string } {
   const w = Math.max(4, widthPx);
   const h = Math.max(4, heightPx);
   const vbH = (40 * h) / w;
   const s = vbH / 100;
-  const yv = (v: number) => Math.max(2, Math.min(98, v)) * s;
+  const yv = (v: number) => (clampY ? Math.max(2, Math.min(98, v)) : v) * s;
   const d = `M 2 ${yv(sourceYPercent)} L 38 ${yv(targetYPercent)}`;
   return { viewBox: `0 0 40 ${vbH}`, d };
 }
@@ -221,10 +222,14 @@ function MeasuredFeedersConnector({
   );
 }
 
-/** 3rd-place game → 3rd-place plaque: horizontal line at the midpoint of their vertical centers. */
+/** 3rd-place game -> 3rd-place plaque: line anchored to the rendered center of each card. */
 function PodiumThirdConnector() {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const [{ viewBox, d }, setGeom] = useState(() => bracketConnectorHorizontalAtPercentFromSize(40, 100, 85));
+  const [{ viewBox, d, frameStyle }, setGeom] = useState<{
+    viewBox: string;
+    d: string;
+    frameStyle?: CSSProperties;
+  }>(() => bracketConnectorHorizontalAtPercentFromSize(40, 100, 85));
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -243,17 +248,27 @@ function PodiumThirdConnector() {
       if (source && target) {
         const sr = source.getBoundingClientRect();
         const tr = target.getBoundingClientRect();
+        const frameTop = sr.top;
+        const frameHeight = Math.max(4, sr.height);
         const sourceYPercent = bracketConnectorYPercentForCenter(
-          cr.top,
-          cr.height,
+          frameTop,
+          frameHeight,
           (sr.top + sr.bottom) / 2,
         );
         const targetYPercent = bracketConnectorYPercentForCenter(
-          cr.top,
-          cr.height,
+          frameTop,
+          frameHeight,
           (tr.top + tr.bottom) / 2,
         );
-        setGeom(bracketConnectorMeasuredLineFromSize(w, h, sourceYPercent, targetYPercent));
+        setGeom({
+          ...bracketConnectorMeasuredLineFromSize(w, frameHeight, sourceYPercent, targetYPercent, false),
+          frameStyle: {
+            top: `${frameTop - cr.top}px`,
+            bottom: "auto",
+            height: `${frameHeight}px`,
+            minHeight: `${frameHeight}px`,
+          },
+        });
         return;
       }
       setGeom(bracketConnectorHorizontalAtPercentFromSize(w, h, 85));
@@ -284,7 +299,13 @@ function PodiumThirdConnector() {
   }, []);
 
   return (
-    <div ref={wrapRef} className={styles.connectorDynamicWrap} data-bracket-connector="podium-third" aria-hidden>
+    <div
+      ref={wrapRef}
+      className={styles.connectorDynamicWrap}
+      style={frameStyle}
+      data-bracket-connector="podium-third"
+      aria-hidden
+    >
       <svg
         className={styles.connectorSvgDynamic}
         viewBox={viewBox}
