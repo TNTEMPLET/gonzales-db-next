@@ -6,14 +6,12 @@ import {
 } from "@/lib/allStar/exportFormat";
 import {
   formatAllStarCyclePipeListLabelFromOrgMeta,
-  getRunoffVotePanelPrimaryTeamHeading,
-  getRunoffVotePanelSecondaryTeamHeading,
+  getRunoffVotePanelSplitLabels,
 } from "@/lib/allStar/cycleUiLabels";
 import { parseAllStarPhase } from "@/lib/allStar/phase";
 import {
   computeVoteSummaryRows,
   parseVoteExportTopCount,
-  selectVoteSummaryTopVoteGetterPool,
   splitVoteSummaryRowsForRunoff,
 } from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
@@ -38,12 +36,14 @@ export async function GET(request: NextRequest) {
 
   const topCount = parseVoteExportTopCount(request.nextUrl.searchParams.get("topCount"));
   const { rows, cycle } = computed;
-  const exportRows = selectVoteSummaryTopVoteGetterPool(rows, topCount);
   const orgId = cycle.organizationId === "ascension" ? "ascension" : "gonzales";
   const isRunoffSplit =
     cycle.runoffFirstTeamSize != null &&
     cycle.runoffFirstTeamSize > 0 &&
     cycle.runoffPoolSize != null;
+  const exportRows = isRunoffSplit
+    ? rows
+    : splitVoteSummaryRowsForRunoff(rows, topCount).firstTeam;
 
   function rowToCsvLine(row: (typeof rows)[0], rank: number) {
     const base = [
@@ -68,8 +68,13 @@ export async function GET(request: NextRequest) {
       exportRows,
       cycle.runoffFirstTeamSize!,
     );
-    const primaryHeading = getRunoffVotePanelPrimaryTeamHeading(orgId, cycle.title);
-    const secondaryHeading = getRunoffVotePanelSecondaryTeamHeading(orgId);
+    const { primaryHeading, secondaryHeading } = getRunoffVotePanelSplitLabels({
+      organizationId: orgId,
+      title: cycle.title,
+      runoffIsFinalVote: cycle.runoffIsFinalVote,
+      runoffTeamTarget: cycle.runoffTeamTarget,
+      runoffPlayersNeeded: cycle.runoffPlayersNeeded,
+    });
     const splitHeader = ["Team color", ...header];
     const splitBody = [
       ...firstTeam.map((row, index) => [

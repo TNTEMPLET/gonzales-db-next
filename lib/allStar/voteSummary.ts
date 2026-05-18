@@ -7,6 +7,8 @@ export type VoteSummaryRow = {
   team: string;
   jerseyNumber: string;
   showcaseBibNumber: string | null;
+  finalRosterOverride: "SELECTED" | "REMOVED" | null;
+  finalRosterOverrideReason: string | null;
   voteCount: number;
   averageRating: number;
 };
@@ -25,6 +27,9 @@ export type VoteSummaryCycleMeta = {
   parentBallotCycleId: string | null;
   runoffPoolSize: number | null;
   runoffFirstTeamSize: number | null;
+  runoffIsFinalVote: boolean;
+  runoffTeamTarget: AllStarBallotPhase | null;
+  runoffPlayersNeeded: number | null;
 };
 
 export const DEFAULT_VOTE_EXPORT_TOP_COUNT = 12;
@@ -91,6 +96,8 @@ export async function computeVoteSummaryRows(
         team: candidate.team,
         jerseyNumber: candidate.jerseyNumber,
         showcaseBibNumber: candidate.showcaseBibNumber,
+        finalRosterOverride: candidate.finalRosterOverride ?? null,
+        finalRosterOverrideReason: candidate.finalRosterOverrideReason ?? null,
         voteCount,
         averageRating: Number(averageRating.toFixed(3)),
       };
@@ -120,6 +127,9 @@ export async function computeVoteSummaryRows(
       parentBallotCycleId: cycle.parentBallotCycleId ?? null,
       runoffPoolSize: cycle.runoffPoolSize ?? null,
       runoffFirstTeamSize: cycle.runoffFirstTeamSize ?? null,
+      runoffIsFinalVote: cycle.runoffIsFinalVote,
+      runoffTeamTarget: cycle.runoffTeamTarget ?? null,
+      runoffPlayersNeeded: cycle.runoffPlayersNeeded ?? null,
     },
   };
 }
@@ -132,6 +142,13 @@ export function getTopVoteGetterCandidateIds(sortedRows: VoteSummaryRow[], count
 
 export function getSecondTeamAutoExclusionCandidateIds(firstPhaseRows: VoteSummaryRow[]) {
   return getTopVoteGetterCandidateIds(firstPhaseRows, 12);
+}
+
+export function getSecondTeamAutoExclusionCandidateIdsForCount(
+  firstPhaseRows: VoteSummaryRow[],
+  count = DEFAULT_VOTE_EXPORT_TOP_COUNT,
+) {
+  return getTopVoteGetterCandidateIds(firstPhaseRows, count);
 }
 
 /**
@@ -160,9 +177,17 @@ export function splitVoteSummaryRowsForRunoff(
   firstTeamSize: number,
 ): { firstTeam: VoteSummaryRow[]; secondTeam: VoteSummaryRow[] } {
   if (firstTeamSize <= 0) return { firstTeam: [], secondTeam: rows };
+  const selectedIds = new Set<string>();
+  for (const row of rows.slice(0, firstTeamSize)) {
+    if (row.finalRosterOverride !== "REMOVED") selectedIds.add(row.candidateId);
+  }
+  for (const row of rows) {
+    if (row.finalRosterOverride === "SELECTED") selectedIds.add(row.candidateId);
+    if (row.finalRosterOverride === "REMOVED") selectedIds.delete(row.candidateId);
+  }
   return {
-    firstTeam: rows.slice(0, firstTeamSize),
-    secondTeam: rows.slice(firstTeamSize),
+    firstTeam: rows.filter((row) => selectedIds.has(row.candidateId)),
+    secondTeam: rows.filter((row) => !selectedIds.has(row.candidateId)),
   };
 }
 

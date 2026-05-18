@@ -8,15 +8,13 @@ import {
 } from "@/lib/allStar/exportFormat";
 import {
   formatAllStarCyclePipeListLabelFromOrgMeta,
-  getRunoffVotePanelPrimaryTeamHeading,
-  getRunoffVotePanelSecondaryTeamHeading,
+  getRunoffVotePanelSplitLabels,
 } from "@/lib/allStar/cycleUiLabels";
 import { parseAllStarPhase } from "@/lib/allStar/phase";
 import {
   buildNameOnlyVotePdfRows,
   computeVoteSummaryRows,
   parseVoteExportTopCount,
-  selectVoteSummaryTopVoteGetterPool,
   splitVoteSummaryRowsForRunoff,
 } from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
@@ -50,9 +48,15 @@ export async function GET(request: NextRequest) {
 
   const topCount = parseVoteExportTopCount(request.nextUrl.searchParams.get("topCount"));
   const { rows, cycle } = computed;
-  const exportRows = selectVoteSummaryTopVoteGetterPool(rows, topCount);
   const orgLabel = formatOrganizationIdDisplay(cycle.organizationId);
   const orgId = cycle.organizationId === "ascension" ? "ascension" : "gonzales";
+  const isRunoffSplit =
+    cycle.runoffFirstTeamSize != null &&
+    cycle.runoffFirstTeamSize > 0 &&
+    cycle.runoffPoolSize != null;
+  const exportRows = isRunoffSplit
+    ? rows
+    : splitVoteSummaryRowsForRunoff(rows, topCount).firstTeam;
   const cycleName = formatAllStarCyclePipeListLabelFromOrgMeta(cycle);
   const title =
     layout === "name"
@@ -67,18 +71,19 @@ export async function GET(request: NextRequest) {
 
   if (layout === "full") {
     const head = ["Rank", "Player", "Team", "Votes", "Avg Rating"];
-    const isRunoffSplit =
-      cycle.runoffFirstTeamSize != null &&
-      cycle.runoffFirstTeamSize > 0 &&
-      cycle.runoffPoolSize != null;
 
     if (isRunoffSplit) {
       const { firstTeam, secondTeam } = splitVoteSummaryRowsForRunoff(
         exportRows,
         cycle.runoffFirstTeamSize!,
       );
-      const primaryHeading = getRunoffVotePanelPrimaryTeamHeading(orgId, cycle.title);
-      const secondaryHeading = getRunoffVotePanelSecondaryTeamHeading(orgId);
+      const { primaryHeading, secondaryHeading } = getRunoffVotePanelSplitLabels({
+        organizationId: orgId,
+        title: cycle.title,
+        runoffIsFinalVote: cycle.runoffIsFinalVote,
+        runoffTeamTarget: cycle.runoffTeamTarget,
+        runoffPlayersNeeded: cycle.runoffPlayersNeeded,
+      });
       let startY = 78;
       doc.setFontSize(11);
       doc.text(primaryHeading, 40, startY);
@@ -130,7 +135,13 @@ export async function GET(request: NextRequest) {
       });
     }
   } else {
-    const nameRows = buildNameOnlyVotePdfRows(rows, topCount);
+    const nameRows =
+      isRunoffSplit && cycle.runoffFirstTeamSize
+        ? buildNameOnlyVotePdfRows(
+            splitVoteSummaryRowsForRunoff(rows, cycle.runoffFirstTeamSize).firstTeam,
+            splitVoteSummaryRowsForRunoff(rows, cycle.runoffFirstTeamSize).firstTeam.length,
+          )
+        : buildNameOnlyVotePdfRows(exportRows, exportRows.length);
     autoTable(doc, {
       startY: 78,
       head: [["Player"]],

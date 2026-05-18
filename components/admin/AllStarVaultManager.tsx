@@ -20,13 +20,13 @@ import {
 import {
   formatAllStarCyclePipeListLabel,
   getCycleTierDisplayLabel,
-  getRunoffVotePanelPrimaryTeamHeading,
-  getRunoffVotePanelSecondaryTeamHeading,
+  getRunoffVotePanelSplitLabels,
 } from "@/lib/allStar/cycleUiLabels";
 import { getCycleStatusChipLabel, isPublishedCycleWithinOpenWindow } from "@/lib/allStar/cycleType";
 import {
   DEFAULT_VOTE_EXPORT_TOP_COUNT,
   MAX_VOTE_EXPORT_TOP_COUNT,
+  expandVoteSummaryTopByVoteCountCutoff,
   selectVoteSummaryNameOnlyPool,
   sortVoteSummaryRowsByLastName,
   splitVoteSummaryRowsForRunoff,
@@ -88,6 +88,9 @@ type Cycle = {
   parentBallotCycleId?: string | null;
   runoffPoolSize?: number | null;
   runoffFirstTeamSize?: number | null;
+  runoffIsFinalVote?: boolean;
+  runoffTeamTarget?: "FIRST_TEAM" | "SECOND_TEAM" | null;
+  runoffPlayersNeeded?: number | null;
 };
 
 type Candidate = {
@@ -151,6 +154,8 @@ type VoteSummaryRow = {
   team: string;
   jerseyNumber: string;
   showcaseBibNumber: string | null;
+  finalRosterOverride: "SELECTED" | "REMOVED" | null;
+  finalRosterOverrideReason: string | null;
   voteCount: number;
   averageRating: number;
 };
@@ -175,6 +180,7 @@ type EditModuleKey =
   | "invites";
 
 type EditModuleVisibility = Record<EditModuleKey, boolean>;
+type RunoffBuilderMode = "DEFAULT_SECOND" | "LEFTOVER_AFTER_TOP" | "RUNOFF_TOP";
 
 function sortBallotRosterRowsByName<T extends { displayName: string }>(rows: T[]): T[] {
   return [...rows].sort((a, b) =>
@@ -328,6 +334,13 @@ function hasVisibleJerseyNumber(value: string | null | undefined) {
   return !["tbd", "n/a", "na"].includes(normalized);
 }
 
+function buildRunoffBuilderTitle(cycle: Cycle | null, mode: RunoffBuilderMode) {
+  const base = cycle?.title?.trim() || `${cycle?.ageGroup || "All-Stars"} ${cycle?.seasonYear || ""}`.trim();
+  if (mode === "RUNOFF_TOP") return `${base} (Runoff)`;
+  if (mode === "DEFAULT_SECOND") return `${base} (Second Team)`;
+  return `${base} (Second Team Runoff)`;
+}
+
 export default function AllStarVaultManager({
   initialOrg,
   isMasterMode,
@@ -376,6 +389,7 @@ export default function AllStarVaultManager({
   >([]);
   const [ballotVotingLink, setBallotVotingLink] = useState<string | null>(null);
   const [inviteActionId, setInviteActionId] = useState<string | null>(null);
+  const [finalRosterActionId, setFinalRosterActionId] = useState<string | null>(null);
   const [vaultAccessRoleBusyId, setVaultAccessRoleBusyId] = useState<string | null>(
     null,
   );
@@ -392,9 +406,19 @@ export default function AllStarVaultManager({
   );
   const [showAdvancedCycleActions, setShowAdvancedCycleActions] = useState(false);
   const [showRunoffModal, setShowRunoffModal] = useState(false);
-  const [runoffModalPoolSize, setRunoffModalPoolSize] = useState("24");
-  const [runoffModalRatingsPerCoach, setRunoffModalRatingsPerCoach] = useState("12");
-  const [runoffModalFirstTeamSize, setRunoffModalFirstTeamSize] = useState("12");
+  const [runoffBuilderMode, setRunoffBuilderMode] =
+    useState<RunoffBuilderMode>("LEFTOVER_AFTER_TOP");
+  const [runoffBuilderTopCount, setRunoffBuilderTopCount] = useState("12");
+  const [runoffBuilderRatingsPerCoach, setRunoffBuilderRatingsPerCoach] = useState("12");
+  const [runoffBuilderPlayersNeeded, setRunoffBuilderPlayersNeeded] = useState("12");
+  const [runoffBuilderIsFinalVote, setRunoffBuilderIsFinalVote] = useState(true);
+  const [runoffBuilderTeamTarget, setRunoffBuilderTeamTarget] =
+    useState<"FIRST_TEAM" | "SECOND_TEAM">("SECOND_TEAM");
+  const [runoffBuilderTitle, setRunoffBuilderTitle] = useState("");
+  const [runoffBuilderSelectedCandidateIds, setRunoffBuilderSelectedCandidateIds] = useState<
+    string[]
+  >([]);
+  const [runoffBuilderCandidateSearch, setRunoffBuilderCandidateSearch] = useState("");
   const [voteExportTopCount, setVoteExportTopCount] = useState(
     String(DEFAULT_VOTE_EXPORT_TOP_COUNT),
   );
@@ -1527,6 +1551,39 @@ export default function AllStarVaultManager({
     }
   }
 
+  async function updateFinalRosterOverride(
+    candidateId: string,
+    override: "SELECTED" | "REMOVED" | null,
+  ) {
+    if (!selectedCycleId) return;
+    setFinalRosterActionId(candidateId);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/final-roster", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cycleId: selectedCycleId, candidateId, override }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to update final roster"));
+      }
+      await loadVoteSummary(selectedCycleId);
+      setNotice(
+        override === "SELECTED"
+          ? "Player marked as selected on the final roster."
+          : override === "REMOVED"
+            ? "Player removed from the final roster."
+            : "Final roster override cleared.",
+      );
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update final roster");
+    } finally {
+      setFinalRosterActionId(null);
+    }
+  }
+
   function setWorkspaceTab(tab: AllStarWorkspaceTab) {
     setActiveWorkspaceTab(tab);
     if (!usesTabbedWorkspace) return;
@@ -1601,21 +1658,63 @@ export default function AllStarVaultManager({
     router.push(`/admin/all-star/setup?${params.toString()}`);
   }
 
+  function deriveRunoffBuilderCandidateIds(mode: RunoffBuilderMode, topCount: number) {
+    const active = candidates.filter((candidate) => candidate.isActive !== false);
+    const normalizedTopCount = Math.max(1, Math.min(200, topCount));
+    if (mode === "RUNOFF_TOP") {
+      return expandVoteSummaryTopByVoteCountCutoff(voteSummary, normalizedTopCount).map(
+        (row) => row.candidateId,
+      );
+    }
+    const keepCount = mode === "DEFAULT_SECOND" ? 12 : normalizedTopCount;
+    const keptIds = new Set(voteSummary.slice(0, keepCount).map((row) => row.candidateId));
+    return active.filter((candidate) => !keptIds.has(candidate.id)).map((candidate) => candidate.id);
+  }
+
+  function openRunoffBuilder() {
+    const defaultMode: RunoffBuilderMode = "LEFTOVER_AFTER_TOP";
+    setRunoffBuilderMode(defaultMode);
+    setRunoffBuilderTopCount("12");
+    setRunoffBuilderRatingsPerCoach(String(selectedCycle?.requiredRatingsPerCoach || 12));
+    setRunoffBuilderPlayersNeeded("12");
+    setRunoffBuilderIsFinalVote(true);
+    setRunoffBuilderTeamTarget("SECOND_TEAM");
+    setRunoffBuilderTitle(buildRunoffBuilderTitle(selectedCycle, defaultMode));
+    setRunoffBuilderCandidateSearch("");
+    setRunoffBuilderSelectedCandidateIds(deriveRunoffBuilderCandidateIds(defaultMode, 12));
+    setShowRunoffModal(true);
+  }
+
   async function generateRunoffBallot() {
     if (!selectedCycleId) return;
-    const poolSize = Number.parseInt(runoffModalPoolSize, 10);
-    const requiredRatings = Number.parseInt(runoffModalRatingsPerCoach, 10);
-    const firstTeamSize = Number.parseInt(runoffModalFirstTeamSize, 10);
-    if (!Number.isInteger(poolSize) || poolSize < 1 || poolSize > 50) {
-      setError("Pool size must be an integer between 1 and 50.");
+    const topCount =
+      runoffBuilderMode === "DEFAULT_SECOND"
+        ? 12
+        : Number.parseInt(runoffBuilderTopCount, 10);
+    const requiredRatings = Number.parseInt(runoffBuilderRatingsPerCoach, 10);
+    const playersNeeded = Number.parseInt(runoffBuilderPlayersNeeded, 10);
+    if (!Number.isInteger(topCount) || topCount < 1 || topCount > 200) {
+      setError("Top vote getter count must be an integer between 1 and 200.");
       return;
     }
     if (!Number.isInteger(requiredRatings) || requiredRatings < 1 || requiredRatings > 50) {
       setError("Ratings per coach must be an integer between 1 and 50.");
       return;
     }
-    if (!Number.isInteger(firstTeamSize) || firstTeamSize < 1 || firstTeamSize > 50) {
-      setError("First team size must be an integer between 1 and 50.");
+    if (!Number.isInteger(playersNeeded) || playersNeeded < 1 || playersNeeded > 50) {
+      setError("Players needed must be an integer between 1 and 50.");
+      return;
+    }
+    if (runoffBuilderSelectedCandidateIds.length === 0) {
+      setError("Select at least one candidate for the new ballot.");
+      return;
+    }
+    if (requiredRatings > runoffBuilderSelectedCandidateIds.length) {
+      setError("Ratings per coach cannot exceed the selected candidate pool.");
+      return;
+    }
+    if (playersNeeded > runoffBuilderSelectedCandidateIds.length) {
+      setError("Players needed cannot exceed the selected candidate pool.");
       return;
     }
     setBusy(true);
@@ -1628,10 +1727,15 @@ export default function AllStarVaultManager({
         body: JSON.stringify({
           cycleId: selectedCycleId,
           action: "generate",
-          mode: "runoff",
-          poolSize,
+          mode: runoffBuilderMode === "RUNOFF_TOP" ? "runoff" : "leftover",
+          poolSize: topCount,
           requiredRatingsPerCoach: requiredRatings,
-          firstTeamSize,
+          firstTeamSize: playersNeeded,
+          candidateIds: runoffBuilderSelectedCandidateIds,
+          title: runoffBuilderTitle,
+          isFinalVote: runoffBuilderIsFinalVote,
+          teamTarget: runoffBuilderTeamTarget,
+          playersNeeded,
         }),
       });
       const json = await safeJson(response);
@@ -1647,7 +1751,7 @@ export default function AllStarVaultManager({
         typeof (json as { created?: unknown }).created === "boolean" &&
           (json as { created: boolean }).created === false
           ? "Runoff cycle already exists. Switched to existing cycle."
-          : "Runoff ballot created from current vote standings.",
+          : "Questionnaire ballot created from your selected candidate pool.",
       );
       await loadCycles();
       if (secondCycleId) {
@@ -1934,6 +2038,48 @@ export default function AllStarVaultManager({
   const selectedCycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
   const canRefreshVoteSummary = isCycleOpenAndPublished(selectedCycle);
   const isInviteListCycle = selectedCycle?.accessMode === "INVITE_LIST";
+  const activeRunoffCandidates = useMemo(
+    () => candidates.filter((candidate) => candidate.isActive !== false),
+    [candidates],
+  );
+  const voteSummaryByCandidateId = useMemo(
+    () => new Map(voteSummary.map((row, index) => [row.candidateId, { ...row, rank: index + 1 }])),
+    [voteSummary],
+  );
+  const runoffBuilderDefaultCandidateIds = useMemo(() => {
+    const topCount = Number.parseInt(runoffBuilderTopCount, 10);
+    const normalizedTopCount = Number.isFinite(topCount) ? Math.max(1, Math.min(200, topCount)) : 12;
+    if (runoffBuilderMode === "RUNOFF_TOP") {
+      return expandVoteSummaryTopByVoteCountCutoff(voteSummary, normalizedTopCount).map(
+        (row) => row.candidateId,
+      );
+    }
+    const keepCount = runoffBuilderMode === "DEFAULT_SECOND" ? 12 : normalizedTopCount;
+    const keptIds = new Set(voteSummary.slice(0, keepCount).map((row) => row.candidateId));
+    return activeRunoffCandidates
+      .filter((candidate) => !keptIds.has(candidate.id))
+      .map((candidate) => candidate.id);
+  }, [activeRunoffCandidates, runoffBuilderMode, runoffBuilderTopCount, voteSummary]);
+  const runoffBuilderSelectedCandidates = useMemo(() => {
+    const candidateById = new Map(activeRunoffCandidates.map((candidate) => [candidate.id, candidate]));
+    return runoffBuilderSelectedCandidateIds.flatMap((id) => {
+      const candidate = candidateById.get(id);
+      return candidate ? [candidate] : [];
+    });
+  }, [activeRunoffCandidates, runoffBuilderSelectedCandidateIds]);
+  const runoffBuilderCandidateOptions = useMemo(() => {
+    const selectedIds = new Set(runoffBuilderSelectedCandidateIds);
+    const query = runoffBuilderCandidateSearch.trim().toLowerCase();
+    return activeRunoffCandidates.filter((candidate) => {
+      if (selectedIds.has(candidate.id)) return false;
+      if (!query) return true;
+      return (
+        candidate.playerFullName.toLowerCase().includes(query) ||
+        candidate.team.toLowerCase().includes(query) ||
+        candidate.jerseyNumber.toLowerCase().includes(query)
+      );
+    });
+  }, [activeRunoffCandidates, runoffBuilderCandidateSearch, runoffBuilderSelectedCandidateIds]);
 
   useEffect(() => {
     setSelectedCandidateIds((prev) => prev.filter((id) => candidates.some((candidate) => candidate.id === id)));
@@ -2080,6 +2226,79 @@ export default function AllStarVaultManager({
     showsVoteStandingsRanks,
     voteSummary,
   ]);
+  const runoffVotePanelLabels = selectedCycle
+    ? getRunoffVotePanelSplitLabels(selectedCycle)
+    : null;
+  const finalRosterSplitSize =
+    selectedCycle?.runoffFirstTeamSize ??
+    selectedCycle?.runoffPlayersNeeded ??
+    normalizedVoteExportTopCount;
+  const finalRosterStandingsSplit = useMemo(() => {
+    if (!showsVoteStandingsRanks || voteSummary.length === 0) return null;
+    return splitVoteSummaryRowsForRunoff(voteSummary, finalRosterSplitSize);
+  }, [finalRosterSplitSize, showsVoteStandingsRanks, voteSummary]);
+  const finalRosterPrimaryHeading =
+    runoffVoteStandingsSplit && runoffVotePanelLabels
+      ? runoffVotePanelLabels.primaryHeading
+      : `Final roster selections (top ${finalRosterSplitSize})`;
+  const finalRosterSecondaryHeading =
+    runoffVoteStandingsSplit && runoffVotePanelLabels
+      ? runoffVotePanelLabels.secondaryHeading
+      : "Available replacements";
+  const finalRosterPanelDescription =
+    runoffVoteStandingsSplit && runoffVotePanelLabels
+      ? `${runoffVotePanelLabels.descriptor ||
+          `Runoff ballot: ranks 1-${selectedCycle?.runoffFirstTeamSize} = ${runoffVotePanelLabels.primaryHeading}; remainder = ${runoffVotePanelLabels.secondaryHeading}`} (pool ${selectedCycle?.runoffPoolSize}).`
+      : `Final roster editor: top ${finalRosterSplitSize} are selected by vote order. Use Add/Remove to handle declines and replacements.`;
+  function renderFinalRosterBadge(row: VoteSummaryRow) {
+    if (row.finalRosterOverride === "SELECTED") {
+      return <span className="ml-2 text-[11px] text-emerald-300">Override: selected</span>;
+    }
+    if (row.finalRosterOverride === "REMOVED") {
+      return <span className="ml-2 text-[11px] text-red-300">Override: removed</span>;
+    }
+    return null;
+  }
+  function renderFinalRosterControls(row: VoteSummaryRow, isRosterSelection: boolean) {
+    if (!finalRosterStandingsSplit) return null;
+    const rowBusy = finalRosterActionId === row.candidateId;
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        <p className="text-xs text-zinc-300 whitespace-nowrap">
+          Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+        </p>
+        {canManageAllStarVaultUi && isRosterSelection ? (
+          <button
+            type="button"
+            disabled={rowBusy}
+            onClick={() => void updateFinalRosterOverride(row.candidateId, "REMOVED")}
+            className="rounded border border-red-800 px-2 py-1 text-[11px] text-red-300 disabled:opacity-60"
+          >
+            {rowBusy ? "Saving..." : "Remove"}
+          </button>
+        ) : canManageAllStarVaultUi ? (
+          <button
+            type="button"
+            disabled={rowBusy}
+            onClick={() => void updateFinalRosterOverride(row.candidateId, "SELECTED")}
+            className="rounded border border-emerald-800 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-60"
+          >
+            {rowBusy ? "Saving..." : "Add"}
+          </button>
+        ) : null}
+        {canManageAllStarVaultUi && row.finalRosterOverride ? (
+          <button
+            type="button"
+            disabled={rowBusy}
+            onClick={() => void updateFinalRosterOverride(row.candidateId, null)}
+            className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-60"
+          >
+            Clear
+          </button>
+        ) : null}
+      </div>
+    );
+  }
   const showCycleSnapshotBoard =
     (showFullAdminView &&
       (showSnapshotBoardOnInitialFullAccess && !selectedCycleId)) ||
@@ -2133,48 +2352,259 @@ export default function AllStarVaultManager({
           aria-modal="true"
           aria-labelledby="runoff-modal-title"
         >
-          <div className="w-full max-w-md rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 shadow-xl">
-            <h3 id="runoff-modal-title" className="text-lg font-semibold text-zinc-100">
-              Generate runoff ballot
-            </h3>
-            <p className="text-xs text-zinc-400">
-              Creates a new draft cycle with the top vote getters from the selected ballot (ties at the cutoff are
-              included). Coaches will rate the number of players you set below; exports split standings into first and
-              second team at the rank you choose.
-            </p>
-            <label className="block space-y-1">
-              <span className="text-xs text-zinc-400">Pool size (top vote getters)</span>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={runoffModalPoolSize}
-                onChange={(e) => setRunoffModalPoolSize(e.target.value)}
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs text-zinc-400">Ratings per coach (ballot rule)</span>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={runoffModalRatingsPerCoach}
-                onChange={(e) => setRunoffModalRatingsPerCoach(e.target.value)}
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
-              />
-            </label>
-            <label className="block space-y-1">
-              <span className="text-xs text-zinc-400">First team size (split rank; e.g. 12)</span>
-              <input
-                type="number"
-                min={1}
-                max={50}
-                value={runoffModalFirstTeamSize}
-                onChange={(e) => setRunoffModalFirstTeamSize(e.target.value)}
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
-              />
-            </label>
+          <div className="w-full max-w-5xl max-h-[90vh] overflow-y-auto rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-5 shadow-xl">
+            <div className="space-y-1">
+              <h3 id="runoff-modal-title" className="text-lg font-semibold text-zinc-100">
+                Runoff ballot questionnaire
+              </h3>
+              <p className="text-xs text-zinc-400">
+                Answer the setup questions, preview the candidate pool, then add or remove players before creating the
+                draft ballot.
+              </p>
+            </div>
+
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.2fr)]">
+              <div className="space-y-4">
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-4 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                    1. Ballot type
+                  </p>
+                  <div className="grid gap-2">
+                    {(
+                      [
+                        ["DEFAULT_SECOND", "Default second-team ballot", "Use the existing top-12 leftover rule."],
+                        [
+                          "LEFTOVER_AFTER_TOP",
+                          "Leftover ballot after top vote getters",
+                          "Choose how many top vote getters to keep off this ballot.",
+                        ],
+                        [
+                          "RUNOFF_TOP",
+                          "Runoff from top vote getters",
+                          "Build a ballot from the top vote getter pool.",
+                        ],
+                      ] as Array<[RunoffBuilderMode, string, string]>
+                    ).map(([mode, label, help]) => (
+                      <label
+                        key={mode}
+                        className={`rounded-lg border p-3 text-sm cursor-pointer ${
+                          runoffBuilderMode === mode
+                            ? "border-sky-600 bg-sky-950/30 text-sky-100"
+                            : "border-zinc-800 bg-zinc-950 text-zinc-300"
+                        }`}
+                      >
+                        <span className="flex items-start gap-2">
+                          <input
+                            type="radio"
+                            name="runoffBuilderMode"
+                            value={mode}
+                            checked={runoffBuilderMode === mode}
+                            onChange={() => {
+                              setRunoffBuilderMode(mode);
+                              setRunoffBuilderTitle(buildRunoffBuilderTitle(selectedCycle, mode));
+                              const parsedTopCount =
+                                mode === "DEFAULT_SECOND"
+                                  ? 12
+                                  : Number.parseInt(runoffBuilderTopCount, 10) || 12;
+                              setRunoffBuilderSelectedCandidateIds(
+                                deriveRunoffBuilderCandidateIds(mode, parsedTopCount),
+                              );
+                            }}
+                            className="mt-1"
+                          />
+                          <span>
+                            <span className="block font-semibold">{label}</span>
+                            <span className="block text-xs text-zinc-400">{help}</span>
+                          </span>
+                        </span>
+                      </label>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-4 space-y-3">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                    2. Rules
+                  </p>
+                  <label className="block space-y-1">
+                    <span className="text-xs text-zinc-400">
+                      {runoffBuilderMode === "RUNOFF_TOP"
+                        ? "Top vote getters to include"
+                        : "Top vote getters to keep off this ballot"}
+                    </span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={200}
+                      disabled={runoffBuilderMode === "DEFAULT_SECOND"}
+                      value={runoffBuilderMode === "DEFAULT_SECOND" ? "12" : runoffBuilderTopCount}
+                      onChange={(event) => {
+                        setRunoffBuilderTopCount(event.target.value);
+                        const parsed = Number.parseInt(event.target.value, 10);
+                        if (Number.isFinite(parsed)) {
+                          setRunoffBuilderSelectedCandidateIds(
+                            deriveRunoffBuilderCandidateIds(runoffBuilderMode, parsed),
+                          );
+                        }
+                      }}
+                      className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm disabled:opacity-60"
+                    />
+                  </label>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <label className="block space-y-1">
+                      <span className="text-xs text-zinc-400">Ratings required per coach</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={runoffBuilderRatingsPerCoach}
+                        onChange={(event) => setRunoffBuilderRatingsPerCoach(event.target.value)}
+                        className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <label className="block space-y-1">
+                      <span className="text-xs text-zinc-400">Players needed to fill team</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={50}
+                        value={runoffBuilderPlayersNeeded}
+                        onChange={(event) => setRunoffBuilderPlayersNeeded(event.target.value)}
+                        className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
+                      />
+                    </label>
+                  </div>
+                  <div className="grid sm:grid-cols-2 gap-3">
+                    <label className="block space-y-1">
+                      <span className="text-xs text-zinc-400">Team being filled</span>
+                      <select
+                        value={runoffBuilderTeamTarget}
+                        onChange={(event) =>
+                          setRunoffBuilderTeamTarget(event.target.value as "FIRST_TEAM" | "SECOND_TEAM")
+                        }
+                        className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
+                      >
+                        <option value="FIRST_TEAM">First team</option>
+                        <option value="SECOND_TEAM">Second team</option>
+                      </select>
+                    </label>
+                    <label className="flex items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-sm text-zinc-300">
+                      <input
+                        type="checkbox"
+                        checked={runoffBuilderIsFinalVote}
+                        onChange={(event) => setRunoffBuilderIsFinalVote(event.target.checked)}
+                      />
+                      Mark this as the final vote
+                    </label>
+                  </div>
+                  <label className="block space-y-1">
+                    <span className="text-xs text-zinc-400">Ballot title</span>
+                    <input
+                      type="text"
+                      value={runoffBuilderTitle}
+                      onChange={(event) => setRunoffBuilderTitle(event.target.value)}
+                      className="w-full rounded-lg bg-zinc-950 border border-zinc-600 px-3 py-2 text-sm"
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-4 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                      3. Candidate pool
+                    </p>
+                    <p className="text-xs text-zinc-500">
+                      {runoffBuilderSelectedCandidates.length} selected from {activeRunoffCandidates.length} active
+                      candidates.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setRunoffBuilderSelectedCandidateIds(runoffBuilderDefaultCandidateIds)}
+                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300"
+                  >
+                    Reset to rules
+                  </button>
+                </div>
+
+                <div className="grid gap-3 md:grid-cols-2">
+                  <div className="space-y-2">
+                    <p className="text-xs font-semibold text-zinc-300">Selected for ballot</p>
+                    <div className="max-h-72 overflow-y-auto rounded-lg border border-zinc-800">
+                      {runoffBuilderSelectedCandidates.length === 0 ? (
+                        <p className="p-3 text-sm text-zinc-500">No candidates selected.</p>
+                      ) : (
+                        runoffBuilderSelectedCandidates.map((candidate) => {
+                          const voteRow = voteSummaryByCandidateId.get(candidate.id);
+                          return (
+                            <div
+                              key={candidate.id}
+                              className="flex items-center justify-between gap-2 border-b border-zinc-800 px-3 py-2 text-sm last:border-b-0"
+                            >
+                              <p className="min-w-0 truncate">
+                                {voteRow ? <span className="text-zinc-500 mr-2">#{voteRow.rank}</span> : null}
+                                <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team}
+                                {hasVisibleJerseyNumber(candidate.jerseyNumber) ? ` · #${candidate.jerseyNumber}` : ""}
+                              </p>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setRunoffBuilderSelectedCandidateIds((current) =>
+                                    current.filter((id) => id !== candidate.id),
+                                  )
+                                }
+                                className="shrink-0 rounded border border-red-800 px-2 py-1 text-xs text-red-300"
+                              >
+                                Remove
+                              </button>
+                            </div>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="block space-y-1">
+                      <span className="text-xs font-semibold text-zinc-300">Add candidates</span>
+                      <input
+                        type="search"
+                        value={runoffBuilderCandidateSearch}
+                        onChange={(event) => setRunoffBuilderCandidateSearch(event.target.value)}
+                        placeholder="Search name, team, or jersey"
+                        className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                      />
+                    </label>
+                    <div className="max-h-72 overflow-y-auto rounded-lg border border-zinc-800">
+                      {runoffBuilderCandidateOptions.length === 0 ? (
+                        <p className="p-3 text-sm text-zinc-500">No available candidates match.</p>
+                      ) : (
+                        runoffBuilderCandidateOptions.map((candidate) => {
+                          const voteRow = voteSummaryByCandidateId.get(candidate.id);
+                          return (
+                            <button
+                              key={candidate.id}
+                              type="button"
+                              onClick={() =>
+                                setRunoffBuilderSelectedCandidateIds((current) => [...current, candidate.id])
+                              }
+                              className="block w-full border-b border-zinc-800 px-3 py-2 text-left text-sm last:border-b-0 hover:bg-zinc-900"
+                            >
+                              {voteRow ? <span className="text-zinc-500 mr-2">#{voteRow.rank}</span> : null}
+                              <span className="font-medium">{candidate.playerFullName}</span> · {candidate.team}
+                              {hasVisibleJerseyNumber(candidate.jerseyNumber) ? ` · #${candidate.jerseyNumber}` : ""}
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
             <div className="flex flex-wrap justify-end gap-2 pt-2">
               <button
                 type="button"
@@ -2190,7 +2620,7 @@ export default function AllStarVaultManager({
                 onClick={() => void generateRunoffBallot()}
                 className="rounded-lg bg-indigo-700 hover:bg-indigo-600 text-white px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
-                Generate
+                Create draft ballot
               </button>
             </div>
           </div>
@@ -2673,33 +3103,17 @@ export default function AllStarVaultManager({
                     <p className="text-zinc-500 text-sm p-3">Select a cycle to view vote standings.</p>
                   ) : voteSummary.length === 0 ? (
                     <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
-                  ) : runoffVoteStandingsSplit ? (
+                  ) : finalRosterStandingsSplit ? (
                     <div className="space-y-3 p-2">
                       <p className="text-xs text-zinc-400 px-1">
-                        Runoff ballot: ranks 1–{selectedCycle?.runoffFirstTeamSize} ={" "}
-                        {selectedCycle
-                          ? getRunoffVotePanelPrimaryTeamHeading(
-                              selectedCycle.organizationId,
-                              selectedCycle.title,
-                            )
-                          : ""}
-                        ; remainder ={" "}
-                        {selectedCycle
-                          ? getRunoffVotePanelSecondaryTeamHeading(selectedCycle.organizationId)
-                          : ""}{" "}
-                        (pool {selectedCycle?.runoffPoolSize}).
+                        {finalRosterPanelDescription}
                       </p>
                       <div>
                         <p className="text-xs font-semibold text-sky-300 px-3 py-1">
-                          {selectedCycle
-                            ? getRunoffVotePanelPrimaryTeamHeading(
-                                selectedCycle.organizationId,
-                                selectedCycle.title,
-                              )
-                            : ""}
+                          {finalRosterPrimaryHeading}
                         </p>
                         <div className="rounded-lg border border-zinc-800 overflow-hidden">
-                          {runoffVoteStandingsSplit.firstTeam.map((row, index) => (
+                          {finalRosterStandingsSplit.firstTeam.map((row, index) => (
                             <div
                               key={row.candidateId}
                               className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
@@ -2708,36 +3122,32 @@ export default function AllStarVaultManager({
                                 <span className="text-zinc-500 mr-2">#{index + 1}</span>
                                 <span className="font-medium">{row.playerFullName}</span> · {row.team}
                                 {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
+                                {renderFinalRosterBadge(row)}
                               </p>
-                              <p className="text-xs text-zinc-300 whitespace-nowrap">
-                                Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
-                              </p>
+                              {renderFinalRosterControls(row, true)}
                             </div>
                           ))}
                         </div>
                       </div>
                       <div>
                         <p className="text-xs font-semibold text-amber-300 px-3 py-1">
-                          {selectedCycle
-                            ? getRunoffVotePanelSecondaryTeamHeading(selectedCycle.organizationId)
-                            : ""}
+                          {finalRosterSecondaryHeading}
                         </p>
                         <div className="rounded-lg border border-zinc-800 overflow-hidden">
-                          {runoffVoteStandingsSplit.secondTeam.map((row, index) => (
+                          {finalRosterStandingsSplit.secondTeam.map((row, index) => (
                             <div
                               key={row.candidateId}
                               className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
                             >
                               <p className="min-w-0 truncate">
                                 <span className="text-zinc-500 mr-2">
-                                  #{runoffVoteStandingsSplit.firstTeam.length + index + 1}
+                                  #{finalRosterStandingsSplit.firstTeam.length + index + 1}
                                 </span>
                                 <span className="font-medium">{row.playerFullName}</span> · {row.team}
                                 {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
+                                {renderFinalRosterBadge(row)}
                               </p>
-                              <p className="text-xs text-zinc-300 whitespace-nowrap">
-                                Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
-                              </p>
+                              {renderFinalRosterControls(row, false)}
                             </div>
                           ))}
                         </div>
@@ -3059,15 +3469,10 @@ export default function AllStarVaultManager({
               <button
                 type="button"
                 disabled={manageDisabled || !selectedCycleId}
-                onClick={() => {
-                  setRunoffModalPoolSize("24");
-                  setRunoffModalRatingsPerCoach("12");
-                  setRunoffModalFirstTeamSize("12");
-                  setShowRunoffModal(true);
-                }}
+                onClick={openRunoffBuilder}
                 className="rounded-lg border border-sky-700 text-sky-300 px-3 py-2 text-sm disabled:opacity-60"
               >
-                Generate runoff ballot…
+                Build runoff ballot…
               </button>
             </div>
           </div>
@@ -3718,27 +4123,17 @@ export default function AllStarVaultManager({
             <p className="text-zinc-500 text-sm p-3">Select a cycle to view vote standings.</p>
           ) : voteSummary.length === 0 ? (
             <p className="text-zinc-500 text-sm p-3">No vote data yet.</p>
-          ) : runoffVoteStandingsSplit ? (
+          ) : finalRosterStandingsSplit ? (
             <div className="space-y-3 p-2">
               <p className="text-xs text-zinc-400 px-1">
-                Runoff ballot: ranks 1–{selectedCycle?.runoffFirstTeamSize} ={" "}
-                {selectedCycle
-                  ? getRunoffVotePanelPrimaryTeamHeading(selectedCycle.organizationId, selectedCycle.title)
-                  : ""}
-                ; remainder ={" "}
-                {selectedCycle
-                  ? getRunoffVotePanelSecondaryTeamHeading(selectedCycle.organizationId)
-                  : ""}{" "}
-                (pool {selectedCycle?.runoffPoolSize}).
+                {finalRosterPanelDescription}
               </p>
               <div>
                 <p className="text-xs font-semibold text-sky-300 px-3 py-1">
-                  {selectedCycle
-                    ? getRunoffVotePanelPrimaryTeamHeading(selectedCycle.organizationId, selectedCycle.title)
-                    : ""}
+                  {finalRosterPrimaryHeading}
                 </p>
                 <div className="rounded-lg border border-zinc-800 overflow-hidden">
-                  {runoffVoteStandingsSplit.firstTeam.map((row, index) => (
+                  {finalRosterStandingsSplit.firstTeam.map((row, index) => (
                     <div
                       key={row.candidateId}
                       className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
@@ -3750,39 +4145,35 @@ export default function AllStarVaultManager({
                         {selectedCycle?.hasShowcase && row.showcaseBibNumber
                           ? ` · Bib ${row.showcaseBibNumber}`
                           : ""}
+                        {renderFinalRosterBadge(row)}
                       </p>
-                      <p className="text-xs text-zinc-300 whitespace-nowrap">
-                        Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
-                      </p>
+                      {renderFinalRosterControls(row, true)}
                     </div>
                   ))}
                 </div>
               </div>
               <div>
                 <p className="text-xs font-semibold text-amber-300 px-3 py-1">
-                  {selectedCycle
-                    ? getRunoffVotePanelSecondaryTeamHeading(selectedCycle.organizationId)
-                    : ""}
+                  {finalRosterSecondaryHeading}
                 </p>
                 <div className="rounded-lg border border-zinc-800 overflow-hidden">
-                  {runoffVoteStandingsSplit.secondTeam.map((row, index) => (
+                  {finalRosterStandingsSplit.secondTeam.map((row, index) => (
                     <div
                       key={row.candidateId}
                       className="px-3 py-2 border-b border-zinc-800 last:border-b-0 text-sm flex items-center justify-between gap-3"
                     >
                       <p className="min-w-0 truncate">
                         <span className="text-zinc-500 mr-2">
-                          #{runoffVoteStandingsSplit.firstTeam.length + index + 1}
+                          #{finalRosterStandingsSplit.firstTeam.length + index + 1}
                         </span>
                         <span className="font-medium">{row.playerFullName}</span> · {row.team}
                         {hasVisibleJerseyNumber(row.jerseyNumber) ? ` · #${row.jerseyNumber}` : ""}
                         {selectedCycle?.hasShowcase && row.showcaseBibNumber
                           ? ` · Bib ${row.showcaseBibNumber}`
                           : ""}
+                        {renderFinalRosterBadge(row)}
                       </p>
-                      <p className="text-xs text-zinc-300 whitespace-nowrap">
-                        Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
-                      </p>
+                      {renderFinalRosterControls(row, false)}
                     </div>
                   ))}
                 </div>

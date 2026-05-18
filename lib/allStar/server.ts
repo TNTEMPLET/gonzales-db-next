@@ -55,6 +55,9 @@ export function mapAllStarCycle(row: {
   parentBallotCycleId?: string | null;
   runoffPoolSize?: number | null;
   runoffFirstTeamSize?: number | null;
+  runoffIsFinalVote?: boolean;
+  runoffTeamTarget?: "FIRST_TEAM" | "SECOND_TEAM" | null;
+  runoffPlayersNeeded?: number | null;
   ballotLinkToken?: string | null;
   ballotLinkTokenHash?: string | null;
   createdAt: Date;
