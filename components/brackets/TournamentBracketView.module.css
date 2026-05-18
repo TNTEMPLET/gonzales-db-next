@@ -1373,7 +1373,14 @@
 @media (max-width: 390px) {
   .fullBracketDiagramBody > .bracketGridScroll,
   .fullBracketDiagramBody > .tree {
-    zoom: 0.35;
+    zoom: 0.32;
+  }
+}
+
+@media (min-width: 391px) and (max-width: 480px) {
+  .fullBracketDiagramBody > .bracketGridScroll,
+  .fullBracketDiagramBody > .tree {
+    zoom: 0.34;
   }
 }
 
