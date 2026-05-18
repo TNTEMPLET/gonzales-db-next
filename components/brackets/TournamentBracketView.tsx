@@ -1,7 +1,7 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { useLayoutEffect, useRef, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import type { BracketLayout, BracketLayoutPodium, LayoutMatch, LayoutRound } from "@/lib/tournament-brackets/bracketLayout";
 import {
@@ -15,7 +15,7 @@ import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFrom
 import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
 import type { BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { bracketThemeCssVars } from "@/lib/tournament-brackets/bracketTheme";
-import { getBracketConnectorVariant, type BracketConnectorVariant } from "@/lib/tournament-brackets/bracketConnectorPaths";
+import { getBracketConnectorVariant } from "@/lib/tournament-brackets/bracketConnectorPaths";
 import {
   BRACKET_THIRD_PLACE_MATCH_ID,
   clampBracketScoreInput,
@@ -332,26 +332,52 @@ function usePodiumChampionPlaqueAlign(wrapRef: RefObject<HTMLDivElement | null>)
 function usePodiumThirdBandHeightSync(enabled: boolean, rootRef: RefObject<HTMLElement | null>) {
   useLayoutEffect(() => {
     if (!enabled) return;
-    const section = rootRef.current?.closest("section");
-    if (!section) return;
+    const scope = rootRef.current;
+    if (!scope) return;
     const sync = () => {
-      const gameRow = section.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="game"]`);
-      const plaqueRow = section.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="plaque"]`);
+      const gameRow = scope.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="game"]`);
+      const plaqueRow = scope.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="plaque"]`);
       const gameH = gameRow?.getBoundingClientRect().height ?? 0;
       const plaqueH = plaqueRow?.getBoundingClientRect().height ?? 0;
       const h = Math.max(gameH, plaqueH, 0);
       if (h > 0) {
-        section.style.setProperty("--bracket-podium-third-band-sync-height", `${Math.ceil(h)}px`);
+        scope.style.setProperty("--bracket-podium-third-band-sync-height", `${Math.ceil(h)}px`);
+      }
+      if (gameRow instanceof HTMLElement && plaqueRow instanceof HTMLElement) {
+        const game = gameRow.querySelector(`[${BRACKET_PODIUM_THIRD_SOURCE_ATTR}]`);
+        const plaque = plaqueRow.querySelector(`[${BRACKET_PODIUM_THIRD_TARGET_ATTR}]`);
+        if (game && plaque) {
+          plaqueRow.style.setProperty("--bracket-podium-third-align-y", "0px");
+          const gameRect = game.getBoundingClientRect();
+          const plaqueRect = plaque.getBoundingClientRect();
+          const delta = (gameRect.top + gameRect.bottom) / 2 - (plaqueRect.top + plaqueRect.bottom) / 2;
+          const plaqueRowRect = plaqueRow.getBoundingClientRect();
+          const visualScale = plaqueRow.offsetHeight > 0 ? plaqueRowRect.height / plaqueRow.offsetHeight : 1;
+          const cssDelta = visualScale > 0 ? delta / visualScale : delta;
+          plaqueRow.style.setProperty("--bracket-podium-third-align-y", `${Math.round(cssDelta * 100) / 100}px`);
+          scope.dispatchEvent(new CustomEvent("bracket:podium-third-align", { bubbles: true }));
+        } else {
+          plaqueRow.style.removeProperty("--bracket-podium-third-align-y");
+          scope.dispatchEvent(new CustomEvent("bracket:podium-third-align", { bubbles: true }));
+        }
       }
     };
     sync();
+    const raf = window.requestAnimationFrame(sync);
     const ro = new ResizeObserver(sync);
-    ro.observe(section);
-    const gameRow = section.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="game"]`);
-    const plaqueRow = section.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="plaque"]`);
+    ro.observe(scope);
+    const gameRow = scope.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="game"]`);
+    const plaqueRow = scope.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="plaque"]`);
     if (gameRow) ro.observe(gameRow);
     if (plaqueRow) ro.observe(plaqueRow);
-    return () => ro.disconnect();
+    const game = gameRow?.querySelector(`[${BRACKET_PODIUM_THIRD_SOURCE_ATTR}]`);
+    const plaque = plaqueRow?.querySelector(`[${BRACKET_PODIUM_THIRD_TARGET_ATTR}]`);
+    if (game) ro.observe(game);
+    if (plaque) ro.observe(plaque);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   }, [enabled, rootRef]);
 }
 
@@ -635,6 +661,7 @@ function MatchArticle({
   return (
     <article
       className={styles.match}
+      data-bracket-match-id={match.id}
       {...(podiumChampionSource ? { [BRACKET_PODIUM_CHAMPION_SOURCE_ATTR]: "" } : {})}
       aria-label={`${slotHome} versus ${slotAway}`}
     >
@@ -646,6 +673,95 @@ function MatchArticle({
         <BracketTiePicker matchId={match.id} homeLabel={slotHome} awayLabel={slotAway} scoring={scoring} />
       ) : null}
     </article>
+  );
+}
+
+function MobileBracketRounds({
+  rounds,
+  podium,
+  scoring,
+}: {
+  rounds: LayoutRound[];
+  podium?: BracketLayoutPodium | null;
+  scoring?: BracketScoringViewProps | null;
+}) {
+  const champion = podium
+    ? declaredChampionFromFinalSlots(podium.finalMatch.slotHome, podium.finalMatch.slotAway, podium.finalMatch)
+    : "";
+  const thirdPlace = podium ? declaredThirdPlaceFromSlots(podium.thirdPlaceSlotHome, podium.thirdPlaceSlotAway) : "";
+  const hasChampion = podium != null;
+
+  return (
+    <div className={styles.mobileRoundCards} aria-label="Mobile bracket summary">
+      <div className={styles.mobileBracketIntro}>
+        <div>
+          <p className={styles.mobileBracketKicker}>Phone view</p>
+          <p className={styles.mobileBracketHelp}>
+            Games are grouped by round for easy reading. The full bracket diagram is available below.
+          </p>
+        </div>
+      </div>
+
+      {hasChampion ? (
+        <section className={styles.mobilePodiumSummary} aria-label="Tournament results summary">
+          <div className={styles.mobilePodiumCard}>
+            <span className={styles.mobilePodiumLabel}>{podium.championHeading}</span>
+            <strong className={styles.mobilePodiumName}>{champion.trim() || "TBD"}</strong>
+          </div>
+          <div className={styles.mobilePodiumCard}>
+            <span className={styles.mobilePodiumLabel}>3rd Place</span>
+            <strong className={styles.mobilePodiumName}>{thirdPlace.trim() || "TBD"}</strong>
+          </div>
+        </section>
+      ) : null}
+
+      <div className={styles.mobileRoundStack}>
+        {rounds.map((round) => (
+          <section key={round.id} className={styles.mobileRoundSection} aria-label={round.label}>
+            <div className={styles.mobileRoundHeader}>
+              <h4 className={styles.mobileRoundTitle}>{round.label}</h4>
+              <span className={styles.mobileRoundCount}>
+                {round.matches.length} game{round.matches.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <ol className={styles.mobileMatchList}>
+              {round.matches.map((match) => (
+                <li key={match.id}>
+                  <MatchArticle match={match} gameLabel={matchGameBadge(match)} schedule={match} scoring={scoring} />
+                </li>
+              ))}
+            </ol>
+          </section>
+        ))}
+
+        {podium ? (
+          <section className={styles.mobileRoundSection} aria-label="3rd Place">
+            <div className={styles.mobileRoundHeader}>
+              <h4 className={styles.mobileRoundTitle}>3rd Place</h4>
+              <span className={styles.mobileRoundCount}>1 game</span>
+            </div>
+            <ThirdPlaceMatchArticle podium={podium} scoring={scoring} />
+          </section>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+function FullBracketDiagramFrame({ children }: { children: ReactNode }) {
+  const [isOpen, setIsOpen] = useState(false);
+  return (
+    <div className={styles.desktopBracketDiagram} data-mobile-expanded={isOpen ? "true" : "false"}>
+      <button
+        type="button"
+        className={styles.mobileFullBracketToggle}
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((current) => !current)}
+      >
+        {isOpen ? "Hide full bracket diagram" : "Show full bracket diagram"}
+      </button>
+      <div className={styles.fullBracketDiagramBody}>{children}</div>
+    </div>
   );
 }
 
@@ -823,6 +939,9 @@ function ConnectedBracketGrid({
     for (let j = 0; j < nextSlotCount; j++) {
       const topHas = matchAtCanonicalSlot(prevRound, 2 * j) != null;
       const bottomHas = matchAtCanonicalSlot(prevRound, 2 * j + 1) != null;
+      const topMatchId = matchAtCanonicalSlot(prevRound, 2 * j)?.id;
+      const bottomMatchId = matchAtCanonicalSlot(prevRound, 2 * j + 1)?.id;
+      const targetMatchId = matchAtCanonicalSlot(nextRound, j)?.id;
       const variant = getBracketConnectorVariant(topHas, bottomHas);
       const feedsFinalPodiumMatch = hasPodium && ri + 1 === R - 1;
       const rowStart = 2 + j * span;
@@ -832,7 +951,13 @@ function ConnectedBracketGrid({
           className={styles.connectorCell}
           style={{ gridColumn: col, gridRow: `${rowStart} / span ${span}` }}
         >
-          <BracketConnectorCell variant={variant} feedsFinalPodiumMatch={feedsFinalPodiumMatch} />
+          <BracketConnectorCell
+            variant={variant}
+            feedsFinalPodiumMatch={feedsFinalPodiumMatch}
+            topMatchId={topMatchId}
+            bottomMatchId={bottomMatchId}
+            targetMatchId={targetMatchId}
+          />
         </div>,
       );
     }
@@ -875,9 +1000,12 @@ function ConnectedBracketGrid({
       podium={null}
       parkBelowTitle={!parkInPodiumHeader}
     >
-      <div ref={gridRef} className={`${styles.bracketGrid} ${styles.bracketGridScroll}`} style={gridStyle}>
-        {cells}
-      </div>
+      <MobileBracketRounds rounds={rounds} podium={podium} scoring={scoring} />
+      <FullBracketDiagramFrame>
+        <div ref={gridRef} className={`${styles.bracketGrid} ${styles.bracketGridScroll}`} style={gridStyle}>
+          {cells}
+        </div>
+      </FullBracketDiagramFrame>
     </BracketSurface>
   );
 }
@@ -985,19 +1113,22 @@ export default function TournamentBracketView({
       podium={podium}
       parkBelowTitle={!(podium != null && hasBracketParkInfo(parkInfo))}
     >
-      <div className={styles.tree}>
-        {layout.rounds.map((round) => (
-          <section key={round.id} className={styles.round}>
-            <ol className={styles.matchList}>
-              {round.matches.map((m) => (
-                <li key={m.id}>
-                  <MatchArticle match={m} gameLabel={matchGameBadge(m)} schedule={m} scoring={scoring} />
-                </li>
-              ))}
-            </ol>
-          </section>
-        ))}
-      </div>
+      <MobileBracketRounds rounds={layout.rounds} podium={podium} scoring={scoring} />
+      <FullBracketDiagramFrame>
+        <div className={styles.tree}>
+          {layout.rounds.map((round) => (
+            <section key={round.id} className={styles.round}>
+              <ol className={styles.matchList}>
+                {round.matches.map((m) => (
+                  <li key={m.id}>
+                    <MatchArticle match={m} gameLabel={matchGameBadge(m)} schedule={m} scoring={scoring} />
+                  </li>
+                ))}
+              </ol>
+            </section>
+          ))}
+        </div>
+      </FullBracketDiagramFrame>
     </BracketSurface>
   );
 }

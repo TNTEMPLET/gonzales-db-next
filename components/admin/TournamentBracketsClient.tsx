@@ -1557,6 +1557,10 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                     For vector-perfect lines, use <strong className="text-zinc-400">Export bracket HTML</strong> and
                     print from the browser.
                   </p>
+                  <p className="mt-2 text-[11px] leading-relaxed text-zinc-500 sm:hidden">
+                    On phones, the preview shows readable round cards first. Open the full bracket diagram inside the
+                    preview when you need to inspect the printable connector layout.
+                  </p>
                   <div className="mt-4 space-y-3 rounded-lg border border-zinc-700 bg-zinc-950/50 p-3">
                     <div>
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
@@ -1840,10 +1844,13 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       </div>
                     ) : null}
                     {bracketLayout ? (
-                      <div ref={bracketPdfCaptureRef} className="inline-block min-w-full max-w-none sm:min-w-0 sm:max-w-full">
+                      <div
+                        ref={bracketPdfCaptureRef}
+                        className="block w-full min-w-0 max-w-full align-top"
+                      >
                         <div
                           {...{ [BRACKET_PREVIEW_SCALE_ATTR]: "" }}
-                          className="min-w-0"
+                          className="w-full min-w-0 max-w-full"
                           style={{ zoom: bracketPreviewZoom }}
                         >
                           <TournamentBracketView

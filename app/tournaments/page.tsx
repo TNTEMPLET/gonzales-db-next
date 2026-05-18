@@ -96,17 +96,21 @@ export default async function TournamentsPage() {
           <div className="space-y-8">
             {brackets.map((bracket) => (
               <article key={bracket.id} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-5">
-                <div className="mb-4 flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
                   <div>
                     <h2 className="text-xl font-semibold text-zinc-100">{bracket.name}</h2>
                     <p className="text-xs uppercase tracking-wide text-zinc-500">
                       {bracket.seasonYear} · Updated {bracket.updatedAt.toLocaleDateString("en-US")}
                     </p>
                   </div>
+                  <p className="max-w-sm text-xs leading-relaxed text-zinc-500 sm:hidden">
+                    Phone view shows games by round first. Open the full diagram inside the bracket for the printable
+                    layout.
+                  </p>
                 </div>
-                <div className="relative mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-2 sm:p-3">
-                  <div className="inline-block min-w-0 max-w-full">
-                    <div className="min-w-0">
+                <div className="relative mt-2 w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-600/50 bg-slate-300/30 p-1.5 sm:p-3">
+                  <div className="block w-full min-w-0 max-w-full">
+                    <div className="w-full min-w-0 max-w-full">
                       <TournamentBracketView
                         layout={bracket.layout}
                         themeColors={bracket.themeColors}
