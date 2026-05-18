@@ -1386,6 +1386,35 @@
   }
 }
 
+@media (orientation: landscape) and (max-height: 520px) {
+  .desktopBracketDiagram {
+    display: block;
+    border-radius: 0.75rem;
+    border: 1px solid rgb(0 47 108 / 0.14);
+    background: rgb(248 250 252 / 0.9);
+    overflow: hidden;
+  }
+
+  .fullBracketDiagramBody {
+    --mobile-full-bracket-scale: 1;
+    overflow: auto;
+    overscroll-behavior: contain;
+    padding: 0.45rem;
+    max-height: min(74svh, 28rem);
+    -webkit-overflow-scrolling: touch;
+    -webkit-text-size-adjust: 100%;
+    text-size-adjust: 100%;
+  }
+
+  .fullBracketDiagramBody > .bracketGridScroll,
+  .fullBracketDiagramBody > .tree {
+    transform: none;
+    width: 70rem !important;
+    min-width: 70rem !important;
+    max-width: none !important;
+  }
+}
+
 @media print {
   .mobileRoundCards,
   .mobileFullBracketToggle {
