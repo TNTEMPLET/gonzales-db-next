@@ -7,7 +7,7 @@ import {
   assignrScopeToQueryParam,
   isAllSitesAssignrScope,
   type AdminAssignrScope,
-} from "@/lib/admin/assignrOrgScope";
+} from "@/lib/admin/assignrScopeShared";
 import {
   CONTENT_ORGS,
   getOrgDisplayName,

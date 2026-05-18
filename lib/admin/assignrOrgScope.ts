@@ -1,23 +1,26 @@
-import {
-  enrichAssignrGamesWithAssignmentDetails,
-  filterAssignrGamesWithOpenAssignmentSlots,
-  listAssignrGames,
-} from "@/lib/assignr/games";
-import { resolveAssignrDeskDateRange } from "@/lib/admin/assignrDeskDateRange";
 import type { ListAssignrGamesOptions } from "@/lib/assignr/games";
-import { fetchGames, type Game } from "@/lib/fetchGames";
+import {
+  isAllSitesAssignrScope,
+  type AdminAssignrScope,
+} from "@/lib/admin/assignrScopeShared";
+import type { Game } from "@/lib/fetchGames";
 import {
   CONTENT_ORGS,
   getAssignrLeagueId,
   getDefaultContentOrg,
-  getOrgDisplayName,
   isContentOrgId,
   isMasterDeployment,
   resolveAdminTargetOrg,
   type ContentOrgId,
 } from "@/lib/siteConfig";
 
-export type AdminAssignrScope = ContentOrgId | "all";
+export type { AdminAssignrScope } from "@/lib/admin/assignrScopeShared";
+export {
+  assignrHubHref,
+  assignrScopeLabel,
+  assignrScopeToQueryParam,
+  isAllSitesAssignrScope,
+} from "@/lib/admin/assignrScopeShared";
 
 export function resolveAdminAssignrScope(
   requestedOrg?: string | null,
@@ -29,23 +32,6 @@ export function resolveAdminAssignrScope(
     return "all";
   }
   return resolveAdminTargetOrg(requestedOrg);
-}
-
-export function isAllSitesAssignrScope(scope: AdminAssignrScope): scope is "all" {
-  return scope === "all";
-}
-
-export function assignrScopeToQueryParam(scope: AdminAssignrScope): string {
-  return scope === "all" ? "" : `org=${scope}`;
-}
-
-export function assignrHubHref(org?: ContentOrgId | null) {
-  return org ? `/admin/assignr?org=${org}` : "/admin/assignr";
-}
-
-export function assignrScopeLabel(scope: AdminAssignrScope) {
-  if (scope === "all") return "All Sites";
-  return getOrgDisplayName(scope);
 }
 
 export function gameBelongsToContentOrg(game: Game, org: ContentOrgId) {
@@ -66,6 +52,7 @@ export async function fetchAssignrGamesForContentOrg(
   org: ContentOrgId,
   options: Omit<ListAssignrGamesOptions, "leagueId">,
 ) {
+  const { listAssignrGames } = await import("@/lib/assignr/games");
   const games = await listAssignrGames({
     ...options,
     leagueId: undefined,
@@ -77,6 +64,13 @@ export async function fetchUnassignedAssignrGamesForContentOrg(
   org: ContentOrgId,
   params: { startDate?: string; endDate?: string; siteId?: string },
 ) {
+  const { resolveAssignrDeskDateRange } = await import(
+    "@/lib/admin/assignrDeskDateRange"
+  );
+  const {
+    enrichAssignrGamesWithAssignmentDetails,
+    filterAssignrGamesWithOpenAssignmentSlots,
+  } = await import("@/lib/assignr/games");
   const { startDate, endDate } = resolveAssignrDeskDateRange(params);
   const games = await fetchAssignrGamesForContentOrg(org, {
     startDate,
@@ -93,6 +87,8 @@ export async function fetchAssignrGamesForScope(params: {
   startDate: string;
   endDate: string;
 }) {
+  const { fetchGames } = await import("@/lib/fetchGames");
+
   if (!isAllSitesAssignrScope(params.scope)) {
     return fetchGames({
       startDate: params.startDate,
