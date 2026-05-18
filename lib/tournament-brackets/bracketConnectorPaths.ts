@@ -186,7 +186,9 @@ var tgt=root&&root.querySelector("[data-bracket-podium-champion-target]");
 var yPct=50;
 if(src&&tgt){
 var sr=src.getBoundingClientRect(),tr=tgt.getBoundingClientRect();
-var mid=((sr.top+sr.bottom)/2+(tr.top+tr.bottom)/2)/2;
+var rootEl=wrap.closest(".bracket-root");
+var compactSix=!!(rootEl&&rootEl.classList&&rootEl.classList.contains("bracket-root-compact-six-team"));
+var mid=compactSix?(sr.top+sr.bottom)/2+56:((sr.top+sr.bottom)/2+(tr.top+tr.bottom)/2)/2;
 yPct=((mid-cr.top)/h)*100;
 yPct=Math.max(5,Math.min(95,yPct));
 }
@@ -202,6 +204,12 @@ function yv(v){return v*s}
 var y=Math.max(2,Math.min(98,yPct));
 return{vb:"0 0 40 "+vbH,d:"M 2 "+yv(y)+" L 38 "+yv(y)};
 }
+function geomLine(w,h,sourcePct,targetPct){
+w=Math.max(4,w);h=Math.max(4,h);
+var vbH=(40*h)/w,s=vbH/100;
+function yv(v){return v*s}
+return{vb:"0 0 40 "+vbH,d:"M 2 "+yv(sourcePct)+" L 38 "+yv(targetPct)};
+}
 function geomPodiumThird(wrap){
 var cell=wrap.closest(".bracket-html-connector");
 if(!cell)cell=wrap.parentElement;
@@ -214,9 +222,9 @@ var tgt=root&&root.querySelector("[data-bracket-podium-third-target]");
 var yPct=85;
 if(src&&tgt){
 var sr=src.getBoundingClientRect(),tr=tgt.getBoundingClientRect();
-var mid=((sr.top+sr.bottom)/2+(tr.top+tr.bottom)/2)/2;
-yPct=((mid-cr.top)/h)*100;
-yPct=Math.max(5,Math.min(95,yPct));
+var sourcePct=(((sr.top+sr.bottom)/2-cr.top)/h)*100;
+var targetPct=(((tr.top+tr.bottom)/2-cr.top)/h)*100;
+return geomLine(w,h,sourcePct,targetPct);
 }
 return geomAt(w,h,yPct);
 }

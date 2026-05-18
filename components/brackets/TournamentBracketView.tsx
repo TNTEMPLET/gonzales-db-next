@@ -43,6 +43,12 @@ export type BracketScoringViewProps = {
   onScoresChange: (matchId: string, patch: Partial<BracketMatchScores>) => void;
 };
 
+export type BracketLiveGameStatus = {
+  scoreLabel?: string;
+  inningLabel?: string;
+  statusLabel?: string;
+};
+
 type Props = {
   layout: BracketLayout;
   className?: string;
@@ -56,6 +62,7 @@ type Props = {
   /** Parent organization badge shown at the bottom-right of the bracket surface. */
   parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   scoring?: BracketScoringViewProps | null;
+  liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
   /**
    * When set (trimmed), used as the main H3 label source instead of `spec.divisionLabel`
    * (e.g. BracketProject.name from the admin list). Normalized with `bracketSurfaceTitle` (label only, or `— suffix` when used).
@@ -84,8 +91,40 @@ function matchAtCanonicalSlot(round: LayoutRound, slotIndex: number): LayoutMatc
   return round.matches[slotIndex] ?? null;
 }
 
+function incomingFeederVariant(rounds: LayoutRound[], roundIndex: number, slotIndex: number) {
+  if (roundIndex <= 0) return "both";
+  const prevRound = rounds[roundIndex - 1];
+  if (!prevRound) return "both";
+  const topHas = matchAtCanonicalSlot(prevRound, 2 * slotIndex) != null;
+  const bottomHas = matchAtCanonicalSlot(prevRound, 2 * slotIndex + 1) != null;
+  return getBracketConnectorVariant(topHas, bottomHas);
+}
+
+function matchWrapAlignmentClass(variant: ReturnType<typeof incomingFeederVariant>) {
+  if (variant === "top") return ` ${styles.gridMatchWrapAlignStart}`;
+  if (variant === "bottom") return ` ${styles.gridMatchWrapAlignEnd}`;
+  return "";
+}
+
+function isSixTeamEightSlotByeLayout(rounds: LayoutRound[], laneRows: number) {
+  const firstRound = rounds[0];
+  return (
+    laneRows === 4 &&
+    firstRound?.layoutSlotCount === 4 &&
+    firstRound.matches.length === 2
+  );
+}
+
 function matchGameBadge(m: Pick<LayoutMatch, "officialGameNumber">): string | undefined {
   return formatBracketGameBadge(m.officialGameNumber);
+}
+
+function liveStatusLabel(status: BracketLiveGameStatus | null | undefined): string | undefined {
+  if (!status) return undefined;
+  return [status.scoreLabel, status.inningLabel, status.statusLabel]
+    .map((part) => part?.trim())
+    .filter(Boolean)
+    .join(" · ") || undefined;
 }
 
 function byeSlotClass(label: string): string {
@@ -428,9 +467,11 @@ function ParkAside({ park }: { park?: BracketParkInfo | null }) {
 function ThirdPlaceMatchArticle({
   podium,
   scoring,
+  liveStatus,
 }: {
   podium: BracketLayoutPodium;
   scoring?: BracketScoringViewProps | null;
+  liveStatus?: BracketLiveGameStatus | null;
 }) {
   const match: LayoutMatch = {
     id: BRACKET_THIRD_PLACE_MATCH_ID,
@@ -455,7 +496,7 @@ function ThirdPlaceMatchArticle({
       {...{ [BRACKET_PODIUM_THIRD_SOURCE_ATTR]: "" }}
       aria-label={`Third place: ${podium.thirdPlaceSlotHome} versus ${podium.thirdPlaceSlotAway}`}
     >
-      <div className={styles.thirdPlaceMatchBadge}>{badgeLabel}</div>
+      <MatchGameHeader gameLabel={badgeLabel} liveStatus={liveStatus} badgeClassName={styles.thirdPlaceMatchBadge} />
       <BracketMatchSlotRow
         label={podium.thirdPlaceSlotHome}
         side="home"
@@ -646,12 +687,14 @@ function MatchGameInfoBetweenTeams({
 function MatchArticle({
   match,
   gameLabel,
+  liveStatus,
   schedule,
   podiumChampionSource,
   scoring,
 }: {
   match: LayoutMatch;
   gameLabel?: string;
+  liveStatus?: BracketLiveGameStatus | null;
   schedule?: Pick<LayoutMatch, "dateLabel" | "time" | "venue" | "field">;
   podiumChampionSource?: boolean;
   scoring?: BracketScoringViewProps | null;
@@ -665,7 +708,7 @@ function MatchArticle({
       {...(podiumChampionSource ? { [BRACKET_PODIUM_CHAMPION_SOURCE_ATTR]: "" } : {})}
       aria-label={`${slotHome} versus ${slotAway}`}
     >
-      {gameLabel ? <div className={styles.matchGameBadge}>{gameLabel}</div> : null}
+      <MatchGameHeader gameLabel={gameLabel} liveStatus={liveStatus} />
       <BracketMatchSlotRow label={slotHome} side="home" matchId={match.id} matchMeta={match} scoring={scoring} />
       <MatchGameInfoBetweenTeams meta={schedule ?? {}} />
       <BracketMatchSlotRow label={slotAway} side="away" matchId={match.id} matchMeta={match} scoring={scoring} />
@@ -676,14 +719,35 @@ function MatchArticle({
   );
 }
 
+function MatchGameHeader({
+  gameLabel,
+  liveStatus,
+  badgeClassName,
+}: {
+  gameLabel?: string;
+  liveStatus?: BracketLiveGameStatus | null;
+  badgeClassName?: string;
+}) {
+  const statusLabel = liveStatusLabel(liveStatus);
+  if (!gameLabel && !statusLabel) return null;
+  return (
+    <div className={badgeClassName ?? styles.matchGameBadge}>
+      <span className={styles.matchGameBadgeLabel}>{gameLabel}</span>
+      {statusLabel ? <span className={styles.matchLiveStatus}>{statusLabel}</span> : null}
+    </div>
+  );
+}
+
 function MobileBracketRounds({
   rounds,
   podium,
   scoring,
+  liveGameStatuses,
 }: {
   rounds: LayoutRound[];
   podium?: BracketLayoutPodium | null;
   scoring?: BracketScoringViewProps | null;
+  liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
 }) {
   const champion = podium
     ? declaredChampionFromFinalSlots(podium.finalMatch.slotHome, podium.finalMatch.slotAway, podium.finalMatch)
@@ -727,7 +791,13 @@ function MobileBracketRounds({
             <ol className={styles.mobileMatchList}>
               {round.matches.map((match) => (
                 <li key={match.id}>
-                  <MatchArticle match={match} gameLabel={matchGameBadge(match)} schedule={match} scoring={scoring} />
+                  <MatchArticle
+                    match={match}
+                    gameLabel={matchGameBadge(match)}
+                    liveStatus={liveGameStatuses?.[match.id]}
+                    schedule={match}
+                    scoring={scoring}
+                  />
                 </li>
               ))}
             </ol>
@@ -776,6 +846,7 @@ function ConnectedBracketGrid({
   parentOrganizationLogo,
   podium,
   scoring,
+  liveGameStatuses,
 }: {
   rounds: LayoutRound[];
   /** Full first-round width (leaf rows); used for grid row template and spans. */
@@ -788,11 +859,14 @@ function ConnectedBracketGrid({
   parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   podium?: BracketLayoutPodium | null;
   scoring?: BracketScoringViewProps | null;
+  liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
 }) {
   const R = rounds.length;
   const N = laneRows > 0 ? laneRows : rounds[0]?.layoutSlotCount ?? rounds[0]?.matches.length ?? 0;
   const hasPodium = Boolean(podium);
   const baseCols = 2 * R - 1;
+  const useCompactSixTeamByeLayout = isSixTeamEightSlotByeLayout(rounds, N);
+  const laneMinHeight = useCompactSixTeamByeLayout ? "1rem" : "2.5rem";
   const gridTemplateColumns = [
     ...Array.from({ length: baseCols }, (_, i) =>
       /* Wider floor than minmax(0,1fr) so field/venue lines between teams are not clipped */
@@ -804,7 +878,7 @@ function ConnectedBracketGrid({
   const gridStyle: CSSProperties = {
     display: "grid",
     gridTemplateColumns,
-    gridTemplateRows: `auto repeat(${N}, minmax(2.5rem, auto))`,
+    gridTemplateRows: `auto repeat(${N}, minmax(${laneMinHeight}, auto))`,
     columnGap: "0.35rem",
     rowGap: "0.45rem",
     alignItems: "stretch",
@@ -878,13 +952,21 @@ function ConnectedBracketGrid({
     for (let j = 0; j < slotCount; j++) {
       const m = matchAtCanonicalSlot(round, j);
       const rowStart = 2 + j * span;
+      const feederVariant = incomingFeederVariant(rounds, ri, j);
+      const alignClass = useCompactSixTeamByeLayout ? matchWrapAlignmentClass(feederVariant) : "";
       if (m) {
         if (isFinalSingleMatchPodium) {
           const p = podium!;
           cells.push(
             <div
               key={m.id}
-              className={`${styles.gridMatchWrap} ${styles.finalRoundPodiumGridWrap}`}
+              className={[
+                styles.gridMatchWrap,
+                styles.finalRoundPodiumGridWrap,
+                useCompactSixTeamByeLayout ? styles.finalRoundPodiumGridWrapCompactSix : "",
+              ]
+                .filter(Boolean)
+                .join(" ")}
               style={{ gridColumn: col, gridRow: `${rowStart} / span ${span}` }}
             >
               <div className={styles.finalRoundPodiumInner}>
@@ -892,6 +974,7 @@ function ConnectedBracketGrid({
                   <MatchArticle
                     match={m}
                     gameLabel={matchGameBadge(m)}
+                    liveStatus={liveGameStatuses?.[m.id]}
                     schedule={m}
                     podiumChampionSource
                     scoring={scoring}
@@ -901,7 +984,11 @@ function ConnectedBracketGrid({
                   className={styles.thirdPlaceGameBottomRow}
                   {...{ [BRACKET_PODIUM_THIRD_BAND_ATTR]: "game" }}
                 >
-                  <ThirdPlaceMatchArticle podium={p} scoring={scoring} />
+                  <ThirdPlaceMatchArticle
+                    podium={p}
+                    scoring={scoring}
+                    liveStatus={liveGameStatuses?.[BRACKET_THIRD_PLACE_MATCH_ID]}
+                  />
                 </div>
               </div>
             </div>,
@@ -910,10 +997,16 @@ function ConnectedBracketGrid({
           cells.push(
             <div
               key={m.id}
-              className={styles.gridMatchWrap}
+              className={`${styles.gridMatchWrap}${alignClass}`}
               style={{ gridColumn: col, gridRow: `${rowStart} / span ${span}` }}
             >
-              <MatchArticle match={m} gameLabel={matchGameBadge(m)} schedule={m} scoring={scoring} />
+              <MatchArticle
+                match={m}
+                gameLabel={matchGameBadge(m)}
+                liveStatus={liveGameStatuses?.[m.id]}
+                schedule={m}
+                scoring={scoring}
+              />
             </div>,
           );
         }
@@ -982,7 +1075,12 @@ function ConnectedBracketGrid({
       <ChampionRoundColumn
         key="champion-round-cell"
         podium={podium}
-        className={styles.championRoundGridCell}
+        className={[
+          styles.championRoundGridCell,
+          useCompactSixTeamByeLayout ? styles.championRoundGridCellCompactSix : "",
+        ]
+          .filter(Boolean)
+          .join(" ")}
         style={{ gridColumn: 2 * R + 1, gridRow: `${rowStartFinal} / span ${spanFinal}` }}
       />,
     );
@@ -1019,6 +1117,7 @@ export default function TournamentBracketView({
   parentOrganizationLogo,
   parkInfo,
   scoring,
+  liveGameStatuses,
   surfaceTitleOverride,
 }: Props) {
   const rootClass = [styles.root, className].filter(Boolean).join(" ");
@@ -1078,6 +1177,14 @@ export default function TournamentBracketView({
 
   const bracketTitle = bracketSurfaceTitle(headingLabel);
   const podium = layout.podium ?? null;
+  const isCompactSixTeamBracket =
+    layout.treeLayout === "connected" &&
+    layout.connectedLaneRowCount === 4 &&
+    layout.rounds[0]?.layoutSlotCount === 4 &&
+    layout.rounds[0]?.matches.length === 2;
+  const treeRootClass = isCompactSixTeamBracket
+    ? `${rootClass} ${styles.rootCompactSixTeam}`
+    : rootClass;
 
   if (layout.treeLayout === "connected") {
     const laneRows =
@@ -1090,13 +1197,14 @@ export default function TournamentBracketView({
         rounds={layout.rounds}
         laneRows={laneRows}
         title={bracketTitle}
-        rootClass={rootClass}
+        rootClass={treeRootClass}
         style={rootStyle}
         parkInfo={parkInfo}
         logoWatermarkUrl={logoWatermarkUrl}
         parentOrganizationLogo={parentOrganizationLogo}
         podium={podium}
         scoring={scoring}
+        liveGameStatuses={liveGameStatuses}
       />
     );
   }
@@ -1113,7 +1221,12 @@ export default function TournamentBracketView({
       podium={podium}
       parkBelowTitle={!(podium != null && hasBracketParkInfo(parkInfo))}
     >
-      <MobileBracketRounds rounds={layout.rounds} podium={podium} scoring={scoring} />
+      <MobileBracketRounds
+        rounds={layout.rounds}
+        podium={podium}
+        scoring={scoring}
+        liveGameStatuses={liveGameStatuses}
+      />
       <FullBracketDiagramFrame>
         <div className={styles.tree}>
           {layout.rounds.map((round) => (
@@ -1121,7 +1234,13 @@ export default function TournamentBracketView({
               <ol className={styles.matchList}>
                 {round.matches.map((m) => (
                   <li key={m.id}>
-                    <MatchArticle match={m} gameLabel={matchGameBadge(m)} schedule={m} scoring={scoring} />
+                    <MatchArticle
+                      match={m}
+                      gameLabel={matchGameBadge(m)}
+                      liveStatus={liveGameStatuses?.[m.id]}
+                      schedule={m}
+                      scoring={scoring}
+                    />
                   </li>
                 ))}
               </ol>

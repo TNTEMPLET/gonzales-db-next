@@ -26,6 +26,7 @@ export async function GET(request: NextRequest) {
         seasonYear: true,
         name: true,
         status: true,
+        priority: true,
         updatedAt: true,
         createdAt: true,
       },
@@ -58,6 +59,7 @@ export async function POST(request: NextRequest) {
       organizationId?: string;
       seasonYear?: number;
       name?: string;
+      priority?: number;
     };
     try {
       body = (await request.json()) as typeof body;
@@ -76,6 +78,10 @@ export async function POST(request: NextRequest) {
         ? body.seasonYear
         : new Date().getFullYear();
     const name = body.name?.trim() || `Bracket ${seasonYear}`;
+    const priority =
+      typeof body.priority === "number" && Number.isFinite(body.priority)
+        ? Math.trunc(body.priority)
+        : 0;
 
     const spec = defaultBracketSpec();
 
@@ -84,6 +90,7 @@ export async function POST(request: NextRequest) {
         organizationId: body.organizationId,
         seasonYear,
         name,
+        priority,
         spec: JSON.parse(JSON.stringify(spec)),
         sourceArtifactUrls: [],
         createdByAdminId: auth.adminUserId,

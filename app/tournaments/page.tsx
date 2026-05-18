@@ -1,14 +1,18 @@
-import TournamentBracketView from "@/components/brackets/TournamentBracketView";
+import Link from "next/link";
+
+import PublishedTournamentTabs, { type PublishedTournamentTabBracket } from "@/components/brackets/PublishedTournamentTabs";
 import prisma from "@/lib/prisma";
-import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { safeParseBracketSpec, type BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
 import { resolveBracketThemeColors, type BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
+import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
+import { sortPublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
 import {
   getContentOrgBrandColors,
   getDefaultContentOrg,
   getOrgDisplayName,
   getSiteConfig,
   getTournamentBracketBrandingForOrg,
+  isMasterDeployment,
 } from "@/lib/siteConfig";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +21,9 @@ type PublishedBracket = {
   id: string;
   name: string;
   seasonYear: number;
+  priority: number;
   updatedAt: Date;
+  divisionLabel?: string | null;
   layout: BracketLayout;
   parkInfo?: BracketParkInfo | null;
   themeColors: BracketThemeColors;
@@ -31,9 +37,16 @@ export function generateMetadata() {
   };
 }
 
-export default async function TournamentsPage() {
+export default async function TournamentsPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ bracket?: string }>;
+}) {
+  const { bracket: requestedBracketId } = await searchParams;
   const site = getSiteConfig();
   const org = getDefaultContentOrg();
+  const showAdminCreatorLink = isMasterDeployment();
+  const adminCreatorHref = `/admin/tournament-brackets?org=${encodeURIComponent(org)}`;
   const branding = getTournamentBracketBrandingForOrg(org);
   const siteThemeDefaults = getContentOrgBrandColors(org);
 
@@ -47,6 +60,7 @@ export default async function TournamentsPage() {
       id: true,
       name: true,
       seasonYear: true,
+      priority: true,
       updatedAt: true,
       spec: true,
     },
@@ -65,7 +79,9 @@ export default async function TournamentsPage() {
           id: project.id,
           name: project.name,
           seasonYear: project.seasonYear,
+          priority: project.priority,
           updatedAt: project.updatedAt,
+          divisionLabel: parsed.spec.divisionLabel,
           layout: buildBracketLayout(parsed.spec),
           parkInfo: parsed.spec.parkInfo,
           themeColors: resolveBracketThemeColors(parsed.spec, siteThemeDefaults),
@@ -78,56 +94,49 @@ export default async function TournamentsPage() {
     }
   });
 
+  const sortedBrackets = sortPublishedBrackets(brackets);
+  const tabBrackets: PublishedTournamentTabBracket[] = sortedBrackets.map((bracket) => ({
+    id: bracket.id,
+    name: bracket.name,
+    seasonYear: bracket.seasonYear,
+    updatedAtLabel: bracket.updatedAt.toLocaleDateString("en-US"),
+    layout: bracket.layout,
+    parkInfo: bracket.parkInfo,
+    themeColors: bracket.themeColors,
+  }));
+
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mb-8 sm:mb-10">
-          <div className="inline-block rounded-full bg-brand-purple px-4 py-2 text-[11px] tracking-[2px] sm:px-6 sm:text-xs sm:tracking-[3px]">
-            TOURNAMENTS
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <div className="inline-block rounded-full bg-brand-purple px-4 py-2 text-[11px] tracking-[2px] sm:px-6 sm:text-xs sm:tracking-[3px]">
+                TOURNAMENTS
+              </div>
+              <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-5xl">Tournament Brackets</h1>
+            </div>
+            {showAdminCreatorLink ? (
+              <Link
+                href={adminCreatorHref}
+                className="inline-flex w-fit items-center justify-center rounded-full border border-zinc-700 px-4 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-200 transition hover:border-brand-gold hover:text-brand-gold"
+              >
+                Back to Bracket Creator
+              </Link>
+            ) : null}
           </div>
-          <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-5xl">Tournament Brackets</h1>
           <p className="mt-3 max-w-2xl text-sm text-zinc-400">
             Published brackets for {getOrgDisplayName(org)} tournaments. Check back here for updates as games are
             completed.
           </p>
         </div>
 
-        {brackets.length > 0 ? (
-          <div className="space-y-8">
-            {brackets.map((bracket) => (
-              <article key={bracket.id} className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-5">
-                <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-                  <div>
-                    <h2 className="text-xl font-semibold text-zinc-100">{bracket.name}</h2>
-                    <p className="text-xs uppercase tracking-wide text-zinc-500">
-                      {bracket.seasonYear} · Updated {bracket.updatedAt.toLocaleDateString("en-US")}
-                    </p>
-                  </div>
-                  <p className="max-w-sm text-xs leading-relaxed text-zinc-500 sm:hidden">
-                    Phone view shows games by round first. Open the full diagram inside the bracket for the printable
-                    layout.
-                  </p>
-                </div>
-                <div className="relative mt-2 w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-600/50 bg-slate-300/30 p-1.5 sm:p-3">
-                  <div className="block w-full min-w-0 max-w-full">
-                    <div className="w-full min-w-0 max-w-full">
-                      <TournamentBracketView
-                        layout={bracket.layout}
-                        themeColors={bracket.themeColors}
-                        logoWatermarkUrl={branding.targetLogoPath}
-                        parentOrganizationLogo={{
-                          src: branding.parentLogoPath,
-                          name: branding.parentName,
-                        }}
-                        parkInfo={bracket.parkInfo}
-                        surfaceTitleOverride={bracket.name}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </article>
-            ))}
-          </div>
+        {tabBrackets.length > 0 ? (
+          <PublishedTournamentTabs
+            brackets={tabBrackets}
+            branding={branding}
+            initialSelectedBracketId={requestedBracketId}
+          />
         ) : (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8 text-center">
             <h2 className="text-xl font-semibold text-zinc-100">No published tournament brackets yet</h2>
