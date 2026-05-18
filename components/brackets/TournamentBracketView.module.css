@@ -24,6 +24,9 @@
   border-radius: 0.5rem;
   border: 1px solid var(--bracket-border);
   padding: 1.125rem 1.25rem 3.35rem;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   min-height: 8rem;
   overflow: hidden;
 }
@@ -31,6 +34,8 @@
 .rootForeground {
   position: relative;
   z-index: 1;
+  min-width: 0;
+  max-width: 100%;
 }
 
 .watermarkImg {
@@ -590,9 +595,10 @@
 }
 
 .finalRoundPodiumGridWrap .finalRoundPodiumInner {
-  flex: 1 1 0;
-  min-height: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  height: auto;
   width: 100%;
 }
 
@@ -644,6 +650,7 @@
   justify-content: center;
   padding-left: 0.2rem;
   padding-right: 0.2rem;
+  transform: translateY(var(--bracket-podium-third-align-y, 0));
 }
 
 .thirdPlaceGameBottomRow .thirdPlaceMatch {
@@ -964,6 +971,140 @@
   color: var(--bracket-muted);
 }
 
+.mobileRoundCards,
+.mobileFullBracketToggle {
+  display: none;
+}
+
+.desktopBracketDiagram {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.fullBracketDiagramBody {
+  min-width: 0;
+}
+
+.mobileBracketIntro {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.75rem;
+  border: 1px solid rgb(0 47 108 / 0.12);
+  border-radius: 0.7rem;
+  background: rgb(255 255 255 / 0.78);
+  padding: 0.75rem 0.8rem;
+  box-shadow: 0 1px 2px rgb(0 26 61 / 0.06);
+}
+
+.mobileBracketKicker {
+  margin: 0 0 0.2rem;
+  font-size: 0.64rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--bracket-accent);
+}
+
+.mobileBracketHelp {
+  margin: 0;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  color: var(--bracket-muted);
+}
+
+.mobilePodiumSummary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 0.65rem;
+}
+
+.mobilePodiumCard {
+  border-radius: 0.75rem;
+  border: 1px solid rgb(255 255 255 / 0.35);
+  background:
+    linear-gradient(135deg, rgb(255 255 255 / 0.16), transparent 42%),
+    linear-gradient(90deg, var(--bracket-navy-deep), var(--bracket-fg));
+  padding: 0.85rem 0.9rem;
+  color: #fff;
+  box-shadow:
+    inset 0 1px 0 rgb(255 255 255 / 0.18),
+    0 0.45rem 1rem rgb(0 26 61 / 0.14);
+}
+
+.mobilePodiumLabel {
+  display: block;
+  margin-bottom: 0.25rem;
+  font-size: 0.62rem;
+  font-weight: 900;
+  line-height: 1;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgb(255 255 255 / 0.72);
+}
+
+.mobilePodiumName {
+  display: block;
+  font-size: 1rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.mobileRoundStack {
+  display: grid;
+  gap: 0.95rem;
+}
+
+.mobileRoundSection {
+  overflow: hidden;
+  border: 1px solid rgb(0 47 108 / 0.13);
+  border-radius: 0.8rem;
+  background: rgb(255 255 255 / 0.64);
+  box-shadow: 0 2px 8px rgb(0 26 61 / 0.06);
+}
+
+.mobileRoundHeader {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.65rem 0.75rem;
+  border-bottom: 1px solid rgb(0 47 108 / 0.1);
+  background: linear-gradient(to right, var(--bracket-fg), var(--bracket-navy-deep));
+  color: #fff;
+}
+
+.mobileRoundTitle {
+  margin: 0;
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 900;
+  line-height: 1.2;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.mobileRoundCount {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: rgb(255 255 255 / 0.14);
+  padding: 0.22rem 0.45rem;
+  font-size: 0.62rem;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.mobileMatchList {
+  list-style: none;
+  margin: 0;
+  padding: 0.7rem;
+  display: grid;
+  gap: 0.7rem;
+}
+
 @media (max-width: 640px) {
   .root {
     border-radius: 0.45rem;
@@ -979,6 +1120,141 @@
   .watermarkImg {
     width: 140%;
     max-height: 80%;
+  }
+
+  .bracketBodyRow {
+    display: block;
+  }
+
+  .flatChampionGutter,
+  .flatChampionColumn {
+    display: none;
+  }
+
+  .mobileRoundCards {
+    display: grid;
+    gap: 0.85rem;
+  }
+
+  .desktopBracketDiagram {
+    display: block;
+    margin-top: 1rem;
+    border-radius: 0.75rem;
+    border: 1px solid rgb(0 47 108 / 0.14);
+    background: rgb(248 250 252 / 0.9);
+    overflow: hidden;
+  }
+
+  .mobileFullBracketToggle {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    min-height: 2.9rem;
+    border-bottom: 1px solid rgb(0 47 108 / 0.1);
+    background: rgb(255 255 255 / 0.82);
+    padding: 0.78rem 0.85rem;
+    text-align: left;
+    font-size: 0.78rem;
+    font-weight: 900;
+    line-height: 1.2;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    color: var(--bracket-fg);
+  }
+
+  .mobileFullBracketToggle::after {
+    content: "+";
+    font-size: 1rem;
+    line-height: 1;
+  }
+
+  .desktopBracketDiagram[data-mobile-expanded="true"] .mobileFullBracketToggle::after {
+    content: "−";
+  }
+
+  .fullBracketDiagramBody {
+    overflow: auto;
+    overscroll-behavior-inline: contain;
+    padding: 0.45rem;
+    max-height: min(72dvh, 36rem);
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .desktopBracketDiagram[data-mobile-expanded="false"] .fullBracketDiagramBody {
+    max-height: 0;
+    overflow: hidden;
+    padding-top: 0;
+    padding-bottom: 0;
+    border-top: 0;
+  }
+
+  .fullBracketDiagramBody > .bracketGridScroll,
+  .fullBracketDiagramBody > .tree {
+    zoom: 0.39;
+  }
+
+  .fullBracketDiagramBody > .bracketGridScroll {
+    width: 70rem !important;
+    min-width: 70rem !important;
+    max-width: none !important;
+  }
+
+  .fullBracketDiagramBody > .tree {
+    width: 70rem !important;
+    min-width: 70rem !important;
+    max-width: none !important;
+  }
+
+  .mobileRoundSection .match {
+    border-radius: 0.65rem;
+    border-left-width: 4px;
+    box-shadow: 0 1px 5px rgb(0 26 61 / 0.08);
+  }
+
+  .mobileRoundSection .matchGameBadge,
+  .mobileRoundSection .thirdPlaceMatchBadge {
+    padding: 0.48rem 0.65rem 0.35rem;
+    font-size: 0.68rem;
+    text-align: left;
+  }
+
+  .mobileRoundSection .slot {
+    min-height: 2.55rem;
+    padding: 0.58rem 0.65rem 0.58rem 1.25rem;
+    font-size: 0.88rem;
+    line-height: 1.2;
+  }
+
+  .mobileRoundSection .slot::before {
+    left: 0.52rem;
+  }
+
+  .mobileRoundSection .slotLabel {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .mobileRoundSection .slotScoreRead,
+  .mobileRoundSection .slotScoreInput {
+    min-width: 2rem;
+    font-size: 0.92rem;
+  }
+
+  .mobileRoundSection .matchScheduleMeta {
+    padding: 0.46rem 0.65rem 0.5rem;
+    font-size: 0.72rem;
+    line-height: 1.35;
+  }
+
+  .mobileRoundSection .tiePicker {
+    grid-template-columns: minmax(0, 1fr);
+    padding: 0.55rem 0.65rem;
+  }
+
+  .mobileRoundSection .tiePickerBtn {
+    min-height: 2.4rem;
   }
 
   .tree {
@@ -1046,7 +1322,26 @@
   }
 }
 
+@media (max-width: 390px) {
+  .fullBracketDiagramBody > .bracketGridScroll,
+  .fullBracketDiagramBody > .tree {
+    zoom: 0.35;
+  }
+}
+
 @media print {
+  .mobileRoundCards,
+  .mobileFullBracketToggle {
+    display: none !important;
+  }
+  .desktopBracketDiagram {
+    display: block !important;
+  }
+  .fullBracketDiagramBody {
+    max-height: none !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
   .bracketGridScroll {
     overflow: visible !important;
     max-width: none !important;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useRef, useState } from "react";
 
 import {
   BRACKET_PODIUM_CHAMPION_SOURCE_ATTR,
@@ -11,7 +11,6 @@ import {
   bracketConnectorCenterFeederFromSize,
   bracketConnectorHorizontalAtPercentFromSize,
   bracketConnectorSingleFromSize,
-  bracketConnectorYPercentBetweenCenters,
   bracketConnectorYPercentForCenter,
   type BracketConnectorVariant,
 } from "@/lib/tournament-brackets/bracketConnectorPaths";
@@ -26,6 +25,50 @@ const PATH_STROKE = {
   strokeLinejoin: "round" as const,
 };
 
+const MATCH_ID_ATTR = "data-bracket-match-id";
+const PODIUM_THIRD_ALIGN_EVENT = "bracket:podium-third-align";
+
+function bracketConnectorMeasuredLineFromSize(
+  widthPx: number,
+  heightPx: number,
+  sourceYPercent: number,
+  targetYPercent: number,
+): { viewBox: string; d: string } {
+  const w = Math.max(4, widthPx);
+  const h = Math.max(4, heightPx);
+  const vbH = (40 * h) / w;
+  const s = vbH / 100;
+  const yv = (v: number) => Math.max(2, Math.min(98, v)) * s;
+  const d = `M 2 ${yv(sourceYPercent)} L 38 ${yv(targetYPercent)}`;
+  return { viewBox: `0 0 40 ${vbH}`, d };
+}
+
+function bracketConnectorMeasuredFeedersFromSize({
+  widthPx,
+  heightPx,
+  sourceYPercents,
+  targetYPercent,
+}: {
+  widthPx: number;
+  heightPx: number;
+  sourceYPercents: number[];
+  targetYPercent: number;
+}): { viewBox: string; d: string } {
+  const w = Math.max(4, widthPx);
+  const h = Math.max(4, heightPx);
+  const vbH = (40 * h) / w;
+  const s = vbH / 100;
+  const yv = (v: number) => Math.max(2, Math.min(98, v)) * s;
+  const target = yv(targetYPercent);
+  const d = sourceYPercents
+    .map((sourceY) => {
+      const source = yv(sourceY);
+      return `M 2 ${source} L 20 ${source} L 20 ${target} L 38 ${target}`;
+    })
+    .join(" ");
+  return { viewBox: `0 0 40 ${vbH}`, d };
+}
+
 function useConnectorCellRect(wrapRef: React.RefObject<HTMLDivElement | null>) {
   return () => {
     const el = wrapRef.current;
@@ -39,6 +82,15 @@ function useConnectorCellRect(wrapRef: React.RefObject<HTMLDivElement | null>) {
   };
 }
 
+function connectorScope(cell: Element): Element {
+  return cell.closest(`.${styles.desktopBracketDiagram}`) ?? cell.closest("section") ?? cell;
+}
+
+function matchById(scope: Element | null, id?: string): Element | null {
+  if (!scope || !id) return null;
+  return scope.querySelector(`[${MATCH_ID_ATTR}="${CSS.escape(id)}"]`);
+}
+
 function useFinalPodiumHubYPercent(
   wrapRef: React.RefObject<HTMLDivElement | null>,
   feedsFinalPodiumMatch: boolean,
@@ -48,13 +100,13 @@ function useFinalPodiumHubYPercent(
 
   useLayoutEffect(() => {
     if (!feedsFinalPodiumMatch) {
-      setHubY(50);
-      return;
+      const id = window.requestAnimationFrame(() => setHubY(50));
+      return () => window.cancelAnimationFrame(id);
     }
     const measure = () => {
       const cell = getCell();
       if (!cell) return;
-      const root = wrapRef.current?.closest("section");
+      const root = wrapRef.current ? connectorScope(wrapRef.current) : null;
       const match = root?.querySelector(`[${BRACKET_PODIUM_CHAMPION_SOURCE_ATTR}]`);
       if (!match) {
         setHubY(50);
@@ -67,7 +119,7 @@ function useFinalPodiumHubYPercent(
     const ro = new ResizeObserver(measure);
     const el = wrapRef.current;
     if (el?.parentElement) ro.observe(el.parentElement);
-    const root = el?.closest("section");
+    const root = el ? connectorScope(el) : null;
     const match = root?.querySelector(`[${BRACKET_PODIUM_CHAMPION_SOURCE_ATTR}]`);
     if (match) ro.observe(match);
     return () => ro.disconnect();
@@ -76,56 +128,26 @@ function useFinalPodiumHubYPercent(
   return hubY;
 }
 
-/** Two visible feeders: viewBox aspect matches gutter cell (uniform scale, no shear). */
-function BothFeedersConnector({ feedsFinalPodiumMatch = false }: { feedsFinalPodiumMatch?: boolean }) {
-  const wrapRef = useRef<HTMLDivElement>(null);
-  const hubY = useFinalPodiumHubYPercent(wrapRef, feedsFinalPodiumMatch);
-  const [{ viewBox, d }, setGeom] = useState(() => bracketConnectorBothFromSize(40, 100, hubY));
-
-  useLayoutEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const measure = () => {
-      const pr = el.parentElement?.getBoundingClientRect();
-      const cr = el.getBoundingClientRect();
-      const w = Math.max(cr.width, pr?.width ?? 0);
-      const h = Math.max(cr.height, pr?.height ?? 0);
-      if (w < 2 || h < 2) return;
-      setGeom(bracketConnectorBothFromSize(w, h, hubY));
-    };
-    measure();
-    const ro = new ResizeObserver(measure);
-    ro.observe(el);
-    if (el.parentElement) ro.observe(el.parentElement);
-    return () => ro.disconnect();
-  }, [hubY]);
-
-  return (
-    <div ref={wrapRef} className={styles.connectorDynamicWrap} aria-hidden>
-      <svg
-        className={styles.connectorSvgDynamic}
-        viewBox={viewBox}
-        preserveAspectRatio="none"
-        width="100%"
-        height="100%"
-      >
-        <path d={d} {...PATH_STROKE} />
-      </svg>
-    </div>
-  );
-}
-
-/** One visible feeder: same aspect-ratio treatment as {@link BothFeedersConnector}. */
-function SingleFeederConnector({
+function MeasuredFeedersConnector({
   variant,
+  topMatchId,
+  bottomMatchId,
+  targetMatchId,
   feedsFinalPodiumMatch = false,
 }: {
-  variant: "top" | "bottom";
+  variant: Exclude<BracketConnectorVariant, "none" | "center">;
+  topMatchId?: string;
+  bottomMatchId?: string;
+  targetMatchId?: string;
   feedsFinalPodiumMatch?: boolean;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
-  const hubY = useFinalPodiumHubYPercent(wrapRef, feedsFinalPodiumMatch);
-  const [{ viewBox, d }, setGeom] = useState(() => bracketConnectorSingleFromSize(40, 100, variant, hubY));
+  const fallbackHubY = useFinalPodiumHubYPercent(wrapRef, feedsFinalPodiumMatch);
+  const [{ viewBox, d }, setGeom] = useState(() =>
+    variant === "both"
+      ? bracketConnectorBothFromSize(40, 100, fallbackHubY)
+      : bracketConnectorSingleFromSize(40, 100, variant, fallbackHubY),
+  );
 
   useLayoutEffect(() => {
     const el = wrapRef.current;
@@ -136,14 +158,53 @@ function SingleFeederConnector({
       const w = Math.max(cr.width, pr?.width ?? 0);
       const h = Math.max(cr.height, pr?.height ?? 0);
       if (w < 2 || h < 2) return;
-      setGeom(bracketConnectorSingleFromSize(w, h, variant, hubY));
+
+      const scope = connectorScope(el);
+      const cellTop = cr.top;
+      const cellHeight = cr.height;
+      const sourceIds =
+        variant === "both"
+          ? [topMatchId, bottomMatchId].filter((id): id is string => Boolean(id))
+          : [variant === "top" ? topMatchId : bottomMatchId].filter((id): id is string => Boolean(id));
+      const sources = sourceIds.map((id) => matchById(scope, id)).filter((node): node is Element => Boolean(node));
+      const target = matchById(scope, targetMatchId);
+
+      if (sources.length > 0 && target) {
+        const sourceYPercents = sources.map((source) => {
+          const rect = source.getBoundingClientRect();
+          return bracketConnectorYPercentForCenter(cellTop, cellHeight, (rect.top + rect.bottom) / 2);
+        });
+        const targetRect = target.getBoundingClientRect();
+        const targetYPercent = bracketConnectorYPercentForCenter(
+          cellTop,
+          cellHeight,
+          (targetRect.top + targetRect.bottom) / 2,
+        );
+        setGeom(bracketConnectorMeasuredFeedersFromSize({ widthPx: w, heightPx: h, sourceYPercents, targetYPercent }));
+        return;
+      }
+
+      setGeom(
+        variant === "both"
+          ? bracketConnectorBothFromSize(w, h, fallbackHubY)
+          : bracketConnectorSingleFromSize(w, h, variant, fallbackHubY),
+      );
     };
     measure();
+    const raf = window.requestAnimationFrame(measure);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     if (el.parentElement) ro.observe(el.parentElement);
-    return () => ro.disconnect();
-  }, [variant, hubY]);
+    const scope = connectorScope(el);
+    for (const id of [topMatchId, bottomMatchId, targetMatchId]) {
+      const match = matchById(scope, id);
+      if (match) ro.observe(match);
+    }
+    return () => {
+      window.cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
+  }, [bottomMatchId, fallbackHubY, feedsFinalPodiumMatch, targetMatchId, topMatchId, variant]);
 
   return (
     <div ref={wrapRef} className={styles.connectorDynamicWrap} aria-hidden>
@@ -176,34 +237,50 @@ function PodiumThirdConnector() {
       const w = cr.width;
       const h = cr.height;
       if (w < 2 || h < 2) return;
-      const root = cell.closest("section");
+      const root = connectorScope(cell);
       const source = root?.querySelector(`[${BRACKET_PODIUM_THIRD_SOURCE_ATTR}]`);
       const target = root?.querySelector(`[${BRACKET_PODIUM_THIRD_TARGET_ATTR}]`);
-      let yPercent = 85;
       if (source && target) {
         const sr = source.getBoundingClientRect();
         const tr = target.getBoundingClientRect();
-        yPercent = bracketConnectorYPercentBetweenCenters(
+        const sourceYPercent = bracketConnectorYPercentForCenter(
           cr.top,
           cr.height,
           (sr.top + sr.bottom) / 2,
+        );
+        const targetYPercent = bracketConnectorYPercentForCenter(
+          cr.top,
+          cr.height,
           (tr.top + tr.bottom) / 2,
         );
+        setGeom(bracketConnectorMeasuredLineFromSize(w, h, sourceYPercent, targetYPercent));
+        return;
       }
-      setGeom(bracketConnectorHorizontalAtPercentFromSize(w, h, yPercent));
+      setGeom(bracketConnectorHorizontalAtPercentFromSize(w, h, 85));
     };
     measure();
+    let raf2: number | undefined;
+    const raf = window.requestAnimationFrame(() => {
+      measure();
+      raf2 = window.requestAnimationFrame(measure);
+    });
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     if (el.parentElement) ro.observe(el.parentElement);
     const cell = el.parentElement?.parentElement;
     if (cell) ro.observe(cell);
-    const root = cell?.closest("section");
+    const root = cell ? connectorScope(cell) : null;
     const source = root?.querySelector(`[${BRACKET_PODIUM_THIRD_SOURCE_ATTR}]`);
     const target = root?.querySelector(`[${BRACKET_PODIUM_THIRD_TARGET_ATTR}]`);
     if (source) ro.observe(source);
     if (target) ro.observe(target);
-    return () => ro.disconnect();
+    root?.addEventListener(PODIUM_THIRD_ALIGN_EVENT, measure);
+    return () => {
+      window.cancelAnimationFrame(raf);
+      if (raf2 != null) window.cancelAnimationFrame(raf2);
+      root?.removeEventListener(PODIUM_THIRD_ALIGN_EVENT, measure);
+      ro.disconnect();
+    };
   }, []);
 
   return (
@@ -237,37 +314,45 @@ function PodiumChampionConnector() {
       const w = cr.width;
       const h = cr.height;
       if (w < 2 || h < 2) return;
-      const root = cell.closest("section");
+      const root = connectorScope(cell);
       const source = root?.querySelector(`[${BRACKET_PODIUM_CHAMPION_SOURCE_ATTR}]`);
       const target = root?.querySelector(`[${BRACKET_PODIUM_CHAMPION_TARGET_ATTR}]`);
-      let yPercent = 50;
       if (source && target) {
         const sr = source.getBoundingClientRect();
         const tr = target.getBoundingClientRect();
-        yPercent = bracketConnectorYPercentBetweenCenters(
+        const sourceYPercent = bracketConnectorYPercentForCenter(
           cr.top,
           cr.height,
           (sr.top + sr.bottom) / 2,
+        );
+        const targetYPercent = bracketConnectorYPercentForCenter(
+          cr.top,
+          cr.height,
           (tr.top + tr.bottom) / 2,
         );
+        setGeom(bracketConnectorMeasuredLineFromSize(w, h, sourceYPercent, targetYPercent));
+        return;
       } else {
         setGeom(bracketConnectorCenterFeederFromSize(w, h));
         return;
       }
-      setGeom(bracketConnectorHorizontalAtPercentFromSize(w, h, yPercent));
     };
     measure();
+    const raf = window.requestAnimationFrame(measure);
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     if (el.parentElement) ro.observe(el.parentElement);
     const cell = el.parentElement?.parentElement;
     if (cell) ro.observe(cell);
-    const root = cell?.closest("section");
+    const root = cell ? connectorScope(cell) : null;
     const source = root?.querySelector(`[${BRACKET_PODIUM_CHAMPION_SOURCE_ATTR}]`);
     const target = root?.querySelector(`[${BRACKET_PODIUM_CHAMPION_TARGET_ATTR}]`);
     if (source) ro.observe(source);
     if (target) ro.observe(target);
-    return () => ro.disconnect();
+    return () => {
+      window.cancelAnimationFrame(raf);
+      ro.disconnect();
+    };
   }, []);
 
   return (
@@ -308,7 +393,7 @@ function RoundCenterConnector({ feedsFinalPodiumMatch = false }: { feedsFinalPod
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     if (el.parentElement) ro.observe(el.parentElement);
-    const root = el.closest("section");
+    const root = connectorScope(el);
     const match = root?.querySelector(`[${BRACKET_PODIUM_CHAMPION_SOURCE_ATTR}]`);
     if (match) ro.observe(match);
     return () => ro.disconnect();
@@ -343,19 +428,41 @@ export function FinalChampionConnectorCell() {
 export function BracketConnectorCell({
   variant,
   feedsFinalPodiumMatch = false,
+  topMatchId,
+  bottomMatchId,
+  targetMatchId,
 }: {
   variant: BracketConnectorVariant;
   /** Gutter feeds the final column when podium layout splits championship + 3rd-place bands. */
   feedsFinalPodiumMatch?: boolean;
+  topMatchId?: string;
+  bottomMatchId?: string;
+  targetMatchId?: string;
 }) {
   if (variant === "both") {
-    return <BothFeedersConnector feedsFinalPodiumMatch={feedsFinalPodiumMatch} />;
+    return (
+      <MeasuredFeedersConnector
+        variant="both"
+        feedsFinalPodiumMatch={feedsFinalPodiumMatch}
+        topMatchId={topMatchId}
+        bottomMatchId={bottomMatchId}
+        targetMatchId={targetMatchId}
+      />
+    );
   }
   if (variant === "center") {
     return <RoundCenterConnector feedsFinalPodiumMatch={feedsFinalPodiumMatch} />;
   }
   if (variant === "top" || variant === "bottom") {
-    return <SingleFeederConnector variant={variant} feedsFinalPodiumMatch={feedsFinalPodiumMatch} />;
+    return (
+      <MeasuredFeedersConnector
+        variant={variant}
+        feedsFinalPodiumMatch={feedsFinalPodiumMatch}
+        topMatchId={topMatchId}
+        bottomMatchId={bottomMatchId}
+        targetMatchId={targetMatchId}
+      />
+    );
   }
   return <div className={styles.connectorDynamicWrap} aria-hidden />;
 }
