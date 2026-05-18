@@ -117,6 +117,42 @@ export function getRunoffVotePanelSecondaryTeamHeading(organizationId: "gonzales
   return organizationId === "ascension" ? "RED" : "GOLD";
 }
 
+function pluralizePlayer(count: number | null | undefined) {
+  return count === 1 ? "player" : "players";
+}
+
+export function getRunoffVotePanelSplitLabels(cycle: {
+  organizationId: "gonzales" | "ascension";
+  title: string | null;
+  runoffIsFinalVote?: boolean | null;
+  runoffTeamTarget?: "FIRST_TEAM" | "SECOND_TEAM" | null;
+  runoffPlayersNeeded?: number | null;
+}) {
+  if (cycle.runoffIsFinalVote) {
+    const targetHeading =
+      cycle.runoffTeamTarget === "SECOND_TEAM"
+        ? getRunoffVotePanelSecondaryTeamHeading(cycle.organizationId)
+        : getRunoffVotePanelPrimaryTeamHeading(cycle.organizationId, cycle.title);
+    const neededText =
+      typeof cycle.runoffPlayersNeeded === "number" && cycle.runoffPlayersNeeded > 0
+        ? ` (${cycle.runoffPlayersNeeded} ${pluralizePlayer(cycle.runoffPlayersNeeded)} needed)`
+        : "";
+    return {
+      primaryHeading: `${targetHeading} selections${neededText}`,
+      secondaryHeading: "Remaining candidates",
+      descriptor:
+        typeof cycle.runoffPlayersNeeded === "number" && cycle.runoffPlayersNeeded > 0
+          ? `Final vote: top ${cycle.runoffPlayersNeeded} fill ${targetHeading}.`
+          : `Final vote: top ranked candidates fill ${targetHeading}.`,
+    };
+  }
+  return {
+    primaryHeading: getRunoffVotePanelPrimaryTeamHeading(cycle.organizationId, cycle.title),
+    secondaryHeading: getRunoffVotePanelSecondaryTeamHeading(cycle.organizationId),
+    descriptor: "",
+  };
+}
+
 /** Pipe list label from vote-summary / export cycle meta (organizationId from DB). */
 export function formatAllStarCyclePipeListLabelFromOrgMeta(
   cycle: {

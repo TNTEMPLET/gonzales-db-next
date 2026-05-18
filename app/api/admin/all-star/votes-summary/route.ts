@@ -28,6 +28,9 @@ export async function GET(request: NextRequest) {
           firstTeamSize: cycle.runoffFirstTeamSize,
           poolSize: cycle.runoffPoolSize,
           parentBallotCycleId: cycle.parentBallotCycleId,
+          isFinalVote: cycle.runoffIsFinalVote,
+          teamTarget: cycle.runoffTeamTarget,
+          playersNeeded: cycle.runoffPlayersNeeded,
         }
       : null;
 

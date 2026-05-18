@@ -46,6 +46,11 @@ enum AllStarBallotPhase {
   SECOND_TEAM
 }
 
+enum AllStarFinalRosterOverride {
+  SELECTED
+  REMOVED
+}
+
 enum AllStarVaultRole {
   FULL_ACCESS
   LIMITED_ADMIN
@@ -183,6 +188,7 @@ model AdminUser {
   allStarHeadCoachAssignments AllStarHeadCoachAssignment[] @relation("AllStarHeadCoachAdmin")
   allStarInvites AllStarInvite[] @relation("AllStarInviteCreatedByAdmin")
   allStarSecondPhaseOverrides AllStarCandidate[] @relation("AllStarSecondPhaseOverrideByAdmin")
+  allStarFinalRosterOverrides AllStarCandidate[] @relation("AllStarFinalRosterOverrideByAdmin")
   allStarVaultAccessGrants AllStarVaultAccess[] @relation("AllStarVaultAccessGrantedByAdmin")
   teamsCreated Team[]
   teamPlayerImportBatches TeamPlayerImportBatch[]
@@ -666,6 +672,10 @@ model AllStarBallotCycle {
   runoffPoolSize      Int?
   /// Standings ranks 1..this size are "first team"; remainder are "second team" for exports and vault.
   runoffFirstTeamSize Int?
+  /// Admin-marked final vote metadata for configurable runoff / team-fill ballots.
+  runoffIsFinalVote   Boolean @default(false)
+  runoffTeamTarget    AllStarBallotPhase?
+  runoffPlayersNeeded Int?
   createdByAdminId String?
   createdAt     DateTime          @default(now())
   updatedAt     DateTime          @updatedAt
@@ -699,15 +709,21 @@ model AllStarCandidate {
   secondPhaseOverrideReason String?
   secondPhaseOverrideAt DateTime?
   secondPhaseOverrideByAdminId String?
+  finalRosterOverride AllStarFinalRosterOverride?
+  finalRosterOverrideReason String?
+  finalRosterOverrideAt DateTime?
+  finalRosterOverrideByAdminId String?
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
   ballotCycle AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
   secondPhaseOverrideByAdmin AdminUser? @relation("AllStarSecondPhaseOverrideByAdmin", fields: [secondPhaseOverrideByAdminId], references: [id], onDelete: SetNull)
+  finalRosterOverrideByAdmin AdminUser? @relation("AllStarFinalRosterOverrideByAdmin", fields: [finalRosterOverrideByAdminId], references: [id], onDelete: SetNull)
   voteItems   AllStarVoteItem[]
 
   @@index([ballotCycleId, team])
   @@index([organizationId, ageGroup, playerFullName])
+  @@index([ballotCycleId, finalRosterOverride])
 }
 
 model AllStarHeadCoachAssignment {
