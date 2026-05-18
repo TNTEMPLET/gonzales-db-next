@@ -96,6 +96,7 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
       </div>
 
       <article
+        key={selectedBracket.id}
         id={`bracket-panel-${selectedBracket.id}`}
         role="tabpanel"
         aria-labelledby={`bracket-tab-${selectedBracket.id}`}
@@ -112,8 +113,8 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
             Phone view shows games by round first. Open the full diagram inside the bracket for the printable layout.
           </p>
         </div>
-        <div className="relative mt-2 w-full min-w-0 max-w-full overflow-hidden rounded-lg border border-slate-600/50 bg-slate-300/30 p-1.5 sm:p-3">
-          <div className="block w-full min-w-0 max-w-full">
+        <div className="relative mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-2 sm:p-3">
+          <div className="block w-full min-w-0 max-w-full align-top">
             <div className="w-full min-w-0 max-w-full">
               <TournamentBracketView
                 layout={selectedBracket.layout}
