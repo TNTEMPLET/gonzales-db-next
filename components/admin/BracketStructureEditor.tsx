@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 
+import BracketTeamPicker from "@/components/admin/BracketTeamPicker";
 import type { BracketMatch, BracketRound, BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import {
   canAutoGenerateSingleEliminationRounds,
@@ -13,11 +14,16 @@ type Props = {
   spec: BracketSpec;
   projectId: string;
   projectUpdatedAt: string;
+  organizationId: string;
+  seasonYear: number;
   busy: boolean;
+  /** When true (e.g. published READY), structural edits are disabled; use team name editor for labels. */
+  structureLocked?: boolean;
   onSave: (patch: {
     teams: string[];
     rounds: BracketRound[];
     bracketFormat: BracketSpec["bracketFormat"];
+    rosterAgeGroup?: string | null;
   }) => Promise<void>;
 };
 
@@ -29,16 +35,21 @@ export default function BracketStructureEditor({
   spec,
   projectId,
   projectUpdatedAt,
+  organizationId,
+  seasonYear,
   busy,
+  structureLocked = false,
   onSave,
 }: Props) {
   const [bracketFormat, setBracketFormat] = useState<BracketSpec["bracketFormat"]>(spec.bracketFormat);
-  const [teamsText, setTeamsText] = useState("");
+  const [teams, setTeams] = useState<string[]>([]);
+  const [rosterAgeGroup, setRosterAgeGroup] = useState("");
   const [rounds, setRounds] = useState<BracketRound[]>([]);
 
   useEffect(() => {
     setBracketFormat(spec.bracketFormat);
-    setTeamsText(spec.teams.filter(Boolean).join("\n"));
+    setTeams(spec.teams.filter(Boolean));
+    setRosterAgeGroup(spec.rosterAgeGroup?.trim() ?? "");
     setRounds(
       spec.rounds.length > 0
         ? spec.rounds.map((r) => ({
@@ -47,22 +58,18 @@ export default function BracketStructureEditor({
           }))
         : [],
     );
-  }, [projectId, projectUpdatedAt, spec.bracketFormat, spec.teams, spec.rounds]);
-
-  function teamsFromText(): string[] {
-    return teamsText
-      .split("\n")
-      .map((s) => s.trim())
-      .filter(Boolean);
-  }
+  }, [projectId, projectUpdatedAt, spec.bracketFormat, spec.rosterAgeGroup, spec.teams, spec.rounds]);
 
   async function handleSave() {
-    const teams = teamsFromText();
-    await onSave({ teams, rounds, bracketFormat });
+    await onSave({
+      teams,
+      rounds,
+      bracketFormat,
+      rosterAgeGroup: rosterAgeGroup.trim() || null,
+    });
   }
 
   function handleGenerateRoundsFromTeams() {
-    const teams = teamsFromText();
     if (!canAutoGenerateSingleEliminationRounds(teams, bracketFormat)) return;
     if (rounds.length > 0) {
       const ok = window.confirm(
@@ -175,13 +182,22 @@ export default function BracketStructureEditor({
     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4">
       <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Bracket structure</h2>
       <p className="mt-1 text-xs text-zinc-500">
-        Set bracket format and teams, then build rounds automatically for single elimination (field sizes{" "}
-        {getSupportedSingleElimAutoSizes().join(", ")} — non–power-of-two lists pad with trailing{" "}
-        <strong className="text-zinc-400">BYE</strong> for higher seeds, one team per line). You can still edit rounds
-        by hand. Optional <strong className="text-zinc-400">official game #</strong> per match (from a
-        published schedule) overrides automatic numbers in <strong className="text-zinc-400">G…</strong> row headers and{" "}
-        <strong className="text-zinc-400">W…</strong> feeder labels when the bracket halves each round. Optional{" "}
-        <strong className="text-zinc-400">date, time, field, park</strong> lines print on each game card.
+        {structureLocked ? (
+          <>
+            This bracket is published. Use <strong className="text-zinc-400">Team names</strong> above to rename teams
+            without changing scores or layout. Schedule and game numbers below can still be updated.
+          </>
+        ) : (
+          <>
+            Set bracket format and teams from the league roster for this age group, then build rounds automatically for
+            single elimination (field sizes {getSupportedSingleElimAutoSizes().join(", ")} — non–power-of-two lists pad
+            with trailing <strong className="text-zinc-400">BYE</strong> for higher seeds). You can still edit
+            rounds by hand. Optional <strong className="text-zinc-400">official game #</strong> per match (from a
+            published schedule) overrides automatic numbers in <strong className="text-zinc-400">G…</strong> row headers
+            and <strong className="text-zinc-400">W…</strong> feeder labels when the bracket halves each round. Optional{" "}
+            <strong className="text-zinc-400">date, time, field, park</strong> lines print on each game card.
+          </>
+        )}
       </p>
 
       <label className="mt-3 block text-xs font-medium text-zinc-400">
@@ -189,7 +205,7 @@ export default function BracketStructureEditor({
         <select
           className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
           value={bracketFormat}
-          disabled={busy}
+          disabled={busy || structureLocked}
           onChange={(e) => setBracketFormat(e.target.value as BracketSpec["bracketFormat"])}
         >
           <option value="unknown">Unknown</option>
@@ -200,22 +216,25 @@ export default function BracketStructureEditor({
         </select>
       </label>
 
-      <label className="mt-3 block text-xs font-medium text-zinc-400">
-        Teams (one per line, optional)
-        <textarea
-          className="mt-1 min-h-[5rem] w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-xs"
-          value={teamsText}
-          disabled={busy}
-          onChange={(e) => setTeamsText(e.target.value)}
-          placeholder="Team A&#10;Team B"
+      {!structureLocked ? (
+        <BracketTeamPicker
+          organizationId={organizationId}
+          seasonYear={seasonYear}
+          busy={busy}
+          selectedTeamNames={teams}
+          onSelectedTeamNamesChange={setTeams}
+          rosterAgeGroup={rosterAgeGroup}
+          championAgeGroupLabel={spec.championAgeGroupLabel}
+          divisionLabel={spec.divisionLabel}
+          onAgeGroupChange={setRosterAgeGroup}
         />
-      </label>
+      ) : null}
 
-      {bracketFormat === "single_elimination" ? (
+      {bracketFormat === "single_elimination" && !structureLocked ? (
         <div className="mt-3">
           <button
             type="button"
-            disabled={busy || !canAutoGenerateSingleEliminationRounds(teamsFromText(), bracketFormat)}
+            disabled={busy || !canAutoGenerateSingleEliminationRounds(teams, bracketFormat)}
             className="rounded-lg border border-emerald-700/60 bg-emerald-950/40 px-3 py-2 text-xs font-semibold text-emerald-200 hover:bg-emerald-900/50 disabled:opacity-40"
             onClick={() => handleGenerateRoundsFromTeams()}
           >
@@ -236,7 +255,7 @@ export default function BracketStructureEditor({
               />
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || structureLocked}
                 className="rounded border border-zinc-600 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800"
                 onClick={() => addMatch(ri)}
               >
@@ -244,7 +263,7 @@ export default function BracketStructureEditor({
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || structureLocked}
                 className="rounded border border-red-900/50 px-2 py-1 text-xs text-red-300 hover:bg-red-950/40"
                 onClick={() => removeRound(ri)}
               >
@@ -258,7 +277,7 @@ export default function BracketStructureEditor({
                     <input
                       className="min-w-[6rem] flex-1 rounded border border-zinc-600 bg-zinc-950 px-2 py-1 text-xs"
                       value={m.home}
-                      disabled={busy}
+                      disabled={busy || structureLocked}
                       onChange={(e) => updateMatch(ri, mi, "home", e.target.value)}
                       aria-label={`Round ${ri + 1} match ${mi + 1} home`}
                     />
@@ -266,7 +285,7 @@ export default function BracketStructureEditor({
                     <input
                       className="min-w-[6rem] flex-1 rounded border border-zinc-600 bg-zinc-950 px-2 py-1 text-xs"
                       value={m.away}
-                      disabled={busy}
+                      disabled={busy || structureLocked}
                       onChange={(e) => updateMatch(ri, mi, "away", e.target.value)}
                       aria-label={`Round ${ri + 1} match ${mi + 1} away`}
                     />
@@ -283,7 +302,7 @@ export default function BracketStructureEditor({
                     </label>
                     <button
                       type="button"
-                      disabled={busy || round.matches.length < 2}
+                      disabled={busy || structureLocked || round.matches.length < 2}
                       className="text-xs text-zinc-500 hover:text-red-300 disabled:opacity-30"
                       onClick={() => removeMatch(ri, mi)}
                     >
@@ -340,21 +359,23 @@ export default function BracketStructureEditor({
       </div>
 
       <div className="mt-3 flex flex-wrap gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          className="rounded-lg border border-zinc-600 px-3 py-2 text-xs font-semibold hover:bg-zinc-800"
-          onClick={() => addRound()}
-        >
-          Add round
-        </button>
+        {!structureLocked ? (
+          <button
+            type="button"
+            disabled={busy}
+            className="rounded-lg border border-zinc-600 px-3 py-2 text-xs font-semibold hover:bg-zinc-800"
+            onClick={() => addRound()}
+          >
+            Add round
+          </button>
+        ) : null}
         <button
           type="button"
           disabled={busy}
           className="rounded-lg bg-red-700 px-3 py-2 text-xs font-semibold text-white hover:bg-red-600"
           onClick={() => void handleSave()}
         >
-          Save bracket structure
+          {structureLocked ? "Save schedule & game numbers" : "Save bracket structure"}
         </button>
       </div>
     </div>
