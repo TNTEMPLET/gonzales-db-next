@@ -87,13 +87,13 @@ export function formatTeamColorSentenceCase(upperLabel: string) {
  */
 export function formatAllStarCyclePipeListLabel(
   cycle: AllStarCycleListLabelInput,
-  options?: { omitStatus?: boolean },
+  options?: { omitStatus?: boolean; teamColorWord?: string },
 ) {
   const league = formatOrganizationLabel(cycle.organizationId);
   const age = getDisplayedCycleAgeGroupWithAllStarAge(cycle);
   const status = getCycleStatusChipLabel(cycle);
   const tierUpper = getCycleTierDisplayLabel(cycle.organizationId, cycle.title);
-  const colorWord = formatTeamColorSentenceCase(tierUpper);
+  const colorWord = options?.teamColorWord?.trim() || formatTeamColorSentenceCase(tierUpper);
   const parts: string[] = [league, String(cycle.seasonYear), age];
   if (!options?.omitStatus) {
     parts.push(status);
@@ -154,6 +154,18 @@ export function getRunoffVotePanelSplitLabels(cycle: {
 }
 
 /** Pipe list label from vote-summary / export cycle meta (organizationId from DB). */
+export function getRunoffExportTeamColorWord(
+  organizationId: "gonzales" | "ascension",
+  team: "primary" | "secondary",
+  title: string | null,
+) {
+  const upper =
+    team === "primary"
+      ? getRunoffVotePanelPrimaryTeamHeading(organizationId, title)
+      : getRunoffVotePanelSecondaryTeamHeading(organizationId);
+  return formatTeamColorSentenceCase(upper);
+}
+
 export function formatAllStarCyclePipeListLabelFromOrgMeta(
   cycle: {
     organizationId: string;
@@ -165,7 +177,7 @@ export function formatAllStarCyclePipeListLabelFromOrgMeta(
     publishedAt?: string | null;
     closedAt?: string | null;
   },
-  options?: { omitStatus?: boolean },
+  options?: { omitStatus?: boolean; teamColorWord?: string },
 ) {
   const orgId = cycle.organizationId === "ascension" ? "ascension" : "gonzales";
   return formatAllStarCyclePipeListLabel(

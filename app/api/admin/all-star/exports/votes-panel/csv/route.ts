@@ -11,6 +11,7 @@ import {
 import { parseAllStarPhase } from "@/lib/allStar/phase";
 import {
   computeVoteSummaryRows,
+  isAllStarRunoffTwoTeamBallot,
   parseVoteExportTopCount,
   splitVoteSummaryRowsForRunoff,
 } from "@/lib/allStar/voteSummary";
@@ -37,10 +38,7 @@ export async function GET(request: NextRequest) {
   const topCount = parseVoteExportTopCount(request.nextUrl.searchParams.get("topCount"));
   const { rows, cycle } = computed;
   const orgId = cycle.organizationId === "ascension" ? "ascension" : "gonzales";
-  const isRunoffSplit =
-    cycle.runoffFirstTeamSize != null &&
-    cycle.runoffFirstTeamSize > 0 &&
-    cycle.runoffPoolSize != null;
+  const isRunoffSplit = isAllStarRunoffTwoTeamBallot(cycle);
   const exportRows = isRunoffSplit
     ? rows
     : splitVoteSummaryRowsForRunoff(rows, topCount).firstTeam;

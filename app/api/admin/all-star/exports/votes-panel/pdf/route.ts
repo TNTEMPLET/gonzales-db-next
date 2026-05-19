@@ -8,13 +8,16 @@ import {
 } from "@/lib/allStar/exportFormat";
 import {
   formatAllStarCyclePipeListLabelFromOrgMeta,
+  getRunoffExportTeamColorWord,
   getRunoffVotePanelSplitLabels,
 } from "@/lib/allStar/cycleUiLabels";
 import { parseAllStarPhase } from "@/lib/allStar/phase";
 import {
   buildNameOnlyVotePdfRows,
   computeVoteSummaryRows,
+  isAllStarRunoffTwoTeamBallot,
   parseVoteExportTopCount,
+  parseVotePanelPdfTeamParam,
   splitVoteSummaryRowsForRunoff,
 } from "@/lib/allStar/voteSummary";
 import prisma from "@/lib/prisma";
@@ -50,17 +53,22 @@ export async function GET(request: NextRequest) {
   const { rows, cycle } = computed;
   const orgLabel = formatOrganizationIdDisplay(cycle.organizationId);
   const orgId = cycle.organizationId === "ascension" ? "ascension" : "gonzales";
-  const isRunoffSplit =
-    cycle.runoffFirstTeamSize != null &&
-    cycle.runoffFirstTeamSize > 0 &&
-    cycle.runoffPoolSize != null;
+  const isRunoffSplit = isAllStarRunoffTwoTeamBallot(cycle);
   const exportRows = isRunoffSplit
     ? rows
     : splitVoteSummaryRowsForRunoff(rows, topCount).firstTeam;
   const cycleName = formatAllStarCyclePipeListLabelFromOrgMeta(cycle);
+  const nameOnlyTeamParam = parseVotePanelPdfTeamParam(request.nextUrl.searchParams.get("team"));
+  const nameOnlyTeamColorWord =
+    layout === "name" && isRunoffSplit && nameOnlyTeamParam
+      ? getRunoffExportTeamColorWord(orgId, nameOnlyTeamParam, cycle.title)
+      : null;
+  const nameOnlyCycleTitle = nameOnlyTeamColorWord
+    ? formatAllStarCyclePipeListLabelFromOrgMeta(cycle, { teamColorWord: nameOnlyTeamColorWord })
+    : cycleName;
   const title =
     layout === "name"
-      ? cycleName
+      ? nameOnlyCycleTitle
       : `Vote standings — ${cycleName}`;
 
   const doc = new jsPDF({ unit: "pt", format: "letter" });
@@ -68,6 +76,8 @@ export async function GET(request: NextRequest) {
   doc.text(title, 40, 44);
   doc.setFontSize(10);
   doc.text(`${orgLabel} · Generated: ${new Date().toLocaleString()}`, 40, 62);
+
+  let nameOnlyExportFilename: string | null = null;
 
   if (layout === "full") {
     const head = ["Rank", "Player", "Team", "Votes", "Avg Rating"];
@@ -135,15 +145,48 @@ export async function GET(request: NextRequest) {
       });
     }
   } else {
-    const nameRows =
-      isRunoffSplit && cycle.runoffFirstTeamSize
-        ? buildNameOnlyVotePdfRows(
-            splitVoteSummaryRowsForRunoff(rows, cycle.runoffFirstTeamSize).firstTeam,
-            splitVoteSummaryRowsForRunoff(rows, cycle.runoffFirstTeamSize).firstTeam.length,
-          )
-        : buildNameOnlyVotePdfRows(exportRows, exportRows.length);
+    let nameExportRows = exportRows;
+    let nameRowCount = exportRows.length;
+    let teamHeading: string | null = null;
+
+    if (isRunoffSplit && cycle.runoffFirstTeamSize) {
+      const team = parseVotePanelPdfTeamParam(request.nextUrl.searchParams.get("team"));
+      if (!team) {
+        return NextResponse.json(
+          { error: "team is required for two-team ballots: primary | secondary" },
+          { status: 400 },
+        );
+      }
+      const split = splitVoteSummaryRowsForRunoff(rows, cycle.runoffFirstTeamSize);
+      const { primaryHeading, secondaryHeading } = getRunoffVotePanelSplitLabels({
+        organizationId: orgId,
+        title: cycle.title,
+        runoffIsFinalVote: cycle.runoffIsFinalVote,
+        runoffTeamTarget: cycle.runoffTeamTarget,
+        runoffPlayersNeeded: cycle.runoffPlayersNeeded,
+      });
+      nameExportRows = team === "primary" ? split.firstTeam : split.secondTeam;
+      nameRowCount = nameExportRows.length;
+      teamHeading = team === "primary" ? primaryHeading : secondaryHeading;
+      if (nameOnlyTeamColorWord) {
+        nameOnlyExportFilename = buildAllStarExportFilename(
+          formatAllStarCyclePipeListLabelFromOrgMeta(cycle, {
+            omitStatus: true,
+            teamColorWord: nameOnlyTeamColorWord,
+          }),
+        );
+      }
+    }
+
+    const nameRows = buildNameOnlyVotePdfRows(nameExportRows, nameRowCount);
+    let startY = 78;
+    if (teamHeading) {
+      doc.setFontSize(11);
+      doc.text(teamHeading, 40, startY);
+      startY += 16;
+    }
     autoTable(doc, {
-      startY: 78,
+      startY,
       head: [["Player"]],
       body: nameRows.map((row) => [row.displayLine]),
       styles: { fontSize: 10 },
@@ -152,8 +195,9 @@ export async function GET(request: NextRequest) {
   }
 
   const pdfBuffer = doc.output("arraybuffer");
-  const suffix = layout === "name" ? "names" : "standings";
-  const baseName = buildAllStarExportFilename(cycleName, suffix);
+  const baseName =
+    nameOnlyExportFilename ??
+    buildAllStarExportFilename(cycleName, layout === "name" ? "names" : "standings");
 
   return new NextResponse(Buffer.from(pdfBuffer), {
     status: 200,
