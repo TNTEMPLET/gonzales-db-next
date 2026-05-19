@@ -61,12 +61,22 @@ export default function BracketStructureEditor({
   }, [projectId, projectUpdatedAt, spec.bracketFormat, spec.rosterAgeGroup, spec.teams, spec.rounds]);
 
   async function handleSave() {
-    await onSave({
-      teams,
-      rounds,
-      bracketFormat,
-      rosterAgeGroup: rosterAgeGroup.trim() || null,
-    });
+    const hadRounds = spec.rounds.some((r) => r.matches.length > 0);
+    if (hadRounds && !rounds.some((r) => r.matches.length > 0)) {
+      window.alert(
+        "Cannot save: bracket rounds are empty in the editor. Reload the page and try again before saving schedule changes.",
+      );
+      return;
+    }
+    const patch: {
+      teams: string[];
+      rounds: BracketRound[];
+      bracketFormat: BracketSpec["bracketFormat"];
+      rosterAgeGroup?: string;
+    } = { teams, rounds, bracketFormat };
+    const roster = rosterAgeGroup.trim();
+    if (roster) patch.rosterAgeGroup = roster;
+    await onSave(patch);
   }
 
   function handleGenerateRoundsFromTeams() {
@@ -327,6 +337,7 @@ export default function BracketStructureEditor({
                         value={m.time ?? ""}
                         disabled={busy}
                         placeholder="6:00 PM"
+                        maxLength={80}
                         onChange={(e) => updateMatchSchedule(ri, mi, "time", e.target.value)}
                       />
                     </label>

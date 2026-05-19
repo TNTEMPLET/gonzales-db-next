@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { routeErrorMessage } from "@/lib/api/routeErrorMessage";
 import { ensureTournamentBracketsMaster } from "@/lib/tournament-brackets/auth";
 import { mergeBracketSpec, safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import prisma from "@/lib/prisma";
@@ -22,8 +23,7 @@ export async function GET(request: NextRequest, ctx: RouteParams) {
     }
     return NextResponse.json({ data: row });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: routeErrorMessage(err, "Failed to load bracket project") }, { status: 500 });
   }
 }
 
@@ -72,7 +72,24 @@ export async function PATCH(request: NextRequest, ctx: RouteParams) {
           `[bracket-spec] PATCH bracketProject/${id}: existing stored spec was invalid before merge — ${existingProbe.issues}`,
         );
       }
-      const merged = mergeBracketSpec(existingProbe.spec, body.specPatch);
+      const hadStructuredRounds = existingProbe.spec.rounds.some((r) => r.matches.length > 0);
+      let merged;
+      try {
+        merged = mergeBracketSpec(existingProbe.spec, body.specPatch);
+      } catch (err: unknown) {
+        const message = err instanceof Error ? err.message : String(err);
+        return NextResponse.json({ error: message }, { status: 400 });
+      }
+      const savedHasRounds = merged.rounds.some((r) => r.matches.length > 0);
+      if (hadStructuredRounds && !savedHasRounds) {
+        return NextResponse.json(
+          {
+            error:
+              "Save would remove all bracket rounds. Re-open Bracket structure and try again, or restore from a backup export.",
+          },
+          { status: 400 },
+        );
+      }
       data.spec = JSON.parse(JSON.stringify(merged));
     }
 
@@ -87,8 +104,7 @@ export async function PATCH(request: NextRequest, ctx: RouteParams) {
 
     return NextResponse.json({ data: updated });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: routeErrorMessage(err, "Failed to save bracket project") }, { status: 500 });
   }
 }
 
@@ -106,7 +122,6 @@ export async function DELETE(request: NextRequest, ctx: RouteParams) {
     await prisma.bracketProject.delete({ where: { id } });
     return NextResponse.json({ data: { deleted: true, id } });
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : String(err);
-    return NextResponse.json({ error: message }, { status: 500 });
+    return NextResponse.json({ error: routeErrorMessage(err, "Failed to delete bracket project") }, { status: 500 });
   }
 }
