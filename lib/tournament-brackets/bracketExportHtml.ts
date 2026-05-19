@@ -8,6 +8,7 @@ import {
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
 import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
+import { matchGridPlacement, podiumColumnGridPlacement } from "@/lib/tournament-brackets/bracketGridPlacement";
 import {
   BRACKET_CONNECTOR_EXPORT_ASSUMED_H,
   BRACKET_CONNECTOR_EXPORT_ASSUMED_W,
@@ -73,8 +74,15 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
   padding: 1.125rem 1.25rem 3.35rem;
 }
 .bracket-root-compact-six-team {
+  --bracket-compact-six-third-band-offset: 9rem;
+  --bracket-compact-six-third-bottom-margin: 2.25rem;
   min-height: 47rem;
-  padding-bottom: 6rem;
+  padding-bottom: calc(
+    var(--bracket-compact-six-third-band-offset) + var(--bracket-compact-six-third-bottom-margin) + 3.25rem
+  );
+}
+.bracket-root-compact-six-team .bracket-html-grid-scroll {
+  padding-bottom: var(--bracket-compact-six-third-bottom-margin);
 }
 .bracket-title {
   position: relative;
@@ -463,9 +471,9 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
   padding-right: 0.2rem;
 }
 .champion-round-grid-cell-compact-six .third-place-plaque-bottom-row {
-  bottom: -6.25rem;
+  bottom: calc(-1 * var(--bracket-compact-six-third-band-offset, 9rem));
+  min-height: var(--bracket-podium-third-band-min-height);
   background: transparent;
-  transform: translateY(var(--bracket-podium-third-align-y, 0px));
 }
 .third-place-game-bottom-row .third-place-match { width: 100%; flex: 0 1 auto; align-self: center; }
 .third-place-plaque-bottom-row .third-place-plaque-slot {
@@ -602,7 +610,8 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
 .bracket-html-match-wrap-align-end { justify-content: flex-end; }
 .bracket-html-final-round-podium-wrap { justify-content: stretch; position: relative; min-width: 9rem; }
 .bracket-html-final-round-podium-wrap-compact-six .third-place-game-bottom-row {
-  bottom: -6.25rem;
+  bottom: calc(-1 * var(--bracket-compact-six-third-band-offset, 9rem));
+  min-height: var(--bracket-podium-third-band-min-height);
   background: transparent;
 }
 .bracket-html-final-round-podium-wrap .bracket-html-final-round-podium-inner {
@@ -796,21 +805,6 @@ function matchAtCanonicalSlotHtml(round: LayoutRound, slotIndex: number): Layout
     return round.matches.find((x) => x.canonicalSlotIndex === slotIndex) ?? null;
   }
   return round.matches[slotIndex] ?? null;
-}
-
-function incomingFeederVariantHtml(rounds: LayoutRound[], roundIndex: number, slotIndex: number) {
-  if (roundIndex <= 0) return "both";
-  const prevRound = rounds[roundIndex - 1];
-  if (!prevRound) return "both";
-  const topHas = matchAtCanonicalSlotHtml(prevRound, 2 * slotIndex) != null;
-  const bottomHas = matchAtCanonicalSlotHtml(prevRound, 2 * slotIndex + 1) != null;
-  return getBracketConnectorVariant(topHas, bottomHas);
-}
-
-function matchWrapAlignmentClassHtml(variant: ReturnType<typeof incomingFeederVariantHtml>) {
-  if (variant === "top") return " bracket-html-match-wrap-align-start";
-  if (variant === "bottom") return " bracket-html-match-wrap-align-end";
-  return "";
 }
 
 function isSixTeamEightSlotByeLayoutHtml(rounds: LayoutRound[], laneRows: number) {
@@ -1078,15 +1072,11 @@ function buildConnectedBracketHtml(
   for (let ri = 0; ri < R; ri++) {
     const round = rounds[ri]!;
     const slotCount = round.layoutSlotCount ?? round.matches.length;
-    const span = rowSpanHtml(N, slotCount);
     const col = 2 * ri + 1;
     const isFinalPodium = hasPodium && podium != null && ri === R - 1 && slotCount === 1;
     for (let j = 0; j < slotCount; j++) {
       const m = matchAtCanonicalSlotHtml(round, j);
-      const rowStart = 2 + j * span;
-      const alignClass = useCompactSixTeamByeLayout
-        ? matchWrapAlignmentClassHtml(incomingFeederVariantHtml(rounds, ri, j))
-        : "";
+      const { rowStart, span } = matchGridPlacement(rounds, ri, j, N, useCompactSixTeamByeLayout);
       if (m) {
         if (isFinalPodium) {
           const p = podium!;
@@ -1096,7 +1086,7 @@ function buildConnectedBracketHtml(
           );
         } else {
           parts.push(
-            `<div class="bracket-html-match-wrap${alignClass}" style="grid-column:${col};grid-row:${rowStart} / span ${span}">${matchArticleHtml(m)}</div>`,
+            `<div class="bracket-html-match-wrap" style="grid-column:${col};grid-row:${rowStart} / span ${span}">${matchArticleHtml(m)}</div>`,
           );
         }
       } else {
@@ -1127,11 +1117,10 @@ function buildConnectedBracketHtml(
   }
 
   if (hasPodium && podium) {
-    const lastRi = R - 1;
-    const finalRound = rounds[lastRi]!;
-    const finalSlots = finalRound.layoutSlotCount ?? finalRound.matches.length;
-    const spanFinal = rowSpanHtml(N, finalSlots);
-    const rowStartFinal = 2;
+    const { rowStart: rowStartFinal, span: spanFinal } = podiumColumnGridPlacement(
+      N,
+      useCompactSixTeamByeLayout,
+    );
     parts.push(
       `<div class="bracket-html-connector" style="grid-column:${2 * R};grid-row:${rowStartFinal} / span ${spanFinal}">${finalChampionConnectorHtmlExport()}</div>`,
     );
