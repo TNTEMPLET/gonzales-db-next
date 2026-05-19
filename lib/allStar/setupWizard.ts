@@ -258,6 +258,7 @@ export function validateSetupStep(
       return null;
     case "roster":
       if (!context.cycleId) return "Create the ballot cycle before continuing.";
+      if (answers.rosterSource === "empty") return null;
       if (answers.rosterSource === "spreadsheet" && context.candidateCount <= 0) {
         return "Upload a spreadsheet before continuing, or choose another roster option.";
       }
@@ -288,7 +289,15 @@ export function validateSetupStep(
     }
     case "review":
       if (!context.cycleId) return "Ballot cycle is missing.";
-      if (context.candidateCount <= 0) return "Add candidates before publishing.";
+      if (context.candidateCount <= 0) {
+        if (answers.rosterSource === "empty") {
+          if (answers.votingPreset !== "later") {
+            return "Empty ballots cannot open voting immediately. Choose “Set window later”, add candidates in cycle management, then publish the voting window.";
+          }
+          return null;
+        }
+        return "Add candidates before publishing.";
+      }
       if (answers.requiredRatingsPerCoach > context.candidateCount) {
         return "Ratings per coach cannot exceed the number of candidates on the ballot.";
       }

@@ -134,6 +134,21 @@ type UserOption = {
   name: string;
 };
 
+type CandidateImportCleanupPreview = {
+  detectedHeaders: string[];
+  rows: Array<{
+    rowNumber: number;
+    playerFullName: string;
+    importedTeamName: string;
+    team: string;
+    jerseyNumber: string;
+  }>;
+  skipped: Array<{ rowNumber: number; reason: string }>;
+  unmatchedImportedTeams: string[];
+  existingTeamNames: string[];
+  suggestedTeamMappings: Record<string, string | null>;
+};
+
 type SubmittedBallot = {
   id: string;
   coachUserId: string;
@@ -443,6 +458,13 @@ export default function AllStarVaultManager({
   const [cycleCloseAt, setCycleCloseAt] = useState("");
   const [cycleRequiredRatingsPerCoach, setCycleRequiredRatingsPerCoach] = useState(12);
   const [candidateFile, setCandidateFile] = useState<File | null>(null);
+  const [showCandidateCleanupModal, setShowCandidateCleanupModal] = useState(false);
+  const [candidateCleanupPreview, setCandidateCleanupPreview] =
+    useState<CandidateImportCleanupPreview | null>(null);
+  const [candidateCleanupTeamMapping, setCandidateCleanupTeamMapping] = useState<
+    Record<string, string>
+  >({});
+  const [candidateCleanupBusy, setCandidateCleanupBusy] = useState(false);
   const [showAddCandidateModal, setShowAddCandidateModal] = useState(false);
   const [candidateName, setCandidateName] = useState("");
   const [candidateTeam, setCandidateTeam] = useState("");
@@ -1145,25 +1167,188 @@ export default function AllStarVaultManager({
     }
   }
 
-  async function importCandidates() {
-    if (!selectedCycleId || !candidateFile) return;
+  async function importCandidates(options?: {
+    cleanedRows?: CandidateImportCleanupPreview["rows"];
+    teamMappings?: Record<string, string>;
+  }) {
+    if (!selectedCycleId) return;
+    if (!options?.cleanedRows && !candidateFile) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
       const form = new FormData();
       form.append("cycleId", selectedCycleId);
-      form.append("file", candidateFile);
-      const response = await fetch("/api/admin/all-star/candidates/import", { method: "POST", body: form });
-      const json = await response.json();
-      if (!response.ok) throw new Error(json.error || "Failed to import candidates");
-      setNotice(`Candidates imported: ${json.created} created, ${json.skipped} skipped.`);
+      if (options?.cleanedRows) {
+        form.append(
+          "cleanedRows",
+          JSON.stringify(
+            options.cleanedRows.map((row) => ({
+              playerFullName: row.playerFullName,
+              team: row.team,
+              jerseyNumber: row.jerseyNumber,
+            })),
+          ),
+        );
+      } else if (candidateFile) {
+        form.append("file", candidateFile);
+      }
+      const mappings = options?.teamMappings || candidateCleanupTeamMapping;
+      if (Object.keys(mappings).length > 0) {
+        form.append("teamMappings", JSON.stringify(mappings));
+      }
+      const response = await fetch("/api/admin/all-star/candidates/import", {
+        method: "POST",
+        body: form,
+      });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String(json.error || "Failed to import candidates"));
+      setNotice(
+        `Candidates imported: ${Number(json.created || 0)} created, ${Number(json.skipped || 0)} skipped.`,
+      );
       setCandidateFile(null);
+      setShowCandidateCleanupModal(false);
+      setCandidateCleanupPreview(null);
+      setCandidateCleanupTeamMapping({});
       await loadCycleDetails(selectedCycleId);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to import candidates");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function previewCandidateImportCleanup() {
+    if (!selectedCycleId || !candidateFile) return;
+    setCandidateCleanupBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const form = new FormData();
+      form.append("cycleId", selectedCycleId);
+      form.append("file", candidateFile);
+      const response = await fetch("/api/admin/all-star/candidates/import/cleanup", {
+        method: "POST",
+        body: form,
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to clean up import file"));
+      }
+      const preview: CandidateImportCleanupPreview = {
+        detectedHeaders: Array.isArray(json.detectedHeaders)
+          ? (json.detectedHeaders as string[])
+          : [],
+        rows: Array.isArray(json.rows) ? (json.rows as CandidateImportCleanupPreview["rows"]) : [],
+        skipped: Array.isArray(json.skipped)
+          ? (json.skipped as CandidateImportCleanupPreview["skipped"])
+          : [],
+        unmatchedImportedTeams: Array.isArray(json.unmatchedImportedTeams)
+          ? (json.unmatchedImportedTeams as string[])
+          : [],
+        existingTeamNames: Array.isArray(json.existingTeamNames)
+          ? (json.existingTeamNames as string[])
+          : [],
+        suggestedTeamMappings:
+          typeof json.suggestedTeamMappings === "object" && json.suggestedTeamMappings
+            ? (json.suggestedTeamMappings as Record<string, string | null>)
+            : {},
+      };
+      const initialMapping: Record<string, string> = {};
+      for (const importedTeam of preview.unmatchedImportedTeams) {
+        const suggested = preview.suggestedTeamMappings[importedTeam];
+        if (suggested) initialMapping[importedTeam] = suggested;
+      }
+      setCandidateCleanupTeamMapping(initialMapping);
+      setCandidateCleanupPreview(preview);
+      setShowCandidateCleanupModal(true);
+      if (preview.rows.length === 0) {
+        setError("No importable player rows found after cleanup. Check column headers and data.");
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to clean up import file");
+    } finally {
+      setCandidateCleanupBusy(false);
+    }
+  }
+
+  async function downloadCleanedCandidateImport() {
+    if (!selectedCycleId || !candidateFile) return;
+    setCandidateCleanupBusy(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("cycleId", selectedCycleId);
+      form.append("file", candidateFile);
+      form.append("download", "true");
+      if (Object.keys(candidateCleanupTeamMapping).length > 0) {
+        form.append("teamMappings", JSON.stringify(candidateCleanupTeamMapping));
+      }
+      const response = await fetch("/api/admin/all-star/candidates/import/cleanup", {
+        method: "POST",
+        body: form,
+      });
+      if (!response.ok) {
+        const json = await safeJson(response);
+        throw new Error(String(json.error || "Failed to download cleaned file"));
+      }
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = url;
+      anchor.download = "all-star-candidates-cleaned.csv";
+      anchor.click();
+      URL.revokeObjectURL(url);
+      setNotice("Cleaned import file downloaded.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to download cleaned file");
+    } finally {
+      setCandidateCleanupBusy(false);
+    }
+  }
+
+  async function rerunCandidateCleanupPreview() {
+    if (!selectedCycleId || !candidateFile) return;
+    setCandidateCleanupBusy(true);
+    setError("");
+    try {
+      const form = new FormData();
+      form.append("cycleId", selectedCycleId);
+      form.append("file", candidateFile);
+      if (Object.keys(candidateCleanupTeamMapping).length > 0) {
+        form.append("teamMappings", JSON.stringify(candidateCleanupTeamMapping));
+      }
+      const response = await fetch("/api/admin/all-star/candidates/import/cleanup", {
+        method: "POST",
+        body: form,
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to refresh cleanup preview"));
+      }
+      setCandidateCleanupPreview({
+        detectedHeaders: Array.isArray(json.detectedHeaders)
+          ? (json.detectedHeaders as string[])
+          : [],
+        rows: Array.isArray(json.rows) ? (json.rows as CandidateImportCleanupPreview["rows"]) : [],
+        skipped: Array.isArray(json.skipped)
+          ? (json.skipped as CandidateImportCleanupPreview["skipped"])
+          : [],
+        unmatchedImportedTeams: Array.isArray(json.unmatchedImportedTeams)
+          ? (json.unmatchedImportedTeams as string[])
+          : [],
+        existingTeamNames: Array.isArray(json.existingTeamNames)
+          ? (json.existingTeamNames as string[])
+          : [],
+        suggestedTeamMappings:
+          typeof json.suggestedTeamMappings === "object" && json.suggestedTeamMappings
+            ? (json.suggestedTeamMappings as Record<string, string | null>)
+            : {},
+      });
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to refresh cleanup preview");
+    } finally {
+      setCandidateCleanupBusy(false);
     }
   }
 
@@ -3601,9 +3786,21 @@ export default function AllStarVaultManager({
             Candidates: {candidates.length}
           </span>
         </div>
+        <p className="text-xs text-zinc-400">
+          Supports showcase sheets (#, Player or First/Last Name, Team, Jersey #), enrollment exports,
+          or the standard template. Use clean up when team names need mapping to Teams Management.
+        </p>
         <div className="flex items-center gap-3 flex-wrap">
           <a href="/api/admin/all-star/candidates/template" className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5">Download Template</a>
           <input type="file" accept=".csv,.xlsx,.xls" disabled={manageDisabled} onChange={(e) => setCandidateFile(e.target.files?.[0] || null)} className="text-sm disabled:opacity-60" />
+          <button
+            type="button"
+            disabled={manageDisabled || !selectedCycleId || !candidateFile || candidateCleanupBusy}
+            onClick={() => void previewCandidateImportCleanup()}
+            className="rounded-lg border border-amber-700 text-amber-200 hover:bg-amber-950/30 px-4 py-2 text-sm font-semibold disabled:opacity-60"
+          >
+            {candidateCleanupBusy ? "Cleaning up…" : "Clean up & preview"}
+          </button>
           <button type="button" disabled={manageDisabled || !selectedCycleId || !candidateFile} onClick={() => void importCandidates()} className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60">Import Candidates</button>
           <button
             type="button"
@@ -4639,6 +4836,142 @@ export default function AllStarVaultManager({
         </div>
       ) : null}
 
+      {showCandidateCleanupModal && candidateCleanupPreview ? (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="w-full max-w-4xl max-h-[90vh] overflow-auto rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-semibold">Import cleanup preview</h3>
+                <p className="text-xs text-zinc-400 mt-1">
+                  Normalized to player_full_name, team, jersey_number. Map imported team names to
+                  Teams Management when needed, then import or download the cleaned file.
+                </p>
+                {candidateCleanupPreview.detectedHeaders.length > 0 ? (
+                  <p className="text-xs text-zinc-500 mt-1">
+                    Detected columns: {candidateCleanupPreview.detectedHeaders.join(", ")}
+                  </p>
+                ) : null}
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowCandidateCleanupModal(false);
+                  setCandidateCleanupPreview(null);
+                }}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300"
+              >
+                Close
+              </button>
+            </div>
+
+            {candidateCleanupPreview.unmatchedImportedTeams.length > 0 ? (
+              <div className="rounded-lg border border-amber-800/80 bg-amber-950/20 p-3 space-y-3">
+                <p className="text-sm font-semibold text-amber-200">Map imported team names</p>
+                <div className="space-y-2">
+                  {candidateCleanupPreview.unmatchedImportedTeams.map((importedTeam) => (
+                    <div
+                      key={importedTeam}
+                      className="grid gap-2 md:grid-cols-2 items-center text-xs"
+                    >
+                      <span className="text-zinc-300">{importedTeam}</span>
+                      <select
+                        value={candidateCleanupTeamMapping[importedTeam] || ""}
+                        onChange={(event) =>
+                          setCandidateCleanupTeamMapping((current) => ({
+                            ...current,
+                            [importedTeam]: event.target.value,
+                          }))
+                        }
+                        className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1.5 text-sm"
+                      >
+                        <option value="">Use imported name as-is</option>
+                        {candidateCleanupPreview.existingTeamNames.map((teamName) => (
+                          <option key={teamName} value={teamName}>
+                            {teamName}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+                <button
+                  type="button"
+                  disabled={candidateCleanupBusy}
+                  onClick={() => void rerunCandidateCleanupPreview()}
+                  className="rounded border border-amber-700 px-3 py-1.5 text-xs text-amber-200"
+                >
+                  Apply team mappings
+                </button>
+              </div>
+            ) : null}
+
+            <div className="rounded-lg border border-zinc-800 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead className="bg-zinc-950 text-zinc-400">
+                  <tr className="text-left">
+                    <th className="px-3 py-2">Row</th>
+                    <th className="px-3 py-2">Player</th>
+                    <th className="px-3 py-2">Team</th>
+                    <th className="px-3 py-2">Jersey</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {candidateCleanupPreview.rows.slice(0, 30).map((row) => (
+                    <tr key={`${row.rowNumber}-${row.playerFullName}`} className="border-t border-zinc-800">
+                      <td className="px-3 py-2">{row.rowNumber}</td>
+                      <td className="px-3 py-2">{row.playerFullName}</td>
+                      <td className="px-3 py-2">
+                        {row.team}
+                        {row.team !== row.importedTeamName ? (
+                          <span className="text-zinc-500"> · was {row.importedTeamName}</span>
+                        ) : null}
+                      </td>
+                      <td className="px-3 py-2">{row.jerseyNumber || "—"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            <p className="text-xs text-zinc-400">
+              {candidateCleanupPreview.rows.length} importable row
+              {candidateCleanupPreview.rows.length === 1 ? "" : "s"}
+              {candidateCleanupPreview.skipped.length > 0
+                ? ` · ${candidateCleanupPreview.skipped.length} skipped`
+                : ""}
+            </p>
+
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={candidateCleanupBusy}
+                onClick={() => void downloadCleanedCandidateImport()}
+                className="rounded-lg border border-zinc-600 text-zinc-200 px-4 py-2 text-sm disabled:opacity-60"
+              >
+                Download cleaned CSV
+              </button>
+              <button
+                type="button"
+                disabled={
+                  manageDisabled ||
+                  busy ||
+                  candidateCleanupBusy ||
+                  candidateCleanupPreview.rows.length === 0
+                }
+                onClick={() =>
+                  void importCandidates({
+                    cleanedRows: candidateCleanupPreview.rows,
+                    teamMappings: candidateCleanupTeamMapping,
+                  })
+                }
+                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                Import cleaned roster
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       {showAddCandidateModal ? (
         <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
           <div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
@@ -4663,7 +4996,7 @@ export default function AllStarVaultManager({
               <input
                 value={candidateJerseyNumber}
                 onChange={(e) => setCandidateJerseyNumber(e.target.value)}
-                placeholder="Jersey number"
+                placeholder="Jersey number (optional)"
                 className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
               />
             </div>
@@ -4683,8 +5016,7 @@ export default function AllStarVaultManager({
                   busy ||
                   !selectedCycleId ||
                   !candidateName.trim() ||
-                  !candidateTeam.trim() ||
-                  !candidateJerseyNumber.trim()
+                  !candidateTeam.trim()
                 }
                 onClick={() => void addCandidate()}
                 className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
