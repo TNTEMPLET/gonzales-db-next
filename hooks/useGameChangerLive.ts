@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { BracketLiveGameStatus } from "@/components/brackets/TournamentBracketView";
-import type { GcLiveMatchPayload } from "@/lib/gamechanger/types";
+import type { GcLiveMatchPayload, GcScoreboardEvent } from "@/lib/gamechanger/types";
 
 type LiveApiResponse = GcLiveMatchPayload & {
   organizationName?: string;
@@ -16,6 +16,7 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
     null,
   );
   const [matchEventIds, setMatchEventIds] = useState<Record<string, string>>({});
+  const [eventsByMatchId, setEventsByMatchId] = useState<Record<string, GcScoreboardEvent>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollMsRef = useRef(30_000);
@@ -34,6 +35,7 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
       }
       setLiveGameStatuses(json.liveGameStatuses ?? {});
       setMatchEventIds(json.matchEventIds ?? {});
+      setEventsByMatchId(json.eventsByMatchId ?? {});
       pollMsRef.current = json.nextPollMs ?? 30_000;
       hasLoadedRef.current = true;
       setError(null);
@@ -48,6 +50,7 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
     if (!projectId || !enabled) {
       setLiveGameStatuses(null);
       setMatchEventIds({});
+      setEventsByMatchId({});
       setError(null);
       hasLoadedRef.current = false;
       return;
@@ -76,6 +79,7 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
   return {
     liveGameStatuses,
     matchEventIds,
+    eventsByMatchId,
     loading,
     error,
     refresh: fetchLive,

@@ -4,6 +4,10 @@ export const bracketGameChangerSchema = z.object({
   widgetId: z.string().uuid(),
   maxVerticalGamesVisible: z.number().int().min(1).max(20).optional(),
   layout: z.enum(["vertical", "horizontal"]).optional(),
+  /** When true (default), final GC games auto-import into the bracket on admin poll. */
+  autoImportFinalScores: z.boolean().optional(),
+  /** GC event IDs already imported so finals are not applied twice. */
+  importedFinalEventIds: z.array(z.string().uuid()).optional(),
 });
 
 export type BracketGameChanger = z.infer<typeof bracketGameChangerSchema>;
@@ -71,5 +75,14 @@ export type GcLiveGameStatus = {
 export type GcLiveMatchPayload = {
   liveGameStatuses: Record<string, GcLiveGameStatus>;
   matchEventIds: Record<string, string>;
+  /** Full GC event per bracket match id (for single-game scoreboard modal). */
+  eventsByMatchId: Record<string, GcScoreboardEvent>;
   nextPollMs: number;
+};
+
+export type GcAdminLiveResponse = GcLiveMatchPayload & {
+  organizationName?: string;
+  polledAt?: string;
+  importedMatchIds?: string[];
+  specUpdated?: boolean;
 };

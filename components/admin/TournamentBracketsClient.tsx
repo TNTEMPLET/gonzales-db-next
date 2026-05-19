@@ -13,11 +13,12 @@ import {
 
 import BracketSetupWizard from "@/components/admin/BracketSetupWizard";
 import BracketStructureEditor from "@/components/admin/BracketStructureEditor";
-import BracketTeamNameEditor from "@/components/admin/BracketTeamNameEditor";
+import BracketTeamNameBulkMapper from "@/components/admin/BracketTeamNameBulkMapper";
+import BracketTeamNameMappingEditor from "@/components/admin/BracketTeamNameMappingEditor";
 import GameChangerScoreboardModal from "@/components/brackets/GameChangerScoreboardModal";
 import TournamentBracketView, { type BracketScoringViewProps } from "@/components/brackets/TournamentBracketView";
-import { useGameChangerLive } from "@/hooks/useGameChangerLive";
-import { bracketMatchLabelForId } from "@/lib/gamechanger/collectLayoutMatches";
+import { useGameChangerAdminSync } from "@/hooks/useGameChangerAdminSync";
+import { bracketMatchLabelForId, bracketMatchRefForId } from "@/lib/gamechanger/collectLayoutMatches";
 import { parseGameChangerEmbedSnippet } from "@/lib/gamechanger/parseEmbedSnippet";
 import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
 import { buildBracketExportHtmlDocument } from "@/lib/tournament-brackets/bracketExportHtml";
@@ -520,10 +521,14 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     ? bracketGameChangerSchema.safeParse(spec.gameChanger)
     : null;
   const gcConfig = gcConfigParsed?.success ? gcConfigParsed.data : null;
-  const { liveGameStatuses: adminLiveStatuses } = useGameChangerLive(
-    projectId,
-    Boolean(gcConfig?.widgetId),
-  );
+  const {
+    liveGameStatuses: adminLiveStatuses,
+    eventsByMatchId: adminEventsByMatchId,
+    importCompleted: importGcCompletedScores,
+    loading: gcSyncLoading,
+  } = useGameChangerAdminSync(projectId, Boolean(gcConfig?.widgetId), () => {
+    if (projectId) void loadProject(projectId);
+  });
 
   useEffect(() => {
     let id: number;
@@ -586,6 +591,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       await patchSpec({
         gameChanger: {
           widgetId,
+          autoImportFinalScores: true,
           ...(Number.isFinite(maxN) && maxN >= 1 && maxN <= 20
             ? { maxVerticalGamesVisible: maxN }
             : {}),
@@ -1351,10 +1357,41 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     el.scrollIntoView({ behavior: "smooth", block: "start" });
   }
 
+  async function importCompletedGameChangerScores() {
+    if (!gcConfig) return;
+    setBusy(true);
+    setError("");
+    try {
+      const imported = await importGcCompletedScores();
+      const n = imported.length;
+      setNotice(
+        n > 0
+          ? `Imported ${n} completed GameChanger game${n === 1 ? "" : "s"} into the bracket.`
+          : "No completed GameChanger games matched bracket games with importable scores.",
+      );
+      if (projectId) await loadProject(projectId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   function renderScoreToolbar() {
     if (!scoringSupported) return null;
     return (
       <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+        {gcConfig ? (
+          <button
+            type="button"
+            disabled={busy || gcSyncLoading}
+            title="Apply final GameChanger scores to matching bracket games"
+            onClick={() => void importCompletedGameChangerScores()}
+            className="rounded-lg border border-emerald-600/70 bg-emerald-950/90 px-2.5 py-1 text-xs font-semibold text-emerald-100 hover:bg-emerald-900/90 disabled:opacity-40"
+          >
+            Import completed GameChanger scores
+          </button>
+        ) : null}
         <button type="button" disabled={busy || !bracketHasSavedScores} title={bracketHasSavedScores ? "Remove every saved score and reset later rounds" : "No scores saved yet"} onClick={() => void clearAllBracketScores()} className="rounded-lg border border-amber-600/70 bg-amber-950/90 px-2.5 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-900/90 disabled:opacity-40">Clear scores</button>
         {scoreEditing ? (<><button type="button" disabled={busy} onClick={() => { if (spec) setScoreDraft(scoresFromSpec(spec)); setScoreEditing(false); }} className="rounded-lg border border-slate-500/80 bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-40">Cancel</button><button type="button" disabled={busy} onClick={() => void saveBracketScores()} className="rounded-lg border border-violet-500/80 bg-violet-800/95 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40">Save scores</button></>) : (<button type="button" disabled={busy} onClick={() => setScoreEditing(true)} className="rounded-lg border border-violet-500/80 bg-violet-800/95 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40">Edit scores</button>)}
       </div>
@@ -1492,6 +1529,26 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       ) : null}
 
       {renderCompactProjectStrip()}
+
+      <details className="rounded-xl border border-zinc-800 bg-zinc-900/70">
+        <summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
+          Map team names (all brackets)
+        </summary>
+        <div className="border-t border-zinc-800 p-4 sm:p-5">
+          <BracketTeamNameBulkMapper
+            organizationId={organizationId}
+            seasonYear={project?.seasonYear ?? seasonYear}
+            busy={busy}
+            onBusyChange={setBusy}
+            onNotice={setNotice}
+            onError={setError}
+            onProjectUpdated={(id) => {
+              void loadProjects();
+              if (projectId === id) void loadProject(id);
+            }}
+          />
+        </div>
+      </details>
 
       {showSetupWizardAtTop ? (
         <div ref={setupWizardRef} className="space-y-4" style={{ order: focusPreview ? 1 : 0 }}>
@@ -1946,37 +2003,34 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           <>
             {setupComplete ? (
               <div className="flex flex-col gap-4">
-                {project.status === "READY" ? (
-                  <details
-                    className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`}
-                    open
-                  >
-                    <summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
-                      Team names
-                    </summary>
-                    <div className="border-t border-zinc-800 p-4 sm:p-5">
-                      <BracketTeamNameEditor
-                        spec={spec}
-                        projectId={project.id}
-                        projectUpdatedAt={project.updatedAt}
-                        busy={busy}
-                        onSave={async (patch) => {
-                          setBusy(true);
-                          setError("");
-                          try {
-                            await patchSpec(patch);
-                            setNotice("Team names updated.");
-                            await loadProject(project.id);
-                          } catch (e: unknown) {
-                            setError(e instanceof Error ? e.message : String(e));
-                          } finally {
-                            setBusy(false);
-                          }
-                        }}
-                      />
-                    </div>
-                  </details>
-                ) : null}
+                <details
+                  className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`}
+                  open={project.status === "READY"}
+                >
+                  <summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
+                    Team name mapping
+                  </summary>
+                  <div className="border-t border-zinc-800 p-4 sm:p-5">
+                    <BracketTeamNameMappingEditor
+                      spec={spec}
+                      projectId={project.id}
+                      busy={busy}
+                      onSave={async (patch) => {
+                        setBusy(true);
+                        setError("");
+                        try {
+                          await patchSpec(patch);
+                          setNotice("Team names updated.");
+                          await loadProject(project.id);
+                        } catch (e: unknown) {
+                          setError(e instanceof Error ? e.message : String(e));
+                        } finally {
+                          setBusy(false);
+                        }
+                      }}
+                    />
+                  </div>
+                </details>
                 <details className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`} {...(!focusPreview ? { open: true } : {})}><summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">Bracket structure</summary><div className="border-t border-zinc-800 p-4 sm:p-5">                <BracketStructureEditor
                   spec={spec}
                   projectId={project.id}
@@ -2109,8 +2163,9 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         </h4>
                         <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
                           Paste the embed code from GameChanger (Tournament → Tools → Create Scoreboard). Published
-                          brackets use it for live scores, highlighted live games, and a scoreboard modal when fans
-                          tap a game.
+                          brackets show live scores on cards; tapping a game opens that game&apos;s live scoreboard.
+                          Final GameChanger games auto-import into bracket scores while you have this project open;
+                          use Import completed GameChanger scores in the score toolbar to apply all finals now.
                         </p>
                       </div>
                       <label className="block text-[11px] text-zinc-500">
@@ -2443,6 +2498,9 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           open
           gameChanger={gcConfig}
           matchLabel={bracketMatchLabelForId(bracketLayout, adminGcModalMatchId)}
+          bracketMatch={bracketMatchRefForId(bracketLayout, adminGcModalMatchId)}
+          gcEvent={adminEventsByMatchId[adminGcModalMatchId]}
+          liveStatus={adminLiveStatuses?.[adminGcModalMatchId] ?? null}
           onClose={() => setAdminGcModalMatchId(null)}
         />
       ) : null}
