@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAllStarAuditLog, snapshotCandidate } from "@/lib/allStar/auditLog";
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { resequenceCandidateBibNumbers } from "@/lib/allStar/candidates";
 import { isFrozenFirstTeamCycle } from "@/lib/allStar/cycleType";
@@ -75,6 +76,20 @@ export async function POST(request: NextRequest) {
     return tx.allStarCandidate.findUnique({ where: { id: candidate.id } });
   });
 
+  if (created) {
+    await recordAllStarAuditLog({
+      organizationId: created.organizationId,
+      ballotCycleId: created.ballotCycleId,
+      entityType: "candidate",
+      entityId: created.id,
+      action: "CANDIDATE_CREATED",
+      summary: `Added candidate ${created.playerFullName}`,
+      beforeState: { ballotCycleId: created.ballotCycleId },
+      afterState: snapshotCandidate(created),
+      request,
+    });
+  }
+
   return NextResponse.json({ success: true, candidate: created });
 }
 
@@ -93,10 +108,7 @@ export async function DELETE(request: NextRequest) {
   if (body.candidateId) {
     const candidate = await prisma.allStarCandidate.findUnique({
       where: { id: body.candidateId },
-      select: {
-        ballotCycleId: true,
-        ballotCycle: { select: { status: true, title: true } },
-      },
+      include: { ballotCycle: { select: { status: true, title: true } } },
     });
     if (!candidate) {
       return NextResponse.json({ error: "Candidate not found" }, { status: 404 });
@@ -108,10 +120,25 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
+    const beforeState = snapshotCandidate(candidate);
+
     await prisma.$transaction(async (tx) => {
       await tx.allStarCandidate.delete({ where: { id: body.candidateId } });
       await resequenceCandidateBibNumbers(tx, candidate.ballotCycleId);
     });
+
+    await recordAllStarAuditLog({
+      organizationId: candidate.organizationId,
+      ballotCycleId: candidate.ballotCycleId,
+      entityType: "candidate",
+      entityId: candidate.id,
+      action: "CANDIDATE_DELETED",
+      summary: `Removed candidate ${candidate.playerFullName}`,
+      beforeState,
+      afterState: null,
+      request,
+    });
+
     return NextResponse.json({ success: true, deleted: 1 });
   }
 
@@ -252,6 +279,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "At least one change is required" }, { status: 400 });
     }
 
+    const beforeRows = await prisma.allStarCandidate.findMany({
+      where: { ballotCycleId: cycle.id, id: { in: candidateIds } },
+    });
+
     const updated = await prisma.allStarCandidate.updateMany({
       where: {
         ballotCycleId: cycle.id,
@@ -259,6 +290,21 @@ export async function PATCH(request: NextRequest) {
       },
       data,
     });
+
+    if (updated.count > 0) {
+      await recordAllStarAuditLog({
+        organizationId: cycle.organizationId,
+        ballotCycleId: cycle.id,
+        entityType: "candidate",
+        entityId: candidateIds[0] ?? null,
+        action: "CANDIDATE_UPDATED",
+        summary: `Bulk-updated ${updated.count} candidate(s)`,
+        beforeState: { candidates: beforeRows.map(snapshotCandidate) },
+        afterState: { changes: data } as import("@prisma/client").Prisma.InputJsonValue,
+        request,
+      });
+    }
+
     return NextResponse.json({ success: true, updated: updated.count });
   }
 

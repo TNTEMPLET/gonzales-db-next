@@ -1,6 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAllStarAuditLog, snapshotCycle } from "@/lib/allStar/auditLog";
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { createBallotLinkToken, hashToken } from "@/lib/allStar/server";
 import prisma from "@/lib/prisma";
@@ -56,6 +57,8 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const linkBeforeState = snapshotCycle(cycle);
+
   for (let attempt = 0; attempt < 16; attempt++) {
     const token = createBallotLinkToken();
     const tokenHash = hashToken(token);
@@ -68,6 +71,17 @@ export async function POST(request: NextRequest) {
         },
       });
       const link = `${origin}/all-star/vote?t=${encodeURIComponent(token)}`;
+      await recordAllStarAuditLog({
+        organizationId: cycle.organizationId,
+        ballotCycleId: cycle.id,
+        entityType: "ballot_cycle",
+        entityId: cycle.id,
+        action: "BALLOT_LINK_GENERATED",
+        summary: shouldRotate ? "Rotated shared ballot link" : "Generated shared ballot link",
+        beforeState: linkBeforeState,
+        afterState: { ...linkBeforeState, ballotLinkToken: token, ballotLinkTokenHash: tokenHash },
+        request,
+      });
       return NextResponse.json({
         success: true,
         link,

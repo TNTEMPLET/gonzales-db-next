@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { parseRequiredRatingsPerCoachInput } from "@/lib/allStar/ballotVoteRules";
+import { recordAllStarAuditLog } from "@/lib/allStar/auditLog";
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import {
   buildRunoffCycleTitle,
@@ -443,14 +444,44 @@ export async function PATCH(request: NextRequest) {
 
   const existing = await prisma.allStarCandidate.findUnique({
     where: { id: body.candidateId },
-    select: { ballotCycleId: true },
+    select: {
+      ballotCycleId: true,
+      organizationId: true,
+      playerFullName: true,
+      excludedFromSecondPhase: true,
+      secondPhaseOverrideReason: true,
+      secondPhaseOverrideAt: true,
+      secondPhaseOverrideByAdminId: true,
+    },
   });
   if (!existing || existing.ballotCycleId !== body.cycleId) {
     return NextResponse.json({ error: "Candidate does not belong to cycle" }, { status: 400 });
   }
+  const beforeState = {
+    excludedFromSecondPhase: existing.excludedFromSecondPhase,
+    secondPhaseOverrideReason: existing.secondPhaseOverrideReason,
+    secondPhaseOverrideAt: existing.secondPhaseOverrideAt?.toISOString() ?? null,
+    secondPhaseOverrideByAdminId: existing.secondPhaseOverrideByAdminId,
+  };
   await prisma.allStarCandidate.update({
     where: { id: body.candidateId },
     data: update,
+  });
+  await recordAllStarAuditLog({
+    organizationId: existing.organizationId,
+    ballotCycleId: body.cycleId,
+    entityType: "candidate",
+    entityId: body.candidateId,
+    action: "SECOND_PHASE_OVERRIDE",
+    summary: `Second-phase ${body.mode} for ${existing.playerFullName}`,
+    beforeState,
+    afterState: {
+      excludedFromSecondPhase: update.excludedFromSecondPhase,
+      secondPhaseOverrideReason: update.secondPhaseOverrideReason,
+      secondPhaseOverrideAt: update.secondPhaseOverrideAt?.toISOString() ?? null,
+      secondPhaseOverrideByAdminId: update.secondPhaseOverrideByAdminId,
+    },
+    request,
   });
   return NextResponse.json({ success: true });
 }

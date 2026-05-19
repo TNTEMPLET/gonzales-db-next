@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAllStarAuditLog } from "@/lib/allStar/auditLog";
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
@@ -103,6 +104,25 @@ export async function POST(request: NextRequest) {
     },
   });
 
+  const coachLabel =
+    created.coachName || created.coachEmail || "coach";
+
+  await recordAllStarAuditLog({
+    organizationId: cycle.organizationId,
+    ballotCycleId: cycle.id,
+    entityType: "head_coach",
+    entityId: created.id,
+    action: "HEAD_COACH_ADDED",
+    summary: `Assigned head coach ${coachLabel}`,
+    beforeState: null,
+    afterState: {
+      id: created.id,
+      ballotCycleId: created.ballotCycleId,
+      registeredUserId: created.registeredUserId,
+    },
+    request,
+  });
+
   return NextResponse.json({ success: true, assignment: created });
 }
 
@@ -115,6 +135,35 @@ export async function DELETE(request: NextRequest) {
   const body = (await request.json()) as { assignmentId?: string };
   if (!body.assignmentId) return NextResponse.json({ error: "assignmentId is required" }, { status: 400 });
 
+  const existing = await prisma.allStarHeadCoachAssignment.findUnique({
+    where: { id: body.assignmentId },
+  });
+  if (!existing) {
+    return NextResponse.json({ error: "Assignment not found" }, { status: 404 });
+  }
+
   await prisma.allStarHeadCoachAssignment.delete({ where: { id: body.assignmentId } });
+
+  await recordAllStarAuditLog({
+    organizationId: existing.organizationId,
+    ballotCycleId: existing.ballotCycleId,
+    entityType: "head_coach",
+    entityId: existing.id,
+    action: "HEAD_COACH_REMOVED",
+    summary: `Removed head coach ${existing.coachName || existing.coachEmail || "assignment"}`,
+    beforeState: {
+      id: existing.id,
+      ballotCycleId: existing.ballotCycleId,
+      organizationId: existing.organizationId,
+      ageGroup: existing.ageGroup,
+      registeredUserId: existing.registeredUserId,
+      adminUserId: existing.adminUserId,
+      coachName: existing.coachName,
+      coachEmail: existing.coachEmail,
+    },
+    afterState: null,
+    request,
+  });
+
   return NextResponse.json({ success: true });
 }
