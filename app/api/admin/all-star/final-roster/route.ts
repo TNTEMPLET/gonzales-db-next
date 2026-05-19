@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { ensureAllStarVaultFinalRosterAdmin } from "@/lib/allStar/auth";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
 
@@ -12,15 +12,15 @@ type FinalRosterOverrideBody = {
 };
 
 export async function PATCH(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
-  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-
   const body = (await request.json()) as FinalRosterOverrideBody;
   const cycleId = body.cycleId?.trim();
   const candidateId = body.candidateId?.trim();
   if (!cycleId || !candidateId) {
     return NextResponse.json({ error: "cycleId and candidateId are required" }, { status: 400 });
   }
+
+  const auth = await ensureAllStarVaultFinalRosterAdmin(request, cycleId);
+  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const candidate = await prisma.allStarCandidate.findUnique({
     where: { id: candidateId },

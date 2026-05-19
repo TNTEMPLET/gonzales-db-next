@@ -1,5 +1,6 @@
 import type { NextRequest } from "next/server";
 
+import { areAllBallotsSubmittedForCycle } from "@/lib/allStar/ballotRosterComplete";
 import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
@@ -102,6 +103,62 @@ export async function canManageAllStarVault(
 ) {
   const role = await getAllStarVaultRoleForUser(registeredUserId, organizationId);
   return role === "FULL_ACCESS";
+}
+
+export async function canEditFinalRosterForUser(
+  registeredUserId: string,
+  organizationId: "gonzales" | "ascension",
+  cycleId: string,
+) {
+  const role = await getAllStarVaultRoleForUser(registeredUserId, organizationId);
+  if (role === "FULL_ACCESS") return true;
+  if (role === "LIMITED_ADMIN") return areAllBallotsSubmittedForCycle(cycleId);
+  return false;
+}
+
+/**
+ * Final roster overrides: Full Access always; Limited Admin only after all coaches submit.
+ */
+export async function ensureAllStarVaultFinalRosterAdmin(
+  request: NextRequest,
+  cycleId: string,
+): Promise<{ ok: boolean; status: number; message?: string }> {
+  const adminUser = await getAdminUserFromRequest(request);
+  if (!adminUser) {
+    return { ok: false, status: 401, message: "Unauthorized" };
+  }
+
+  const orgId = resolveAuthOrganizationId(request);
+  if (adminUser.isMaster) {
+    return { ok: true, status: 200 };
+  }
+
+  const registeredUsers = await prisma.registeredUser.findMany({
+    where: {
+      email: { equals: adminUser.email, mode: "insensitive" },
+      organizationId: orgId,
+    },
+    select: { id: true },
+  });
+
+  let hasLimitedAdminOnly = false;
+  for (const row of registeredUsers) {
+    if (await canEditFinalRosterForUser(row.id, orgId, cycleId)) {
+      return { ok: true, status: 200 };
+    }
+    const role = await getAllStarVaultRoleForUser(row.id, orgId);
+    if (role === "LIMITED_ADMIN") hasLimitedAdminOnly = true;
+  }
+
+  if (hasLimitedAdminOnly) {
+    return {
+      ok: false,
+      status: 403,
+      message: "Final roster edits unlock after all coaches have submitted",
+    };
+  }
+
+  return { ok: false, status: 403, message: "Forbidden" };
 }
 
 export async function resolveAllStarVaultAccessForAdmin(options: {

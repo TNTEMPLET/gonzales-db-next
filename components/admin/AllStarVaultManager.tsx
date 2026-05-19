@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AllStarCycleWorkspace from "@/components/admin/allStar/AllStarCycleWorkspace";
 import {
@@ -299,6 +299,113 @@ function getCycleStatusBadgeClass(status: Cycle["status"]) {
     return "border-sky-700 bg-sky-950/40 text-sky-200";
   }
   return "border-zinc-700 bg-zinc-950 text-zinc-300";
+}
+
+function FinalRosterAddIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className ?? "h-3.5 w-3.5"}
+      aria-hidden
+    >
+      <path d="M12 5v14M5 12h14" />
+    </svg>
+  );
+}
+
+function FinalRosterRemoveIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className ?? "h-3.5 w-3.5"}
+      aria-hidden
+    >
+      <path d="M5 12h14" />
+    </svg>
+  );
+}
+
+function FinalRosterMoveIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className ?? "h-3.5 w-3.5"}
+      aria-hidden
+    >
+      <path d="M7 16V4M7 4 3 8M7 4l4 4M17 8v12M17 20l4-4M17 20l-4-4" />
+    </svg>
+  );
+}
+
+function FinalRosterClearIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className ?? "h-3.5 w-3.5"}
+      aria-hidden
+    >
+      <path d="M18 6 6 18M6 6l12 12" />
+    </svg>
+  );
+}
+
+function FinalRosterIconButton({
+  label,
+  disabled,
+  onClick,
+  tone,
+  children,
+}: {
+  label: string;
+  disabled?: boolean;
+  onClick: () => void;
+  tone: "emerald" | "red" | "sky" | "zinc";
+  children: ReactNode;
+}) {
+  const toneClass =
+    tone === "emerald"
+      ? "border-emerald-800 text-emerald-300 hover:bg-emerald-950/40"
+      : tone === "red"
+        ? "border-red-800 text-red-300 hover:bg-red-950/40"
+        : tone === "sky"
+          ? "border-sky-800 text-sky-300 hover:bg-sky-950/40"
+          : "border-zinc-700 text-zinc-300 hover:bg-zinc-800";
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      title={label}
+      aria-label={label}
+      className={`rounded border p-1.5 disabled:opacity-60 disabled:hover:bg-transparent ${toneClass}`}
+    >
+      {children}
+    </button>
+  );
 }
 
 function BaseballRatingIcon({ className }: { className?: string }) {
@@ -2359,6 +2466,13 @@ export default function AllStarVaultManager({
   });
 
   const isAuditorFocusedPreview = previewRole === "ALL_STAR_VIEW_ONLY";
+  const allBallotsSubmitted =
+    ballotRosterStatus != null &&
+    ballotRosterStatus.total > 0 &&
+    ballotRosterStatus.pending.length === 0;
+  const canManageFinalRosterUi =
+    canManageAllStarVaultUi ||
+    (allBallotsSubmitted && (isLimitedVaultAccess || isAuditorFocusedPreview));
   /** Includes limited vault grant and master preview of limited-admin lens (session still has full rights). */
   const canDeleteSubmittedBallots =
     canManageAllStarVaultUi || (canManageAllStarVault && isAuditorFocusedPreview);
@@ -2434,7 +2548,10 @@ export default function AllStarVaultManager({
     runoffVoteStandingsSplit && runoffVotePanelLabels
       ? `${runoffVotePanelLabels.descriptor ||
           `Runoff ballot: ranks 1-${selectedCycle?.runoffFirstTeamSize} = ${runoffVotePanelLabels.primaryHeading}; remainder = ${runoffVotePanelLabels.secondaryHeading}`} (pool ${selectedCycle?.runoffPoolSize}).`
-      : `Final roster editor: top ${finalRosterSplitSize} are selected by vote order. Use Add/Remove to handle declines and replacements.`;
+      : `Final roster editor: top ${finalRosterSplitSize} are selected by vote order. Use add/remove icons to handle declines and replacements.`;
+  const hasTwoTeamRosterSplit = Boolean(
+    runoffVotePanelLabels && finalRosterStandingsSplit,
+  );
   function renderFinalRosterBadge(row: VoteSummaryRow) {
     if (row.finalRosterOverride === "SELECTED") {
       return <span className="ml-2 text-[11px] text-emerald-300">Override: selected</span>;
@@ -2447,39 +2564,68 @@ export default function AllStarVaultManager({
   function renderFinalRosterControls(row: VoteSummaryRow, isRosterSelection: boolean) {
     if (!finalRosterStandingsSplit) return null;
     const rowBusy = finalRosterActionId === row.candidateId;
+    const moveTargetTeam = isRosterSelection
+      ? finalRosterSecondaryHeading
+      : finalRosterPrimaryHeading;
+    const moveLabel = `Move to ${moveTargetTeam}`;
     return (
       <div className="flex flex-wrap items-center justify-end gap-1">
         <p className="text-xs text-zinc-300 whitespace-nowrap">
           Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
         </p>
-        {canManageAllStarVaultUi && isRosterSelection ? (
-          <button
-            type="button"
-            disabled={rowBusy}
-            onClick={() => void updateFinalRosterOverride(row.candidateId, "REMOVED")}
-            className="rounded border border-red-800 px-2 py-1 text-[11px] text-red-300 disabled:opacity-60"
-          >
-            {rowBusy ? "Saving..." : "Remove"}
-          </button>
-        ) : canManageAllStarVaultUi ? (
-          <button
-            type="button"
-            disabled={rowBusy}
-            onClick={() => void updateFinalRosterOverride(row.candidateId, "SELECTED")}
-            className="rounded border border-emerald-800 px-2 py-1 text-[11px] text-emerald-300 disabled:opacity-60"
-          >
-            {rowBusy ? "Saving..." : "Add"}
-          </button>
+        {canManageFinalRosterUi ? (
+          <>
+            {hasTwoTeamRosterSplit ? (
+              <FinalRosterIconButton
+                label={moveLabel}
+                disabled={rowBusy}
+                tone="sky"
+                onClick={() =>
+                  void updateFinalRosterOverride(
+                    row.candidateId,
+                    isRosterSelection ? "REMOVED" : "SELECTED",
+                  )
+                }
+              >
+                <FinalRosterMoveIcon />
+              </FinalRosterIconButton>
+            ) : null}
+            {isRosterSelection ? (
+              <FinalRosterIconButton
+                label="Remove from final roster"
+                disabled={rowBusy}
+                tone="red"
+                onClick={() => void updateFinalRosterOverride(row.candidateId, "REMOVED")}
+              >
+                <FinalRosterRemoveIcon />
+              </FinalRosterIconButton>
+            ) : null}
+            {!isRosterSelection ? (
+              <FinalRosterIconButton
+                label="Add to final roster"
+                disabled={rowBusy}
+                tone="emerald"
+                onClick={() => void updateFinalRosterOverride(row.candidateId, "SELECTED")}
+              >
+                <FinalRosterAddIcon />
+              </FinalRosterIconButton>
+            ) : null}
+            {row.finalRosterOverride ? (
+              <FinalRosterIconButton
+                label="Clear roster override"
+                disabled={rowBusy}
+                tone="zinc"
+                onClick={() => void updateFinalRosterOverride(row.candidateId, null)}
+              >
+                <FinalRosterClearIcon />
+              </FinalRosterIconButton>
+            ) : null}
+          </>
         ) : null}
-        {canManageAllStarVaultUi && row.finalRosterOverride ? (
-          <button
-            type="button"
-            disabled={rowBusy}
-            onClick={() => void updateFinalRosterOverride(row.candidateId, null)}
-            className="rounded border border-zinc-700 px-2 py-1 text-[11px] text-zinc-300 disabled:opacity-60"
-          >
-            Clear
-          </button>
+        {rowBusy ? (
+          <span className="text-[10px] text-zinc-500 px-1" aria-live="polite">
+            Saving…
+          </span>
         ) : null}
       </div>
     );
@@ -2813,11 +2959,19 @@ export default function AllStarVaultManager({
       ) : null}
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
-      {!canManageAllStarVaultUi && !isAuditorFocusedPreview ? (
+      {!canManageAllStarVaultUi && (isLimitedVaultAccess || isAuditorFocusedPreview) ? (
         <div className="rounded-lg border border-sky-800 bg-sky-950/30 p-3 text-sm text-sky-200">
-          {isLimitedVaultAccess
-            ? "Open ballot tools below for the selected cycle — who has submitted, vote standings, and the shared ballot link. Submitted ballots are read-only here. Cycle setup, candidates, and roster edits stay disabled."
-            : "Some management actions are hidden for your current preview or role."}
+          {isAuditorFocusedPreview && !allBallotsSubmitted
+            ? "Preview: final roster move controls appear on each player row after every coach has submitted."
+            : allBallotsSubmitted
+              ? hasTwoTeamRosterSplit
+                ? "All coaches have submitted. Use the move icon to shift players between team rosters (NAVY / RED), or add/remove icons to adjust final roster selection. Cycle setup, candidates, and invite rosters stay disabled."
+                : "All coaches have submitted. Use the add/remove icons in the vote standings below to handle declines and replacements. Cycle setup, candidates, and invite rosters stay disabled."
+              : "Open ballot tools below for the selected cycle — who has submitted, vote standings, and the shared ballot link. Submitted ballots are read-only here. Final roster edits unlock after everyone submits; cycle setup, candidates, and invite rosters stay disabled."}
+        </div>
+      ) : !canManageAllStarVaultUi ? (
+        <div className="rounded-lg border border-sky-800 bg-sky-950/30 p-3 text-sm text-sky-200">
+          Some management actions are hidden for your current preview or role.
         </div>
       ) : null}
       {showCycleSnapshotBoard ? (
