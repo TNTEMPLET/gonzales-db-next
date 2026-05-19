@@ -151,9 +151,10 @@ function BracketSlotScore({
   onChange: (next: number | undefined) => void;
 }) {
   if (!editing) {
+    if (value == null) return null;
     return (
       <span className={styles.slotScoreRead} aria-label={ariaLabel}>
-        {value != null ? value : "—"}
+        {value}
       </span>
     );
   }
@@ -184,21 +185,22 @@ function BracketMatchSlotRow({
   matchMeta: Pick<LayoutMatch, "home" | "away" | "homeScore" | "awayScore" | "winnerSide">;
   scoring?: BracketScoringViewProps | null;
 }) {
-  const showScores = scoring?.enabled;
   const isBye = label.trim() === BYE_SLOT_LABEL;
+  const editing = Boolean(scoring?.editing);
   const stored = scoring?.scores[matchId];
   const scoreValue =
     side === "home"
       ? (stored?.homeScore ?? matchMeta.homeScore)
       : (stored?.awayScore ?? matchMeta.awayScore);
+  const showScore = !isBye && (editing || scoreValue != null);
 
   return (
-    <div className={`${styles.slot}${byeSlotClass(label)}${showScores ? ` ${styles.slotWithScore}` : ""}`}>
+    <div className={`${styles.slot}${byeSlotClass(label)}${showScore ? ` ${styles.slotWithScore}` : ""}`}>
       <BracketSlotLabel label={label} />
-      {showScores && !isBye ? (
+      {showScore ? (
         <BracketSlotScore
           value={scoreValue}
-          editing={Boolean(scoring?.editing)}
+          editing={editing}
           ariaLabel={`${label} score`}
           onChange={(next) => {
             scoring?.onScoresChange(matchId, side === "home" ? { homeScore: next } : { awayScore: next });
