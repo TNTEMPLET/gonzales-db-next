@@ -28,6 +28,7 @@ import {
   DEFAULT_VOTE_EXPORT_TOP_COUNT,
   MAX_VOTE_EXPORT_TOP_COUNT,
   expandVoteSummaryTopByVoteCountCutoff,
+  isAllStarRunoffTwoTeamBallot,
   selectVoteSummaryNameOnlyPool,
   sortVoteSummaryRowsByLastName,
   splitVoteSummaryRowsForRunoff,
@@ -2556,6 +2557,9 @@ export default function AllStarVaultManager({
   const hasTwoTeamRosterSplit = Boolean(
     runoffVotePanelLabels && finalRosterStandingsSplit,
   );
+  const isRunoffTwoTeamBallot = selectedCycle
+    ? isAllStarRunoffTwoTeamBallot(selectedCycle)
+    : false;
   function renderFinalRosterBadge(row: VoteSummaryRow) {
     if (row.finalRosterOverride === "SELECTED") {
       return <span className="ml-2 text-[11px] text-emerald-300">Override: selected</span>;
@@ -2677,6 +2681,28 @@ export default function AllStarVaultManager({
       <span className="text-zinc-500">ties included</span>
     </label>
   );
+  const renderVotePanelNameOnlyPdfLinks = (orgSuffix: string, className: string) => {
+    const baseHref = selectedCycleId
+      ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${voteExportTopCountQuery}${orgSuffix}`
+      : "#";
+    if (isRunoffTwoTeamBallot && runoffVotePanelLabels) {
+      return (
+        <>
+          <a href={`${baseHref}&team=primary`} className={className}>
+            PDF (name only) — {runoffVotePanelLabels.primaryHeading}
+          </a>
+          <a href={`${baseHref}&team=secondary`} className={className}>
+            PDF (name only) — {runoffVotePanelLabels.secondaryHeading}
+          </a>
+        </>
+      );
+    }
+    return (
+      <a href={baseHref} className={className}>
+        PDF (name only)
+      </a>
+    );
+  };
 
   return (
     <section ref={vaultShellRef} className="space-y-6" data-admin-vault-interactive="true">
@@ -3327,16 +3353,10 @@ export default function AllStarVaultManager({
                   >
                     Export CSV
                   </a>
-                  <a
-                    href={
-                      selectedCycleId
-                        ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${voteExportTopCountQuery}${orgQuery}`
-                        : "#"
-                    }
-                    className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
-                  >
-                    PDF (name only)
-                  </a>
+                  {renderVotePanelNameOnlyPdfLinks(
+                    orgQuery,
+                    "text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5",
+                  )}
                   <a
                     href={
                       selectedCycleId
@@ -4447,16 +4467,10 @@ export default function AllStarVaultManager({
             >
               Export CSV
             </a>
-            <a
-              href={
-                selectedCycleId
-                  ? `/api/admin/all-star/exports/votes-panel/pdf?cycleId=${selectedCycleId}&layout=name${voteExportTopCountQuery}${isMasterMode ? `&org=${encodeURIComponent(org)}` : ""}`
-                  : "#"
-              }
-              className="text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5"
-            >
-              PDF (name only)
-            </a>
+            {renderVotePanelNameOnlyPdfLinks(
+              isMasterMode ? `&org=${encodeURIComponent(org)}` : "",
+              "text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5",
+            )}
             <a
               href={
                 selectedCycleId

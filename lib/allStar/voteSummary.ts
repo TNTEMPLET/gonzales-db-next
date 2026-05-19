@@ -41,6 +41,29 @@ export function parseVoteExportTopCount(value: string | null | undefined) {
   return Math.min(MAX_VOTE_EXPORT_TOP_COUNT, Math.max(1, parsed));
 }
 
+export function isAllStarRunoffTwoTeamBallot(cycle: {
+  runoffFirstTeamSize: number | null;
+  runoffPoolSize: number | null;
+}) {
+  return (
+    cycle.runoffFirstTeamSize != null &&
+    cycle.runoffFirstTeamSize > 0 &&
+    cycle.runoffPoolSize != null
+  );
+}
+
+export type VotePanelPdfTeam = "primary" | "secondary";
+
+export function parseVotePanelPdfTeamParam(
+  value: string | null | undefined,
+): VotePanelPdfTeam | null {
+  const raw = value?.trim().toLowerCase();
+  if (!raw) return null;
+  if (raw === "primary" || raw === "1" || raw === "first") return "primary";
+  if (raw === "secondary" || raw === "2" || raw === "second") return "secondary";
+  return null;
+}
+
 /**
  * Same logic as GET `/api/admin/all-star/votes-summary`: vote count desc, avg rating desc, then name.
  * Runoff cycles include the full candidate pool (zero-vote rows sort last) so first/second team splits match roster size.
