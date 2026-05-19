@@ -1,8 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 
+import GameChangerScoreboardModal from "@/components/brackets/GameChangerScoreboardModal";
 import TournamentBracketView from "@/components/brackets/TournamentBracketView";
+import { useGameChangerLive } from "@/hooks/useGameChangerLive";
+import { bracketMatchLabelForId } from "@/lib/gamechanger/collectLayoutMatches";
+import type { BracketGameChanger } from "@/lib/gamechanger/types";
 import type { BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
 import type { BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
@@ -15,6 +19,7 @@ export type PublishedTournamentTabBracket = {
   layout: BracketLayout;
   parkInfo?: BracketParkInfo | null;
   themeColors: BracketThemeColors;
+  gameChanger?: BracketGameChanger | null;
 };
 
 type TournamentBranding = {
@@ -47,20 +52,42 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
   const [selectedBracketId, setSelectedBracketId] = useState(() =>
     getInitialBracketId(brackets, initialSelectedBracketId),
   );
+  const [modalMatchId, setModalMatchId] = useState<string | null>(null);
 
   const selectedBracket = useMemo(
     () => getSelectedBracket(brackets, selectedBracketId),
     [brackets, selectedBracketId],
   );
 
+  const gameChanger = selectedBracket?.gameChanger ?? null;
+  const gcEnabled = Boolean(gameChanger?.widgetId);
+
+  const { liveGameStatuses, loading: liveLoading, error: liveError } = useGameChangerLive(
+    selectedBracket?.id,
+    gcEnabled,
+  );
+
+  const handleMatchClick = useCallback(
+    (matchId: string) => {
+      if (!gcEnabled) return;
+      setModalMatchId(matchId);
+    },
+    [gcEnabled],
+  );
+
   function selectBracket(id: string) {
     setSelectedBracketId(id);
+    setModalMatchId(null);
     const url = new URL(window.location.href);
     url.searchParams.set(BRACKET_QUERY_PARAM, id);
     window.history.replaceState(null, "", `${url.pathname}?${url.searchParams.toString()}${url.hash}`);
   }
 
   if (!selectedBracket) return null;
+
+  const modalLabel = modalMatchId
+    ? bracketMatchLabelForId(selectedBracket.layout, modalMatchId)
+    : undefined;
 
   return (
     <div className="space-y-5">
@@ -109,9 +136,24 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
               {selectedBracket.seasonYear} · Updated {selectedBracket.updatedAtLabel}
             </p>
           </div>
-          <p className="max-w-sm text-xs leading-relaxed text-zinc-500 sm:hidden">
-            Phone view shows games by round first. Open the full diagram inside the bracket for the printable layout.
-          </p>
+          <div className="max-w-sm text-xs leading-relaxed text-zinc-500">
+            {gcEnabled ? (
+              <p>
+                {liveLoading && !liveGameStatuses ? "Loading live scores…" : null}
+                {liveError ? <span className="text-amber-400/90">{liveError}</span> : null}
+                {!liveError ? (
+                  <span>
+                    Tap a game for the GameChanger scoreboard. Live games are highlighted.
+                  </span>
+                ) : null}
+              </p>
+            ) : (
+              <p className="sm:hidden">
+                Phone view shows games by round first. Open the full diagram inside the bracket for the printable
+                layout.
+              </p>
+            )}
+          </div>
         </div>
         <div className="relative mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-2 sm:p-3">
           <div className="block w-full min-w-0 max-w-full align-top">
@@ -126,11 +168,23 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
                 }}
                 parkInfo={selectedBracket.parkInfo}
                 surfaceTitleOverride={selectedBracket.name}
+                liveGameStatuses={liveGameStatuses}
+                gameChangerEnabled={gcEnabled}
+                onMatchClick={handleMatchClick}
               />
             </div>
           </div>
         </div>
       </article>
+
+      {gameChanger && modalMatchId ? (
+        <GameChangerScoreboardModal
+          open
+          gameChanger={gameChanger}
+          matchLabel={modalLabel}
+          onClose={() => setModalMatchId(null)}
+        />
+      ) : null}
     </div>
   );
 }

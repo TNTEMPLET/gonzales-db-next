@@ -1,6 +1,6 @@
 "use client";
 
-import type { CSSProperties, ReactNode } from "react";
+import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import type { BracketLayout, BracketLayoutPodium, LayoutMatch, LayoutRound } from "@/lib/tournament-brackets/bracketLayout";
@@ -64,6 +64,10 @@ type Props = {
   parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   scoring?: BracketScoringViewProps | null;
   liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
+  /** When set with `gameChangerEnabled`, match cards open the GameChanger scoreboard modal. */
+  onMatchClick?: (matchId: string) => void;
+  /** Enables click-to-scoreboard on non-bye games (public brackets with GameChanger configured). */
+  gameChangerEnabled?: boolean;
   /**
    * When set (trimmed), used as the main H3 label source instead of `spec.divisionLabel`
    * (e.g. BracketProject.name from the admin list). Normalized with `bracketSurfaceTitle` (label only, or `— suffix` when used).
@@ -493,10 +497,14 @@ function ThirdPlaceMatchArticle({
   podium,
   scoring,
   liveStatus,
+  onMatchClick,
+  gameChangerEnabled,
 }: {
   podium: BracketLayoutPodium;
   scoring?: BracketScoringViewProps | null;
   liveStatus?: BracketLiveGameStatus | null;
+  onMatchClick?: (matchId: string) => void;
+  gameChangerEnabled?: boolean;
 }) {
   const match: LayoutMatch = {
     id: BRACKET_THIRD_PLACE_MATCH_ID,
@@ -515,11 +523,39 @@ function ThirdPlaceMatchArticle({
   };
   const showTie = bracketTieState(match.id, match, scoring);
   const badgeLabel = ["3rd place", matchGameBadge(match)].filter(Boolean).join(" · ");
+  const isLive = isLiveBracketStatus(liveStatus);
+  const clickable =
+    Boolean(gameChangerEnabled && onMatchClick && !scoring?.editing && !isByeBracketMatch(match));
+  const handleActivate = () => {
+    if (clickable && onMatchClick) onMatchClick(match.id);
+  };
+  const matchClass = [
+    styles.match,
+    styles.thirdPlaceMatch,
+    isLive ? styles.matchLive : "",
+    clickable ? styles.matchClickable : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <article
-      className={`${styles.match} ${styles.thirdPlaceMatch}`}
+      className={matchClass}
       {...{ [BRACKET_PODIUM_THIRD_SOURCE_ATTR]: "" }}
       aria-label={`Third place: ${podium.thirdPlaceSlotHome} versus ${podium.thirdPlaceSlotAway}`}
+      {...(clickable
+        ? {
+            role: "button" as const,
+            tabIndex: 0,
+            onClick: handleActivate,
+            onKeyDown: (e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleActivate();
+              }
+            },
+          }
+        : {})}
     >
       <MatchGameHeader gameLabel={badgeLabel} liveStatus={liveStatus} badgeClassName={styles.thirdPlaceMatchBadge} />
       <BracketMatchSlotRow
@@ -709,6 +745,10 @@ function MatchGameInfoBetweenTeams({
   );
 }
 
+function isLiveBracketStatus(status: BracketLiveGameStatus | null | undefined): boolean {
+  return status?.statusLabel?.trim().toUpperCase() === "LIVE";
+}
+
 function MatchArticle({
   match,
   gameLabel,
@@ -716,6 +756,8 @@ function MatchArticle({
   schedule,
   podiumChampionSource,
   scoring,
+  onMatchClick,
+  gameChangerEnabled,
 }: {
   match: LayoutMatch;
   gameLabel?: string;
@@ -723,15 +765,46 @@ function MatchArticle({
   schedule?: Pick<LayoutMatch, "dateLabel" | "time" | "venue" | "field">;
   podiumChampionSource?: boolean;
   scoring?: BracketScoringViewProps | null;
+  onMatchClick?: (matchId: string) => void;
+  gameChangerEnabled?: boolean;
 }) {
   const { slotHome, slotAway } = match;
   const showTie = bracketTieState(match.id, match, scoring);
+  const isLive = isLiveBracketStatus(liveStatus);
+  const clickable =
+    Boolean(gameChangerEnabled && onMatchClick && !scoring?.editing && !isByeBracketMatch(match));
+
+  const matchClass = [
+    styles.match,
+    isLive ? styles.matchLive : "",
+    clickable ? styles.matchClickable : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
+  const handleActivate = () => {
+    if (clickable && onMatchClick) onMatchClick(match.id);
+  };
+
   return (
     <article
-      className={styles.match}
+      className={matchClass}
       data-bracket-match-id={match.id}
       {...(podiumChampionSource ? { [BRACKET_PODIUM_CHAMPION_SOURCE_ATTR]: "" } : {})}
       aria-label={`${slotHome} versus ${slotAway}`}
+      {...(clickable
+        ? {
+            role: "button" as const,
+            tabIndex: 0,
+            onClick: handleActivate,
+            onKeyDown: (e: KeyboardEvent) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                handleActivate();
+              }
+            },
+          }
+        : {})}
     >
       <MatchGameHeader gameLabel={gameLabel} liveStatus={liveStatus} />
       <BracketMatchSlotRow label={slotHome} side="home" matchId={match.id} matchMeta={match} scoring={scoring} />
@@ -768,11 +841,15 @@ function MobileBracketRounds({
   podium,
   scoring,
   liveGameStatuses,
+  onMatchClick,
+  gameChangerEnabled,
 }: {
   rounds: LayoutRound[];
   podium?: BracketLayoutPodium | null;
   scoring?: BracketScoringViewProps | null;
   liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
+  onMatchClick?: (matchId: string) => void;
+  gameChangerEnabled?: boolean;
 }) {
   const champion = podium
     ? declaredChampionFromFinalSlots(podium.finalMatch.slotHome, podium.finalMatch.slotAway, podium.finalMatch)
@@ -822,6 +899,8 @@ function MobileBracketRounds({
                     liveStatus={liveGameStatuses?.[match.id]}
                     schedule={match}
                     scoring={scoring}
+                    onMatchClick={onMatchClick}
+                    gameChangerEnabled={gameChangerEnabled}
                   />
                 </li>
               ))}
@@ -835,7 +914,13 @@ function MobileBracketRounds({
               <h4 className={styles.mobileRoundTitle}>3rd Place</h4>
               <span className={styles.mobileRoundCount}>1 game</span>
             </div>
-            <ThirdPlaceMatchArticle podium={podium} scoring={scoring} />
+            <ThirdPlaceMatchArticle
+              podium={podium}
+              scoring={scoring}
+              liveStatus={liveGameStatuses?.[BRACKET_THIRD_PLACE_MATCH_ID]}
+              onMatchClick={onMatchClick}
+              gameChangerEnabled={gameChangerEnabled}
+            />
           </section>
         ) : null}
       </div>
@@ -872,6 +957,8 @@ function ConnectedBracketGrid({
   podium,
   scoring,
   liveGameStatuses,
+  onMatchClick,
+  gameChangerEnabled,
 }: {
   rounds: LayoutRound[];
   /** Full first-round width (leaf rows); used for grid row template and spans. */
@@ -885,6 +972,8 @@ function ConnectedBracketGrid({
   podium?: BracketLayoutPodium | null;
   scoring?: BracketScoringViewProps | null;
   liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
+  onMatchClick?: (matchId: string) => void;
+  gameChangerEnabled?: boolean;
 }) {
   const R = rounds.length;
   const N = laneRows > 0 ? laneRows : rounds[0]?.layoutSlotCount ?? rounds[0]?.matches.length ?? 0;
@@ -1003,6 +1092,8 @@ function ConnectedBracketGrid({
                     schedule={m}
                     podiumChampionSource
                     scoring={scoring}
+                    onMatchClick={onMatchClick}
+                    gameChangerEnabled={gameChangerEnabled}
                   />
                 </div>
                 <div
@@ -1013,6 +1104,8 @@ function ConnectedBracketGrid({
                     podium={p}
                     scoring={scoring}
                     liveStatus={liveGameStatuses?.[BRACKET_THIRD_PLACE_MATCH_ID]}
+                    onMatchClick={onMatchClick}
+                    gameChangerEnabled={gameChangerEnabled}
                   />
                 </div>
               </div>
@@ -1031,6 +1124,8 @@ function ConnectedBracketGrid({
                 liveStatus={liveGameStatuses?.[m.id]}
                 schedule={m}
                 scoring={scoring}
+                onMatchClick={onMatchClick}
+                gameChangerEnabled={gameChangerEnabled}
               />
             </div>,
           );
@@ -1122,7 +1217,14 @@ function ConnectedBracketGrid({
       podium={null}
       parkBelowTitle={!parkInPodiumHeader}
     >
-      <MobileBracketRounds rounds={rounds} podium={podium} scoring={scoring} />
+      <MobileBracketRounds
+        rounds={rounds}
+        podium={podium}
+        scoring={scoring}
+        liveGameStatuses={liveGameStatuses}
+        onMatchClick={onMatchClick}
+        gameChangerEnabled={gameChangerEnabled}
+      />
       <FullBracketDiagramFrame>
         <div ref={gridRef} className={`${styles.bracketGrid} ${styles.bracketGridScroll}`} style={gridStyle}>
           {cells}
@@ -1142,6 +1244,8 @@ export default function TournamentBracketView({
   parkInfo,
   scoring,
   liveGameStatuses,
+  onMatchClick,
+  gameChangerEnabled,
   surfaceTitleOverride,
 }: Props) {
   const rootClass = [styles.root, className].filter(Boolean).join(" ");
@@ -1229,6 +1333,8 @@ export default function TournamentBracketView({
         podium={podium}
         scoring={scoring}
         liveGameStatuses={liveGameStatuses}
+        onMatchClick={onMatchClick}
+        gameChangerEnabled={gameChangerEnabled}
       />
     );
   }
@@ -1250,6 +1356,8 @@ export default function TournamentBracketView({
         podium={podium}
         scoring={scoring}
         liveGameStatuses={liveGameStatuses}
+        onMatchClick={onMatchClick}
+        gameChangerEnabled={gameChangerEnabled}
       />
       <FullBracketDiagramFrame>
         <div className={styles.tree}>
@@ -1264,6 +1372,8 @@ export default function TournamentBracketView({
                       liveStatus={liveGameStatuses?.[m.id]}
                       schedule={m}
                       scoring={scoring}
+                      onMatchClick={onMatchClick}
+                      gameChangerEnabled={gameChangerEnabled}
                     />
                   </li>
                 ))}

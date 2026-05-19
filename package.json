@@ -20,7 +20,7 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
     "prisma:seed": "tsx prisma/seed.ts",
-    "test": "tsx --test lib/assignr/__tests__/*.test.ts lib/admin/__tests__/*.test.ts lib/tournament-brackets/__tests__/*.test.ts lib/communications/policy.test.ts",
+    "test": "tsx --test lib/assignr/__tests__/*.test.ts lib/admin/__tests__/*.test.ts lib/tournament-brackets/__tests__/*.test.ts lib/gamechanger/__tests__/*.test.ts lib/communications/policy.test.ts",
     "coach:test": "tsx scripts/create-test-coach.ts",
     "facebook:exchange-tokens": "node scripts/exchange-facebook-token.mjs"
   },

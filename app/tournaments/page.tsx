@@ -2,6 +2,7 @@ import Link from "next/link";
 
 import PublishedTournamentTabs, { type PublishedTournamentTabBracket } from "@/components/brackets/PublishedTournamentTabs";
 import prisma from "@/lib/prisma";
+import { bracketGameChangerSchema, type BracketGameChanger } from "@/lib/gamechanger/types";
 import { safeParseBracketSpec, type BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
 import { resolveBracketThemeColors, type BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
@@ -27,6 +28,7 @@ type PublishedBracket = {
   layout: BracketLayout;
   parkInfo?: BracketParkInfo | null;
   themeColors: BracketThemeColors;
+  gameChanger?: BracketGameChanger | null;
 };
 
 export function generateMetadata() {
@@ -74,6 +76,10 @@ export default async function TournamentsPage({
     }
 
     try {
+      const gcParsed = parsed.spec.gameChanger
+        ? bracketGameChangerSchema.safeParse(parsed.spec.gameChanger)
+        : null;
+
       return [
         {
           id: project.id,
@@ -85,6 +91,7 @@ export default async function TournamentsPage({
           layout: buildBracketLayout(parsed.spec),
           parkInfo: parsed.spec.parkInfo,
           themeColors: resolveBracketThemeColors(parsed.spec, siteThemeDefaults),
+          gameChanger: gcParsed?.success ? gcParsed.data : null,
         },
       ];
     } catch (err: unknown) {
@@ -103,6 +110,7 @@ export default async function TournamentsPage({
     layout: bracket.layout,
     parkInfo: bracket.parkInfo,
     themeColors: bracket.themeColors,
+    gameChanger: bracket.gameChanger ?? null,
   }));
 
   return (
