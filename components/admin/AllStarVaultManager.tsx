@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import AllStarAuditLogPanel from "@/components/admin/allStar/AllStarAuditLogPanel";
 import AllStarCycleWorkspace from "@/components/admin/allStar/AllStarCycleWorkspace";
 import {
   allowedWorkspaceTabs,
@@ -269,6 +270,8 @@ type AllStarVaultManagerProps = {
    * Enables ballot tools: submissions, vote standings, shared link, ballot deletion.
    */
   isLimitedVaultAccess?: boolean;
+  /** Master Admin — show change log with revert. */
+  isMasterAuditAdmin?: boolean;
 };
 
 function getCycleTierBadgeClass(
@@ -473,6 +476,7 @@ export default function AllStarVaultManager({
   canManageAllStarVault = true,
   canViewAllStarVault = true,
   isLimitedVaultAccess = false,
+  isMasterAuditAdmin = false,
 }: AllStarVaultManagerProps) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -2959,6 +2963,23 @@ export default function AllStarVaultManager({
       ) : null}
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
+      {isMasterAuditAdmin ? (
+        <AllStarAuditLogPanel
+          org={org}
+          cycleId={selectedCycleId || null}
+          onReverted={() => {
+            void loadCycles();
+            if (selectedCycleId) {
+              void loadCycleDetails(selectedCycleId);
+              void loadVoteSummary(selectedCycleId);
+              void loadInvites(selectedCycleId);
+              void loadSubmittedBallots(selectedCycleId);
+              void loadCycleCoaches(selectedCycleId);
+            }
+            void loadVaultAccess();
+          }}
+        />
+      ) : null}
       {!canManageAllStarVaultUi && (isLimitedVaultAccess || isAuditorFocusedPreview) ? (
         <div className="rounded-lg border border-sky-800 bg-sky-950/30 p-3 text-sm text-sky-200">
           {isAuditorFocusedPreview && !allBallotsSubmitted

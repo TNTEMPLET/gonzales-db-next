@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAllStarAuditLog } from "@/lib/allStar/auditLog";
 import {
   ensureAllStarVaultAccess,
   ensureAllStarVaultCanDeleteVoteSubmission,
@@ -74,7 +75,11 @@ export async function DELETE(request: NextRequest) {
 
   const submission = await prisma.allStarVoteSubmission.findUnique({
     where: { id: submissionId },
-    include: { ballotCycle: { select: { status: true, title: true } } },
+    include: {
+      ballotCycle: { select: { status: true, title: true } },
+      coachUser: { select: { email: true, firstName: true, lastName: true, name: true } },
+      voteItems: { select: { candidateId: true, rating: true } },
+    },
   });
   if (!submission) {
     return NextResponse.json({ error: "Submission not found" }, { status: 404 });
@@ -86,6 +91,40 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
+  const coachLabel =
+    submission.coachUser.firstName || submission.coachUser.lastName
+      ? [submission.coachUser.firstName, submission.coachUser.lastName].filter(Boolean).join(" ")
+      : submission.coachUser.name || submission.coachUser.email;
+
+  const beforeState = {
+    submission: {
+      id: submission.id,
+      ballotCycleId: submission.ballotCycleId,
+      coachUserId: submission.coachUserId,
+      phase: submission.phase,
+      organizationId: submission.organizationId,
+      ageGroup: submission.ageGroup,
+      submittedAt: submission.submittedAt.toISOString(),
+    },
+    voteItems: submission.voteItems.map((item) => ({
+      candidateId: item.candidateId,
+      rating: item.rating,
+    })),
+  };
+
   await prisma.allStarVoteSubmission.delete({ where: { id: submissionId } });
+
+  await recordAllStarAuditLog({
+    organizationId: submission.organizationId,
+    ballotCycleId: submission.ballotCycleId,
+    entityType: "vote_submission",
+    entityId: submissionId,
+    action: "VOTE_SUBMISSION_DELETED",
+    summary: `Deleted submitted ballot for ${coachLabel}`,
+    beforeState,
+    afterState: null,
+    request,
+  });
+
   return NextResponse.json({ success: true });
 }

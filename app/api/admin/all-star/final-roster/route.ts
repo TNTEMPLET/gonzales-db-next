@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import {
+  recordAllStarAuditLog,
+  snapshotFinalRoster,
+} from "@/lib/allStar/auditLog";
 import { ensureAllStarVaultFinalRosterAdmin } from "@/lib/allStar/auth";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
@@ -24,7 +28,15 @@ export async function PATCH(request: NextRequest) {
 
   const candidate = await prisma.allStarCandidate.findUnique({
     where: { id: candidateId },
-    select: { ballotCycleId: true },
+    select: {
+      ballotCycleId: true,
+      organizationId: true,
+      playerFullName: true,
+      finalRosterOverride: true,
+      finalRosterOverrideReason: true,
+      finalRosterOverrideAt: true,
+      finalRosterOverrideByAdminId: true,
+    },
   });
   if (!candidate || candidate.ballotCycleId !== cycleId) {
     return NextResponse.json({ error: "Candidate does not belong to cycle" }, { status: 400 });
@@ -34,6 +46,7 @@ export async function PATCH(request: NextRequest) {
     body.override === "SELECTED" || body.override === "REMOVED" ? body.override : null;
   const admin = await getAdminUserFromRequest(request);
   const reason = body.reason?.trim() || null;
+  const beforeState = snapshotFinalRoster(candidate);
 
   await prisma.allStarCandidate.update({
     where: { id: candidateId },
@@ -51,6 +64,25 @@ export async function PATCH(request: NextRequest) {
             finalRosterOverrideAt: new Date(),
             finalRosterOverrideByAdminId: admin?.id || null,
           },
+  });
+
+  const overrideLabel =
+    override === "SELECTED" ? "selected" : override === "REMOVED" ? "removed" : "cleared";
+  await recordAllStarAuditLog({
+    organizationId: candidate.organizationId,
+    ballotCycleId: cycleId,
+    entityType: "candidate",
+    entityId: candidateId,
+    action: "FINAL_ROSTER_OVERRIDE",
+    summary: `Final roster ${overrideLabel} for ${candidate.playerFullName}`,
+    beforeState,
+    afterState: {
+      ...beforeState,
+      finalRosterOverride: override,
+      finalRosterOverrideReason: reason,
+      finalRosterOverrideByAdminId: admin?.id ?? null,
+    },
+    request,
   });
 
   return NextResponse.json({ success: true });

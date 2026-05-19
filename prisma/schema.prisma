@@ -56,6 +56,27 @@ enum AllStarVaultRole {
   LIMITED_ADMIN
 }
 
+enum AllStarAuditAction {
+  FINAL_ROSTER_OVERRIDE
+  SECOND_PHASE_OVERRIDE
+  CANDIDATE_CREATED
+  CANDIDATE_UPDATED
+  CANDIDATE_DELETED
+  CANDIDATE_IMPORTED
+  CYCLE_CREATED
+  CYCLE_UPDATED
+  CYCLE_DELETED
+  INVITE_ROSTER_SAVED
+  INVITE_REVOKED
+  INVITE_REENABLED
+  VAULT_ACCESS_UPSERT
+  VAULT_ACCESS_REVOKED
+  HEAD_COACH_ADDED
+  HEAD_COACH_REMOVED
+  BALLOT_LINK_GENERATED
+  VOTE_SUBMISSION_DELETED
+}
+
 enum TeamCoachRole {
   HEAD_COACH
   ASSISTANT_COACH
@@ -202,6 +223,8 @@ model AdminUser {
   assignrAuditLogs        AssignrAuditLog[]       @relation("AssignrAuditActor")
   bracketProjectsCreated       BracketProject[]        @relation("BracketProjectCreatedBy")
   governingBodyTemplatesCreated GoverningBodyTemplate[] @relation("GoverningBodyTemplateCreatedBy")
+  allStarAuditLogsActed        AllStarAuditLog[]       @relation("AllStarAuditActor")
+  allStarAuditLogsReverted     AllStarAuditLog[]       @relation("AllStarAuditReverter")
 }
 
 enum BracketProjectStatus {
@@ -691,6 +714,7 @@ model AllStarBallotCycle {
   voteDrafts          AllStarVoteDraft[]
   voteSubmissions     AllStarVoteSubmission[]
   invites             AllStarInvite[]
+  auditLogs           AllStarAuditLog[]
 
   @@index([organizationId, seasonYear, ageGroup])
   @@index([organizationId, status, ageGroup])
@@ -838,6 +862,33 @@ model AllStarVaultAccess {
 
   @@unique([registeredUserId, organizationId])
   @@index([organizationId, role, updatedAt])
+}
+
+model AllStarAuditLog {
+  id                String             @id @default(cuid())
+  organizationId    String
+  ballotCycleId     String?
+  entityType        String
+  entityId          String?
+  action            AllStarAuditAction
+  summary           String
+  beforeState       Json?
+  afterState        Json?
+  actorAdminId      String?
+  actorEmail        String
+  sourcePath        String?
+  createdAt         DateTime           @default(now())
+  revertedAt        DateTime?
+  revertedByAdminId String?
+
+  ballotCycle     AllStarBallotCycle? @relation(fields: [ballotCycleId], references: [id], onDelete: SetNull)
+  actorAdmin      AdminUser?          @relation("AllStarAuditActor", fields: [actorAdminId], references: [id], onDelete: SetNull)
+  revertedByAdmin AdminUser?          @relation("AllStarAuditReverter", fields: [revertedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([ballotCycleId, createdAt])
+  @@index([action, createdAt])
+  @@index([revertedAt])
 }
 
 model Team {

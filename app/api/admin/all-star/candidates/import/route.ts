@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAllStarAuditLog } from "@/lib/allStar/auditLog";
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import {
   normalizeCandidateSpreadsheetRows,
@@ -140,6 +141,17 @@ export async function POST(request: NextRequest) {
       },
       ageBandFilter || "BOTH",
     );
+    await recordAllStarAuditLog({
+      organizationId: cycle.organizationId,
+      ballotCycleId: cycle.id,
+      entityType: "candidate_import",
+      entityId: cycle.id,
+      action: "CANDIDATE_IMPORTED",
+      summary: `Imported ${result.created} candidate(s) from teams`,
+      beforeState: null,
+      afterState: { source: "teams", ...result },
+      request,
+    });
     return NextResponse.json({
       success: true,
       source: "teams",
@@ -228,6 +240,18 @@ export async function POST(request: NextRequest) {
       });
     }
     await resequenceCandidateBibNumbers(tx, cycle.id);
+  });
+
+  await recordAllStarAuditLog({
+    organizationId: cycle.organizationId,
+    ballotCycleId: cycle.id,
+    entityType: "candidate_import",
+    entityId: cycle.id,
+    action: "CANDIDATE_IMPORTED",
+    summary: `Imported ${validRows.length} candidate(s) from spreadsheet`,
+    beforeState: null,
+    afterState: { source: "spreadsheet", created: validRows.length, skipped, processed },
+    request,
   });
 
   return NextResponse.json({

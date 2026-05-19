@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAllStarAuditLog } from "@/lib/allStar/auditLog";
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
@@ -136,7 +137,6 @@ export async function POST(request: NextRequest) {
           organizationId,
         },
       },
-      select: { id: true },
     });
     if (!existingForTarget && isMasterDeployment()) {
       return NextResponse.json(
@@ -147,6 +147,20 @@ export async function POST(request: NextRequest) {
         { status: 403 },
       );
     }
+
+    const beforeState = existingForTarget
+      ? {
+          exists: true,
+          registeredUserId: existingForTarget.registeredUserId,
+          organizationId: existingForTarget.organizationId,
+          role: existingForTarget.role,
+          grantedByAdminId: existingForTarget.grantedByAdminId,
+        }
+      : {
+          exists: false,
+          registeredUserId: body.registeredUserId,
+          organizationId,
+        };
 
     const data = await allStarVaultAccess.upsert({
       where: {
@@ -165,6 +179,25 @@ export async function POST(request: NextRequest) {
         role: body.role,
         grantedByAdminId: admin?.id || null,
       },
+    });
+
+    await recordAllStarAuditLog({
+      organizationId,
+      entityType: "vault_access",
+      entityId: data.id,
+      action: "VAULT_ACCESS_UPSERT",
+      summary: existingForTarget
+        ? `Updated vault access to ${body.role}`
+        : `Granted vault access (${body.role})`,
+      beforeState,
+      afterState: {
+        exists: true,
+        registeredUserId: data.registeredUserId,
+        organizationId: data.organizationId,
+        role: data.role,
+        grantedByAdminId: data.grantedByAdminId,
+      },
+      request,
     });
 
     return NextResponse.json({ success: true, data });
@@ -194,6 +227,18 @@ export async function DELETE(request: NextRequest) {
     }
 
     const allStarVaultAccess = getAllStarVaultAccessModel();
+    const existing = await allStarVaultAccess.findUnique({
+      where: {
+        registeredUserId_organizationId: {
+          registeredUserId: body.registeredUserId,
+          organizationId,
+        },
+      },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "Vault access not found" }, { status: 404 });
+    }
+
     await allStarVaultAccess.delete({
       where: {
         registeredUserId_organizationId: {
@@ -202,6 +247,24 @@ export async function DELETE(request: NextRequest) {
         },
       },
     });
+
+    await recordAllStarAuditLog({
+      organizationId,
+      entityType: "vault_access",
+      entityId: existing.id,
+      action: "VAULT_ACCESS_REVOKED",
+      summary: `Revoked vault access (${existing.role})`,
+      beforeState: {
+        exists: true,
+        registeredUserId: existing.registeredUserId,
+        organizationId: existing.organizationId,
+        role: existing.role,
+        grantedByAdminId: existing.grantedByAdminId,
+      },
+      afterState: null,
+      request,
+    });
+
     return NextResponse.json({ success: true });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

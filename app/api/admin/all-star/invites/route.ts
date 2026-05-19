@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAllStarAuditLog } from "@/lib/allStar/auditLog";
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { isFrozenFirstTeamCycle } from "@/lib/allStar/cycleType";
 import { deleteVoteSubmissionsForCycleCoachEmail } from "@/lib/allStar/voteSubmissions";
@@ -155,6 +156,18 @@ export async function POST(request: NextRequest) {
       ? `${origin}/all-star/vote?t=${encodeURIComponent(refreshed.ballotLinkToken)}`
       : null;
 
+  await recordAllStarAuditLog({
+    organizationId: cycle.organizationId,
+    ballotCycleId: cycle.id,
+    entityType: "invite_roster",
+    entityId: cycle.id,
+    action: "INVITE_ROSTER_SAVED",
+    summary: `Saved invite roster (${upserted.length} coach${upserted.length === 1 ? "" : "es"})`,
+    beforeState: null,
+    afterState: { emails: upserted.map((row) => row.invitedEmail) },
+    request,
+  });
+
   return NextResponse.json({
     success: true,
     invites: upserted,
@@ -186,6 +199,8 @@ export async function DELETE(request: NextRequest) {
   if (existing.ballotCycle.organizationId !== targetOrg) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const inviteBeforeState = { revokedAt: existing.revokedAt?.toISOString() ?? null };
+
   const removedSubmissions = await prisma.$transaction(async (tx) => {
     const removed = await deleteVoteSubmissionsForCycleCoachEmail(
       tx,
@@ -198,6 +213,18 @@ export async function DELETE(request: NextRequest) {
       data: { revokedAt: new Date() },
     });
     return removed;
+  });
+
+  await recordAllStarAuditLog({
+    organizationId: existing.ballotCycle.organizationId,
+    ballotCycleId: existing.ballotCycleId,
+    entityType: "invite",
+    entityId: body.inviteId,
+    action: "INVITE_REVOKED",
+    summary: `Revoked invite for ${existing.invitedEmail}`,
+    beforeState: inviteBeforeState,
+    afterState: { revokedAt: new Date().toISOString() },
+    request,
   });
 
   return NextResponse.json({
@@ -232,9 +259,24 @@ export async function PATCH(request: NextRequest) {
   if (existing.ballotCycle.organizationId !== targetOrg) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const inviteBeforeState = { revokedAt: existing.revokedAt?.toISOString() ?? null };
+
   const invite = await prisma.allStarInvite.update({
     where: { id: body.inviteId },
     data: { revokedAt: null },
   });
+
+  await recordAllStarAuditLog({
+    organizationId: existing.ballotCycle.organizationId,
+    ballotCycleId: existing.ballotCycleId,
+    entityType: "invite",
+    entityId: invite.id,
+    action: "INVITE_REENABLED",
+    summary: `Re-enabled invite for ${existing.invitedEmail}`,
+    beforeState: inviteBeforeState,
+    afterState: { revokedAt: null },
+    request,
+  });
+
   return NextResponse.json({ success: true, inviteId: invite.id });
 }

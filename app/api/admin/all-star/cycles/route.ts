@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { recordAllStarAuditLog, snapshotCycle } from "@/lib/allStar/auditLog";
 import { parseRequiredRatingsPerCoachInput } from "@/lib/allStar/ballotVoteRules";
 import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { importCandidatesFromTeamsForCycle } from "@/lib/allStar/candidates";
@@ -390,6 +391,18 @@ export async function POST(request: NextRequest) {
     autoImport = { ...importResult, imported: true };
   }
 
+  await recordAllStarAuditLog({
+    organizationId: created.organizationId,
+    ballotCycleId: created.id,
+    entityType: "ballot_cycle",
+    entityId: created.id,
+    action: "CYCLE_CREATED",
+    summary: `Created ballot ${created.title || created.ageGroup}`,
+    beforeState: null,
+    afterState: snapshotCycle(created),
+    request,
+  });
+
   return NextResponse.json({
     success: true,
     cycle: mapAllStarCycle(created),
@@ -424,11 +437,11 @@ export async function PATCH(request: NextRequest) {
 
   const existingCycle = await prisma.allStarBallotCycle.findUnique({
     where: { id: body.cycleId },
-    select: { status: true },
   });
   if (!existingCycle) {
     return NextResponse.json({ error: "Ballot cycle not found" }, { status: 404 });
   }
+  const cycleBeforeState = snapshotCycle(existingCycle);
 
   const parsedRequiredRatingsPerCoach =
     body.requiredRatingsPerCoach === undefined
@@ -546,6 +559,18 @@ export async function PATCH(request: NextRequest) {
     );
   }
 
+  await recordAllStarAuditLog({
+    organizationId: updated.organizationId,
+    ballotCycleId: updated.id,
+    entityType: "ballot_cycle",
+    entityId: updated.id,
+    action: "CYCLE_UPDATED",
+    summary: `Updated ballot ${updated.title || updated.ageGroup}`,
+    beforeState: cycleBeforeState,
+    afterState: snapshotCycle(updated),
+    request,
+  });
+
   return NextResponse.json({ success: true, cycle: mapAllStarCycle(updated) });
 }
 
@@ -569,6 +594,26 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
   }
 
+  const cycleToDelete = await prisma.allStarBallotCycle.findUnique({
+    where: { id: body.cycleId },
+  });
+  if (!cycleToDelete) {
+    return NextResponse.json({ error: "Ballot cycle not found" }, { status: 404 });
+  }
+
   await prisma.allStarBallotCycle.delete({ where: { id: body.cycleId } });
+
+  await recordAllStarAuditLog({
+    organizationId: cycleToDelete.organizationId,
+    ballotCycleId: null,
+    entityType: "ballot_cycle",
+    entityId: body.cycleId,
+    action: "CYCLE_DELETED",
+    summary: `Deleted ballot ${cycleToDelete.title || cycleToDelete.ageGroup}`,
+    beforeState: snapshotCycle(cycleToDelete),
+    afterState: null,
+    request,
+  });
+
   return NextResponse.json({ success: true });
 }
