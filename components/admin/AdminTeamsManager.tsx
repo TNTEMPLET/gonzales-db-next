@@ -219,7 +219,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   const [mappingError, setMappingError] = useState("");
   const [confirmedImportAgeGroup, setConfirmedImportAgeGroup] = useState("");
   const [confirmedImportTeamName, setConfirmedImportTeamName] = useState("");
-  const [importUpdateExistingOnly, setImportUpdateExistingOnly] = useState(true);
+  const [importUpdateExistingOnly, setImportUpdateExistingOnly] = useState(false);
   const [allStarCutoffDate, setAllStarCutoffDate] = useState("");
   const allAgesSelected = confirmedImportAgeGroup === "__ALL_AGE_GROUPS__";
   const [importPreviewRows, setImportPreviewRows] = useState<ImportPreviewRow[]>([]);
@@ -1100,7 +1100,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       setTeamMapping({});
       setConfirmedImportAgeGroup("");
       setConfirmedImportTeamName("");
-      setImportUpdateExistingOnly(true);
+      setImportUpdateExistingOnly(false);
       await loadAllStarCutoffForSeason();
       setShowImportMappingModal(true);
     } catch (err: unknown) {
@@ -1128,16 +1128,14 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       setMappingError("Please confirm the target team name before importing.");
       return;
     }
-    const missingTeamMappings = unmatchedImportedTeamsForConfirmedAgeGroup.filter(
-      (team) => !teamMapping[team],
-    );
-    if (missingTeamMappings.length > 0) {
-      setMappingError("Please map every unmatched imported team name before importing.");
-      return;
-    }
-    if (!importUpdateExistingOnly) {
-      setMappingError("Jersey update mode must remain enabled for this import.");
-      return;
+    if (importUpdateExistingOnly) {
+      const missingTeamMappings = unmatchedImportedTeamsForConfirmedAgeGroup.filter(
+        (team) => !teamMapping[team],
+      );
+      if (missingTeamMappings.length > 0) {
+        setMappingError("Please map every unmatched imported team name before importing.");
+        return;
+      }
     }
     if (!allStarCutoffDate) {
       setMappingError("Please provide an All-Star age cutoff date.");
@@ -2645,6 +2643,10 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
             <p className="text-xs text-zinc-400">
               Before import, you will map each Division Name to a schedule age group and review a preview.
             </p>
+            <p className="text-xs text-zinc-400">
+              Required in file: division/age group, team, player name (and program/season if not inferred
+              from the page season year). Optional: Jersey Number, phone, email, and other profile fields.
+            </p>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
                 <h3 className="text-sm font-semibold">Recent Import History</h3>
@@ -2768,11 +2770,11 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
 
             <div className="rounded-lg border border-amber-700 bg-amber-950/20 p-4 space-y-3">
               <p className="text-sm font-semibold text-amber-200">
-                Jersey Number Update Confirmation (required)
+                Import scope confirmation (required)
               </p>
               <p className="text-xs text-amber-100/80">
-                This import is locked to jersey-number update mode. Confirm the exact age group and
-                team to prevent cross-roster edits; mismatched rows are skipped and reported.
+                Confirm the exact age group and team (or All Teams) so out-of-scope rows are skipped
+                and reported. Jersey Number is optional in your spreadsheet; leave blank if unknown.
               </p>
               <p className="text-xs text-zinc-300/80">
                 Tip: select <span className="text-zinc-100 font-medium">All Mapped Age Groups</span> to
@@ -2826,9 +2828,22 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               {confirmedImportAgeGroup ? (
                 <div className="space-y-2">
                   <p className="text-xs uppercase tracking-wide text-zinc-400">
-                    Unmatched Imported Team Mapping
+                    {importUpdateExistingOnly
+                      ? "Unmatched Imported Team Mapping"
+                      : "Teams in this import"}
                   </p>
-                  {unmatchedImportedTeamsForConfirmedAgeGroup.length === 0 ? (
+                  {!importUpdateExistingOnly ? (
+                    importedTeamNamesForConfirmedAgeGroup.length === 0 ? (
+                      <p className="text-xs text-zinc-400">No team names found in rows for this scope.</p>
+                    ) : (
+                      <p className="text-xs text-emerald-300">
+                        {importedTeamNamesForConfirmedAgeGroup.length} team
+                        {importedTeamNamesForConfirmedAgeGroup.length === 1 ? "" : "s"} will be
+                        created from the file if missing:{" "}
+                        {importedTeamNamesForConfirmedAgeGroup.join(", ")}
+                      </p>
+                    )
+                  ) : unmatchedImportedTeamsForConfirmedAgeGroup.length === 0 ? (
                     <p className="text-xs text-emerald-300">
                       All imported team names already match existing teams for this age group.
                     </p>
@@ -2889,8 +2904,14 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                   checked={importUpdateExistingOnly}
                   onChange={(event) => setImportUpdateExistingOnly(event.target.checked)}
                 />
-                Update existing players only (no team/player creation)
+                Update existing players only (do not create teams or players)
               </label>
+              {!importUpdateExistingOnly ? (
+                <p className="text-xs text-amber-200/90">
+                  This import will create missing teams and players from the file. Use Undo in import
+                  history if you need to roll back.
+                </p>
+              ) : null}
               <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 text-xs text-zinc-300 space-y-1">
                 <p>
                   Rows in file: <span className="font-semibold text-zinc-100">{importConfirmationCounts.total}</span>
@@ -2948,8 +2969,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 disabled={
                   busy ||
                   !confirmedImportAgeGroup.trim() ||
-                  !confirmedImportTeamName.trim() ||
-                  !importUpdateExistingOnly
+                  !confirmedImportTeamName.trim()
                 }
                 onClick={() => void confirmImportWithMapping()}
                 className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
