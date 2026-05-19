@@ -13,7 +13,12 @@ import {
 
 import BracketSetupWizard from "@/components/admin/BracketSetupWizard";
 import BracketStructureEditor from "@/components/admin/BracketStructureEditor";
+import GameChangerScoreboardModal from "@/components/brackets/GameChangerScoreboardModal";
 import TournamentBracketView, { type BracketScoringViewProps } from "@/components/brackets/TournamentBracketView";
+import { useGameChangerLive } from "@/hooks/useGameChangerLive";
+import { bracketMatchLabelForId } from "@/lib/gamechanger/collectLayoutMatches";
+import { parseGameChangerEmbedSnippet } from "@/lib/gamechanger/parseEmbedSnippet";
+import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
 import { buildBracketExportHtmlDocument } from "@/lib/tournament-brackets/bracketExportHtml";
 import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { buildBracketSvgPreview } from "@/lib/tournament-brackets/bracketSvgPreview";
@@ -505,6 +510,19 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     venue: "",
     field: "",
   });
+  const [gcWidgetIdDraft, setGcWidgetIdDraft] = useState("");
+  const [gcEmbedSnippetDraft, setGcEmbedSnippetDraft] = useState("");
+  const [gcMaxVerticalDraft, setGcMaxVerticalDraft] = useState("4");
+  const [adminGcModalMatchId, setAdminGcModalMatchId] = useState<string | null>(null);
+
+  const gcConfigParsed = spec?.gameChanger
+    ? bracketGameChangerSchema.safeParse(spec.gameChanger)
+    : null;
+  const gcConfig = gcConfigParsed?.success ? gcConfigParsed.data : null;
+  const { liveGameStatuses: adminLiveStatuses } = useGameChangerLive(
+    projectId,
+    Boolean(gcConfig?.widgetId),
+  );
 
   useEffect(() => {
     let id: number;
@@ -524,6 +542,9 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           venue: "",
           field: "",
         });
+        setGcWidgetIdDraft("");
+        setGcEmbedSnippetDraft("");
+        setGcMaxVerticalDraft("4");
       }, 0);
       return () => window.clearTimeout(id);
     }
@@ -543,9 +564,68 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
         venue: spec.thirdPlaceGame?.venue ?? "",
         field: spec.thirdPlaceGame?.field ?? "",
       });
+      setGcWidgetIdDraft(spec.gameChanger?.widgetId ?? "");
+      setGcMaxVerticalDraft(String(spec.gameChanger?.maxVerticalGamesVisible ?? 4));
+      setGcEmbedSnippetDraft("");
     }, 0);
     return () => window.clearTimeout(id);
   }, [spec]);
+
+  async function saveGameChangerConfig() {
+    if (!projectId) return;
+    const widgetId = gcWidgetIdDraft.trim();
+    if (!widgetId) {
+      setError("Enter a GameChanger widget ID or paste the embed snippet.");
+      return;
+    }
+    const maxN = Number.parseInt(gcMaxVerticalDraft, 10);
+    setBusy(true);
+    setError("");
+    try {
+      await patchSpec({
+        gameChanger: {
+          widgetId,
+          ...(Number.isFinite(maxN) && maxN >= 1 && maxN <= 20
+            ? { maxVerticalGamesVisible: maxN }
+            : {}),
+        },
+      });
+      setNotice("GameChanger scoreboard saved for this bracket.");
+      await loadProject(projectId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function clearGameChangerConfig() {
+    if (!projectId) return;
+    setBusy(true);
+    setError("");
+    try {
+      await patchSpec({ gameChanger: null });
+      setNotice("GameChanger scoreboard removed from this bracket.");
+      await loadProject(projectId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function applyGameChangerEmbedSnippet() {
+    const result = parseGameChangerEmbedSnippet(gcEmbedSnippetDraft);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    setGcWidgetIdDraft(result.config.widgetId);
+    if (result.config.maxVerticalGamesVisible != null) {
+      setGcMaxVerticalDraft(String(result.config.maxVerticalGamesVisible));
+    }
+    setNotice("Parsed widget ID from embed snippet. Click Save GameChanger to store it.");
+  }
 
   async function saveParkInfo() {
     if (!projectId) return;
@@ -1981,6 +2061,80 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         Reset to site defaults
                       </button>
                     </div>
+                    <div className="mt-3 space-y-3 border-t border-zinc-700 pt-3">
+                      <div>
+                        <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                          GameChanger live scoreboard
+                        </h4>
+                        <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                          Paste the embed code from GameChanger (Tournament → Tools → Create Scoreboard). Published
+                          brackets use it for live scores, highlighted live games, and a scoreboard modal when fans
+                          tap a game.
+                        </p>
+                      </div>
+                      <label className="block text-[11px] text-zinc-500">
+                        Widget ID
+                        <input
+                          value={gcWidgetIdDraft}
+                          onChange={(e) => setGcWidgetIdDraft(e.target.value)}
+                          disabled={busy}
+                          placeholder="58152785-6fd8-4c3a-be34-187a3fdf97ff"
+                          className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-sm"
+                          spellCheck={false}
+                        />
+                      </label>
+                      <label className="block text-[11px] text-zinc-500">
+                        Max games visible in modal (vertical)
+                        <input
+                          type="number"
+                          min={1}
+                          max={20}
+                          value={gcMaxVerticalDraft}
+                          onChange={(e) => setGcMaxVerticalDraft(e.target.value)}
+                          disabled={busy}
+                          className="mt-0.5 w-24 rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
+                        />
+                      </label>
+                      <label className="block text-[11px] text-zinc-500">
+                        Paste embed snippet
+                        <textarea
+                          value={gcEmbedSnippetDraft}
+                          onChange={(e) => setGcEmbedSnippetDraft(e.target.value)}
+                          disabled={busy}
+                          rows={4}
+                          placeholder={'<script>window.GC.scoreboard.init({ widgetId: "…" })…'}
+                          className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 font-mono text-[11px]"
+                        />
+                      </label>
+                      <div className="grid gap-2 sm:flex sm:flex-wrap">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={applyGameChangerEmbedSnippet}
+                          className="min-h-10 rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                        >
+                          Parse snippet
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void saveGameChangerConfig()}
+                          className="min-h-10 rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-600 disabled:opacity-40"
+                        >
+                          Save GameChanger
+                        </button>
+                        {gcConfig ? (
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => void clearGameChangerConfig()}
+                            className="min-h-10 rounded-lg border border-red-900/60 px-3 py-1.5 text-xs font-semibold text-red-300 hover:bg-red-950/40 disabled:opacity-40"
+                          >
+                            Remove GameChanger
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
                     {spec.bracketFormat === "single_elimination" ? (
                       <div className="mt-3 space-y-3 border-t border-zinc-700 pt-3">
                         <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -2160,6 +2314,11 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                             parkInfo={spec?.parkInfo}
                             scoring={scoringView}
                             surfaceTitleOverride={projectNameDraft.trim() || project.name}
+                            liveGameStatuses={adminLiveStatuses}
+                            gameChangerEnabled={Boolean(gcConfig)}
+                            onMatchClick={
+                              gcConfig ? (matchId) => setAdminGcModalMatchId(matchId) : undefined
+                            }
                           />
                         </div>
                       </div>
@@ -2237,6 +2396,15 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           </div>
         )}
       </div>
+
+      {gcConfig && adminGcModalMatchId && bracketLayout ? (
+        <GameChangerScoreboardModal
+          open
+          gameChanger={gcConfig}
+          matchLabel={bracketMatchLabelForId(bracketLayout, adminGcModalMatchId)}
+          onClose={() => setAdminGcModalMatchId(null)}
+        />
+      ) : null}
     </section>
   );
 }

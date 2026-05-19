@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
+
 export const bracketSpecVersion = 1 as const;
 
 export const sponsorEntrySchema = z.object({
@@ -170,6 +172,8 @@ export const bracketSpecSchema = z.object({
   championAgeGroupLabel: z.string().max(120).optional(),
   /** Filled when semifinal scores are saved (single elim + 3rd place). */
   thirdPlaceGame: bracketThirdPlaceGameSchema.optional(),
+  /** GameChanger tournament scoreboard widget (Tools → Create Scoreboard on web.gc.com). */
+  gameChanger: bracketGameChangerSchema.optional(),
 });
 
 export type BracketSpec = z.infer<typeof bracketSpecSchema>;
@@ -308,6 +312,26 @@ export function mergeBracketSpec(
       delete next.thirdPlaceGame;
     } else {
       next.thirdPlaceGame = partial.thirdPlaceGame;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(partial, "gameChanger")) {
+    if (partial.gameChanger == null || typeof partial.gameChanger !== "object") {
+      delete next.gameChanger;
+    } else {
+      const gc = partial.gameChanger as Record<string, unknown>;
+      const widgetId = typeof gc.widgetId === "string" ? gc.widgetId.trim() : "";
+      if (!widgetId) {
+        delete next.gameChanger;
+      } else {
+        const mergedGc: Record<string, unknown> = { widgetId };
+        if (typeof gc.maxVerticalGamesVisible === "number") {
+          mergedGc.maxVerticalGamesVisible = gc.maxVerticalGamesVisible;
+        }
+        if (gc.layout === "vertical" || gc.layout === "horizontal") {
+          mergedGc.layout = gc.layout;
+        }
+        next.gameChanger = mergedGc;
+      }
     }
   }
   const mergedParse = bracketSpecSchema.safeParse(next);
