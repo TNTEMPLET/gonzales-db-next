@@ -2,6 +2,11 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { bracketThemeCssVars, normalizeHex6 } from "@/lib/tournament-brackets/bracketTheme";
+import {
+  bracketWatermarkSrc,
+  isLocalDevUploadUrl,
+  resolveBracketWatermarkBase,
+} from "@/lib/tournament-brackets/bracketWatermark";
 
 const SAMPLE = { primaryHex: "#002f6c", accentHex: "#c8102e" };
 
@@ -38,5 +43,46 @@ describe("normalizeHex6", () => {
   it("normalizes 3- and 6-digit hex", () => {
     assert.equal(normalizeHex6("#abc"), "#aabbcc");
     assert.equal(normalizeHex6("002f6c"), "#002f6c");
+  });
+});
+
+describe("bracketWatermark", () => {
+  const siteDefault = "/images/dyb-logo.png";
+  const localUpload = "/uploads/tournament-brackets/foo.svg";
+  const blobUrl = "https://example.blob.vercel-storage.com/foo.svg";
+
+  it("detects local dev upload paths", () => {
+    assert.equal(isLocalDevUploadUrl(localUpload), true);
+    assert.equal(isLocalDevUploadUrl(siteDefault), false);
+    assert.equal(isLocalDevUploadUrl(blobUrl), false);
+  });
+
+  it("falls back to site default for /uploads on Vercel", () => {
+    const prev = process.env.VERCEL;
+    process.env.VERCEL = "1";
+    try {
+      assert.equal(resolveBracketWatermarkBase(localUpload, siteDefault), siteDefault);
+      assert.equal(resolveBracketWatermarkBase(blobUrl, siteDefault), blobUrl);
+    } finally {
+      if (prev === undefined) delete process.env.VERCEL;
+      else process.env.VERCEL = prev;
+    }
+  });
+
+  it("uses local upload path when not on Vercel", () => {
+    const prev = process.env.VERCEL;
+    delete process.env.VERCEL;
+    try {
+      assert.equal(resolveBracketWatermarkBase(localUpload, siteDefault), localUpload);
+    } finally {
+      if (prev !== undefined) process.env.VERCEL = prev;
+    }
+  });
+
+  it("appends cache version query param", () => {
+    assert.equal(
+      bracketWatermarkSrc(siteDefault, siteDefault, 123),
+      `${siteDefault}?v=123`,
+    );
   });
 });

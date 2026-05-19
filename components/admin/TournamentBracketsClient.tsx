@@ -1877,17 +1877,27 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
             />
           </label>
           {spec?.flyer?.logoUrl ? (
-            <p className="text-xs text-zinc-500">
-              Current file:{" "}
-              <a
-                href={spec.flyer.logoUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sky-300 underline hover:text-sky-200"
-              >
-                Open uploaded logo
-              </a>
-            </p>
+            <div className="space-y-1">
+              <p className="text-xs text-zinc-500">
+                Current file:{" "}
+                <a
+                  href={spec.flyer.logoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sky-300 underline hover:text-sky-200"
+                >
+                  Open uploaded logo
+                </a>
+              </p>
+              {spec.flyer.logoUrl.startsWith("/uploads/") &&
+              typeof window !== "undefined" &&
+              !/localhost|127\.0\.0\.1/.test(window.location.hostname) ? (
+                <p className="text-xs leading-relaxed text-amber-400/90">
+                  This file was saved from local dev and is not on the live server. Upload the logo again
+                  here on the live site so the public bracket watermark can load it.
+                </p>
+              ) : null}
+            </div>
           ) : null}
         </div>
 
