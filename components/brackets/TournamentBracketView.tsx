@@ -16,6 +16,7 @@ import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
 import type { BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { bracketThemeCssVars } from "@/lib/tournament-brackets/bracketTheme";
 import { getBracketConnectorVariant } from "@/lib/tournament-brackets/bracketConnectorPaths";
+import { matchGridPlacement, podiumColumnGridPlacement } from "@/lib/tournament-brackets/bracketGridPlacement";
 import {
   BRACKET_THIRD_PLACE_MATCH_ID,
   clampBracketScoreInput,
@@ -98,12 +99,6 @@ function incomingFeederVariant(rounds: LayoutRound[], roundIndex: number, slotIn
   const topHas = matchAtCanonicalSlot(prevRound, 2 * slotIndex) != null;
   const bottomHas = matchAtCanonicalSlot(prevRound, 2 * slotIndex + 1) != null;
   return getBracketConnectorVariant(topHas, bottomHas);
-}
-
-function matchWrapAlignmentClass(variant: ReturnType<typeof incomingFeederVariant>) {
-  if (variant === "top") return ` ${styles.gridMatchWrapAlignStart}`;
-  if (variant === "bottom") return ` ${styles.gridMatchWrapAlignEnd}`;
-  return "";
 }
 
 function isSixTeamEightSlotByeLayout(rounds: LayoutRound[], laneRows: number) {
@@ -369,33 +364,55 @@ function usePodiumChampionPlaqueAlign(wrapRef: RefObject<HTMLDivElement | null>)
   }, [wrapRef]);
 }
 
-/** Keeps 3rd-place game and plaque bottom bands the same height so championship rows align. */
-function usePodiumThirdBandHeightSync(enabled: boolean, rootRef: RefObject<HTMLElement | null>) {
+const PODIUM_THIRD_BAND_SYNC_MAX_PX = 280;
+const PODIUM_THIRD_ALIGN_MAX_PX = 120;
+
+type PodiumThirdSyncMode = false | "full" | "align-only";
+
+/**
+ * Keeps 3rd-place game and plaque bottom bands aligned.
+ * `full`: height sync + vertical align (standard brackets).
+ * `align-only`: card-based height + align only (compact 6-team; avoids row measure feedback loop).
+ */
+function usePodiumThirdBandHeightSync(mode: PodiumThirdSyncMode, rootRef: RefObject<HTMLElement | null>) {
   useLayoutEffect(() => {
-    if (!enabled) return;
     const scope = rootRef.current;
-    if (!scope) return;
+    if (!mode || !scope) {
+      return () => {
+        scope?.style.removeProperty("--bracket-podium-third-band-sync-height");
+      };
+    }
+    const alignOnly = mode === "align-only";
     const sync = () => {
       const gameRow = scope.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="game"]`);
       const plaqueRow = scope.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="plaque"]`);
-      const gameH = gameRow?.getBoundingClientRect().height ?? 0;
-      const plaqueH = plaqueRow?.getBoundingClientRect().height ?? 0;
-      const h = Math.max(gameH, plaqueH, 0);
+      const game = gameRow?.querySelector(`[${BRACKET_PODIUM_THIRD_SOURCE_ATTR}]`);
+      const plaque = plaqueRow?.querySelector(`[${BRACKET_PODIUM_THIRD_TARGET_ATTR}]`);
+      const gameCardH = game instanceof HTMLElement ? game.offsetHeight : 0;
+      const plaqueCardH = plaque instanceof HTMLElement ? plaque.offsetHeight : 0;
+      const gameH = alignOnly
+        ? gameCardH
+        : gameCardH || (gameRow instanceof HTMLElement ? gameRow.offsetHeight : 0);
+      const plaqueH = alignOnly
+        ? plaqueCardH
+        : plaqueCardH || (plaqueRow instanceof HTMLElement ? plaqueRow.offsetHeight : 0);
+      const h = Math.min(Math.max(gameH, plaqueH, 0), PODIUM_THIRD_BAND_SYNC_MAX_PX);
       if (h > 0) {
         scope.style.setProperty("--bracket-podium-third-band-sync-height", `${Math.ceil(h)}px`);
       }
       if (gameRow instanceof HTMLElement && plaqueRow instanceof HTMLElement) {
-        const game = gameRow.querySelector(`[${BRACKET_PODIUM_THIRD_SOURCE_ATTR}]`);
-        const plaque = plaqueRow.querySelector(`[${BRACKET_PODIUM_THIRD_TARGET_ATTR}]`);
         if (game && plaque) {
-          plaqueRow.style.setProperty("--bracket-podium-third-align-y", "0px");
           const gameRect = game.getBoundingClientRect();
           const plaqueRect = plaque.getBoundingClientRect();
           const delta = (gameRect.top + gameRect.bottom) / 2 - (plaqueRect.top + plaqueRect.bottom) / 2;
           const plaqueRowRect = plaqueRow.getBoundingClientRect();
           const visualScale = plaqueRow.offsetHeight > 0 ? plaqueRowRect.height / plaqueRow.offsetHeight : 1;
-          const cssDelta = visualScale > 0 ? delta / visualScale : delta;
-          plaqueRow.style.setProperty("--bracket-podium-third-align-y", `${Math.round(cssDelta * 100) / 100}px`);
+          let cssDelta = visualScale > 0 ? delta / visualScale : delta;
+          cssDelta = Math.max(-PODIUM_THIRD_ALIGN_MAX_PX, Math.min(PODIUM_THIRD_ALIGN_MAX_PX, cssDelta));
+          plaqueRow.style.setProperty(
+            "--bracket-podium-third-align-y",
+            Math.abs(cssDelta) > 0.5 ? `${Math.round(cssDelta * 100) / 100}px` : "0px",
+          );
           scope.dispatchEvent(new CustomEvent("bracket:podium-third-align", { bubbles: true }));
         } else {
           plaqueRow.style.removeProperty("--bracket-podium-third-align-y");
@@ -406,11 +423,13 @@ function usePodiumThirdBandHeightSync(enabled: boolean, rootRef: RefObject<HTMLE
     sync();
     const raf = window.requestAnimationFrame(sync);
     const ro = new ResizeObserver(sync);
-    ro.observe(scope);
+    if (!alignOnly) {
+      ro.observe(scope);
+    }
     const gameRow = scope.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="game"]`);
     const plaqueRow = scope.querySelector(`[${BRACKET_PODIUM_THIRD_BAND_ATTR}="plaque"]`);
-    if (gameRow) ro.observe(gameRow);
-    if (plaqueRow) ro.observe(plaqueRow);
+    if (!alignOnly && gameRow) ro.observe(gameRow);
+    if (!alignOnly && plaqueRow) ro.observe(plaqueRow);
     const game = gameRow?.querySelector(`[${BRACKET_PODIUM_THIRD_SOURCE_ATTR}]`);
     const plaque = plaqueRow?.querySelector(`[${BRACKET_PODIUM_THIRD_TARGET_ATTR}]`);
     if (game) ro.observe(game);
@@ -418,8 +437,12 @@ function usePodiumThirdBandHeightSync(enabled: boolean, rootRef: RefObject<HTMLE
     return () => {
       window.cancelAnimationFrame(raf);
       ro.disconnect();
+      scope.style.removeProperty("--bracket-podium-third-band-sync-height");
+      if (plaqueRow instanceof HTMLElement) {
+        plaqueRow.style.removeProperty("--bracket-podium-third-align-y");
+      }
     };
-  }, [enabled, rootRef]);
+  }, [mode, rootRef]);
 }
 
 function hasBracketParkInfo(park?: BracketParkInfo | null): boolean {
@@ -890,7 +913,10 @@ function ConnectedBracketGrid({
   };
 
   const gridRef = useRef<HTMLDivElement>(null);
-  usePodiumThirdBandHeightSync(hasPodium, gridRef);
+  usePodiumThirdBandHeightSync(
+    hasPodium ? (useCompactSixTeamByeLayout ? "align-only" : "full") : false,
+    gridRef,
+  );
 
   const cells: ReactNode[] = [];
   const parkInPodiumHeader = hasPodium && hasBracketParkInfo(parkInfo);
@@ -948,14 +974,11 @@ function ConnectedBracketGrid({
   for (let ri = 0; ri < R; ri++) {
     const round = rounds[ri]!;
     const slotCount = round.layoutSlotCount ?? round.matches.length;
-    const span = rowSpanForMatch(N, slotCount);
     const col = 2 * ri + 1;
     const isFinalSingleMatchPodium = hasPodium && podium != null && ri === R - 1 && slotCount === 1;
     for (let j = 0; j < slotCount; j++) {
       const m = matchAtCanonicalSlot(round, j);
-      const rowStart = 2 + j * span;
-      const feederVariant = incomingFeederVariant(rounds, ri, j);
-      const alignClass = useCompactSixTeamByeLayout ? matchWrapAlignmentClass(feederVariant) : "";
+      const { rowStart, span } = matchGridPlacement(rounds, ri, j, N, useCompactSixTeamByeLayout);
       if (m) {
         if (isFinalSingleMatchPodium) {
           const p = podium!;
@@ -999,7 +1022,7 @@ function ConnectedBracketGrid({
           cells.push(
             <div
               key={m.id}
-              className={`${styles.gridMatchWrap}${alignClass}`}
+              className={styles.gridMatchWrap}
               style={{ gridColumn: col, gridRow: `${rowStart} / span ${span}` }}
             >
               <MatchArticle
@@ -1059,11 +1082,10 @@ function ConnectedBracketGrid({
   }
 
   if (hasPodium && podium) {
-    const lastRi = R - 1;
-    const finalRound = rounds[lastRi]!;
-    const finalSlots = finalRound.layoutSlotCount ?? finalRound.matches.length;
-    const spanFinal = rowSpanForMatch(N, finalSlots);
-    const rowStartFinal = 2;
+    const { rowStart: rowStartFinal, span: spanFinal } = podiumColumnGridPlacement(
+      N,
+      useCompactSixTeamByeLayout,
+    );
     cells.push(
       <div
         key="conn-final-champion"

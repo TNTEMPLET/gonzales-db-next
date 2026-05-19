@@ -188,7 +188,7 @@ if(src&&tgt){
 var sr=src.getBoundingClientRect(),tr=tgt.getBoundingClientRect();
 var rootEl=wrap.closest(".bracket-root");
 var compactSix=!!(rootEl&&rootEl.classList&&rootEl.classList.contains("bracket-root-compact-six-team"));
-var mid=compactSix?(sr.top+sr.bottom)/2+56:((sr.top+sr.bottom)/2+(tr.top+tr.bottom)/2)/2;
+var mid=compactSix?(sr.top+sr.bottom)/2+12:((sr.top+sr.bottom)/2+(tr.top+tr.bottom)/2)/2;
 yPct=((mid-cr.top)/h)*100;
 yPct=Math.max(5,Math.min(95,yPct));
 }
