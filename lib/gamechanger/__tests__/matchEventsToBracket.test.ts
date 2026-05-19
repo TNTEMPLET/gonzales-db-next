@@ -54,6 +54,7 @@ describe("buildLivePayloadFromEvents", () => {
     assert.match(payload.liveGameStatuses.m1?.inningLabel ?? "", /Bot/);
     assert.equal(payload.matchEventIds.m1, sampleEvent.id);
     assert.equal(payload.eventsByMatchId.m1?.id, sampleEvent.id);
+    assert.equal(payload.hasLiveGames, true);
     assert.ok(payload.nextPollMs >= 15_000);
   });
 });
