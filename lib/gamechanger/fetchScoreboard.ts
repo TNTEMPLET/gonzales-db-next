@@ -43,12 +43,44 @@ export async function fetchGameChangerScoreboard(
   return parsed.data;
 }
 
+/** Merge events across multiple days (dedupe by id). Used for team-name discovery in admin. */
+export async function fetchGameChangerScoreboardDays(
+  widgetId: string,
+  dayOffsets: number[],
+): Promise<{ response: GcScoreboardResponse; events: GcScoreboardEvent[] }> {
+  const starts = [...new Set(dayOffsets)].map((offset) => scoreboardDayStartIsoOffsetDays(offset));
+  const responses = await Promise.all(starts.map((start) => fetchGameChangerScoreboard(widgetId, start)));
+
+  const byId = new Map<string, GcScoreboardEvent>();
+  for (const res of responses) {
+    for (const ev of res.data.events) {
+      byId.set(ev.id, ev);
+    }
+  }
+
+  const events = [...byId.values()].sort((a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts));
+  const latest = responses[responses.length - 1]!;
+  return {
+    response: { ...latest, data: { ...latest.data, events } },
+    events,
+  };
+}
+
 /** Merge events from today and yesterday (dedupe by id). */
 export async function fetchGameChangerScoreboardWindow(widgetId: string): Promise<{
   response: GcScoreboardResponse;
   events: GcScoreboardEvent[];
 }> {
-  const starts = [scoreboardDayStartIsoOffsetDays(-1), scoreboardDayStartIso()];
+  return fetchGameChangerScoreboardDays(widgetId, [-1, 0]);
+}
+
+/** Wider window for admin team-name mapping (past two weeks + today). */
+export async function fetchGameChangerScoreboardTeamNamesWindow(widgetId: string): Promise<{
+  response: GcScoreboardResponse;
+  events: GcScoreboardEvent[];
+}> {
+  const offsets = Array.from({ length: 15 }, (_, i) => i - 14);
+  return fetchGameChangerScoreboardDays(widgetId, offsets);
   const responses = await Promise.all(starts.map((start) => fetchGameChangerScoreboard(widgetId, start)));
 
   const byId = new Map<string, GcScoreboardEvent>();

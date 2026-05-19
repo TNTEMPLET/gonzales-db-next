@@ -5,7 +5,7 @@ import { useCallback, useMemo, useState } from "react";
 import GameChangerScoreboardModal from "@/components/brackets/GameChangerScoreboardModal";
 import TournamentBracketView from "@/components/brackets/TournamentBracketView";
 import { useGameChangerLive } from "@/hooks/useGameChangerLive";
-import { bracketMatchLabelForId } from "@/lib/gamechanger/collectLayoutMatches";
+import { bracketMatchLabelForId, bracketMatchRefForId } from "@/lib/gamechanger/collectLayoutMatches";
 import type { BracketGameChanger } from "@/lib/gamechanger/types";
 import type { BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
@@ -62,10 +62,8 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
   const gameChanger = selectedBracket?.gameChanger ?? null;
   const gcEnabled = Boolean(gameChanger?.widgetId);
 
-  const { liveGameStatuses, loading: liveLoading, error: liveError } = useGameChangerLive(
-    selectedBracket?.id,
-    gcEnabled,
-  );
+  const { liveGameStatuses, eventsByMatchId, loading: liveLoading, error: liveError } =
+    useGameChangerLive(selectedBracket?.id, gcEnabled);
 
   const handleMatchClick = useCallback(
     (matchId: string) => {
@@ -143,7 +141,7 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
                 {liveError ? <span className="text-amber-400/90">{liveError}</span> : null}
                 {!liveError ? (
                   <span>
-                    Tap a game for the GameChanger scoreboard. Live games are highlighted.
+                    Tap a game for its live scoreboard. Live games are highlighted.
                   </span>
                 ) : null}
               </p>
@@ -182,6 +180,9 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
           open
           gameChanger={gameChanger}
           matchLabel={modalLabel}
+          bracketMatch={bracketMatchRefForId(selectedBracket.layout, modalMatchId)}
+          gcEvent={eventsByMatchId[modalMatchId]}
+          liveStatus={liveGameStatuses?.[modalMatchId] ?? null}
           onClose={() => setModalMatchId(null)}
         />
       ) : null}

@@ -46,6 +46,10 @@ export function collectLayoutMatchesForGc(layout: BracketLayout): GcBracketMatch
   return refs;
 }
 
+export function bracketMatchRefForId(layout: BracketLayout, matchId: string): GcBracketMatchRef | undefined {
+  return collectLayoutMatchesForGc(layout).find((r) => r.id === matchId);
+}
+
 export function bracketMatchLabelForId(layout: BracketLayout, matchId: string): string | undefined {
   const ref = collectLayoutMatchesForGc(layout).find((r) => r.id === matchId);
   if (!ref) return undefined;

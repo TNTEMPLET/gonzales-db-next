@@ -53,6 +53,7 @@ describe("buildLivePayloadFromEvents", () => {
     assert.equal(payload.liveGameStatuses.m1?.scoreLabel, "3–2");
     assert.match(payload.liveGameStatuses.m1?.inningLabel ?? "", /Bot/);
     assert.equal(payload.matchEventIds.m1, sampleEvent.id);
+    assert.equal(payload.eventsByMatchId.m1?.id, sampleEvent.id);
     assert.ok(payload.nextPollMs >= 15_000);
   });
 });

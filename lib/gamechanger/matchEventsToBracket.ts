@@ -108,12 +108,14 @@ export function buildLivePayloadFromEvents(
 ): GcLiveMatchPayload {
   const liveGameStatuses: Record<string, GcLiveGameStatus> = {};
   const matchEventIds: Record<string, string> = {};
+  const eventsByMatchId: Record<string, GcScoreboardEvent> = {};
 
   for (const ref of bracketMatches) {
     const event = findGcEventForBracketMatch(ref, events);
     if (!event) continue;
 
     matchEventIds[ref.id] = event.id;
+    eventsByMatchId[ref.id] = event;
     const live = isLiveEvent(event);
     const scoreLabel = scoreLabelForEvent(event, ref);
     const inning = inningLabel(event);
@@ -131,6 +133,7 @@ export function buildLivePayloadFromEvents(
   return {
     liveGameStatuses,
     matchEventIds,
+    eventsByMatchId,
     nextPollMs: pollIntervalFromNextUpdate(nextUpdate),
   };
 }

@@ -2,12 +2,14 @@
 
 import { useEffect, useId, useRef } from "react";
 
+import GameChangerEventScoreboard from "@/components/brackets/GameChangerEventScoreboard";
+import type { BracketLiveGameStatus } from "@/components/brackets/TournamentBracketView";
 import {
   clearGcScoreboardWidget,
   loadGcScoreboardSdk,
   type GcScoreboardInitOptions,
 } from "@/lib/gamechanger/loadGcScoreboardSdk";
-import type { BracketGameChanger } from "@/lib/gamechanger/types";
+import type { BracketGameChanger, GcBracketMatchRef, GcScoreboardEvent } from "@/lib/gamechanger/types";
 
 import styles from "@/components/brackets/GameChangerScoreboardModal.module.css";
 
@@ -17,6 +19,10 @@ type Props = {
   gameChanger: BracketGameChanger;
   /** Shown in modal header for context. */
   matchLabel?: string;
+  /** When set with `gcEvent`, shows a single-game live scoreboard instead of the full schedule widget. */
+  bracketMatch?: GcBracketMatchRef;
+  gcEvent?: GcScoreboardEvent;
+  liveStatus?: BracketLiveGameStatus | null;
 };
 
 export default function GameChangerScoreboardModal({
@@ -24,12 +30,16 @@ export default function GameChangerScoreboardModal({
   onClose,
   gameChanger,
   matchLabel,
+  bracketMatch,
+  gcEvent,
+  liveStatus,
 }: Props) {
   const reactId = useId();
   const hostId = `gc-scoreboard-host-${reactId.replace(/:/g, "")}`;
   const targetSelector = `#${hostId}`;
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previouslyFocusedRef = useRef<HTMLElement | null>(null);
+  const singleGame = Boolean(bracketMatch && gcEvent);
 
   useEffect(() => {
     if (!open) return;
@@ -44,6 +54,14 @@ export default function GameChangerScoreboardModal({
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
 
+    if (singleGame) {
+      return () => {
+        document.removeEventListener("keydown", onKeyDown);
+        document.body.style.overflow = prevOverflow;
+        previouslyFocusedRef.current?.focus();
+      };
+    }
+
     let cancelled = false;
 
     void (async () => {
@@ -54,7 +72,7 @@ export default function GameChangerScoreboardModal({
         const init: GcScoreboardInitOptions = {
           target: targetSelector,
           widgetId: gameChanger.widgetId,
-          maxVerticalGamesVisible: gameChanger.maxVerticalGamesVisible ?? 4,
+          maxVerticalGamesVisible: 1,
         };
         if (gameChanger.layout) init.layout = gameChanger.layout;
         sdk.init(init);
@@ -70,7 +88,7 @@ export default function GameChangerScoreboardModal({
       clearGcScoreboardWidget();
       previouslyFocusedRef.current?.focus();
     };
-  }, [open, gameChanger, targetSelector, onClose]);
+  }, [open, gameChanger, targetSelector, onClose, singleGame]);
 
   if (!open) return null;
 
@@ -106,9 +124,19 @@ export default function GameChangerScoreboardModal({
           </button>
         </header>
         <div className={styles.widgetHost}>
-          <div id={hostId} className={styles.widgetTarget} />
+          {singleGame && bracketMatch && gcEvent ? (
+            <GameChangerEventScoreboard
+              bracketMatch={bracketMatch}
+              event={gcEvent}
+              liveStatus={liveStatus}
+            />
+          ) : (
+            <div id={hostId} className={styles.widgetTarget} />
+          )}
         </div>
-        <p className={styles.footer}>Scores from GameChanger · Updates automatically</p>
+        {!singleGame ? (
+          <p className={styles.footer}>Scores from GameChanger · Updates automatically</p>
+        ) : null}
       </div>
     </div>
   );
