@@ -42,8 +42,8 @@ export function parseVoteExportTopCount(value: string | null | undefined) {
 }
 
 export function isAllStarRunoffTwoTeamBallot(cycle: {
-  runoffFirstTeamSize: number | null;
-  runoffPoolSize: number | null;
+  runoffFirstTeamSize?: number | null;
+  runoffPoolSize?: number | null;
 }) {
   return (
     cycle.runoffFirstTeamSize != null &&
