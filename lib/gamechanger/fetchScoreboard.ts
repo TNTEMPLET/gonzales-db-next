@@ -81,24 +81,6 @@ export async function fetchGameChangerScoreboardTeamNamesWindow(widgetId: string
 }> {
   const offsets = Array.from({ length: 15 }, (_, i) => i - 14);
   return fetchGameChangerScoreboardDays(widgetId, offsets);
-  const responses = await Promise.all(starts.map((start) => fetchGameChangerScoreboard(widgetId, start)));
-
-  const byId = new Map<string, GcScoreboardEvent>();
-  for (const res of responses) {
-    for (const ev of res.data.events) {
-      byId.set(ev.id, ev);
-    }
-  }
-
-  const events = [...byId.values()].sort(
-    (a, b) => Date.parse(a.start_ts) - Date.parse(b.start_ts),
-  );
-
-  const latest = responses[responses.length - 1]!;
-  return {
-    response: { ...latest, data: { ...latest.data, events } },
-    events,
-  };
 }
 
 export function pollIntervalFromNextUpdate(nextUpdate: string | undefined): number {
