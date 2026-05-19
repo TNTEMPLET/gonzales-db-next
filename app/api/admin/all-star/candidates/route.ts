@@ -43,9 +43,9 @@ export async function POST(request: NextRequest) {
   const team = body.team?.trim() || "";
   const jerseyNumber = body.jerseyNumber?.trim() || "";
 
-  if (!cycleId || !playerFullName || !team || !jerseyNumber) {
+  if (!cycleId || !playerFullName || !team) {
     return NextResponse.json(
-      { error: "cycleId, playerFullName, team, and jerseyNumber are required" },
+      { error: "cycleId, playerFullName, and team are required" },
       { status: 400 },
     );
   }
