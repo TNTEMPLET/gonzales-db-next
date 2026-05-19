@@ -77,6 +77,8 @@ export type GcLiveMatchPayload = {
   matchEventIds: Record<string, string>;
   /** Full GC event per bracket match id (for single-game scoreboard modal). */
   eventsByMatchId: Record<string, GcScoreboardEvent>;
+  /** True when any bracket-matched GameChanger game is in progress. */
+  hasLiveGames: boolean;
   nextPollMs: number;
 };
 

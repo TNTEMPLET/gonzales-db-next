@@ -43,7 +43,7 @@ function inningLabel(event: GcScoreboardEvent): string | undefined {
   return `${half} ${inning.inning}`;
 }
 
-function isLiveEvent(event: GcScoreboardEvent): boolean {
+export function isLiveGcEvent(event: GcScoreboardEvent): boolean {
   if (event.game_status === "live") return true;
   if (event.game_status === "completed") return false;
   const hasInning = Boolean(event.sport_specific?.bats?.inning_details);
@@ -51,6 +51,15 @@ function isLiveEvent(event: GcScoreboardEvent): boolean {
     event.home_team.score != null ||
     event.away_team.score != null;
   return hasInning && hasScores;
+}
+
+/** @deprecated use isLiveGcEvent */
+const isLiveEvent = isLiveGcEvent;
+
+export function hasLiveGamesInEventsByMatchId(
+  eventsByMatchId: Record<string, GcScoreboardEvent>,
+): boolean {
+  return Object.values(eventsByMatchId).some(isLiveGcEvent);
 }
 
 function scoreLabelForEvent(event: GcScoreboardEvent, ref: GcBracketMatchRef): string {
@@ -130,10 +139,13 @@ export function buildLivePayloadFromEvents(
     }
   }
 
+  const hasLiveGames = hasLiveGamesInEventsByMatchId(eventsByMatchId);
+
   return {
     liveGameStatuses,
     matchEventIds,
     eventsByMatchId,
+    hasLiveGames,
     nextPollMs: pollIntervalFromNextUpdate(nextUpdate),
   };
 }

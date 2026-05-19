@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { BracketLiveGameStatus } from "@/components/brackets/TournamentBracketView";
+import { scheduleNextGcPoll } from "@/hooks/gameChangerPollLoop";
 import type { GcLiveMatchPayload, GcScoreboardEvent } from "@/lib/gamechanger/types";
 
 type LiveApiResponse = GcLiveMatchPayload & {
@@ -19,11 +20,15 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
   const [eventsByMatchId, setEventsByMatchId] = useState<Record<string, GcScoreboardEvent>>({});
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const pollMsRef = useRef(30_000);
+  const pollStateRef = useRef({
+    hadLiveGames: false,
+    postLiveFollowUpPending: false,
+  });
   const hasLoadedRef = useRef(false);
+  const pollingRef = useRef(false);
 
-  const fetchLive = useCallback(async () => {
-    if (!projectId || !enabled) return;
+  const fetchLive = useCallback(async (): Promise<number | null> => {
+    if (!projectId || !enabled) return null;
     if (!hasLoadedRef.current) setLoading(true);
     try {
       const res = await fetch(`/api/tournaments/${encodeURIComponent(projectId)}/gamechanger-live`, {
@@ -36,15 +41,27 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
       setLiveGameStatuses(json.liveGameStatuses ?? {});
       setMatchEventIds(json.matchEventIds ?? {});
       setEventsByMatchId(json.eventsByMatchId ?? {});
-      pollMsRef.current = json.nextPollMs ?? 30_000;
+      const schedule = scheduleNextGcPoll({
+        hasLiveGames: json.hasLiveGames ?? false,
+        nextPollMs: json.nextPollMs ?? 30_000,
+        hadLiveGames: pollStateRef.current.hadLiveGames,
+        postLiveFollowUpPending: pollStateRef.current.postLiveFollowUpPending,
+      });
+      pollStateRef.current.hadLiveGames = schedule.hadLiveGames;
+      pollStateRef.current.postLiveFollowUpPending = schedule.postLiveFollowUpPending;
       hasLoadedRef.current = true;
       setError(null);
+      return schedule.delayMs;
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err));
+      return null;
     } finally {
       setLoading(false);
     }
   }, [projectId, enabled]);
+
+  const fetchLiveRef = useRef(fetchLive);
+  fetchLiveRef.current = fetchLive;
 
   useEffect(() => {
     if (!projectId || !enabled) {
@@ -52,29 +69,54 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
       setMatchEventIds({});
       setEventsByMatchId({});
       setError(null);
+    }
+  }, [projectId, enabled]);
+
+  useEffect(() => {
+    if (!projectId || !enabled) {
       hasLoadedRef.current = false;
+      pollStateRef.current = { hadLiveGames: false, postLiveFollowUpPending: false };
+      pollingRef.current = false;
       return;
     }
 
     let cancelled = false;
     let timeoutId = 0;
 
-    const tick = async () => {
-      if (cancelled) return;
-      await fetchLive();
+    const schedule = (delayMs: number) => {
       if (cancelled) return;
       timeoutId = window.setTimeout(() => {
-        void tick();
-      }, pollMsRef.current);
+        void runPollLoop();
+      }, delayMs);
     };
 
-    void tick();
+    const runPollLoop = async () => {
+      if (cancelled) return;
+      pollingRef.current = true;
+      const delayMs = await fetchLiveRef.current();
+      if (cancelled) return;
+      if (delayMs != null) {
+        schedule(delayMs);
+      } else {
+        pollingRef.current = false;
+      }
+    };
+
+    const onVisibility = () => {
+      if (cancelled || document.visibilityState !== "visible" || pollingRef.current) return;
+      void runPollLoop();
+    };
+
+    void runPollLoop();
+    document.addEventListener("visibilitychange", onVisibility);
 
     return () => {
       cancelled = true;
+      pollingRef.current = false;
       window.clearTimeout(timeoutId);
+      document.removeEventListener("visibilitychange", onVisibility);
     };
-  }, [projectId, enabled, fetchLive]);
+  }, [projectId, enabled]);
 
   return {
     liveGameStatuses,
@@ -82,6 +124,6 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
     eventsByMatchId,
     loading,
     error,
-    refresh: fetchLive,
+    refresh: () => fetchLiveRef.current(),
   };
 }
