@@ -47,3 +47,8 @@ next-env.d.ts
 # Tournament bracket builder: local logo uploads (folder kept via .gitkeep)
 /public/uploads/tournament-brackets/*
 !/public/uploads/tournament-brackets/.gitkeep
+
+# One-off agent refactor tooling (not shipped with the app)
+scripts/refactor-*.mjs
+scripts/apply-minimal-*.py
+scripts/*-ui-helpers.txt
