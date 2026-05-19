@@ -35,6 +35,7 @@ import {
   specHasSavedScores,
   type BracketMatchScores,
 } from "@/lib/tournament-brackets/bracketScoring";
+import { bracketWatermarkSrc } from "@/lib/tournament-brackets/bracketWatermark";
 import { normalizeHex6, resolveBracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { ALLOWED_REFERENCE_HOST_SUFFIXES, isReferenceUrlAllowed } from "@/lib/tournament-brackets/referenceAllowlist";
 import {
@@ -487,6 +488,12 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     [spec, siteThemeDefaults],
   );
 
+  const bracketWatermarkUrl = bracketWatermarkSrc(
+    spec?.flyer?.logoUrl,
+    bracketBranding.targetLogoPath,
+    project?.updatedAt ?? Date.now(),
+  );
+
   const [bracketColorDraftPrimary, setBracketColorDraftPrimary] = useState(siteThemeDefaults.primaryHex);
   const [bracketColorDraftAccent, setBracketColorDraftAccent] = useState(siteThemeDefaults.accentHex);
 
@@ -919,7 +926,11 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           ...(palette ? { primaryHex: palette.primary, accentHex: palette.accent } : {}),
         },
       });
-      setNotice("Logo uploaded and palette applied to flyer options.");
+      setNotice(
+        palette
+          ? "Logo uploaded and palette applied to flyer options."
+          : "Logo uploaded. Automatic color sampling was skipped for this file type (you can set bracket colors manually).",
+      );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -1278,7 +1289,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   function exportBracketHtml() {
     if (!project || !bracketLayout) return;
     const html = buildBracketExportHtmlDocument(project.name, bracketLayout, resolvedBracketTheme, {
-      logoWatermarkUrl: bracketBranding.targetLogoPath,
+      logoWatermarkUrl: bracketWatermarkUrl,
       parentOrganizationLogo: {
         src: bracketBranding.parentLogoPath,
         name: bracketBranding.parentName,
@@ -1844,18 +1855,18 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           <div>
             <h3 className="text-sm font-semibold text-zinc-200">League logo (flyer, colors, bracket watermark)</h3>
             <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-              Upload a <strong className="text-zinc-400">PNG or JPEG</strong> league mark. We store the image URL on
-              the project and sample two colors for the flyer header strip (you can tune sponsors and layout under{" "}
-              <strong className="text-zinc-400">Flyer / sponsors</strong> below). The same logo is drawn very faintly
-              behind the column bracket preview and HTML export when present. Typical size: wide logo, transparent or
-              solid background, at least ~400px wide for print clarity.
+              Upload a <strong className="text-zinc-400">PNG, JPEG, WebP, or SVG</strong> league mark. We store the
+              image URL on the project and sample two colors from raster images for the flyer header strip (SVG skips
+              auto-colors; set bracket colors manually if needed). The same logo is drawn very faintly behind the
+              bracket preview and public page when present. For raster files, prefer at least ~672px on the long edge
+              (larger is fine — the watermark scales down).
             </p>
           </div>
           <label className="block text-xs font-medium text-zinc-500">
             Image file
             <input
               type="file"
-              accept="image/*"
+              accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml,.svg"
               disabled={!projectId || busy}
               className="mt-1 block w-full text-sm"
               onChange={(e) => {
@@ -2401,8 +2412,9 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         >
                           <TournamentBracketView
                             layout={bracketLayout}
+                            colorScheme="light"
                             themeColors={resolvedBracketTheme}
-                            logoWatermarkUrl={bracketBranding.targetLogoPath}
+                            logoWatermarkUrl={bracketWatermarkUrl}
                             parentOrganizationLogo={{
                               src: bracketBranding.parentLogoPath,
                               name: bracketBranding.parentName,

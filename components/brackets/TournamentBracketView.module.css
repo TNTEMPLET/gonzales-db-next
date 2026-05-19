@@ -7,6 +7,11 @@
   --bracket-surface: #ffffff;
   --bracket-border: #c5d0e0;
   --bracket-fg: #002f6c;
+  --bracket-body-fg: #002f6c;
+  --bracket-body-emphasis: #001a3d;
+  --bracket-chrome: #002f6c;
+  --bracket-chrome-deep: #001a3d;
+  --bracket-connector-fg: #002f6c;
   --bracket-muted: #4a667f;
   --bracket-accent: #c8102e;
   --bracket-navy-deep: #001a3d;
@@ -14,13 +19,54 @@
   --bracket-card-shadow: 0 1px 2px rgb(0 47 108 / 0.06), 0 2px 8px rgb(0 26 61 / 0.06);
   --bracket-card-shadow-hover: 0 2px 4px rgb(0 47 108 / 0.08), 0 6px 16px rgb(0 26 61 / 0.08);
   --bracket-connector-opacity: 0.48;
+  --bracket-badge-bg: rgb(255 255 255 / 0.64);
+  --bracket-badge-border: rgb(0 47 108 / 0.1);
+  --bracket-badge-shadow: 0 1px 3px rgb(0 26 61 / 0.08);
+  --bracket-wash-bg: rgb(255 255 255 / 0.64);
+  --bracket-wash-border: rgb(0 47 108 / 0.13);
+  --bracket-wash-shadow: 0 2px 8px rgb(0 26 61 / 0.06);
+  --bracket-surface-muted: #fafbfd;
+  --bracket-surface-gradient: linear-gradient(to bottom, #fff, #fafbfd);
+  --bracket-surface-gradient-alt: linear-gradient(165deg, #fff 0%, #f4f7fb 100%);
+  --bracket-subtle-border: rgb(0 47 108 / 0.1);
+  --bracket-subtle-shadow: 0 1px 2px rgb(0 47 108 / 0.05);
+  --bracket-inner-border: #e2e8f0;
+  --bracket-slot-away-bg: #f7fafc;
+  --bracket-tie-picker-bg: #f8fafc;
+  --bracket-tie-picker-hover-bg: #f4f7fb;
+  --bracket-schedule-meta-bg: rgb(248 250 252 / 0.95);
+  --bracket-park-aside-bg: rgb(255 255 255 / 0.72);
+  --bracket-grid-schedule-bg: rgb(255 255 255 / 0.88);
+  --bracket-mobile-frame-bg: rgb(248 250 252 / 0.9);
+  --bracket-mobile-header-bg: rgb(255 255 255 / 0.82);
+  --bracket-mobile-card-shadow: 0 1px 5px rgb(0 26 61 / 0.08);
+  --bracket-on-accent-fg: #ffffff;
+  --bracket-on-accent-border: rgb(255 255 255 / 0.18);
+  --bracket-title-gradient: linear-gradient(135deg, rgb(255 255 255 / 0.12), transparent 34%);
+  --bracket-title-shadow: 0 0.55rem 1.1rem rgb(0 26 61 / 0.16);
+  --bracket-title-inset: inset 0 1px 0 rgb(255 255 255 / 0.22);
+  --bracket-title-inset-bottom: inset 0 -1px 0 rgb(0 0 0 / 0.28);
+  --bracket-title-text-shadow: 0 2px 0 rgb(0 0 0 / 0.32), 0 0 1rem rgb(0 0 0 / 0.22);
+  --bracket-plaque-border: rgb(255 255 255 / 0.85);
+  --bracket-plaque-gradient: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+  --bracket-title-ornament-bg: #ffffff;
+  --bracket-title-ornament-shadow: inset 0 0 0 2px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.22);
+  --bracket-round-label-fg: #ffffff;
+  --bracket-round-label-inset: inset 0 -2px 0 rgb(0 0 0 / 0.12);
+  --bracket-accent-gradient: linear-gradient(135deg, rgb(255 255 255 / 0.16), transparent 42%);
+  --bracket-accent-glow: 0 0.45rem 1rem rgb(0 26 61 / 0.14);
+  --bracket-accent-subtitle: rgb(255 255 255 / 0.72);
+  --bracket-score-input-bg: rgb(255 255 255 / 0.14);
+  --bracket-watermark-opacity: 0.052;
+  --bracket-watermark-filter: none;
+  --bracket-watermark-scale: 1.18;
   /* Shared strip height so Final 3rd-place game and Champion 3rd-place plaque share one vertical center. */
   --bracket-podium-third-band-min-height: 7rem;
   position: relative;
   isolation: isolate;
   font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   background: var(--bracket-bg);
-  color: var(--bracket-fg);
+  color: var(--bracket-body-fg);
   border-radius: 0.5rem;
   border: 1px solid var(--bracket-border);
   padding: 1.125rem 1.25rem 3.35rem;
@@ -56,14 +102,21 @@
   position: absolute;
   left: 50%;
   top: 52%;
-  transform: translate(-50%, -50%);
-  width: min(118%, 42rem);
+  transform: translate(-50%, -50%) translateZ(0);
+  width: min(calc(100% * var(--bracket-watermark-scale, 1.18)), 42rem);
   max-height: 96%;
   object-fit: contain;
-  opacity: 0.052;
+  opacity: var(--bracket-watermark-opacity, 0.052);
+  filter: var(--bracket-watermark-filter, none);
   pointer-events: none;
   z-index: 0;
   user-select: none;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+
+.root[data-bracket-scheme="dark"] .watermarkImg {
+  max-height: 92%;
 }
 
 .poweredByBadge {
@@ -77,9 +130,9 @@
   max-width: min(50%, 15rem);
   padding: 0.25rem 0.35rem 0.25rem 0.45rem;
   border-radius: 999px;
-  border: 1px solid rgb(0 47 108 / 0.1);
-  background: rgb(255 255 255 / 0.64);
-  box-shadow: 0 1px 3px rgb(0 26 61 / 0.08);
+  border: 1px solid var(--bracket-badge-border);
+  background: var(--bracket-badge-bg);
+  box-shadow: var(--bracket-badge-shadow);
 }
 
 .poweredByText {
@@ -107,8 +160,8 @@
   padding: 0.55rem 0.65rem 0.6rem;
   border-radius: 0.35rem;
   border: 1px solid var(--bracket-border);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow: 0 1px 2px rgb(0 47 108 / 0.05);
+  background: var(--bracket-park-aside-bg);
+  box-shadow: var(--bracket-subtle-shadow);
 }
 
 .parkHeading {
@@ -117,7 +170,7 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--bracket-navy-deep);
+  color: var(--bracket-body-emphasis);
 }
 
 .parkBody {
@@ -138,7 +191,7 @@
 .parkContacts {
   margin-top: 0.55rem;
   padding-top: 0.5rem;
-  border-top: 1px solid rgb(0 47 108 / 0.1);
+  border-top: 1px solid var(--bracket-subtle-border);
 }
 
 .parkContactsHeading {
@@ -146,7 +199,7 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.07em;
-  color: var(--bracket-navy-deep);
+  color: var(--bracket-body-emphasis);
   margin: 0 0 0.35rem;
 }
 
@@ -167,7 +220,7 @@
 
 .parkContactName {
   font-weight: 700;
-  color: var(--bracket-navy-deep);
+  color: var(--bracket-body-emphasis);
 }
 
 .parkContactPhone {
@@ -186,24 +239,24 @@
   font-weight: 950;
   text-transform: uppercase;
   letter-spacing: 0.075em;
-  color: #ffffff;
+  color: var(--bracket-on-accent-fg);
   margin: 0 0 1.15rem;
   line-height: 1.12;
   text-align: center;
   text-wrap: balance;
   overflow-wrap: anywhere;
   padding: 0.7rem 3.25rem 0.72rem;
-  border: 1px solid rgb(255 255 255 / 0.18);
+  border: 1px solid var(--bracket-on-accent-border);
   border-bottom: 4px solid var(--bracket-accent);
   border-radius: 0.55rem;
   background:
-    linear-gradient(135deg, rgb(255 255 255 / 0.12), transparent 34%),
-    linear-gradient(90deg, var(--bracket-navy-deep), var(--bracket-fg) 52%, var(--bracket-navy-deep));
+    var(--bracket-title-gradient),
+    linear-gradient(90deg, var(--bracket-chrome-deep), var(--bracket-chrome) 52%, var(--bracket-chrome-deep));
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.22),
-    inset 0 -1px 0 rgb(0 0 0 / 0.28),
-    0 0.55rem 1.1rem rgb(0 26 61 / 0.16);
-  text-shadow: 0 2px 0 rgb(0 0 0 / 0.32), 0 0 1rem rgb(0 0 0 / 0.22);
+    var(--bracket-title-inset),
+    var(--bracket-title-inset-bottom),
+    var(--bracket-title-shadow);
+  text-shadow: var(--bracket-title-text-shadow);
 }
 
 .title::before,
@@ -214,11 +267,11 @@
   height: 1.45rem;
   transform: translateY(-50%);
   border-radius: 999px;
-  border: 2px solid rgb(255 255 255 / 0.85);
+  border: 2px solid var(--bracket-plaque-border);
   background:
     linear-gradient(90deg, transparent 44%, var(--bracket-accent) 44% 56%, transparent 56%),
-    #ffffff;
-  box-shadow: inset 0 0 0 2px rgb(0 0 0 / 0.08), 0 1px 3px rgb(0 0 0 / 0.22);
+    var(--bracket-title-ornament-bg);
+  box-shadow: var(--bracket-title-ornament-shadow);
   content: "";
 }
 
@@ -257,7 +310,7 @@
   /* Avoid crushing schedule / team copy when many rounds share one viewport width */
   min-width: 11rem;
   padding: 0 0.875rem;
-  border-right: 1px solid var(--bracket-round-divider, rgb(0 47 108 / 0.12));
+  border-right: 1px solid var(--bracket-round-divider);
 }
 
 .round:first-child {
@@ -274,14 +327,14 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #fff;
-  background: var(--bracket-fg);
+  color: var(--bracket-round-label-fg);
+  background: var(--bracket-chrome);
   margin: 0 0 0.35rem;
   padding: 0.35rem 0.5rem;
   border-radius: 0.25rem;
   flex-shrink: 0;
   text-align: center;
-  box-shadow: inset 0 -2px 0 rgb(0 0 0 / 0.12);
+  box-shadow: var(--bracket-round-label-inset);
 }
 
 .matchList {
@@ -313,8 +366,8 @@
   letter-spacing: 0.04em;
   color: var(--bracket-accent);
   padding: 0.35rem 0.55rem 0.25rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: linear-gradient(to bottom, #fff, #fafbfd);
+  border-bottom: 1px solid var(--bracket-inner-border);
+  background: var(--bracket-surface-gradient);
   text-align: left;
 }
 
@@ -330,7 +383,7 @@
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: var(--bracket-navy-deep);
+  color: var(--bracket-body-emphasis);
   font-variant-numeric: tabular-nums;
 }
 
@@ -374,8 +427,8 @@
   font-size: 0.8125rem;
   font-weight: 600;
   line-height: 1.35;
-  color: var(--bracket-navy-deep);
-  border-bottom: 1px solid #e2e8f0;
+  color: var(--bracket-body-emphasis);
+  border-bottom: 1px solid var(--bracket-inner-border);
   text-align: left;
   min-width: 0;
 }
@@ -404,10 +457,10 @@
   font-size: 0.75rem;
   font-weight: 700;
   line-height: 1.2;
-  color: var(--bracket-navy-deep);
+  color: var(--bracket-body-emphasis);
   border: 1px solid var(--bracket-border);
   border-radius: 0.25rem;
-  background: #fff;
+  background: var(--bracket-surface);
   box-sizing: border-box;
 }
 
@@ -429,8 +482,8 @@
   flex-wrap: wrap;
   gap: 0.35rem;
   padding: 0.35rem 0.5rem 0.45rem;
-  border-top: 1px solid #e2e8f0;
-  background: #f8fafc;
+  border-top: 1px solid var(--bracket-inner-border);
+  background: var(--bracket-tie-picker-bg);
 }
 
 .tiePickerBtn {
@@ -442,14 +495,14 @@
   padding: 0.3rem 0.4rem;
   border-radius: 0.3rem;
   border: 1px solid var(--bracket-border);
-  background: #fff;
-  color: var(--bracket-navy-deep);
+  background: var(--bracket-surface);
+  color: var(--bracket-body-emphasis);
   cursor: pointer;
 }
 
 .tiePickerBtn:hover {
   border-color: var(--bracket-fg);
-  background: #f4f7fb;
+  background: var(--bracket-tie-picker-hover-bg);
 }
 
 .slot::before {
@@ -470,7 +523,7 @@
 }
 
 .slotAway {
-  background: #f7fafc;
+  background: var(--bracket-slot-away-bg);
   font-weight: 500;
 }
 
@@ -486,7 +539,7 @@
   line-height: 1.4;
   font-weight: 500;
   color: var(--bracket-muted);
-  background: rgb(248 250 252 / 0.95);
+  background: var(--bracket-schedule-meta-bg);
   min-width: 0;
 }
 
@@ -523,8 +576,8 @@
 
 .matchGameInfoBetweenTeams {
   text-align: center;
-  border-top: 1px solid #e2e8f0;
-  border-bottom: 1px solid #e2e8f0;
+  border-top: 1px solid var(--bracket-inner-border);
+  border-bottom: 1px solid var(--bracket-inner-border);
   min-width: 0;
 }
 
@@ -565,7 +618,7 @@
 .gameTeams {
   font-weight: 600;
   line-height: 1.45;
-  color: var(--bracket-navy-deep);
+  color: var(--bracket-body-emphasis);
 }
 
 .vs {
@@ -600,8 +653,8 @@
   font-size: 0.625rem;
   font-weight: 600;
   line-height: 1.35;
-  color: var(--bracket-navy-deep);
-  background: rgba(255, 255, 255, 0.88);
+  color: var(--bracket-body-emphasis);
+  background: var(--bracket-grid-schedule-bg);
   border: 1px solid var(--bracket-border);
   border-radius: 0.35rem;
   padding: 0.38rem 0.45rem;
@@ -612,7 +665,7 @@
   min-width: 0;
   min-height: 2.5rem;
   box-sizing: border-box;
-  box-shadow: 0 1px 2px rgb(0 47 108 / 0.05);
+  box-shadow: var(--bracket-subtle-shadow);
 }
 
 .gridColumnScheduleHdrPlaceholder {
@@ -791,7 +844,7 @@
   align-self: stretch;
   min-height: 100%;
   height: 100%;
-  color: var(--bracket-fg);
+  color: var(--bracket-connector-fg);
   opacity: var(--bracket-connector-opacity);
   min-width: 0;
 }
@@ -888,7 +941,7 @@
   justify-content: stretch;
   min-height: 100%;
   min-width: 0;
-  color: var(--bracket-fg);
+  color: var(--bracket-connector-fg);
   opacity: var(--bracket-connector-opacity);
 }
 
@@ -952,7 +1005,7 @@
   border: 1px solid var(--bracket-border);
   border-radius: 0.5rem;
   border-left: 4px solid var(--bracket-fg);
-  background: linear-gradient(165deg, #fff 0%, #f4f7fb 100%);
+  background: var(--bracket-surface-gradient-alt);
   box-shadow: var(--bracket-card-shadow);
   padding: 0.55rem 0.65rem 0.65rem;
   text-align: center;
@@ -973,7 +1026,7 @@
   font-size: clamp(0.85rem, 2vw, 1.05rem);
   font-weight: 800;
   line-height: 1.2;
-  color: var(--bracket-navy-deep);
+  color: var(--bracket-body-emphasis);
   margin: 0;
 }
 
@@ -995,7 +1048,7 @@
   font-weight: 800;
   text-transform: uppercase;
   letter-spacing: 0.055em;
-  color: var(--bracket-navy-deep);
+  color: var(--bracket-body-emphasis);
   text-align: center;
   line-height: 1.28;
   text-wrap: balance;
@@ -1017,10 +1070,10 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--bracket-fg);
+  color: var(--bracket-body-fg);
   padding: 0.35rem 0.55rem 0.25rem;
-  border-bottom: 1px solid #e2e8f0;
-  background: linear-gradient(to bottom, #fff, #fafbfd);
+  border-bottom: 1px solid var(--bracket-inner-border);
+  background: var(--bracket-surface-gradient);
   text-align: center;
 }
 
@@ -1083,11 +1136,11 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 0.75rem;
-  border: 1px solid rgb(0 47 108 / 0.12);
+  border: 1px solid var(--bracket-wash-border);
   border-radius: 0.7rem;
-  background: rgb(255 255 255 / 0.78);
+  background: var(--bracket-wash-bg);
   padding: 0.75rem 0.8rem;
-  box-shadow: 0 1px 2px rgb(0 26 61 / 0.06);
+  box-shadow: var(--bracket-subtle-shadow);
 }
 
 .mobileBracketKicker {
@@ -1115,15 +1168,15 @@
 
 .mobilePodiumCard {
   border-radius: 0.75rem;
-  border: 1px solid rgb(255 255 255 / 0.35);
+  border: 1px solid var(--bracket-on-accent-border);
   background:
-    linear-gradient(135deg, rgb(255 255 255 / 0.16), transparent 42%),
-    linear-gradient(90deg, var(--bracket-navy-deep), var(--bracket-fg));
+    var(--bracket-accent-gradient),
+    linear-gradient(90deg, var(--bracket-chrome-deep), var(--bracket-chrome));
   padding: 0.85rem 0.9rem;
-  color: #fff;
+  color: var(--bracket-on-accent-fg);
   box-shadow:
-    inset 0 1px 0 rgb(255 255 255 / 0.18),
-    0 0.45rem 1rem rgb(0 26 61 / 0.14);
+    var(--bracket-title-inset),
+    var(--bracket-accent-glow);
 }
 
 .mobilePodiumLabel {
@@ -1134,7 +1187,7 @@
   line-height: 1;
   text-transform: uppercase;
   letter-spacing: 0.12em;
-  color: rgb(255 255 255 / 0.72);
+  color: var(--bracket-accent-subtitle);
 }
 
 .mobilePodiumName {
@@ -1151,10 +1204,10 @@
 
 .mobileRoundSection {
   overflow: hidden;
-  border: 1px solid rgb(0 47 108 / 0.13);
+  border: 1px solid var(--bracket-wash-border);
   border-radius: 0.8rem;
-  background: rgb(255 255 255 / 0.64);
-  box-shadow: 0 2px 8px rgb(0 26 61 / 0.06);
+  background: var(--bracket-wash-bg);
+  box-shadow: var(--bracket-wash-shadow);
 }
 
 .mobileRoundHeader {
@@ -1163,9 +1216,9 @@
   justify-content: space-between;
   gap: 0.75rem;
   padding: 0.65rem 0.75rem;
-  border-bottom: 1px solid rgb(0 47 108 / 0.1);
-  background: linear-gradient(to right, var(--bracket-fg), var(--bracket-navy-deep));
-  color: #fff;
+  border-bottom: 1px solid var(--bracket-subtle-border);
+  background: linear-gradient(to right, var(--bracket-chrome), var(--bracket-chrome-deep));
+  color: var(--bracket-on-accent-fg);
 }
 
 .mobileRoundTitle {
@@ -1181,7 +1234,7 @@
 .mobileRoundCount {
   flex: 0 0 auto;
   border-radius: 999px;
-  background: rgb(255 255 255 / 0.14);
+  background: var(--bracket-score-input-bg);
   padding: 0.22rem 0.45rem;
   font-size: 0.62rem;
   font-weight: 800;
@@ -1210,7 +1263,7 @@
   }
 
   .watermarkImg {
-    width: 140%;
+    width: min(calc(100% * var(--bracket-watermark-scale, 1.18) * 1.19), 100%);
     max-height: 80%;
   }
 
@@ -1232,8 +1285,8 @@
     display: block;
     margin-top: 1rem;
     border-radius: 0.75rem;
-    border: 1px solid rgb(0 47 108 / 0.14);
-    background: rgb(248 250 252 / 0.9);
+    border: 1px solid var(--bracket-subtle-border);
+    background: var(--bracket-mobile-frame-bg);
     overflow: hidden;
   }
 
@@ -1243,8 +1296,8 @@
     justify-content: space-between;
     width: 100%;
     min-height: 2.9rem;
-    border-bottom: 1px solid rgb(0 47 108 / 0.1);
-    background: rgb(255 255 255 / 0.82);
+    border-bottom: 1px solid var(--bracket-subtle-border);
+    background: var(--bracket-mobile-header-bg);
     padding: 0.78rem 0.85rem;
     text-align: left;
     font-size: 0.78rem;
@@ -1252,7 +1305,7 @@
     line-height: 1.2;
     text-transform: uppercase;
     letter-spacing: 0.08em;
-    color: var(--bracket-fg);
+    color: var(--bracket-body-fg);
   }
 
   .mobileFullBracketToggle::after {
@@ -1305,7 +1358,7 @@
   .mobileRoundSection .match {
     border-radius: 0.65rem;
     border-left-width: 4px;
-    box-shadow: 0 1px 5px rgb(0 26 61 / 0.08);
+    box-shadow: var(--bracket-mobile-card-shadow);
   }
 
   .mobileRoundSection .matchGameBadge,
@@ -1434,8 +1487,8 @@
   .desktopBracketDiagram {
     display: block;
     border-radius: 0.75rem;
-    border: 1px solid rgb(0 47 108 / 0.14);
-    background: rgb(248 250 252 / 0.9);
+    border: 1px solid var(--bracket-subtle-border);
+    background: var(--bracket-mobile-frame-bg);
     overflow: hidden;
   }
 

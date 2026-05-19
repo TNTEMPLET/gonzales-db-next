@@ -1148,7 +1148,8 @@ function layoutToInnerHtml(
   theme: BracketThemeColors,
   options?: BracketExportViewOptions,
 ): string {
-  const themeStyle = bracketThemeCssVarsString(theme);
+  // HTML/PDF export always uses the light printable sheet.
+  const themeStyle = bracketThemeCssVarsString(theme, "light");
   const exportHeadingLabel =
     options?.surfaceHeadingLabel?.trim() ||
     (layout.mode === "empty" ? undefined : layout.divisionLabel);
