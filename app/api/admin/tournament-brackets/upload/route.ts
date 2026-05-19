@@ -16,10 +16,25 @@ const ALLOWED = new Set([
   "image/jpeg",
   "image/webp",
   "image/gif",
+  "image/svg+xml",
   "application/pdf",
   "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
   "application/vnd.ms-excel",
 ]);
+
+function resolveUploadMimeType(file: File): string | null {
+  if (file.type && ALLOWED.has(file.type)) return file.type;
+  const ext = path.extname(file.name).toLowerCase();
+  if (ext === ".svg") return "image/svg+xml";
+  if (ext === ".png") return "image/png";
+  if (ext === ".jpg" || ext === ".jpeg") return "image/jpeg";
+  if (ext === ".webp") return "image/webp";
+  if (ext === ".gif") return "image/gif";
+  if (ext === ".pdf") return "application/pdf";
+  if (ext === ".xlsx") return "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
+  if (ext === ".xls") return "application/vnd.ms-excel";
+  return null;
+}
 
 export async function POST(request: NextRequest) {
   const auth = await ensureTournamentBracketsMaster(request);
@@ -34,8 +49,12 @@ export async function POST(request: NextRequest) {
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file is required" }, { status: 400 });
   }
-  if (!ALLOWED.has(file.type)) {
-    return NextResponse.json({ error: `Unsupported MIME type: ${file.type}` }, { status: 400 });
+  const mimeType = resolveUploadMimeType(file);
+  if (!mimeType) {
+    return NextResponse.json(
+      { error: `Unsupported MIME type: ${file.type || "(unknown)"}` },
+      { status: 400 },
+    );
   }
   if (file.size > MAX_BYTES) {
     return NextResponse.json({ error: "File too large (max 12MB)" }, { status: 400 });
@@ -49,7 +68,7 @@ export async function POST(request: NextRequest) {
     const blob = await put(uniqueName, buf, {
       access: "public",
       addRandomSuffix: false,
-      contentType: file.type,
+      contentType: mimeType,
     });
     url = blob.url;
   } else {
@@ -74,5 +93,5 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ data: { url, mimeType: file.type, size: file.size } });
+  return NextResponse.json({ data: { url, mimeType, size: file.size } });
 }

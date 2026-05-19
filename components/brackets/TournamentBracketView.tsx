@@ -13,7 +13,7 @@ import {
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
 import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
-import type { BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
+import type { BracketColorScheme, BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { bracketThemeCssVars } from "@/lib/tournament-brackets/bracketTheme";
 import { getBracketConnectorVariant } from "@/lib/tournament-brackets/bracketConnectorPaths";
 import { matchGridPlacement, podiumColumnGridPlacement } from "@/lib/tournament-brackets/bracketGridPlacement";
@@ -56,6 +56,8 @@ type Props = {
   style?: CSSProperties;
   /** When set, drives CSS variables (defaults to classic LLBWS ink colors). */
   themeColors?: BracketThemeColors | null;
+  /** Light printable sheet vs dark bracket surface (public viewer toggle). */
+  colorScheme?: BracketColorScheme;
   /** League logo from flyer options — large, low-opacity background (same origin as uploads). */
   logoWatermarkUrl?: string | null;
   /** Park / venue copy shown under the bracket title. */
@@ -80,8 +82,12 @@ export type BracketParentOrganizationLogo = {
   name?: string;
 };
 
-function mergeRootStyle(themeColors: BracketThemeColors | null | undefined, style?: CSSProperties): CSSProperties {
-  const base = bracketThemeCssVars(themeColors ?? LLBWS_FALLBACK_THEME) as CSSProperties;
+function mergeRootStyle(
+  themeColors: BracketThemeColors | null | undefined,
+  colorScheme: BracketColorScheme,
+  style?: CSSProperties,
+): CSSProperties {
+  const base = bracketThemeCssVars(themeColors ?? LLBWS_FALLBACK_THEME, colorScheme) as CSSProperties;
   return { ...base, ...style };
 }
 
@@ -654,6 +660,7 @@ function ChampionRoundColumn({
 function BracketSurface({
   rootClass,
   rootStyle,
+  colorScheme,
   ariaLabel,
   title,
   parkInfo,
@@ -665,6 +672,7 @@ function BracketSurface({
 }: {
   rootClass: string;
   rootStyle: CSSProperties;
+  colorScheme: BracketColorScheme;
   ariaLabel: string;
   title: ReactNode;
   parkInfo?: BracketParkInfo | null;
@@ -703,9 +711,22 @@ function BracketSurface({
       children
     );
   return (
-    <section className={rootClass} style={rootStyle} aria-label={ariaLabel}>
+    <section
+      className={rootClass}
+      style={rootStyle}
+      data-bracket-scheme={colorScheme}
+      aria-label={ariaLabel}
+    >
       {src ? (
-        <img src={src} alt="" className={styles.watermarkImg} draggable={false} decoding="async" />
+        <img
+          key={src}
+          src={src}
+          alt=""
+          className={styles.watermarkImg}
+          draggable={false}
+          decoding="async"
+          fetchPriority="low"
+        />
       ) : null}
       <div className={styles.rootForeground}>
         {title}
@@ -951,6 +972,7 @@ function ConnectedBracketGrid({
   title,
   rootClass,
   style,
+  colorScheme,
   parkInfo,
   logoWatermarkUrl,
   parentOrganizationLogo,
@@ -966,6 +988,7 @@ function ConnectedBracketGrid({
   title: string;
   rootClass: string;
   style?: CSSProperties;
+  colorScheme: BracketColorScheme;
   parkInfo?: BracketParkInfo | null;
   logoWatermarkUrl?: string | null;
   parentOrganizationLogo?: BracketParentOrganizationLogo | null;
@@ -1209,6 +1232,7 @@ function ConnectedBracketGrid({
     <BracketSurface
       rootClass={rootClass}
       rootStyle={style ?? {}}
+      colorScheme={colorScheme}
       ariaLabel="Tournament bracket"
       title={title ? <h3 className={styles.title}>{title}</h3> : null}
       parkInfo={parkInfo}
@@ -1239,6 +1263,7 @@ export default function TournamentBracketView({
   className,
   style,
   themeColors,
+  colorScheme = "light",
   logoWatermarkUrl,
   parentOrganizationLogo,
   parkInfo,
@@ -1249,7 +1274,7 @@ export default function TournamentBracketView({
   surfaceTitleOverride,
 }: Props) {
   const rootClass = [styles.root, className].filter(Boolean).join(" ");
-  const rootStyle = mergeRootStyle(themeColors, style);
+  const rootStyle = mergeRootStyle(themeColors, colorScheme, style);
   const divisionForHeading = layout.mode === "empty" ? undefined : layout.divisionLabel;
   const headingLabel = surfaceTitleOverride?.trim() || divisionForHeading;
 
@@ -1258,6 +1283,7 @@ export default function TournamentBracketView({
       <BracketSurface
         rootClass={rootClass}
         rootStyle={rootStyle}
+        colorScheme={colorScheme}
         ariaLabel="Bracket preview"
         title={layout.title ? <h3 className={styles.title}>{layout.title}</h3> : null}
         parkInfo={parkInfo}
@@ -1276,6 +1302,7 @@ export default function TournamentBracketView({
       <BracketSurface
         rootClass={rootClass}
         rootStyle={rootStyle}
+        colorScheme={colorScheme}
         ariaLabel="Tournament games"
         title={
           matchGridTitle ? <h3 className={styles.title}>{matchGridTitle}</h3> : null
@@ -1327,6 +1354,7 @@ export default function TournamentBracketView({
         title={bracketTitle}
         rootClass={treeRootClass}
         style={rootStyle}
+        colorScheme={colorScheme}
         parkInfo={parkInfo}
         logoWatermarkUrl={logoWatermarkUrl}
         parentOrganizationLogo={parentOrganizationLogo}
@@ -1343,6 +1371,7 @@ export default function TournamentBracketView({
     <BracketSurface
       rootClass={rootClass}
       rootStyle={rootStyle}
+      colorScheme={colorScheme}
       ariaLabel="Tournament bracket"
       title={bracketTitle ? <h3 className={styles.title}>{bracketTitle}</h3> : null}
       parkInfo={parkInfo}

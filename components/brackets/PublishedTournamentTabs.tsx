@@ -4,6 +4,7 @@ import { useCallback, useMemo, useState } from "react";
 
 import GameChangerScoreboardModal from "@/components/brackets/GameChangerScoreboardModal";
 import TournamentBracketView from "@/components/brackets/TournamentBracketView";
+import { useBracketColorScheme } from "@/hooks/useBracketColorScheme";
 import { useGameChangerLive } from "@/hooks/useGameChangerLive";
 import { bracketMatchLabelForId, bracketMatchRefForId } from "@/lib/gamechanger/collectLayoutMatches";
 import type { BracketGameChanger } from "@/lib/gamechanger/types";
@@ -19,6 +20,8 @@ export type PublishedTournamentTabBracket = {
   layout: BracketLayout;
   parkInfo?: BracketParkInfo | null;
   themeColors: BracketThemeColors;
+  /** Per-bracket flyer logo; falls back to org default when omitted. */
+  logoWatermarkUrl?: string | null;
   gameChanger?: BracketGameChanger | null;
 };
 
@@ -53,6 +56,7 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
     getInitialBracketId(brackets, initialSelectedBracketId),
   );
   const [modalMatchId, setModalMatchId] = useState<string | null>(null);
+  const { colorScheme, setColorScheme } = useBracketColorScheme();
 
   const selectedBracket = useMemo(
     () => getSelectedBracket(brackets, selectedBracketId),
@@ -127,39 +131,73 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
         aria-labelledby={`bracket-tab-${selectedBracket.id}`}
         className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3 sm:p-5"
       >
-        <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h2 className="text-xl font-semibold text-zinc-100">{selectedBracket.name}</h2>
             <p className="text-xs uppercase tracking-wide text-zinc-500">
               {selectedBracket.seasonYear} · Updated {selectedBracket.updatedAtLabel}
             </p>
           </div>
-          <div className="max-w-sm text-xs leading-relaxed text-zinc-500">
-            {gcEnabled ? (
-              <p>
-                {liveLoading && !liveGameStatuses ? "Loading live scores…" : null}
-                {liveError ? <span className="text-amber-400/90">{liveError}</span> : null}
-                {!liveError ? (
-                  <span>
-                    Tap a game for its live scoreboard. Live games are highlighted.
-                  </span>
-                ) : null}
-              </p>
-            ) : (
-              <p className="sm:hidden">
-                Phone view shows games by round first. Open the full diagram inside the bracket for the printable
-                layout.
-              </p>
-            )}
+          <div className="flex flex-wrap items-center gap-3 sm:justify-end">
+            <div
+              className="inline-flex rounded-full border border-zinc-700 p-0.5"
+              role="group"
+              aria-label="Bracket color mode"
+            >
+              {(["light", "dark"] as const).map((scheme) => {
+                const isActive = colorScheme === scheme;
+                return (
+                  <button
+                    key={scheme}
+                    type="button"
+                    aria-pressed={isActive}
+                    onClick={() => setColorScheme(scheme)}
+                    className={`min-h-8 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide transition ${
+                      isActive
+                        ? "bg-zinc-100 text-zinc-900"
+                        : "text-zinc-400 hover:text-zinc-200"
+                    }`}
+                  >
+                    {scheme === "light" ? "Light" : "Dark"}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="max-w-sm text-xs leading-relaxed text-zinc-500">
+              {gcEnabled ? (
+                <p>
+                  {liveLoading && !liveGameStatuses ? "Loading live scores…" : null}
+                  {liveError ? <span className="text-amber-400/90">{liveError}</span> : null}
+                  {!liveError ? (
+                    <span>
+                      Tap a game for its live scoreboard. Live games are highlighted.
+                    </span>
+                  ) : null}
+                </p>
+              ) : (
+                <p className="sm:hidden">
+                  Phone view shows games by round first. Open the full diagram inside the bracket for the printable
+                  layout.
+                </p>
+              )}
+            </div>
           </div>
         </div>
-        <div className="relative mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-2 sm:p-3">
+        <div
+          className={`relative mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border p-2 sm:p-3 ${
+            colorScheme === "dark"
+              ? "border-zinc-700/70 bg-transparent"
+              : "border-slate-600/50 bg-slate-300/30"
+          }`}
+        >
           <div className="block w-full min-w-0 max-w-full align-top">
             <div className="w-full min-w-0 max-w-full">
               <TournamentBracketView
+                key={`${selectedBracket.id}:${selectedBracket.logoWatermarkUrl ?? ""}`}
                 layout={selectedBracket.layout}
+                colorScheme={colorScheme}
                 themeColors={selectedBracket.themeColors}
-                logoWatermarkUrl={branding.targetLogoPath}
+                logoWatermarkUrl={selectedBracket.logoWatermarkUrl ?? branding.targetLogoPath}
                 parentOrganizationLogo={{
                   src: branding.parentLogoPath,
                   name: branding.parentName,

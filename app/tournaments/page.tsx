@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { connection } from "next/server";
 
 import PublishedTournamentTabs, { type PublishedTournamentTabBracket } from "@/components/brackets/PublishedTournamentTabs";
 import prisma from "@/lib/prisma";
@@ -7,6 +8,7 @@ import { safeParseBracketSpec, type BracketParkInfo } from "@/lib/tournament-bra
 import { resolveBracketThemeColors, type BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { sortPublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
+import { bracketWatermarkSrc } from "@/lib/tournament-brackets/bracketWatermark";
 import {
   getContentOrgBrandColors,
   getDefaultContentOrg,
@@ -28,6 +30,7 @@ type PublishedBracket = {
   layout: BracketLayout;
   parkInfo?: BracketParkInfo | null;
   themeColors: BracketThemeColors;
+  logoWatermarkUrl: string;
   gameChanger?: BracketGameChanger | null;
 };
 
@@ -44,6 +47,7 @@ export default async function TournamentsPage({
 }: {
   searchParams: Promise<{ bracket?: string }>;
 }) {
+  await connection();
   const { bracket: requestedBracketId } = await searchParams;
   const site = getSiteConfig();
   const org = getDefaultContentOrg();
@@ -91,6 +95,11 @@ export default async function TournamentsPage({
           layout: buildBracketLayout(parsed.spec),
           parkInfo: parsed.spec.parkInfo,
           themeColors: resolveBracketThemeColors(parsed.spec, siteThemeDefaults),
+          logoWatermarkUrl: bracketWatermarkSrc(
+            parsed.spec.flyer?.logoUrl,
+            branding.targetLogoPath,
+            project.updatedAt,
+          ),
           gameChanger: gcParsed?.success ? gcParsed.data : null,
         },
       ];
@@ -110,6 +119,7 @@ export default async function TournamentsPage({
     layout: bracket.layout,
     parkInfo: bracket.parkInfo,
     themeColors: bracket.themeColors,
+    logoWatermarkUrl: bracket.logoWatermarkUrl,
     gameChanger: bracket.gameChanger ?? null,
   }));
 
