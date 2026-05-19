@@ -59,9 +59,9 @@ export default async function AdminTournamentBracketsPage({
   }
 
   return (
-    <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
+    <main className="min-h-screen bg-zinc-950 py-6 text-white sm:py-8">
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="mb-8">
+        <div className="mb-4">
           <AdminSectionHeader
             badge="TOURNAMENT BRACKETS"
             currentOrg={bracketOrg}
@@ -70,12 +70,19 @@ export default async function AdminTournamentBracketsPage({
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
           />
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">Tournament Bracket Builder</h1>
-          <p className="text-zinc-400 max-w-3xl">
-            Master Admin: build single-elimination (and custom) brackets for any tournament, preview them in a
-            printable program style, optionally import schedule XLSX into the games grid, export standalone HTML,
-            and generate a flyer PDF.
-          </p>
+          <h1 className="mb-2 text-2xl font-bold tracking-tight md:text-3xl">Tournament Bracket Builder</h1>
+          <details className="group/about max-w-3xl text-sm text-zinc-400">
+            <summary className="cursor-pointer list-none font-medium text-zinc-500 marker:content-none hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
+              <span className="underline decoration-zinc-600 underline-offset-2 group-open/about:text-zinc-300">
+                About this tool
+              </span>
+            </summary>
+            <p className="mt-2 leading-relaxed">
+              Master Admin: build single-elimination (and custom) brackets for any tournament, preview them in a
+              printable program style, optionally import schedule XLSX into the games grid, export standalone HTML,
+              and generate a flyer PDF.
+            </p>
+          </details>
         </div>
         <TournamentBracketsClient key={bracketOrg} organizationId={bracketOrg} />
       </section>

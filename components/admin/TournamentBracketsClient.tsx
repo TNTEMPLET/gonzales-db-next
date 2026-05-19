@@ -2,7 +2,14 @@
 
 import { jsPDF } from "jspdf";
 import { useRouter, usePathname } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type Ref,
+} from "react";
 
 import BracketSetupWizard from "@/components/admin/BracketSetupWizard";
 import BracketStructureEditor from "@/components/admin/BracketStructureEditor";
@@ -272,6 +279,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const [referenceUrl, setReferenceUrl] = useState("");
   /** 0.6–1.0; only affects on-screen admin preview (`zoom`). Stripped for PDF raster capture. */
   const [bracketPreviewZoom, setBracketPreviewZoom] = useState(0.88);
+  const [pendingWizardScroll, setPendingWizardScroll] = useState(false);
 
   const loadProjects = useCallback(async () => {
     const res = await fetch(
@@ -298,6 +306,23 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   }, [loadProjects]);
 
   useEffect(() => {
+    const id = window.setTimeout(() => setProjectId(null), 0);
+    return () => window.clearTimeout(id);
+  }, [organizationId]);
+
+  useEffect(() => {
+    if (projectId) return;
+    const ready = sortProjectsForAdmin(
+      projects.filter((p) => p.status === "READY"),
+      "priority",
+      "asc",
+    );
+    if (ready.length === 0) return;
+    const id = window.setTimeout(() => setProjectId(ready[0].id), 0);
+    return () => window.clearTimeout(id);
+  }, [projects, projectId]);
+
+  useEffect(() => {
     let id: number;
     if (!projectId) {
       id = window.setTimeout(() => setProject(null), 0);
@@ -316,10 +341,31 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
 
   const spec = bracketSpecParse?.spec ?? null;
   const setupComplete = useMemo(() => (spec ? isBracketSetupWizardComplete(spec) : false), [spec]);
+
+  useEffect(() => {
+    if (!pendingWizardScroll || !project || !spec || setupComplete) return;
+    const id = window.setTimeout(() => {
+      setupWizardRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      setPendingWizardScroll(false);
+    }, 50);
+    return () => window.clearTimeout(id);
+  }, [pendingWizardScroll, project, spec, setupComplete]);
+
   const sortedProjects = useMemo(
     () => sortProjectsForAdmin(projects, projectSortMode, projectSortDirection),
     [projects, projectSortMode, projectSortDirection],
   );
+  const readyProjectsForStrip = useMemo(() => {
+    const ready = sortProjectsForAdmin(
+      projects.filter((p) => p.status === "READY"),
+      "priority",
+      "asc",
+    );
+    if (project && !ready.some((p) => p.id === project.id)) {
+      return [project, ...ready];
+    }
+    return ready;
+  }, [projects, project]);
   const projectPriorityOptions = useMemo(() => {
     const current = Number(projectPriorityDraft);
     const maxPriority = Math.max(
@@ -362,6 +408,8 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   }, [project]);
 
   const bracketPdfCaptureRef = useRef<HTMLDivElement>(null);
+  const projectsPanelRef = useRef<HTMLDetailsElement>(null);
+  const setupWizardRef = useRef<HTMLDivElement>(null);
 
   const svgMarkup = spec ? buildBracketSvgPreview(spec) : "";
   const bracketLayoutBuild = useMemo(() => {
@@ -577,31 +625,56 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     }
   }
 
-  async function handleCreate() {
+  async function createBracketProject(options?: { scrollToWizard?: boolean; name?: string }) {
     setError("");
     setNotice("");
     setBusy(true);
     try {
+      const name = (options?.name ?? draftName).trim() || `${seasonYear} Tournament Bracket`;
       const res = await fetch("/api/admin/tournament-brackets/projects", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           organizationId,
           seasonYear,
-          name: draftName,
+          name,
           priority: 0,
         }),
       });
       const json = await readApiJson<{ data?: { id: string }; error?: string; hint?: string }>(res);
       if (!res.ok) throw new Error(apiErrorMessage(json, "Create failed"));
-      setNotice("Project created.");
+      setNotice(
+        options?.scrollToWizard
+          ? "Bracket created — complete guided setup below."
+          : "Project created.",
+      );
       await loadProjects();
-      if (json.data?.id) setProjectId(json.data.id);
+      if (json.data?.id) {
+        if (options?.scrollToWizard) setPendingWizardScroll(true);
+        setProjectId(json.data.id);
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
     }
+  }
+
+  async function handleCreate() {
+    await createBracketProject();
+  }
+
+  async function handleCreateBracket() {
+    const suggested = draftName.trim() || `${seasonYear} Tournament Bracket`;
+    const name = window.prompt("Bracket name", suggested);
+    if (name === null) return;
+    const trimmed = name.trim();
+    if (!trimmed) {
+      setError("Bracket name is required.");
+      return;
+    }
+    setDraftName(trimmed);
+    await createBracketProject({ scrollToWizard: true, name: trimmed });
   }
 
   async function handleDeleteProject(p: ProjectRow) {
@@ -1186,8 +1259,126 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     );
   }
 
+
+  const focusPreview = Boolean(spec && project && setupComplete);
+  const showSetupWizardAtTop = Boolean(spec && project && !setupComplete);
+
+  function openProjectsPanel() {
+    const el = projectsPanelRef.current;
+    if (!el) return;
+    el.open = true;
+    el.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  function renderScoreToolbar() {
+    if (!scoringSupported) return null;
+    return (
+      <div className="flex flex-wrap items-center justify-end gap-1.5 sm:gap-2">
+        <button type="button" disabled={busy || !bracketHasSavedScores} title={bracketHasSavedScores ? "Remove every saved score and reset later rounds" : "No scores saved yet"} onClick={() => void clearAllBracketScores()} className="rounded-lg border border-amber-600/70 bg-amber-950/90 px-2.5 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-900/90 disabled:opacity-40">Clear scores</button>
+        {scoreEditing ? (<><button type="button" disabled={busy} onClick={() => { if (spec) setScoreDraft(scoresFromSpec(spec)); setScoreEditing(false); }} className="rounded-lg border border-slate-500/80 bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-40">Cancel</button><button type="button" disabled={busy} onClick={() => void saveBracketScores()} className="rounded-lg border border-violet-500/80 bg-violet-800/95 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40">Save scores</button></>) : (<button type="button" disabled={busy} onClick={() => setScoreEditing(true)} className="rounded-lg border border-violet-500/80 bg-violet-800/95 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40">Edit scores</button>)}
+      </div>
+    );
+  }
+
+  function renderCompactProjectStrip() {
+    const readyCount = readyProjectsForStrip.filter((p) => p.status === "READY").length;
+    return (
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3">
+        <label className="min-w-0 flex-1">
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Ready bracket</span>
+          <select
+            value={projectId ?? ""}
+            disabled={busy || readyProjectsForStrip.length === 0}
+            onChange={(e) => {
+              const nextId = e.target.value;
+              if (nextId) setProjectId(nextId);
+            }}
+            aria-label="Switch ready bracket"
+            className="mt-1 w-full min-w-0 truncate rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-sm font-semibold text-zinc-100 outline-none focus:border-zinc-500 disabled:opacity-40"
+          >
+            {readyProjectsForStrip.length === 0 ? (
+              <option value="">No ready brackets yet</option>
+            ) : (
+              readyProjectsForStrip.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                  {p.status !== "READY" ? ` (${p.status})` : ""}
+                </option>
+              ))
+            )}
+          </select>
+          <p className="mt-1 text-[11px] text-zinc-500">
+            {getOrgDisplayName(organizationId)}
+            {project ? ` · ${project.seasonYear}` : ` · ${seasonYear}`}
+            {readyCount > 1 ? ` · ${readyCount} ready` : null}
+          </p>
+        </label>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={busy}
+            onClick={() => void handleCreateBracket()}
+            className="rounded-lg bg-red-700 px-2.5 py-1 text-xs font-semibold text-white hover:bg-red-600 disabled:opacity-50"
+          >
+            Create bracket
+          </button>
+          <button
+            type="button"
+            onClick={openProjectsPanel}
+            className="rounded-lg border border-zinc-600 px-2.5 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-800"
+          >
+            All projects
+          </button>
+          <a
+            href="/tournaments"
+            className="rounded-lg border border-zinc-600 px-2.5 py-1 text-xs font-semibold text-brand-gold hover:bg-zinc-800"
+          >
+            Public page
+          </a>
+        </div>
+      </div>
+    );
+  }
+  function renderSetupWizard() {
+    if (!spec || !project) return null;
+    return (
+      <BracketSetupWizard
+        spec={spec}
+        projectId={project.id}
+        busy={busy}
+        setupComplete={setupComplete}
+        onApply={async (patch) => {
+          setBusy(true);
+          setError("");
+          try {
+            await patchSpec(patch);
+            setNotice("Bracket updated from guided setup.");
+            await loadProject(project.id);
+          } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : String(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+        onSkipGuidedSetup={async () => {
+          setBusy(true);
+          setError("");
+          try {
+            await patchSpec({ setupWizardCompleted: true });
+            setNotice("Bracket structure and preview unlocked. Define rounds in Bracket structure.");
+            await loadProject(project.id);
+          } catch (e: unknown) {
+            setError(e instanceof Error ? e.message : String(e));
+          } finally {
+            setBusy(false);
+          }
+        }}
+      />
+    );
+  }
+
   return (
-    <section className="space-y-6" data-admin-tournament-brackets="true">
+    <section className="flex flex-col gap-4" data-admin-tournament-brackets="true">
       {error ? (
         <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>
       ) : null}
@@ -1217,15 +1408,32 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
         </div>
       ) : null}
 
-      <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
+      {renderCompactProjectStrip()}
+
+      {showSetupWizardAtTop ? (
+        <div ref={setupWizardRef} className="space-y-4" style={{ order: focusPreview ? 1 : 0 }}>
+          {renderSetupWizard()}
+        </div>
+      ) : null}
+
+      <details
+        ref={projectsPanelRef}
+        id="bracket-projects-panel"
+        className="rounded-xl border border-zinc-800 bg-zinc-900/70"
+        style={{ order: focusPreview ? 3 : 0 }}
+        {...(!focusPreview && setupComplete ? { open: true } : {})}
+      >
+        <summary className="cursor-pointer list-none p-4 sm:p-5 [&::-webkit-details-marker]:hidden">
+          <span className="text-lg font-semibold text-zinc-100">Bracket projects</span>
+          <span className="mt-0.5 block text-sm text-zinc-400">
+            Per-site projects for{" "}
+            <span className="font-medium text-zinc-200">{getOrgDisplayName(organizationId)}</span>
+          </span>
+        </summary>
+        <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-5">
         <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
-          <div className="min-w-0 flex-1">
+          <div className="min-w-0 flex-1 sm:sr-only">
             <h2 className="text-lg font-semibold text-zinc-100">Bracket projects</h2>
-            <p className="text-sm text-zinc-400">
-              Projects are stored per site. Current selection:{" "}
-              <span className="font-medium text-zinc-200">{getOrgDisplayName(organizationId)}</span>. The list of
-              sites follows managed content orgs in configuration (new sites appear here when added).
-            </p>
           </div>
           <label className="flex w-full shrink-0 flex-col gap-1.5 sm:w-auto sm:min-w-[220px]">
             <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Managing site</span>
@@ -1401,16 +1609,23 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
             </button>
           </div>
         </div>
-      </div>
+        </div>
+      </details>
 
-      <div className="space-y-6 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
-        <div>
+      <details
+        className="rounded-xl border border-zinc-800 bg-zinc-900/70"
+        style={{ order: focusPreview ? 4 : 0 }}
+        {...(!focusPreview && setupComplete ? { open: true } : {})}
+      >
+        <summary className="cursor-pointer list-none p-4 sm:p-5 [&::-webkit-details-marker]:hidden">
+          <span className="text-lg font-semibold text-zinc-100">Official reference &amp; branding</span>
+          <span className="mt-0.5 block text-sm text-zinc-400">
+            Optional helpers—setup and Bracket structure still define the printable tree.
+          </span>
+        </summary>
+        <div className="space-y-6 border-t border-zinc-800 p-4 sm:p-5">
+        <div className="sr-only">
           <h2 className="text-lg font-semibold text-zinc-100">Official reference &amp; branding</h2>
-          <p className="mt-1 text-sm text-zinc-400">
-            Optional helpers while you build. Your printable column bracket still comes from guided setup and{" "}
-            <strong className="font-medium text-zinc-300">Bracket structure</strong>—nothing here auto-fills match
-            pairings.
-          </p>
         </div>
 
         <div className="space-y-3 border-t border-zinc-800 pt-5">
@@ -1640,47 +1855,15 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
             </label>
           </div>
         </details>
-      </div>
+        </div>
+      </details>
 
-      <div className="space-y-6">
+      <div className="space-y-4" style={{ order: focusPreview ? 1 : 0 }}>
         {spec && project ? (
           <>
-            <BracketSetupWizard
-              spec={spec}
-              projectId={project.id}
-              busy={busy}
-              setupComplete={setupComplete}
-              onApply={async (patch) => {
-                setBusy(true);
-                setError("");
-                try {
-                  await patchSpec(patch);
-                  setNotice("Bracket updated from guided setup.");
-                  await loadProject(project.id);
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : String(e));
-                } finally {
-                  setBusy(false);
-                }
-              }}
-              onSkipGuidedSetup={async () => {
-                setBusy(true);
-                setError("");
-                try {
-                  await patchSpec({ setupWizardCompleted: true });
-                  setNotice("Bracket structure and preview unlocked. Define rounds in Bracket structure.");
-                  await loadProject(project.id);
-                } catch (e: unknown) {
-                  setError(e instanceof Error ? e.message : String(e));
-                } finally {
-                  setBusy(false);
-                }
-              }}
-            />
-
             {setupComplete ? (
-              <>
-                <BracketStructureEditor
+              <div className="flex flex-col gap-4">
+                <details className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`} {...(!focusPreview ? { open: true } : {})}><summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">Bracket structure</summary><div className="border-t border-zinc-800 p-4 sm:p-5"><BracketStructureEditor
                   spec={spec}
                   projectId={project.id}
                   projectUpdatedAt={project.updatedAt}
@@ -1698,12 +1881,10 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       setBusy(false);
                     }
                   }}
-                />
-
-                <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
-                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center sm:justify-between">
+                /></div></details><div className={`rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5 ${focusPreview ? "-order-1" : ""}`}>
+                  <div className="flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between">
                     <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Bracket preview</h2>
-                    <div className="grid gap-2 sm:flex sm:flex-wrap">
+                    <div className="flex flex-col gap-2 sm:items-end">{renderScoreToolbar()}<div className="grid gap-2 sm:flex sm:flex-wrap">
                       <button
                         type="button"
                         disabled={!bracketLayout}
@@ -1721,18 +1902,11 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         Export flyer PDF
                       </button>
                     </div>
+                    </div>
                   </div>
-                  <p className="mt-2 text-[11px] leading-relaxed text-zinc-500">
-                    <strong className="text-zinc-400">Flyer PDF</strong> is landscape US Letter and adds a snapshot
-                    image of this bracket preview (tree layout). Imported games still print as a list above the image.
-                    For vector-perfect lines, use <strong className="text-zinc-400">Export bracket HTML</strong> and
-                    print from the browser.
-                  </p>
-                  <p className="mt-2 text-[11px] leading-relaxed text-zinc-500 sm:hidden">
-                    On phones, the preview shows readable round cards first. Open the full bracket diagram inside the
-                    preview when you need to inspect the printable connector layout.
-                  </p>
-                  <div className="mt-4 space-y-3 rounded-lg border border-zinc-700 bg-zinc-950/50 p-3">
+                  <details className="mt-3">
+                    <summary className="cursor-pointer text-xs font-semibold text-zinc-500">Preview settings</summary>
+                  <div className="mt-3 space-y-3 rounded-lg border border-zinc-700 bg-zinc-950/50 p-3">
                     <div>
                       <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
                         Bracket appearance (LLBWS-style)
@@ -1941,6 +2115,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       </div>
                     ) : null}
                   </div>
+                  </details>
                   {bracketLayout ? (
                     <div className="mt-2 flex flex-col gap-2 rounded-lg border border-zinc-700/50 bg-zinc-950/35 px-3 py-2 text-xs text-zinc-400 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
                       <label className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
@@ -1964,57 +2139,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       </p>
                     </div>
                   ) : null}
-                  <div className="relative mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-2 sm:p-3">
-                    {scoringSupported ? (
-                      <div className="absolute right-2 top-2 z-20 grid gap-1.5 sm:flex sm:flex-wrap sm:items-center sm:justify-end">
-                        <button
-                          type="button"
-                          disabled={busy || !bracketHasSavedScores}
-                          title={
-                            bracketHasSavedScores
-                              ? "Remove every saved score and reset later rounds"
-                              : "No scores saved yet"
-                          }
-                          onClick={() => void clearAllBracketScores()}
-                          className="rounded-lg border border-amber-600/70 bg-amber-950/90 px-2.5 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-900/90 disabled:opacity-40"
-                        >
-                          Clear scores
-                        </button>
-                        {scoreEditing ? (
-                          <>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => {
-                                if (spec) setScoreDraft(scoresFromSpec(spec));
-                                setScoreEditing(false);
-                              }}
-                              className="rounded-lg border border-slate-500/80 bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-slate-200 hover:bg-slate-800 disabled:opacity-40"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              onClick={() => void saveBracketScores()}
-                              className="rounded-lg border border-violet-500/80 bg-violet-800/95 px-2.5 py-1 text-xs font-semibold text-white hover:bg-violet-700 disabled:opacity-40"
-                            >
-                              Save scores
-                            </button>
-                          </>
-                        ) : (
-                          <button
-                            type="button"
-                            disabled={busy}
-                            onClick={() => setScoreEditing(true)}
-                            className="rounded-lg border border-slate-500/80 bg-slate-900/90 px-2.5 py-1 text-xs font-semibold text-slate-100 hover:bg-slate-800 disabled:opacity-40"
-                          >
-                            Edit scores
-                          </button>
-                        )}
-                      </div>
-                    ) : null}
-                    {bracketLayout ? (
+                  <div className="mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-2 sm:p-3">{bracketLayout ? (
                       <div
                         ref={bracketPdfCaptureRef}
                         className="block w-full min-w-0 max-w-full align-top"
@@ -2040,51 +2165,60 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       </div>
                     ) : null}
                   </div>
-                  <details className="mt-2 text-xs text-zinc-500">
-                    <summary className="cursor-pointer text-zinc-400 hover:text-zinc-300">Legacy SVG list</summary>
-                    <div
-                      className="mt-2 overflow-auto rounded-lg border border-slate-600/50 bg-slate-300/30 p-3 [&>svg]:max-w-full"
-                      dangerouslySetInnerHTML={{ __html: svgMarkup }}
-                    />
-                  </details>
-                  {renderTournamentPageControls()}
+                  <details className="mt-3"><summary className="cursor-pointer font-semibold text-zinc-500">Publish &amp; legacy</summary><div className="mt-3 space-y-3">{renderTournamentPageControls()}<details><summary className="cursor-pointer text-zinc-400">Legacy SVG</summary><div className="mt-2 overflow-auto rounded-lg border border-slate-600/50 bg-slate-300/30 p-3 [&>svg]:max-w-full" dangerouslySetInnerHTML={{ __html: svgMarkup }} /></details></div></details>
                 </div>
-              </>
+              </div>
             ) : (
               <p className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4 text-sm text-zinc-500">
                 Complete the questionnaire above (or skip it) to edit Bracket structure and see the live preview.
               </p>
             )}
 
-            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5">
-              <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">Flyer / sponsors</h2>
-              <label className="mt-2 flex items-center gap-2 text-sm">
-                <input
-                  type="checkbox"
-                  checked={Boolean(spec.flyer?.includeSponsors)}
+            {focusPreview && setupComplete ? (
+              <details className="rounded-xl border border-zinc-800 bg-zinc-900/70">
+                <summary className="cursor-pointer list-none p-4 text-xs font-semibold uppercase tracking-wide text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
+                  Guided setup
+                </summary>
+                <div className="border-t border-zinc-800 p-4 sm:p-5">{renderSetupWizard()}</div>
+              </details>
+            ) : null}
+
+            <details
+              className="rounded-xl border border-zinc-800 bg-zinc-900/70"
+              {...(!focusPreview ? { open: true } : {})}
+            >
+              <summary className="cursor-pointer list-none p-4 text-xs font-semibold uppercase tracking-wide text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
+                Flyer / sponsors
+              </summary>
+              <div className="space-y-3 border-t border-zinc-800 p-5">
+                <label className="flex items-center gap-2 text-sm">
+                  <input
+                    type="checkbox"
+                    checked={Boolean(spec.flyer?.includeSponsors)}
+                    onChange={(e) =>
+                      void patchSpec({ flyer: { ...spec.flyer, includeSponsors: e.target.checked } })
+                    }
+                  />
+                  Include sponsor strip on flyer
+                </label>
+                <select
+                  value={spec.flyer?.sponsorLayout ?? "none"}
                   onChange={(e) =>
-                    void patchSpec({ flyer: { ...spec.flyer, includeSponsors: e.target.checked } })
+                    void patchSpec({
+                      flyer: {
+                        ...spec.flyer,
+                        sponsorLayout: e.target.value as BracketSpec["flyer"]["sponsorLayout"],
+                      },
+                    })
                   }
-                />
-                Include sponsor strip on flyer
-              </label>
-              <select
-                value={spec.flyer?.sponsorLayout ?? "none"}
-                onChange={(e) =>
-                  void patchSpec({
-                    flyer: {
-                      ...spec.flyer,
-                      sponsorLayout: e.target.value as BracketSpec["flyer"]["sponsorLayout"],
-                    },
-                  })
-                }
-                className="mt-2 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
-              >
-                <option value="none">No strip layout</option>
-                <option value="footer">Footer</option>
-                <option value="sidebar">Sidebar</option>
-              </select>
-            </div>
+                  className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                >
+                  <option value="none">No strip layout</option>
+                  <option value="footer">Footer</option>
+                  <option value="sidebar">Sidebar</option>
+                </select>
+              </div>
+            </details>
 
             {spec.ingestionWarnings.length > 0 ? (
               <div className="rounded-2xl border border-amber-900/50 bg-amber-950/20 p-4 text-sm text-amber-100">
