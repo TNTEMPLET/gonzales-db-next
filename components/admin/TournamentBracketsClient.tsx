@@ -103,6 +103,17 @@ function apiErrorMessage(json: { error?: string; hint?: string }, fallback: stri
   return json.hint ? `${base} — ${json.hint}` : base;
 }
 
+/** Browser `fetch` and Prisma driver often surface connection loss as "fetch failed". */
+function formatClientFetchError(err: unknown, fallback: string): string {
+  if (!(err instanceof Error)) return fallback;
+  const msg = err.message.trim();
+  if (msg === "fetch failed" || msg.includes("ECONNRESET") || msg.includes("network")) {
+    return "Could not reach the server (connection lost or timed out). Wait a few seconds and use Retry, or refresh the page.";
+  }
+  if (msg.startsWith("Bracket save rejected:")) return msg;
+  return msg || fallback;
+}
+
 function compareByProjectName(left: ProjectRow, right: ProjectRow): number {
   return left.name.localeCompare(right.name, "en-US", {
     numeric: true,
@@ -290,25 +301,39 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const [pendingWizardScroll, setPendingWizardScroll] = useState(false);
 
   const loadProjects = useCallback(async () => {
-    const res = await fetch(
-      `/api/admin/tournament-brackets/projects?organizationId=${encodeURIComponent(organizationId)}`,
-      { cache: "no-store" },
-    );
-    const json = await readApiJson<{ data?: ProjectRow[]; error?: string; hint?: string }>(res);
-    if (!res.ok) throw new Error(apiErrorMessage(json, "Failed to load projects"));
-    setProjects(json.data ?? []);
+    try {
+      const res = await fetch(
+        `/api/admin/tournament-brackets/projects?organizationId=${encodeURIComponent(organizationId)}`,
+        { cache: "no-store" },
+      );
+      const json = await readApiJson<{ data?: ProjectRow[]; error?: string; hint?: string }>(res);
+      if (!res.ok) throw new Error(apiErrorMessage(json, "Failed to load projects"));
+      setProjects(json.data ?? []);
+      setError("");
+    } catch (e: unknown) {
+      throw new Error(formatClientFetchError(e, "Failed to load projects"));
+    }
   }, [organizationId]);
 
-  const loadProject = useCallback(async (id: string) => {
-    const res = await fetch(`/api/admin/tournament-brackets/projects/${id}`, { cache: "no-store" });
-    const json = await readApiJson<{ data?: ProjectDetail; error?: string; hint?: string }>(res);
-    if (!res.ok) throw new Error(apiErrorMessage(json, "Failed to load project"));
-    setProject(json.data ?? null);
+  const loadProject = useCallback(async (id: string, opts?: { silent?: boolean }) => {
+    try {
+      const res = await fetch(`/api/admin/tournament-brackets/projects/${id}`, { cache: "no-store" });
+      const json = await readApiJson<{ data?: ProjectDetail; error?: string; hint?: string }>(res);
+      if (!res.ok) throw new Error(apiErrorMessage(json, "Failed to load project"));
+      setProject(json.data ?? null);
+      if (!opts?.silent) setError("");
+    } catch (e: unknown) {
+      const message = formatClientFetchError(e, "Failed to load project");
+      if (!opts?.silent) setError(message);
+      throw new Error(message);
+    }
   }, []);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
-      void loadProjects().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      void loadProjects().catch((e: unknown) =>
+        setError(formatClientFetchError(e, "Failed to load projects")),
+      );
     }, 0);
     return () => window.clearTimeout(id);
   }, [loadProjects]);
@@ -337,7 +362,9 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       return () => window.clearTimeout(id);
     }
     id = window.setTimeout(() => {
-      void loadProject(projectId).catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
+      void loadProject(projectId).catch((e: unknown) =>
+        setError(formatClientFetchError(e, "Failed to load project")),
+      );
     }, 0);
     return () => window.clearTimeout(id);
   }, [projectId, loadProject]);
@@ -534,7 +561,11 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     importCompleted: importGcCompletedScores,
     loading: gcSyncLoading,
   } = useGameChangerAdminSync(projectId, Boolean(gcConfig?.widgetId), () => {
-    if (projectId) void loadProject(projectId);
+    if (projectId) {
+      void loadProject(projectId, { silent: true }).catch((e: unknown) => {
+        console.warn("[bracket] background reload after GameChanger sync failed:", e);
+      });
+    }
   });
 
   useEffect(() => {
@@ -798,14 +829,18 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
 
   async function patchSpec(partial: Record<string, unknown>) {
     if (!projectId) return;
-    const res = await fetch(`/api/admin/tournament-brackets/projects/${projectId}`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ specPatch: partial }),
-    });
-    const json = await readApiJson<{ error?: string; hint?: string }>(res);
-    if (!res.ok) throw new Error(apiErrorMessage(json, "Save failed"));
-    await loadProject(projectId);
+    try {
+      const res = await fetch(`/api/admin/tournament-brackets/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ specPatch: partial }),
+      });
+      const json = await readApiJson<{ error?: string; hint?: string }>(res);
+      if (!res.ok) throw new Error(apiErrorMessage(json, "Save failed"));
+      await loadProject(projectId);
+    } catch (e: unknown) {
+      throw new Error(formatClientFetchError(e, "Save failed"));
+    }
   }
 
   async function saveProjectName() {
@@ -1511,7 +1546,28 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   return (
     <section className="flex flex-col gap-4" data-admin-tournament-brackets="true">
       {error ? (
-        <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div>
+        <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <p className="min-w-0 flex-1">{error}</p>
+            <button
+              type="button"
+              className="shrink-0 rounded-md border border-red-600 px-2.5 py-1 text-xs font-semibold text-red-100 hover:bg-red-900/50"
+              onClick={() => {
+                setError("");
+                void loadProjects().catch((e: unknown) =>
+                  setError(formatClientFetchError(e, "Failed to load projects")),
+                );
+                if (projectId) {
+                  void loadProject(projectId).catch((e: unknown) =>
+                    setError(formatClientFetchError(e, "Failed to load project")),
+                  );
+                }
+              }}
+            >
+              Retry
+            </button>
+          </div>
+        </div>
       ) : null}
       {notice ? (
         <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div>

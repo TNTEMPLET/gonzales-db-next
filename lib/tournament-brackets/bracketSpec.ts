@@ -47,7 +47,7 @@ const bracketMatchInputSchema = z.object({
   llOfficialGameNumber: z.string().max(32).optional(),
   /** Optional schedule / location lines on the bracket game card (preview + HTML export). */
   dateLabel: z.string().max(80).optional(),
-  time: z.string().max(48).optional(),
+  time: z.string().max(80).optional(),
   venue: z.string().max(160).optional(),
   field: z.string().max(160).optional(),
 });
@@ -110,7 +110,7 @@ export const bracketThirdPlaceGameSchema = z.object({
   officialGameNumber: z.string().max(32).optional(),
   /** Optional schedule / location lines shown on the bracket game card. */
   dateLabel: z.string().max(80).optional(),
-  time: z.string().max(48).optional(),
+  time: z.string().max(80).optional(),
   venue: z.string().max(160).optional(),
   field: z.string().max(160).optional(),
   homeScore: bracketScoreSchema.optional(),
@@ -292,7 +292,13 @@ export function mergeBracketSpec(
   if (Array.isArray(partial.ingestionWarnings)) {
     next.ingestionWarnings = partial.ingestionWarnings;
   }
-  for (const key of ["bracketThemePrimaryHex", "bracketThemeAccentHex", "championAgeGroupLabel"] as const) {
+  for (const key of [
+    "bracketThemePrimaryHex",
+    "bracketThemeAccentHex",
+    "championAgeGroupLabel",
+    "rosterAgeGroup",
+    "divisionLabel",
+  ] as const) {
     if (!Object.prototype.hasOwnProperty.call(partial, key)) continue;
     const v = partial[key];
     if (v === null || v === undefined || (typeof v === "string" && v.trim() === "")) {
@@ -338,11 +344,9 @@ export function mergeBracketSpec(
   }
   const mergedParse = bracketSpecSchema.safeParse(next);
   if (!mergedParse.success) {
-    logBracketSpecIssue(
-      "mergeBracketSpec: merged document invalid after patch",
-      formatBracketSpecZodIssues(mergedParse.error),
-    );
-    return defaultBracketSpec();
+    const issues = formatBracketSpecZodIssues(mergedParse.error);
+    logBracketSpecIssue("mergeBracketSpec: merged document invalid after patch", issues);
+    throw new Error(`Bracket save rejected: ${issues}`);
   }
   return mergedParse.data;
 }

@@ -422,6 +422,54 @@ describe("bracket theme", () => {
     assert.equal(merged.bracketThemeAccentHex, "#00ff00");
   });
 
+  it("mergeBracketSpec clears rosterAgeGroup when null is sent", () => {
+    const cur = baseSpec({
+      setupWizardCompleted: true,
+      rosterAgeGroup: "9U",
+      rounds: [
+        {
+          id: "r1",
+          label: "Round 1",
+          matches: [{ id: "m1", home: "A", away: "B", time: "6:00 PM" }],
+        },
+      ],
+    });
+    const merged = mergeBracketSpec(cur, {
+      rounds: cur.rounds,
+      rosterAgeGroup: null,
+    });
+    assert.equal(merged.rosterAgeGroup, undefined);
+    assert.equal(merged.rounds.length, 1);
+  });
+
+  it("mergeBracketSpec throws instead of wiping when a match time exceeds max length", () => {
+    const cur = baseSpec({
+      setupWizardCompleted: true,
+      bracketFormat: "single_elimination",
+      rounds: [
+        {
+          id: "r1",
+          label: "Round 1",
+          matches: [{ id: "m1", home: "A", away: "B" }],
+        },
+      ],
+    });
+    assert.throws(
+      () =>
+        mergeBracketSpec(cur, {
+          rounds: [
+            {
+              id: "r1",
+              label: "Round 1",
+              matches: [{ id: "m1", home: "A", away: "B", time: "x".repeat(81) }],
+            },
+          ],
+        }),
+      /Bracket save rejected/,
+    );
+    assert.equal(cur.rounds.length, 1);
+  });
+
   it("mergeBracketSpec with thirdPlaceGame null keeps bracket rounds (score save patch)", () => {
     const cur = baseSpec({
       setupWizardCompleted: true,
