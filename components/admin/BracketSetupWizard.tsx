@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import BracketTeamPicker from "@/components/admin/BracketTeamPicker";
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import {
   BYE_SLOT_LABEL,
@@ -18,6 +19,8 @@ type Step = "format" | "division" | "champion" | "teams" | "byes" | "confirm" | 
 type Props = {
   spec: BracketSpec;
   projectId: string;
+  organizationId: string;
+  seasonYear: number;
   busy: boolean;
   /** When true, bracket structure + preview are visible; wizard can be collapsed or reopened to adjust answers. */
   setupComplete: boolean;
@@ -26,16 +29,11 @@ type Props = {
   onSkipGuidedSetup: () => Promise<void>;
 };
 
-function teamsFromLines(text: string): string[] {
-  return text
-    .split("\n")
-    .map((s) => s.trim())
-    .filter(Boolean);
-}
-
 export default function BracketSetupWizard({
   spec,
   projectId,
+  organizationId,
+  seasonYear,
   busy,
   setupComplete,
   onApply,
@@ -47,7 +45,8 @@ export default function BracketSetupWizard({
   const [divisionLabel, setDivisionLabel] = useState("");
   const [championAgeGroupDraft, setChampionAgeGroupDraft] = useState("");
   const [includeThirdPlaceDraft, setIncludeThirdPlaceDraft] = useState(false);
-  const [teamsText, setTeamsText] = useState("");
+  const [teams, setTeams] = useState<string[]>([]);
+  const [rosterAgeGroupDraft, setRosterAgeGroupDraft] = useState("");
   const [byeAck, setByeAck] = useState(false);
 
   const seedFromSpec = useCallback(() => {
@@ -55,13 +54,15 @@ export default function BracketSetupWizard({
     setDivisionLabel(spec.divisionLabel ?? "");
     setChampionAgeGroupDraft(spec.championAgeGroupLabel?.trim() || spec.divisionLabel?.trim() || "");
     setIncludeThirdPlaceDraft(Boolean(spec.singleElimIncludeThirdPlace));
-    setTeamsText(spec.teams.filter(Boolean).join("\n"));
+    setTeams(spec.teams.filter(Boolean));
+    setRosterAgeGroupDraft(spec.rosterAgeGroup?.trim() ?? "");
     setByeAck(false);
     setStep("format");
   }, [
     spec.bracketFormat,
     spec.championAgeGroupLabel,
     spec.divisionLabel,
+    spec.rosterAgeGroup,
     spec.singleElimIncludeThirdPlace,
     spec.teams,
   ]);
@@ -71,7 +72,7 @@ export default function BracketSetupWizard({
     setShowWizardSession(false);
   }, [projectId, seedFromSpec]);
 
-  const teams = useMemo(() => teamsFromLines(teamsText), [teamsText]);
+  const teamsText = useMemo(() => teams.join("\n"), [teams]);
   const byeCount = useMemo(() => countByesForTeamList(teams), [teams]);
   const slotN = useMemo(() => (teams.length >= 1 ? nextPowerOfTwoAtLeast(teams.length) : 0), [teams.length]);
   const canBuildSingle = useMemo(
@@ -102,6 +103,7 @@ export default function BracketSetupWizard({
       bracketFormat: "single_elimination",
       divisionLabel: label.length > 0 ? label : "",
       championAgeGroupLabel: championAgeGroupDraft.trim() || null,
+      rosterAgeGroup: rosterAgeGroupDraft.trim() || null,
       singleElimIncludeThirdPlace: includeThirdPlaceDraft,
       teams,
       rounds: previewRounds,
@@ -307,7 +309,12 @@ export default function BracketSetupWizard({
               type="button"
               disabled={busy}
               className="rounded-lg bg-violet-700 px-3 py-2 text-xs font-semibold text-white hover:bg-violet-600"
-              onClick={() => setStep("teams")}
+              onClick={() => {
+                if (!rosterAgeGroupDraft.trim() && championAgeGroupDraft.trim()) {
+                  setRosterAgeGroupDraft(championAgeGroupDraft.trim());
+                }
+                setStep("teams");
+              }}
             >
               Next
             </button>
@@ -318,15 +325,24 @@ export default function BracketSetupWizard({
       {step === "teams" ? (
         <div className="mt-4 space-y-3">
           <p className="text-sm text-zinc-300">
-            Enter competitors in <strong className="font-medium text-zinc-200">seed order</strong>: best seed first,
-            one per line. Blank lines are ignored.
+            Select teams from the league roster for this age group, or type names in seed order below (best seed
+            first).
           </p>
-          <textarea
-            className="min-h-32 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 font-mono text-xs"
-            value={teamsText}
-            disabled={busy}
-            onChange={(e) => setTeamsText(e.target.value)}
-            placeholder={"Thunder\nLightning\nStorm\n…"}
+          <BracketTeamPicker
+            organizationId={organizationId}
+            seasonYear={seasonYear}
+            busy={busy}
+            selectedTeamNames={teams}
+            onSelectedTeamNamesChange={setTeams}
+            rosterAgeGroup={rosterAgeGroupDraft}
+            championAgeGroupLabel={championAgeGroupDraft}
+            divisionLabel={divisionLabel}
+            onAgeGroupChange={(ag) => {
+              setRosterAgeGroupDraft(ag);
+              if (ag.trim() && !championAgeGroupDraft.trim()) {
+                setChampionAgeGroupDraft(ag.trim());
+              }
+            }}
           />
           {!canBuildSingle && teams.length >= 1 ? (
             <p className="text-xs text-amber-300">
@@ -416,6 +432,7 @@ export default function BracketSetupWizard({
                   : "(default: Tournament)"}
             </li>
             <li>3rd place game: {includeThirdPlaceDraft ? "yes" : "no"}</li>
+            {rosterAgeGroupDraft.trim() ? <li>Roster age group: {rosterAgeGroupDraft.trim()}</li> : null}
             <li>
               Teams: {teams.length} ({slotN}-slot bracket{byeCount > 0 ? `, ${byeCount} BYE${byeCount === 1 ? "" : "s"}` : ""})
             </li>

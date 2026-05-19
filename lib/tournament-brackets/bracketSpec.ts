@@ -170,6 +170,8 @@ export const bracketSpecSchema = z.object({
    * Collected in guided setup; editable in admin.
    */
   championAgeGroupLabel: z.string().max(120).optional(),
+  /** League roster age group used when picking teams in admin (Teams table). */
+  rosterAgeGroup: z.string().max(48).optional(),
   /** Filled when semifinal scores are saved (single elim + 3rd place). */
   thirdPlaceGame: bracketThirdPlaceGameSchema.optional(),
   /** GameChanger tournament scoreboard widget (Tools → Create Scoreboard on web.gc.com). */

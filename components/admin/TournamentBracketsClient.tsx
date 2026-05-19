@@ -13,6 +13,7 @@ import {
 
 import BracketSetupWizard from "@/components/admin/BracketSetupWizard";
 import BracketStructureEditor from "@/components/admin/BracketStructureEditor";
+import BracketTeamNameEditor from "@/components/admin/BracketTeamNameEditor";
 import GameChangerScoreboardModal from "@/components/brackets/GameChangerScoreboardModal";
 import TournamentBracketView, { type BracketScoringViewProps } from "@/components/brackets/TournamentBracketView";
 import { useGameChangerLive } from "@/hooks/useGameChangerLive";
@@ -1425,6 +1426,8 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       <BracketSetupWizard
         spec={spec}
         projectId={project.id}
+        organizationId={project.organizationId}
+        seasonYear={project.seasonYear}
         busy={busy}
         setupComplete={setupComplete}
         onApply={async (patch) => {
@@ -1943,17 +1946,55 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           <>
             {setupComplete ? (
               <div className="flex flex-col gap-4">
-                <details className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`} {...(!focusPreview ? { open: true } : {})}><summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">Bracket structure</summary><div className="border-t border-zinc-800 p-4 sm:p-5"><BracketStructureEditor
+                {project.status === "READY" ? (
+                  <details
+                    className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`}
+                    open
+                  >
+                    <summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
+                      Team names
+                    </summary>
+                    <div className="border-t border-zinc-800 p-4 sm:p-5">
+                      <BracketTeamNameEditor
+                        spec={spec}
+                        projectId={project.id}
+                        projectUpdatedAt={project.updatedAt}
+                        busy={busy}
+                        onSave={async (patch) => {
+                          setBusy(true);
+                          setError("");
+                          try {
+                            await patchSpec(patch);
+                            setNotice("Team names updated.");
+                            await loadProject(project.id);
+                          } catch (e: unknown) {
+                            setError(e instanceof Error ? e.message : String(e));
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      />
+                    </div>
+                  </details>
+                ) : null}
+                <details className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`} {...(!focusPreview ? { open: true } : {})}><summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">Bracket structure</summary><div className="border-t border-zinc-800 p-4 sm:p-5">                <BracketStructureEditor
                   spec={spec}
                   projectId={project.id}
                   projectUpdatedAt={project.updatedAt}
+                  organizationId={project.organizationId}
+                  seasonYear={project.seasonYear}
                   busy={busy}
+                  structureLocked={project.status === "READY"}
                   onSave={async (patch) => {
                     setBusy(true);
                     setError("");
                     try {
                       await patchSpec({ ...patch });
-                      setNotice("Bracket structure saved.");
+                      setNotice(
+                        project.status === "READY"
+                          ? "Bracket schedule saved."
+                          : "Bracket structure saved.",
+                      );
                       await loadProject(project.id);
                     } catch (e: unknown) {
                       setError(e instanceof Error ? e.message : String(e));
