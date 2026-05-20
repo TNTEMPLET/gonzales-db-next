@@ -14,6 +14,7 @@ import {
 import BracketSetupWizard from "@/components/admin/BracketSetupWizard";
 import BracketStructureEditor from "@/components/admin/BracketStructureEditor";
 import BracketTeamNameBulkMapper from "@/components/admin/BracketTeamNameBulkMapper";
+import BracketGameChangerEventMappingEditor from "@/components/admin/BracketGameChangerEventMappingEditor";
 import BracketTeamNameMappingEditor from "@/components/admin/BracketTeamNameMappingEditor";
 import GameChangerScoreboardModal from "@/components/brackets/GameChangerScoreboardModal";
 import TournamentBracketView, { type BracketScoringViewProps } from "@/components/brackets/TournamentBracketView";
@@ -628,8 +629,9 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     try {
       await patchSpec({
         gameChanger: {
+          ...spec?.gameChanger,
           widgetId,
-          autoImportFinalScores: true,
+          autoImportFinalScores: spec?.gameChanger?.autoImportFinalScores ?? true,
           ...(Number.isFinite(maxN) && maxN >= 1 && maxN <= 20
             ? { maxVerticalGamesVisible: maxN }
             : {}),
@@ -2108,6 +2110,44 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                     />
                   </div>
                 </details>
+                {gcConfig ? (
+                  <details
+                    className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`}
+                  >
+                    <summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">
+                      GameChanger event pinning
+                    </summary>
+                    <div className="border-t border-zinc-800 p-4 sm:p-5">
+                      <BracketGameChangerEventMappingEditor
+                        spec={spec}
+                        projectId={project.id}
+                        busy={busy}
+                        onSave={async (matchEventPins) => {
+                          setBusy(true);
+                          setError("");
+                          try {
+                            const res = await fetch(
+                              `/api/admin/tournament-brackets/projects/${encodeURIComponent(project.id)}/gamechanger-event-mapping`,
+                              {
+                                method: "POST",
+                                headers: { "Content-Type": "application/json" },
+                                body: JSON.stringify({ matchEventPins }),
+                              },
+                            );
+                            const json = (await res.json()) as { error?: string };
+                            if (!res.ok) throw new Error(json.error ?? `Save failed (${res.status})`);
+                            setNotice("GameChanger event pins saved.");
+                            await loadProject(project.id);
+                          } catch (e: unknown) {
+                            setError(e instanceof Error ? e.message : String(e));
+                          } finally {
+                            setBusy(false);
+                          }
+                        }}
+                      />
+                    </div>
+                  </details>
+                ) : null}
                 <details className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`} {...(!focusPreview ? { open: true } : {})}><summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">Bracket structure</summary><div className="border-t border-zinc-800 p-4 sm:p-5">                <BracketStructureEditor
                   spec={spec}
                   projectId={project.id}

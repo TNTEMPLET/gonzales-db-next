@@ -152,17 +152,33 @@ export function findGcEventForBracketMatch(
   })[0];
 }
 
+/** Admin-pinned GameChanger event takes precedence over team-name matching. */
+export function resolveGcEventForBracketMatch(
+  ref: GcBracketMatchRef,
+  events: GcScoreboardEvent[],
+  matchEventPins?: Record<string, string> | null,
+): GcScoreboardEvent | undefined {
+  if (isBracketByeMatch(ref)) return undefined;
+  const pinnedId = matchEventPins?.[ref.id]?.trim();
+  if (pinnedId) {
+    const byId = events.find((ev) => ev.id === pinnedId);
+    if (byId) return byId;
+  }
+  return findGcEventForBracketMatch(ref, events);
+}
+
 export function buildLivePayloadFromEvents(
   bracketMatches: GcBracketMatchRef[],
   events: GcScoreboardEvent[],
   nextUpdate?: string,
+  matchEventPins?: Record<string, string> | null,
 ): GcLiveMatchPayload {
   const liveGameStatuses: Record<string, GcLiveGameStatus> = {};
   const matchEventIds: Record<string, string> = {};
   const eventsByMatchId: Record<string, GcScoreboardEvent> = {};
 
   for (const ref of bracketMatches) {
-    const event = findGcEventForBracketMatch(ref, events);
+    const event = resolveGcEventForBracketMatch(ref, events, matchEventPins);
     if (!event) continue;
 
     matchEventIds[ref.id] = event.id;

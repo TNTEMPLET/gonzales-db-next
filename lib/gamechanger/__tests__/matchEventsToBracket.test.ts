@@ -5,6 +5,7 @@ import {
   buildLivePayloadFromEvents,
   findGcEventForBracketMatch,
   normalizeTeamNameForMatch,
+  resolveGcEventForBracketMatch,
 } from "@/lib/gamechanger/matchEventsToBracket";
 import type { GcBracketMatchRef, GcScoreboardEvent } from "@/lib/gamechanger/types";
 
@@ -69,6 +70,38 @@ describe("findGcEventForBracketMatch", () => {
   });
 });
 
+describe("resolveGcEventForBracketMatch", () => {
+  const ref: GcBracketMatchRef = {
+    id: "m1",
+    home: "Ascension Paper - Aderholt",
+    away: "Highway 44 Paint and Body - Little",
+  };
+
+  const wrongEvent: GcScoreboardEvent = {
+    id: "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa",
+    start_ts: "2026-05-10T00:00:00.000Z",
+    game_status: "completed",
+    home_team: { id: "h0", name: "Other Team A", score: 1 },
+    away_team: { id: "a0", name: "Other Team B", score: 0 },
+  };
+
+  it("uses pinned event id even when team names would match a different event", () => {
+    const pins = { m1: sampleEvent.id };
+    assert.equal(
+      resolveGcEventForBracketMatch(ref, [wrongEvent, sampleEvent], pins)?.id,
+      sampleEvent.id,
+    );
+  });
+
+  it("falls back to team matching when pin is absent or event not in window", () => {
+    assert.equal(
+      resolveGcEventForBracketMatch(ref, [sampleEvent], { m1: wrongEvent.id })?.id,
+      sampleEvent.id,
+    );
+    assert.equal(resolveGcEventForBracketMatch(ref, [sampleEvent], {})?.id, sampleEvent.id);
+  });
+});
+
 describe("buildLivePayloadFromEvents", () => {
   it("marks live games with score and inning labels", () => {
     const ref: GcBracketMatchRef = {
@@ -84,5 +117,39 @@ describe("buildLivePayloadFromEvents", () => {
     assert.equal(payload.eventsByMatchId.m1?.id, sampleEvent.id);
     assert.equal(payload.hasLiveGames, true);
     assert.ok(payload.nextPollMs >= 15_000);
+  });
+
+  it("respects matchEventPins over auto-match", () => {
+    const ref: GcBracketMatchRef = {
+      id: "g2",
+      home: "Velocity Trailer Rentals - Nichols",
+      away: "Timeless Treasures - Snappers",
+      dateLabel: "5/18",
+      time: "7:15PM",
+    };
+    const olderRematch: GcScoreboardEvent = {
+      id: "11111111-1111-4111-8111-111111111101",
+      start_ts: "2026-05-16T16:30:00.000Z",
+      game_status: "completed",
+      home_team: { id: "h1", name: "Timeless Treasures - Snappers", score: 10 },
+      away_team: { id: "a1", name: "Velocity Trailer Rentals - Nichols", score: 6 },
+    };
+    const tournamentGame: GcScoreboardEvent = {
+      id: "22222222-2222-4222-8222-222222222202",
+      start_ts: "2026-05-18T22:45:00.000Z",
+      game_status: "completed",
+      home_team: { id: "h2", name: "Velocity Trailer Rentals - Nichols", score: 7 },
+      away_team: { id: "a2", name: "Timeless Treasures - Snappers", score: 5 },
+    };
+    const autoPayload = buildLivePayloadFromEvents([ref], [olderRematch, tournamentGame]);
+    assert.equal(autoPayload.matchEventIds.g2, tournamentGame.id);
+
+    const pinnedPayload = buildLivePayloadFromEvents(
+      [ref],
+      [olderRematch, tournamentGame],
+      undefined,
+      { g2: olderRematch.id },
+    );
+    assert.equal(pinnedPayload.matchEventIds.g2, olderRematch.id);
   });
 });

@@ -323,23 +323,19 @@ export function mergeBracketSpec(
     }
   }
   if (Object.prototype.hasOwnProperty.call(partial, "gameChanger")) {
-    if (partial.gameChanger == null || typeof partial.gameChanger !== "object") {
+    if (partial.gameChanger == null) {
       delete next.gameChanger;
-    } else {
-      const gc = partial.gameChanger as Record<string, unknown>;
-      const widgetId = typeof gc.widgetId === "string" ? gc.widgetId.trim() : "";
-      if (!widgetId) {
-        delete next.gameChanger;
-      } else {
-        const mergedGc: Record<string, unknown> = { widgetId };
-        if (typeof gc.maxVerticalGamesVisible === "number") {
-          mergedGc.maxVerticalGamesVisible = gc.maxVerticalGamesVisible;
-        }
-        if (gc.layout === "vertical" || gc.layout === "horizontal") {
-          mergedGc.layout = gc.layout;
-        }
-        next.gameChanger = mergedGc;
+    } else if (typeof partial.gameChanger === "object") {
+      const currentGc = bracketGameChangerSchema.safeParse(current.gameChanger);
+      const mergedGc = bracketGameChangerSchema.safeParse({
+        ...(currentGc.success ? currentGc.data : {}),
+        ...(partial.gameChanger as Record<string, unknown>),
+      });
+      if (!mergedGc.success) {
+        const issues = formatBracketSpecZodIssues(mergedGc.error);
+        throw new Error(`GameChanger config invalid: ${issues}`);
       }
+      next.gameChanger = mergedGc.data;
     }
   }
   const mergedParse = bracketSpecSchema.safeParse(next);
