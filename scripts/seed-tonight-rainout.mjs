@@ -29,7 +29,7 @@ try {
       data: {
         organizationId: org,
         allParksOut: true,
-        venues: [],
+        venues: [], // JSON array (see OrgAlert.venues Json column)
         expiresAt,
       },
     });

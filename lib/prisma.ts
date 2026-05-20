@@ -7,7 +7,7 @@ declare global {
 }
 
 /** Bump when Prisma schema/models change so dev HMR does not reuse a stale PrismaClient. */
-const PRISMA_SCHEMA_VERSION = "2026-05-15-drop-bracket-published-at-v1";
+const PRISMA_SCHEMA_VERSION = "2026-05-20-org-alert-venues-json-v1";
 
 function createClient() {
   const adapter = new PrismaPostgresAdapter({
@@ -27,7 +27,8 @@ const hasRequiredDelegates =
   "dugoutComment" in cachedDelegates &&
   "dugoutNotificationCursor" in cachedDelegates &&
   "allStarVaultAccess" in cachedDelegates &&
-  "bracketProject" in cachedDelegates;
+  "bracketProject" in cachedDelegates &&
+  "orgAlert" in cachedDelegates;
 const schemaVersionMatches =
   global.prismaSchemaVersion === PRISMA_SCHEMA_VERSION;
 

@@ -50,7 +50,12 @@ export async function createOrgAlert(formData: FormData) {
   if (isNaN(expiresAt.getTime())) throw new Error("Invalid expiry date");
 
   await prisma.orgAlert.create({
-    data: { organizationId: org, allParksOut, venues, expiresAt },
+    data: {
+      organizationId: org,
+      allParksOut,
+      venues: allParksOut ? [] : venues,
+      expiresAt,
+    },
   });
 
   revalidatePath("/admin/alerts");
