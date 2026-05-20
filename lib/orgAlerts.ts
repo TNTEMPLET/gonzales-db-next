@@ -1,3 +1,5 @@
+import type { OrgAlert } from "@prisma/client";
+
 import prisma from "@/lib/prisma";
 
 export type OrgAlertRecord = {
@@ -17,12 +19,15 @@ export function parseOrgAlertVenues(venues: unknown): string[] {
     .filter(Boolean);
 }
 
-function mapOrgAlert<T extends { venues: unknown }>(row: T): OrgAlertRecord {
-  const { venues: rawVenues, ...rest } = row;
+function mapOrgAlert(row: OrgAlert): OrgAlertRecord {
   return {
-    ...rest,
-    venues: parseOrgAlertVenues(rawVenues),
-  } as OrgAlertRecord;
+    id: row.id,
+    organizationId: row.organizationId,
+    allParksOut: row.allParksOut,
+    venues: parseOrgAlertVenues(row.venues),
+    expiresAt: row.expiresAt,
+    createdAt: row.createdAt,
+  };
 }
 
 export async function getActiveOrgAlert(organizationId: string): Promise<OrgAlertRecord | null> {
