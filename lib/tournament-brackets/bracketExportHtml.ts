@@ -708,7 +708,7 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--bracket-accent);
+  color: var(--bracket-match-badge-fg, var(--bracket-chrome-deep, var(--bracket-accent)));
   padding: 0.35rem 0.55rem 0.25rem;
   border-bottom: 1px solid #e2e8f0;
   background: linear-gradient(to bottom, #fff, #fafbfd);

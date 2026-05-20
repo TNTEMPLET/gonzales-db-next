@@ -60,6 +60,8 @@
   --bracket-watermark-opacity: 0.052;
   --bracket-watermark-filter: none;
   --bracket-watermark-scale: 1.18;
+  --bracket-match-badge-fg: var(--bracket-chrome-deep);
+  --bracket-match-live-fg: var(--bracket-chrome);
   /* Shared strip height so Final 3rd-place game and Champion 3rd-place plaque share one vertical center. */
   --bracket-podium-third-band-min-height: 7rem;
   position: relative;
@@ -364,7 +366,7 @@
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.04em;
-  color: var(--bracket-accent);
+  color: var(--bracket-match-badge-fg, var(--bracket-accent));
   padding: 0.35rem 0.55rem 0.25rem;
   border-bottom: 1px solid var(--bracket-inner-border);
   background: var(--bracket-surface-gradient);
@@ -417,7 +419,7 @@
 }
 
 .matchLive .matchLiveStatus {
-  color: var(--bracket-accent);
+  color: var(--bracket-match-live-fg, var(--bracket-accent));
   font-weight: 700;
 }
 

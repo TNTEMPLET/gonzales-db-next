@@ -157,6 +157,9 @@ function lightSchemeVars(pr: [number, number, number], colors: BracketThemeColor
     "--bracket-watermark-opacity": "0.052",
     "--bracket-watermark-filter": "none",
     "--bracket-watermark-scale": "1.18",
+    /** Game number row + live score copy on light match cards (accent gold is low-contrast on white). */
+    "--bracket-match-badge-fg": navyDeep,
+    "--bracket-match-live-fg": colors.primaryHex,
   };
 }
 
@@ -233,6 +236,8 @@ function darkSchemeVars(pr: [number, number, number], colors: BracketThemeColors
     "--bracket-watermark-opacity": "0.072",
     "--bracket-watermark-filter": "brightness(2) contrast(1.35)",
     "--bracket-watermark-scale": "1",
+    "--bracket-match-badge-fg": colors.accentHex,
+    "--bracket-match-live-fg": colors.accentHex,
   };
 }
 
