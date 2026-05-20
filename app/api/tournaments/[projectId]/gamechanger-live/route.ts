@@ -40,16 +40,17 @@ export async function GET(_request: Request, context: RouteContext) {
     return NextResponse.json({ error: "GameChanger is not configured for this bracket." }, { status: 404 });
   }
 
-  const { widgetId } = gcParsed.data;
+  const gc = gcParsed.data;
 
   try {
     const layout = buildBracketLayout(parsed.spec);
     const bracketMatches = collectLayoutMatchesForGc(layout);
-    const { response, events } = await fetchGameChangerScoreboardSyncWindow(widgetId);
+    const { response, events } = await fetchGameChangerScoreboardSyncWindow(gc.widgetId);
     const payload: GcLiveMatchPayload = buildLivePayloadFromEvents(
       bracketMatches,
       events,
       response.next_update,
+      gc.matchEventPins,
     );
 
     return NextResponse.json({

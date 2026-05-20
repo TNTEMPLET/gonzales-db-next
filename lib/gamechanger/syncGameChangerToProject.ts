@@ -40,7 +40,12 @@ export async function syncGameChangerToProject(
   const bracketMatches = collectLayoutMatchesForGc(layout);
 
   const { response, events } = await fetchGameChangerScoreboardSyncWindow(gc.widgetId);
-  const live = buildLivePayloadFromEvents(bracketMatches, events, response.next_update);
+  const live = buildLivePayloadFromEvents(
+    bracketMatches,
+    events,
+    response.next_update,
+    gc.matchEventPins,
+  );
 
   let nextSpec = spec;
   let specUpdated = false;
@@ -70,6 +75,7 @@ export async function syncGameChangerToProject(
       onlyCompleted: true,
       matchIds: matchIdsToTry,
       skipUnchanged: !options.forceImportCompleted,
+      matchEventPins: gc.matchEventPins,
     });
 
     if (importResult.importedMatchIds.length > 0) {

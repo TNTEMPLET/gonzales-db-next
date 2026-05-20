@@ -470,6 +470,26 @@ describe("bracket theme", () => {
     assert.equal(cur.rounds.length, 1);
   });
 
+  it("mergeBracketSpec preserves gameChanger pins when widgetId is updated", () => {
+    const widgetId = "58152785-6fd8-4c3a-be34-187a3fdf97ff";
+    const pinId = "90ceba19-9801-4237-b9e4-7e934f69d429";
+    const cur = baseSpec({
+      gameChanger: {
+        widgetId,
+        matchEventPins: { m1: pinId },
+        importedFinalEventIds: [pinId],
+        autoImportFinalScores: true,
+      },
+    });
+    const merged = mergeBracketSpec(cur, {
+      gameChanger: { widgetId, maxVerticalGamesVisible: 6 },
+    });
+    assert.equal(merged.gameChanger?.widgetId, widgetId);
+    assert.equal(merged.gameChanger?.matchEventPins?.m1, pinId);
+    assert.deepEqual(merged.gameChanger?.importedFinalEventIds, [pinId]);
+    assert.equal(merged.gameChanger?.maxVerticalGamesVisible, 6);
+  });
+
   it("mergeBracketSpec with thirdPlaceGame null keeps bracket rounds (score save patch)", () => {
     const cur = baseSpec({
       setupWizardCompleted: true,

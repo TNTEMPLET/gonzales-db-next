@@ -1,4 +1,4 @@
-import { findGcEventForBracketMatch, normalizeTeamNameForMatch } from "@/lib/gamechanger/matchEventsToBracket";
+import { resolveGcEventForBracketMatch, normalizeTeamNameForMatch } from "@/lib/gamechanger/matchEventsToBracket";
 import type { GcBracketMatchRef, GcScoreboardEvent } from "@/lib/gamechanger/types";
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import {
@@ -52,6 +52,8 @@ export type ImportGcScoresOptions = {
   matchIds?: string[];
   /** Skip matches that already have the same scores saved. */
   skipUnchanged?: boolean;
+  /** Bracket match id → GameChanger event UUID (admin pins). */
+  matchEventPins?: Record<string, string> | null;
 };
 
 function scoresMatchSaved(
@@ -101,7 +103,7 @@ export function importGcScoresIntoBracket(
   for (const ref of bracketMatches) {
     if (matchIdFilter && !matchIdFilter.has(ref.id)) continue;
 
-    const event = findGcEventForBracketMatch(ref, events);
+    const event = resolveGcEventForBracketMatch(ref, events, options.matchEventPins);
     if (!event) {
       skipped.push({ matchId: ref.id, reason: "no_gamechanger_match" });
       continue;

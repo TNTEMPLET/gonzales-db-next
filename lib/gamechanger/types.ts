@@ -8,6 +8,8 @@ export const bracketGameChangerSchema = z.object({
   autoImportFinalScores: z.boolean().optional(),
   /** GC event IDs already imported so finals are not applied twice. */
   importedFinalEventIds: z.array(z.string().uuid()).optional(),
+  /** Bracket match id → GameChanger event UUID. Overrides team-name matching when set. */
+  matchEventPins: z.record(z.string().min(1), z.string().uuid()).optional(),
 });
 
 export type BracketGameChanger = z.infer<typeof bracketGameChangerSchema>;
