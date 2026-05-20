@@ -15,6 +15,7 @@ import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFrom
 import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
 import type { BracketColorScheme, BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { bracketThemeCssVars } from "@/lib/tournament-brackets/bracketTheme";
+import { resolveMatchDisplayStatus } from "@/lib/gamechanger/matchDisplayStatus";
 import { getBracketConnectorVariant } from "@/lib/tournament-brackets/bracketConnectorPaths";
 import { matchGridPlacement, podiumColumnGridPlacement } from "@/lib/tournament-brackets/bracketGridPlacement";
 import {
@@ -130,6 +131,17 @@ function liveStatusLabel(status: BracketLiveGameStatus | null | undefined): stri
     .map((part) => part?.trim())
     .filter(Boolean)
     .join(" · ") || undefined;
+}
+
+function matchScoresForHeader(
+  match: Pick<LayoutMatch, "id" | "homeScore" | "awayScore">,
+  scoring?: BracketScoringViewProps | null,
+): { homeScore?: number; awayScore?: number } {
+  const stored = scoring?.scores[match.id];
+  return {
+    homeScore: stored?.homeScore ?? match.homeScore,
+    awayScore: stored?.awayScore ?? match.awayScore,
+  };
 }
 
 function byeSlotClass(label: string): string {
@@ -529,6 +541,7 @@ function ThirdPlaceMatchArticle({
   };
   const showTie = bracketTieState(match.id, match, scoring);
   const badgeLabel = ["3rd place", matchGameBadge(match)].filter(Boolean).join(" · ");
+  const displayStatus = resolveMatchDisplayStatus(liveStatus, matchScoresForHeader(match, scoring));
   const isLive = isLiveBracketStatus(liveStatus);
   const clickable =
     Boolean(gameChangerEnabled && onMatchClick && !scoring?.editing && !isByeBracketMatch(match));
@@ -563,7 +576,11 @@ function ThirdPlaceMatchArticle({
           }
         : {})}
     >
-      <MatchGameHeader gameLabel={badgeLabel} liveStatus={liveStatus} badgeClassName={styles.thirdPlaceMatchBadge} />
+      <MatchGameHeader
+        gameLabel={badgeLabel}
+        liveStatus={displayStatus}
+        badgeClassName={styles.thirdPlaceMatchBadge}
+      />
       <BracketMatchSlotRow
         label={podium.thirdPlaceSlotHome}
         side="home"
@@ -791,6 +808,7 @@ function MatchArticle({
 }) {
   const { slotHome, slotAway } = match;
   const showTie = bracketTieState(match.id, match, scoring);
+  const displayStatus = resolveMatchDisplayStatus(liveStatus, matchScoresForHeader(match, scoring));
   const isLive = isLiveBracketStatus(liveStatus);
   const clickable =
     Boolean(gameChangerEnabled && onMatchClick && !scoring?.editing && !isByeBracketMatch(match));
@@ -827,7 +845,7 @@ function MatchArticle({
           }
         : {})}
     >
-      <MatchGameHeader gameLabel={gameLabel} liveStatus={liveStatus} />
+      <MatchGameHeader gameLabel={gameLabel} liveStatus={displayStatus} />
       <BracketMatchSlotRow label={slotHome} side="home" matchId={match.id} matchMeta={match} scoring={scoring} />
       <MatchGameInfoBetweenTeams meta={schedule ?? {}} />
       <BracketMatchSlotRow label={slotAway} side="away" matchId={match.id} matchMeta={match} scoring={scoring} />

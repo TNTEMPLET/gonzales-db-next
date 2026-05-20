@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 
 import { collectLayoutMatchesForGc } from "@/lib/gamechanger/collectLayoutMatches";
-import { fetchGameChangerScoreboardWindow } from "@/lib/gamechanger/fetchScoreboard";
+import { fetchGameChangerScoreboardSyncWindow } from "@/lib/gamechanger/fetchScoreboard";
 import { buildLivePayloadFromEvents } from "@/lib/gamechanger/matchEventsToBracket";
 import { bracketGameChangerSchema, type GcLiveMatchPayload } from "@/lib/gamechanger/types";
 import prisma from "@/lib/prisma";
@@ -45,7 +45,7 @@ export async function GET(_request: Request, context: RouteContext) {
   try {
     const layout = buildBracketLayout(parsed.spec);
     const bracketMatches = collectLayoutMatchesForGc(layout);
-    const { response, events } = await fetchGameChangerScoreboardWindow(widgetId);
+    const { response, events } = await fetchGameChangerScoreboardSyncWindow(widgetId);
     const payload: GcLiveMatchPayload = buildLivePayloadFromEvents(
       bracketMatches,
       events,
