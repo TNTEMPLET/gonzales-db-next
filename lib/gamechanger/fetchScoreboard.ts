@@ -66,6 +66,12 @@ export async function fetchGameChangerScoreboardDays(
   };
 }
 
+/** Past 5 calendar days through today — score import/sync lookback. */
+export const GC_SCOREBOARD_SYNC_DAY_OFFSETS = Array.from({ length: 5 }, (_, i) => i - 4);
+
+/** Past two weeks through today — admin team-name discovery only. */
+export const GC_SCOREBOARD_TEAM_NAMES_DAY_OFFSETS = Array.from({ length: 15 }, (_, i) => i - 14);
+
 /** Merge events from today and yesterday (dedupe by id). */
 export async function fetchGameChangerScoreboardWindow(widgetId: string): Promise<{
   response: GcScoreboardResponse;
@@ -74,13 +80,20 @@ export async function fetchGameChangerScoreboardWindow(widgetId: string): Promis
   return fetchGameChangerScoreboardDays(widgetId, [-1, 0]);
 }
 
+/** Five-day window for importing finals and admin sync. */
+export async function fetchGameChangerScoreboardSyncWindow(widgetId: string): Promise<{
+  response: GcScoreboardResponse;
+  events: GcScoreboardEvent[];
+}> {
+  return fetchGameChangerScoreboardDays(widgetId, GC_SCOREBOARD_SYNC_DAY_OFFSETS);
+}
+
 /** Wider window for admin team-name mapping (past two weeks + today). */
 export async function fetchGameChangerScoreboardTeamNamesWindow(widgetId: string): Promise<{
   response: GcScoreboardResponse;
   events: GcScoreboardEvent[];
 }> {
-  const offsets = Array.from({ length: 15 }, (_, i) => i - 14);
-  return fetchGameChangerScoreboardDays(widgetId, offsets);
+  return fetchGameChangerScoreboardDays(widgetId, GC_SCOREBOARD_TEAM_NAMES_DAY_OFFSETS);
 }
 
 export function pollIntervalFromNextUpdate(nextUpdate: string | undefined): number {
