@@ -60,12 +60,14 @@ async function main() {
     }
 
     let nextSpec = clearedGc;
+    let totalImported = 0;
     for (let pass = 1; pass <= 4; pass++) {
       const result = await syncGameChangerToProject(nextSpec, {
         forceImportCompleted: true,
       });
       nextSpec = result.spec;
       const n = result.live.importedMatchIds?.length ?? 0;
+      totalImported += n;
       if (n === 0) break;
     }
 
@@ -79,7 +81,7 @@ async function main() {
       row.id,
       row.name,
       "imported",
-      result.live.importedMatchIds?.length ?? 0,
+      totalImported,
       "matches",
     );
     updated++;
