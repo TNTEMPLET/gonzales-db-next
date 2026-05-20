@@ -18,6 +18,13 @@ describe("bracketThemeCssVars", () => {
     assert.equal(vars["--bracket-fg"], "#002f6c");
   });
 
+  it("uses readable match meta ink on light surfaces for gold accents", () => {
+    const vars = bracketThemeCssVars({ primaryHex: "#590275", accentHex: "#ffcb29" }, "light");
+    assert.equal(vars["--bracket-match-badge-fg"], vars["--bracket-navy-deep"]);
+    assert.equal(vars["--bracket-match-live-fg"], "#590275");
+    assert.notEqual(vars["--bracket-match-badge-fg"], "#ffcb29");
+  });
+
   it("returns dark neutrals when scheme is dark", () => {
     const vars = bracketThemeCssVars(SAMPLE, "dark");
     assert.equal(vars["--bracket-bg"], "#0f172a");
