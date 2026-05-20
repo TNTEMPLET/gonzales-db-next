@@ -1,5 +1,5 @@
 import { collectLayoutMatchesForGc } from "@/lib/gamechanger/collectLayoutMatches";
-import { fetchGameChangerScoreboardWindow } from "@/lib/gamechanger/fetchScoreboard";
+import { fetchGameChangerScoreboardSyncWindow } from "@/lib/gamechanger/fetchScoreboard";
 import { importGcScoresIntoBracket } from "@/lib/gamechanger/importScoresIntoBracket";
 import { buildLivePayloadFromEvents } from "@/lib/gamechanger/matchEventsToBracket";
 import { bracketGameChangerSchema, type GcAdminLiveResponse, type GcScoreboardEvent } from "@/lib/gamechanger/types";
@@ -39,7 +39,7 @@ export async function syncGameChangerToProject(
   const layout = buildBracketLayout(spec);
   const bracketMatches = collectLayoutMatchesForGc(layout);
 
-  const { response, events } = await fetchGameChangerScoreboardWindow(gc.widgetId);
+  const { response, events } = await fetchGameChangerScoreboardSyncWindow(gc.widgetId);
   const live = buildLivePayloadFromEvents(bracketMatches, events, response.next_update);
 
   let nextSpec = spec;
