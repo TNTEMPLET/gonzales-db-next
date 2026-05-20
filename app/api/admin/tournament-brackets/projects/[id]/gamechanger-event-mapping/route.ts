@@ -100,7 +100,6 @@ export async function POST(request: NextRequest, ctx: RouteParams) {
   return NextResponse.json({
     ok: true,
     projectId: row.id,
-    matchEventPins: sources.matchEventPins,
     ...sources,
   });
 }
