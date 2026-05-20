@@ -39,6 +39,34 @@ describe("findGcEventForBracketMatch", () => {
   it("skips bye placeholders", () => {
     assert.equal(findGcEventForBracketMatch({ id: "b", home: "BYE", away: "Team A" }, [sampleEvent]), undefined);
   });
+
+  it("prefers the GC event closest to the bracket scheduled date when teams rematch", () => {
+    const ref: GcBracketMatchRef = {
+      id: "g2",
+      home: "Velocity Trailer Rentals - Nichols",
+      away: "Timeless Treasures - Snappers",
+      dateLabel: "5/18",
+      time: "7:15PM",
+    };
+    const olderRematch: GcScoreboardEvent = {
+      id: "11111111-1111-4111-8111-111111111101",
+      start_ts: "2026-05-16T16:30:00.000Z",
+      game_status: "completed",
+      home_team: { id: "h1", name: "Timeless Treasures - Snappers", score: 10 },
+      away_team: { id: "a1", name: "Velocity Trailer Rentals - Nichols", score: 6 },
+    };
+    const tournamentGame: GcScoreboardEvent = {
+      id: "22222222-2222-4222-8222-222222222202",
+      start_ts: "2026-05-18T22:45:00.000Z",
+      game_status: "completed",
+      home_team: { id: "h2", name: "Velocity Trailer Rentals - Nichols", score: 7 },
+      away_team: { id: "a2", name: "Timeless Treasures - Snappers", score: 5 },
+    };
+    assert.equal(
+      findGcEventForBracketMatch(ref, [olderRematch, tournamentGame])?.id,
+      tournamentGame.id,
+    );
+  });
 });
 
 describe("buildLivePayloadFromEvents", () => {

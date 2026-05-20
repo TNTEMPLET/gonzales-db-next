@@ -84,6 +84,51 @@ function statusLabelForEvent(event: GcScoreboardEvent): string {
   return "Scheduled";
 }
 
+/** Bracket schedule is America/Chicago (CDT, UTC−5 in May). */
+function parseBracketScheduleMs(ref: GcBracketMatchRef, year = new Date().getFullYear()): number | undefined {
+  const dateLabel = ref.dateLabel?.trim();
+  if (!dateLabel) return undefined;
+  const m = dateLabel.match(/^(\d{1,2})\/(\d{1,2})$/);
+  if (!m) return undefined;
+  const month = Number(m[1]) - 1;
+  const day = Number(m[2]);
+  let hours = 18;
+  let minutes = 0;
+  const time = ref.time?.trim();
+  if (time) {
+    const tm = time.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (tm) {
+      hours = Number(tm[1]);
+      minutes = Number(tm[2]);
+      const ap = tm[3]!.toUpperCase();
+      if (ap === "PM" && hours !== 12) hours += 12;
+      if (ap === "AM" && hours === 12) hours = 0;
+    }
+  }
+  return Date.UTC(year, month, day, hours + 5, minutes, 0);
+}
+
+function gcEventStatusRank(event: GcScoreboardEvent): number {
+  return (
+    (event.game_status === "live" ? 4 : 0) +
+    (event.home_team.score != null ? 2 : 0) +
+    (event.game_status === "completed" ? 1 : 0)
+  );
+}
+
+function gcEventSortKey(event: GcScoreboardEvent, ref: GcBracketMatchRef): [number, number, number] {
+  const statusRank = gcEventStatusRank(event);
+  const scheduledMs = parseBracketScheduleMs(ref);
+  const startMs = Date.parse(event.start_ts);
+  const proximity =
+    scheduledMs != null && Number.isFinite(startMs)
+      ? -Math.abs(startMs - scheduledMs)
+      : Number.isFinite(startMs)
+        ? startMs
+        : 0;
+  return [statusRank, proximity, startMs];
+}
+
 export function findGcEventForBracketMatch(
   ref: GcBracketMatchRef,
   events: GcScoreboardEvent[],
@@ -98,15 +143,12 @@ export function findGcEventForBracketMatch(
   if (candidates.length === 1) return candidates[0];
 
   return candidates.sort((a, b) => {
-    const scoreA =
-      (a.game_status === "live" ? 4 : 0) +
-      (a.home_team.score != null ? 2 : 0) +
-      (a.game_status === "completed" ? 1 : 0);
-    const scoreB =
-      (b.game_status === "live" ? 4 : 0) +
-      (b.home_team.score != null ? 2 : 0) +
-      (b.game_status === "completed" ? 1 : 0);
-    return scoreB - scoreA;
+    const ka = gcEventSortKey(a, ref);
+    const kb = gcEventSortKey(b, ref);
+    for (let i = 0; i < ka.length; i++) {
+      if (kb[i]! !== ka[i]!) return kb[i]! - ka[i]!;
+    }
+    return 0;
   })[0];
 }
 
