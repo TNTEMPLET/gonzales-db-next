@@ -69,6 +69,7 @@ const moduleCatalog: Record<
   TOURNAMENT_BRACKETS: { category: "program", sortOrder: 25 },
   USERS: { category: "operations", sortOrder: 10 },
   REPORTS: { category: "operations", sortOrder: 20 },
+  PARK_ALERTS: { category: "operations", sortOrder: 15 },
   DUGOUT_MODERATION: { category: "community", sortOrder: 10 },
 };
 

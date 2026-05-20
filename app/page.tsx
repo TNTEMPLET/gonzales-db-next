@@ -12,9 +12,11 @@ import {
 import { isRegistrationOpen } from "@/lib/registrationStatus";
 import {
   getAssignrLeagueId,
+  getDefaultContentOrg,
   getSiteConfig,
   isMasterDeployment,
 } from "@/lib/siteConfig";
+import { getActiveOrgAlert } from "@/lib/orgAlerts";
 
 type ViewMode = "thisWeek" | "nextWeek" | "fullSeason";
 
@@ -133,6 +135,8 @@ export default async function Home({
     error = err instanceof Error ? err.message : "Failed to load game data";
     console.error(err);
   }
+
+  const orgAlert = await getActiveOrgAlert(getDefaultContentOrg()).catch(() => null);
 
   const today = new Date().toLocaleDateString("en-US", {
     month: "numeric",
@@ -376,6 +380,7 @@ export default async function Home({
         initialError={error}
         currentViewMode={viewMode}
         standings={[]}
+        forceRainout={orgAlert ? { allParksOut: orgAlert.allParksOut, venues: orgAlert.venues } : undefined}
       />
     </main>
   );

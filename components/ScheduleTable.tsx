@@ -29,6 +29,7 @@ type Props = {
   initialError: string | null;
   currentViewMode: "thisWeek" | "nextWeek" | "fullSeason";
   standings: AgeGroupStandings[];
+  forceRainout?: { allParksOut: boolean; venues: string[] };
 };
 
 type DayFilter = "all" | "yesterday" | "today" | "tomorrow";
@@ -87,6 +88,7 @@ export default function ScheduleTable({
   initialError,
   currentViewMode,
   standings,
+  forceRainout,
 }: Props) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -244,8 +246,15 @@ export default function ScheduleTable({
     console.log("Game statuses:", statuses);
   }, [sortedGames]);
 
-  // Rainout detection — only today's games
+  // Rainout detection — admin override takes priority, then auto-detect from today's games
   const { rainedOutVenues, allParksRainedOut } = useMemo(() => {
+    if (forceRainout) {
+      const venues = forceRainout.venues.length > 0
+        ? forceRainout.venues
+        : forceRainout.allParksOut ? ["All Parks"] : [];
+      return { rainedOutVenues: venues, allParksRainedOut: forceRainout.allParksOut };
+    }
+
     const today = new Date().toLocaleDateString("en-US", {
       month: "numeric",
       day: "numeric",
@@ -281,7 +290,7 @@ export default function ScheduleTable({
       allVenues.size > 0 && cancelledVenues.size === allVenues.size;
 
     return { rainedOutVenues, allParksRainedOut };
-  }, [initialGames]);
+  }, [initialGames, forceRainout]);
 
   const toggleAgeSelection = (value: string) => {
     setSelectedAgeGroup((prev) => {
