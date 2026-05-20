@@ -1138,6 +1138,17 @@ model AssignrAuditLog {
   @@index([syncJobId])
 }
 
+model OrgAlert {
+  id             String   @id @default(cuid())
+  organizationId String
+  allParksOut    Boolean  @default(true)
+  venues         String[]
+  expiresAt      DateTime
+  createdAt      DateTime @default(now())
+
+  @@index([organizationId, expiresAt])
+}
+
 model SocialPost {
   id                   String           @id @default(cuid())
   /** Always `ap-baseball`: shared AP Baseball Facebook Page, not per league site. */

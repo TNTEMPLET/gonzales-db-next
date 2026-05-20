@@ -234,6 +234,15 @@ export default async function AdminDashboardPage({
         action: masterMode ? "Open Reporting Desk" : "Open Reports",
       },
       {
+        module: "PARK_ALERTS" as AdminModule,
+        href: moduleHref("/admin/alerts", "PARK_ALERTS"),
+        title: "Park Alerts",
+        description: masterMode
+          ? "Post manual rainout alerts on either site that override Assignr detection and expire automatically."
+          : "Post a rainout alert on the public site. Overrides Assignr detection and expires automatically.",
+        action: masterMode ? "Open Alerts Console" : "Open Park Alerts",
+      },
+      {
         module: "DUGOUT_MODERATION" as AdminModule,
         href: moduleHref("/admin/dugout", "DUGOUT_MODERATION"),
         title: "Dugout Moderation",
