@@ -1,0 +1,27 @@
+{
+  "servers": {
+    "filesystem": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-filesystem", "/srv/code"]
+    },
+    "fetch": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "mcp-fetch"]
+    },
+    "proxmox": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@bldg-7/proxmox-mcp"],
+      "env": {
+        "PROXMOX_HOST": "https://192.168.100.196:8006",
+        "PROXMOX_USERNAME": "mcp-reader@pve",
+        "PROXMOX_TOKEN_NAME": "claude-mcp",
+        "PROXMOX_TOKEN_VALUE": "1ff71a83-8d7c-41ea-be33-377af06e5eeb",
+        "PROXMOX_VERIFY_SSL": "false",
+        "MCP_PERMISSION_MODE": "basic"
+      }
+    }
+  }
+}
