@@ -2,18 +2,18 @@
   "servers": {
     "filesystem": {
       "type": "stdio",
-      "command": "npx",
+      "command": "/usr/bin/npx",
       "args": ["-y", "@modelcontextprotocol/server-filesystem", "/srv/code"]
     },
     "fetch": {
       "type": "stdio",
-      "command": "npx",
+      "command": "/usr/bin/npx",
       "args": ["-y", "mcp-fetch"]
     },
     "proxmox": {
       "type": "stdio",
-      "command": "npx",
-      "args": ["-y", "@bldg-7/proxmox-mcp"],
+      "command": "/home/dev/.local/bin/proxmox-mcp",
+      "args": [],
       "env": {
         "PROXMOX_HOST": "https://192.168.100.196:8006",
         "PROXMOX_USERNAME": "mcp-reader@pve",
