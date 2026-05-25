@@ -22,7 +22,8 @@
     "prisma:seed": "tsx prisma/seed.ts",
     "test": "tsx --test lib/assignr/__tests__/*.test.ts lib/admin/__tests__/*.test.ts lib/tournament-brackets/__tests__/*.test.ts lib/gamechanger/__tests__/*.test.ts lib/communications/policy.test.ts",
     "coach:test": "tsx scripts/create-test-coach.ts",
-    "facebook:exchange-tokens": "node scripts/exchange-facebook-token.mjs"
+    "facebook:exchange-tokens": "node scripts/exchange-facebook-token.mjs",
+    "dev:all": "concurrently --names gonzales,ascension,master --prefix-colors cyan,yellow,red \"SITE_ORG=gonzales next dev -p 3000 --hostname 0.0.0.0\" \"SITE_ORG=ascension next dev -p 3001 --hostname 0.0.0.0\" \"SITE_ORG=master next dev -p 3002 --hostname 0.0.0.0\""
   },
   "dependencies": {
     "@prisma/adapter-ppg": "^7.7.0",
@@ -47,6 +48,7 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "concurrently": "^9.2.1",
     "dotenv": "^17.4.2",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
