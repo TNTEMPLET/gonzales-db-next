@@ -52,3 +52,8 @@ next-env.d.ts
 scripts/refactor-*.mjs
 scripts/apply-minimal-*.py
 scripts/*-ui-helpers.txt
+
+# Per-org dev distDirs
+.next-gonzales
+.next-ascension
+.next-master
