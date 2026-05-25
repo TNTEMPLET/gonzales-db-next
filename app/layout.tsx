@@ -51,11 +51,6 @@ export default function RootLayout({
       </head>
       <SpeedInsights />
       <body className={`${inter.className} bg-zinc-950 text-white antialiased`}>
-        {process.env.NODE_ENV === "development" && (
-          <div style={{ position: "fixed", top: 0, left: 0, right: 0, zIndex: 9999, background: "#16a34a", color: "#fff", textAlign: "center", fontSize: "12px", fontWeight: 700, letterSpacing: "0.1em", padding: "4px 0" }}>
-            🟢 DEV — live reload active · staging.duckroostdigital.com
-          </div>
-        )}
         <Suspense fallback={<div className="h-16 border-b border-zinc-800 bg-zinc-950" aria-hidden />}>
           <Header brand={brand} />
         </Suspense>
