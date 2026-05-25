@@ -8,13 +8,16 @@ const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 const nextConfig: NextConfig = {
   output: standalone,
   allowedDevOrigins: [
-    // Cloudflare tunnel entry point
+    // Cloudflare tunnel — main entry and 3 org subdomains
     dev.duckroostdigital.com,
+    gonzales.dev.duckroostdigital.com,
+    ascension.dev.duckroostdigital.com,
+    master.dev.duckroostdigital.com,
     // dev-box direct access by IP (all 3 preview ports)
     192.168.100.156:3000,
     192.168.100.156:3001,
     192.168.100.156:3002,
-    // localhost access (when SSHed directly into dev-box)
+    // localhost access
     localhost:3000,
     localhost:3001,
     localhost:3002,
