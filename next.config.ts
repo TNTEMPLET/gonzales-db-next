@@ -10,10 +10,12 @@ const nextConfig: NextConfig = {
   // Allow each dev:all instance to use its own .next dir (avoids multi-instance lock conflict)
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   allowedDevOrigins: [
+    // Cloudflare tunnel — default + 3 org preview subdomains (single-level for SSL coverage)
     "dev.duckroostdigital.com",
-    "gonzales.dev.duckroostdigital.com",
-    "ascension.dev.duckroostdigital.com",
-    "master.dev.duckroostdigital.com",
+    "gonzales-dev.duckroostdigital.com",
+    "ascension-dev.duckroostdigital.com",
+    "master-dev.duckroostdigital.com",
+    // dev-box direct IP access
     "192.168.100.156:3000",
     "192.168.100.156:3001",
     "192.168.100.156:3002",
