@@ -7,7 +7,7 @@ export type VoteSummaryRow = {
   team: string;
   jerseyNumber: string;
   showcaseBibNumber: string | null;
-  finalRosterOverride: "SELECTED" | "REMOVED" | null;
+  finalRosterOverride: "SELECTED" | "REMOVED" | "SECOND_TEAM" | null;
   finalRosterOverrideReason: string | null;
   voteCount: number;
   averageRating: number;
@@ -201,13 +201,54 @@ export function splitVoteSummaryRowsForRunoff(
 ): { firstTeam: VoteSummaryRow[]; secondTeam: VoteSummaryRow[] } {
   if (firstTeamSize <= 0) return { firstTeam: [], secondTeam: rows };
   const selectedIds = new Set<string>();
+
+  // Step 1 — natural top-N by vote rank, excluding REMOVED and SECOND_TEAM players.
+  // SECOND_TEAM means "keep on the final roster but force to the second team."
   for (const row of rows.slice(0, firstTeamSize)) {
-    if (row.finalRosterOverride !== "REMOVED") selectedIds.add(row.candidateId);
+    if (row.finalRosterOverride !== "REMOVED" && row.finalRosterOverride !== "SECOND_TEAM") {
+      selectedIds.add(row.candidateId);
+    }
   }
+
+  // Step 2 — fill any gaps in the top-N left by REMOVED or SECOND_TEAM players.
+  //   • SECOND_TEAM gaps: auto-fill from the next natural rank (the "displaced" player
+  //     should simply be replaced by whoever was just outside the cutoff).
+  //   • REMOVED gaps: only fill with explicit SELECTED overrides from below the cutoff
+  //     (the admin chose a specific replacement).
+  // We never exceed firstTeamSize regardless of how many SELECTED overrides exist below.
+  if (selectedIds.size < firstTeamSize) {
+    const topN = rows.slice(0, firstTeamSize);
+    const secondTeamGaps = topN.filter(r => r.finalRosterOverride === "SECOND_TEAM").length;
+    const removedGaps = topN.filter(r => r.finalRosterOverride === "REMOVED").length;
+
+    let secondTeamFilled = 0;
+    let removedFilled = 0;
+
+    for (const row of rows.slice(firstTeamSize)) {
+      if (secondTeamFilled >= secondTeamGaps && removedFilled >= removedGaps) break;
+      if (selectedIds.has(row.candidateId)) continue;
+      if (row.finalRosterOverride === "REMOVED" || row.finalRosterOverride === "SECOND_TEAM") continue;
+
+      // Fill SECOND_TEAM gaps first — any eligible rank order works.
+      if (secondTeamFilled < secondTeamGaps) {
+        selectedIds.add(row.candidateId);
+        secondTeamFilled++;
+      }
+      // Fill REMOVED gaps only with an explicit SELECTED override.
+      else if (row.finalRosterOverride === "SELECTED" && removedFilled < removedGaps) {
+        selectedIds.add(row.candidateId);
+        removedFilled++;
+      }
+    }
+  }
+
+  // Step 3 — safety: ensure no REMOVED or SECOND_TEAM player leaked into firstTeam.
   for (const row of rows) {
-    if (row.finalRosterOverride === "SELECTED") selectedIds.add(row.candidateId);
-    if (row.finalRosterOverride === "REMOVED") selectedIds.delete(row.candidateId);
+    if (row.finalRosterOverride === "REMOVED" || row.finalRosterOverride === "SECOND_TEAM") {
+      selectedIds.delete(row.candidateId);
+    }
   }
+
   return {
     firstTeam: rows.filter((row) => selectedIds.has(row.candidateId)),
     secondTeam: rows.filter((row) => !selectedIds.has(row.candidateId)),

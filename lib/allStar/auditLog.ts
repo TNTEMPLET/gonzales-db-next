@@ -132,7 +132,7 @@ export async function listAllStarAuditLogs(params: {
 }
 
 type FinalRosterSnapshot = {
-  finalRosterOverride: "SELECTED" | "REMOVED" | null;
+  finalRosterOverride: "SELECTED" | "REMOVED" | "SECOND_TEAM" | null;
   finalRosterOverrideReason: string | null;
   finalRosterOverrideAt: string | null;
   finalRosterOverrideByAdminId: string | null;
@@ -152,7 +152,7 @@ type CandidateSnapshot = {
   secondPhaseOverrideReason: string | null;
   secondPhaseOverrideAt: string | null;
   secondPhaseOverrideByAdminId: string | null;
-  finalRosterOverride: "SELECTED" | "REMOVED" | null;
+  finalRosterOverride: "SELECTED" | "REMOVED" | "SECOND_TEAM" | null;
   finalRosterOverrideReason: string | null;
   finalRosterOverrideAt: string | null;
   finalRosterOverrideByAdminId: string | null;
@@ -505,7 +505,7 @@ export function snapshotCandidate(row: {
   secondPhaseOverrideReason: string | null;
   secondPhaseOverrideAt: Date | null;
   secondPhaseOverrideByAdminId: string | null;
-  finalRosterOverride: "SELECTED" | "REMOVED" | null;
+  finalRosterOverride: "SELECTED" | "REMOVED" | "SECOND_TEAM" | null;
   finalRosterOverrideReason: string | null;
   finalRosterOverrideAt: Date | null;
   finalRosterOverrideByAdminId: string | null;
@@ -562,7 +562,7 @@ export function snapshotCycle(row: {
 }
 
 export function snapshotFinalRoster(row: {
-  finalRosterOverride: "SELECTED" | "REMOVED" | null;
+  finalRosterOverride: "SELECTED" | "REMOVED" | "SECOND_TEAM" | null;
   finalRosterOverrideReason: string | null;
   finalRosterOverrideAt: Date | null;
   finalRosterOverrideByAdminId: string | null;
