@@ -49,6 +49,7 @@ enum AllStarBallotPhase {
 enum AllStarFinalRosterOverride {
   SELECTED
   REMOVED
+  SECOND_TEAM
 }
 
 enum AllStarVaultRole {
@@ -58,6 +59,7 @@ enum AllStarVaultRole {
 
 enum AllStarAuditAction {
   FINAL_ROSTER_OVERRIDE
+  FINAL_ROSTER_BULK_FINALIZE
   SECOND_PHASE_OVERRIDE
   CANDIDATE_CREATED
   CANDIDATE_UPDATED
@@ -225,6 +227,7 @@ model AdminUser {
   governingBodyTemplatesCreated GoverningBodyTemplate[] @relation("GoverningBodyTemplateCreatedBy")
   allStarAuditLogsActed        AllStarAuditLog[]       @relation("AllStarAuditActor")
   allStarAuditLogsReverted     AllStarAuditLog[]       @relation("AllStarAuditReverter")
+  allStarPaymentsMarkedPaid    AllStarPayment[]        @relation("AllStarPaymentMarkedPaidBy")
 }
 
 enum BracketProjectStatus {
@@ -715,6 +718,7 @@ model AllStarBallotCycle {
   voteSubmissions     AllStarVoteSubmission[]
   invites             AllStarInvite[]
   auditLogs           AllStarAuditLog[]
+  payments            AllStarPayment[]
 
   @@index([organizationId, seasonYear, ageGroup])
   @@index([organizationId, status, ageGroup])
@@ -747,6 +751,7 @@ model AllStarCandidate {
   secondPhaseOverrideByAdmin AdminUser? @relation("AllStarSecondPhaseOverrideByAdmin", fields: [secondPhaseOverrideByAdminId], references: [id], onDelete: SetNull)
   finalRosterOverrideByAdmin AdminUser? @relation("AllStarFinalRosterOverrideByAdmin", fields: [finalRosterOverrideByAdminId], references: [id], onDelete: SetNull)
   voteItems   AllStarVoteItem[]
+  payments    AllStarPayment[]
 
   @@index([ballotCycleId, team])
   @@index([organizationId, ageGroup, playerFullName])
@@ -1172,4 +1177,45 @@ model SocialPost {
 
   @@unique([organizationId, facebookPostId])
   @@index([organizationId, status, updatedAt])
+}
+
+/// Fee payment record for a player selected for All-Stars. Populated from the ballot cycle
+/// roster and reconciled against PayPal transactions.
+model AllStarPayment {
+  id                  String    @id @default(cuid())
+  organizationId      String
+  ballotCycleId       String
+  /// Linked candidate – null if manually added outside ballot cycle roster.
+  candidateId         String?
+  playerFullName      String
+  ageGroup            String
+  team                String
+  /// Payer name as reported by PayPal (filled during sync).
+  payerName           String?
+  /// PayPal transaction ID (filled during sync).
+  paypalTxId          String?
+  /// Date/time of the PayPal payment (filled during sync).
+  paypalTxDate        DateTime?
+  /// Raw PayPal memo / note field used for player matching.
+  paypalNote          String?
+  /// Amount in cents (default 9500 = 5.00).
+  amountCents         Int       @default(9500)
+  isPaid              Boolean   @default(false)
+  paidAt              DateTime?
+  markedPaidByAdminId String?
+  /// Optional free-text note from admin.
+  notes               String?
+  /// Roster label grouping payments (e.g. "2026 — 11U LLB — Navy"). Null for legacy records.
+  rosterTag           String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  ballotCycle       AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
+  candidate         AllStarCandidate?  @relation(fields: [candidateId], references: [id], onDelete: SetNull)
+  markedPaidByAdmin AdminUser?         @relation("AllStarPaymentMarkedPaidBy", fields: [markedPaidByAdminId], references: [id], onDelete: SetNull)
+
+  /// One record per candidate per cycle; manual records (candidateId null) have no uniqueness constraint.
+  @@unique([ballotCycleId, candidateId])
+  @@index([organizationId, ballotCycleId])
+  @@index([ballotCycleId, isPaid])
 }

@@ -57,3 +57,6 @@ scripts/*-ui-helpers.txt
 .next-gonzales
 .next-ascension
 .next-master
+
+# Claude Code project memory (local AI session data)
+.claude/

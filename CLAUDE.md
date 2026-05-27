@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## ⚠️ Database environment rule — DEV before PROD
+
+**All database schema changes (migrations, `db push`, raw DDL) must be applied to the DEV database first and verified working on the local dev sites before the production database is touched.**
+
+- The running local servers (ports 3000/3001/3002) use the **DEV database** (`.env.development.local`).
+- `prisma.config.ts` is intentionally configured so that all Prisma CLI commands (`migrate dev`, `db push`, etc.) also target the DEV database by default.
+- Do **not** apply any structural change to the prod database (`DATABASE_URL` in `.env.local`) until the dev sites are confirmed working with the change.
+- When it is time to promote a schema change to production, use `DATABASE_URL="<prod-url>" npx prisma migrate deploy` explicitly — never run Prisma migrations against prod by accident.
+- If you are writing a one-off script that touches the database, always load `.env.development.local` (not `.env.local`) unless you have been explicitly asked to target production.
+
 ## Next.js version warning
 
 **Read `node_modules/next/dist/docs/` before writing Next.js code.** This project uses Next.js 16 with breaking changes from older versions. Heed deprecation notices — conventions and APIs may differ from training data.
@@ -32,9 +42,11 @@ npx prisma migrate status   # check pending migrations
 npx prisma db push          # push schema without migration history (prototyping only)
 ```
 
-`prisma.config.ts` at the repo root loads `.env.local` automatically for all Prisma CLI commands. If `DATABASE_URL` is still missing, prefix with `node --env-file=.env.local`.
+`prisma.config.ts` at the repo root loads `.env.local` first, then `.env.development.local` (which overrides it). This mirrors Next.js dev-mode priority, so Prisma CLI commands target the **dev database** by default — matching what the running dev servers use.
 
-There is no local node/npm in this dev environment — migrations **cannot** be applied from this machine unless `DATABASE_URL` is present in `.env.local`. The same database is used for both local dev and production.
+To apply a migration to the **production database**, temporarily remove or rename `.env.development.local` before running `prisma migrate deploy`, then restore it. Never run `prisma migrate dev` or `prisma db push` with the production `DATABASE_URL` loaded.
+
+There is no local node/npm on this dev box — run Prisma CLI commands from within the project directory on dev-box.
 
 ## Architecture overview
 
@@ -54,7 +66,16 @@ The entire app runs as **three separate Vercel deployments** from one codebase, 
 
 ### Database
 
-Single shared PostgreSQL database via Prisma (`lib/prisma.ts`). The client is a singleton with HMR-safe version checking — bump `PRISMA_SCHEMA_VERSION` in `lib/prisma.ts` whenever the schema changes to flush the dev cache.
+Two separate PostgreSQL databases via Prisma (`lib/prisma.ts`):
+
+| File | Database | Used by |
+|---|---|---|
+| `.env.development.local` | **DEV** database | Running local dev servers (all three ports) |
+| `.env.local` | **PROD** database | Vercel deployments |
+
+`.env.development.local` overrides `.env.local` in Next.js dev mode and in Prisma CLI commands (via `prisma.config.ts`). The running dev servers on this box always connect to the dev database.
+
+The Prisma client is a singleton with HMR-safe version checking — bump `PRISMA_SCHEMA_VERSION` in `lib/prisma.ts` whenever the schema changes to flush the dev cache.
 
 Prisma uses the `@prisma/adapter-ppg` adapter (Prisma Postgres/pooled gateway).
 
@@ -104,7 +125,7 @@ Prisma uses the `@prisma/adapter-ppg` adapter (Prisma Postgres/pooled gateway).
 
 Required in `.env.local` for local dev:
 
-- `DATABASE_URL` — shared production/dev Postgres connection string
+- `DATABASE_URL` — **production** Postgres connection string (overridden by `.env.development.local` for dev work)
 - `SITE_ORG` — set by Vercel per deployment; use `pnpm dev:*` scripts locally
 - `ASSIGNR_SITE_ID`, `ASSIGNR_LEAGUE_ID`, `ASSIGNR_CLIENT_ID`, `ASSIGNR_CLIENT_SECRET`
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — Dugout OAuth

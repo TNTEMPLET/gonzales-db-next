@@ -1,35 +1,38 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { resolveAllStarVaultAccessForAdmin } from "@/lib/allStar/auth";
+import {
+  resolveAllStarVaultAccessForAdmin,
+} from "@/lib/allStar/auth";
 import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import AllStarVaultManager from "@/components/admin/AllStarVaultManager";
+import AllStarRosterPayments from "@/components/admin/allStar/AllStarRosterPayments";
+import AllStarCrossOrgPaymentSummary from "@/components/admin/allStar/AllStarCrossOrgPaymentSummary";
 import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
   return {
-    title: `All-Star Vault | ${site.name}`,
-    description: "Manage AP Baseball All-Star voting cycles and ballots.",
+    title: `All-Star Payments | ${site.name}`,
+    description: "View and manage All-Star payment rosters.",
   };
 }
 
-export default async function AdminAllStarPage({
+export default async function AdminPaymentsPage({
   searchParams,
 }: {
   searchParams: Promise<{ org?: string }>;
 }) {
   const { org } = await searchParams;
-  const currentOrg = resolveAdminTargetOrg(org);
+  const currentOrg = resolveAdminTargetOrg(org ?? undefined);
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
   if (!adminUser) {
-    redirect("/admin/login?next=/admin/all-star");
+    redirect("/admin/login?next=/admin/payments");
   }
 
   const effectiveRole = await getEffectiveAdminRoleForOrg(
@@ -38,15 +41,14 @@ export default async function AdminAllStarPage({
     currentOrg,
   );
   const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
-  const { vaultView, canManageAllStarVaultUi, isLimitedVaultAccess } =
-    await resolveAllStarVaultAccessForAdmin({
-      isMaster: adminUser.isMaster,
-      email: adminUser.email,
-      organizationId: currentOrg,
-    });
+  const { vaultView } = await resolveAllStarVaultAccessForAdmin({
+    isMaster: adminUser.isMaster,
+    email: adminUser.email,
+    organizationId: currentOrg,
+  });
 
-  if (!vaultView) {
-    redirect("/admin?denied=all-star");
+  if (!vaultView && !adminUser.isMaster) {
+    redirect("/admin?denied=payments");
   }
 
   const masterMode = isMasterDeployment();
@@ -56,29 +58,27 @@ export default async function AdminAllStarPage({
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
         <div className="mb-8">
           <AdminSectionHeader
-            badge="ALL-STAR VAULT"
+            badge="ALL-STAR PAYMENTS"
             currentOrg={currentOrg}
-            currentPath="/admin/all-star"
+            currentPath="/admin/payments"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
-            All-Star Voting Management
+            All-Star Payment Rosters
           </h1>
           <p className="text-zinc-400 max-w-3xl">
-            Manage ballot cycles, import players, assign head coaches, control vault access, publish invite links, and export voting results.
+            Payment records for each All-Star roster, organized by team. Mark players paid or unpaid as fees are collected.
           </p>
         </div>
 
-        <AllStarVaultManager
-          key={currentOrg}
-          initialOrg={currentOrg}
-          isMasterMode={masterMode}
-          isMasterAuditAdmin={adminUser.isMaster}
-          canManageAllStarVault={canManageAllStarVaultUi}
-          canViewAllStarVault={vaultView}
-          isLimitedVaultAccess={isLimitedVaultAccess}
-        />
+        {masterMode ? (
+          <AllStarCrossOrgPaymentSummary />
+        ) : (
+          <div className="rounded-2xl border border-zinc-700 bg-zinc-950/80 overflow-hidden p-6">
+            <AllStarRosterPayments org={currentOrg} />
+          </div>
+        )}
       </section>
     </main>
   );

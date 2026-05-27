@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AllStarAuditLogPanel from "@/components/admin/allStar/AllStarAuditLogPanel";
 import AllStarCycleWorkspace from "@/components/admin/allStar/AllStarCycleWorkspace";
+
 import {
   allowedWorkspaceTabs,
   parseWorkspaceTab,
@@ -104,6 +105,7 @@ type Candidate = {
   isActive?: boolean;
   excludedFromSecondPhase: boolean;
   secondPhaseOverrideReason: string | null;
+  finalRosterOverride?: "SELECTED" | "REMOVED" | "SECOND_TEAM" | null;
 };
 
 type CycleCoachOption = {
@@ -171,7 +173,7 @@ type VoteSummaryRow = {
   team: string;
   jerseyNumber: string;
   showcaseBibNumber: string | null;
-  finalRosterOverride: "SELECTED" | "REMOVED" | null;
+  finalRosterOverride: "SELECTED" | "REMOVED" | "SECOND_TEAM" | null;
   finalRosterOverrideReason: string | null;
   voteCount: number;
   averageRating: number;
@@ -305,6 +307,24 @@ function getCycleStatusBadgeClass(status: Cycle["status"]) {
   return "border-zinc-700 bg-zinc-950 text-zinc-300";
 }
 
+function FinalRosterReplaceIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      className={className ?? "h-3.5 w-3.5"}
+      aria-hidden
+    >
+      <path d="M4 7h13M4 7l3-3M4 7l3 3M20 17H7M20 17l-3-3M20 17l-3 3" />
+    </svg>
+  );
+}
+
 function FinalRosterAddIcon({ className }: { className?: string }) {
   return (
     <svg
@@ -387,7 +407,7 @@ function FinalRosterIconButton({
   label: string;
   disabled?: boolean;
   onClick: () => void;
-  tone: "emerald" | "red" | "sky" | "zinc";
+  tone: "emerald" | "red" | "sky" | "zinc" | "amber";
   children: ReactNode;
 }) {
   const toneClass =
@@ -517,6 +537,11 @@ export default function AllStarVaultManager({
   const [ballotVotingLink, setBallotVotingLink] = useState<string | null>(null);
   const [inviteActionId, setInviteActionId] = useState<string | null>(null);
   const [finalRosterActionId, setFinalRosterActionId] = useState<string | null>(null);
+  const [replacingCandidateId, setReplacingCandidateId] = useState<string | null>(null);
+  const [replaceSearch, setReplaceSearch] = useState("");
+  const [isReplacingRoster, setIsReplacingRoster] = useState(false);
+  const [isFinalizingRoster, setIsFinalizingRoster] = useState(false);
+  const [showFinalizeConfirm, setShowFinalizeConfirm] = useState(false);
   const [vaultAccessRoleBusyId, setVaultAccessRoleBusyId] = useState<string | null>(
     null,
   );
@@ -1840,6 +1865,12 @@ export default function AllStarVaultManager({
     setNotice("");
     try {
       await loadVoteSummary(selectedCycleId);
+      // Also refresh candidates so the Final Roster panel reflects the change
+      const candRes = await fetch(`/api/admin/all-star/candidates?cycleId=${selectedCycleId}`, { cache: "no-store" });
+      const candJson = await safeJson(candRes);
+      if (candRes.ok && Array.isArray(candJson.data)) {
+        setCandidates(candJson.data as Candidate[]);
+      }
       setNotice("Votes summary refreshed.");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to refresh votes summary");
@@ -1850,7 +1881,7 @@ export default function AllStarVaultManager({
 
   async function updateFinalRosterOverride(
     candidateId: string,
-    override: "SELECTED" | "REMOVED" | null,
+    override: "SELECTED" | "REMOVED" | "SECOND_TEAM" | null,
   ) {
     if (!selectedCycleId) return;
     setFinalRosterActionId(candidateId);
@@ -1869,10 +1900,12 @@ export default function AllStarVaultManager({
       await loadVoteSummary(selectedCycleId);
       setNotice(
         override === "SELECTED"
-          ? "Player marked as selected on the final roster."
+          ? "Player moved to first team (Navy)."
           : override === "REMOVED"
             ? "Player removed from the final roster."
-            : "Final roster override cleared.",
+            : override === "SECOND_TEAM"
+              ? "Player moved to second team (Red)."
+              : "Final roster override cleared.",
       );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update final roster");
@@ -1880,6 +1913,74 @@ export default function AllStarVaultManager({
       setFinalRosterActionId(null);
     }
   }
+
+
+  async function replaceRosterPlayer(oldCandidateId: string, newCandidateId: string) {
+    if (!selectedCycleId) return;
+    setIsReplacingRoster(true);
+    setReplacingCandidateId(null);
+    setReplaceSearch("");
+    setError("");
+    setNotice("");
+    try {
+      // 1. Mark old player as REMOVED
+      const r1 = await fetch("/api/admin/all-star/final-roster", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cycleId: selectedCycleId, candidateId: oldCandidateId, override: "REMOVED" }),
+      });
+      const j1 = await safeJson(r1);
+      if (!r1.ok) throw new Error(String(j1.error || "Failed to remove player"));
+      // 2. Mark replacement as SELECTED (sticky)
+      const r2 = await fetch("/api/admin/all-star/final-roster", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cycleId: selectedCycleId, candidateId: newCandidateId, override: "SELECTED" }),
+      });
+      const j2 = await safeJson(r2);
+      if (!r2.ok) throw new Error(String(j2.error || "Failed to add replacement"));
+      await loadVoteSummary(selectedCycleId);
+      setNotice("Player replaced. The replacement is now locked on the roster.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to replace player");
+    } finally {
+      setIsReplacingRoster(false);
+    }
+  }
+
+  async function bulkFinalizeRoster() {
+    if (!selectedCycleId) return;
+    setIsFinalizingRoster(true);
+    setShowFinalizeConfirm(false);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch("/api/admin/all-star/final-roster", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cycleId: selectedCycleId, topCount: normalizedVoteExportTopCount }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to finalize roster"));
+      }
+      await loadVoteSummary(selectedCycleId);
+      // Refresh candidates so the Final Roster panel reflects the change
+      const candRes = await fetch(`/api/admin/all-star/candidates?cycleId=${selectedCycleId}`, { cache: "no-store" });
+      const candJson = await safeJson(candRes);
+      if (candRes.ok && Array.isArray(candJson.data)) {
+        setCandidates(candJson.data as Candidate[]);
+      }
+      setNotice(
+        `Roster finalized: ${json.selectedCount as number} player${(json.selectedCount as number) !== 1 ? "s" : ""} marked as selected. Visit All-Star Payments to seed payment records.`,
+      );
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to finalize roster");
+    } finally {
+      setIsFinalizingRoster(false);
+    }
+  }
+
 
   function setWorkspaceTab(tab: AllStarWorkspaceTab) {
     setActiveWorkspaceTab(tab);
@@ -2567,73 +2668,149 @@ export default function AllStarVaultManager({
     if (row.finalRosterOverride === "REMOVED") {
       return <span className="ml-2 text-[11px] text-red-300">Override: removed</span>;
     }
+    if (row.finalRosterOverride === "SECOND_TEAM") {
+      return <span className="ml-2 text-[11px] text-sky-300">Override: 2nd team</span>;
+    }
     return null;
   }
   function renderFinalRosterControls(row: VoteSummaryRow, isRosterSelection: boolean) {
     if (!finalRosterStandingsSplit) return null;
     const rowBusy = finalRosterActionId === row.candidateId;
+    const isOpenReplace = replacingCandidateId === row.candidateId;
     const moveTargetTeam = isRosterSelection
       ? finalRosterSecondaryHeading
       : finalRosterPrimaryHeading;
     const moveLabel = `Move to ${moveTargetTeam}`;
+
+    // Eligible replacements: any candidate not currently on the firstTeam and not REMOVED
+    const firstTeamIds = new Set(finalRosterStandingsSplit.firstTeam.map((r) => r.candidateId));
+    const eligibleReplacements = finalRosterStandingsSplit.secondTeam.filter(
+      (r) => !firstTeamIds.has(r.candidateId) && r.finalRosterOverride !== "REMOVED",
+    );
+    const filteredReplacements = replaceSearch.trim()
+      ? eligibleReplacements.filter((r) =>
+          r.playerFullName.toLowerCase().includes(replaceSearch.toLowerCase()),
+        )
+      : eligibleReplacements;
+
     return (
-      <div className="flex flex-wrap items-center justify-end gap-1">
-        <p className="text-xs text-zinc-300 whitespace-nowrap">
-          Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
-        </p>
-        {canManageFinalRosterUi ? (
-          <>
-            {hasTwoTeamRosterSplit ? (
-              <FinalRosterIconButton
-                label={moveLabel}
-                disabled={rowBusy}
-                tone="sky"
-                onClick={() =>
-                  void updateFinalRosterOverride(
-                    row.candidateId,
-                    isRosterSelection ? "REMOVED" : "SELECTED",
-                  )
-                }
-              >
-                <FinalRosterMoveIcon />
-              </FinalRosterIconButton>
-            ) : null}
-            {isRosterSelection ? (
-              <FinalRosterIconButton
-                label="Remove from final roster"
-                disabled={rowBusy}
-                tone="red"
-                onClick={() => void updateFinalRosterOverride(row.candidateId, "REMOVED")}
-              >
-                <FinalRosterRemoveIcon />
-              </FinalRosterIconButton>
-            ) : null}
-            {!isRosterSelection ? (
-              <FinalRosterIconButton
-                label="Add to final roster"
-                disabled={rowBusy}
-                tone="emerald"
-                onClick={() => void updateFinalRosterOverride(row.candidateId, "SELECTED")}
-              >
-                <FinalRosterAddIcon />
-              </FinalRosterIconButton>
-            ) : null}
-            {row.finalRosterOverride ? (
-              <FinalRosterIconButton
-                label="Clear roster override"
-                disabled={rowBusy}
-                tone="zinc"
-                onClick={() => void updateFinalRosterOverride(row.candidateId, null)}
-              >
-                <FinalRosterClearIcon />
-              </FinalRosterIconButton>
-            ) : null}
-          </>
-        ) : null}
-        {rowBusy ? (
-          <span className="text-[10px] text-zinc-500 px-1" aria-live="polite">
-            Saving…
-          </span>
+      <div className="flex flex-col items-end gap-1 w-full">
+        <div className="flex flex-wrap items-center justify-end gap-1">
+          <p className="text-xs text-zinc-300 whitespace-nowrap">
+            Votes: {row.voteCount} · Avg: {row.averageRating.toFixed(2)}
+          </p>
+          {canManageFinalRosterUi ? (
+            <>
+              {hasTwoTeamRosterSplit ? (
+                <FinalRosterIconButton
+                  label={moveLabel}
+                  disabled={rowBusy || isReplacingRoster}
+                  tone="sky"
+                  onClick={() =>
+                    void updateFinalRosterOverride(
+                      row.candidateId,
+                      isRosterSelection ? "SECOND_TEAM" : "SELECTED",
+                    )
+                  }
+                >
+                  <FinalRosterMoveIcon />
+                </FinalRosterIconButton>
+              ) : null}
+              {isRosterSelection ? (
+                <>
+                  <FinalRosterIconButton
+                    label={isOpenReplace ? "Cancel replace" : "Replace with another player"}
+                    disabled={rowBusy || isReplacingRoster}
+                    tone="amber"
+                    onClick={() => {
+                      setReplacingCandidateId(isOpenReplace ? null : row.candidateId);
+                      setReplaceSearch("");
+                    }}
+                  >
+                    <FinalRosterReplaceIcon />
+                  </FinalRosterIconButton>
+                  <FinalRosterIconButton
+                    label="Remove from final roster"
+                    disabled={rowBusy || isReplacingRoster}
+                    tone="red"
+                    onClick={() => void updateFinalRosterOverride(row.candidateId, "REMOVED")}
+                  >
+                    <FinalRosterRemoveIcon />
+                  </FinalRosterIconButton>
+                </>
+              ) : null}
+              {!isRosterSelection ? (
+                <FinalRosterIconButton
+                  label="Add to final roster"
+                  disabled={rowBusy || isReplacingRoster}
+                  tone="emerald"
+                  onClick={() => void updateFinalRosterOverride(row.candidateId, "SELECTED")}
+                >
+                  <FinalRosterAddIcon />
+                </FinalRosterIconButton>
+              ) : null}
+              {row.finalRosterOverride ? (
+                <FinalRosterIconButton
+                  label="Clear roster override"
+                  disabled={rowBusy || isReplacingRoster}
+                  tone="zinc"
+                  onClick={() => void updateFinalRosterOverride(row.candidateId, null)}
+                >
+                  <FinalRosterClearIcon />
+                </FinalRosterIconButton>
+              ) : null}
+            </>
+          ) : null}
+          {rowBusy || (isReplacingRoster && isOpenReplace) ? (
+            <span className="text-[10px] text-zinc-500 px-1" aria-live="polite">
+              Saving…
+            </span>
+          ) : null}
+        </div>
+        {/* ── Inline replacement picker ────────────────────────────────── */}
+        {isOpenReplace && canManageFinalRosterUi ? (
+          <div className="w-full mt-1 rounded border border-amber-800/60 bg-zinc-900 p-2 shadow-lg">
+            <p className="text-[11px] text-amber-300 font-medium mb-1">
+              Replace <span className="font-semibold">{row.playerFullName}</span> with:
+            </p>
+            <input
+              type="text"
+              autoFocus
+              placeholder="Search by name…"
+              value={replaceSearch}
+              onChange={(e) => setReplaceSearch(e.target.value)}
+              className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-xs text-white placeholder-zinc-500 mb-1 focus:outline-none focus:border-amber-600"
+            />
+            {filteredReplacements.length === 0 ? (
+              <p className="text-[11px] text-zinc-500 px-1 py-1">No eligible replacements found.</p>
+            ) : (
+              <div className="max-h-44 overflow-y-auto divide-y divide-zinc-800">
+                {filteredReplacements.map((r, i) => (
+                  <button
+                    key={r.candidateId}
+                    type="button"
+                    disabled={isReplacingRoster}
+                    className="w-full text-left px-2 py-1.5 text-xs hover:bg-zinc-800 disabled:opacity-50 flex items-center justify-between gap-2"
+                    onClick={() => void replaceRosterPlayer(row.candidateId, r.candidateId)}
+                  >
+                    <span>
+                      <span className="text-zinc-500 mr-1">#{i + 1}</span>
+                      <span className="text-white font-medium">{r.playerFullName}</span>
+                      {r.team ? <span className="text-zinc-400 ml-1">({r.team})</span> : null}
+                    </span>
+                    <span className="text-zinc-500 shrink-0">{r.voteCount} votes</span>
+                  </button>
+                ))}
+              </div>
+            )}
+            <button
+              type="button"
+              className="mt-1 text-[11px] text-zinc-500 hover:text-zinc-300 px-1"
+              onClick={() => { setReplacingCandidateId(null); setReplaceSearch(""); }}
+            >
+              Cancel
+            </button>
+          </div>
         ) : null}
       </div>
     );
@@ -2706,6 +2883,7 @@ export default function AllStarVaultManager({
 
   return (
     <section ref={vaultShellRef} className="space-y-6" data-admin-vault-interactive="true">
+      <>
       {showRunoffModal ? (
         <div
           className="fixed inset-0 z-100 flex items-center justify-center p-4 bg-black/70"
@@ -4446,16 +4624,17 @@ export default function AllStarVaultManager({
       </div>
       ) : null}
 
+
       {showsEditorPanel("votes") ? (
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Votes Panel</h2>
-        <div className="flex items-start justify-between gap-3 flex-wrap">
-          <p className="text-xs text-zinc-400 flex-1 min-w-[200px]">
+        <div className="space-y-3">
+          <p className="text-xs text-zinc-400">
             {isLimitedVaultAccess
               ? "View standings and export results. Live refresh runs every 15 seconds while the cycle is open and published."
               : "Live candidate standings sorted by vote count, then average rating. Auto-refresh runs every 15 seconds while a cycle is open and published."}
           </p>
-          <div className="flex flex-wrap items-center gap-2 justify-end shrink-0">
+          <div className="flex flex-wrap items-center gap-2">
             {renderExportTopCountControl()}
             <a
               href={
@@ -4501,6 +4680,46 @@ export default function AllStarVaultManager({
             >
               Refresh
             </button>
+            {canManageAllStarVaultUi && voteSummary.length > 0 ? (
+              showFinalizeConfirm ? (
+                <div className="flex items-center gap-1 rounded-lg border border-emerald-700/60 bg-emerald-950/30 px-2 py-1">
+                  <span className="text-xs text-emerald-200">
+                    {isRunoffTwoTeamBallot && selectedCycle?.runoffFirstTeamSize && selectedCycle?.runoffPoolSize
+                      ? (() => {
+                          const pool = Math.min(normalizedVoteExportTopCount, selectedCycle.runoffPoolSize);
+                          const redCount = Math.min(selectedCycle.runoffFirstTeamSize, pool);
+                          const remCount = pool - redCount;
+                          return `Lock ${runoffVotePanelLabels?.primaryHeading ?? "Team 1"} (${redCount}) + ${runoffVotePanelLabels?.secondaryHeading ?? "Team 2"} (${remCount}) = ${pool} players?`;
+                        })()
+                      : `Lock top ${normalizedVoteExportTopCount}?`}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={isFinalizingRoster}
+                    onClick={() => void bulkFinalizeRoster()}
+                    className="text-xs rounded-md bg-emerald-700 hover:bg-emerald-600 text-white px-2 py-0.5 disabled:opacity-60"
+                  >
+                    {isFinalizingRoster ? "Saving…" : "Yes, finalize"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowFinalizeConfirm(false)}
+                    className="text-xs rounded-md border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-2 py-0.5"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  disabled={busy || isFinalizingRoster}
+                  onClick={() => setShowFinalizeConfirm(true)}
+                  className="text-xs rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950/30 px-3 py-1.5 disabled:opacity-60 font-medium"
+                >
+                  ✓ Finalize Roster
+                </button>
+              )
+            ) : null}
           </div>
         </div>
         <p className="text-xs text-zinc-500">Submitted ballots: {voteSummarySubmissionCount}</p>
@@ -5218,6 +5437,7 @@ export default function AllStarVaultManager({
       ) : null}
       </>
       ) : null}
+      </>
     </section>
   );
 }
