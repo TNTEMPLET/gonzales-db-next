@@ -1,0 +1,5 @@
+{
+  "claude.claudePath": "/home/dev/.local/bin/claude",
+  "chat.mcp.enabled": true,
+  "chat.agent.enabled": true
+}

@@ -154,6 +154,15 @@ export default async function AdminDashboardPage({
         action: masterMode ? "Open All-Star Vault" : "Open All-Star",
       },
       {
+        module: "ALL_STAR_VAULT" as AdminModule,
+        href: moduleHref("/admin/payments", "ALL_STAR_VAULT"),
+        title: "All-Star Payments",
+        description: masterMode
+          ? "Track All-Star fee collection across all organizations, grouped by roster."
+          : "Track All-Star fee payments per player for each finalized roster.",
+        action: "Open Payments",
+      },
+      {
         module: "TOURNAMENT_BRACKETS" as AdminModule,
         href: "/admin/tournament-brackets",
         title: "Tournament Brackets",
