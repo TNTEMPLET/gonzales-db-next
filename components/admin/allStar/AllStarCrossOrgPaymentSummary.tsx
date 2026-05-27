@@ -477,6 +477,196 @@ function TeamChildRow({
   );
 }
 
+// ─── RosterChildRow: child for single-cycle multi-team (one rosterTag = one team) ──
+
+function RosterChildRow({
+  roster,
+  teamColor,
+  onPaymentToggled,
+}: {
+  roster: RosterGroup;
+  teamColor: string;
+  onPaymentToggled: (isPaidNow: boolean, amountCents: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [payments, setPayments] = useState<PaymentRow[]>(roster.payments);
+  const [toggling, setToggling] = useState<Set<string>>(new Set());
+
+  const paidCount = payments.filter((p) => p.isPaid).length;
+  const unpaidCount = payments.length - paidCount;
+  const collectedCents = payments.filter((p) => p.isPaid).reduce((s, p) => s + p.amountCents, 0);
+  const s = { total: payments.length, paidCount, unpaidCount, collectedCents };
+
+  async function togglePayment(paymentId: string, currentIsPaid: boolean, amountCents: number) {
+    if (toggling.has(paymentId)) return;
+    setToggling((prev) => new Set(prev).add(paymentId));
+    setPayments((prev) =>
+      prev.map((p) =>
+        p.id === paymentId
+          ? { ...p, isPaid: !currentIsPaid, paidAt: !currentIsPaid ? new Date().toISOString() : null }
+          : p,
+      ),
+    );
+    try {
+      const res = await fetch("/api/admin/all-star/payments", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentId, isPaid: !currentIsPaid }),
+      });
+      if (!res.ok) {
+        setPayments((prev) =>
+          prev.map((p) => (p.id === paymentId ? { ...p, isPaid: currentIsPaid, paidAt: null } : p)),
+        );
+      } else {
+        onPaymentToggled(!currentIsPaid, amountCents);
+      }
+    } catch {
+      setPayments((prev) =>
+        prev.map((p) => (p.id === paymentId ? { ...p, isPaid: currentIsPaid, paidAt: null } : p)),
+      );
+    } finally {
+      setToggling((prev) => {
+        const next = new Set(prev);
+        next.delete(paymentId);
+        return next;
+      });
+    }
+  }
+
+  return (
+    <div className="rounded-md border border-zinc-700/30 bg-zinc-900/20 overflow-hidden ml-2">
+      <button
+        type="button"
+        onClick={() => setExpanded((p) => !p)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-2 hover:bg-zinc-800/20 text-left transition-colors"
+      >
+        <span className="text-sm font-semibold text-zinc-300 uppercase tracking-wide">{teamColor}</span>
+        <div className="flex items-center gap-3 shrink-0">
+          {s.total > 0 && (
+            <>
+              <div className="hidden sm:flex items-center gap-3 text-xs">
+                <span className="text-emerald-400">{s.paidCount} paid</span>
+                {s.unpaidCount > 0 && <span className="text-amber-400">{s.unpaidCount} unpaid</span>}
+                <span className="text-zinc-400">{fmtMoney(s.collectedCents)}</span>
+              </div>
+              <div className="w-16 hidden md:block">
+                <ProgressBar paid={s.paidCount} total={s.total} />
+              </div>
+            </>
+          )}
+          <span className="text-zinc-500 text-sm">{expanded ? "▲" : "▼"}</span>
+        </div>
+      </button>
+      {expanded && (
+        <div className="border-t border-zinc-700/30 px-4 py-3">
+          {payments.length === 0 ? (
+            <p className="text-zinc-500 text-sm italic">No payment records.</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="text-xs text-zinc-500 border-b border-zinc-700/50">
+                    <th className="text-left py-2 pr-4 font-medium">Player</th>
+                    <th className="text-left py-2 pr-4 font-medium">Team</th>
+                    <th className="text-left py-2 pr-4 font-medium">Payer</th>
+                    <th className="text-left py-2 pr-4 font-medium">Status</th>
+                    <th className="text-right py-2 font-medium">Amount</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {payments.map((p) => (
+                    <tr key={p.id} className="border-b border-zinc-800/50 last:border-0">
+                      <td className="py-1.5 pr-4 text-zinc-200">{p.playerFullName}</td>
+                      <td className="py-1.5 pr-4 text-zinc-400 text-xs">{p.team || "—"}</td>
+                      <td className="py-1.5 pr-4 text-zinc-400 text-xs">{p.payerName || "—"}</td>
+                      <td className="py-1.5 pr-4">
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void togglePayment(p.id, p.isPaid, p.amountCents);
+                          }}
+                          disabled={toggling.has(p.id)}
+                          className={
+                            "rounded px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 " +
+                            (p.isPaid
+                              ? "bg-emerald-950/50 text-emerald-300 border border-emerald-800/50 hover:bg-emerald-950/80"
+                              : "bg-amber-950/50 text-amber-300 border border-amber-800/50 hover:bg-amber-950/80")
+                          }
+                        >
+                          {toggling.has(p.id) ? "…" : p.isPaid ? "✓ Paid" : "Mark Paid"}
+                        </button>
+                      </td>
+                      <td className="py-1.5 text-right text-zinc-300 text-xs">{fmtMoney(p.amountCents)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── SingleCycleMultiTeamRow: parent/child for one cycle with multiple rosterTags ──
+
+function SingleCycleMultiTeamRow({
+  group,
+  cycle,
+  onPaymentToggled,
+}: {
+  group: AgeGroupEntry;
+  cycle: CycleSummary;
+  onPaymentToggled: (isPaidNow: boolean, amountCents: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const s = cycle.summary;
+
+  return (
+    <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 overflow-hidden">
+      <button
+        type="button"
+        onClick={() => setExpanded((p) => !p)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors text-left"
+      >
+        <span className="text-sm font-medium text-zinc-200">{group.key}</span>
+        <div className="flex items-center gap-3 shrink-0">
+          {s.total > 0 && (
+            <>
+              <div className="hidden sm:flex items-center gap-3 text-xs">
+                <span className="text-emerald-400">{s.paidCount} paid</span>
+                {s.unpaidCount > 0 && <span className="text-amber-400">{s.unpaidCount} unpaid</span>}
+                <span className="text-zinc-400">{fmtMoney(s.collectedCents)} collected</span>
+              </div>
+              <div className="w-20 hidden md:block">
+                <ProgressBar paid={s.paidCount} total={s.total} />
+              </div>
+            </>
+          )}
+          <span className="text-zinc-500 text-sm">{expanded ? "▲" : "▼"}</span>
+        </div>
+      </button>
+      {expanded && (
+        <div className="border-t border-zinc-700/50 px-4 py-3 space-y-2">
+          {cycle.rosters.map((roster) => {
+            const { teamColor } = parseCycleName(roster.rosterTag);
+            return (
+              <RosterChildRow
+                key={roster.rosterTag}
+                roster={roster}
+                teamColor={teamColor || roster.rosterTag}
+                onPaymentToggled={onPaymentToggled}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── MultiTeamGroupRow: parent + children for multi-team age groups ───────────
 
 function MultiTeamGroupRow({
@@ -573,12 +763,26 @@ function AgeGroupRow({
   onSeedPayments: (cycleId: string) => Promise<void>;
 }) {
   if (group.cycles.length === 1) {
-    // Single-team: render flat (existing CycleRow) — teamColor stays in the label
+    const cycle = group.cycles[0];
+    // Single cycle with multiple rosterTags (e.g. two-team cycle: NAVY + RED payments in one cycle)
+    // → render parent/child just like multi-cycle groups
+    if (cycle.rosters.length > 1) {
+      return (
+        <SingleCycleMultiTeamRow
+          group={group}
+          cycle={cycle}
+          onPaymentToggled={(isPaidNow, amountCents) =>
+            onPaymentToggled(cycle.cycleId, isPaidNow, amountCents)
+          }
+        />
+      );
+    }
+    // Truly single-team: render flat with team color in the label
     return (
       <CycleRow
-        cycle={group.cycles[0]}
+        cycle={cycle}
         onPaymentToggled={(isPaidNow, amountCents) =>
-          onPaymentToggled(group.cycles[0].cycleId, isPaidNow, amountCents)
+          onPaymentToggled(cycle.cycleId, isPaidNow, amountCents)
         }
         onSeedPayments={onSeedPayments}
       />
