@@ -70,6 +70,8 @@ type SummaryData = {
   availableYears: number[];
 };
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
 function fmtMoney(cents: number) {
   return "$" + (cents / 100).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 }
@@ -78,6 +80,74 @@ function paidPct(paid: number, total: number) {
   if (total === 0) return 0;
   return Math.round((paid / total) * 100);
 }
+
+// Parse a cycleName / rosterTag like "2026 - 8U MAJ LLB - NAVY"
+// into { year, ageGroupLabel, teamColor }
+function parseCycleName(tag: string): { year: number; ageGroupLabel: string; teamColor: string } {
+  const parts = tag.split(" - ");
+  if (parts.length < 2) return { year: 0, ageGroupLabel: tag, teamColor: "" };
+  const year = parseInt(parts[0], 10);
+  const teamColor = parts[parts.length - 1];
+  const ageGroupLabel = parts.slice(1, -1).join(" - ");
+  return { year, ageGroupLabel, teamColor };
+}
+
+// ─── Age-group grouping ───────────────────────────────────────────────────────
+
+interface AgeGroupEntry {
+  key: string;            // "2026 - 8U MAJ LLB"
+  year: number;
+  ageGroupLabel: string;
+  cycles: CycleSummary[]; // all cycles with this year+ageGroupLabel
+  combined: {
+    total: number;
+    paidCount: number;
+    unpaidCount: number;
+    collectedCents: number;
+    outstandingCents: number;
+  };
+  seedableCycleIds: string[]; // unique cycleIds that are seedable (0 payments, >0 finalized)
+  totalFinalized: number;     // sum of finalizedCount across all cycles (for Seed button label)
+}
+
+function buildAgeGroups(cycles: CycleSummary[]): AgeGroupEntry[] {
+  // Hide cycles that have nothing to show (0 finalized AND 0 payment records)
+  const visible = cycles.filter((c) => c.finalizedCount > 0 || c.summary.total > 0);
+
+  const map = new Map<string, AgeGroupEntry>();
+  for (const c of visible) {
+    const { year, ageGroupLabel } = parseCycleName(c.cycleName);
+    const key = `${year} - ${ageGroupLabel}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        key,
+        year,
+        ageGroupLabel,
+        cycles: [],
+        combined: { total: 0, paidCount: 0, unpaidCount: 0, collectedCents: 0, outstandingCents: 0 },
+        seedableCycleIds: [],
+        totalFinalized: 0,
+      });
+    }
+    const g = map.get(key)!;
+    g.cycles.push(c);
+    g.combined.total += c.summary.total;
+    g.combined.paidCount += c.summary.paidCount;
+    g.combined.unpaidCount += c.summary.unpaidCount;
+    g.combined.collectedCents += c.summary.collectedCents;
+    g.combined.outstandingCents += c.summary.outstandingCents;
+    g.totalFinalized += c.finalizedCount;
+    if (c.summary.total === 0 && c.finalizedCount > 0 && !g.seedableCycleIds.includes(c.cycleId)) {
+      g.seedableCycleIds.push(c.cycleId);
+    }
+  }
+
+  return Array.from(map.values()).sort(
+    (a, b) => b.year - a.year || a.ageGroupLabel.localeCompare(b.ageGroupLabel),
+  );
+}
+
+// ─── Shared UI atoms ──────────────────────────────────────────────────────────
 
 function StatChip({
   label,
@@ -112,6 +182,8 @@ function ProgressBar({ paid, total }: { paid: number; total: number }) {
   );
 }
 
+// ─── RosterRow: expanded payment list for one rosterTag ──────────────────────
+
 function RosterRow({
   roster,
   onPaymentToggled,
@@ -121,12 +193,10 @@ function RosterRow({
   onPaymentToggled: (isPaidNow: boolean, amountCents: number) => void;
   hideHeader?: boolean;
 }) {
-  // When there's no header (single-roster cycle), start expanded and stay expanded
   const [expanded, setExpanded] = useState(hideHeader);
   const [payments, setPayments] = useState<PaymentRow[]>(roster.payments);
   const [toggling, setToggling] = useState<Set<string>>(new Set());
 
-  // Recompute summary from live local state so stats update instantly on toggle
   const paidCount = payments.filter((p) => p.isPaid).length;
   const unpaidCount = payments.length - paidCount;
   const collectedCents = payments.filter((p) => p.isPaid).reduce((s, p) => s + p.amountCents, 0);
@@ -135,8 +205,6 @@ function RosterRow({
   async function togglePayment(paymentId: string, currentIsPaid: boolean, amountCents: number) {
     if (toggling.has(paymentId)) return;
     setToggling((prev) => new Set(prev).add(paymentId));
-
-    // Optimistic update — flip immediately in the UI
     setPayments((prev) =>
       prev.map((p) =>
         p.id === paymentId
@@ -144,7 +212,6 @@ function RosterRow({
           : p,
       ),
     );
-
     try {
       const res = await fetch("/api/admin/all-star/payments", {
         method: "PATCH",
@@ -152,22 +219,15 @@ function RosterRow({
         body: JSON.stringify({ paymentId, isPaid: !currentIsPaid }),
       });
       if (!res.ok) {
-        // Revert on server error
         setPayments((prev) =>
-          prev.map((p) =>
-            p.id === paymentId ? { ...p, isPaid: currentIsPaid, paidAt: null } : p,
-          ),
+          prev.map((p) => (p.id === paymentId ? { ...p, isPaid: currentIsPaid, paidAt: null } : p)),
         );
       } else {
-        // Bubble up the delta so parent summary stats update without a full refetch
         onPaymentToggled(!currentIsPaid, amountCents);
       }
     } catch {
-      // Revert on network error
       setPayments((prev) =>
-        prev.map((p) =>
-          p.id === paymentId ? { ...p, isPaid: currentIsPaid, paidAt: null } : p,
-        ),
+        prev.map((p) => (p.id === paymentId ? { ...p, isPaid: currentIsPaid, paidAt: null } : p)),
       );
     } finally {
       setToggling((prev) => {
@@ -186,9 +246,7 @@ function RosterRow({
           onClick={() => setExpanded((p) => !p)}
           className="w-full flex items-center justify-between gap-3 px-4 py-2.5 hover:bg-zinc-800/30 transition-colors text-left"
         >
-          <div className="flex items-center gap-2 min-w-0">
-            <span className="text-sm font-medium text-zinc-200 truncate">{roster.rosterTag}</span>
-          </div>
+          <span className="text-sm font-medium text-zinc-200 truncate">{roster.rosterTag}</span>
           <div className="flex items-center gap-4 shrink-0">
             {s.total > 0 && (
               <>
@@ -258,6 +316,8 @@ function RosterRow({
     </div>
   );
 }
+
+// ─── CycleRow: single flat row (single-team groups) ──────────────────────────
 
 function CycleRow({
   cycle,
@@ -349,6 +409,192 @@ function CycleRow({
   );
 }
 
+// ─── TeamChildRow: one child inside a multi-team parent ──────────────────────
+
+function TeamChildRow({
+  cycle,
+  teamColor,
+  onPaymentToggled,
+}: {
+  cycle: CycleSummary;
+  teamColor: string;
+  onPaymentToggled: (cycleId: string, isPaidNow: boolean, amountCents: number) => void;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const s = cycle.summary;
+  const isUnseeded = s.total === 0 && cycle.finalizedCount > 0;
+
+  return (
+    <div className="rounded-md border border-zinc-700/30 bg-zinc-900/20 overflow-hidden ml-2">
+      <button
+        type="button"
+        onClick={() => setExpanded((p) => !p)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-2 hover:bg-zinc-800/20 text-left transition-colors"
+      >
+        <span className="text-sm font-semibold text-zinc-300 uppercase tracking-wide">{teamColor}</span>
+        <div className="flex items-center gap-3 shrink-0">
+          {isUnseeded && (
+            <span className="text-xs text-zinc-500 italic">{cycle.finalizedCount} finalized</span>
+          )}
+          {s.total > 0 && (
+            <>
+              <div className="hidden sm:flex items-center gap-3 text-xs">
+                <span className="text-emerald-400">{s.paidCount} paid</span>
+                {s.unpaidCount > 0 && <span className="text-amber-400">{s.unpaidCount} unpaid</span>}
+                <span className="text-zinc-400">{fmtMoney(s.collectedCents)}</span>
+              </div>
+              <div className="w-16 hidden md:block">
+                <ProgressBar paid={s.paidCount} total={s.total} />
+              </div>
+            </>
+          )}
+          <span className="text-zinc-500 text-sm">{expanded ? "▲" : "▼"}</span>
+        </div>
+      </button>
+      {expanded && (
+        <div className="border-t border-zinc-700/30 px-4 py-3 space-y-2">
+          {isUnseeded ? (
+            <p className="text-zinc-500 text-sm italic">
+              {cycle.finalizedCount} player{cycle.finalizedCount !== 1 ? "s" : ""} finalized — use &ldquo;Seed Payments&rdquo; above to create records.
+            </p>
+          ) : cycle.rosters.length === 0 ? (
+            <p className="text-zinc-500 text-sm italic">No payment records.</p>
+          ) : (
+            cycle.rosters.map((roster) => (
+              <RosterRow
+                key={roster.rosterTag}
+                roster={roster}
+                onPaymentToggled={(isPaidNow, amountCents) =>
+                  onPaymentToggled(cycle.cycleId, isPaidNow, amountCents)
+                }
+                hideHeader={cycle.rosters.length === 1}
+              />
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── MultiTeamGroupRow: parent + children for multi-team age groups ───────────
+
+function MultiTeamGroupRow({
+  group,
+  onPaymentToggled,
+  onSeedPayments,
+}: {
+  group: AgeGroupEntry;
+  onPaymentToggled: (cycleId: string, isPaidNow: boolean, amountCents: number) => void;
+  onSeedPayments: (cycleId: string) => Promise<void>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const [seeding, setSeeding] = useState(false);
+  const s = group.combined;
+  const isSeedable = group.seedableCycleIds.length > 0;
+
+  async function handleSeed(e: React.MouseEvent) {
+    e.stopPropagation();
+    setSeeding(true);
+    try {
+      for (const cycleId of group.seedableCycleIds) {
+        await onSeedPayments(cycleId);
+      }
+    } finally {
+      setSeeding(false);
+    }
+  }
+
+  return (
+    <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 overflow-hidden">
+      {/* Parent row */}
+      <button
+        type="button"
+        onClick={() => setExpanded((p) => !p)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors text-left"
+      >
+        <span className="text-sm font-medium text-zinc-200">{group.key}</span>
+        <div className="flex items-center gap-3 shrink-0">
+          {isSeedable && (
+            <button
+              type="button"
+              disabled={seeding}
+              onClick={(e) => void handleSeed(e)}
+              className="text-xs border border-emerald-700 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-800/40 disabled:opacity-50 px-2.5 py-1 rounded transition-colors"
+            >
+              {seeding ? "Seeding…" : `Seed Payments (${group.totalFinalized})`}
+            </button>
+          )}
+          {s.total > 0 && (
+            <>
+              <div className="hidden sm:flex items-center gap-3 text-xs">
+                <span className="text-emerald-400">{s.paidCount} paid</span>
+                {s.unpaidCount > 0 && <span className="text-amber-400">{s.unpaidCount} unpaid</span>}
+                <span className="text-zinc-400">{fmtMoney(s.collectedCents)} collected</span>
+              </div>
+              <div className="w-20 hidden md:block">
+                <ProgressBar paid={s.paidCount} total={s.total} />
+              </div>
+            </>
+          )}
+          <span className="text-zinc-500 text-sm">{expanded ? "▲" : "▼"}</span>
+        </div>
+      </button>
+
+      {/* Child rows */}
+      {expanded && (
+        <div className="border-t border-zinc-700/50 px-4 py-3 space-y-2">
+          {group.cycles.map((cycle) => {
+            const { teamColor } = parseCycleName(cycle.cycleName);
+            return (
+              <TeamChildRow
+                key={cycle.cycleId + "-" + teamColor}
+                cycle={cycle}
+                teamColor={teamColor}
+                onPaymentToggled={onPaymentToggled}
+              />
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── AgeGroupRow: dispatcher — flat for single-team, grouped for multi-team ──
+
+function AgeGroupRow({
+  group,
+  onPaymentToggled,
+  onSeedPayments,
+}: {
+  group: AgeGroupEntry;
+  onPaymentToggled: (cycleId: string, isPaidNow: boolean, amountCents: number) => void;
+  onSeedPayments: (cycleId: string) => Promise<void>;
+}) {
+  if (group.cycles.length === 1) {
+    // Single-team: render flat (existing CycleRow) — teamColor stays in the label
+    return (
+      <CycleRow
+        cycle={group.cycles[0]}
+        onPaymentToggled={(isPaidNow, amountCents) =>
+          onPaymentToggled(group.cycles[0].cycleId, isPaidNow, amountCents)
+        }
+        onSeedPayments={onSeedPayments}
+      />
+    );
+  }
+  return (
+    <MultiTeamGroupRow
+      group={group}
+      onPaymentToggled={onPaymentToggled}
+      onSeedPayments={onSeedPayments}
+    />
+  );
+}
+
+// ─── OrgSection ──────────────────────────────────────────────────────────────
+
 function OrgSection({
   org,
   onPaymentToggled,
@@ -360,6 +606,8 @@ function OrgSection({
 }) {
   const [expanded, setExpanded] = useState(false);
   const t = org.totals;
+  const groups = buildAgeGroups(org.cycles);
+
   return (
     <div className="rounded-xl border border-zinc-700 bg-zinc-900/50 overflow-hidden">
       <button
@@ -369,7 +617,9 @@ function OrgSection({
       >
         <div className="flex items-center gap-3">
           <span className="text-base font-semibold text-white">{org.orgName}</span>
-          <span className="text-xs text-zinc-500">{org.cycles.length} cycle{org.cycles.length !== 1 ? "s" : ""}</span>
+          <span className="text-xs text-zinc-500">
+            {groups.length} age group{groups.length !== 1 ? "s" : ""}
+          </span>
         </div>
         <div className="flex items-center gap-3 shrink-0">
           {t.total > 0 && (
@@ -387,9 +637,17 @@ function OrgSection({
             <div className="flex flex-wrap gap-2 mb-4">
               <StatChip label="Total Players" value={String(t.total)} />
               <StatChip label="Paid" value={String(t.paidCount)} highlight="green" />
-              <StatChip label="Unpaid" value={String(t.unpaidCount)} highlight={t.unpaidCount > 0 ? "amber" : undefined} />
+              <StatChip
+                label="Unpaid"
+                value={String(t.unpaidCount)}
+                highlight={t.unpaidCount > 0 ? "amber" : undefined}
+              />
               <StatChip label="Collected" value={fmtMoney(t.collectedCents)} highlight="green" />
-              <StatChip label="Outstanding" value={fmtMoney(t.outstandingCents)} highlight={t.outstandingCents > 0 ? "red" : undefined} />
+              <StatChip
+                label="Outstanding"
+                value={fmtMoney(t.outstandingCents)}
+                highlight={t.outstandingCents > 0 ? "red" : undefined}
+              />
               <div className="flex-1 min-w-[120px] flex items-center">
                 <div className="w-full">
                   <ProgressBar paid={t.paidCount} total={t.total} />
@@ -397,17 +655,15 @@ function OrgSection({
               </div>
             </div>
           )}
-          {org.cycles.length === 0 ? (
-            <p className="text-zinc-500 text-sm italic">No cycles found.</p>
+          {groups.length === 0 ? (
+            <p className="text-zinc-500 text-sm italic">No cycles with finalized players.</p>
           ) : (
             <div className="space-y-2">
-              {org.cycles.map((cycle) => (
-                <CycleRow
-                  key={cycle.cycleId}
-                  cycle={cycle}
-                  onPaymentToggled={(isPaidNow, amountCents) =>
-                    onPaymentToggled(cycle.cycleId, isPaidNow, amountCents)
-                  }
+              {groups.map((group) => (
+                <AgeGroupRow
+                  key={group.key}
+                  group={group}
+                  onPaymentToggled={onPaymentToggled}
                   onSeedPayments={onSeedPayments}
                 />
               ))}
@@ -418,6 +674,8 @@ function OrgSection({
     </div>
   );
 }
+
+// ─── Main component ───────────────────────────────────────────────────────────
 
 export default function AllStarCrossOrgPaymentSummary() {
   const [data, setData] = useState<SummaryData | null>(null);
@@ -432,9 +690,10 @@ export default function AllStarCrossOrgPaymentSummary() {
   const fetchData = useCallback((year: number | "all") => {
     setLoading(true);
     setError(null);
-    const url = year === "all"
-      ? "/api/admin/all-star/payments/all-orgs"
-      : "/api/admin/all-star/payments/all-orgs?year=" + String(year);
+    const url =
+      year === "all"
+        ? "/api/admin/all-star/payments/all-orgs"
+        : "/api/admin/all-star/payments/all-orgs?year=" + String(year);
     fetch(url)
       .then((res) => res.json().then((json) => ({ res, json })))
       .then(({ res, json }: { res: Response; json: unknown }) => {
@@ -513,18 +772,21 @@ export default function AllStarCrossOrgPaymentSummary() {
       const json = (await res.json()) as { error?: string };
       throw new Error(json.error ?? "Failed to seed payments");
     }
-    // Refresh summary to reflect new payment records
     fetchData(selectedYear);
   }
 
-    function handleExport() {
+  function handleExport() {
     setExporting(true);
-    const url = selectedYear === "all"
-      ? "/api/admin/all-star/payments/all-orgs/export"
-      : "/api/admin/all-star/payments/all-orgs/export?year=" + String(selectedYear);
+    const url =
+      selectedYear === "all"
+        ? "/api/admin/all-star/payments/all-orgs/export"
+        : "/api/admin/all-star/payments/all-orgs/export?year=" + String(selectedYear);
     fetch(url)
       .then((res) => {
-        if (!res.ok) { setError("Export failed"); return; }
+        if (!res.ok) {
+          setError("Export failed");
+          return;
+        }
         return res.blob().then((blob) => {
           const link = document.createElement("a");
           link.href = URL.createObjectURL(blob);
@@ -534,8 +796,12 @@ export default function AllStarCrossOrgPaymentSummary() {
           URL.revokeObjectURL(link.href);
         });
       })
-      .catch(() => { setError("Export failed"); })
-      .finally(() => { setExporting(false); });
+      .catch(() => {
+        setError("Export failed");
+      })
+      .finally(() => {
+        setExporting(false);
+      });
   }
 
   return (
@@ -569,7 +835,9 @@ export default function AllStarCrossOrgPaymentSummary() {
               >
                 <option value="all">All Years</option>
                 {data.availableYears.map((y) => (
-                  <option key={y} value={String(y)}>{y}</option>
+                  <option key={y} value={String(y)}>
+                    {y}
+                  </option>
                 ))}
               </select>
             )}
@@ -610,17 +878,32 @@ export default function AllStarCrossOrgPaymentSummary() {
             <div className="space-y-4">
               {data.grandTotals.total > 0 && (
                 <div className="flex flex-wrap gap-2 p-4 rounded-xl border border-zinc-700/40 bg-zinc-900/30">
-                  <div className="flex items-center gap-1 text-xs text-zinc-400 font-medium mr-2 self-center">All Leagues:</div>
+                  <div className="flex items-center gap-1 text-xs text-zinc-400 font-medium mr-2 self-center">
+                    All Leagues:
+                  </div>
                   <StatChip label="Total" value={String(data.grandTotals.total)} />
                   <StatChip label="Paid" value={String(data.grandTotals.paidCount)} highlight="green" />
-                  <StatChip label="Unpaid" value={String(data.grandTotals.unpaidCount)} highlight={data.grandTotals.unpaidCount > 0 ? "amber" : undefined} />
-                  <StatChip label="Collected" value={fmtMoney(data.grandTotals.collectedCents)} highlight="green" />
-                  <StatChip label="Outstanding" value={fmtMoney(data.grandTotals.outstandingCents)} highlight={data.grandTotals.outstandingCents > 0 ? "red" : undefined} />
+                  <StatChip
+                    label="Unpaid"
+                    value={String(data.grandTotals.unpaidCount)}
+                    highlight={data.grandTotals.unpaidCount > 0 ? "amber" : undefined}
+                  />
+                  <StatChip
+                    label="Collected"
+                    value={fmtMoney(data.grandTotals.collectedCents)}
+                    highlight="green"
+                  />
+                  <StatChip
+                    label="Outstanding"
+                    value={fmtMoney(data.grandTotals.outstandingCents)}
+                    highlight={data.grandTotals.outstandingCents > 0 ? "red" : undefined}
+                  />
                 </div>
               )}
               {data.grandTotals.total === 0 && (
                 <p className="text-zinc-500 text-sm italic py-2">
-                  No payment records found{selectedYear !== "all" ? " for " + String(selectedYear) : ""}.
+                  No payment records found
+                  {selectedYear !== "all" ? " for " + String(selectedYear) : ""}.
                 </p>
               )}
               {data.orgs.map((org) => (
