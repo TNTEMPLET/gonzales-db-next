@@ -1971,9 +1971,18 @@ export default function AllStarVaultManager({
       if (candRes.ok && Array.isArray(candJson.data)) {
         setCandidates(candJson.data as Candidate[]);
       }
-      setNotice(
-        `Roster finalized: ${json.selectedCount as number} player${(json.selectedCount as number) !== 1 ? "s" : ""} marked as selected. Visit All-Star Payments to seed payment records.`,
-      );
+      const isTwoTeam = json.isTwoTeamCycle as boolean | undefined;
+      const navyCount = json.navyCount as number | undefined;
+      const redCount = json.redCount as number | undefined;
+      const totalFinalized =
+        isTwoTeam && navyCount != null && redCount != null
+          ? navyCount + redCount
+          : (json.selectedCount as number);
+      const finalizedMsg =
+        isTwoTeam && navyCount != null && redCount != null
+          ? `${totalFinalized} players — ${navyCount} Navy + ${redCount} Red`
+          : `${totalFinalized} player${totalFinalized !== 1 ? "s" : ""} marked as selected`;
+      setNotice(`Roster finalized: ${finalizedMsg}. Visit All-Star Payments to seed payment records.`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to finalize roster");
     } finally {
