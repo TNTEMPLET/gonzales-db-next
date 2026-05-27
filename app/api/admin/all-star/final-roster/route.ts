@@ -226,6 +226,20 @@ export async function POST(request: NextRequest) {
     });
   await prisma.$transaction(updateOps);
 
+  // Compute per-team counts for the response message.
+  // navyCount  = candidates landing in the first-team (Navy) slot by vote rank
+  // redCount   = candidates landing in the second-team (Red) slot by vote rank,
+  //              including any that were already SECOND_TEAM (preserved above)
+  const navyCount = isTwoTeamCycle
+    ? split.firstTeam.filter((r) => finalRosterIds.has(r.candidateId)).length
+    : firstTeamIds.size;
+  const existingSecondTeamCount = isTwoTeamCycle
+    ? candidates.filter((c) => c.finalRosterOverride === "SECOND_TEAM").length
+    : 0;
+  const redCount = isTwoTeamCycle
+    ? split.secondTeam.filter((r) => finalRosterIds.has(r.candidateId)).length + existingSecondTeamCount
+    : 0;
+
   // Audit log summary entry
   await recordAllStarAuditLog({
     organizationId: cycle.organizationId,
@@ -254,6 +268,9 @@ export async function POST(request: NextRequest) {
     selectedCount: firstTeamIds.size,
     totalCandidates: candidates.length,
     topCount,
+    isTwoTeamCycle,
+    navyCount,
+    redCount,
   });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Failed to finalize roster";
