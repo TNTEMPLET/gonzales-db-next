@@ -604,7 +604,7 @@ function OrgSection({
   onPaymentToggled: (cycleId: string, isPaidNow: boolean, amountCents: number) => void;
   onSeedPayments: (cycleId: string) => Promise<void>;
 }) {
-  const [expanded, setExpanded] = useState(false);
+  const [expanded, setExpanded] = useState(true);
   const t = org.totals;
   const groups = buildAgeGroups(org.cycles);
 
@@ -682,7 +682,7 @@ export default function AllStarCrossOrgPaymentSummary() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | "all">("all");
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [exporting, setExporting] = useState(false);
 
   const didFetch = useRef(false);
@@ -863,19 +863,22 @@ export default function AllStarCrossOrgPaymentSummary() {
 
       {!collapsed && (
         <div className="px-6 py-5 space-y-4">
-          {loading && (
+          {/* Initial load spinner — only shown before any data arrives */}
+          {loading && !data && (
             <div className="flex items-center gap-2 text-zinc-400 text-sm py-4">
               <span className="inline-block w-3 h-3 rounded-full border-2 border-zinc-600 border-t-zinc-300 animate-spin" />
               Loading payment summary across all leagues…
             </div>
           )}
-          {!loading && error && (
+          {/* Error banner (shown alongside stale data if a refresh fails) */}
+          {error && (
             <div className="rounded-lg border border-red-800/50 bg-red-950/20 px-4 py-3 text-sm text-red-300">
               {error}
             </div>
           )}
-          {!loading && !error && data && (
-            <div className="space-y-4">
+          {/* Keep orgs mounted during refresh so expanded state is preserved; just dim while loading */}
+          {data && (
+            <div className={`space-y-4 transition-opacity duration-150 ${loading ? "opacity-50 pointer-events-none" : ""}`}>
               {data.grandTotals.total > 0 && (
                 <div className="flex flex-wrap gap-2 p-4 rounded-xl border border-zinc-700/40 bg-zinc-900/30">
                   <div className="flex items-center gap-1 text-xs text-zinc-400 font-medium mr-2 self-center">
