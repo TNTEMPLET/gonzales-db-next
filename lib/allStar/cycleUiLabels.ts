@@ -60,6 +60,10 @@ export function getCycleTierDisplayLabel(
   title: string | null,
 ) {
   const normalizedTitle = (title || "").trim().toUpperCase();
+  // Direct color-word override — used by coach-selected cycles stored with title = "GOLD" etc.
+  if (["GOLD", "PURPLE", "NAVY", "RED"].includes(normalizedTitle)) {
+    return normalizedTitle;
+  }
   if (organizationId === "gonzales" && normalizedTitle === "11U DYB") {
     return "GOLD";
   }
