@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx-js-style";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
+import { getCycleTierDisplayLabel } from "@/lib/allStar/cycleUiLabels";
 import prisma from "@/lib/prisma";
 import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 
@@ -118,11 +119,11 @@ export async function GET(request: NextRequest) {
       orgTotal += payments.length;
       orgPaid += paidCount;
 
-      const cycleName = [cycle.allStarAgeGroupLabel || cycle.ageGroup, cycle.title]
-        .filter(Boolean).join(" — ");
+      const teamColor = getCycleTierDisplayLabel(cycle.organizationId as ContentOrgId, cycle.title);
+      const summaryLabel = `${cycle.seasonYear} - ${cycle.ageGroup} - ${teamColor}`;
       summaryRows.push({
         League: "",
-        "Age Group / Cycle": `  ${cycle.seasonYear} ${cycleName}`,
+        "Age Group / Cycle": `  ${summaryLabel}`,
         Total: String(payments.length),
         Paid: String(paidCount),
         Unpaid: String(unpaidCount),
@@ -180,13 +181,17 @@ export async function GET(request: NextRequest) {
       const payments = paymentsByCycle.get(cycle.id) ?? [];
       if (payments.length === 0) continue;
 
-      const ageLabel = cycle.allStarAgeGroupLabel || cycle.ageGroup;
-      const cycleName = [cycle.seasonYear, ageLabel, cycle.title].filter(Boolean).join(" — ");
+      // Team color derived from cycle metadata (same logic as the UI)
+      const cycleTeamColor = getCycleTierDisplayLabel(cycle.organizationId as ContentOrgId, cycle.title);
+      // Parent label: "2026 - 11U LLB"  (year - ageGroup, no color — used for multi-team parent)
+      const parentLabel = `${cycle.seasonYear} - ${cycle.ageGroup}`;
+      // Single-team label: "2026 - 11U LLB - NAVY"
+      const singleLabel = `${cycle.seasonYear} - ${cycle.ageGroup} - ${cycleTeamColor}`;
 
       // Group payments by rosterTag (preserving order from DB sort)
       const byRosterTag = new Map<string, typeof payments>();
       for (const p of payments) {
-        const tag = p.rosterTag ?? cycleName;
+        const tag = p.rosterTag ?? singleLabel;
         const list = byRosterTag.get(tag) ?? [];
         list.push(p);
         byRosterTag.set(tag, list);
@@ -195,19 +200,20 @@ export async function GET(request: NextRequest) {
       const isMultiRoster = byRosterTag.size > 1;
 
       if (isMultiRoster) {
-        // ── Parent section header (dark slate — the age group) ──────────────
+        // ── Parent section header: "2026 - 11U LLB" ─────────────────────
         aoa.push([
-          cell(cycleName, SECTION_STYLE),
+          cell(parentLabel, SECTION_STYLE),
           ...blankCells(N - 1, SECTION_STYLE),
         ]);
 
         for (const [rosterTag, rosterPayments] of byRosterTag) {
-          const teamColor = parseTeamColor(rosterTag);
-          const subStyle = rosterSubHeaderStyle(teamColor);
+          // Sub-header is just the team color word: "NAVY" or "RED"
+          const teamColorWord = parseTeamColor(rosterTag);
+          const subStyle = rosterSubHeaderStyle(teamColorWord);
 
-          // ── Colored sub-header row (team color) ──────────────────────────
+          // ── Colored sub-header: "NAVY" / "RED" ──────────────────────────
           aoa.push([
-            cell(`  ${rosterTag}`, subStyle),
+            cell(teamColorWord, subStyle),
             ...blankCells(N - 1, subStyle),
           ]);
 
@@ -227,9 +233,9 @@ export async function GET(request: NextRequest) {
           }
         }
       } else {
-        // ── Single-roster: section header then flat player list ──────────
+        // ── Single-roster: "2026 - 11U LLB - NAVY" then flat player list ─
         aoa.push([
-          cell(cycleName, SECTION_STYLE),
+          cell(singleLabel, SECTION_STYLE),
           ...blankCells(N - 1, SECTION_STYLE),
         ]);
 
