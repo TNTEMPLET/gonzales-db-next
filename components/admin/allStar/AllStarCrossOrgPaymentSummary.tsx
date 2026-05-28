@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { CoachRosterBuilderModal } from "@/components/admin/allStar/CoachRosterBuilderModal";
 
 type PaymentRow = {
   id: string;
@@ -888,6 +889,7 @@ export default function AllStarCrossOrgPaymentSummary() {
   const [selectedYear, setSelectedYear] = useState<number | "all">("all");
   const [collapsed, setCollapsed] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [showCoachRosterBuilder, setShowCoachRosterBuilder] = useState(false);
 
   const didFetch = useRef(false);
 
@@ -1055,6 +1057,13 @@ export default function AllStarCrossOrgPaymentSummary() {
             </button>
             <button
               type="button"
+              onClick={() => setShowCoachRosterBuilder(true)}
+              className="rounded-lg border border-violet-700/60 bg-violet-950/30 px-3 py-1.5 text-sm text-violet-300 hover:bg-violet-950/60 transition-colors"
+            >
+              + Coach Roster
+            </button>
+            <button
+              type="button"
               onClick={handleExport}
               disabled={exporting || loading || !data}
               className="rounded-lg border border-emerald-700/60 bg-emerald-950/30 px-3 py-1.5 text-sm text-emerald-300 hover:bg-emerald-950/60 transition-colors disabled:opacity-40"
@@ -1126,6 +1135,12 @@ export default function AllStarCrossOrgPaymentSummary() {
             </div>
           )}
         </div>
+      )}
+      {showCoachRosterBuilder && (
+        <CoachRosterBuilderModal
+          onClose={() => setShowCoachRosterBuilder(false)}
+          onSuccess={() => fetchData(selectedYear)}
+        />
       )}
     </div>
   );
