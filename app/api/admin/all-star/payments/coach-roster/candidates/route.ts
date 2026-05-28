@@ -7,9 +7,10 @@ import prisma from "@/lib/prisma";
 /**
  * GET /api/admin/all-star/payments/coach-roster/candidates
  *
- * Returns unselected (un-finalized) candidates from the specified source cycles.
- * "Unselected" means finalRosterOverride IS NULL — they haven't been placed on
- * any team's final All-Star roster yet.
+ * Returns available candidates from the specified source cycles.
+ * "Available" = isActive AND NOT already on a team roster (SELECTED or SECOND_TEAM).
+ * Includes finalRosterOverride IS NULL (standard unselected) and "REMOVED"
+ * (explicitly swapped off the ballot roster but still eligible for a coach roster).
  *
  * Query params:
  *   cycleIds  – comma-separated list of ballot cycle IDs to browse
@@ -47,12 +48,18 @@ export async function GET(request: NextRequest) {
 
   const cycleMap = new Map(cycles.map((c) => [c.id, c]));
 
-  // Fetch unselected candidates from those cycles
+  // Fetch available candidates from those cycles.
+  // Include both null (never explicitly placed) and "REMOVED" (swapped off the
+  // ballot roster) — both are valid picks for a coach-built secondary roster.
+  // Exclude SELECTED (on 1st team) and SECOND_TEAM (already on another roster).
   const candidates = await prisma.allStarCandidate.findMany({
     where: {
       ballotCycleId: { in: cycleIds },
       isActive: true,
-      finalRosterOverride: null, // not yet placed on any final roster
+      OR: [
+        { finalRosterOverride: null },
+        { finalRosterOverride: "REMOVED" },
+      ],
     },
     select: {
       id: true,
