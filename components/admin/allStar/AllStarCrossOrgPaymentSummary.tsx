@@ -107,8 +107,9 @@ interface AgeGroupEntry {
     collectedCents: number;
     outstandingCents: number;
   };
-  seedableCycleIds: string[]; // unique cycleIds that are seedable (0 payments, >0 finalized)
-  totalFinalized: number;     // sum of finalizedCount across all cycles (for Seed button label)
+  seedableCycleIds: string[];  // unique cycleIds that are seedable (0 payments, >0 finalized)
+  resyncableCycleIds: string[]; // unique cycleIds resyncable (>0 payments, >0 finalized)
+  totalFinalized: number;      // sum of finalizedCount across all cycles (for Seed button label)
 }
 
 function buildAgeGroups(cycles: CycleSummary[]): AgeGroupEntry[] {
@@ -127,6 +128,7 @@ function buildAgeGroups(cycles: CycleSummary[]): AgeGroupEntry[] {
         cycles: [],
         combined: { total: 0, paidCount: 0, unpaidCount: 0, collectedCents: 0, outstandingCents: 0 },
         seedableCycleIds: [],
+        resyncableCycleIds: [],
         totalFinalized: 0,
       });
     }
@@ -140,6 +142,9 @@ function buildAgeGroups(cycles: CycleSummary[]): AgeGroupEntry[] {
     g.totalFinalized += c.finalizedCount;
     if (c.summary.total === 0 && c.finalizedCount > 0 && !g.seedableCycleIds.includes(c.cycleId)) {
       g.seedableCycleIds.push(c.cycleId);
+    }
+    if (c.summary.total > 0 && c.finalizedCount > 0 && !g.resyncableCycleIds.includes(c.cycleId)) {
+      g.resyncableCycleIds.push(c.cycleId);
     }
   }
 
@@ -333,6 +338,7 @@ function CycleRow({
   const [seeding, setSeeding] = useState(false);
   const s = cycle.summary;
   const seedable = s.total === 0 && cycle.finalizedCount > 0;
+  const resyncable = s.total > 0 && cycle.finalizedCount > 0;
 
   async function handleSeed(e: React.MouseEvent) {
     e.stopPropagation();
@@ -364,6 +370,16 @@ function CycleRow({
               className="text-xs border border-emerald-700 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-800/40 disabled:opacity-50 px-2.5 py-1 rounded transition-colors"
             >
               {seeding ? "Seeding…" : `Seed Payments (${cycle.finalizedCount})`}
+            </button>
+          )}
+          {resyncable && (
+            <button
+              type="button"
+              disabled={seeding}
+              onClick={(e) => void handleSeed(e)}
+              className="text-xs border border-sky-700 bg-sky-900/30 text-sky-300 hover:bg-sky-800/40 disabled:opacity-50 px-2.5 py-1 rounded transition-colors"
+            >
+              {seeding ? "Syncing…" : "↻ Sync Roster"}
             </button>
           )}
           {s.total > 0 && (
@@ -617,13 +633,27 @@ function SingleCycleMultiTeamRow({
   group,
   cycle,
   onPaymentToggled,
+  onSeedPayments,
 }: {
   group: AgeGroupEntry;
   cycle: CycleSummary;
   onPaymentToggled: (isPaidNow: boolean, amountCents: number) => void;
+  onSeedPayments: (cycleId: string) => Promise<void>;
 }) {
   const [expanded, setExpanded] = useState(true);
+  const [seeding, setSeeding] = useState(false);
   const s = cycle.summary;
+  const resyncable = s.total > 0 && cycle.finalizedCount > 0;
+
+  async function handleResync(e: React.MouseEvent) {
+    e.stopPropagation();
+    setSeeding(true);
+    try {
+      await onSeedPayments(cycle.cycleId);
+    } finally {
+      setSeeding(false);
+    }
+  }
 
   return (
     <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 overflow-hidden">
@@ -634,6 +664,16 @@ function SingleCycleMultiTeamRow({
       >
         <span className="text-sm font-medium text-zinc-200">{group.key}</span>
         <div className="flex items-center gap-3 shrink-0">
+          {resyncable && (
+            <button
+              type="button"
+              disabled={seeding}
+              onClick={(e) => void handleResync(e)}
+              className="text-xs border border-sky-700 bg-sky-900/30 text-sky-300 hover:bg-sky-800/40 disabled:opacity-50 px-2.5 py-1 rounded transition-colors"
+            >
+              {seeding ? "Syncing…" : "↻ Sync Roster"}
+            </button>
+          )}
           {s.total > 0 && (
             <>
               <div className="hidden sm:flex items-center gap-3 text-xs">
@@ -683,12 +723,25 @@ function MultiTeamGroupRow({
   const [seeding, setSeeding] = useState(false);
   const s = group.combined;
   const isSeedable = group.seedableCycleIds.length > 0;
+  const isResyncable = group.resyncableCycleIds.length > 0;
 
   async function handleSeed(e: React.MouseEvent) {
     e.stopPropagation();
     setSeeding(true);
     try {
       for (const cycleId of group.seedableCycleIds) {
+        await onSeedPayments(cycleId);
+      }
+    } finally {
+      setSeeding(false);
+    }
+  }
+
+  async function handleResync(e: React.MouseEvent) {
+    e.stopPropagation();
+    setSeeding(true);
+    try {
+      for (const cycleId of group.resyncableCycleIds) {
         await onSeedPayments(cycleId);
       }
     } finally {
@@ -714,6 +767,16 @@ function MultiTeamGroupRow({
               className="text-xs border border-emerald-700 bg-emerald-900/30 text-emerald-300 hover:bg-emerald-800/40 disabled:opacity-50 px-2.5 py-1 rounded transition-colors"
             >
               {seeding ? "Seeding…" : `Seed Payments (${group.totalFinalized})`}
+            </button>
+          )}
+          {isResyncable && (
+            <button
+              type="button"
+              disabled={seeding}
+              onClick={(e) => void handleResync(e)}
+              className="text-xs border border-sky-700 bg-sky-900/30 text-sky-300 hover:bg-sky-800/40 disabled:opacity-50 px-2.5 py-1 rounded transition-colors"
+            >
+              {seeding ? "Syncing…" : "↻ Sync Roster"}
             </button>
           )}
           {s.total > 0 && (
@@ -775,6 +838,7 @@ function AgeGroupRow({
           onPaymentToggled={(isPaidNow, amountCents) =>
             onPaymentToggled(cycle.cycleId, isPaidNow, amountCents)
           }
+          onSeedPayments={onSeedPayments}
         />
       );
     }
