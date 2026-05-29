@@ -1,3 +1,6 @@
+// Never prerender — queried DB tables may not exist in all environments yet
+export const dynamic = "force-dynamic";
+
 import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { getSiteConfig, isMasterDeployment } from "@/lib/siteConfig";
@@ -32,14 +35,20 @@ export default async function AllStarPage() {
   const site = getSiteConfig();
   const orgId = site.orgId === "ascension" ? "ascension" : "gonzales";
 
-  const [config, payments] = await Promise.all([
-    prisma.allStarPageConfig.findUnique({ where: { organizationId: orgId } }),
-    prisma.allStarPayment.findMany({
-      where: { organizationId: orgId },
-      select: { playerFullName: true, team: true, rosterTag: true },
-      orderBy: [{ rosterTag: "asc" }, { playerFullName: "asc" }],
-    }),
-  ]);
+  let config: { paypalLinkUrl: string | null; paypalLinkLabel: string | null; infoText: string | null } | null = null;
+  let payments: { playerFullName: string; team: string; rosterTag: string | null }[] = [];
+  try {
+    [config, payments] = await Promise.all([
+      prisma.allStarPageConfig.findUnique({ where: { organizationId: orgId } }),
+      prisma.allStarPayment.findMany({
+        where: { organizationId: orgId },
+        select: { playerFullName: true, team: true, rosterTag: true },
+        orderBy: [{ rosterTag: "asc" }, { playerFullName: "asc" }],
+      }),
+    ]);
+  } catch {
+    redirect("/");
+  }
 
   const safePayPalUrl = isSafePayPalUrl(config?.paypalLinkUrl) ? config!.paypalLinkUrl! : null;
   const hasPayPal = !!safePayPalUrl;
