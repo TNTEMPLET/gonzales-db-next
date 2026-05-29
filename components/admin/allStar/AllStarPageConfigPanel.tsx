@@ -14,6 +14,7 @@ export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string;
     paypalLinkUrl: null,
     infoText: null,
   });
+  const [collapsed, setCollapsed] = useState(true);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -57,34 +58,44 @@ export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string;
     }
   }
 
-  function publicPageUrl() {
-    return typeof window !== "undefined" ? `${window.location.origin}/all-star` : "/all-star";
-  }
-
   return (
     <div className="rounded-2xl border border-zinc-700 bg-zinc-950/80 overflow-hidden mb-8">
-      <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-zinc-700/50">
+      <button
+        type="button"
+        onClick={() => setCollapsed((p) => !p)}
+        className="w-full flex items-center justify-between gap-4 px-6 py-4 hover:bg-zinc-800/30 transition-colors text-left"
+      >
         <div>
           <span className="text-base font-semibold text-white">
             Public All-Stars Page{orgLabel ? ` — ${orgLabel}` : ""}
           </span>
           <p className="text-xs text-zinc-500 mt-0.5">
             Configure what appears at{" "}
-            <a href="/all-star" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline">
+            <a
+              href="/all-star"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sky-400 hover:underline"
+              onClick={(e) => e.stopPropagation()}
+            >
               /all-star
             </a>{" "}
             — the public-facing All-Star information page.
           </p>
         </div>
-      </div>
+        <span className="text-zinc-500 text-sm shrink-0">{collapsed ? "▼" : "▲"}</span>
+      </button>
 
-      {loading ? (
-        <div className="px-6 py-8 flex items-center gap-2 text-zinc-400 text-sm">
-          <span className="inline-block w-3 h-3 rounded-full border-2 border-zinc-600 border-t-zinc-300 animate-spin" />
-          Loading…
-        </div>
-      ) : (
-        <form onSubmit={(e) => void handleSave(e)} className="px-6 py-5 space-y-5">
+      {!collapsed && (
+        <>
+          <div className="border-t border-zinc-700/50" />
+          {loading ? (
+            <div className="px-6 py-8 flex items-center gap-2 text-zinc-400 text-sm">
+              <span className="inline-block w-3 h-3 rounded-full border-2 border-zinc-600 border-t-zinc-300 animate-spin" />
+              Loading…
+            </div>
+          ) : (
+            <form onSubmit={(e) => void handleSave(e)} className="px-6 py-5 space-y-5">
           {/* PayPal link label */}
           <div>
             <label className="block text-sm font-medium text-zinc-300 mb-1.5">
@@ -158,7 +169,9 @@ export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string;
               </a>
             )}
           </div>
-        </form>
+          </form>
+        )}
+        </>
       )}
     </div>
   );
