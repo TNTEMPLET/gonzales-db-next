@@ -1179,6 +1179,20 @@ model SocialPost {
   @@index([organizationId, status, updatedAt])
 }
 
+/// Per-org configuration for the public All-Star information page.
+model AllStarPageConfig {
+  id              String   @id @default(cuid())
+  organizationId  String   @unique
+  /// Customizable label shown on the PayPal button (e.g. "2026 All-Star Fee Payment")
+  paypalLinkLabel String?
+  /// Full PayPal payment URL
+  paypalLinkUrl   String?
+  /// Plain-text announcement / info paragraph shown at the top of the page
+  infoText        String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 /// Fee payment record for a player selected for All-Stars. Populated from the ballot cycle
 /// roster and reconciled against PayPal transactions.
 model AllStarPayment {

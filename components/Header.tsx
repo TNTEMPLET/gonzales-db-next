@@ -49,6 +49,7 @@ export default function Header({ brand }: HeaderProps) {
   const masterMenuRef = useRef<HTMLDivElement | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
+  const [showAllStarLink, setShowAllStarLink] = useState(false);
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   const currentOrgParam = searchParams.get("org");
@@ -177,6 +178,14 @@ export default function Header({ brand }: HeaderProps) {
 
     void loadDugoutAccess();
 
+    // Fetch whether to show All-Stars nav link (once per mount, not per auth change)
+    fetch("/api/all-star/nav-hint", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { showAllStarLink?: boolean }) => {
+        if (active) setShowAllStarLink(Boolean(d.showAllStarLink));
+      })
+      .catch(() => { /* silent — nav link just won't show */ });
+
     function handleAuthChanged() {
       void loadDugoutAccess();
     }
@@ -286,6 +295,7 @@ export default function Header({ brand }: HeaderProps) {
   const publicNavLinks = [
     { href: "/schedule", label: "Schedules & Standings" },
     { href: "/tournaments", label: "Tournaments" },
+    ...(showAllStarLink ? [{ href: "/all-star", label: "All-Stars" }] : []),
     ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
     ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
     { href: "/#fields", label: "Fields & Status" },
