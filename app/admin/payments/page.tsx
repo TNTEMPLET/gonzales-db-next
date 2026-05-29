@@ -10,6 +10,7 @@ import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/ad
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarRosterPayments from "@/components/admin/allStar/AllStarRosterPayments";
 import AllStarCrossOrgPaymentSummary from "@/components/admin/allStar/AllStarCrossOrgPaymentSummary";
+import AllStarPageConfigPanel from "@/components/admin/allStar/AllStarPageConfigPanel";
 import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -79,6 +80,8 @@ export default async function AdminPaymentsPage({
             <AllStarRosterPayments org={currentOrg} />
           </div>
         )}
+
+        <AllStarPageConfigPanel org={currentOrg} />
       </section>
     </main>
   );
