@@ -8,7 +8,7 @@ type Config = {
   infoText: string | null;
 };
 
-export default function AllStarPageConfigPanel({ org }: { org: string }) {
+export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string; orgLabel?: string }) {
   const [config, setConfig] = useState<Config>({
     paypalLinkLabel: null,
     paypalLinkUrl: null,
@@ -65,7 +65,9 @@ export default function AllStarPageConfigPanel({ org }: { org: string }) {
     <div className="rounded-2xl border border-zinc-700 bg-zinc-950/80 overflow-hidden mb-8">
       <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-zinc-700/50">
         <div>
-          <span className="text-base font-semibold text-white">Public All-Stars Page</span>
+          <span className="text-base font-semibold text-white">
+            Public All-Stars Page{orgLabel ? ` — ${orgLabel}` : ""}
+          </span>
           <p className="text-xs text-zinc-500 mt-0.5">
             Configure what appears at{" "}
             <a href="/all-star" target="_blank" rel="noopener noreferrer" className="text-sky-400 hover:underline">

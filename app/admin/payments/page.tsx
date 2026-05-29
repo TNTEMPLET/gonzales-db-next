@@ -81,7 +81,20 @@ export default async function AdminPaymentsPage({
           </div>
         )}
 
-        <AllStarPageConfigPanel org={currentOrg} />
+        {masterMode ? (
+          <>
+            <div className="mt-8 mb-2">
+              <h2 className="text-xl font-semibold text-white">All-Stars Page Settings</h2>
+              <p className="text-sm text-zinc-400 mt-1">
+                Configure the public-facing All-Stars page for each organization.
+              </p>
+            </div>
+            <AllStarPageConfigPanel org="gonzales" orgLabel="Gonzales Diamond Baseball" />
+            <AllStarPageConfigPanel org="ascension" orgLabel="Ascension Little League" />
+          </>
+        ) : (
+          <AllStarPageConfigPanel org={currentOrg} />
+        )}
       </section>
     </main>
   );
