@@ -18,9 +18,14 @@ export async function GET(request: NextRequest) {
 
   const yearParam = request.nextUrl.searchParams.get("year");
   const year = yearParam ? parseInt(yearParam, 10) : null;
+  const orgParam = request.nextUrl.searchParams.get("org");
+  const orgFilter = orgParam === "gonzales" || orgParam === "ascension" ? orgParam : null;
 
   const cycles = await prisma.allStarBallotCycle.findMany({
-    where: year ? { seasonYear: year } : undefined,
+    where: {
+      ...(year ? { seasonYear: year } : {}),
+      ...(orgFilter ? { organizationId: orgFilter } : {}),
+    },
     orderBy: [{ organizationId: "asc" }, { seasonYear: "desc" }, { ageGroup: "asc" }],
     select: {
       id: true,
@@ -64,7 +69,8 @@ export async function GET(request: NextRequest) {
     paymentsByCycle.set(p.ballotCycleId, list);
   }
 
-  const orgs = CONTENT_ORGS.map((orgId) => {
+  const orgsToInclude = orgFilter ? CONTENT_ORGS.filter((o) => o === orgFilter) : CONTENT_ORGS;
+  const orgs = orgsToInclude.map((orgId) => {
     const orgCycles = cycles.filter((c) => c.organizationId === orgId);
     let orgTotal = 0, orgPaid = 0, orgCollectedCents = 0, orgOutstandingCents = 0;
 

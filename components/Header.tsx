@@ -53,7 +53,7 @@ export default function Header({ brand }: HeaderProps) {
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   const currentOrgParam = searchParams.get("org");
-  const regOpen = isRegistrationOpen();
+  const [regOpen, setRegOpen] = useState(false);
   const isMasterHeader =
     brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
 
@@ -132,6 +132,10 @@ export default function Header({ brand }: HeaderProps) {
       ? "block px-3 py-2 text-left text-sm text-red-200 bg-red-950/35"
       : "block px-3 py-2 text-left text-sm text-zinc-200 hover:bg-red-950/25 hover:text-red-100";
   }
+
+  useEffect(() => {
+    setRegOpen(isRegistrationOpen());
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -293,16 +297,16 @@ export default function Header({ brand }: HeaderProps) {
     : [];
 
   const publicNavLinks = [
-    { href: "/schedule", label: "Schedules & Standings" },
+    { href: "/schedule", label: "Schedule" },
     { href: "/tournaments", label: "Tournaments" },
     ...(showAllStarLink ? [{ href: "/all-star", label: "All-Stars" }] : []),
+    { href: "/news", label: "News" },
     ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
     ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
-    { href: "/#fields", label: "Fields & Status" },
-    ...(canSeeDugout ? [{ href: "/coach-corner", label: "Coach's Corner" }] : []),
-    ...(canSeeDugout ? [{ href: "/dugout", label: "The Dugout" }] : []),
-    { href: "/news", label: "News" },
+    { href: "/#fields", label: "Fields" },
     { href: "/#contact", label: "Contact" },
+    ...(canSeeDugout ? [{ href: "/coach-corner", label: "Coaches" }] : []),
+    ...(canSeeDugout ? [{ href: "/dugout", label: "Dugout" }] : []),
   ];
 
   return (

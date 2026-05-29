@@ -11,7 +11,7 @@ import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarRosterPayments from "@/components/admin/allStar/AllStarRosterPayments";
 import AllStarCrossOrgPaymentSummary from "@/components/admin/allStar/AllStarCrossOrgPaymentSummary";
 import AllStarPageConfigPanel from "@/components/admin/allStar/AllStarPageConfigPanel";
-import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { getSiteConfig, isMasterDeployment, isContentOrgId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -53,6 +53,8 @@ export default async function AdminPaymentsPage({
   }
 
   const masterMode = isMasterDeployment();
+  // In master mode: no ?org param (or non-org param) = "All Sites"; specific org param = single org view
+  const allSitesMode = masterMode && !isContentOrgId(org);
 
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
@@ -60,7 +62,7 @@ export default async function AdminPaymentsPage({
         <div className="mb-8">
           <AdminSectionHeader
             badge="ALL-STAR PAYMENTS"
-            currentOrg={currentOrg}
+            currentOrg={allSitesMode ? null : currentOrg}
             currentPath="/admin/payments"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
@@ -73,27 +75,32 @@ export default async function AdminPaymentsPage({
           </p>
         </div>
 
-        {masterMode ? (
-          <AllStarCrossOrgPaymentSummary />
-        ) : (
-          <div className="rounded-2xl border border-zinc-700 bg-zinc-950/80 overflow-hidden p-6">
-            <AllStarRosterPayments org={currentOrg} />
-          </div>
-        )}
-
-        {masterMode ? (
+        {/* ── Settings ──────────────────────────────────────────────────────── */}
+        <div className="mb-2">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Settings</h2>
+        </div>
+        {allSitesMode ? (
           <>
-            <div className="mt-8 mb-2">
-              <h2 className="text-xl font-semibold text-white">All-Stars Page Settings</h2>
-              <p className="text-sm text-zinc-400 mt-1">
-                Configure the public-facing All-Stars page for each organization.
-              </p>
-            </div>
             <AllStarPageConfigPanel org="gonzales" orgLabel="Gonzales Diamond Baseball" />
             <AllStarPageConfigPanel org="ascension" orgLabel="Ascension Little League" />
           </>
         ) : (
-          <AllStarPageConfigPanel org={currentOrg} />
+          <AllStarPageConfigPanel
+            org={currentOrg}
+            orgLabel={masterMode ? (currentOrg === "gonzales" ? "Gonzales Diamond Baseball" : "Ascension Little League") : undefined}
+          />
+        )}
+
+        {/* ── Operations ────────────────────────────────────────────────────── */}
+        <div className="mt-6 mb-2">
+          <h2 className="text-xs font-semibold uppercase tracking-widest text-zinc-500">Operations</h2>
+        </div>
+        {masterMode ? (
+          <AllStarCrossOrgPaymentSummary org={allSitesMode ? undefined : currentOrg} />
+        ) : (
+          <div className="rounded-2xl border border-zinc-700 bg-zinc-950/80 overflow-hidden p-6">
+            <AllStarRosterPayments org={currentOrg} />
+          </div>
         )}
       </section>
     </main>

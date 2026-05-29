@@ -67,17 +67,20 @@ export default async function AllStarPage() {
     byRoster.set(tag, list);
   }
 
-  const rosterGroups = Array.from(byRoster.entries()).sort(([a], [b]) => a.localeCompare(b));
+  const rosterGroups = Array.from(byRoster.entries())
+    .filter(([tag]) => !HIDDEN_AGE_GROUPS.has(parseAgeGroup(tag)))
+    .sort(([a], [b]) => {
+      const ageA = parseInt((/(\d+)U/i.exec(a) ?? ["", "0"])[1], 10);
+      const ageB = parseInt((/(\d+)U/i.exec(b) ?? ["", "0"])[1], 10);
+      return ageB - ageA; // oldest (highest age) first
+    });
 
   return (
-    <main className="min-h-screen bg-zinc-950 py-12 text-white sm:py-16">
-      <section className="mx-auto max-w-4xl px-4 sm:px-6 space-y-10">
+    <main className="min-h-screen bg-zinc-950 py-8 text-white sm:py-12">
+      <section className="mx-auto max-w-4xl px-4 sm:px-6 space-y-6">
 
         {/* Page header */}
         <div className="text-center">
-          <p className="text-xs uppercase tracking-widest text-brand-gold font-semibold mb-2 opacity-80">
-            {site.shortName}
-          </p>
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">All-Stars</h1>
           {hasInfo && (
             <p className="text-zinc-300 text-base max-w-2xl mx-auto mt-4 leading-relaxed">
@@ -88,43 +91,36 @@ export default async function AllStarPage() {
 
         {/* PayPal section */}
         {hasPayPal && (
-          <div className="rounded-2xl border border-zinc-700 bg-zinc-900/50 p-8">
-            <h2 className="text-xl font-semibold text-center mb-6 text-white">
+          <div className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-4 py-5 sm:px-6">
+            <p className="text-sm font-semibold text-center text-zinc-200 mb-4">
               {config!.paypalLinkLabel ?? "All-Star Payment"}
-            </h2>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-8">
+            </p>
+            <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-6">
               {/* Pay button */}
-              <div className="flex flex-col items-center gap-4">
-                <a
-                  href={safePayPalUrl!}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex items-center gap-2 rounded-xl bg-[#0070ba] hover:bg-[#003087] transition-colors px-8 py-4 text-white font-semibold text-lg shadow-lg"
-                >
-                  <PayPalIcon />
-                  Pay with PayPal
-                </a>
-                <p className="text-xs text-zinc-500">Opens in a new tab</p>
-              </div>
+              <a
+                href={safePayPalUrl!}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#0070ba] hover:bg-[#003087] transition-colors px-5 py-2.5 text-white font-semibold text-sm shadow"
+              >
+                <PayPalIcon />
+                Pay with PayPal
+              </a>
 
               {/* Divider */}
-              <div className="hidden sm:flex flex-col items-center gap-2 text-zinc-600 select-none">
-                <div className="h-16 w-px bg-zinc-700" />
+              <div className="flex items-center gap-2 text-zinc-600 select-none w-full sm:w-auto sm:flex-col sm:self-stretch">
+                <div className="flex-1 h-px sm:h-full sm:w-px bg-zinc-700" />
                 <span className="text-xs">or</span>
-                <div className="h-16 w-px bg-zinc-700" />
-              </div>
-              <div className="sm:hidden flex items-center gap-3 text-zinc-600 select-none w-full">
-                <div className="flex-1 h-px bg-zinc-700" />
-                <span className="text-xs">or scan QR code</span>
-                <div className="flex-1 h-px bg-zinc-700" />
+                <div className="flex-1 h-px sm:h-full sm:w-px bg-zinc-700" />
               </div>
 
               {/* QR code */}
-              <div className="flex flex-col items-center gap-2">
-                <p className="text-xs text-zinc-400 mb-1">Scan to pay</p>
+              <div className="flex flex-col items-center gap-1.5">
+                <p className="text-xs text-zinc-500">Scan to pay</p>
                 <AllStarQRCode url={safePayPalUrl!} label={config!.paypalLinkLabel ?? "all-star-payment"} />
               </div>
             </div>
+            <p className="text-xs text-zinc-600 text-center mt-3">Opens in a new tab</p>
           </div>
         )}
 
@@ -144,11 +140,37 @@ export default async function AllStarPage() {
   );
 }
 
+const HIDDEN_AGE_GROUPS = new Set(["7U", "8U"]);
+
+const AGE_GROUP_LABELS: Record<string, string> = {
+  "6U": "Coaches Pitch",
+  "8U MAJ": "Coaches Pitch",
+  "6U Mod": "Tee-ball",
+};
+
+function parseAgeGroup(tag: string): string {
+  const parts = tag.split(" - ");
+  if (parts.length < 3) return tag;
+  return parts.slice(1, -1).join(" - ")
+    .replace(/\bLLB\b/g, "").replace(/\bDYB\b/g, "").replace(/\s{2,}/g, " ").trim();
+}
+
+function formatRosterTag(tag: string): string {
+  const parts = tag.split(" - ");
+  if (parts.length < 3) return tag;
+  const ageGroup = parseAgeGroup(tag);
+  const label = AGE_GROUP_LABELS[ageGroup] ?? ageGroup;
+  const color = parts[parts.length - 1];
+  const titleColor = color.charAt(0).toUpperCase() + color.slice(1).toLowerCase();
+  return `${label} | ${titleColor}`;
+}
+
 function RosterCard({ tag, players }: { tag: string; players: RosterEntry[] }) {
+  const label = formatRosterTag(tag);
   return (
     <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/40 overflow-hidden">
       <div className="px-5 py-3 border-b border-zinc-700/50 bg-zinc-800/30">
-        <h3 className="text-sm font-semibold text-zinc-200 truncate">{tag}</h3>
+        <h3 className="text-sm font-semibold text-zinc-200 truncate">{label}</h3>
         <p className="text-xs text-zinc-500 mt-0.5">{players.length} player{players.length !== 1 ? "s" : ""}</p>
       </div>
       <div className="px-5 py-3">
@@ -168,7 +190,7 @@ function RosterCard({ tag, players }: { tag: string; players: RosterEntry[] }) {
 function PayPalIcon() {
   return (
     <svg viewBox="0 0 24 24" className="w-5 h-5 fill-white" aria-hidden>
-      <path d="M19.554 9.488c.121.563.106 1.246-.04 2.051-.582 2.978-2.477 4.466-5.683 4.466h-.442a.666.666 0 0 0-.444.166.72.72 0 0 0-.239.427l-.041.189-.476 3.05-.022.114a.718.718 0 0 1-.239.427.666.666 0 0 1-.444.166H9.273a.395.395 0 0 1-.416-.479l.492-3.137.008-.042a.72.72 0 0 1 .239-.427.666.666 0 0 1 .444-.166h.442c3.206 0 5.1-1.488 5.683-4.466.146-.805.161-1.488.04-2.051C17.97 9.01 18.764 9.095 19.554 9.488zM9.33 3.75a.666.666 0 0 1 .444.166.72.72 0 0 1 .239.427l.012.07 1.044 6.621a.72.72 0 0 1-.239.427.666.666 0 0 1-.444.166H8.26a.72.72 0 0 1-.23-.039 2.032 2.032 0 0 0-.454-.01L4.68 11.91a.397.397 0 0 1-.398-.324l-1.67-10.6a.395.395 0 0 1 .416-.479h3.64a.666.666 0 0 1 .444.166.72.72 0 0 1 .239.427L6.89 1.5h.44l.4 2.25H9.33z" />
+      <path d="M15.607 4.653H8.941L6.645 19.251H1.82L4.862 0h7.995c3.754 0 6.375 2.294 6.473 5.513-.648-.478-2.105-.86-3.722-.86m6.57 5.546c0 3.41-3.01 6.853-6.958 6.853h-2.493L11.595 24H6.74l1.845-11.538h3.592c4.208 0 7.346-3.634 7.153-6.949a5.24 5.24 0 0 1 2.848 4.686M9.653 5.546h6.408c.907 0 1.942.222 2.363.541-.195 2.741-2.655 5.483-6.441 5.483H8.714Z" />
     </svg>
   );
 }

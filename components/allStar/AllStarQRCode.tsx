@@ -11,8 +11,8 @@ export default function AllStarQRCode({ url, label }: { url: string; label: stri
     import("qrcode")
       .then((QRCode) =>
         QRCode.toDataURL(url, {
-          width: 256,
-          margin: 2,
+          width: 160,
+          margin: 1,
           color: { dark: "#000000", light: "#ffffff" },
         }),
       )
@@ -23,7 +23,7 @@ export default function AllStarQRCode({ url, label }: { url: string; label: stri
   if (error) return null;
   if (!dataUrl) {
     return (
-      <div className="w-48 h-48 rounded-lg bg-zinc-800 animate-pulse" aria-label="Generating QR code…" />
+      <div className="w-32 h-32 rounded-lg bg-zinc-800 animate-pulse" aria-label="Generating QR code…" />
     );
   }
 
@@ -34,9 +34,9 @@ export default function AllStarQRCode({ url, label }: { url: string; label: stri
       <img
         src={dataUrl}
         alt={`QR code for ${label}`}
-        width={192}
-        height={192}
-        className="rounded-lg border-4 border-white shadow-lg"
+        width={128}
+        height={128}
+        className="rounded-md border-2 border-white shadow"
       />
       <a
         href={dataUrl}

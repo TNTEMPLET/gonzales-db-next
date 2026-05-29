@@ -352,10 +352,13 @@ function CycleRow({
 
   return (
     <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 overflow-hidden">
-      <button
-        type="button"
+      {/* div instead of button — action buttons (seed/sync) cannot be nested inside a <button> */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((p) => !p)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors text-left"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpanded((p) => !p); }}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors text-left cursor-pointer"
       >
         <div className="flex items-center gap-2 min-w-0">
           <span className="text-sm font-medium text-zinc-200 truncate">{cycle.cycleName}</span>
@@ -396,7 +399,7 @@ function CycleRow({
           )}
           <span className="text-zinc-500 text-sm">{expanded ? "▲" : "▼"}</span>
         </div>
-      </button>
+      </div>
       {expanded && (
         <div className="border-t border-zinc-700/50 px-4 py-3 space-y-2">
           {cycle.rosters.length === 0 ? (
@@ -657,10 +660,13 @@ function SingleCycleMultiTeamRow({
 
   return (
     <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 overflow-hidden">
-      <button
-        type="button"
+      {/* div instead of button — sync button cannot be nested inside a <button> */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((p) => !p)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors text-left"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpanded((p) => !p); }}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors text-left cursor-pointer"
       >
         <span className="text-sm font-medium text-zinc-200">{group.key}</span>
         <div className="flex items-center gap-3 shrink-0">
@@ -688,7 +694,7 @@ function SingleCycleMultiTeamRow({
           )}
           <span className="text-zinc-500 text-sm">{expanded ? "▲" : "▼"}</span>
         </div>
-      </button>
+      </div>
       {expanded && (
         <div className="border-t border-zinc-700/50 px-4 py-3 space-y-2">
           {cycle.rosters.map((roster) => {
@@ -751,11 +757,13 @@ function MultiTeamGroupRow({
 
   return (
     <div className="rounded-lg border border-zinc-700/50 bg-zinc-900/30 overflow-hidden">
-      {/* Parent row */}
-      <button
-        type="button"
+      {/* Parent row — div instead of button to avoid nesting <button> inside <button> */}
+      <div
+        role="button"
+        tabIndex={0}
         onClick={() => setExpanded((p) => !p)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors text-left"
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setExpanded((p) => !p); }}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 hover:bg-zinc-800/30 transition-colors text-left cursor-pointer"
       >
         <span className="text-sm font-medium text-zinc-200">{group.key}</span>
         <div className="flex items-center gap-3 shrink-0">
@@ -793,7 +801,7 @@ function MultiTeamGroupRow({
           )}
           <span className="text-zinc-500 text-sm">{expanded ? "▲" : "▼"}</span>
         </div>
-      </button>
+      </div>
 
       {/* Child rows */}
       {expanded && (
@@ -946,12 +954,12 @@ function OrgSection({
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
-export default function AllStarCrossOrgPaymentSummary() {
+export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string }) {
   const [data, setData] = useState<SummaryData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | "all">("all");
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [showCoachRosterBuilder, setShowCoachRosterBuilder] = useState(false);
 
@@ -960,10 +968,11 @@ export default function AllStarCrossOrgPaymentSummary() {
   const fetchData = useCallback((year: number | "all") => {
     setLoading(true);
     setError(null);
-    const url =
-      year === "all"
-        ? "/api/admin/all-star/payments/all-orgs"
-        : "/api/admin/all-star/payments/all-orgs?year=" + String(year);
+    const params = new URLSearchParams();
+    if (year !== "all") params.set("year", String(year));
+    if (org) params.set("org", org);
+    const qs = params.toString();
+    const url = "/api/admin/all-star/payments/all-orgs" + (qs ? "?" + qs : "");
     fetch(url)
       .then((res) => res.json().then((json) => ({ res, json })))
       .then(({ res, json }: { res: Response; json: unknown }) => {
@@ -976,13 +985,13 @@ export default function AllStarCrossOrgPaymentSummary() {
       .finally(() => {
         setLoading(false);
       });
-  }, []);
+  }, [org]);
 
   useEffect(() => {
     didFetch.current = true;
     fetchData(selectedYear);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedYear]);
+  }, [selectedYear, fetchData]);
 
   function handlePaymentToggled(
     orgId: string,
