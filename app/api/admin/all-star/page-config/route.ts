@@ -27,12 +27,17 @@ export async function GET(request: NextRequest) {
   });
   if (!vaultView) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const config = await prisma.allStarPageConfig.findUnique({
-    where: { organizationId: org },
-    select: { paypalLinkLabel: true, paypalLinkUrl: true, infoText: true },
-  });
-
-  return NextResponse.json({ config: config ?? { paypalLinkLabel: null, paypalLinkUrl: null, infoText: null } });
+  const empty = { paypalLinkLabel: null, paypalLinkUrl: null, infoText: null };
+  try {
+    const config = await prisma.allStarPageConfig.findUnique({
+      where: { organizationId: org },
+      select: { paypalLinkLabel: true, paypalLinkUrl: true, infoText: true },
+    });
+    return NextResponse.json({ config: config ?? empty });
+  } catch {
+    // Table may not exist yet on this environment — return empty config silently
+    return NextResponse.json({ config: empty });
+  }
 }
 
 export async function PATCH(request: NextRequest) {
@@ -72,7 +77,9 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
-  const config = await prisma.allStarPageConfig.upsert({
+  let config;
+  try {
+    config = await prisma.allStarPageConfig.upsert({
     where: { organizationId: org },
     create: {
       organizationId: org,
@@ -85,8 +92,11 @@ export async function PATCH(request: NextRequest) {
       paypalLinkUrl: url,
       infoText: body.infoText?.trim() || null,
     },
-    select: { paypalLinkLabel: true, paypalLinkUrl: true, infoText: true },
-  });
+      select: { paypalLinkLabel: true, paypalLinkUrl: true, infoText: true },
+    });
+  } catch {
+    return NextResponse.json({ error: "Settings not available — database migration pending" }, { status: 503 });
+  }
 
   return NextResponse.json({ config });
 }
