@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type PageLink = { label: string; url: string };
+type PageLink = { label: string; url: string; imageUrl?: string };
 
 type Config = {
   paypalLinkLabel: string | null;
@@ -165,37 +165,50 @@ export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string;
             )}
             <div className="space-y-2">
               {config.links.map((link, i) => (
-                <div key={i} className="flex gap-2 items-start">
-                  <input
-                    type="text"
-                    placeholder="Label (e.g. Parent Caps)"
-                    value={link.label}
-                    onChange={(e) => setConfig((c) => {
-                      const links = [...c.links];
-                      links[i] = { ...links[i], label: e.target.value };
-                      return { ...c, links };
-                    })}
-                    className="flex-1 rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
-                  />
+                <div key={i} className="rounded-lg border border-zinc-800 bg-zinc-900/40 p-3 space-y-2">
+                  <div className="flex gap-2 items-center">
+                    <input
+                      type="text"
+                      placeholder="Label (e.g. Parent Caps)"
+                      value={link.label}
+                      onChange={(e) => setConfig((c) => {
+                        const links = [...c.links];
+                        links[i] = { ...links[i], label: e.target.value };
+                        return { ...c, links };
+                      })}
+                      className="flex-1 rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setConfig((c) => ({ ...c, links: c.links.filter((_, j) => j !== i) }))}
+                      className="text-zinc-500 hover:text-red-400 transition-colors px-1 py-1 text-lg leading-none shrink-0"
+                      aria-label="Remove link"
+                    >
+                      ×
+                    </button>
+                  </div>
                   <input
                     type="url"
-                    placeholder="https://paypal.me/..."
+                    placeholder="PayPal URL — https://paypal.me/..."
                     value={link.url}
                     onChange={(e) => setConfig((c) => {
                       const links = [...c.links];
                       links[i] = { ...links[i], url: e.target.value };
                       return { ...c, links };
                     })}
-                    className="flex-1 rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                    className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setConfig((c) => ({ ...c, links: c.links.filter((_, j) => j !== i) }))}
-                    className="text-zinc-500 hover:text-red-400 transition-colors px-1 py-2 text-lg leading-none"
-                    aria-label="Remove link"
-                  >
-                    ×
-                  </button>
+                  <input
+                    type="url"
+                    placeholder="Image URL (optional) — https://..."
+                    value={link.imageUrl ?? ""}
+                    onChange={(e) => setConfig((c) => {
+                      const links = [...c.links];
+                      links[i] = { ...links[i], imageUrl: e.target.value || undefined };
+                      return { ...c, links };
+                    })}
+                    className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  />
                 </div>
               ))}
             </div>
