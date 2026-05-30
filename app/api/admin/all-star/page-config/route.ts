@@ -57,7 +57,7 @@ export async function PATCH(request: NextRequest) {
     paypalLinkLabel?: string | null;
     paypalLinkUrl?: string | null;
     infoText?: string | null;
-    links?: { label: string; url: string }[];
+    links?: { label: string; url: string; imageUrl?: string }[];
   };
 
   // Validate URL: must be https:// and on a paypal.com domain (paypal.com, www.paypal.com, paypal.me)
@@ -78,7 +78,8 @@ export async function PATCH(request: NextRequest) {
   }
 
   // Validate additional links — must be https:// paypal.com/paypal.me URLs
-  const safeLinks = (body.links ?? [])
+  const rawLinks = Array.isArray(body.links) ? body.links.slice(0, 20) : [];
+  const safeLinks = rawLinks
     .filter((l) => l.label?.trim() && l.url?.trim())
     .map((l) => {
       try {
@@ -87,7 +88,15 @@ export async function PATCH(request: NextRequest) {
         const host = p.hostname.toLowerCase();
         const allowed = ["paypal.com", "www.paypal.com", "paypal.me", "www.paypal.me"];
         if (!allowed.some((h) => host === h || host.endsWith("." + h))) return null;
-        return { label: l.label.trim(), url: l.url.trim() };
+        // Validate optional image URL — must be https:// (any domain)
+        let imageUrl: string | undefined;
+        if (l.imageUrl?.trim()) {
+          try {
+            const img = new URL(l.imageUrl.trim());
+            if (img.protocol === "https:") imageUrl = l.imageUrl.trim();
+          } catch { /* invalid — skip */ }
+        }
+        return { label: l.label.trim(), url: l.url.trim(), ...(imageUrl ? { imageUrl } : {}) };
       } catch { return null; }
     })
     .filter(Boolean) as { label: string; url: string }[];

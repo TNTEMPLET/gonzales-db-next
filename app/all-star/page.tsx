@@ -35,7 +35,7 @@ export default async function AllStarPage() {
   const site = getSiteConfig();
   const orgId = site.orgId === "ascension" ? "ascension" : "gonzales";
 
-  type PageLink = { label: string; url: string };
+  type PageLink = { label: string; url: string; imageUrl?: string };
   type PageConfig = { paypalLinkUrl: string | null; paypalLinkLabel: string | null; infoText: string | null; links: PageLink[] };
   let config: PageConfig | null = null;
   let payments: { playerFullName: string; team: string; rosterTag: string | null }[] = [];
@@ -56,9 +56,12 @@ export default async function AllStarPage() {
 
   const safePayPalUrl = isSafePayPalUrl(config?.paypalLinkUrl) ? config!.paypalLinkUrl! : null;
   const hasPayPal = !!safePayPalUrl;
-  const safeLinks = (config?.links ?? []).filter(
-    (l): l is PageLink => typeof l.label === "string" && isSafePayPalUrl(l.url)
-  );
+  const safeLinks = (config?.links ?? [])
+    .filter((l): l is PageLink => typeof l.label === "string" && isSafePayPalUrl(l.url))
+    .map((l) => ({
+      ...l,
+      imageUrl: l.imageUrl && /^https:\/\//i.test(l.imageUrl) ? l.imageUrl : undefined,
+    }));
   const hasRosters = payments.length > 0;
   const hasInfo = !!config?.infoText?.trim();
 
@@ -96,10 +99,10 @@ export default async function AllStarPage() {
           )}
         </div>
 
-        {/* PayPal section */}
+        {/* PayPal section — primary / prominent */}
         {hasPayPal && (
-          <div className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-4 py-5 sm:px-6">
-            <p className="text-sm font-semibold text-center text-zinc-200 mb-4">
+          <div className="rounded-xl border border-zinc-600 bg-zinc-900/70 px-4 py-6 sm:px-8 ring-1 ring-zinc-600/30">
+            <p className="text-base font-bold text-center text-white mb-5">
               {config!.paypalLinkLabel ?? "All-Star Payment"}
             </p>
             <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-6">
@@ -131,31 +134,35 @@ export default async function AllStarPage() {
           </div>
         )}
 
-        {/* Additional purchase links (caps, apparel, etc.) */}
+        {/* Additional purchase links — landscape secondary cards */}
         {safeLinks.map((link) => (
-          <div key={link.url} className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-4 py-5 sm:px-6">
-            <p className="text-sm font-semibold text-center text-zinc-200 mb-4">{link.label}</p>
-            <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-6">
-              <a
-                href={link.url}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center gap-2 rounded-lg bg-[#0070ba] hover:bg-[#003087] transition-colors px-5 py-2.5 text-white font-semibold text-sm shadow"
-              >
-                <PayPalIcon />
-                Pay with PayPal
-              </a>
-              <div className="flex items-center gap-2 text-zinc-600 select-none w-full sm:w-auto sm:flex-col sm:self-stretch">
-                <div className="flex-1 h-px sm:h-full sm:w-px bg-zinc-700" />
-                <span className="text-xs">or</span>
-                <div className="flex-1 h-px sm:h-full sm:w-px bg-zinc-700" />
-              </div>
-              <div className="flex flex-col items-center gap-1.5">
-                <p className="text-xs text-zinc-500">Scan to pay</p>
-                <AllStarQRCode url={link.url} label={link.label} />
+          <div key={link.url} className="rounded-xl border border-zinc-800 bg-zinc-900/30 overflow-hidden flex flex-row h-36">
+            {/* Image */}
+            {link.imageUrl && (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img
+                src={link.imageUrl}
+                alt={link.label}
+                className="w-36 sm:w-44 object-cover shrink-0"
+              />
+            )}
+            {/* Content */}
+            <div className="flex-1 flex flex-col items-center justify-center gap-2.5 px-3 py-3 min-w-0">
+              <p className="text-xs font-semibold text-zinc-300 truncate w-full text-center">{link.label}</p>
+              <div className="flex items-center gap-3">
+                <a
+                  href={link.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="inline-flex items-center gap-1.5 rounded-lg bg-[#0070ba]/90 hover:bg-[#003087] transition-colors px-3 py-2 text-white font-medium text-xs shadow whitespace-nowrap"
+                >
+                  <PayPalIcon />
+                  Pay with PayPal
+                </a>
+                <div className="h-10 w-px bg-zinc-700/60 shrink-0" />
+                <AllStarQRCode url={link.url} label={link.label} size={72} />
               </div>
             </div>
-            <p className="text-xs text-zinc-600 text-center mt-3">Opens in a new tab</p>
           </div>
         ))}
 
