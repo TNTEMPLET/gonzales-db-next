@@ -27,15 +27,14 @@ export async function GET(request: NextRequest) {
   });
   if (!vaultView) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
-  const empty = { paypalLinkLabel: null, paypalLinkUrl: null, infoText: null };
+  const empty = { paypalLinkLabel: null, paypalLinkUrl: null, infoText: null, links: [] };
   try {
     const config = await prisma.allStarPageConfig.findUnique({
       where: { organizationId: org },
-      select: { paypalLinkLabel: true, paypalLinkUrl: true, infoText: true },
+      select: { paypalLinkLabel: true, paypalLinkUrl: true, infoText: true, links: true },
     });
     return NextResponse.json({ config: config ?? empty });
   } catch {
-    // Table may not exist yet on this environment — return empty config silently
     return NextResponse.json({ config: empty });
   }
 }
@@ -58,6 +57,7 @@ export async function PATCH(request: NextRequest) {
     paypalLinkLabel?: string | null;
     paypalLinkUrl?: string | null;
     infoText?: string | null;
+    links?: { label: string; url: string }[];
   };
 
   // Validate URL: must be https:// and on a paypal.com domain (paypal.com, www.paypal.com, paypal.me)
@@ -77,22 +77,39 @@ export async function PATCH(request: NextRequest) {
     }
   }
 
+  // Validate additional links — must be https:// paypal.com/paypal.me URLs
+  const safeLinks = (body.links ?? [])
+    .filter((l) => l.label?.trim() && l.url?.trim())
+    .map((l) => {
+      try {
+        const p = new URL(l.url.trim());
+        if (p.protocol !== "https:") return null;
+        const host = p.hostname.toLowerCase();
+        const allowed = ["paypal.com", "www.paypal.com", "paypal.me", "www.paypal.me"];
+        if (!allowed.some((h) => host === h || host.endsWith("." + h))) return null;
+        return { label: l.label.trim(), url: l.url.trim() };
+      } catch { return null; }
+    })
+    .filter(Boolean) as { label: string; url: string }[];
+
   let config;
   try {
     config = await prisma.allStarPageConfig.upsert({
-    where: { organizationId: org },
-    create: {
-      organizationId: org,
-      paypalLinkLabel: body.paypalLinkLabel?.trim() || null,
-      paypalLinkUrl: url,
-      infoText: body.infoText?.trim() || null,
-    },
-    update: {
-      paypalLinkLabel: body.paypalLinkLabel?.trim() || null,
-      paypalLinkUrl: url,
-      infoText: body.infoText?.trim() || null,
-    },
-      select: { paypalLinkLabel: true, paypalLinkUrl: true, infoText: true },
+      where: { organizationId: org },
+      create: {
+        organizationId: org,
+        paypalLinkLabel: body.paypalLinkLabel?.trim() || null,
+        paypalLinkUrl: url,
+        infoText: body.infoText?.trim() || null,
+        links: safeLinks,
+      },
+      update: {
+        paypalLinkLabel: body.paypalLinkLabel?.trim() || null,
+        paypalLinkUrl: url,
+        infoText: body.infoText?.trim() || null,
+        links: safeLinks,
+      },
+      select: { paypalLinkLabel: true, paypalLinkUrl: true, infoText: true, links: true },
     });
   } catch {
     return NextResponse.json({ error: "Settings not available — database migration pending" }, { status: 503 });

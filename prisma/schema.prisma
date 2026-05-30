@@ -1189,6 +1189,8 @@ model AllStarPageConfig {
   paypalLinkUrl   String?
   /// Plain-text announcement / info paragraph shown at the top of the page
   infoText        String?
+  /// Additional purchasable items: JSON array of { label: string, url: string }
+  links           Json    @default("[]")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
