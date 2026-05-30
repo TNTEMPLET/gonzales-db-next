@@ -35,10 +35,12 @@ export default async function AllStarPage() {
   const site = getSiteConfig();
   const orgId = site.orgId === "ascension" ? "ascension" : "gonzales";
 
-  let config: { paypalLinkUrl: string | null; paypalLinkLabel: string | null; infoText: string | null } | null = null;
+  type PageLink = { label: string; url: string };
+  type PageConfig = { paypalLinkUrl: string | null; paypalLinkLabel: string | null; infoText: string | null; links: PageLink[] };
+  let config: PageConfig | null = null;
   let payments: { playerFullName: string; team: string; rosterTag: string | null }[] = [];
   try {
-    [config, payments] = await Promise.all([
+    const [rawConfig, rawPayments] = await Promise.all([
       prisma.allStarPageConfig.findUnique({ where: { organizationId: orgId } }),
       prisma.allStarPayment.findMany({
         where: { organizationId: orgId },
@@ -46,12 +48,17 @@ export default async function AllStarPage() {
         orderBy: [{ rosterTag: "asc" }, { playerFullName: "asc" }],
       }),
     ]);
+    config = rawConfig ? { ...rawConfig, links: (rawConfig.links as PageLink[]) ?? [] } : null;
+    payments = rawPayments;
   } catch {
     redirect("/");
   }
 
   const safePayPalUrl = isSafePayPalUrl(config?.paypalLinkUrl) ? config!.paypalLinkUrl! : null;
   const hasPayPal = !!safePayPalUrl;
+  const safeLinks = (config?.links ?? []).filter(
+    (l): l is PageLink => typeof l.label === "string" && isSafePayPalUrl(l.url)
+  );
   const hasRosters = payments.length > 0;
   const hasInfo = !!config?.infoText?.trim();
 
@@ -123,6 +130,34 @@ export default async function AllStarPage() {
             <p className="text-xs text-zinc-600 text-center mt-3">Opens in a new tab</p>
           </div>
         )}
+
+        {/* Additional purchase links (caps, apparel, etc.) */}
+        {safeLinks.map((link) => (
+          <div key={link.url} className="rounded-xl border border-zinc-700 bg-zinc-900/50 px-4 py-5 sm:px-6">
+            <p className="text-sm font-semibold text-center text-zinc-200 mb-4">{link.label}</p>
+            <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center sm:gap-6">
+              <a
+                href={link.url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-2 rounded-lg bg-[#0070ba] hover:bg-[#003087] transition-colors px-5 py-2.5 text-white font-semibold text-sm shadow"
+              >
+                <PayPalIcon />
+                Pay with PayPal
+              </a>
+              <div className="flex items-center gap-2 text-zinc-600 select-none w-full sm:w-auto sm:flex-col sm:self-stretch">
+                <div className="flex-1 h-px sm:h-full sm:w-px bg-zinc-700" />
+                <span className="text-xs">or</span>
+                <div className="flex-1 h-px sm:h-full sm:w-px bg-zinc-700" />
+              </div>
+              <div className="flex flex-col items-center gap-1.5">
+                <p className="text-xs text-zinc-500">Scan to pay</p>
+                <AllStarQRCode url={link.url} label={link.label} />
+              </div>
+            </div>
+            <p className="text-xs text-zinc-600 text-center mt-3">Opens in a new tab</p>
+          </div>
+        ))}
 
         {/* Rosters */}
         {hasRosters && (

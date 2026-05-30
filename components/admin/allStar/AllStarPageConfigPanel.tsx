@@ -2,10 +2,13 @@
 
 import { useEffect, useState } from "react";
 
+type PageLink = { label: string; url: string };
+
 type Config = {
   paypalLinkLabel: string | null;
   paypalLinkUrl: string | null;
   infoText: string | null;
+  links: PageLink[];
 };
 
 export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string; orgLabel?: string }) {
@@ -13,6 +16,7 @@ export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string;
     paypalLinkLabel: null,
     paypalLinkUrl: null,
     infoText: null,
+    links: [],
   });
   const [collapsed, setCollapsed] = useState(true);
   const [loading, setLoading] = useState(true);
@@ -25,7 +29,7 @@ export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string;
     fetch(`/api/admin/all-star/page-config?${params.toString()}`)
       .then((r) => r.json())
       .then((d: { config?: Config; error?: string }) => {
-        if (d.config) setConfig(d.config);
+        if (d.config) setConfig({ ...d.config, links: (d.config.links as PageLink[]) ?? [] });
       })
       .catch(() => setError("Failed to load config"))
       .finally(() => setLoading(false));
@@ -139,6 +143,62 @@ export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string;
               onChange={(e) => setConfig((c) => ({ ...c, infoText: e.target.value || null }))}
               className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500 resize-none"
             />
+          </div>
+
+          {/* Additional purchase links */}
+          <div>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-sm font-medium text-zinc-300">
+                Additional Links
+                <span className="text-zinc-500 font-normal ml-2 text-xs">e.g. parent caps, apparel</span>
+              </label>
+              <button
+                type="button"
+                onClick={() => setConfig((c) => ({ ...c, links: [...c.links, { label: "", url: "" }] }))}
+                className="text-xs text-sky-400 hover:text-sky-300 border border-sky-800/40 rounded px-2 py-0.5 hover:bg-sky-950/30 transition-colors"
+              >
+                + Add Link
+              </button>
+            </div>
+            {config.links.length === 0 && (
+              <p className="text-xs text-zinc-600 italic">No additional links yet.</p>
+            )}
+            <div className="space-y-2">
+              {config.links.map((link, i) => (
+                <div key={i} className="flex gap-2 items-start">
+                  <input
+                    type="text"
+                    placeholder="Label (e.g. Parent Caps)"
+                    value={link.label}
+                    onChange={(e) => setConfig((c) => {
+                      const links = [...c.links];
+                      links[i] = { ...links[i], label: e.target.value };
+                      return { ...c, links };
+                    })}
+                    className="flex-1 rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  />
+                  <input
+                    type="url"
+                    placeholder="https://paypal.me/..."
+                    value={link.url}
+                    onChange={(e) => setConfig((c) => {
+                      const links = [...c.links];
+                      links[i] = { ...links[i], url: e.target.value };
+                      return { ...c, links };
+                    })}
+                    className="flex-1 rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setConfig((c) => ({ ...c, links: c.links.filter((_, j) => j !== i) }))}
+                    className="text-zinc-500 hover:text-red-400 transition-colors px-1 py-2 text-lg leading-none"
+                    aria-label="Remove link"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
           </div>
 
           {error && (
