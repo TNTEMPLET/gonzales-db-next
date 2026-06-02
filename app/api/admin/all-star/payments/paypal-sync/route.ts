@@ -14,6 +14,9 @@ export async function POST(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
+  const body = (await request.json()) as { feeCents?: number };
+  const feeCents = body.feeCents && body.feeCents > 0 ? body.feeCents : 9500;
+
   // Fetch all transactions once, paginated internally in 31-day windows
   const transactions = await fetchRecentPayPalTransactions(180);
 
@@ -69,6 +72,21 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
+    // Fee amount validation: gross must be an exact multiple of feeCents
+    if (tx.amountCents % feeCents !== 0) {
+      skipped.push({
+        txId: tx.txId,
+        payerName: tx.payerName,
+        grossCents: tx.amountCents,
+        itemTitle: tx.itemName ?? "",
+        playerNote: tx.payerName,
+        reason: "fee_mismatch",
+      });
+      continue;
+    }
+
+    const playerCount = tx.amountCents / feeCents;
+
     // Score every payment by payer name — parents pay, so last-name match is the signal
     const candidates: CsvCandidate[] = allPayments
       .map((p) => ({
@@ -83,15 +101,15 @@ export async function POST(request: NextRequest) {
       }))
       .filter((c) => c.confidence >= 0.5)
       .sort((a, b) => b.confidence - a.confidence)
-      .slice(0, 5);
+      .slice(0, playerCount * 3);
 
     matchRows.push({
       txId: tx.txId,
       txDate: tx.txDate.toISOString(),
       payerName: tx.payerName,
       grossCents: tx.amountCents,
-      amountPerPlayerCents: tx.amountCents,
-      quantity: 1,
+      amountPerPlayerCents: feeCents,
+      quantity: playerCount,
       playerNote: tx.payerName,
       itemTitle: tx.itemName ?? "",
       orgId: null,
@@ -103,6 +121,6 @@ export async function POST(request: NextRequest) {
     matchRows,
     skipped,
     totalTransactions: allStarTx.length,
-    feeCents: 9500,
+    feeCents,
   });
 }
