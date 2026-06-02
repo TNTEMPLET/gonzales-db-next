@@ -1,5 +1,6 @@
 "use client";
 
+import React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CoachRosterBuilderModal } from "@/components/admin/allStar/CoachRosterBuilderModal";
 import AllStarPaypalCsvImport from "@/components/admin/allStar/AllStarPaypalCsvImport";
@@ -198,6 +199,128 @@ function ProgressBar({ paid, total }: { paid: number; total: number }) {
   );
 }
 
+// ─── Shared edit helpers ─────────────────────────────────────────────────────
+
+type EditRow = { id: string; playerFullName: string; team: string; amountCents: number };
+
+function useRosterEdit(payments: PaymentRow[], onSaved: () => void) {
+  const [editing, setEditing] = React.useState(false);
+  const [editRows, setEditRows] = React.useState<EditRow[]>([]);
+  const [bulkFee, setBulkFee] = React.useState("");
+  const [saving, setSaving] = React.useState(false);
+  const [saveError, setSaveError] = React.useState<string | null>(null);
+
+  function startEdit() {
+    setEditRows(payments.map((p) => ({ id: p.id, playerFullName: p.playerFullName, team: p.team, amountCents: p.amountCents })));
+    setBulkFee(""); setSaveError(null); setEditing(true);
+  }
+  function applyBulkFee() {
+    const cents = Math.round(parseFloat(bulkFee) * 100);
+    if (!isNaN(cents) && cents > 0) setEditRows((rows) => rows.map((r) => ({ ...r, amountCents: cents })));
+  }
+  function updateRow(id: string, field: keyof EditRow, value: string | number) {
+    setEditRows((rows) => rows.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+  }
+  async function saveEdits() {
+    setSaving(true); setSaveError(null);
+    try {
+      const original = new Map(payments.map((p) => [p.id, p]));
+      const dirty = editRows.filter((r) => {
+        const o = original.get(r.id);
+        return o && (r.playerFullName !== o.playerFullName || r.team !== o.team || r.amountCents !== o.amountCents);
+      });
+      for (const row of dirty) {
+        const res = await fetch("/api/admin/all-star/payments", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ paymentId: row.id, playerFullName: row.playerFullName, team: row.team, amountCents: row.amountCents }),
+        });
+        if (!res.ok) { const j = (await res.json()) as { error?: string }; throw new Error(j.error ?? "Save failed"); }
+      }
+      setEditing(false); onSaved();
+    } catch (err) { setSaveError(err instanceof Error ? err.message : "Save failed"); }
+    finally { setSaving(false); }
+  }
+  return { editing, editRows, bulkFee, setBulkFee, saving, saveError, startEdit, applyBulkFee, updateRow, saveEdits, cancelEdit: () => setEditing(false) };
+}
+
+function EditToolbar({ editing, editRows, bulkFee, setBulkFee, saving, saveError, startEdit, applyBulkFee, saveEdits, cancelEdit, paymentsLen }: {
+  editing: boolean; editRows: EditRow[]; bulkFee: string; setBulkFee: (v: string) => void;
+  saving: boolean; saveError: string | null; startEdit: () => void; applyBulkFee: () => void;
+  saveEdits: () => Promise<void>; cancelEdit: () => void; paymentsLen: number;
+}) {
+  if (!editing) {
+    return (
+      <div className="flex justify-end mb-2">
+        <button type="button" onClick={startEdit} className="rounded border border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors">
+          ✏ Edit Roster
+        </button>
+      </div>
+    );
+  }
+  return (
+    <div className="space-y-2 mb-3">
+      <div className="flex items-center gap-2 rounded-lg border border-violet-700/40 bg-violet-950/20 px-3 py-2">
+        <span className="text-xs text-violet-300 font-medium shrink-0">Change fee for all:</span>
+        <div className="flex items-center rounded border border-zinc-700 bg-zinc-900 overflow-hidden">
+          <span className="px-2 text-zinc-500 text-sm border-r border-zinc-700">$</span>
+          <input type="number" min="0" step="0.01" value={bulkFee} onChange={(e) => setBulkFee(e.target.value)}
+            placeholder={editRows[0] ? String((editRows[0].amountCents / 100).toFixed(2)) : "95.00"}
+            className="w-20 bg-transparent px-2 py-1 text-sm text-zinc-200 outline-none" />
+        </div>
+        <button type="button" onClick={applyBulkFee} className="rounded border border-violet-700/50 px-2.5 py-1 text-xs text-violet-300 hover:bg-violet-900/30 transition-colors">
+          Apply to All
+        </button>
+      </div>
+      {saveError && <p className="text-xs text-red-400 rounded border border-red-800/40 bg-red-950/20 px-3 py-1.5">{saveError}</p>}
+      <div className="flex justify-end gap-2">
+        <button type="button" onClick={cancelEdit} disabled={saving} className="rounded border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:bg-zinc-800 disabled:opacity-40">Cancel</button>
+        <button type="button" onClick={() => void saveEdits()} disabled={saving} className="rounded bg-violet-700 hover:bg-violet-600 disabled:opacity-40 px-4 py-1.5 text-xs font-semibold text-white">
+          {saving ? "Saving…" : "Save Changes"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function EditTable({ editRows, updateRow }: { editRows: EditRow[]; updateRow: (id: string, field: keyof EditRow, value: string | number) => void }) {
+  return (
+    <div className="overflow-x-auto rounded border border-zinc-700/50 mb-2">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-xs text-zinc-500 border-b border-zinc-700/50 bg-zinc-900/60">
+            <th className="text-left px-3 py-2 font-medium">Player Name</th>
+            <th className="text-left px-3 py-2 font-medium">Team</th>
+            <th className="text-right px-3 py-2 font-medium">Fee</th>
+          </tr>
+        </thead>
+        <tbody>
+          {editRows.map((row) => (
+            <tr key={row.id} className="border-b border-zinc-800/40 last:border-0">
+              <td className="px-3 py-1.5">
+                <input type="text" value={row.playerFullName} onChange={(e) => updateRow(row.id, "playerFullName", e.target.value)}
+                  className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-200 focus:border-violet-600 focus:outline-none" />
+              </td>
+              <td className="px-3 py-1.5">
+                <input type="text" value={row.team} onChange={(e) => updateRow(row.id, "team", e.target.value)}
+                  className="w-32 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-200 focus:border-violet-600 focus:outline-none" />
+              </td>
+              <td className="px-3 py-1.5">
+                <div className="flex items-center justify-end rounded border border-zinc-700 bg-zinc-800 overflow-hidden w-28 ml-auto">
+                  <span className="px-1.5 text-zinc-500 text-sm border-r border-zinc-700">$</span>
+                  <input type="number" min="0" step="0.01" value={(row.amountCents / 100).toFixed(2)}
+                    onChange={(e) => { const v = parseFloat(e.target.value); if (!isNaN(v) && v >= 0) updateRow(row.id, "amountCents", Math.round(v * 100)); }}
+                    className="w-full bg-transparent px-2 py-1 text-sm text-zinc-200 text-right focus:outline-none" />
+                </div>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 // ─── RosterRow: expanded payment list for one rosterTag ──────────────────────
 
 function RosterRow({
@@ -209,14 +332,22 @@ function RosterRow({
   onPaymentToggled: (isPaidNow: boolean, amountCents: number) => void;
   hideHeader?: boolean;
 }) {
-  const [expanded, setExpanded] = useState(hideHeader);
-  const [payments, setPayments] = useState<PaymentRow[]>(roster.payments);
-  const [toggling, setToggling] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = React.useState(hideHeader);
+  const [payments, setPayments] = React.useState<PaymentRow[]>(roster.payments);
+  const [toggling, setToggling] = React.useState<Set<string>>(new Set());
 
   const paidCount = payments.filter((p) => p.isPaid).length;
   const unpaidCount = payments.length - paidCount;
   const collectedCents = payments.filter((p) => p.isPaid).reduce((s, p) => s + p.amountCents, 0);
   const s = { total: payments.length, paidCount, unpaidCount, collectedCents };
+
+  const edit = useRosterEdit(payments, () => {
+    // Reload payments from API after save by re-fetching — simplest: just update local state from editRows
+    setPayments((prev) => prev.map((p) => {
+      const updated = edit.editRows.find((r) => r.id === p.id);
+      return updated ? { ...p, playerFullName: updated.playerFullName, team: updated.team, amountCents: updated.amountCents } : p;
+    }));
+  });
 
   async function togglePayment(paymentId: string, currentIsPaid: boolean, amountCents: number) {
     if (toggling.has(paymentId)) return;
@@ -282,7 +413,10 @@ function RosterRow({
       )}
       {(expanded || hideHeader) && (
         <div className={hideHeader ? "" : "border-t border-zinc-700/40 px-4 py-3"}>
-          {payments.length === 0 ? (
+          <EditToolbar {...edit} paymentsLen={payments.length} />
+          {edit.editing ? (
+            <EditTable editRows={edit.editRows} updateRow={edit.updateRow} />
+          ) : payments.length === 0 ? (
             <p className="text-zinc-500 text-sm italic">No payment records.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -305,10 +439,7 @@ function RosterRow({
                       <td className="py-1.5 pr-4">
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void togglePayment(p.id, p.isPaid, p.amountCents);
-                          }}
+                          onClick={(e) => { e.stopPropagation(); void togglePayment(p.id, p.isPaid, p.amountCents); }}
                           disabled={toggling.has(p.id)}
                           className={
                             "rounded px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 " +
@@ -518,14 +649,21 @@ function RosterChildRow({
   teamColor: string;
   onPaymentToggled: (isPaidNow: boolean, amountCents: number) => void;
 }) {
-  const [expanded, setExpanded] = useState(false);
-  const [payments, setPayments] = useState<PaymentRow[]>(roster.payments);
-  const [toggling, setToggling] = useState<Set<string>>(new Set());
+  const [expanded, setExpanded] = React.useState(false);
+  const [payments, setPayments] = React.useState<PaymentRow[]>(roster.payments);
+  const [toggling, setToggling] = React.useState<Set<string>>(new Set());
 
   const paidCount = payments.filter((p) => p.isPaid).length;
   const unpaidCount = payments.length - paidCount;
   const collectedCents = payments.filter((p) => p.isPaid).reduce((s, p) => s + p.amountCents, 0);
   const s = { total: payments.length, paidCount, unpaidCount, collectedCents };
+
+  const edit = useRosterEdit(payments, () => {
+    setPayments((prev) => prev.map((p) => {
+      const updated = edit.editRows.find((r) => r.id === p.id);
+      return updated ? { ...p, playerFullName: updated.playerFullName, team: updated.team, amountCents: updated.amountCents } : p;
+    }));
+  });
 
   async function togglePayment(paymentId: string, currentIsPaid: boolean, amountCents: number) {
     if (toggling.has(paymentId)) return;
@@ -589,7 +727,10 @@ function RosterChildRow({
       </button>
       {expanded && (
         <div className="border-t border-zinc-700/30 px-4 py-3">
-          {payments.length === 0 ? (
+          <EditToolbar {...edit} paymentsLen={payments.length} />
+          {edit.editing ? (
+            <EditTable editRows={edit.editRows} updateRow={edit.updateRow} />
+          ) : payments.length === 0 ? (
             <p className="text-zinc-500 text-sm italic">No payment records.</p>
           ) : (
             <div className="overflow-x-auto">
@@ -612,10 +753,7 @@ function RosterChildRow({
                       <td className="py-1.5 pr-4">
                         <button
                           type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            void togglePayment(p.id, p.isPaid, p.amountCents);
-                          }}
+                          onClick={(e) => { e.stopPropagation(); void togglePayment(p.id, p.isPaid, p.amountCents); }}
                           disabled={toggling.has(p.id)}
                           className={
                             "rounded px-2 py-0.5 text-xs font-medium transition-colors disabled:opacity-50 " +
