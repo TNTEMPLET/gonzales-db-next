@@ -280,19 +280,38 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ error: "Invalid intent" }, { status: 400 });
 }
 
-// ─── PATCH: toggle paid status or update notes ───────────────────────────────
+// ─── PATCH: update a single record, or bulk-reprice a whole roster ───────────
 export async function PATCH(request: NextRequest) {
   const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const admin = await getAdminUserFromRequest(request);
   const body = (await request.json()) as {
-    paymentId: string;
+    paymentId?: string;
     isPaid?: boolean;
     payerName?: string;
     notes?: string;
+    amountCents?: number;
+    playerFullName?: string;
+    team?: string;
+    // Bulk: update fee for every record in a roster
+    rosterTag?: string;
+    bulkAmountCents?: number;
   };
 
+  // ── Bulk reprice ──────────────────────────────────────────────────────────
+  if (!body.paymentId && body.rosterTag && body.bulkAmountCents !== undefined) {
+    if (!Number.isInteger(body.bulkAmountCents) || body.bulkAmountCents <= 0) {
+      return NextResponse.json({ error: "bulkAmountCents must be a positive integer" }, { status: 400 });
+    }
+    const result = await prisma.allStarPayment.updateMany({
+      where: { rosterTag: body.rosterTag },
+      data: { amountCents: body.bulkAmountCents },
+    });
+    return NextResponse.json({ success: true, updated: result.count });
+  }
+
+  // ── Per-record update ─────────────────────────────────────────────────────
   if (!body.paymentId) return NextResponse.json({ error: "paymentId is required" }, { status: 400 });
 
   const existing = await prisma.allStarPayment.findUnique({ where: { id: body.paymentId } });
@@ -306,6 +325,13 @@ export async function PATCH(request: NextRequest) {
   }
   if (body.payerName !== undefined) data.payerName = body.payerName.trim() || null;
   if (body.notes !== undefined) data.notes = body.notes.trim() || null;
+  if (body.amountCents !== undefined && Number.isInteger(body.amountCents) && body.amountCents > 0) {
+    data.amountCents = body.amountCents;
+  }
+  if (body.playerFullName !== undefined && body.playerFullName.trim()) {
+    data.playerFullName = body.playerFullName.trim();
+  }
+  if (body.team !== undefined) data.team = body.team.trim();
 
   const updated = await prisma.allStarPayment.update({ where: { id: body.paymentId }, data });
   return NextResponse.json({ success: true, payment: serializePayment(updated) });
