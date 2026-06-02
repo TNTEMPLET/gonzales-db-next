@@ -300,12 +300,21 @@ function TxCard({
 
 // ─── Main content ─────────────────────────────────────────────────────────────
 
+type PreloadedSyncData = {
+  matchRows: CsvMatchRow[];
+  skipped: CsvSkippedRow[];
+  totalRows: number;
+  feeCents: number;
+};
+
 function ImportContent({
   onApplied,
   onClose,
+  preloadedData,
 }: {
   onApplied?: () => void;
   onClose?: () => void;
+  preloadedData?: PreloadedSyncData;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
   const feeId = useId();
@@ -323,6 +332,22 @@ function ImportContent({
   const [lastAppliedTxIds, setLastAppliedTxIds] = useState<string[] | null>(null);
 
   const feeCents = Math.round(parseFloat(feeDisplay || "0") * 100);
+
+  // ── Seed from preloaded sync data ───────────────────────────────────────────
+  useEffect(() => {
+    if (!preloadedData) return;
+    setRows(buildRows(preloadedData.matchRows));
+    setSkipped(preloadedData.skipped);
+    setTotalCsvRows(preloadedData.totalRows);
+    setFeeDisplay((preloadedData.feeCents / 100).toFixed(2));
+    fetch("/api/admin/all-star/payments/paypal-csv")
+      .then((r) => r.json())
+      .then((j: { unpaidPlayers?: import("@/app/api/admin/all-star/payments/paypal-csv/route").UnpaidPlayer[] }) => {
+        setUnpaidPlayers(j.unpaidPlayers ?? []);
+      })
+      .catch(() => undefined);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preloadedData]);
 
   // ── Derived counts ──────────────────────────────────────────────────────────
   const pendingCount = rows?.reduce((n, r) => n + r.slots.filter((s) => s.status === "pending").length, 0) ?? 0;
@@ -518,7 +543,7 @@ function ImportContent({
 
           {/* Summary chips */}
           <div className="flex flex-wrap gap-2 text-xs items-center">
-            <span className="px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">{totalCsvRows} rows in file</span>
+            <span className="px-2.5 py-1 rounded-full bg-zinc-800 text-zinc-300 border border-zinc-700">{totalCsvRows} {preloadedData ? "transactions fetched" : "rows in file"}</span>
             {autoCount > 0 && <span className="px-2.5 py-1 rounded-full bg-emerald-950/40 text-emerald-300 border border-emerald-800/30">✓ {autoCount} auto-matched</span>}
             {pendingCount > 0 && <span className="px-2.5 py-1 rounded-full bg-amber-950/30 text-amber-300 border border-amber-800/30">⚠ {pendingCount} need decision</span>}
             {acceptedCount > 0 && <span className="px-2.5 py-1 rounded-full bg-emerald-950/40 text-emerald-300 border border-emerald-800/30">+{acceptedCount} accepted</span>}
@@ -585,9 +610,9 @@ function ImportContent({
           {/* Finalize bar */}
           <div className="flex items-center justify-between gap-3 pt-3 border-t border-zinc-700/40">
             <div className="flex items-center gap-3">
-              <button type="button" onClick={() => { setRows(null); setSkipped([]); setPreviewError(null); }}
+              <button type="button" onClick={() => { setRows(null); setSkipped([]); setPreviewError(null); if (preloadedData) onClose?.(); }}
                 className="text-sm text-zinc-400 hover:text-zinc-200 transition-colors">
-                ← New file
+                {preloadedData ? "← Cancel" : "← New file"}
               </button>
               {pendingCount > 0 && (
                 <span className="text-xs text-amber-400">{pendingCount} decision{pendingCount !== 1 ? "s" : ""} remaining</span>
@@ -614,17 +639,19 @@ export default function AllStarPaypalCsvImport({
   controlled,
   onClose,
   onApplied,
+  preloadedData,
 }: {
   controlled?: boolean;
   onClose?: () => void;
   onApplied?: () => void;
+  preloadedData?: PreloadedSyncData;
 } = {}) {
   const [open, setOpen] = useState(false);
 
   if (controlled) {
     return (
       <div className="rounded-xl border border-sky-800/40 bg-sky-950/10 p-4">
-        <ImportContent onApplied={onApplied} onClose={onClose} />
+        <ImportContent onApplied={onApplied} onClose={onClose} preloadedData={preloadedData} />
       </div>
     );
   }
