@@ -71,6 +71,7 @@ export type PayPalTransaction = {
 
 /**
  * Fetch PayPal transactions for the last `daysBack` days.
+ * PayPal caps each request at 31 days, so we paginate through windows.
  * Returns raw transaction data — matching to players is done by the caller.
  */
 export async function fetchRecentPayPalTransactions(
@@ -78,52 +79,65 @@ export async function fetchRecentPayPalTransactions(
 ): Promise<PayPalTransaction[]> {
   const token = await getAccessToken();
 
-  const endDate = new Date();
-  const startDate = new Date();
-  startDate.setDate(startDate.getDate() - daysBack);
+  const MAX_WINDOW = 31;
+  const allTransactions: PayPalTransaction[] = [];
 
-  const params = new URLSearchParams({
-    start_date: startDate.toISOString(),
-    end_date: endDate.toISOString(),
-    fields: "all",
-    page_size: "500",
-    page: "1",
-  });
+  const overallEnd = new Date();
+  const overallStart = new Date();
+  overallStart.setDate(overallStart.getDate() - daysBack);
 
-  const res = await fetch(
-    `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`,
-    {
-      headers: { Authorization: `Bearer ${token}` },
-    },
-  );
+  let windowEnd = new Date(overallEnd);
 
-  if (!res.ok) {
-    throw new Error(`PayPal transactions request failed: ${res.status} ${await res.text()}`);
+  while (windowEnd > overallStart) {
+    const windowStart = new Date(windowEnd);
+    windowStart.setDate(windowStart.getDate() - MAX_WINDOW);
+    if (windowStart < overallStart) windowStart.setTime(overallStart.getTime());
+
+    const params = new URLSearchParams({
+      start_date: windowStart.toISOString(),
+      end_date: windowEnd.toISOString(),
+      fields: "all",
+      page_size: "500",
+      page: "1",
+    });
+
+    const res = await fetch(
+      `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+
+    if (!res.ok) {
+      throw new Error(`PayPal transactions request failed: ${res.status} ${await res.text()}`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = (await res.json()) as { transaction_details?: any[] };
+    const details = data.transaction_details ?? [];
+
+    for (const tx of details) {
+      const info = tx.transaction_info ?? {};
+      const payer = tx.payer_info ?? {};
+      const amountStr: string = info.transaction_amount?.value ?? "0";
+      const amountCents = Math.round(parseFloat(amountStr) * 100);
+      allTransactions.push({
+        txId: info.transaction_id ?? "",
+        txDate: new Date(info.transaction_initiation_date ?? Date.now()),
+        payerName:
+          payer.payer_name
+            ? `${payer.payer_name.given_name ?? ""} ${payer.payer_name.surname ?? ""}`.trim() || null
+            : null,
+        payerEmail: payer.email_address ?? null,
+        amountCents,
+        note: info.transaction_note ?? info.transaction_subject ?? null,
+        status: info.transaction_status ?? "",
+      });
+    }
+
+    windowEnd = new Date(windowStart);
+    windowEnd.setMilliseconds(windowEnd.getMilliseconds() - 1);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const data = (await res.json()) as { transaction_details?: any[] };
-  const details = data.transaction_details ?? [];
-
-  return details.map((tx) => {
-    const info = tx.transaction_info ?? {};
-    const payer = tx.payer_info ?? {};
-    const amountStr: string = info.transaction_amount?.value ?? "0";
-    const amountCents = Math.round(parseFloat(amountStr) * 100);
-
-    return {
-      txId: info.transaction_id ?? "",
-      txDate: new Date(info.transaction_initiation_date ?? Date.now()),
-      payerName:
-        payer.payer_name
-          ? `${payer.payer_name.given_name ?? ""} ${payer.payer_name.surname ?? ""}`.trim() || null
-          : null,
-      payerEmail: payer.email_address ?? null,
-      amountCents,
-      note: info.transaction_note ?? info.transaction_subject ?? null,
-      status: info.transaction_status ?? "",
-    };
-  });
+  return allTransactions;
 }
 
 /**
