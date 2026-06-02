@@ -440,7 +440,7 @@ function ImportContent({
         fetch("/api/admin/all-star/payments/paypal-sync", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ feeCents }),
         }),
         fetch("/api/admin/all-star/payments/paypal-csv"),
       ]);
