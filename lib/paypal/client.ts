@@ -67,6 +67,7 @@ export type PayPalTransaction = {
   amountCents: number;
   note: string | null;
   itemName: string | null;
+  checkoutNote: string | null;
   status: string;
 };
 
@@ -120,10 +121,15 @@ export async function fetchRecentPayPalTransactions(
       const payer = tx.payer_info ?? {};
       const amountStr: string = info.transaction_amount?.value ?? "0";
       const amountCents = Math.round(parseFloat(amountStr) * 100);
-      const cartItems: { item_name?: string }[] =
-        (tx.cart_info as { item_details?: { item_name?: string }[] } | undefined)
+      const cartItems: {
+        item_name?: string;
+        checkout_options?: { checkout_option_name?: string; checkout_option_value?: string }[];
+      }[] =
+        (tx.cart_info as { item_details?: typeof cartItems } | undefined)
           ?.item_details ?? [];
       const itemName = cartItems[0]?.item_name ?? null;
+      const checkoutNote =
+        cartItems[0]?.checkout_options?.[0]?.checkout_option_value ?? null;
       allTransactions.push({
         txId: info.transaction_id ?? "",
         txDate: new Date(info.transaction_initiation_date ?? Date.now()),
@@ -135,6 +141,7 @@ export async function fetchRecentPayPalTransactions(
         amountCents,
         note: info.transaction_note ?? info.transaction_subject ?? null,
         itemName,
+        checkoutNote,
         status: info.transaction_status ?? "",
       });
     }
