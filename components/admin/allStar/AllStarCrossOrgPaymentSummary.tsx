@@ -973,13 +973,7 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
   const [exporting, setExporting] = useState(false);
   const [showCoachRosterBuilder, setShowCoachRosterBuilder] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
-  const [paypalSyncing, setPaypalSyncing] = useState(false);
-  const [syncPreviewData, setSyncPreviewData] = useState<{
-    matchRows: import("@/app/api/admin/all-star/payments/paypal-csv/route").CsvMatchRow[];
-    skipped: import("@/app/api/admin/all-star/payments/paypal-csv/route").CsvSkippedRow[];
-    totalRows: number;
-    feeCents: number;
-  } | null>(null);
+
   const [activeFilter, setActiveFilter] = useState<"total" | "paid" | "unpaid" | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
 
@@ -1143,40 +1137,6 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
     fetchData(selectedYear);
   }
 
-  async function handlePaypalSync() {
-    setPaypalSyncing(true);
-    setSyncPreviewData(null);
-    try {
-      const res = await fetch("/api/admin/all-star/payments/paypal-sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({}),
-      });
-      const json = (await res.json()) as {
-        matchRows?: import("@/app/api/admin/all-star/payments/paypal-csv/route").CsvMatchRow[];
-        skipped?: import("@/app/api/admin/all-star/payments/paypal-csv/route").CsvSkippedRow[];
-        totalTransactions?: number;
-        feeCents?: number;
-        error?: string;
-      };
-      if (!res.ok) {
-        setError(json.error ?? "PayPal sync failed");
-        return;
-      }
-      setSyncPreviewData({
-        matchRows: json.matchRows ?? [],
-        skipped: json.skipped ?? [],
-        totalRows: json.totalTransactions ?? 0,
-        feeCents: json.feeCents ?? 9500,
-      });
-      setShowCsvImport(true);
-    } catch {
-      setError("PayPal sync failed — network error");
-    } finally {
-      setPaypalSyncing(false);
-    }
-  }
-
   function handleExport() {
     setExporting(true);
     const url =
@@ -1253,18 +1213,10 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
             </button>
             <button
               type="button"
-              onClick={() => void handlePaypalSync()}
-              disabled={paypalSyncing || loading}
-              className="rounded-lg border border-sky-700/60 bg-sky-950/30 px-3 py-1.5 text-sm text-sky-300 hover:bg-sky-950/60 transition-colors disabled:opacity-40"
-            >
-              {paypalSyncing ? "Fetching…" : "Sync PayPal"}
-            </button>
-            <button
-              type="button"
               onClick={() => setShowCsvImport((p) => !p)}
               className={"rounded-lg border px-3 py-1.5 text-sm transition-colors " + (showCsvImport ? "border-sky-600 bg-sky-950/50 text-sky-300" : "border-zinc-700 text-zinc-300 hover:bg-zinc-800")}
             >
-              Import CSV
+              Import
             </button>
             <button
               type="button"
@@ -1290,9 +1242,8 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
           {showCsvImport && (
             <AllStarPaypalCsvImport
               controlled
-              onClose={() => { setShowCsvImport(false); setSyncPreviewData(null); }}
-              onApplied={() => { fetchData(selectedYear); setSyncPreviewData(null); }}
-              preloadedData={syncPreviewData ?? undefined}
+              onClose={() => setShowCsvImport(false)}
+              onApplied={() => fetchData(selectedYear)}
             />
           )}
           {/* Initial load spinner — only shown before any data arrives */}

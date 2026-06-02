@@ -321,6 +321,8 @@ function ImportContent({
 
   const [feeDisplay, setFeeDisplay] = useState("95.00");
   const [previewing, setPreviewing] = useState(false);
+  const [syncingPayPal, setSyncingPayPal] = useState(false);
+  const [importMode, setImportMode] = useState<"csv" | "paypal">("csv");
   const [finalizing, setFinalizing] = useState(false);
   const [undoing, setUndoing] = useState(false);
   const [rows, setRows] = useState<RowState[] | null>(null);
@@ -427,6 +429,38 @@ function ImportContent({
     finally { setPreviewing(false); }
   }
 
+  // ── PayPal sync fetch ───────────────────────────────────────────────────────
+  async function handleSyncPayPal() {
+    setSyncingPayPal(true);
+    setPreviewError(null);
+    setApplyResult(null);
+    setRows(null);
+    try {
+      const [syncRes, playersRes] = await Promise.all([
+        fetch("/api/admin/all-star/payments/paypal-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({}),
+        }),
+        fetch("/api/admin/all-star/payments/paypal-csv"),
+      ]);
+      const syncJson = (await syncRes.json()) as {
+        matchRows?: CsvMatchRow[];
+        skipped?: CsvSkippedRow[];
+        totalTransactions?: number;
+        feeCents?: number;
+        error?: string;
+      };
+      const playersJson = (await playersRes.json()) as { unpaidPlayers?: UnpaidPlayer[]; error?: string };
+      if (!syncRes.ok) { setPreviewError(syncJson.error ?? "PayPal sync failed."); return; }
+      setRows(buildRows(syncJson.matchRows ?? []));
+      setSkipped(syncJson.skipped ?? []);
+      setTotalCsvRows(syncJson.totalTransactions ?? 0);
+      setUnpaidPlayers(playersJson.unpaidPlayers ?? []);
+    } catch { setPreviewError("Network error."); }
+    finally { setSyncingPayPal(false); }
+  }
+
   // ── Finalize ─────────────────────────────────────────────────────────────────
   async function handleFinalize() {
     if (confirmations.length === 0) { setPreviewError("Nothing to apply."); return; }
@@ -499,37 +533,67 @@ function ImportContent({
 
       {/* Fee + file row */}
       {!rows && (
-        <div className="flex flex-col sm:flex-row gap-3 items-end">
-          <div>
-            <label htmlFor={feeId} className="block text-xs font-medium text-zinc-400 mb-1">Fee per player</label>
-            <div className="flex items-center rounded-lg border border-zinc-700 bg-zinc-900 overflow-hidden focus-within:border-sky-600">
-              <span className="px-2.5 text-zinc-500 text-sm border-r border-zinc-700 select-none">$</span>
-              <input
-                id={feeId}
-                type="number"
-                min="0"
-                step="0.01"
-                value={feeDisplay}
-                onChange={(e) => setFeeDisplay(e.target.value)}
-                className="w-24 bg-transparent px-2 py-1.5 text-sm text-zinc-200 outline-none"
-              />
+        <div className="space-y-3">
+          <div className="flex flex-col sm:flex-row gap-3 items-end">
+            <div>
+              <label htmlFor={feeId} className="block text-xs font-medium text-zinc-400 mb-1">Fee per player</label>
+              <div className="flex items-center rounded-lg border border-zinc-700 bg-zinc-900 overflow-hidden focus-within:border-sky-600">
+                <span className="px-2.5 text-zinc-500 text-sm border-r border-zinc-700 select-none">$</span>
+                <input
+                  id={feeId}
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={feeDisplay}
+                  onChange={(e) => setFeeDisplay(e.target.value)}
+                  className="w-24 bg-transparent px-2 py-1.5 text-sm text-zinc-200 outline-none"
+                />
+              </div>
+              <p className="text-xs text-zinc-600 mt-1">Rows not matching $×N will be skipped</p>
             </div>
-            <p className="text-xs text-zinc-600 mt-1">Rows not matching $×N will be skipped</p>
+            {importMode === "csv" && (
+              <div className="flex-1 min-w-0">
+                <label className="block text-xs font-medium text-zinc-400 mb-1">PayPal Activity CSV</label>
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".csv,text/csv"
+                  className="block w-full text-sm text-zinc-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-zinc-600 file:bg-zinc-800 file:text-zinc-200 file:text-sm hover:file:bg-zinc-700 file:transition-colors cursor-pointer"
+                  onChange={() => setPreviewError(null)}
+                />
+              </div>
+            )}
           </div>
-          <div className="flex-1 min-w-0">
-            <label className="block text-xs font-medium text-zinc-400 mb-1">PayPal Activity CSV</label>
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".csv,text/csv"
-              className="block w-full text-sm text-zinc-300 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border file:border-zinc-600 file:bg-zinc-800 file:text-zinc-200 file:text-sm hover:file:bg-zinc-700 file:transition-colors cursor-pointer"
-              onChange={() => setPreviewError(null)}
-            />
+          {/* Mode pickers + action button */}
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900/60 p-0.5">
+              <button
+                type="button"
+                onClick={() => setImportMode("csv")}
+                className={"rounded-md px-3 py-1.5 text-sm font-medium transition-colors " + (importMode === "csv" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:text-zinc-200")}
+              >
+                Import a CSV
+              </button>
+              <button
+                type="button"
+                onClick={() => setImportMode("paypal")}
+                className={"rounded-md px-3 py-1.5 text-sm font-medium transition-colors " + (importMode === "paypal" ? "bg-sky-700 text-white" : "text-zinc-400 hover:text-zinc-200")}
+              >
+                Sync with PayPal
+              </button>
+            </div>
+            {importMode === "csv" ? (
+              <button type="button" onClick={() => void handlePreview()} disabled={previewing}
+                className="shrink-0 rounded-lg bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 px-4 py-2 text-sm font-medium text-white transition-colors">
+                {previewing ? "Scanning…" : "Preview Matches"}
+              </button>
+            ) : (
+              <button type="button" onClick={() => void handleSyncPayPal()} disabled={syncingPayPal}
+                className="shrink-0 rounded-lg bg-sky-700 hover:bg-sky-600 disabled:opacity-50 px-4 py-2 text-sm font-medium text-white transition-colors">
+                {syncingPayPal ? "Fetching…" : "Preview Matches"}
+              </button>
+            )}
           </div>
-          <button type="button" onClick={() => void handlePreview()} disabled={previewing}
-            className="shrink-0 rounded-lg bg-zinc-700 hover:bg-zinc-600 disabled:opacity-50 px-4 py-2 text-sm font-medium text-white transition-colors">
-            {previewing ? "Scanning…" : "Preview Matches"}
-          </button>
         </div>
       )}
 
