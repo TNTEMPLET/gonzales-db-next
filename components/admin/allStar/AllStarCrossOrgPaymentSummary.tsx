@@ -151,8 +151,9 @@ function buildAgeGroups(cycles: CycleSummary[]): AgeGroupEntry[] {
     }
   }
 
+  function ageNum(label: string) { const m = label.match(/^(\d+)/); return m ? parseInt(m[1], 10) : 999; }
   return Array.from(map.values()).sort(
-    (a, b) => b.year - a.year || a.ageGroupLabel.localeCompare(b.ageGroupLabel),
+    (a, b) => b.year - a.year || ageNum(a.ageGroupLabel) - ageNum(b.ageGroupLabel),
   );
 }
 
