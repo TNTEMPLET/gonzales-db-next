@@ -674,7 +674,7 @@ function Step3PickPlayers({
               <input
                 type="number"
                 min={0}
-                step={100}
+                step={0.01}
                 value={(feeCents / 100).toFixed(2)}
                 onChange={(e) => {
                   const v = parseFloat(e.target.value);
