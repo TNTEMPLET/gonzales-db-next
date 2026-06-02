@@ -66,6 +66,7 @@ export type PayPalTransaction = {
   payerEmail: string | null;
   amountCents: number;
   note: string | null;
+  itemName: string | null;
   status: string;
 };
 
@@ -119,6 +120,10 @@ export async function fetchRecentPayPalTransactions(
       const payer = tx.payer_info ?? {};
       const amountStr: string = info.transaction_amount?.value ?? "0";
       const amountCents = Math.round(parseFloat(amountStr) * 100);
+      const cartItems: { item_name?: string }[] =
+        (tx.cart_info as { item_details?: { item_name?: string }[] } | undefined)
+          ?.item_details ?? [];
+      const itemName = cartItems[0]?.item_name ?? null;
       allTransactions.push({
         txId: info.transaction_id ?? "",
         txDate: new Date(info.transaction_initiation_date ?? Date.now()),
@@ -129,6 +134,7 @@ export async function fetchRecentPayPalTransactions(
         payerEmail: payer.email_address ?? null,
         amountCents,
         note: info.transaction_note ?? info.transaction_subject ?? null,
+        itemName,
         status: info.transaction_status ?? "",
       });
     }
@@ -166,31 +172,39 @@ export async function syncPayPalTransactionsForCycle(
 
   const transactions = await fetchRecentPayPalTransactions(180);
 
-  // Only consider completed/pending payments (not refunds etc.)
-  const receivedTx = transactions.filter((tx) =>
-    ["S", "P"].includes(tx.status), // S = Success, P = Pending
-  );
+  // Filter to completed All-Star fee transactions only
+  const allStarTx = transactions.filter((tx) => {
+    if (!["S", "P"].includes(tx.status)) return false;
+    const item = (tx.itemName ?? "").toLowerCase();
+    return item.includes("all star") || item.includes("all-star");
+  });
 
   let matched = 0;
   let alreadyPaid = 0;
   const unmatchedTx: PayPalTransaction[] = [];
 
-  for (const tx of receivedTx) {
-    if (!tx.note) {
+  for (const tx of allStarTx) {
+    if (!tx.payerName) {
       unmatchedTx.push(tx);
       continue;
     }
 
-    const noteNorm = tx.note.toLowerCase();
-    const match = payments.find((p) => {
-      const fullNorm = p.playerFullName.toLowerCase();
-      const parts = fullNorm.split(/\s+/);
-      // Match if note contains the full name or at least last name + one other part
-      return (
-        noteNorm.includes(fullNorm) ||
-        (parts.length > 1 && noteNorm.includes(parts[parts.length - 1]))
-      );
-    });
+    // Match payer last name against player last name (parents pay for their kids)
+    const payerParts = tx.payerName.trim().split(/\s+/);
+    const payerLast = (payerParts[payerParts.length - 1] ?? "").toLowerCase();
+
+    const scored = payments
+      .filter((p) => !p.isPaid)
+      .map((p) => {
+        const playerParts = p.playerFullName.trim().split(/\s+/);
+        const playerLast = (playerParts[playerParts.length - 1] ?? "").toLowerCase();
+        const score = payerLast.length >= 3 && payerLast === playerLast ? 0.7 : 0;
+        return { ...p, score };
+      })
+      .filter((p) => p.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const match = scored[0];
 
     if (!match) {
       unmatchedTx.push(tx);
@@ -210,7 +224,7 @@ export async function syncPayPalTransactionsForCycle(
         paypalTxId: tx.txId,
         paypalTxDate: tx.txDate,
         payerName: tx.payerName,
-        paypalNote: tx.note,
+        paypalNote: tx.itemName,
       },
     });
     matched++;
