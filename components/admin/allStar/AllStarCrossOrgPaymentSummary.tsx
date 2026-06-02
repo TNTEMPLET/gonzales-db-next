@@ -974,8 +974,12 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
   const [showCoachRosterBuilder, setShowCoachRosterBuilder] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
   const [paypalSyncing, setPaypalSyncing] = useState(false);
-  const [syncResult, setSyncResult] = useState<{ matched: number; alreadyPaid: number; unmatchedCount: number } | null>(null);
-  const [syncProgress, setSyncProgress] = useState<{ current: number; total: number } | null>(null);
+  const [syncPreviewData, setSyncPreviewData] = useState<{
+    matchRows: import("@/app/api/admin/all-star/payments/paypal-csv/route").CsvMatchRow[];
+    skipped: import("@/app/api/admin/all-star/payments/paypal-csv/route").CsvSkippedRow[];
+    totalRows: number;
+    feeCents: number;
+  } | null>(null);
   const [activeFilter, setActiveFilter] = useState<"total" | "paid" | "unpaid" | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
 
@@ -1140,47 +1144,36 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
   }
 
   async function handlePaypalSync() {
-    if (!data) return;
-    const cycleIds = data.orgs.flatMap((o) =>
-      o.cycles.filter((c) => c.summary.total > 0).map((c) => c.cycleId),
-    );
-    if (cycleIds.length === 0) return;
     setPaypalSyncing(true);
-    setSyncResult(null);
-    setSyncProgress({ current: 0, total: cycleIds.length });
-    let totalMatched = 0;
-    let totalAlreadyPaid = 0;
-    let totalUnmatched = 0;
+    setSyncPreviewData(null);
     try {
-      for (let i = 0; i < cycleIds.length; i++) {
-        setSyncProgress({ current: i + 1, total: cycleIds.length });
-        const res = await fetch("/api/admin/all-star/payments/paypal-sync", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ cycleId: cycleIds[i] }),
-        });
-        const json = (await res.json()) as {
-          success?: boolean;
-          matched?: number;
-          alreadyPaid?: number;
-          unmatched?: unknown[];
-          error?: string;
-        };
-        if (!res.ok) {
-          setError(json.error ?? "PayPal sync failed");
-          return;
-        }
-        totalMatched += json.matched ?? 0;
-        totalAlreadyPaid += json.alreadyPaid ?? 0;
-        totalUnmatched += (json.unmatched ?? []).length;
+      const res = await fetch("/api/admin/all-star/payments/paypal-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      const json = (await res.json()) as {
+        matchRows?: import("@/app/api/admin/all-star/payments/paypal-csv/route").CsvMatchRow[];
+        skipped?: import("@/app/api/admin/all-star/payments/paypal-csv/route").CsvSkippedRow[];
+        totalTransactions?: number;
+        feeCents?: number;
+        error?: string;
+      };
+      if (!res.ok) {
+        setError(json.error ?? "PayPal sync failed");
+        return;
       }
-      setSyncResult({ matched: totalMatched, alreadyPaid: totalAlreadyPaid, unmatchedCount: totalUnmatched });
-      fetchData(selectedYear);
+      setSyncPreviewData({
+        matchRows: json.matchRows ?? [],
+        skipped: json.skipped ?? [],
+        totalRows: json.totalTransactions ?? 0,
+        feeCents: json.feeCents ?? 9500,
+      });
+      setShowCsvImport(true);
     } catch {
       setError("PayPal sync failed — network error");
     } finally {
       setPaypalSyncing(false);
-      setSyncProgress(null);
     }
   }
 
@@ -1258,28 +1251,14 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
             >
               {loading ? "Loading..." : "Refresh"}
             </button>
-            <div className="flex flex-col items-end gap-1">
-              <button
-                type="button"
-                onClick={() => void handlePaypalSync()}
-                disabled={paypalSyncing || loading || !data}
-                className="rounded-lg border border-sky-700/60 bg-sky-950/30 px-3 py-1.5 text-sm text-sky-300 hover:bg-sky-950/60 transition-colors disabled:opacity-40 w-full"
-              >
-                {paypalSyncing && syncProgress
-                  ? `Syncing ${syncProgress.current}/${syncProgress.total}…`
-                  : paypalSyncing
-                  ? "Syncing…"
-                  : "Sync PayPal"}
-              </button>
-              {paypalSyncing && syncProgress && (
-                <div className="w-full h-1 rounded-full bg-zinc-800 overflow-hidden">
-                  <div
-                    className="h-full rounded-full bg-sky-500 transition-all duration-300"
-                    style={{ width: `${Math.round((syncProgress.current / syncProgress.total) * 100)}%` }}
-                  />
-                </div>
-              )}
-            </div>
+            <button
+              type="button"
+              onClick={() => void handlePaypalSync()}
+              disabled={paypalSyncing || loading}
+              className="rounded-lg border border-sky-700/60 bg-sky-950/30 px-3 py-1.5 text-sm text-sky-300 hover:bg-sky-950/60 transition-colors disabled:opacity-40"
+            >
+              {paypalSyncing ? "Fetching…" : "Sync PayPal"}
+            </button>
             <button
               type="button"
               onClick={() => setShowCsvImport((p) => !p)}
@@ -1311,19 +1290,10 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
           {showCsvImport && (
             <AllStarPaypalCsvImport
               controlled
-              onClose={() => setShowCsvImport(false)}
-              onApplied={() => fetchData(selectedYear)}
+              onClose={() => { setShowCsvImport(false); setSyncPreviewData(null); }}
+              onApplied={() => { fetchData(selectedYear); setSyncPreviewData(null); }}
+              preloadedData={syncPreviewData ?? undefined}
             />
-          )}
-          {syncResult && (
-            <div className="rounded-lg border border-emerald-800/40 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-300 flex items-center justify-between gap-3">
-              <span>
-                PayPal sync complete — {syncResult.matched} matched
-                {syncResult.alreadyPaid > 0 ? `, ${syncResult.alreadyPaid} already paid` : ""}
-                {syncResult.unmatchedCount > 0 ? `, ${syncResult.unmatchedCount} unmatched` : ""}
-              </span>
-              <button type="button" onClick={() => setSyncResult(null)} className="text-emerald-500 hover:text-emerald-300 text-xs">Dismiss</button>
-            </div>
           )}
           {/* Initial load spinner — only shown before any data arrives */}
           {loading && !data && (
