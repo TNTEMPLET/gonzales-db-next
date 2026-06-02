@@ -163,6 +163,15 @@ export default async function AdminDashboardPage({
         action: "Open Payments",
       },
       {
+        module: "ALL_STAR_VAULT" as AdminModule,
+        href: moduleHref("/admin/cap-orders", "ALL_STAR_VAULT"),
+        title: "Parent Cap Orders",
+        description: masterMode
+          ? "View and export All-Star cap orders submitted by parents via PayPal, grouped by organization."
+          : "View and export All-Star cap orders submitted by parents via PayPal.",
+        action: "View Cap Orders",
+      },
+      {
         module: "TOURNAMENT_BRACKETS" as AdminModule,
         href: "/admin/tournament-brackets",
         title: "Tournament Brackets",

@@ -67,6 +67,8 @@ export type PayPalTransaction = {
   amountCents: number;
   note: string | null;
   itemName: string | null;
+  itemCode: string | null;
+  itemQuantity: number | null;
   checkoutNote: string | null;
   status: string;
 };
@@ -123,11 +125,15 @@ export async function fetchRecentPayPalTransactions(
       const amountCents = Math.round(parseFloat(amountStr) * 100);
       const cartItems: {
         item_name?: string;
+        item_code?: string;
+        item_quantity?: string;
         checkout_options?: { checkout_option_name?: string; checkout_option_value?: string }[];
       }[] =
         (tx.cart_info as { item_details?: typeof cartItems } | undefined)
           ?.item_details ?? [];
       const itemName = cartItems[0]?.item_name ?? null;
+      const itemCode = cartItems[0]?.item_code ?? null;
+      const itemQuantity = cartItems[0]?.item_quantity ? parseInt(cartItems[0].item_quantity, 10) || null : null;
       const checkoutNote =
         cartItems[0]?.checkout_options?.[0]?.checkout_option_value ?? null;
       allTransactions.push({
@@ -141,6 +147,8 @@ export async function fetchRecentPayPalTransactions(
         amountCents,
         note: info.transaction_note ?? info.transaction_subject ?? null,
         itemName,
+        itemCode,
+        itemQuantity,
         checkoutNote,
         status: info.transaction_status ?? "",
       });
@@ -238,4 +246,63 @@ export async function syncPayPalTransactionsForCycle(
   }
 
   return { matched, alreadyPaid, unmatched: unmatchedTx };
+}
+
+/**
+ * Fetch a single transaction by ID via the reporting API.
+ * Used by the webhook to look up item details after a payment event.
+ */
+export async function fetchTransactionById(txId: string): Promise<PayPalTransaction | null> {
+  const token = await getAccessToken();
+
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(start.getDate() - 2);
+
+  const params = new URLSearchParams({
+    transaction_id: txId,
+    start_date: start.toISOString(),
+    end_date: now.toISOString(),
+    fields: "all",
+    page_size: "5",
+    page: "1",
+  });
+
+  const res = await fetch(
+    `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  if (!res.ok) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (await res.json()) as { transaction_details?: any[] };
+  const tx = data.transaction_details?.[0];
+  if (!tx) return null;
+
+  const info = tx.transaction_info ?? {};
+  const payer = tx.payer_info ?? {};
+  const amountStr: string = info.transaction_amount?.value ?? "0";
+  const cartItems: {
+    item_name?: string;
+    item_code?: string;
+    item_quantity?: string;
+    checkout_options?: { checkout_option_name?: string; checkout_option_value?: string }[];
+  }[] = (tx.cart_info as { item_details?: typeof cartItems } | undefined)?.item_details ?? [];
+
+  return {
+    txId: info.transaction_id ?? txId,
+    txDate: new Date(info.transaction_initiation_date ?? Date.now()),
+    payerName: payer.payer_name
+      ? `${payer.payer_name.given_name ?? ""} ${payer.payer_name.surname ?? ""}`.trim() || null
+      : null,
+    payerEmail: payer.email_address ?? null,
+    amountCents: Math.round(parseFloat(amountStr) * 100),
+    note: info.transaction_note ?? info.transaction_subject ?? null,
+    itemName: cartItems[0]?.item_name ?? null,
+    itemCode: cartItems[0]?.item_code ?? null,
+    itemQuantity: cartItems[0]?.item_quantity ? parseInt(cartItems[0].item_quantity, 10) || null : null,
+    checkoutNote: cartItems[0]?.checkout_options?.[0]?.checkout_option_value ?? null,
+    status: info.transaction_status ?? "",
+  };
 }
