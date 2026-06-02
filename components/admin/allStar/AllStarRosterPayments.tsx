@@ -85,17 +85,35 @@ function ProgressBar({ paid, total }: { paid: number; total: number }) {
   );
 }
 
+// ─── Edit row type ────────────────────────────────────────────────────────────
+
+type EditRow = {
+  id: string;
+  playerFullName: string;
+  team: string;
+  amountCents: number;
+};
+
+// ─── Roster card ─────────────────────────────────────────────────────────────
+
 function RosterCard({
   roster,
   org,
   onTogglePaid,
+  onEdited,
 }: {
   roster: RosterSummary;
   org: string;
   onTogglePaid: (paymentId: string, isPaid: boolean) => void;
+  onEdited: () => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [toggling, setToggling] = useState<string | null>(null);
+  const [editing, setEditing] = useState(false);
+  const [editRows, setEditRows] = useState<EditRow[]>([]);
+  const [bulkFee, setBulkFee] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const s = roster.summary;
 
   async function handleToggle(paymentId: string, newIsPaid: boolean) {
@@ -112,16 +130,80 @@ function RosterCard({
     }
   }
 
+  function startEdit() {
+    setEditRows(
+      roster.payments.map((p) => ({
+        id: p.id,
+        playerFullName: p.playerFullName,
+        team: p.team,
+        amountCents: p.amountCents,
+      })),
+    );
+    setBulkFee("");
+    setSaveError(null);
+    setEditing(true);
+  }
+
+  function applyBulkFee() {
+    const cents = Math.round(parseFloat(bulkFee) * 100);
+    if (!isNaN(cents) && cents > 0) {
+      setEditRows((rows) => rows.map((r) => ({ ...r, amountCents: cents })));
+    }
+  }
+
+  function updateRow(id: string, field: keyof EditRow, value: string | number) {
+    setEditRows((rows) => rows.map((r) => (r.id === id ? { ...r, [field]: value } : r)));
+  }
+
+  async function saveEdits() {
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const original = new Map(roster.payments.map((p) => [p.id, p]));
+      const dirty = editRows.filter((r) => {
+        const orig = original.get(r.id);
+        return orig && (
+          r.playerFullName !== orig.playerFullName ||
+          r.team !== orig.team ||
+          r.amountCents !== orig.amountCents
+        );
+      });
+      for (const row of dirty) {
+        const res = await fetch("/api/admin/all-star/payments", {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentId: row.id,
+            playerFullName: row.playerFullName,
+            team: row.team,
+            amountCents: row.amountCents,
+          }),
+        });
+        if (!res.ok) {
+          const json = (await res.json()) as { error?: string };
+          throw new Error(json.error ?? "Save failed");
+        }
+      }
+      setEditing(false);
+      onEdited();
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : "Save failed");
+    } finally {
+      setSaving(false);
+    }
+  }
+
   return (
     <div className="rounded-xl border border-zinc-700 bg-zinc-900/50 overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setExpanded((p) => !p)}
-        className="w-full flex items-center justify-between gap-4 px-5 py-4 hover:bg-zinc-800/30 transition-colors text-left"
-      >
-        <div className="flex items-center gap-3 min-w-0">
+      {/* Header */}
+      <div className="flex items-center justify-between gap-4 px-5 py-4">
+        <button
+          type="button"
+          onClick={() => setExpanded((p) => !p)}
+          className="flex items-center gap-3 min-w-0 text-left flex-1 hover:opacity-80 transition-opacity"
+        >
           <span className="text-base font-semibold text-white truncate">{roster.rosterTag}</span>
-        </div>
+        </button>
         <div className="flex items-center gap-3 shrink-0">
           {s.total > 0 && (
             <div className="hidden sm:flex items-center gap-2 text-sm">
@@ -132,13 +214,31 @@ function RosterCard({
           <div className="w-20 hidden md:block">
             <ProgressBar paid={s.paidCount} total={s.total} />
           </div>
-          <span className="text-zinc-500">{expanded ? "▲" : "▼"}</span>
+          {!editing && (
+            <button
+              type="button"
+              onClick={() => { startEdit(); setExpanded(true); }}
+              title="Edit roster"
+              className="rounded-lg border border-zinc-700 px-2.5 py-1.5 text-xs text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800 transition-colors"
+            >
+              ✏ Edit
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setExpanded((p) => !p)}
+            className="text-zinc-500 hover:text-zinc-300 px-1"
+          >
+            {expanded ? "▲" : "▼"}
+          </button>
         </div>
-      </button>
+      </div>
 
       {expanded && (
         <div className="border-t border-zinc-700/50 px-5 py-4 space-y-4">
-          {s.total > 0 && (
+
+          {/* Summary chips — hidden in edit mode */}
+          {!editing && s.total > 0 && (
             <div className="flex flex-wrap gap-2">
               <StatChip label="Total" value={String(s.total)} />
               <StatChip label="Paid" value={String(s.paidCount)} highlight="green" />
@@ -150,47 +250,157 @@ function RosterCard({
               </div>
             </div>
           )}
-          {roster.payments.length === 0 ? (
-            <p className="text-zinc-500 text-sm italic">No payment records.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="text-xs text-zinc-500 border-b border-zinc-700/50">
-                    <th className="text-left py-2 pr-4 font-medium">Player</th>
-                    <th className="text-left py-2 pr-4 font-medium hidden sm:table-cell">Team</th>
-                    <th className="text-left py-2 pr-4 font-medium hidden md:table-cell">Payer</th>
-                    <th className="text-center py-2 pr-4 font-medium">Status</th>
-                    <th className="text-right py-2 font-medium">Amount</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {roster.payments.map((p) => (
-                    <tr key={p.id} className="border-b border-zinc-800/50 last:border-0">
-                      <td className="py-2 pr-4 text-zinc-200">{p.playerFullName}</td>
-                      <td className="py-2 pr-4 text-zinc-400 text-xs hidden sm:table-cell">{p.team || "—"}</td>
-                      <td className="py-2 pr-4 text-zinc-400 text-xs hidden md:table-cell">{p.payerName || "—"}</td>
-                      <td className="py-2 pr-4 text-center">
-                        <button
-                          type="button"
-                          disabled={toggling === p.id}
-                          onClick={() => void handleToggle(p.id, !p.isPaid)}
-                          className={
-                            "text-xs font-medium px-2 py-0.5 rounded transition-colors disabled:opacity-50 " +
-                            (p.isPaid
-                              ? "text-emerald-400 bg-emerald-950/40 hover:bg-emerald-950/70"
-                              : "text-amber-400 bg-amber-950/30 hover:bg-amber-950/60")
-                          }
-                        >
-                          {toggling === p.id ? "…" : p.isPaid ? "Paid ✓" : "Unpaid"}
-                        </button>
-                      </td>
-                      <td className="py-2 text-right text-zinc-300 text-xs">{fmtMoney(p.amountCents)}</td>
+
+          {/* ── Edit mode ── */}
+          {editing && (
+            <div className="space-y-3">
+              {/* Bulk fee bar */}
+              <div className="flex items-center gap-2 rounded-lg border border-violet-700/40 bg-violet-950/20 px-3 py-2.5">
+                <span className="text-xs text-violet-300 font-medium shrink-0">Change fee for all:</span>
+                <div className="flex items-center rounded border border-zinc-700 bg-zinc-900 overflow-hidden">
+                  <span className="px-2 text-zinc-500 text-sm border-r border-zinc-700">$</span>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={bulkFee}
+                    onChange={(e) => setBulkFee(e.target.value)}
+                    placeholder={editRows[0] ? String((editRows[0].amountCents / 100).toFixed(2)) : "95.00"}
+                    className="w-20 bg-transparent px-2 py-1 text-sm text-zinc-200 outline-none"
+                  />
+                </div>
+                <button
+                  type="button"
+                  onClick={applyBulkFee}
+                  className="rounded border border-violet-700/50 px-2.5 py-1 text-xs text-violet-300 hover:bg-violet-900/30 transition-colors"
+                >
+                  Apply to All
+                </button>
+                <span className="text-xs text-zinc-600 ml-1">updates every row below</span>
+              </div>
+
+              {/* Per-row edit table */}
+              <div className="overflow-x-auto rounded-lg border border-zinc-700/50">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-xs text-zinc-500 border-b border-zinc-700/50 bg-zinc-900/60">
+                      <th className="text-left px-3 py-2 font-medium">Player Name</th>
+                      <th className="text-left px-3 py-2 font-medium">Team</th>
+                      <th className="text-right px-3 py-2 font-medium">Fee</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {editRows.map((row) => (
+                      <tr key={row.id} className="border-b border-zinc-800/40 last:border-0">
+                        <td className="px-3 py-1.5">
+                          <input
+                            type="text"
+                            value={row.playerFullName}
+                            onChange={(e) => updateRow(row.id, "playerFullName", e.target.value)}
+                            className="w-full rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-200 focus:border-violet-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <input
+                            type="text"
+                            value={row.team}
+                            onChange={(e) => updateRow(row.id, "team", e.target.value)}
+                            className="w-32 rounded border border-zinc-700 bg-zinc-800 px-2 py-1 text-sm text-zinc-200 focus:border-violet-600 focus:outline-none"
+                          />
+                        </td>
+                        <td className="px-3 py-1.5">
+                          <div className="flex items-center justify-end rounded border border-zinc-700 bg-zinc-800 overflow-hidden w-28 ml-auto">
+                            <span className="px-1.5 text-zinc-500 text-sm border-r border-zinc-700">$</span>
+                            <input
+                              type="number"
+                              min="0"
+                              step="0.01"
+                              value={(row.amountCents / 100).toFixed(2)}
+                              onChange={(e) => {
+                                const v = parseFloat(e.target.value);
+                                if (!isNaN(v) && v >= 0) updateRow(row.id, "amountCents", Math.round(v * 100));
+                              }}
+                              className="w-full bg-transparent px-2 py-1 text-sm text-zinc-200 text-right focus:outline-none"
+                            />
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {saveError && (
+                <p className="text-xs text-red-400 rounded border border-red-800/40 bg-red-950/20 px-3 py-2">{saveError}</p>
+              )}
+
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setEditing(false)}
+                  disabled={saving}
+                  className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-400 hover:bg-zinc-800 transition-colors disabled:opacity-40"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() => void saveEdits()}
+                  disabled={saving}
+                  className="rounded-lg bg-violet-700 hover:bg-violet-600 disabled:opacity-40 px-5 py-2 text-sm font-semibold text-white transition-colors"
+                >
+                  {saving ? "Saving…" : "Save Changes"}
+                </button>
+              </div>
             </div>
+          )}
+
+          {/* ── Read mode ── */}
+          {!editing && (
+            <>
+              {roster.payments.length === 0 ? (
+                <p className="text-zinc-500 text-sm italic">No payment records.</p>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="text-xs text-zinc-500 border-b border-zinc-700/50">
+                        <th className="text-left py-2 pr-4 font-medium">Player</th>
+                        <th className="text-left py-2 pr-4 font-medium hidden sm:table-cell">Team</th>
+                        <th className="text-left py-2 pr-4 font-medium hidden md:table-cell">Payer</th>
+                        <th className="text-center py-2 pr-4 font-medium">Status</th>
+                        <th className="text-right py-2 font-medium">Amount</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {roster.payments.map((p) => (
+                        <tr key={p.id} className="border-b border-zinc-800/50 last:border-0">
+                          <td className="py-2 pr-4 text-zinc-200">{p.playerFullName}</td>
+                          <td className="py-2 pr-4 text-zinc-400 text-xs hidden sm:table-cell">{p.team || "—"}</td>
+                          <td className="py-2 pr-4 text-zinc-400 text-xs hidden md:table-cell">{p.payerName || "—"}</td>
+                          <td className="py-2 pr-4 text-center">
+                            <button
+                              type="button"
+                              disabled={toggling === p.id}
+                              onClick={() => void handleToggle(p.id, !p.isPaid)}
+                              className={
+                                "text-xs font-medium px-2 py-0.5 rounded transition-colors disabled:opacity-50 " +
+                                (p.isPaid
+                                  ? "text-emerald-400 bg-emerald-950/40 hover:bg-emerald-950/70"
+                                  : "text-amber-400 bg-amber-950/30 hover:bg-amber-950/60")
+                              }
+                            >
+                              {toggling === p.id ? "…" : p.isPaid ? "Paid ✓" : "Unpaid"}
+                            </button>
+                          </td>
+                          <td className="py-2 text-right text-zinc-300 text-xs">{fmtMoney(p.amountCents)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </>
           )}
         </div>
       )}
@@ -232,7 +442,6 @@ function UnseededCycleCard({
         return;
       }
       setSeedResult({ created: json.created ?? 0, skipped: json.skipped ?? 0, removed: json.removed ?? 0 });
-      // Delay a moment so the user sees the result, then refresh
       setTimeout(() => onSeeded(), 1200);
     } catch {
       setSeedError("Network error.");
@@ -394,7 +603,6 @@ export default function AllStarRosterPayments({ org }: { org: string }) {
       )}
       {!loading && !error && data && (
         <>
-          {/* ── Unseeded cycles — Ready to Seed section ─────────────────────── */}
           {unseededCycles.length > 0 && (
             <div className="space-y-2">
               <h3 className="text-xs font-semibold text-amber-400 uppercase tracking-wider px-0.5">
@@ -410,7 +618,6 @@ export default function AllStarRosterPayments({ org }: { org: string }) {
             </div>
           )}
 
-          {/* ── Existing payment rosters ─────────────────────────────────────── */}
           {data.rosters.length === 0 && unseededCycles.length === 0 ? (
             <p className="text-zinc-500 text-sm italic py-2">
               No payment records found{selectedYear !== "all" ? ` for ${selectedYear}` : ""}.
@@ -425,6 +632,7 @@ export default function AllStarRosterPayments({ org }: { org: string }) {
                   onTogglePaid={(paymentId, newIsPaid) =>
                     handleTogglePaid(roster.rosterTag, paymentId, newIsPaid)
                   }
+                  onEdited={() => fetchData(selectedYear)}
                 />
               ))}
             </div>
