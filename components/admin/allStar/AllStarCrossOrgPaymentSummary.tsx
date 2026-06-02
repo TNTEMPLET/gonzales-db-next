@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { CoachRosterBuilderModal } from "@/components/admin/allStar/CoachRosterBuilderModal";
+import AllStarPaypalCsvImport from "@/components/admin/allStar/AllStarPaypalCsvImport";
+import AllStarPlayerSearch from "@/components/admin/allStar/AllStarPlayerSearch";
 
 type PaymentRow = {
   id: string;
@@ -159,20 +161,28 @@ function StatChip({
   label,
   value,
   highlight,
+  onClick,
+  active,
 }: {
   label: string;
   value: string;
   highlight?: "green" | "amber" | "red";
+  onClick?: () => void;
+  active?: boolean;
 }) {
   let color = "text-zinc-200 border-zinc-700 bg-zinc-900/50";
   if (highlight === "green") color = "text-emerald-300 border-emerald-800/50 bg-emerald-950/30";
   if (highlight === "amber") color = "text-amber-300 border-amber-800/50 bg-amber-950/30";
   if (highlight === "red") color = "text-red-300 border-red-800/50 bg-red-950/30";
+  const interactive = onClick
+    ? " cursor-pointer hover:brightness-125 transition-all " + (active ? "ring-2 ring-sky-500 ring-offset-1 ring-offset-zinc-950" : "")
+    : "";
+  const Tag = onClick ? "button" : "div";
   return (
-    <div className={"rounded-lg border px-3 py-2 text-center min-w-[90px] " + color}>
+    <Tag type={onClick ? "button" : undefined} onClick={onClick} className={"rounded-lg border px-3 py-2 text-center min-w-[90px] " + color + interactive}>
       <div className="text-xs opacity-70 mb-0.5">{label}</div>
       <div className="font-semibold text-sm">{value}</div>
-    </div>
+    </Tag>
   );
 }
 
@@ -962,6 +972,9 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
   const [collapsed, setCollapsed] = useState(true);
   const [exporting, setExporting] = useState(false);
   const [showCoachRosterBuilder, setShowCoachRosterBuilder] = useState(false);
+  const [showCsvImport, setShowCsvImport] = useState(false);
+  const [activeFilter, setActiveFilter] = useState<"total" | "paid" | "unpaid" | null>(null);
+  const [filterQuery, setFilterQuery] = useState("");
 
   const didFetch = useRef(false);
 
@@ -1033,6 +1046,75 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
                   collectedCents: cycle.summary.collectedCents + delta * amountCents,
                   outstandingCents: cycle.summary.outstandingCents - delta * amountCents,
                 },
+              };
+            }),
+          };
+        }),
+      };
+    });
+  }
+
+  function handleDirectPaymentToggle(
+    paymentId: string,
+    orgId: string,
+    cycleId: string,
+    amountCents: number,
+    newIsPaid: boolean,
+  ) {
+    const delta = newIsPaid ? 1 : -1;
+    setData((prev) => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        grandTotals: {
+          ...prev.grandTotals,
+          paidCount: prev.grandTotals.paidCount + delta,
+          unpaidCount: prev.grandTotals.unpaidCount - delta,
+          collectedCents: prev.grandTotals.collectedCents + delta * amountCents,
+          outstandingCents: prev.grandTotals.outstandingCents - delta * amountCents,
+        },
+        orgs: prev.orgs.map((org) => {
+          if (org.orgId !== orgId) return org;
+          return {
+            ...org,
+            totals: {
+              ...org.totals,
+              paidCount: org.totals.paidCount + delta,
+              unpaidCount: org.totals.unpaidCount - delta,
+              collectedCents: org.totals.collectedCents + delta * amountCents,
+              outstandingCents: org.totals.outstandingCents - delta * amountCents,
+            },
+            cycles: org.cycles.map((cycle) => {
+              if (cycle.cycleId !== cycleId) return cycle;
+              return {
+                ...cycle,
+                summary: {
+                  ...cycle.summary,
+                  paidCount: cycle.summary.paidCount + delta,
+                  unpaidCount: cycle.summary.unpaidCount - delta,
+                  collectedCents: cycle.summary.collectedCents + delta * amountCents,
+                  outstandingCents: cycle.summary.outstandingCents - delta * amountCents,
+                },
+                rosters: cycle.rosters.map((roster) => {
+                  const inRoster = roster.payments.some((p) => p.id === paymentId);
+                  return {
+                    ...roster,
+                    summary: inRoster
+                      ? {
+                          ...roster.summary,
+                          paidCount: roster.summary.paidCount + delta,
+                          unpaidCount: roster.summary.unpaidCount - delta,
+                          collectedCents: roster.summary.collectedCents + delta * amountCents,
+                          outstandingCents: roster.summary.outstandingCents - delta * amountCents,
+                        }
+                      : roster.summary,
+                    payments: roster.payments.map((p) =>
+                      p.id === paymentId
+                        ? { ...p, isPaid: newIsPaid, paidAt: newIsPaid ? new Date().toISOString() : null }
+                        : p,
+                    ),
+                  };
+                }),
               };
             }),
           };
@@ -1130,6 +1212,13 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
             </button>
             <button
               type="button"
+              onClick={() => setShowCsvImport((p) => !p)}
+              className={"rounded-lg border px-3 py-1.5 text-sm transition-colors " + (showCsvImport ? "border-sky-600 bg-sky-950/50 text-sky-300" : "border-zinc-700 text-zinc-300 hover:bg-zinc-800")}
+            >
+              Import CSV
+            </button>
+            <button
+              type="button"
               onClick={() => setShowCoachRosterBuilder(true)}
               className="rounded-lg border border-violet-700/60 bg-violet-950/30 px-3 py-1.5 text-sm text-violet-300 hover:bg-violet-950/60 transition-colors"
             >
@@ -1149,6 +1238,13 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
 
       {!collapsed && (
         <div className="px-6 py-5 space-y-4">
+          {showCsvImport && (
+            <AllStarPaypalCsvImport
+              controlled
+              onClose={() => setShowCsvImport(false)}
+              onApplied={() => fetchData(selectedYear)}
+            />
+          )}
           {/* Initial load spinner — only shown before any data arrives */}
           {loading && !data && (
             <div className="flex items-center gap-2 text-zinc-400 text-sm py-4">
@@ -1166,28 +1262,50 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
           {data && (
             <div className={`space-y-4 transition-opacity duration-150 ${loading ? "opacity-50 pointer-events-none" : ""}`}>
               {data.grandTotals.total > 0 && (
-                <div className="flex flex-wrap gap-2 p-4 rounded-xl border border-zinc-700/40 bg-zinc-900/30">
-                  <div className="flex items-center gap-1 text-xs text-zinc-400 font-medium mr-2 self-center">
-                    All Leagues:
+                <>
+                  <div className="flex flex-wrap gap-2 p-4 rounded-xl border border-zinc-700/40 bg-zinc-900/30">
+                    <div className="flex items-center gap-1 text-xs text-zinc-400 font-medium mr-2 self-center">
+                      All Leagues:
+                    </div>
+                    <StatChip
+                      label="Total"
+                      value={String(data.grandTotals.total)}
+                      onClick={() => { setActiveFilter(activeFilter === "total" ? null : "total"); setFilterQuery(""); }}
+                      active={activeFilter === "total"}
+                    />
+                    <StatChip
+                      label="Paid"
+                      value={String(data.grandTotals.paidCount)}
+                      highlight="green"
+                      onClick={() => { setActiveFilter(activeFilter === "paid" ? null : "paid"); setFilterQuery(""); }}
+                      active={activeFilter === "paid"}
+                    />
+                    <StatChip
+                      label="Unpaid"
+                      value={String(data.grandTotals.unpaidCount)}
+                      highlight={data.grandTotals.unpaidCount > 0 ? "amber" : undefined}
+                      onClick={() => { setActiveFilter(activeFilter === "unpaid" ? null : "unpaid"); setFilterQuery(""); }}
+                      active={activeFilter === "unpaid"}
+                    />
+                    <StatChip
+                      label="Collected"
+                      value={fmtMoney(data.grandTotals.collectedCents)}
+                      highlight="green"
+                    />
+                    <StatChip
+                      label="Outstanding"
+                      value={fmtMoney(data.grandTotals.outstandingCents)}
+                      highlight={data.grandTotals.outstandingCents > 0 ? "red" : undefined}
+                    />
                   </div>
-                  <StatChip label="Total" value={String(data.grandTotals.total)} />
-                  <StatChip label="Paid" value={String(data.grandTotals.paidCount)} highlight="green" />
-                  <StatChip
-                    label="Unpaid"
-                    value={String(data.grandTotals.unpaidCount)}
-                    highlight={data.grandTotals.unpaidCount > 0 ? "amber" : undefined}
+
+                  {/* ── Filtered player list (always mounted, table expands on focus) ── */}
+                  <AllStarPlayerSearch
+                    activeFilter={activeFilter}
+                    data={data}
+                    onToggle={handleDirectPaymentToggle}
                   />
-                  <StatChip
-                    label="Collected"
-                    value={fmtMoney(data.grandTotals.collectedCents)}
-                    highlight="green"
-                  />
-                  <StatChip
-                    label="Outstanding"
-                    value={fmtMoney(data.grandTotals.outstandingCents)}
-                    highlight={data.grandTotals.outstandingCents > 0 ? "red" : undefined}
-                  />
-                </div>
+                </>
               )}
               {data.grandTotals.total === 0 && (
                 <p className="text-zinc-500 text-sm italic py-2">
