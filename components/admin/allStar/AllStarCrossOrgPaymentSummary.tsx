@@ -973,6 +973,8 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
   const [exporting, setExporting] = useState(false);
   const [showCoachRosterBuilder, setShowCoachRosterBuilder] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
+  const [paypalSyncing, setPaypalSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<{ matched: number; alreadyPaid: number; unmatchedCount: number } | null>(null);
   const [activeFilter, setActiveFilter] = useState<"total" | "paid" | "unpaid" | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
 
@@ -1136,6 +1138,48 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
     fetchData(selectedYear);
   }
 
+  async function handlePaypalSync() {
+    if (!data) return;
+    const cycleIds = data.orgs.flatMap((o) =>
+      o.cycles.filter((c) => c.summary.total > 0).map((c) => c.cycleId),
+    );
+    if (cycleIds.length === 0) return;
+    setPaypalSyncing(true);
+    setSyncResult(null);
+    let totalMatched = 0;
+    let totalAlreadyPaid = 0;
+    let totalUnmatched = 0;
+    try {
+      for (const cycleId of cycleIds) {
+        const res = await fetch("/api/admin/all-star/payments/paypal-sync", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cycleId }),
+        });
+        const json = (await res.json()) as {
+          success?: boolean;
+          matched?: number;
+          alreadyPaid?: number;
+          unmatched?: unknown[];
+          error?: string;
+        };
+        if (!res.ok) {
+          setError(json.error ?? "PayPal sync failed");
+          return;
+        }
+        totalMatched += json.matched ?? 0;
+        totalAlreadyPaid += json.alreadyPaid ?? 0;
+        totalUnmatched += (json.unmatched ?? []).length;
+      }
+      setSyncResult({ matched: totalMatched, alreadyPaid: totalAlreadyPaid, unmatchedCount: totalUnmatched });
+      fetchData(selectedYear);
+    } catch {
+      setError("PayPal sync failed — network error");
+    } finally {
+      setPaypalSyncing(false);
+    }
+  }
+
   function handleExport() {
     setExporting(true);
     const url =
@@ -1212,6 +1256,14 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
             </button>
             <button
               type="button"
+              onClick={() => void handlePaypalSync()}
+              disabled={paypalSyncing || loading || !data}
+              className="rounded-lg border border-sky-700/60 bg-sky-950/30 px-3 py-1.5 text-sm text-sky-300 hover:bg-sky-950/60 transition-colors disabled:opacity-40"
+            >
+              {paypalSyncing ? "Syncing…" : "Sync PayPal"}
+            </button>
+            <button
+              type="button"
               onClick={() => setShowCsvImport((p) => !p)}
               className={"rounded-lg border px-3 py-1.5 text-sm transition-colors " + (showCsvImport ? "border-sky-600 bg-sky-950/50 text-sky-300" : "border-zinc-700 text-zinc-300 hover:bg-zinc-800")}
             >
@@ -1244,6 +1296,16 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
               onClose={() => setShowCsvImport(false)}
               onApplied={() => fetchData(selectedYear)}
             />
+          )}
+          {syncResult && (
+            <div className="rounded-lg border border-emerald-800/40 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-300 flex items-center justify-between gap-3">
+              <span>
+                PayPal sync complete — {syncResult.matched} matched
+                {syncResult.alreadyPaid > 0 ? `, ${syncResult.alreadyPaid} already paid` : ""}
+                {syncResult.unmatchedCount > 0 ? `, ${syncResult.unmatchedCount} unmatched` : ""}
+              </span>
+              <button type="button" onClick={() => setSyncResult(null)} className="text-emerald-500 hover:text-emerald-300 text-xs">Dismiss</button>
+            </div>
           )}
           {/* Initial load spinner — only shown before any data arrives */}
           {loading && !data && (
