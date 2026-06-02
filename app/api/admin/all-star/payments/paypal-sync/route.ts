@@ -10,6 +10,14 @@ import type {
 } from "@/app/api/admin/all-star/payments/paypal-csv/route";
 import prisma from "@/lib/prisma";
 
+function parseCheckoutPlayerName(checkoutNote: string): string | null {
+  // Checkout notes look like "Beckham Suire/ 8u navy" or "Kole Templet \n12 majors navy"
+  const clean = checkoutNote.replace(/\\n/g, "\n").trim();
+  const first = clean.split(/[\n/]/, 1)[0]?.trim() ?? "";
+  // Must look like a name (contains a space, not purely numeric/team info)
+  return first.length >= 3 && /^[a-zA-Z]/.test(first) && /[a-zA-Z].*\s+.*[a-zA-Z]/.test(first) ? first : null;
+}
+
 export async function POST(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
@@ -87,7 +95,15 @@ export async function POST(request: NextRequest) {
 
     const playerCount = tx.amountCents / feeCents;
 
-    // Score every payment by payer name — parents pay, so last-name match is the signal
+    // Prefer checkout note player name for matching; fall back to payer last name
+    const checkoutPlayerName = tx.checkoutNote
+      ? parseCheckoutPlayerName(tx.checkoutNote)
+      : null;
+    const matchSignal = checkoutPlayerName ?? tx.payerName!;
+    const playerNote = tx.checkoutNote
+      ? tx.checkoutNote.replace(/\\n/g, " ").trim()
+      : tx.payerName ?? "";
+
     const candidates: CsvCandidate[] = allPayments
       .map((p) => ({
         paymentId: p.id,
@@ -95,7 +111,7 @@ export async function POST(request: NextRequest) {
         rosterTag: p.rosterTag,
         team: p.team,
         ageGroup: p.ageGroup,
-        confidence: scoreNameMatch(tx.payerName!, p.playerFullName),
+        confidence: scoreNameMatch(matchSignal, p.playerFullName),
         isAlreadyPaid: p.isPaid,
         hasDifferentTx: !!p.paypalTxId && p.paypalTxId !== tx.txId,
       }))
@@ -110,7 +126,7 @@ export async function POST(request: NextRequest) {
       grossCents: tx.amountCents,
       amountPerPlayerCents: feeCents,
       quantity: playerCount,
-      playerNote: tx.payerName,
+      playerNote,
       itemTitle: tx.itemName ?? "",
       orgId: null,
       candidates,
