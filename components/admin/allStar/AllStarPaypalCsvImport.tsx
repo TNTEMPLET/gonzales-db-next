@@ -549,7 +549,7 @@ function ImportContent({
                   className="w-24 bg-transparent px-2 py-1.5 text-sm text-zinc-200 outline-none"
                 />
               </div>
-              <p className="text-xs text-zinc-600 mt-1">Rows not matching $×N will be skipped</p>
+              <p className="text-xs text-zinc-600 mt-1">Auto-detects $95 &amp; $125; enter a value to override</p>
             </div>
             {importMode === "csv" && (
               <div className="flex-1 min-w-0">
@@ -657,7 +657,7 @@ function ImportContent({
           {feeSkipped.length > 0 && (
             <details className="rounded-lg border border-zinc-700/50">
               <summary className="px-4 py-2.5 text-xs text-zinc-500 cursor-pointer hover:text-zinc-400">
-                {feeSkipped.length} rows skipped — amount not a multiple of {fmtMoney(feeCents)}
+                {feeSkipped.length} rows skipped — amount not a multiple of $95, $125{feeCents !== 9500 && feeCents !== 12500 ? `, or ${fmtMoney(feeCents)}` : ""}
               </summary>
               <div className="px-4 pb-3 space-y-1">
                 {feeSkipped.map((r) => (

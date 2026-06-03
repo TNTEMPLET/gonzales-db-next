@@ -22,8 +22,14 @@ export async function POST(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
-  const body = (await request.json()) as { feeCents?: number };
-  const feeCents = body.feeCents && body.feeCents > 0 ? body.feeCents : 9500;
+  const body = (await request.json()) as { feeCents?: number; feeCentsOptions?: number[] };
+  // Accept multiples of any standard fee tier ($95, $125) plus any explicit override
+  const STANDARD_FEES = [12500, 9500];
+  const feeCentsOptions: number[] = body.feeCentsOptions
+    ?? (body.feeCents && body.feeCents > 0
+      ? [...new Set([body.feeCents, ...STANDARD_FEES])]
+      : STANDARD_FEES);
+  const feeCents = feeCentsOptions[0]; // kept for downstream display only
 
   // Fetch all transactions once, paginated internally in 31-day windows
   const transactions = await fetchRecentPayPalTransactions(180);
@@ -80,8 +86,9 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    // Fee amount validation: gross must be an exact multiple of feeCents
-    if (tx.amountCents % feeCents !== 0) {
+    // Fee amount validation: gross must be an exact multiple of at least one accepted fee tier
+    const matchedFee = feeCentsOptions.find((f) => f > 0 && tx.amountCents % f === 0);
+    if (!matchedFee) {
       skipped.push({
         txId: tx.txId,
         payerName: tx.payerName,
@@ -93,7 +100,7 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const playerCount = tx.amountCents / feeCents;
+    const playerCount = tx.amountCents / matchedFee;
 
     // Prefer checkout note player name for matching; fall back to payer last name
     const checkoutPlayerName = tx.checkoutNote
@@ -124,7 +131,7 @@ export async function POST(request: NextRequest) {
       txDate: tx.txDate.toISOString(),
       payerName: tx.payerName,
       grossCents: tx.amountCents,
-      amountPerPlayerCents: feeCents,
+      amountPerPlayerCents: matchedFee,
       quantity: playerCount,
       playerNote,
       itemTitle: tx.itemName ?? "",
