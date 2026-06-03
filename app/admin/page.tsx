@@ -27,7 +27,6 @@ import {
 } from "@/lib/siteConfig";
 import { isCommunicationsModuleEnabled } from "@/lib/communications/config";
 import prisma from "@/lib/prisma";
-import { inferDefaultAdminTargetOrgForMasterDashboard } from "@/lib/auth/inferDefaultAdminTargetOrg";
 import {
   getAdminDashboardCategory,
   sortAdminDashboardCards,
@@ -62,16 +61,6 @@ export default async function AdminDashboardPage({
     redirect("/admin/login?next=/admin");
   }
 
-  if (masterMode && !requestedOrg && !adminUser.isMaster) {
-    const inferred = await inferDefaultAdminTargetOrgForMasterDashboard(
-      adminUser.id,
-      adminUser.email,
-      adminUser.isMaster,
-    );
-    if (inferred) {
-      redirect(`/admin?org=${inferred}`);
-    }
-  }
 
   const currentOrg = masterMode ? requestedOrg : getDefaultContentOrg();
 
