@@ -154,8 +154,8 @@ export default async function AdminDashboardPage({
         action: masterMode ? "Open All-Star Vault" : "Open All-Star",
       },
       {
-        module: "ALL_STAR_VAULT" as AdminModule,
-        href: moduleHref("/admin/payments", "ALL_STAR_VAULT"),
+        module: "ALL_STAR_PAYMENTS" as AdminModule,
+        href: moduleHref("/admin/payments", "ALL_STAR_PAYMENTS"),
         title: "All-Star Payments",
         description: masterMode
           ? "Track All-Star fee collection across all organizations, grouped by roster."
@@ -163,8 +163,8 @@ export default async function AdminDashboardPage({
         action: "Open Payments",
       },
       {
-        module: "ALL_STAR_VAULT" as AdminModule,
-        href: moduleHref("/admin/cap-orders", "ALL_STAR_VAULT"),
+        module: "ALL_STAR_PAYMENTS" as AdminModule,
+        href: moduleHref("/admin/cap-orders", "ALL_STAR_PAYMENTS"),
         title: "Parent Cap Orders",
         description: masterMode
           ? "View and export All-Star cap orders submitted by parents via PayPal, grouped by organization."

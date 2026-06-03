@@ -60,6 +60,7 @@ const moduleCatalog: Record<
   TEAMS: { category: "program", sortOrder: 10 },
   SCORES: { category: "program", sortOrder: 20 },
   ALL_STAR_VAULT: { category: "program", sortOrder: 30 },
+  ALL_STAR_PAYMENTS: { category: "program", sortOrder: 31 },
   SPONSORS: { category: "program", sortOrder: 40 },
   NEWS_ADMIN: { category: "publishing", sortOrder: 10 },
   SOCIAL_MEDIA: { category: "publishing", sortOrder: 20 },

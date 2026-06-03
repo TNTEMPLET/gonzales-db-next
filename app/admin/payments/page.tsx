@@ -48,7 +48,7 @@ export default async function AdminPaymentsPage({
     organizationId: currentOrg,
   });
 
-  if (!vaultView && !adminUser.isMaster) {
+  if (!vaultView && !adminUser.isMaster && !hasAdminRoleAtLeast(role, "BOARD_MEMBER")) {
     redirect("/admin?denied=payments");
   }
 
