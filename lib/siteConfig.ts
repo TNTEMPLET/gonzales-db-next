@@ -1,5 +1,7 @@
-export type OrgId = "gonzales" | "ascension" | "master";
+export type OrgId = "gonzales" | "ascension" | "master" | "ladistrict2";
 export type ContentOrgId = "gonzales" | "ascension";
+/** ContentOrgId plus tournament-only orgs that only use the bracket system */
+export type BracketOrgId = ContentOrgId | "ladistrict2";
 
 export interface SiteConfig {
   orgId: OrgId;
@@ -21,6 +23,8 @@ export interface SiteConfig {
   assignrSiteId: string;
   /** Assignr league ID used to filter games */
   assignrLeagueId: string;
+  /** Tournament-only sites hide league nav links and redirect home to /tournaments */
+  tournamentOnly?: boolean;
 }
 
 const configs: Record<OrgId, SiteConfig> = {
@@ -74,12 +78,36 @@ const configs: Record<OrgId, SiteConfig> = {
     assignrSiteId: "",
     assignrLeagueId: "",
   },
+  ladistrict2: {
+    orgId: "ladistrict2",
+    name: "Louisiana District 2 Little League",
+    shortName: "District 2 LL",
+    displayNameLine1: "District 2",
+    displayNameLine2: "LITTLE LEAGUE",
+    description:
+      "Official tournament brackets and schedule for Louisiana District 2 Little League.",
+    siteUrl: "https://district2.apbaseball.com",
+    logoPath: "/images/ll-logo.png",
+    faviconPath: "/images/ll-logo.png",
+    colorPrimary: "#002D6D",
+    colorPrimaryDark: "#001f4d",
+    colorAccent: "#CC0000",
+    assignrSiteId: "",
+    assignrLeagueId: "",
+    tournamentOnly: true,
+  },
 };
 
 function isContentOrgId(
   value: string | null | undefined,
 ): value is ContentOrgId {
   return value === "gonzales" || value === "ascension";
+}
+
+export function isBracketOrgId(
+  value: string | null | undefined,
+): value is BracketOrgId {
+  return value === "gonzales" || value === "ascension" || value === "ladistrict2";
 }
 
 export { isContentOrgId };
@@ -97,12 +125,23 @@ export function isMasterDeployment(): boolean {
   return getOrgId() === "master";
 }
 
+export function isTournamentOnlyDeployment(): boolean {
+  return getSiteConfig().tournamentOnly === true;
+}
+
 export function getDefaultContentOrg(): ContentOrgId {
   return getOrgId() === "ascension" ? "ascension" : "gonzales";
 }
 
+/** Returns the bracket org for this deployment, including tournament-only orgs. */
+export function getBracketOrgForDeployment(): BracketOrgId {
+  const orgId = getOrgId();
+  if (orgId === "ascension" || orgId === "ladistrict2") return orgId;
+  return "gonzales";
+}
+
 /** Primary / accent hex for this content org (tournament bracket LLBWS-style theme defaults). */
-export function getContentOrgBrandColors(org: ContentOrgId): { primaryHex: string; accentHex: string } {
+export function getContentOrgBrandColors(org: BracketOrgId): { primaryHex: string; accentHex: string } {
   const c = configs[org];
   return { primaryHex: c.colorPrimary, accentHex: c.colorAccent };
 }
@@ -110,7 +149,8 @@ export function getContentOrgBrandColors(org: ContentOrgId): { primaryHex: strin
 /** Org bucket for `RegisteredUser` rows on this deployment (matches Dugout local auth). */
 export function getDugoutRegisteredUserOrgId(): ContentOrgId {
   const org = getOrgId();
-  return org === "master" ? getDefaultContentOrg() : (org as ContentOrgId);
+  if (org === "master" || org === "ladistrict2") return getDefaultContentOrg();
+  return org as ContentOrgId;
 }
 
 export function resolveAdminTargetOrg(
@@ -120,6 +160,16 @@ export function resolveAdminTargetOrg(
     return requestedOrg;
   }
   return getDefaultContentOrg();
+}
+
+/** Like resolveAdminTargetOrg but also accepts tournament-only orgs for the bracket admin. */
+export function resolveBracketAdminTargetOrg(
+  requestedOrg?: string | null,
+): BracketOrgId {
+  if (isMasterDeployment() && isBracketOrgId(requestedOrg)) {
+    return requestedOrg;
+  }
+  return getBracketOrgForDeployment();
 }
 
 /**
@@ -146,7 +196,7 @@ export function getSiteConfigForOrg(org: ContentOrgId): SiteConfig {
   return configs[org];
 }
 
-export function getTournamentBracketBrandingForOrg(org: ContentOrgId): {
+export function getTournamentBracketBrandingForOrg(org: BracketOrgId): {
   targetLogoPath: string;
   parentLogoPath: string;
   parentName: string;
@@ -175,6 +225,10 @@ export function getOrgDisplayName(org: ContentOrgId): string {
   return getSiteConfigForOrg(org).shortName;
 }
 
+export function getBracketOrgDisplayName(org: BracketOrgId): string {
+  return configs[org].shortName;
+}
+
 /**
  * Friendly label for raw org ids across UI surfaces.
  * Falls back to uppercase for unknown values so we never expose lowercase ids.
@@ -184,6 +238,7 @@ export function formatOrganizationIdDisplay(org: string | null | undefined): str
   if (org === "gonzales" || org === "ascension") {
     return getOrgDisplayName(org);
   }
+  if (org === "ladistrict2") return configs.ladistrict2.shortName;
   if (org === "master") return "AP Baseball Master";
   return org.trim().toUpperCase();
 }
@@ -195,8 +250,11 @@ export function getAssignrLeagueId(org?: ContentOrgId): string {
   return getSiteConfig().assignrLeagueId || "515712";
 }
 
-/** All org IDs except master — used by master admin to enumerate orgs */
+/** Full league orgs — used by master admin for all-star, news, registration, scores, etc. */
 export const CONTENT_ORGS: ContentOrgId[] = ["gonzales", "ascension"];
+
+/** All bracket-eligible orgs including tournament-only deployments. */
+export const BRACKET_ORGS: BracketOrgId[] = ["gonzales", "ascension", "ladistrict2"];
 
 function stripTrailingSlash(url: string) {
   return url.replace(/\/+$/, "");

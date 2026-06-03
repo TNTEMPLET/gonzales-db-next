@@ -44,6 +44,8 @@ import {
   getContentOrgBrandColors,
   getOrgDisplayName,
   getTournamentBracketBrandingForOrg,
+  getBracketOrgDisplayName,
+  type BracketOrgId,
   type ContentOrgId,
 } from "@/lib/siteConfig";
 
@@ -281,7 +283,7 @@ async function extractPaletteFromFile(file: File): Promise<{ primary: string; ac
   }
 }
 
-export default function TournamentBracketsClient({ organizationId }: { organizationId: ContentOrgId }) {
+export default function TournamentBracketsClient({ organizationId }: { organizationId: BracketOrgId }) {
   const router = useRouter();
   const pathname = usePathname();
   const [projects, setProjects] = useState<ProjectRow[]>([]);
@@ -1474,7 +1476,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
             )}
           </select>
           <p className="mt-1 text-[11px] text-zinc-500">
-            {getOrgDisplayName(organizationId)}
+            {getBracketOrgDisplayName(organizationId)}
             {project ? ` · ${project.seasonYear}` : ` · ${seasonYear}`}
             {readyCount > 1 ? ` · ${readyCount} ready` : null}
           </p>
@@ -1636,7 +1638,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           <span className="text-lg font-semibold text-zinc-100">Bracket projects</span>
           <span className="mt-0.5 block text-sm text-zinc-400">
             Per-site projects for{" "}
-            <span className="font-medium text-zinc-200">{getOrgDisplayName(organizationId)}</span>
+            <span className="font-medium text-zinc-200">{getBracketOrgDisplayName(organizationId)}</span>
           </span>
         </summary>
         <div className="space-y-4 border-t border-zinc-800 p-4 sm:p-5">
@@ -2205,7 +2207,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       </h3>
                       <p className="mt-1 text-xs leading-relaxed text-zinc-500">
                         Layout follows the printable Little League–style column bracket. Colors default to the
-                        selected site ({getOrgDisplayName(organizationId)}): primary for structure ink,
+                        selected site ({getBracketOrgDisplayName(organizationId)}): primary for structure ink,
                         accent for highlights. Overrides apply to this preview and HTML export only.
                       </p>
                     </div>

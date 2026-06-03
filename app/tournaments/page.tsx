@@ -10,9 +10,9 @@ import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-bracket
 import { sortPublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
 import { bracketWatermarkSrc } from "@/lib/tournament-brackets/bracketWatermark";
 import {
+  getBracketOrgDisplayName,
+  getBracketOrgForDeployment,
   getContentOrgBrandColors,
-  getDefaultContentOrg,
-  getOrgDisplayName,
   getSiteConfig,
   getTournamentBracketBrandingForOrg,
   isMasterDeployment,
@@ -50,7 +50,7 @@ export default async function TournamentsPage({
   await connection();
   const { bracket: requestedBracketId } = await searchParams;
   const site = getSiteConfig();
-  const org = getDefaultContentOrg();
+  const org = getBracketOrgForDeployment();
   const showAdminCreatorLink = isMasterDeployment();
   const adminCreatorHref = `/admin/tournament-brackets?org=${encodeURIComponent(org)}`;
   const branding = getTournamentBracketBrandingForOrg(org);
@@ -144,7 +144,7 @@ export default async function TournamentsPage({
             ) : null}
           </div>
           <p className="mt-3 max-w-2xl text-sm text-zinc-400">
-            Published brackets for {getOrgDisplayName(org)} tournaments. Check back here for updates as games are
+            Published brackets for {getBracketOrgDisplayName(org)} tournaments. Check back here for updates as games are
             completed.
           </p>
         </div>

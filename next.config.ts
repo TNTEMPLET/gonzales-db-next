@@ -15,13 +15,16 @@ const nextConfig: NextConfig = {
     "gonzales-dev.duckroostdigital.com",
     "ascension-dev.duckroostdigital.com",
     "master-dev.duckroostdigital.com",
+    "ladistrict2-dev.duckroostdigital.com",
     // dev-box direct IP access
     "192.168.100.156:3000",
     "192.168.100.156:3001",
     "192.168.100.156:3002",
+    "192.168.100.156:3003",
     "localhost:3000",
     "localhost:3001",
     "localhost:3002",
+    "localhost:3003",
   ],
   turbopack: {
     root: projectRoot,

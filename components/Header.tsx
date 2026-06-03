@@ -34,6 +34,7 @@ type HeaderProps = {
     displayNameLine1: string;
     displayNameLine2: string;
     logoPath: string;
+    tournamentOnly?: boolean;
   };
 };
 
@@ -56,6 +57,7 @@ export default function Header({ brand }: HeaderProps) {
   const [regOpen, setRegOpen] = useState(false);
   const isMasterHeader =
     brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
+  const isTournamentOnly = brand.tournamentOnly ?? false;
 
   const headerClassName = isMasterHeader
     ? "sticky top-0 z-50 border-b border-red-900/60 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 shadow-[0_6px_24px_rgba(0,0,0,0.3)]"
@@ -296,18 +298,20 @@ export default function Header({ brand }: HeaderProps) {
       ].filter((g) => g.items.length > 0)
     : [];
 
-  const publicNavLinks = [
-    { href: "/schedule", label: "Schedule" },
-    { href: "/tournaments", label: "Tournaments" },
-    ...(showAllStarLink ? [{ href: "/all-star", label: "All-Stars" }] : []),
-    { href: "/news", label: "News" },
-    ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
-    ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
-    { href: "/#fields", label: "Fields" },
-    { href: "/#contact", label: "Contact" },
-    ...(canSeeDugout ? [{ href: "/coach-corner", label: "Coaches" }] : []),
-    ...(canSeeDugout ? [{ href: "/dugout", label: "Dugout" }] : []),
-  ];
+  const publicNavLinks = isTournamentOnly
+    ? [{ href: "/tournaments", label: "Tournaments" }]
+    : [
+        { href: "/schedule", label: "Schedule" },
+        { href: "/tournaments", label: "Tournaments" },
+        ...(showAllStarLink ? [{ href: "/all-star", label: "All-Stars" }] : []),
+        { href: "/news", label: "News" },
+        ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
+        ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
+        { href: "/#fields", label: "Fields" },
+        { href: "/#contact", label: "Contact" },
+        ...(canSeeDugout ? [{ href: "/coach-corner", label: "Coaches" }] : []),
+        ...(canSeeDugout ? [{ href: "/dugout", label: "Dugout" }] : []),
+      ];
 
   return (
     <header className={headerClassName}>
@@ -429,7 +433,7 @@ export default function Header({ brand }: HeaderProps) {
         )}
 
         {/* Register Button */}
-        {!isMasterHeader && regOpen && (
+        {!isMasterHeader && !isTournamentOnly && regOpen && (
           <Link
             href="/#register"
             className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm text-white transition"
@@ -506,7 +510,7 @@ export default function Header({ brand }: HeaderProps) {
                 </Link>
               ))
             )}
-            {!isMasterHeader && regOpen && (
+            {!isMasterHeader && !isTournamentOnly && regOpen && (
               <Link
                 href="/#register"
                 onClick={() => setIsMenuOpen(false)}
