@@ -535,7 +535,7 @@ function ImportContent({
       {!rows && (
         <div className="space-y-3">
           <div className="flex flex-col sm:flex-row gap-3 items-end">
-            <div>
+            <div className="w-fit">
               <label htmlFor={feeId} className="block text-xs font-medium text-zinc-400 mb-1">Fee per player</label>
               <div className="flex items-center rounded-lg border border-zinc-700 bg-zinc-900 overflow-hidden focus-within:border-sky-600">
                 <span className="px-2.5 text-zinc-500 text-sm border-r border-zinc-700 select-none">$</span>
@@ -549,7 +549,7 @@ function ImportContent({
                   className="w-24 bg-transparent px-2 py-1.5 text-sm text-zinc-200 outline-none"
                 />
               </div>
-              <p className="text-xs text-zinc-600 mt-1">Auto-detects $95 &amp; $125; enter a value to override</p>
+              <p className="text-xs text-zinc-600 mt-1">Auto: $95 or $125</p>
             </div>
             {importMode === "csv" && (
               <div className="flex-1 min-w-0">
