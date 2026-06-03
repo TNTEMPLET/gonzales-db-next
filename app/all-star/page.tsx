@@ -186,13 +186,19 @@ export default async function AllStarPage() {
         {usssaGroups.length > 0 && (
           <div className="space-y-4">
             <div className="flex items-center gap-3">
+              <div className="flex-1 h-px bg-zinc-800" />
               <h2 className="text-xl font-semibold text-white">USSSA</h2>
               <div className="flex-1 h-px bg-zinc-800" />
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
-              {usssaGroups.map(([tag, players]) => (
-                <RosterCard key={tag} tag={tag} players={players} />
-              ))}
+              {usssaGroups.map(([tag, players], idx) => {
+                const lone = usssaGroups.length % 2 === 1 && idx === usssaGroups.length - 1;
+                return (
+                  <div key={tag} className={lone ? "sm:col-span-2" : ""}>
+                    <RosterCard tag={tag} players={players} wide={lone} />
+                  </div>
+                );
+              })}
             </div>
           </div>
         )}
@@ -225,7 +231,7 @@ function formatRosterTag(tag: string): string {
   return `${label} | ${titleColor}`;
 }
 
-function RosterCard({ tag, players }: { tag: string; players: RosterEntry[] }) {
+function RosterCard({ tag, players, wide = false }: { tag: string; players: RosterEntry[]; wide?: boolean }) {
   const label = formatRosterTag(tag);
   return (
     <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/40 overflow-hidden">
@@ -234,7 +240,7 @@ function RosterCard({ tag, players }: { tag: string; players: RosterEntry[] }) {
         <p className="text-xs text-zinc-500 mt-0.5">{players.length} player{players.length !== 1 ? "s" : ""}</p>
       </div>
       <div className="px-5 py-3">
-        <ul className="space-y-1">
+        <ul className={wide ? "grid grid-cols-2 gap-x-8 gap-y-1" : "space-y-1"}>
           {players.map((p, i) => (
             <li key={i} className="flex items-center justify-between text-sm">
               <span className="text-zinc-200">{p.playerFullName}</span>
