@@ -35,7 +35,7 @@ export default async function AllStarPage() {
   const site = getSiteConfig();
   const orgId = site.orgId === "ascension" ? "ascension" : "gonzales";
 
-  type PageLink = { label: string; url: string; imageUrl?: string };
+  type PageLink = { label: string; url: string; imageUrl?: string; activeFrom?: string; activeTo?: string };
   type PageConfig = { paypalLinkUrl: string | null; paypalLinkLabel: string | null; infoText: string | null; links: PageLink[] };
   let config: PageConfig | null = null;
   let payments: { playerFullName: string; team: string; rosterTag: string | null }[] = [];
@@ -56,8 +56,15 @@ export default async function AllStarPage() {
 
   const safePayPalUrl = isSafePayPalUrl(config?.paypalLinkUrl) ? config!.paypalLinkUrl! : null;
   const hasPayPal = !!safePayPalUrl;
+  function isLinkActive(link: PageLink): boolean {
+    const now = new Date();
+    if (link.activeFrom && new Date(link.activeFrom) > now) return false;
+    if (link.activeTo && new Date(link.activeTo) < now) return false;
+    return true;
+  }
   const safeLinks = (config?.links ?? [])
     .filter((l): l is PageLink => typeof l.label === "string" && isSafePayPalUrl(l.url))
+    .filter(isLinkActive)
     .map((l) => ({
       ...l,
       imageUrl: l.imageUrl && /^https:\/\//i.test(l.imageUrl) ? l.imageUrl : undefined,

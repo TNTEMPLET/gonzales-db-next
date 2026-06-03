@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type PageLink = { label: string; url: string; imageUrl?: string };
+type PageLink = { label: string; url: string; imageUrl?: string; activeFrom?: string; activeTo?: string };
 
 type Config = {
   paypalLinkLabel: string | null;
@@ -209,6 +209,46 @@ export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string;
                     })}
                     className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
                   />
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <p className="text-xs text-zinc-500 mb-1">Available from <span className="text-zinc-600">(leave blank = always)</span></p>
+                      <input
+                        type="datetime-local"
+                        value={link.activeFrom ? link.activeFrom.slice(0, 16) : ""}
+                        onChange={(e) => setConfig((c) => {
+                          const links = [...c.links];
+                          links[i] = { ...links[i], activeFrom: e.target.value ? new Date(e.target.value).toISOString() : undefined };
+                          return { ...c, links };
+                        })}
+                        className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"
+                      />
+                    </div>
+                    <div>
+                      <p className="text-xs text-zinc-500 mb-1">Available until <span className="text-zinc-600">(leave blank = no end)</span></p>
+                      <input
+                        type="datetime-local"
+                        value={link.activeTo ? link.activeTo.slice(0, 16) : ""}
+                        onChange={(e) => setConfig((c) => {
+                          const links = [...c.links];
+                          links[i] = { ...links[i], activeTo: e.target.value ? new Date(e.target.value).toISOString() : undefined };
+                          return { ...c, links };
+                        })}
+                        className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 focus:outline-none focus:border-zinc-500"
+                      />
+                    </div>
+                  </div>
+                  {(link.activeFrom || link.activeTo) && (
+                    <p className="text-xs text-zinc-500">
+                      Status: {(() => {
+                        const now = new Date();
+                        const from = link.activeFrom ? new Date(link.activeFrom) : null;
+                        const to = link.activeTo ? new Date(link.activeTo) : null;
+                        if (from && from > now) return <span className="text-amber-400">Scheduled — goes live {from.toLocaleString()}</span>;
+                        if (to && to < now) return <span className="text-zinc-600">Expired {to.toLocaleString()}</span>;
+                        return <span className="text-emerald-400">✓ Active</span>;
+                      })()}
+                    </p>
+                  )}
                 </div>
               ))}
             </div>
