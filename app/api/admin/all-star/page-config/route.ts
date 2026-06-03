@@ -57,7 +57,7 @@ export async function PATCH(request: NextRequest) {
     paypalLinkLabel?: string | null;
     paypalLinkUrl?: string | null;
     infoText?: string | null;
-    links?: { label: string; url: string; imageUrl?: string }[];
+    links?: { label: string; url: string; imageUrl?: string; activeFrom?: string; activeTo?: string }[];
   };
 
   // Validate URL: must be https:// and on a paypal.com domain (paypal.com, www.paypal.com, paypal.me)
@@ -96,7 +96,9 @@ export async function PATCH(request: NextRequest) {
             if (img.protocol === "https:") imageUrl = l.imageUrl.trim();
           } catch { /* invalid — skip */ }
         }
-        return { label: l.label.trim(), url: l.url.trim(), ...(imageUrl ? { imageUrl } : {}) };
+        const activeFrom = l.activeFrom?.trim() || undefined;
+        const activeTo = l.activeTo?.trim() || undefined;
+        return { label: l.label.trim(), url: l.url.trim(), ...(imageUrl ? { imageUrl } : {}), ...(activeFrom ? { activeFrom } : {}), ...(activeTo ? { activeTo } : {}) };
       } catch { return null; }
     })
     .filter(Boolean) as { label: string; url: string }[];
