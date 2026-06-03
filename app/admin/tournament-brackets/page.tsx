@@ -13,7 +13,7 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { getSiteConfig, isContentOrgId, isMasterDeployment, resolveBracketAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -34,7 +34,7 @@ export default async function AdminTournamentBracketsPage({
   }
 
   const { org } = await searchParams;
-  const bracketOrg = resolveAdminTargetOrg(org);
+  const bracketOrg = resolveBracketAdminTargetOrg(org);
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
@@ -48,10 +48,11 @@ export default async function AdminTournamentBracketsPage({
     redirect("/admin?denied=tournament-brackets-master");
   }
 
+  const leagueOrg = isContentOrgId(bracketOrg) ? bracketOrg : "gonzales";
   const effectiveRole = await getEffectiveAdminRoleForOrg(
     adminUser.id,
     adminUser.isMaster,
-    bracketOrg,
+    leagueOrg,
   );
   const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
   if (!canAccessAdminModule(role, "TOURNAMENT_BRACKETS")) {
@@ -64,7 +65,7 @@ export default async function AdminTournamentBracketsPage({
         <div className="mb-4">
           <AdminSectionHeader
             badge="TOURNAMENT BRACKETS"
-            currentOrg={bracketOrg}
+            currentOrg={isContentOrgId(bracketOrg) ? bracketOrg : null}
             currentPath="/admin/tournament-brackets"
             orgSwitcherShowAllSites={false}
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}

@@ -15,6 +15,7 @@ import {
   getDefaultContentOrg,
   getSiteConfig,
   isMasterDeployment,
+  isTournamentOnlyDeployment,
 } from "@/lib/siteConfig";
 import { getActiveOrgAlert } from "@/lib/orgAlerts";
 
@@ -55,6 +56,10 @@ export default async function Home({
 
   if (isMasterDeployment()) {
     redirect("/admin");
+  }
+
+  if (isTournamentOnlyDeployment()) {
+    redirect("/tournaments");
   }
 
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";

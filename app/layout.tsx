@@ -6,7 +6,7 @@ import "./globals.css";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import SponsorScroller from "../components/sponsors/SponsorScroller";
-import { getSiteConfig } from "@/lib/siteConfig";
+import { getSiteConfig, isTournamentOnlyDeployment } from "@/lib/siteConfig";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -28,6 +28,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const brand = {
+    tournamentOnly: isTournamentOnlyDeployment(),
     name: site.name,
     shortName: site.shortName,
     displayNameLine1: site.displayNameLine1,

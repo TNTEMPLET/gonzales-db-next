@@ -23,7 +23,9 @@
     "test": "tsx --test lib/assignr/__tests__/*.test.ts lib/admin/__tests__/*.test.ts lib/tournament-brackets/__tests__/*.test.ts lib/gamechanger/__tests__/*.test.ts lib/communications/policy.test.ts",
     "coach:test": "tsx scripts/create-test-coach.ts",
     "facebook:exchange-tokens": "node scripts/exchange-facebook-token.mjs",
-    "dev:all": "concurrently --names gonzales,ascension,master --prefix-colors cyan,yellow,red --restart-tries 5 --restart-after 4000 \"NODE_OPTIONS='--max-old-space-size=1024' SITE_ORG=gonzales NEXT_DIST_DIR=.next-gonzales next dev --webpack -p 3000 --hostname 0.0.0.0\" \"NODE_OPTIONS='--max-old-space-size=1024' SITE_ORG=ascension NEXT_DIST_DIR=.next-ascension next dev --webpack -p 3001 --hostname 0.0.0.0\" \"NODE_OPTIONS='--max-old-space-size=1024' SITE_ORG=master NEXT_DIST_DIR=.next-master next dev --webpack -p 3002 --hostname 0.0.0.0\""
+    "dev:all": "concurrently --names gonzales,ascension,master,ladistrict2 --prefix-colors cyan,yellow,red,green --restart-tries 5 --restart-after 4000 \"NODE_OPTIONS='--max-old-space-size=1024' SITE_ORG=gonzales NEXT_DIST_DIR=.next-gonzales next dev --webpack -p 3000 --hostname 0.0.0.0\" \"NODE_OPTIONS='--max-old-space-size=1024' SITE_ORG=ascension NEXT_DIST_DIR=.next-ascension next dev --webpack -p 3001 --hostname 0.0.0.0\" \"NODE_OPTIONS='--max-old-space-size=1024' SITE_ORG=master NEXT_DIST_DIR=.next-master next dev --webpack -p 3002 --hostname 0.0.0.0\"",
+    "dev:ladistrict2": "SITE_ORG=ladistrict2 next dev",
+    "dev:ladistrict2:webpack": "SITE_ORG=ladistrict2 next dev --webpack"
   },
   "dependencies": {
     "@prisma/adapter-ppg": "^7.7.0",
