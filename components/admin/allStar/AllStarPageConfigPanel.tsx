@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 
-type PageLink = { label: string; url: string; imageUrl?: string; activeFrom?: string; activeTo?: string };
+type PageLink = { label: string; url: string; imageUrl?: string; activeFrom?: string; activeTo?: string; enabled?: boolean };
 
 type Config = {
   paypalLinkLabel: string | null;
@@ -178,6 +178,23 @@ export default function AllStarPageConfigPanel({ org, orgLabel }: { org: string;
                       })}
                       className="flex-1 rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm text-zinc-200 placeholder-zinc-600 focus:outline-none focus:border-zinc-500"
                     />
+                    <button
+                      type="button"
+                      onClick={() => setConfig((c) => {
+                        const links = [...c.links];
+                        links[i] = { ...links[i], enabled: link.enabled === false ? true : false };
+                        return { ...c, links };
+                      })}
+                      title={link.enabled === false ? "Click to enable" : "Click to disable"}
+                      className={
+                        "shrink-0 rounded-full px-2.5 py-1 text-xs font-semibold border transition-colors " +
+                        (link.enabled === false
+                          ? "bg-zinc-800 text-zinc-500 border-zinc-700 hover:bg-zinc-700 hover:text-zinc-300"
+                          : "bg-emerald-950/40 text-emerald-300 border-emerald-700/50 hover:bg-red-950/30 hover:text-red-400 hover:border-red-700/50")
+                      }
+                    >
+                      {link.enabled === false ? "Disabled" : "Enabled"}
+                    </button>
                     <button
                       type="button"
                       onClick={() => setConfig((c) => ({ ...c, links: c.links.filter((_, j) => j !== i) }))}
