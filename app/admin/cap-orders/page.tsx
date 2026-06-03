@@ -44,7 +44,7 @@ export default async function AdminCapOrdersPage({
     organizationId: currentOrg,
   });
 
-  if (!vaultView && !adminUser.isMaster) {
+  if (!vaultView && !adminUser.isMaster && !hasAdminRoleAtLeast(role, "BOARD_MEMBER")) {
     redirect("/admin?denied=cap-orders");
   }
 
