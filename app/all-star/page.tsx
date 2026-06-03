@@ -234,7 +234,7 @@ function formatRosterTag(tag: string): string {
 function RosterCard({ tag, players, wide = false }: { tag: string; players: RosterEntry[]; wide?: boolean }) {
   const label = formatRosterTag(tag);
   return (
-    <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/40 overflow-hidden">
+    <div className="rounded-xl border border-zinc-700/60 bg-zinc-900/40 overflow-hidden h-full">
       <div className="px-5 py-3 border-b border-zinc-700/50 bg-zinc-800/30">
         <h3 className="text-sm font-semibold text-zinc-200 truncate">{label}</h3>
         <p className="text-xs text-zinc-500 mt-0.5">{players.length} player{players.length !== 1 ? "s" : ""}</p>
