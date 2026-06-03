@@ -69,6 +69,8 @@ export default function Header({ brand }: HeaderProps) {
 
   const logoFrameClassName = isMasterHeader
     ? "relative h-12 w-12 overflow-hidden rounded-full border-2 border-red-500/70 bg-zinc-900/60 ring-2 ring-red-900/50 md:h-14 md:w-14"
+    : isTournamentOnly
+    ? "relative h-12 w-20 md:h-14 md:w-24"
     : "relative h-12 w-12 overflow-hidden rounded-full border border-zinc-700 bg-zinc-900/40 md:h-14 md:w-14";
 
   const subLabelClassName = isMasterHeader
@@ -327,7 +329,7 @@ export default function Header({ brand }: HeaderProps) {
               alt={`${brand.name} Logo`}
               fill
               sizes="64px"
-              className="rounded-full object-cover"
+              className={isTournamentOnly ? "object-contain" : "rounded-full object-cover"}
               priority
               onError={() => {
                 if (logoSrc.endsWith(".webp")) {
