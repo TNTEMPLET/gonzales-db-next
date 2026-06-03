@@ -77,13 +77,17 @@ export default async function AllStarPage() {
     byRoster.set(tag, list);
   }
 
-  const rosterGroups = Array.from(byRoster.entries())
-    .filter(([tag]) => !HIDDEN_AGE_GROUPS.has(parseAgeGroup(tag)))
-    .sort(([a], [b]) => {
-      const ageA = parseInt((/(\d+)U/i.exec(a) ?? ["", "0"])[1], 10);
-      const ageB = parseInt((/(\d+)U/i.exec(b) ?? ["", "0"])[1], 10);
-      return ageB - ageA; // oldest (highest age) first
-    });
+  const USSSA_AGE_GROUPS = new Set(["7U", "8U"]);
+  const byAge = (tag: string) => parseInt((/([0-9]+)U/i.exec(tag) ?? ["", "0"])[1], 10);
+  const allEntries = Array.from(byRoster.entries());
+  const llGroups = allEntries
+    .filter(([tag]) => !USSSA_AGE_GROUPS.has(parseAgeGroup(tag)))
+    .sort(([a], [b]) => byAge(b) - byAge(a));
+  const usssaGroups = orgId === "ascension"
+    ? allEntries
+        .filter(([tag]) => USSSA_AGE_GROUPS.has(parseAgeGroup(tag)))
+        .sort(([a], [b]) => byAge(a) - byAge(b))
+    : [];
 
   return (
     <main className="min-h-screen bg-zinc-950 py-8 text-white sm:py-12">
@@ -166,12 +170,27 @@ export default async function AllStarPage() {
           </div>
         ))}
 
-        {/* Rosters */}
-        {hasRosters && (
+        {/* Little League Rosters */}
+        {llGroups.length > 0 && (
           <div className="space-y-4">
             <h2 className="text-xl font-semibold text-white">All-Star Rosters</h2>
             <div className="grid gap-4 sm:grid-cols-2">
-              {rosterGroups.map(([tag, players]) => (
+              {llGroups.map(([tag, players]) => (
+                <RosterCard key={tag} tag={tag} players={players} />
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* USSSA Rosters — Ascension only */}
+        {usssaGroups.length > 0 && (
+          <div className="space-y-4">
+            <div className="flex items-center gap-3">
+              <h2 className="text-xl font-semibold text-white">USSSA</h2>
+              <div className="flex-1 h-px bg-zinc-800" />
+            </div>
+            <div className="grid gap-4 sm:grid-cols-2">
+              {usssaGroups.map(([tag, players]) => (
                 <RosterCard key={tag} tag={tag} players={players} />
               ))}
             </div>
@@ -182,7 +201,6 @@ export default async function AllStarPage() {
   );
 }
 
-const HIDDEN_AGE_GROUPS = new Set(["7U", "8U"]);
 
 const AGE_GROUP_LABELS: Record<string, string> = {
   "6U": "Coaches Pitch",
