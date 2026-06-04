@@ -240,60 +240,6 @@ export default function BracketTeamPicker({
                   </ul>
                 </div>
 
-                {selectedTeamNames.length > 0 ? (
-                  <div>
-                    <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Seeds</p>
-                    <ul className="mt-1 space-y-1 rounded border border-zinc-800 bg-zinc-950/60 p-2">
-                      {selectedTeamNames.map((name, index) => {
-                        const seed = index + 1;
-                        const teamCount = selectedTeamNames.length;
-                        const draft = seedDraftByTeam[name] ?? String(seed);
-                        return (
-                          <li
-                            key={`${name}-${index}`}
-                            className="flex items-center gap-2 rounded border border-zinc-800/60 bg-zinc-950/80 px-2 py-1.5 text-sm text-zinc-200"
-                          >
-                            <label className="flex shrink-0 items-center gap-1 text-[11px] text-zinc-500">
-                              <span className="sr-only">Seed for {name}</span>
-                              <span aria-hidden>#</span>
-                              <input
-                                type="number"
-                                min={1}
-                                max={teamCount}
-                                step={1}
-                                value={draft}
-                                disabled={busy}
-                                className="w-12 rounded border border-zinc-600 bg-zinc-950 px-1.5 py-0.5 text-center text-xs tabular-nums text-zinc-100"
-                                onChange={(e) =>
-                                  setSeedDraftByTeam((prev) => ({ ...prev, [name]: e.target.value }))
-                                }
-                                onBlur={(e) => commitSeedDraft(name, e.target.value, teamCount)}
-                                onKeyDown={(e) => {
-                                  if (e.key === "Enter") {
-                                    e.preventDefault();
-                                    commitSeedDraft(name, (e.target as HTMLInputElement).value, teamCount);
-                                  }
-                                }}
-                              />
-                            </label>
-                            <span className="min-w-0 flex-1 truncate">{name}</span>
-                            <button
-                              type="button"
-                              disabled={busy}
-                              aria-label={`Remove ${name}`}
-                              className="shrink-0 rounded px-1 text-zinc-500 hover:text-red-400 disabled:opacity-40"
-                              onClick={() => removeTeam(name)}
-                            >
-                              ×
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="text-xs text-zinc-500">Select at least one team to include in the bracket.</p>
-                )}
               </div>
             ) : ageGroup.trim() ? (
               <p className="text-xs text-zinc-500">No teams in {ageGroup} for {seasonYear}.</p>
@@ -301,6 +247,60 @@ export default function BracketTeamPicker({
               <p className="text-xs text-zinc-500">Choose an age group to load teams from the roster.</p>
             )}
           </>
+        ) : null}
+        {selectedTeamNames.length > 0 ? (
+          <div className="mt-3">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              Teams — {selectedTeamNames.length} added (drag seed # to reorder)
+            </p>
+            <ul className="mt-1 space-y-1 rounded border border-zinc-800 bg-zinc-950/60 p-2">
+              {selectedTeamNames.map((name, index) => {
+                const seed = index + 1;
+                const teamCount = selectedTeamNames.length;
+                const draft = seedDraftByTeam[name] ?? String(seed);
+                return (
+                  <li
+                    key={`${name}-${index}`}
+                    className="flex items-center gap-2 rounded border border-zinc-800/60 bg-zinc-950/80 px-2 py-1.5 text-sm text-zinc-200"
+                  >
+                    <label className="flex shrink-0 items-center gap-1 text-[11px] text-zinc-500">
+                      <span className="sr-only">Seed for {name}</span>
+                      <span aria-hidden>#</span>
+                      <input
+                        type="number"
+                        min={1}
+                        max={teamCount}
+                        step={1}
+                        value={draft}
+                        disabled={busy}
+                        className="w-12 rounded border border-zinc-600 bg-zinc-950 px-1.5 py-0.5 text-center text-xs tabular-nums text-zinc-100"
+                        onChange={(e) =>
+                          setSeedDraftByTeam((prev) => ({ ...prev, [name]: e.target.value }))
+                        }
+                        onBlur={(e) => commitSeedDraft(name, e.target.value, teamCount)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            commitSeedDraft(name, (e.target as HTMLInputElement).value, teamCount);
+                          }
+                        }}
+                      />
+                    </label>
+                    <span className="min-w-0 flex-1 truncate">{name}</span>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      aria-label={`Remove ${name}`}
+                      className="shrink-0 rounded px-1 text-zinc-500 hover:text-red-400 disabled:opacity-40"
+                      onClick={() => removeTeam(name)}
+                    >
+                      ×
+                    </button>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
         ) : null}
         {!loading ? (
           <div className="mt-3 space-y-1">
