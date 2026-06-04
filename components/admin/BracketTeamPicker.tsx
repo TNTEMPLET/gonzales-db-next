@@ -40,7 +40,20 @@ export default function BracketTeamPicker({
   const [options, setOptions] = useState<RosterOptions | null>(null);
   const [ageGroup, setAgeGroup] = useState("");
   const [seedDraftByTeam, setSeedDraftByTeam] = useState<Record<string, string>>({});
+  const [manualInput, setManualInput] = useState("");
   const lastAutoFilledAgeGroupRef = useRef<string | null>(null);
+
+  function addManualTeam() {
+    const name = manualInput.trim();
+    if (!name) return;
+    if (selectedTeamNames.map((n) => n.trim().toLowerCase()).includes(name.toLowerCase())) return;
+    onSelectedTeamNamesChange([...selectedTeamNames, name]);
+    setManualInput("");
+  }
+
+  function removeTeam(name: string) {
+    onSelectedTeamNamesChange(selectedTeamNames.filter((n) => n !== name));
+  }
 
   const loadOptions = useCallback(async () => {
     setLoading(true);
@@ -179,7 +192,7 @@ export default function BracketTeamPicker({
 
         {!loading && options && options.ageGroups.length === 0 ? (
           <p className="text-xs text-zinc-500">
-            No teams found for this organization and season in Teams admin. Add rosters there first.
+            No league roster found for this org — add teams manually below.
           </p>
         ) : null}
 
@@ -264,6 +277,15 @@ export default function BracketTeamPicker({
                               />
                             </label>
                             <span className="min-w-0 flex-1 truncate">{name}</span>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              aria-label={`Remove ${name}`}
+                              className="shrink-0 rounded px-1 text-zinc-500 hover:text-red-400 disabled:opacity-40"
+                              onClick={() => removeTeam(name)}
+                            >
+                              ×
+                            </button>
                           </li>
                         );
                       })}
@@ -279,6 +301,34 @@ export default function BracketTeamPicker({
               <p className="text-xs text-zinc-500">Choose an age group to load teams from the roster.</p>
             )}
           </>
+        ) : null}
+        {!loading ? (
+          <div className="mt-3 space-y-1">
+            <p className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+              {options && options.ageGroups.length > 0 ? "Or add team manually" : "Add teams manually"}
+            </p>
+            <div className="flex gap-2">
+              <input
+                type="text"
+                placeholder="Team name…"
+                value={manualInput}
+                disabled={busy}
+                className="min-w-0 flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100 placeholder-zinc-600 focus:border-zinc-500 focus:outline-none"
+                onChange={(e) => setManualInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); addManualTeam(); }
+                }}
+              />
+              <button
+                type="button"
+                disabled={busy || !manualInput.trim()}
+                className="shrink-0 rounded-lg bg-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-100 hover:bg-zinc-600 disabled:opacity-40"
+                onClick={addManualTeam}
+              >
+                Add
+              </button>
+            </div>
+          </div>
         ) : null}
       </div>
     </label>
