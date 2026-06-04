@@ -228,6 +228,7 @@ model AdminUser {
   allStarAuditLogsActed        AllStarAuditLog[]       @relation("AllStarAuditActor")
   allStarAuditLogsReverted     AllStarAuditLog[]       @relation("AllStarAuditReverter")
   allStarPaymentsMarkedPaid    AllStarPayment[]        @relation("AllStarPaymentMarkedPaidBy")
+  parkInfoPagesUpdated         ParkInfoPage[]          @relation("ParkInfoUpdatedBy")
 }
 
 enum BracketProjectStatus {
@@ -1271,4 +1272,17 @@ model CapOrderItem {
   @@unique([orderId, seq])
   @@index([orderId])
   @@index([status])
+}
+
+model ParkInfoPage {
+  id                  String     @id @default(cuid())
+  organizationId      String     @unique
+  rulesMarkdown       String     @default("")
+  parkingMarkdown     String     @default("")
+  fieldLayoutImageUrl String?
+  updatedAt           DateTime   @updatedAt
+  updatedByAdminId    String?
+  updatedByAdmin      AdminUser? @relation("ParkInfoUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId])
 }

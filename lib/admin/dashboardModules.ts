@@ -71,6 +71,7 @@ const moduleCatalog: Record<
   USERS: { category: "operations", sortOrder: 10 },
   REPORTS: { category: "operations", sortOrder: 20 },
   PARK_ALERTS: { category: "operations", sortOrder: 15 },
+  PARK_INFO: { category: "program", sortOrder: 26 },
   DUGOUT_MODERATION: { category: "community", sortOrder: 10 },
 };
 
