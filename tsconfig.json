@@ -40,7 +40,9 @@
     ".next-master/types/**/*.ts",
     ".next-master/dev/types/**/*.ts",
     ".next-ascension/types/**/*.ts",
-    ".next-ascension/dev/types/**/*.ts"
+    ".next-ascension/dev/types/**/*.ts",
+    ".next-ladistrict2/types/**/*.ts",
+    ".next-ladistrict2/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"
