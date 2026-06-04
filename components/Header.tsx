@@ -51,6 +51,7 @@ export default function Header({ brand }: HeaderProps) {
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
   const [showAllStarLink, setShowAllStarLink] = useState(false);
+  const [showParkInfoLink, setShowParkInfoLink] = useState(false);
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   const currentOrgParam = searchParams.get("org");
@@ -192,7 +193,14 @@ export default function Header({ brand }: HeaderProps) {
       .then((d: { showAllStarLink?: boolean }) => {
         if (active) setShowAllStarLink(Boolean(d.showAllStarLink));
       })
-      .catch(() => { /* silent — nav link just won't show */ });
+      .catch(() => { /* silent */ });
+
+    fetch("/api/park-info/nav-hint", { cache: "no-store" })
+      .then((r) => r.json())
+      .then((d: { showParkInfoLink?: boolean }) => {
+        if (active) setShowParkInfoLink(Boolean(d.showParkInfoLink));
+      })
+      .catch(() => { /* silent */ });
 
     function handleAuthChanged() {
       void loadDugoutAccess();
@@ -301,11 +309,15 @@ export default function Header({ brand }: HeaderProps) {
     : [];
 
   const publicNavLinks = isTournamentOnly
-    ? [{ href: "/tournaments", label: "Tournaments" }]
+    ? [
+        { href: "/tournaments", label: "Tournaments" },
+        ...(showParkInfoLink ? [{ href: "/park-info", label: "Park Info" }] : []),
+      ]
     : [
         { href: "/schedule", label: "Schedule" },
         { href: "/tournaments", label: "Tournaments" },
         ...(showAllStarLink ? [{ href: "/all-star", label: "All-Stars" }] : []),
+        ...(showParkInfoLink ? [{ href: "/park-info", label: "Park Info" }] : []),
         { href: "/news", label: "News" },
         ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
         ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),

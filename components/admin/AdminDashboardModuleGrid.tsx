@@ -40,6 +40,7 @@ const previewModuleMinimumRole: Record<
   ASSIGNR: "ADMIN",
   PARK_ALERTS: "ADMIN",
   TOURNAMENT_BRACKETS: "MASTER_ADMIN",
+  PARK_INFO: "ADMIN",
 };
 
 const roleRank: Record<"MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR", number> = {
