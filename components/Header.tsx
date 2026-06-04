@@ -6,6 +6,8 @@ import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
   canAccessAdminModule,
+  getMinimumRoleForModule,
+  hasAdminRoleAtLeast,
   isAdminRole,
   toAdminRole,
   type AdminRole,
@@ -251,9 +253,13 @@ export default function Header({ brand }: HeaderProps) {
       | "DUGOUT_MODERATION"
       | "SOCIAL_MEDIA"
       | "ORG_DOCUMENTS"
-      | "TOURNAMENT_BRACKETS",
+      | "TOURNAMENT_BRACKETS"
+      | "PARK_INFO",
   ) => {
     if (!masterRole) return true;
+    // isMasterDeployment() reads process.env which is unavailable client-side.
+    // Use isMasterHeader (derived from brand prop, server-provided) instead.
+    if (isMasterHeader) return hasAdminRoleAtLeast(masterRole, getMinimumRoleForModule(module));
     return canAccessAdminModule(masterRole, module);
   };
 
@@ -280,6 +286,9 @@ export default function Header({ brand }: HeaderProps) {
                     label: "Brackets",
                   },
                 ]
+              : []),
+            ...(allowModule("PARK_INFO")
+              ? [{ href: `/admin/park-info${masterOrgSuffix}`, label: "Park Info" }]
               : []),
             { href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" },
           ],
