@@ -1,11 +1,13 @@
 import Link from "next/link";
 import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
 import AdminRolePreviewControl from "@/components/admin/AdminRolePreviewControl";
-import { isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
+import { isMasterDeployment, type BracketOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
 type AdminSectionHeaderProps = {
   badge: string;
-  currentOrg?: ContentOrgId | null;
+  currentOrg?: BracketOrgId | null;
+  /** Override org list shown in the switcher (e.g. pass BRACKET_ORGS for the bracket admin). */
+  orgSwitcherOrgs?: readonly BracketOrgId[];
   currentPath?: string;
   /** Passed to AdminOrgSwitcher on master; default true. */
   orgSwitcherShowAllSites?: boolean;
@@ -20,6 +22,7 @@ export default function AdminSectionHeader({
   currentOrg,
   currentPath,
   orgSwitcherShowAllSites = true,
+  orgSwitcherOrgs,
   allowRolePreview = false,
   allowViewByUser = false,
   moduleHubHref,
@@ -47,11 +50,12 @@ export default function AdminSectionHeader({
                 currentOrg={currentOrg ?? null}
                 currentPath={currentPath}
                 showAllSites={orgSwitcherShowAllSites}
+                {...(orgSwitcherOrgs ? { orgs: orgSwitcherOrgs } : {})}
               />
             ) : null}
             <AdminRolePreviewControl
               enabled={allowRolePreview}
-              currentOrg={currentOrg ?? undefined}
+              currentOrg={(currentOrg as ContentOrgId) ?? undefined}
               allowViewByUser={allowViewByUser}
             />
             {moduleHubHref ? (
@@ -84,11 +88,11 @@ export default function AdminSectionHeader({
       <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
         <AdminRolePreviewControl
           enabled={allowRolePreview}
-          currentOrg={currentOrg ?? undefined}
+          currentOrg={(currentOrg as ContentOrgId) ?? undefined}
           allowViewByUser={allowViewByUser}
         />
         {isMasterDeployment() && currentOrg && currentPath ? (
-          <AdminOrgSwitcher currentOrg={currentOrg} currentPath={currentPath} />
+          <AdminOrgSwitcher currentOrg={currentOrg} currentPath={currentPath} {...(orgSwitcherOrgs ? { orgs: orgSwitcherOrgs } : {})} />
         ) : null}
         {moduleHubHref ? (
           <Link href={moduleHubHref} className="inline-flex min-h-10 items-center text-brand-gold hover:text-brand-gold/80">

@@ -3,22 +3,26 @@
 import Link from "next/link";
 
 import {
-  CONTENT_ORGS,
-  getOrgDisplayName,
+  BRACKET_ORGS,
+  getBracketOrgDisplayName,
+  type BracketOrgId,
   type ContentOrgId,
 } from "@/lib/siteConfig";
 
 type AdminOrgSwitcherProps = {
-  currentOrg: ContentOrgId | null;
+  currentOrg: BracketOrgId | null;
   currentPath: string;
   /** When false, hide the aggregate "All Sites" control (e.g. modules that always need a concrete org). */
   showAllSites?: boolean;
+  /** Override the list of orgs shown (defaults to BRACKET_ORGS). Pass CONTENT_ORGS for league-only pages. */
+  orgs?: readonly BracketOrgId[];
 };
 
 export default function AdminOrgSwitcher({
   currentOrg,
   currentPath,
   showAllSites = true,
+  orgs = BRACKET_ORGS,
 }: AdminOrgSwitcherProps) {
   return (
     <div className="w-full rounded-2xl border border-zinc-800 bg-zinc-950/80 p-1.5 sm:w-auto">
@@ -41,7 +45,7 @@ export default function AdminOrgSwitcher({
             All Sites
           </Link>
         ) : null}
-        {CONTENT_ORGS.map((org) => {
+        {orgs.map((org) => {
           const selected = org === currentOrg;
           return (
             <Link
@@ -53,7 +57,7 @@ export default function AdminOrgSwitcher({
                   : "border-zinc-700 bg-zinc-900 text-zinc-300 hover:border-zinc-500 hover:text-white"
               }`}
             >
-              {getOrgDisplayName(org)}
+              {getBracketOrgDisplayName(org)}
             </Link>
           );
         })}

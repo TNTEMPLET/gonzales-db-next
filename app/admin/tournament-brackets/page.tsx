@@ -13,7 +13,7 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { getSiteConfig, isContentOrgId, isMasterDeployment, resolveBracketAdminTargetOrg } from "@/lib/siteConfig";
+import { BRACKET_ORGS, getSiteConfig, isContentOrgId, isMasterDeployment, resolveBracketAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -65,7 +65,8 @@ export default async function AdminTournamentBracketsPage({
         <div className="mb-4">
           <AdminSectionHeader
             badge="TOURNAMENT BRACKETS"
-            currentOrg={isContentOrgId(bracketOrg) ? bracketOrg : null}
+            currentOrg={bracketOrg}
+            orgSwitcherOrgs={BRACKET_ORGS}
             currentPath="/admin/tournament-brackets"
             orgSwitcherShowAllSites={false}
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
