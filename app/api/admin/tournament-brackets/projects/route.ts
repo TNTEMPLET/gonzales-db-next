@@ -3,7 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureTournamentBracketsMaster } from "@/lib/tournament-brackets/auth";
 import { defaultBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import prisma from "@/lib/prisma";
-import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
+import { isBracketOrgId, type BracketOrgId } from "@/lib/siteConfig";
 
 export async function GET(request: NextRequest) {
   try {
@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
 
     const org = request.nextUrl.searchParams.get("organizationId");
     const where =
-      org && isContentOrgId(org) ? { organizationId: org as ContentOrgId } : {};
+      org && isBracketOrgId(org) ? { organizationId: org as BracketOrgId } : {};
 
     const projects = await prisma.bracketProject.findMany({
       where,
@@ -67,9 +67,9 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
     }
 
-    if (!body.organizationId || !isContentOrgId(body.organizationId)) {
+    if (!body.organizationId || !isBracketOrgId(body.organizationId)) {
       return NextResponse.json(
-        { error: "organizationId must be gonzales or ascension" },
+        { error: "organizationId must be a valid bracket org" },
         { status: 400 },
       );
     }
