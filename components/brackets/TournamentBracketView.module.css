@@ -953,6 +953,22 @@
   gap: 0.65rem;
 }
 
+.doubleElimUnified {
+  width: 100%;
+  min-width: 0;
+}
+
+.doubleElimBandLabel {
+  margin: 0;
+  padding: 0.15rem 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bracket-ink-muted, #64748b);
+  align-self: end;
+}
+
 .flatChampionGutter {
   flex: 0 0 minmax(1.25rem, 0.28fr);
   max-width: 3.5rem;
