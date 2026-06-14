@@ -5,6 +5,10 @@ import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import type { BracketLayout, BracketLayoutPodium, LayoutMatch, LayoutRound } from "@/lib/tournament-brackets/bracketLayout";
 import {
+  collectAllDoubleElimMatchesByGame,
+  isFiveTeamDoubleElimFullPattern,
+} from "@/lib/tournament-brackets/bracketLayout";
+import {
   declaredChampionFromFinalSlots,
   declaredThirdPlaceFromSlots,
   bracketSurfaceTitle,
@@ -26,10 +30,7 @@ import {
 } from "@/lib/tournament-brackets/bracketScoring";
 
 import { BracketConnectorCell, FinalChampionConnectorCell } from "@/components/brackets/BracketConnector";
-import FiveTeamDoubleElimFullDiagram, {
-  collectAllDoubleElimMatchesByGame,
-  isFiveTeamDoubleElimFullPattern,
-} from "@/components/brackets/FiveTeamDoubleElimFullDiagram";
+import FiveTeamDoubleElimFullDiagram from "@/components/brackets/FiveTeamDoubleElimFullDiagram";
 import FiveTeamDoubleElimWinnersGrid, {
   collectMatchesByOfficialGameNumber,
   isFiveTeamDoubleElimWinnersPattern,

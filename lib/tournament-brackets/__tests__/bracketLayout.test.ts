@@ -4,8 +4,7 @@ import { describe, it } from "node:test";
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { isBracketSetupWizardComplete, mergeBracketSpec, parseBracketSpec, safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { resolveBracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
-import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
-import { isFiveTeamDoubleElimFullPattern } from "@/components/brackets/FiveTeamDoubleElimFullDiagram";
+import { buildBracketLayout, isFiveTeamDoubleElimFullPattern } from "@/lib/tournament-brackets/bracketLayout";
 import {
   bracketSurfaceTitle,
   formatBracketGameBadge,

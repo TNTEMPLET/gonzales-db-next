@@ -90,6 +90,32 @@ export type DoubleElimChampionshipSection = {
   matches: LayoutMatch[];
 };
 
+/** Collect official game numbers across all double-elim sections. */
+export function collectAllDoubleElimMatchesByGame(
+  winnersRounds: { matches: LayoutMatch[] }[],
+  losersRounds: { matches: LayoutMatch[] }[] | null | undefined,
+  championshipMatches: LayoutMatch[] | null | undefined,
+): Map<string, LayoutMatch> {
+  const map = new Map<string, LayoutMatch>();
+  const all = [
+    ...winnersRounds,
+    ...(losersRounds ?? []),
+    ...(championshipMatches?.length ? [{ matches: championshipMatches }] : []),
+  ];
+  for (const round of all) {
+    for (const m of round.matches) {
+      const key = m.officialGameNumber?.trim();
+      if (key) map.set(key, m);
+    }
+  }
+  return map;
+}
+
+/** True when the spec matches the District 6 / DYB 5-team double-elim game numbering (G1–G9). */
+export function isFiveTeamDoubleElimFullPattern(matchesByGame: Map<string, LayoutMatch>): boolean {
+  return ["1", "2", "3", "4", "5", "6", "7", "8", "9"].every((n) => matchesByGame.has(n));
+}
+
 function hasStructuredRounds(spec: BracketSpec): boolean {
   return spec.rounds.some((r) => r.matches.length > 0);
 }
