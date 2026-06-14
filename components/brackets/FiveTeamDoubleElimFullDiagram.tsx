@@ -190,27 +190,3 @@ export default function FiveTeamDoubleElimFullDiagram({
     </div>
   );
 }
-
-export function collectAllDoubleElimMatchesByGame(
-  winnersRounds: { matches: LayoutMatch[] }[],
-  losersRounds: { matches: LayoutMatch[] }[] | null | undefined,
-  championshipMatches: LayoutMatch[] | null | undefined,
-): Map<string, LayoutMatch> {
-  const map = new Map<string, LayoutMatch>();
-  const all = [
-    ...winnersRounds,
-    ...(losersRounds ?? []),
-    ...(championshipMatches?.length ? [{ matches: championshipMatches }] : []),
-  ];
-  for (const round of all) {
-    for (const m of round.matches) {
-      const key = m.officialGameNumber?.trim();
-      if (key) map.set(key, m);
-    }
-  }
-  return map;
-}
-
-export function isFiveTeamDoubleElimFullPattern(matchesByGame: Map<string, LayoutMatch>): boolean {
-  return ["1", "2", "3", "4", "5", "6", "7", "8", "9"].every((n) => matchesByGame.has(n));
-}
