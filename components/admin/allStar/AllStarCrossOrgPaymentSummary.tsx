@@ -1108,7 +1108,7 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedYear, setSelectedYear] = useState<number | "all">("all");
-  const [collapsed, setCollapsed] = useState(true);
+  const [collapsed, setCollapsed] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [showCoachRosterBuilder, setShowCoachRosterBuilder] = useState(false);
   const [showCsvImport, setShowCsvImport] = useState(false);
@@ -1126,16 +1126,25 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
     if (org) params.set("org", org);
     const qs = params.toString();
     const url = "/api/admin/all-star/payments/all-orgs" + (qs ? "?" + qs : "");
-    fetch(url)
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 45000);
+    fetch(url, { signal: controller.signal })
       .then((res) => res.json().then((json) => ({ res, json })))
       .then(({ res, json }: { res: Response; json: unknown }) => {
-        if (!res.ok) throw new Error((json as { error?: string }).error ?? "Failed to load summary");
+        if (!res.ok) {
+          throw new Error((json as { error?: string }).error ?? "Failed to load summary");
+        }
         setData(json as SummaryData);
       })
       .catch((err: unknown) => {
+        if (err instanceof DOMException && err.name === "AbortError") {
+          setError("Request timed out. The dev database can be slow — click Refresh to try again.");
+          return;
+        }
         setError(err instanceof Error ? err.message : "Unknown error");
       })
       .finally(() => {
+        window.clearTimeout(timeout);
         setLoading(false);
       });
   }, [org]);
@@ -1317,7 +1326,7 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
             <span className="text-lg font-semibold">All-League Payments Summary</span>
             <span className="text-zinc-500 text-sm">{collapsed ? "▼" : "▲"}</span>
           </button>
-          {data && !collapsed && (
+          {data && (
             <span className="text-xs text-zinc-500 bg-zinc-800 rounded px-2 py-0.5">
               {data.grandTotals.total} players across all leagues
             </span>
@@ -1389,7 +1398,7 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
           {loading && !data && (
             <div className="flex items-center gap-2 text-zinc-400 text-sm py-4">
               <span className="inline-block w-3 h-3 rounded-full border-2 border-zinc-600 border-t-zinc-300 animate-spin" />
-              Loading payment summary across all leagues…
+              Loading payment summary across all leagues… (dev database can take 20–60 seconds)
             </div>
           )}
           {/* Error banner (shown alongside stale data if a refresh fails) */}

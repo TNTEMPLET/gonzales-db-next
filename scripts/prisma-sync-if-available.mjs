@@ -1,6 +1,6 @@
 import { spawnSync } from "node:child_process";
 import { PrismaClient } from "@prisma/client";
-import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
+import { createDatabaseAdapter } from "../lib/databaseAdapter.ts";
 import bcrypt from "bcryptjs";
 
 const INITIAL_MASTER_ADMIN_EMAIL = (
@@ -37,7 +37,7 @@ if (typeof result.status !== "number" || result.status !== 0) {
 }
 
 const prisma = new PrismaClient({
-  adapter: new PrismaPostgresAdapter({ connectionString: databaseUrl }),
+  adapter: createDatabaseAdapter(databaseUrl),
 });
 
 try {

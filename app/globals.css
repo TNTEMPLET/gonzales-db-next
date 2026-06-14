@@ -39,6 +39,14 @@ html {
   --font-mono: var(--font-geist-mono);
 }
 
+@utility pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+@utility pb-safe-bar {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+
 body {
   background: var(--background);
   color: var(--foreground);

@@ -3,6 +3,7 @@ import Link from "next/link";
 import StandingsTabs from "@/components/standings/StandingsTabs";
 import { fetchGames } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
+import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
 import { getAssignrLeagueId, getOrgId, getSiteConfig } from "@/lib/siteConfig";
 import { computeStandingsByAgeGroup } from "@/lib/standings";
 
@@ -37,8 +38,8 @@ export default async function StandingsPage() {
   let scheduleUnavailable = false;
   try {
     const allSeasonGames = await fetchGames({
-      startDate: "2026-03-01",
-      endDate: "2026-06-30",
+      startDate: SEASON_START_DATE,
+      endDate: SEASON_END_DATE,
       leagueId,
     });
     activeGameIds = new Set(

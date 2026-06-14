@@ -17,9 +17,6 @@ import {
 import { isFrozenFirstTeamCycle } from "@/lib/allStar/cycleType";
 import prisma from "@/lib/prisma";
 
-function forbidIfNotMaster() {
-  return null;
-}
 
 function normalizeAgeBandFilter(value: string | null | undefined) {
   const normalized = String(value || "").trim().toUpperCase();
@@ -98,8 +95,6 @@ function rowsFromLegacySheet(sheetRows: CandidateSheetRow[]) {
 export async function POST(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const form = await request.formData();
   const cycleId = String(form.get("cycleId") || "");

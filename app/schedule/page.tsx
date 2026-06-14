@@ -1,6 +1,7 @@
 import ScheduleTable from "@/components/ScheduleTable";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
+import { SEASON_END_DATE, SEASON_START_DATE, CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import { getAssignrLeagueId, getOrgId, getSiteConfig } from "@/lib/siteConfig";
 import {
   computeStandingsByAgeGroup,
@@ -51,8 +52,8 @@ export default async function SchedulePage({
     startDate = startOfNextWeek.toISOString().split("T")[0]!;
     endDate = endOfNextWeek.toISOString().split("T")[0]!;
   } else {
-    startDate = "2026-03-01";
-    endDate = "2026-06-30";
+    startDate = SEASON_START_DATE;
+    endDate = SEASON_END_DATE;
   }
 
   let games: Game[] = [];
@@ -80,8 +81,8 @@ export default async function SchedulePage({
         },
       }),
       fetchGames({
-        startDate: "2026-03-01",
-        endDate: "2026-06-30",
+        startDate: SEASON_START_DATE,
+        endDate: SEASON_END_DATE,
         leagueId,
       }),
     ]);
@@ -106,7 +107,7 @@ export default async function SchedulePage({
           Schedule &amp; Standings
         </h1>
         <p className="text-zinc-400 text-sm">
-          Gonzales Diamond Baseball · Spring 2026
+          {site.name} · {CURRENT_SEASON_LABEL}
         </p>
       </div>
       <ScheduleTable

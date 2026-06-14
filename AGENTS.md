@@ -29,7 +29,7 @@ When the user asks to **commit/push**, **push**, or equivalent, the post-push wo
 
 Run Prisma CLI yourself when schema or migrations change (or when verifying the DB): e.g. `npx prisma migrate deploy`, `npx prisma migrate dev`, `npx prisma generate`, `npx prisma validate`, `npx prisma migrate status`, `npx prisma db push` when appropriate. **Do not** only tell the user to run these—execute them in this environment unless blocked (e.g. no `DATABASE_URL` in `.env.local`).
 
-For local work in this repo, Prisma must use the `DATABASE_URL` from repo-root **`.env.local`** (same database as production). `prisma.config.ts` loads that file for the CLI. If a command still cannot see `DATABASE_URL`, run from the repo root with `node --env-file=.env.local` before invoking Prisma.
+For local work, Prisma CLI and dev servers use the **DEV** database: `prisma.config.ts` loads `.env.local` first, then **`.env.development.local`** (which overrides it). On **dev-box**, dev is **local Postgres** (`127.0.0.1:5432`, database `apbaseball_dev`) — see `docs/local-dev-database.md`. Do not run `migrate dev` or `db push` against production. To deploy migrations to prod, use an explicit `DATABASE_URL` with `prisma migrate deploy` only after dev is verified.
 
 ## Clarifying questions
 

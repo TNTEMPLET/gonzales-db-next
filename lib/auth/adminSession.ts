@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 
 import { toAdminRole, type AdminRole } from "@/lib/auth/adminRoles";
 import prisma from "@/lib/prisma";
+import { withTransientDbRetry } from "@/lib/prismaRetry";
 
 export const ADMIN_SESSION_COOKIE = "gdb_admin_session";
 const SESSION_TTL_DAYS = 7;
@@ -39,9 +40,11 @@ export async function verifyAdminCredentials(email: string, password: string) {
     .toLowerCase();
   const bootstrapMasterPassword = process.env.INITIAL_MASTER_ADMIN_PASSWORD || "";
 
-  const user = await prisma.adminUser.findUnique({
-    where: { email: normalizedEmail },
-  });
+  const user = await withTransientDbRetry(() =>
+    prisma.adminUser.findUnique({
+      where: { email: normalizedEmail },
+    }),
+  );
   if (!user) return null;
   if (!user.passwordHash) {
     if (

@@ -14,9 +14,6 @@ import {
   resolveAdminTargetOrg,
 } from "@/lib/siteConfig";
 
-function forbidIfNotMaster() {
-  return null;
-}
 
 function normalizeAgeBandFilter(value: unknown): string | "BOTH" | null {
   const normalized = String(value || "").trim().toUpperCase();
@@ -135,8 +132,6 @@ export async function GET(request: NextRequest) {
   const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const org = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   const seasonYear = parseSeasonYear(request.nextUrl.searchParams.get("seasonYear"));
@@ -196,8 +191,6 @@ export async function POST(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const body = (await request.json()) as {
     intent?: "setup_wizard" | "legacy";
@@ -414,8 +407,6 @@ export async function PATCH(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const body = (await request.json()) as {
     cycleId?: string;
@@ -578,8 +569,6 @@ export async function DELETE(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const canDelete = await canDeleteCycles(request);
   if (!canDelete) {

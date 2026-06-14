@@ -18,6 +18,11 @@ import {
   isTournamentOnlyDeployment,
 } from "@/lib/siteConfig";
 import { getActiveOrgAlert } from "@/lib/orgAlerts";
+import {
+  SEASON_END_DATE,
+  SEASON_START_DATE,
+  CURRENT_SEASON_LABEL,
+} from "@/lib/seasonConfig";
 
 type ViewMode = "thisWeek" | "nextWeek" | "fullSeason";
 
@@ -123,8 +128,8 @@ export default async function Home({
     endDate = endOfNextWeek.toISOString().split("T")[0];
   } else {
     // Full Season
-    startDate = "2026-03-01";
-    endDate = "2026-06-30";
+    startDate = SEASON_START_DATE;
+    endDate = SEASON_END_DATE;
   }
 
   let games: Game[] = [];
@@ -302,7 +307,7 @@ export default async function Home({
             </div>
             <h3 className="font-semibold text-xl mb-1 text-white">Registration</h3>
             <p className="text-brand-gold">
-              {regOpen ? "Spring 2026 Season" : "Closed"}
+              {regOpen ? `${CURRENT_SEASON_LABEL} Season` : "Closed"}
             </p>
           </div>
           <div>

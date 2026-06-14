@@ -53,6 +53,15 @@ scripts/refactor-*.mjs
 scripts/apply-minimal-*.py
 scripts/*-ui-helpers.txt
 
+# Local prod audit / one-off data fix scripts (keep on dev-box only)
+scripts/check-prod-*.ts
+scripts/fix-prod-*.ts
+scripts/check-*-prod*.ts
+scripts/fix-*-prod*.ts
+scripts/migrate-6u-*.ts
+scripts/restore-*.ts
+scripts/get-cycle-ids.ts
+
 # Per-org dev distDirs
 .next-gonzales
 .next-ascension

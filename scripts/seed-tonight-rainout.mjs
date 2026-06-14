@@ -5,7 +5,7 @@
  *   node --env-file=.env.local scripts/seed-tonight-rainout.mjs
  */
 import { PrismaClient } from "@prisma/client";
-import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
+import { createDatabaseAdapter } from "../lib/databaseAdapter.ts";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) {
@@ -14,7 +14,7 @@ if (!databaseUrl) {
 }
 
 const prisma = new PrismaClient({
-  adapter: new PrismaPostgresAdapter({ connectionString: databaseUrl }),
+  adapter: createDatabaseAdapter(databaseUrl),
 });
 
 // Midnight tonight (local midnight = 05:00 UTC in CDT / UTC-5)

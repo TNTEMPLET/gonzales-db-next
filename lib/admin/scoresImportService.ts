@@ -13,8 +13,10 @@ import {
 import { inferContentOrgFromGame } from "@/lib/admin/assignrOrgScope";
 import type { Game } from "@/lib/fetchGames";
 
-export const SCORES_IMPORT_SEASON_START = "2026-03-01";
-export const SCORES_IMPORT_SEASON_END = "2026-06-30";
+export {
+  SEASON_END_DATE as SCORES_IMPORT_SEASON_END,
+  SEASON_START_DATE as SCORES_IMPORT_SEASON_START,
+} from "@/lib/seasonConfig";
 
 const PREVIEW_SAMPLE_LIMIT = 25;
 const SCORES_IMPORT_TIME_ZONE = "America/Chicago";

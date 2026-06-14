@@ -12,7 +12,7 @@ export default function DesignedByBrand({
   className = "",
   labelClassName = "text-zinc-400",
   linkClassName = "inline-flex items-center gap-0 font-medium text-zinc-100 transition-colors hover:text-brand-gold",
-  logoSrc = "https://duckroostdigital.com/brand/DuckRoostDigital-Logo-dark.svg",
+  logoSrc = "/brand/DuckRoostDigital-Logo-dark.svg",
   logoAlt = "DuckRoost Digital logo",
   logoClassName = "h-full w-full scale-125 object-cover object-left",
   logoWrapClassName = "inline-flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden",

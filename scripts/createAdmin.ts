@@ -1,12 +1,11 @@
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
-import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
+import { createDatabaseAdapter } from "../lib/databaseAdapter";
 
 function createClient() {
-  const adapter = new PrismaPostgresAdapter({
-    connectionString: process.env.DATABASE_URL!,
+  return new PrismaClient({
+    adapter: createDatabaseAdapter(process.env.DATABASE_URL!),
   });
-  return new PrismaClient({ adapter });
 }
 
 const prisma = createClient();
