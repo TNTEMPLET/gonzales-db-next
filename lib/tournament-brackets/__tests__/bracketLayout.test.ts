@@ -5,6 +5,7 @@ import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { isBracketSetupWizardComplete, mergeBracketSpec, parseBracketSpec, safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { resolveBracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
+import { isFiveTeamDoubleElimFullPattern } from "@/components/brackets/FiveTeamDoubleElimFullDiagram";
 import {
   bracketSurfaceTitle,
   formatBracketGameBadge,
@@ -337,6 +338,16 @@ describe("buildBracketLayout", () => {
     assert.ok(g6);
     assert.equal(g6?.home, "W3");
     assert.equal(g6?.away, "W2");
+  });
+
+  it("detects full 5-team double-elim game numbering for unified diagram", () => {
+    const map = new Map<string, { id: string }>();
+    for (const n of ["1", "2", "3", "4", "5", "6", "7", "8", "9"]) {
+      map.set(n, { id: `g${n}` });
+    }
+    assert.equal(isFiveTeamDoubleElimFullPattern(map as never), true);
+    map.delete("9");
+    assert.equal(isFiveTeamDoubleElimFullPattern(map as never), false);
   });
 
   it("maps legacy llOfficialGameNumber to officialGameNumber when parsing", () => {

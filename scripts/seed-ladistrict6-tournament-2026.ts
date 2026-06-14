@@ -38,7 +38,7 @@ function build10USpec(): BracketSpec {
     rounds: [
       {
         id: "winners-r1",
-        label: "Winners Bracket",
+        label: "Winners Bracket — Round 1",
         bracketSection: "winners",
         matches: [
           {
@@ -59,7 +59,7 @@ function build10USpec(): BracketSpec {
       },
       {
         id: "winners-r2",
-        label: "",
+        label: "Winners Bracket — Round 2",
         bracketSection: "winners",
         matches: [
           {
@@ -73,7 +73,7 @@ function build10USpec(): BracketSpec {
       },
       {
         id: "winners-r3",
-        label: "",
+        label: "Winners Bracket Final",
         bracketSection: "winners",
         matches: [
           {
@@ -87,7 +87,7 @@ function build10USpec(): BracketSpec {
       },
       {
         id: "losers-r1",
-        label: "Losers Bracket",
+        label: "Losers Bracket — Round 1",
         bracketSection: "losers",
         matches: [
           {
@@ -101,7 +101,7 @@ function build10USpec(): BracketSpec {
       },
       {
         id: "losers-r2",
-        label: "",
+        label: "Losers Bracket Final",
         bracketSection: "losers",
         matches: [
           {
@@ -115,27 +115,27 @@ function build10USpec(): BracketSpec {
       },
       {
         id: "championship-r1",
-        label: "Championship",
+        label: "Championship Series",
         bracketSection: "championship",
         matches: [
           {
             id: "10u-g7",
-            home: "TBD",
-            away: "TBD",
+            home: "W6",
+            away: "W5",
             officialGameNumber: "7",
             ...scheduleMeta("Fri 6/20", "11:30 AM", "Patterson"),
           },
           {
             id: "10u-g8",
-            home: "TBD",
-            away: "TBD",
+            home: "W7",
+            away: "L7",
             officialGameNumber: "8",
             ...scheduleMeta("Fri 6/20", "2:00 PM", "Patterson"),
           },
           {
             id: "10u-g9",
-            home: "TBD",
-            away: "TBD",
+            home: "W8",
+            away: "L8",
             officialGameNumber: "9",
             ...scheduleMeta("Sat 6/21", "1:00 PM", "Patterson"),
           },
