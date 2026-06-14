@@ -28,9 +28,13 @@ type MatchRenderProps = {
   gameChangerEnabled?: boolean;
 };
 
-type Props = MatchRenderProps & {
+type Props = {
   matchesByGame: Map<string, LayoutMatch>;
   renderMatch: (props: MatchRenderProps & { match: LayoutMatch }) => ReactNode;
+  scoring?: BracketScoringViewProps | null;
+  liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
+  onMatchClick?: (matchId: string) => void;
+  gameChangerEnabled?: boolean;
 };
 
 const GRID_COLUMNS =
