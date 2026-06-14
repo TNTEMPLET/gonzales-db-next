@@ -1,6 +1,4 @@
 import { spawnSync } from "node:child_process";
-import { PrismaClient } from "@prisma/client";
-import { createDatabaseAdapter } from "../lib/databaseAdapter.ts";
 import bcrypt from "bcryptjs";
 
 const INITIAL_MASTER_ADMIN_EMAIL = (
@@ -25,6 +23,9 @@ if (process.env.VERCEL === "1" || process.env.SKIP_PRISMA_SYNC === "1") {
   );
   process.exit(0);
 }
+
+const { PrismaClient } = await import("@prisma/client");
+const { createDatabaseAdapter } = await import("../lib/databaseAdapter.ts");
 
 console.log("[prisma-sync] Running prisma db push...");
 const result = spawnSync("npx", ["prisma", "db", "push"], {
