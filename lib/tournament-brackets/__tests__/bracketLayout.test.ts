@@ -280,6 +280,65 @@ describe("buildBracketLayout", () => {
     assert.equal(layout.mode, "empty");
   });
 
+  it("builds connected double elimination layout with winners, losers, and championship sections", () => {
+    const spec = baseSpec({
+      bracketFormat: "double_elimination",
+      divisionLabel: "10U",
+      rounds: [
+        {
+          id: "winners-r1",
+          label: "Winners Bracket",
+          bracketSection: "winners",
+          matches: [
+            { id: "g1", home: "A", away: "B", officialGameNumber: "1" },
+            { id: "g2", home: "C", away: "D", officialGameNumber: "2" },
+          ],
+        },
+        {
+          id: "winners-r2",
+          label: "",
+          bracketSection: "winners",
+          matches: [{ id: "g3", home: "W1", away: "E", officialGameNumber: "3" }],
+        },
+        {
+          id: "winners-r3",
+          label: "",
+          bracketSection: "winners",
+          matches: [{ id: "g6", home: "W3", away: "W2", officialGameNumber: "6" }],
+        },
+        {
+          id: "losers-r1",
+          label: "Losers Bracket",
+          bracketSection: "losers",
+          matches: [{ id: "g4", home: "L1", away: "L2", officialGameNumber: "4" }],
+        },
+        {
+          id: "losers-r2",
+          label: "",
+          bracketSection: "losers",
+          matches: [{ id: "g5", home: "W4", away: "L3", officialGameNumber: "5" }],
+        },
+        {
+          id: "championship-r1",
+          label: "Championship",
+          bracketSection: "championship",
+          matches: [{ id: "g7", home: "TBD", away: "TBD", officialGameNumber: "7" }],
+        },
+      ],
+    });
+    const layout = buildBracketLayout(spec);
+    assert.equal(layout.mode, "double_elimination");
+    if (layout.mode !== "double_elimination") return;
+    assert.equal(layout.winnersBracket.treeLayout, "connected");
+    assert.equal(layout.winnersBracket.winnersDiagram, "five_team");
+    assert.equal(layout.losersBracket?.rounds.length, 2);
+    assert.equal(layout.championship?.matches.length, 1);
+    const g6 = layout.winnersBracket.rounds.flatMap((r) => r.matches).find((m) => m.officialGameNumber === "6");
+    assert.ok(g6);
+    assert.equal(g6?.home, "W3");
+    assert.equal(g6?.away, "W2");
+  });
+
   it("maps legacy llOfficialGameNumber to officialGameNumber when parsing", () => {
     const parsed = parseBracketSpec({
       version: 1,

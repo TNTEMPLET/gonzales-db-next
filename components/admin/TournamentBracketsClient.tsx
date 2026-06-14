@@ -1095,7 +1095,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       }
 
       const layout = bracketLayout;
-      if (layout && layout.mode === "tree" && bracketPdfCaptureRef.current) {
+      if (layout && (layout.mode === "tree" || layout.mode === "double_elimination") && bracketPdfCaptureRef.current) {
         try {
           const html2canvas = (await import("html2canvas")).default;
           await new Promise<void>((resolve) => {
@@ -1155,7 +1155,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           doc.setTextColor(0, 0, 0);
           y += 36;
         }
-      } else if (layout && layout.mode === "tree" && !bracketPdfCaptureRef.current) {
+      } else if (layout && (layout.mode === "tree" || layout.mode === "double_elimination") && !bracketPdfCaptureRef.current) {
         if (y > pageH - 40) {
           doc.addPage();
           y = 48;

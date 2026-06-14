@@ -37,8 +37,9 @@ function build10USpec(): BracketSpec {
     ingestionWarnings: [],
     rounds: [
       {
-        id: "r-openers",
-        label: "Opening Round — Wed 6/18",
+        id: "winners-r1",
+        label: "Winners Bracket",
+        bracketSection: "winners",
         matches: [
           {
             id: "10u-g1",
@@ -57,8 +58,9 @@ function build10USpec(): BracketSpec {
         ],
       },
       {
-        id: "r-jun19",
-        label: "Thu 6/19",
+        id: "winners-r2",
+        label: "",
+        bracketSection: "winners",
         matches: [
           {
             id: "10u-g3",
@@ -67,13 +69,13 @@ function build10USpec(): BracketSpec {
             officialGameNumber: "3",
             ...scheduleMeta("Thu 6/19", "6:00 PM", "Berthelot"),
           },
-          {
-            id: "10u-g4",
-            home: "L1",
-            away: "L2",
-            officialGameNumber: "4",
-            ...scheduleMeta("Thu 6/19", "6:00 PM", "Patterson"),
-          },
+        ],
+      },
+      {
+        id: "winners-r3",
+        label: "",
+        bracketSection: "winners",
+        matches: [
           {
             id: "10u-g6",
             home: "W3",
@@ -84,8 +86,23 @@ function build10USpec(): BracketSpec {
         ],
       },
       {
-        id: "r-jun20-am",
-        label: "Fri 6/20 — Morning",
+        id: "losers-r1",
+        label: "Losers Bracket",
+        bracketSection: "losers",
+        matches: [
+          {
+            id: "10u-g4",
+            home: "L1",
+            away: "L2",
+            officialGameNumber: "4",
+            ...scheduleMeta("Thu 6/19", "6:00 PM", "Patterson"),
+          },
+        ],
+      },
+      {
+        id: "losers-r2",
+        label: "",
+        bracketSection: "losers",
         matches: [
           {
             id: "10u-g5",
@@ -97,8 +114,9 @@ function build10USpec(): BracketSpec {
         ],
       },
       {
-        id: "r-jun20-championship",
-        label: "Fri 6/20 — Championship",
+        id: "championship-r1",
+        label: "Championship",
+        bracketSection: "championship",
         matches: [
           {
             id: "10u-g7",
@@ -114,12 +132,6 @@ function build10USpec(): BracketSpec {
             officialGameNumber: "8",
             ...scheduleMeta("Fri 6/20", "2:00 PM", "Patterson"),
           },
-        ],
-      },
-      {
-        id: "r-jun21",
-        label: "Sat 6/21 — If necessary",
-        matches: [
           {
             id: "10u-g9",
             home: "TBD",
