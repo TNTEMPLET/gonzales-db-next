@@ -67,7 +67,28 @@ export type BracketLayout =
       /** Single elim + opt-in: champion + 3rd place column (no connectors on 3rd game). */
       podium?: BracketLayoutPodium | null;
     }
+  | {
+      mode: "double_elimination";
+      divisionLabel?: string;
+      winnersBracket: DoubleElimConnectedSection;
+      losersBracket: DoubleElimConnectedSection | null;
+      championship: DoubleElimChampionshipSection | null;
+    }
   | { mode: "match_grid"; divisionLabel?: string; games: BracketGameRow[] };
+
+export type DoubleElimConnectedSection = {
+  label: string;
+  rounds: LayoutRound[];
+  treeLayout: "connected";
+  connectedLaneRowCount: number;
+  /** Custom winners diagram when standard halving tree does not fit (5-team DYB, etc.). */
+  winnersDiagram?: "five_team";
+};
+
+export type DoubleElimChampionshipSection = {
+  label: string;
+  matches: LayoutMatch[];
+};
 
 function hasStructuredRounds(spec: BracketSpec): boolean {
   return spec.rounds.some((r) => r.matches.length > 0);
@@ -374,11 +395,135 @@ function layoutEmpty(spec: BracketSpec): BracketLayout {
   };
 }
 
+function splitDoubleElimRounds(spec: BracketSpec): {
+  winners: BracketSpec["rounds"];
+  losers: BracketSpec["rounds"];
+  championship: BracketSpec["rounds"];
+} {
+  const tagged = spec.rounds.some((r) => r.bracketSection);
+  if (tagged) {
+    return {
+      winners: spec.rounds.filter((r) => r.bracketSection === "winners"),
+      losers: spec.rounds.filter((r) => r.bracketSection === "losers"),
+      championship: spec.rounds.filter((r) => r.bracketSection === "championship"),
+    };
+  }
+  const nonEmpty = spec.rounds.filter((r) => r.matches.length > 0);
+  if (nonEmpty.length >= 5) {
+    return {
+      winners: nonEmpty.slice(0, 3),
+      losers: nonEmpty.slice(3, 5),
+      championship: nonEmpty.slice(5),
+    };
+  }
+  return { winners: nonEmpty, losers: [], championship: [] };
+}
+
+function buildLinearConnectedSection(
+  label: string,
+  matches: LayoutMatch[],
+  laneRows: number,
+): DoubleElimConnectedSection {
+  const rounds: LayoutRound[] = matches.map((m, i) => ({
+    id: `linear-${i}`,
+    label: i === 0 ? label : "",
+    layoutSlotCount: 1,
+    matches: [{ ...m, canonicalSlotIndex: 0, slotHome: m.home, slotAway: m.away }],
+  }));
+  return { label, rounds, treeLayout: "connected", connectedLaneRowCount: Math.max(laneRows, 2) };
+}
+
+function buildWinnersConnectedSection(
+  rounds: BracketSpec["rounds"],
+  laneRows: number,
+): DoubleElimConnectedSection | null {
+  const raw: LayoutRound[] = rounds
+    .filter((r) => r.matches.length > 0)
+    .map((r) => ({
+      id: r.id,
+      label: r.label,
+      matches: r.matches
+        .filter((m) => m.home.trim() !== "BYE" && m.away.trim() !== "BYE")
+        .map((m) => baseMatch(m)),
+    }))
+    .filter((r) => r.matches.length > 0);
+  if (raw.length === 0) return null;
+
+  const gameNums = new Set(
+    raw.flatMap((r) => r.matches.map((m) => m.officialGameNumber?.trim()).filter(Boolean)),
+  );
+  if (gameNums.has("1") && gameNums.has("2") && gameNums.has("3") && gameNums.has("6")) {
+    return {
+      label: rounds.find((r) => r.label.trim())?.label.trim() || "Winners Bracket",
+      rounds: raw,
+      treeLayout: "connected",
+      connectedLaneRowCount: 4,
+      winnersDiagram: "five_team",
+    };
+  }
+
+  if (isHalvingEliminationBracket(raw)) {
+    const { rounds: out, connectedLaneRowCount } = buildConnectedHalvingDisplayedRounds(raw);
+    return {
+      label: rounds.find((r) => r.label.trim())?.label.trim() || "Winners Bracket",
+      rounds: out,
+      treeLayout: "connected",
+      connectedLaneRowCount,
+    };
+  }
+
+  return buildLinearConnectedSection(
+    rounds.find((r) => r.label.trim())?.label.trim() || "Winners Bracket",
+    raw.flatMap((r) => r.matches),
+    laneRows,
+  );
+}
+
+function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
+  const { winners, losers, championship } = splitDoubleElimRounds(spec);
+  const winnersBracket = buildWinnersConnectedSection(winners, 4);
+  const laneRows = winnersBracket?.connectedLaneRowCount ?? 4;
+
+  const loserMatches = losers
+    .flatMap((r) => r.matches.map((m) => baseMatch(m)));
+  const losersBracket =
+    loserMatches.length > 0
+      ? buildLinearConnectedSection(
+          losers.find((r) => r.label.trim())?.label.trim() || "Losers Bracket",
+          loserMatches,
+          laneRows,
+        )
+      : null;
+
+  const champMatches = championship.flatMap((r) => r.matches.map((m) => baseMatch(m)));
+  const championshipSection: DoubleElimChampionshipSection | null =
+    champMatches.length > 0
+      ? {
+          label: championship.find((r) => r.label.trim())?.label.trim() || "Championship",
+          matches: champMatches,
+        }
+      : null;
+
+  if (!winnersBracket && !losersBracket && !championshipSection) return null;
+
+  return {
+    mode: "double_elimination",
+    divisionLabel: spec.divisionLabel,
+    winnersBracket: winnersBracket ?? buildLinearConnectedSection("Winners Bracket", [], laneRows),
+    losersBracket,
+    championship: championshipSection,
+  };
+}
+
 /**
  * Normalizes BracketSpec into a layout for HTML/CSS rendering.
  * Priority: structured rounds → flat games grid → seeded single-elim (with BYE padding when needed) → empty.
  */
 export function buildBracketLayout(spec: BracketSpec): BracketLayout {
+  if (spec.bracketFormat === "double_elimination" && hasStructuredRounds(spec)) {
+    const de = layoutDoubleElimination(spec);
+    if (de) return de;
+  }
   if (hasStructuredRounds(spec)) {
     return layoutFromSpecRounds(spec);
   }

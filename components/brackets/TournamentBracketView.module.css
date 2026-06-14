@@ -907,6 +907,52 @@
   min-width: 0;
 }
 
+.doubleElimDiagram {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.doubleElimMainRow {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 1rem;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.doubleElimSection {
+  flex: 1 1 auto;
+  min-width: min(100%, 28rem);
+}
+
+.doubleElimSectionLabel {
+  margin: 0 0 0.5rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--bracket-ink-muted, #64748b);
+}
+
+.doubleElimChampionship {
+  flex: 0 0 minmax(10rem, 14rem);
+  min-width: 10rem;
+}
+
+.doubleElimChampionshipList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
 .flatChampionGutter {
   flex: 0 0 minmax(1.25rem, 0.28fr);
   max-width: 3.5rem;

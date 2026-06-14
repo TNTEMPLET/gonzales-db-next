@@ -122,6 +122,8 @@ export const bracketRoundSchema = z.object({
   id: z.string(),
   label: z.string(),
   matches: z.array(bracketMatchSchema).default([]),
+  /** Double elimination: which bracket panel this round belongs to. */
+  bracketSection: z.enum(["winners", "losers", "championship"]).optional(),
 });
 
 export const bracketGameRowSchema = z.object({
