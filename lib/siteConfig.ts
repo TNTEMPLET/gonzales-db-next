@@ -1,7 +1,7 @@
-export type OrgId = "gonzales" | "ascension" | "master" | "ladistrict2";
+export type OrgId = "gonzales" | "ascension" | "master" | "ladistrict2" | "ladistrict6";
 export type ContentOrgId = "gonzales" | "ascension";
 /** ContentOrgId plus tournament-only orgs that only use the bracket system */
-export type BracketOrgId = ContentOrgId | "ladistrict2";
+export type BracketOrgId = ContentOrgId | "ladistrict2" | "ladistrict6";
 
 export interface SiteConfig {
   orgId: OrgId;
@@ -96,6 +96,24 @@ const configs: Record<OrgId, SiteConfig> = {
     assignrLeagueId: "",
     tournamentOnly: true,
   },
+  ladistrict6: {
+    orgId: "ladistrict6",
+    name: "Louisiana DYB District 6",
+    shortName: "District 6 DYB",
+    displayNameLine1: "District 6",
+    displayNameLine2: "DYB",
+    description:
+      "Official tournament brackets and schedule for Louisiana DYB District 6.",
+    siteUrl: "https://district6.apbaseball.com",
+    logoPath: "/images/dyb-logo.png",
+    faviconPath: "/images/dyb-logo.png",
+    colorPrimary: "#590275",
+    colorPrimaryDark: "#4a0163",
+    colorAccent: "#ffcb29",
+    assignrSiteId: "",
+    assignrLeagueId: "",
+    tournamentOnly: true,
+  },
 };
 
 function isContentOrgId(
@@ -107,7 +125,12 @@ function isContentOrgId(
 export function isBracketOrgId(
   value: string | null | undefined,
 ): value is BracketOrgId {
-  return value === "gonzales" || value === "ascension" || value === "ladistrict2";
+  return (
+    value === "gonzales" ||
+    value === "ascension" ||
+    value === "ladistrict2" ||
+    value === "ladistrict6"
+  );
 }
 
 export { isContentOrgId };
@@ -136,7 +159,7 @@ export function getDefaultContentOrg(): ContentOrgId {
 /** Returns the bracket org for this deployment, including tournament-only orgs. */
 export function getBracketOrgForDeployment(): BracketOrgId {
   const orgId = getOrgId();
-  if (orgId === "ascension" || orgId === "ladistrict2") return orgId;
+  if (orgId === "ascension" || orgId === "ladistrict2" || orgId === "ladistrict6") return orgId;
   return "gonzales";
 }
 
@@ -149,7 +172,7 @@ export function getContentOrgBrandColors(org: BracketOrgId): { primaryHex: strin
 /** Org bucket for `RegisteredUser` rows on this deployment (matches Dugout local auth). */
 export function getDugoutRegisteredUserOrgId(): ContentOrgId {
   const org = getOrgId();
-  if (org === "master" || org === "ladistrict2") return getDefaultContentOrg();
+  if (org === "master" || org === "ladistrict2" || org === "ladistrict6") return getDefaultContentOrg();
   return org as ContentOrgId;
 }
 
@@ -239,6 +262,7 @@ export function formatOrganizationIdDisplay(org: string | null | undefined): str
     return getOrgDisplayName(org);
   }
   if (org === "ladistrict2") return configs.ladistrict2.shortName;
+  if (org === "ladistrict6") return configs.ladistrict6.shortName;
   if (org === "master") return "AP Baseball Master";
   return org.trim().toUpperCase();
 }
@@ -254,7 +278,12 @@ export function getAssignrLeagueId(org?: ContentOrgId): string {
 export const CONTENT_ORGS: ContentOrgId[] = ["gonzales", "ascension"];
 
 /** All bracket-eligible orgs including tournament-only deployments. */
-export const BRACKET_ORGS: BracketOrgId[] = ["gonzales", "ascension", "ladistrict2"];
+export const BRACKET_ORGS: BracketOrgId[] = [
+  "gonzales",
+  "ascension",
+  "ladistrict2",
+  "ladistrict6",
+];
 
 function stripTrailingSlash(url: string) {
   return url.replace(/\/+$/, "");
