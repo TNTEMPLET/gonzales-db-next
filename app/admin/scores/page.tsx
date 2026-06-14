@@ -16,6 +16,7 @@ import {
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
+import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
 import {
   CONTENT_ORGS,
   getDefaultContentOrg,
@@ -103,8 +104,8 @@ export default async function AdminScoresPage({
     }),
     fetchAssignrGamesForScope({
       scope,
-      startDate: "2026-03-01",
-      endDate: "2026-06-30",
+      startDate: SEASON_START_DATE,
+      endDate: SEASON_END_DATE,
     }),
   ]);
 

@@ -53,9 +53,6 @@ export function isLiveGcEvent(event: GcScoreboardEvent): boolean {
   return hasInning && hasScores;
 }
 
-/** @deprecated use isLiveGcEvent */
-const isLiveEvent = isLiveGcEvent;
-
 export function hasLiveGamesInEventsByMatchId(
   eventsByMatchId: Record<string, GcScoreboardEvent>,
 ): boolean {
@@ -79,7 +76,7 @@ function scoreLabelForEvent(event: GcScoreboardEvent, ref: GcBracketMatchRef): s
 }
 
 function statusLabelForEvent(event: GcScoreboardEvent): string {
-  if (event.game_status === "live" || isLiveEvent(event)) return "LIVE";
+  if (event.game_status === "live" || isLiveGcEvent(event)) return "LIVE";
   if (event.game_status === "completed") return "Final";
   return "Scheduled";
 }
@@ -183,7 +180,7 @@ export function buildLivePayloadFromEvents(
 
     matchEventIds[ref.id] = event.id;
     eventsByMatchId[ref.id] = event;
-    const live = isLiveEvent(event);
+    const live = isLiveGcEvent(event);
     const scoreLabel = scoreLabelForEvent(event, ref);
     const inning = inningLabel(event);
     const statusLabel = statusLabelForEvent(event);

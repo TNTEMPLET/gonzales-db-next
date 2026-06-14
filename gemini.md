@@ -1,5 +1,7 @@
 # gemini.md
 
+> **Canonical agent instructions:** see [`AGENTS.md`](./AGENTS.md). This file is retained for legacy tooling only.
+
 This file provides guidance to Gemini when working with code in this repository.
 
 ## Next.js version warning

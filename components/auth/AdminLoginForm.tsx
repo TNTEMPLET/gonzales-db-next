@@ -1,23 +1,34 @@
 "use client";
 
-import { useEffect, useRef, useState, type FormEvent } from "react";
-import { useRouter } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 
 type AdminLoginFormProps = {
   nextPath: string;
+  initialError?: string | null;
 };
 
-export default function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
-  const router = useRouter();
+export default function AdminLoginForm({
+  nextPath,
+  initialError = null,
+}: AdminLoginFormProps) {
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [error, setError] = useState(initialError ?? "");
+  const [googleBusy, setGoogleBusy] = useState(false);
 
   function notifyAuthChanged() {
     window.dispatchEvent(new Event("gdb-auth-changed"));
   }
+
+  function redirectAfterLogin() {
+    notifyAuthChanged();
+    const target = nextPath || "/admin";
+    const topWindow = window.top ?? window;
+    topWindow.location.href = target;
+  }
+
+  useEffect(() => {
+    setError(initialError ?? "");
+  }, [initialError]);
 
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
@@ -29,13 +40,14 @@ export default function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
       window.google.accounts.id.initialize({
         client_id: clientId,
         callback: async (response: { credential?: string }) => {
-          setBusy(true);
+          setGoogleBusy(true);
           setError("");
 
           try {
             const apiResponse = await fetch("/api/auth/google", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
+              credentials: "same-origin",
               body: JSON.stringify({ credential: response.credential || "" }),
             });
 
@@ -51,15 +63,13 @@ export default function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
               return;
             }
 
-            notifyAuthChanged();
-            router.push(nextPath || "/news/admin");
-            router.refresh();
+            redirectAfterLogin();
           } catch (err: unknown) {
             setError(
               err instanceof Error ? err.message : "Google sign-in failed",
             );
           } finally {
-            setBusy(false);
+            setGoogleBusy(false);
           }
         },
       });
@@ -88,62 +98,37 @@ export default function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
     return () => {
       script.onload = null;
     };
-  }, [nextPath, router]);
-
-  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    setBusy(true);
-    setError("");
-
-    try {
-      const response = await fetch("/api/admin/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-
-      const json = await response.json();
-      if (!response.ok) {
-        throw new Error(json.error || "Login failed");
-      }
-
-      notifyAuthChanged();
-      router.push(nextPath || "/news/admin");
-      router.refresh();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Login failed");
-    } finally {
-      setBusy(false);
-    }
-  }
+  }, [nextPath]);
 
   return (
     <div className="space-y-4">
-      <form onSubmit={handleSubmit} className="space-y-4">
+      <form
+        action="/api/admin/login/redirect"
+        method="POST"
+        className="space-y-4"
+      >
+        <input type="hidden" name="next" value={nextPath} />
         <input
           required
+          name="email"
           type="email"
           autoComplete="email"
           placeholder="Admin email"
-          value={email}
-          onChange={(event) => setEmail(event.target.value)}
-          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+          className="min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-3 text-base sm:text-sm"
         />
         <input
           required
+          name="password"
           type="password"
           autoComplete="current-password"
           placeholder="Password"
-          value={password}
-          onChange={(event) => setPassword(event.target.value)}
-          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+          className="min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-4 py-3 text-base sm:text-sm"
         />
         <button
-          disabled={busy}
           type="submit"
-          className="w-full rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+          className="min-h-11 w-full rounded-lg bg-brand-purple px-4 py-3 text-base font-semibold hover:bg-brand-purple-dark disabled:opacity-60 sm:text-sm"
         >
-          {busy ? "Signing in..." : "Sign in"}
+          Sign in
         </button>
       </form>
 
@@ -156,6 +141,9 @@ export default function AdminLoginForm({ nextPath }: AdminLoginFormProps) {
       {process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID ? (
         <div className="space-y-2">
           <div ref={googleButtonRef} className="min-h-11" />
+          {googleBusy ? (
+            <p className="text-xs text-zinc-400">Signing in with Google...</p>
+          ) : null}
           <p className="text-xs text-zinc-500">
             First-time Google sign-ins are registered automatically. Existing
             admins can then promote users to admin access.

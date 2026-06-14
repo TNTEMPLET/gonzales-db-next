@@ -28,10 +28,8 @@ export default defineConfig({
   // @ts-expect-error — migrate block is valid for prisma migrate
   migrate: {
     async adapter() {
-      const { PrismaPostgresAdapter } = await import("@prisma/adapter-ppg");
-      return new PrismaPostgresAdapter({
-        connectionString: process.env.DATABASE_URL!,
-      });
+      const { createDatabaseAdapter } = await import("./lib/databaseAdapter");
+      return createDatabaseAdapter(process.env.DATABASE_URL!);
     },
   },
 });

@@ -5,15 +5,10 @@ import { ensureAllStarVaultAccess, ensureAllStarVaultAdmin } from "@/lib/allStar
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import prisma from "@/lib/prisma";
 
-function forbidIfNotMaster() {
-  return null;
-}
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const cycleId = request.nextUrl.searchParams.get("cycleId");
   if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
@@ -29,8 +24,6 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const body = (await request.json()) as {
     cycleId?: string;
@@ -129,8 +122,6 @@ export async function POST(request: NextRequest) {
 export async function DELETE(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const body = (await request.json()) as { assignmentId?: string };
   if (!body.assignmentId) return NextResponse.json({ error: "assignmentId is required" }, { status: 400 });

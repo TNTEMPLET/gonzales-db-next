@@ -19,7 +19,7 @@
  */
 import bcrypt from "bcryptjs";
 import { PrismaClient } from "@prisma/client";
-import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
+import { createDatabaseAdapter } from "../lib/databaseAdapter";
 
 function createClient() {
   const connectionString = process.env.DATABASE_URL;
@@ -27,8 +27,7 @@ function createClient() {
     console.error("DATABASE_URL is required.");
     process.exit(1);
   }
-  const adapter = new PrismaPostgresAdapter({ connectionString });
-  return new PrismaClient({ adapter });
+  return new PrismaClient({ adapter: createDatabaseAdapter(connectionString) });
 }
 
 const prisma = createClient();

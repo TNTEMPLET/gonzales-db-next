@@ -18,16 +18,11 @@ function getAllStarVaultAccessModel() {
   return model;
 }
 
-function forbidIfNotMaster() {
-  return null;
-}
 
 export async function GET(request: NextRequest) {
   try {
     const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
     if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-    const forbid = forbidIfNotMaster();
-    if (forbid) return forbid;
 
     const org = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
     if (!org) {
@@ -112,8 +107,6 @@ export async function POST(request: NextRequest) {
   try {
     const auth = await ensureAllStarVaultAdmin(request);
     if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-    const forbid = forbidIfNotMaster();
-    if (forbid) return forbid;
 
     const body = (await request.json()) as {
       registeredUserId?: string;
@@ -211,8 +204,6 @@ export async function DELETE(request: NextRequest) {
   try {
     const auth = await ensureAllStarVaultAdmin(request);
     if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-    const forbid = forbidIfNotMaster();
-    if (forbid) return forbid;
 
     const body = (await request.json()) as {
       registeredUserId?: string;

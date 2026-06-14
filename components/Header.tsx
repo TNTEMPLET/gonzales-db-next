@@ -13,6 +13,7 @@ import {
   type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 
 type DugoutMeResponse = {
@@ -539,7 +540,7 @@ export default function Header({ brand }: HeaderProps) {
                 onClick={() => setIsMenuOpen(false)}
                 className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
               >
-                Register for Spring 2026
+                Register for {CURRENT_SEASON_LABEL}
               </Link>
             )}
             {!isMasterHeader && canSeeDugout && (

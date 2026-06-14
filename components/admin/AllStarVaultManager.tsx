@@ -574,6 +574,7 @@ export default function AllStarVaultManager({
   const [voteExportTopCount, setVoteExportTopCount] = useState(
     String(DEFAULT_VOTE_EXPORT_TOP_COUNT),
   );
+  const [rosterContactsDriveBusy, setRosterContactsDriveBusy] = useState(false);
 
   const previewCanViewAllStar =
     previewRole === "BOARD_MEMBER" || previewRole === "PARK_DIRECTOR" ? false : true;
@@ -2328,6 +2329,46 @@ export default function AllStarVaultManager({
     }
   }
 
+  async function uploadRosterContactsToDrive() {
+    if (!selectedCycleId && !isMasterMode) {
+      setError("Select a cycle first.");
+      return;
+    }
+    setRosterContactsDriveBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const body = selectedCycleId
+        ? { cycleId: selectedCycleId }
+        : {
+            organizationId: org,
+            seasonYear: selectedCycle?.seasonYear ?? 2026,
+          };
+      const response = await fetch("/api/admin/all-star/exports/roster-contacts/drive", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to upload roster contacts to Google Drive"));
+      }
+      const link = typeof json.webViewLink === "string" ? json.webViewLink : null;
+      setNotice(
+        `Roster contacts saved to Google Drive (${String(json.rowCount ?? 0)} players).`,
+      );
+      if (link) {
+        window.open(link, "_blank", "noopener,noreferrer");
+      }
+    } catch (err: unknown) {
+      setError(
+        err instanceof Error ? err.message : "Failed to upload roster contacts to Google Drive",
+      );
+    } finally {
+      setRosterContactsDriveBusy(false);
+    }
+  }
+
   async function createInvites() {
     if (!selectedCycleId) return;
     const selectedCoachEmails = cycleCoachOptions
@@ -2600,6 +2641,13 @@ export default function AllStarVaultManager({
   const voteExportTopCountQuery = `&topCount=${encodeURIComponent(
     String(normalizedVoteExportTopCount),
   )}`;
+  const rosterContactsCsvHref = selectedCycleId
+    ? `/api/admin/all-star/exports/roster-contacts/csv?cycleId=${selectedCycleId}${orgQuery}`
+    : isMasterMode
+      ? `/api/admin/all-star/exports/roster-contacts/csv?organizationId=${encodeURIComponent(org)}${
+          selectedCycle?.seasonYear ? `&seasonYear=${selectedCycle.seasonYear}` : ""
+        }${orgQuery}`
+      : "#";
   const sampleBallotCandidates = candidates
     .filter((candidate) => candidate.isActive !== false)
     .slice(0, 12);
@@ -3540,6 +3588,22 @@ export default function AllStarVaultManager({
                   >
                     Export CSV
                   </a>
+                  <a
+                    href={rosterContactsCsvHref}
+                    title="Finalized All-Star roster players with guardian/contact emails from team rosters"
+                    className="text-xs rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950/30 px-3 py-1.5"
+                  >
+                    Roster Contacts CSV
+                  </a>
+                  <button
+                    type="button"
+                    disabled={rosterContactsDriveBusy || (!selectedCycleId && !isMasterMode)}
+                    onClick={() => void uploadRosterContactsToDrive()}
+                    title="Save finalized All-Star roster contacts CSV to Google Drive (2026 All Star Roster Docs)"
+                    className="text-xs rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950/30 px-3 py-1.5 disabled:opacity-60"
+                  >
+                    {rosterContactsDriveBusy ? "Saving to Drive…" : "Save to Google Drive"}
+                  </button>
                   {renderVotePanelNameOnlyPdfLinks(
                     orgQuery,
                     "text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5",
@@ -4655,6 +4719,22 @@ export default function AllStarVaultManager({
             >
               Export CSV
             </a>
+            <a
+              href={rosterContactsCsvHref}
+              title="Finalized All-Star roster players with guardian/contact emails from team rosters"
+              className="text-xs rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950/30 px-3 py-1.5"
+            >
+              Roster Contacts CSV
+            </a>
+            <button
+              type="button"
+              disabled={rosterContactsDriveBusy || (!selectedCycleId && !isMasterMode)}
+              onClick={() => void uploadRosterContactsToDrive()}
+              title="Save finalized All-Star roster contacts CSV to Google Drive (2026 All Star Roster Docs)"
+              className="text-xs rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950/30 px-3 py-1.5 disabled:opacity-60"
+            >
+              {rosterContactsDriveBusy ? "Saving to Drive…" : "Save to Google Drive"}
+            </button>
             {renderVotePanelNameOnlyPdfLinks(
               isMasterMode ? `&org=${encodeURIComponent(org)}` : "",
               "text-xs rounded-lg border border-zinc-600 text-zinc-300 hover:bg-zinc-800 px-3 py-1.5",
@@ -5123,6 +5203,22 @@ export default function AllStarVaultManager({
           >
             Export CSV
           </a>
+          <a
+            href={rosterContactsCsvHref}
+            title="Finalized All-Star roster players with guardian/contact emails from team rosters"
+            className="rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950/30 px-4 py-2 text-sm"
+          >
+            Roster Contacts CSV
+          </a>
+          <button
+            type="button"
+            disabled={rosterContactsDriveBusy || (!selectedCycleId && !isMasterMode)}
+            onClick={() => void uploadRosterContactsToDrive()}
+            title="Save finalized All-Star roster contacts CSV to Google Drive (2026 All Star Roster Docs)"
+            className="rounded-lg border border-emerald-700 text-emerald-200 hover:bg-emerald-950/30 px-4 py-2 text-sm disabled:opacity-60"
+          >
+            {rosterContactsDriveBusy ? "Saving to Drive…" : "Save to Google Drive"}
+          </button>
           <a
             href={
               selectedCycleId

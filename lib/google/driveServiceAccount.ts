@@ -1,5 +1,7 @@
 import { JWT } from "google-auth-library";
 
+import { PROTECTED_MASTER_ADMIN_EMAIL } from "@/lib/auth/adminRoles";
+
 const DRIVE_SCOPE = "https://www.googleapis.com/auth/drive";
 
 export type ParsedServiceAccount = {
@@ -56,14 +58,24 @@ export function isDriveServiceAccountConfigured(): boolean {
   return parseServiceAccountJson() !== null;
 }
 
-function createJwt(): JWT | null {
+function createJwt(subject?: string | null): JWT | null {
   const creds = parseServiceAccountJson();
   if (!creds) return null;
+  const delegatedSubject = subject?.trim() || undefined;
   return new JWT({
     email: creds.client_email,
     key: creds.private_key,
     scopes: [DRIVE_SCOPE],
+    ...(delegatedSubject ? { subject: delegatedSubject } : {}),
   });
+}
+
+export function getDriveDelegatedUserEmail(): string {
+  return (
+    process.env.GOOGLE_DRIVE_DELEGATED_USER_EMAIL?.trim() ||
+    process.env.GOOGLE_DRIVE_DELEGATED_USER?.trim() ||
+    PROTECTED_MASTER_ADMIN_EMAIL
+  );
 }
 
 export async function getDriveAccessToken(): Promise<string | null> {
@@ -71,6 +83,18 @@ export async function getDriveAccessToken(): Promise<string | null> {
   if (!jwt) return null;
   const res = await jwt.getAccessToken();
   return res.token ?? null;
+}
+
+/** Service account token impersonating the workspace user for Drive uploads. */
+export async function getDriveAccessTokenForUpload(): Promise<string | null> {
+  const jwt = createJwt(getDriveDelegatedUserEmail());
+  if (!jwt) return null;
+  try {
+    const res = await jwt.getAccessToken();
+    return res.token ?? null;
+  } catch {
+    return getDriveAccessToken();
+  }
 }
 
 export type DriveApiResult<T> =

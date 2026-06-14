@@ -3,15 +3,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
 import prisma from "@/lib/prisma";
 
-function forbidIfNotMaster() {
-  return null;
-}
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const cycleId = request.nextUrl.searchParams.get("cycleId");
   if (!cycleId) return NextResponse.json({ error: "cycleId is required" }, { status: 400 });

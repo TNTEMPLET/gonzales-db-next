@@ -1,5 +1,6 @@
 import { PrismaClient } from "@prisma/client";
-import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
+
+import { createDatabaseAdapter } from "@/lib/databaseAdapter";
 
 declare global {
   var prisma: PrismaClient | undefined;
@@ -10,10 +11,8 @@ declare global {
 const PRISMA_SCHEMA_VERSION = "2026-05-27-allstar-payment-roster-tag-v1";
 
 function createClient() {
-  const adapter = new PrismaPostgresAdapter({
-    connectionString: process.env.DATABASE_URL!,
-  });
-  return new PrismaClient({ adapter });
+  const connectionString = process.env.DATABASE_URL!;
+  return new PrismaClient({ adapter: createDatabaseAdapter(connectionString) });
 }
 
 const cached = global.prisma;

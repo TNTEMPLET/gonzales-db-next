@@ -10,15 +10,10 @@ import {
   resolveAdminTargetOrg,
 } from "@/lib/siteConfig";
 
-function forbidIfNotMaster() {
-  return null;
-}
 
 export async function POST(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  const forbid = forbidIfNotMaster();
-  if (forbid) return forbid;
 
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   const body = (await request.json()) as { cycleId?: string; rotate?: boolean };

@@ -67,7 +67,7 @@ export default function SponsorScroller() {
   if (items.length === 0) return null;
 
   return (
-    <div className="fixed inset-x-0 bottom-0 z-[100] pb-[env(safe-area-inset-bottom,0px)]">
+    <div className="fixed inset-x-0 bottom-0 z-[100] pb-safe">
       <SponsorMarquee items={items} dock />
     </div>
   );

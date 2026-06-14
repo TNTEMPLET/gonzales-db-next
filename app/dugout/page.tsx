@@ -19,6 +19,7 @@ import { listDugoutPosts } from "@/lib/dugout/posts";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import { getPublishedNewsPosts } from "@/lib/news/queries";
 import prisma from "@/lib/prisma";
+import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
 import {
   getAssignrLeagueId,
   getSiteConfig,
@@ -271,7 +272,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
       },
     }),
     fetchGamesForOrgs(
-      { startDate: "2026-03-01", endDate: "2026-06-30" },
+      { startDate: SEASON_START_DATE, endDate: SEASON_END_DATE },
       gameLeagueIds,
     ),
   ]);
@@ -638,7 +639,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
 
       {/* Mobile bottom navigation */}
       <nav className="fixed inset-x-0 bottom-0 z-40 border-t border-zinc-800 bg-zinc-950/95 backdrop-blur lg:hidden">
-        <div className="mx-auto flex w-full max-w-330 items-center justify-between px-4 py-1.5 pb-[max(0.5rem,env(safe-area-inset-bottom))] sm:px-5">
+        <div className="mx-auto flex w-full max-w-330 items-center justify-between px-4 py-1.5 pb-safe-bar sm:px-5">
           {/* Timeline / Dugout logo button */}
           <Link
             href="/dugout"

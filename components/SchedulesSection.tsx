@@ -1,6 +1,8 @@
 // components/SchedulesSection.tsx
 import { Suspense } from "react";
 import { fetchGames, type Game } from "@/lib/fetchGames";
+import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
+import { getSiteConfig } from "@/lib/siteConfig";
 
 async function GamesContent({
   startDate,
@@ -119,18 +121,19 @@ export default function SchedulesSection({
   endDate: string;
   leagueId?: string;
 }) {
+  const site = getSiteConfig();
   return (
     <section
       id="schedule"
-      className="py-20 bg-zinc-950 border-t border-zinc-800"
+      className="border-t border-zinc-800 bg-zinc-950 py-12 sm:py-20"
     >
-      <div className="max-w-6xl mx-auto px-6">
-        <div className="text-center mb-12">
-          <h2 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+      <div className="mx-auto max-w-6xl px-4 sm:px-6">
+        <div className="mb-12 text-center">
+          <h2 className="mb-4 text-3xl font-bold tracking-tight sm:text-4xl md:text-5xl">
             Schedules & Standings
           </h2>
-          <p className="text-zinc-400 text-lg">
-            Spring 2026 Season • Gonzales Diamond Baseball
+          <p className="text-base text-zinc-400 sm:text-lg">
+            {CURRENT_SEASON_LABEL} Season • {site.name}
           </p>
         </div>
 

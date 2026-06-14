@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getCycleTierDisplayLabel } from "@/lib/allStar/cycleUiLabels";
 import prisma from "@/lib/prisma";
+import { withTransientDbRetry } from "@/lib/prismaRetry";
 import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 
 const ORG_LABELS: Record<ContentOrgId, string> = {
@@ -21,44 +22,49 @@ export async function GET(request: NextRequest) {
   const orgParam = request.nextUrl.searchParams.get("org");
   const orgFilter = orgParam === "gonzales" || orgParam === "ascension" ? orgParam : null;
 
-  const cycles = await prisma.allStarBallotCycle.findMany({
-    where: {
-      ...(year ? { seasonYear: year } : {}),
-      ...(orgFilter ? { organizationId: orgFilter } : {}),
-    },
-    orderBy: [{ organizationId: "asc" }, { seasonYear: "desc" }, { ageGroup: "asc" }],
-    select: {
-      id: true,
-      organizationId: true,
-      seasonYear: true,
-      ageGroup: true,
-      allStarAgeGroupLabel: true,
-      title: true,
-      status: true,
-    },
-  });
+  try {
+  const cycles = await withTransientDbRetry(() =>
+    prisma.allStarBallotCycle.findMany({
+      where: {
+        ...(year ? { seasonYear: year } : {}),
+        ...(orgFilter ? { organizationId: orgFilter } : {}),
+      },
+      orderBy: [{ organizationId: "asc" }, { seasonYear: "desc" }, { ageGroup: "asc" }],
+      select: {
+        id: true,
+        organizationId: true,
+        seasonYear: true,
+        ageGroup: true,
+        allStarAgeGroupLabel: true,
+        title: true,
+        status: true,
+      },
+    }),
+  );
 
   const cycleIds = cycles.map((c) => c.id);
-  const allPayments = cycleIds.length
-    ? await prisma.allStarPayment.findMany({
-        where: { ballotCycleId: { in: cycleIds } },
-        orderBy: [{ team: "asc" }, { playerFullName: "asc" }],
-      })
-    : [];
+  const [allPayments, finalizedGroups] = cycleIds.length
+    ? await withTransientDbRetry(() =>
+        Promise.all([
+          prisma.allStarPayment.findMany({
+            where: { ballotCycleId: { in: cycleIds } },
+            orderBy: [{ team: "asc" }, { playerFullName: "asc" }],
+          }),
+          prisma.allStarCandidate.groupBy({
+            by: ["ballotCycleId"],
+            where: {
+              ballotCycleId: { in: cycleIds },
+              finalRosterOverride: { in: ["SELECTED", "SECOND_TEAM"] },
+            },
+            _count: { _all: true },
+          }),
+        ]),
+      )
+    : [[], []];
 
-  // Count finalized candidates (SELECTED or SECOND_TEAM) per cycle for "seed" eligibility
-  const finalizedCandidates = cycleIds.length
-    ? await prisma.allStarCandidate.findMany({
-        where: {
-          ballotCycleId: { in: cycleIds },
-          finalRosterOverride: { in: ["SELECTED", "SECOND_TEAM"] },
-        },
-        select: { ballotCycleId: true },
-      })
-    : [];
   const finalizedByCycle = new Map<string, number>();
-  for (const c of finalizedCandidates) {
-    finalizedByCycle.set(c.ballotCycleId, (finalizedByCycle.get(c.ballotCycleId) ?? 0) + 1);
+  for (const row of finalizedGroups) {
+    finalizedByCycle.set(row.ballotCycleId, row._count._all);
   }
 
   // Group payments by cycleId
@@ -178,5 +184,13 @@ export async function GET(request: NextRequest) {
   const allYears = [...new Set(cycles.map((c) => c.seasonYear))].sort((a, b) => b - a);
 
   return NextResponse.json({ orgs, grandTotals: grandTotal, availableYears: allYears });
+  } catch (err: unknown) {
+    console.error("[all-orgs payments GET]", err);
+    const message =
+      err instanceof Error && /fetch failed|Connect Timeout|504 Gateway/i.test(err.message)
+        ? "Database connection timed out. Wait a moment and refresh."
+        : "Failed to load payment summary.";
+    return NextResponse.json({ error: message }, { status: 503 });
+  }
 }
 

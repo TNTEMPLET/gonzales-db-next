@@ -1,15 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-  ADMIN_SESSION_COOKIE,
-  createAdminSession,
-  verifyAdminCredentials,
-} from "@/lib/auth/adminSession";
-import {
-  COACH_SESSION_COOKIE,
-  createCoachSession,
-} from "@/lib/auth/coachSession";
-import prisma from "@/lib/prisma";
+import { applyAdminLoginCookies } from "@/lib/auth/applyAdminLoginCookies";
+import { verifyAdminCredentials } from "@/lib/auth/adminSession";
+import { withTransientDbRetry } from "@/lib/prismaRetry";
 
 type LoginPayload = {
   email?: string;
@@ -29,7 +22,9 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const adminUser = await verifyAdminCredentials(email, password);
+    const adminUser = await withTransientDbRetry(() =>
+      verifyAdminCredentials(email, password),
+    );
     if (!adminUser) {
       return NextResponse.json(
         { error: "Invalid credentials" },
@@ -37,43 +32,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const session = await createAdminSession(adminUser.id);
-
     const response = NextResponse.json({
       success: true,
       user: { id: adminUser.id, email: adminUser.email, name: adminUser.name },
     });
 
-    response.cookies.set({
-      name: ADMIN_SESSION_COOKIE,
-      value: session.token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      expires: session.expiresAt,
+    await applyAdminLoginCookies(response, {
+      id: adminUser.id,
+      email: adminUser.email,
     });
-
-    // If the admin also has a RegisteredUser account, issue a coach session so
-    // they can post, like, and comment in The Dugout without a separate login.
-    const registeredUser = await prisma.registeredUser.findFirst({
-      where: {
-        organizationId: process.env.SITE_ORG ?? "gonzales",
-        email: adminUser.email,
-      },
-    });
-    if (registeredUser) {
-      const coachSession = await createCoachSession(registeredUser.id);
-      response.cookies.set({
-        name: COACH_SESSION_COOKIE,
-        value: coachSession.token,
-        httpOnly: true,
-        secure: process.env.NODE_ENV === "production",
-        sameSite: "lax",
-        path: "/",
-        expires: coachSession.expiresAt,
-      });
-    }
 
     return response;
   } catch (err: unknown) {

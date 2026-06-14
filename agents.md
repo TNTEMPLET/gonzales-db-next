@@ -1,5 +1,7 @@
 # agents.md
 
+> **Canonical agent instructions:** see [`AGENTS.md`](./AGENTS.md). This file is retained for legacy tooling only.
+
 This file provides guidance to Agent systems (Codex, automation, etc.) when working with code in this repository.
 
 ## Next.js version warning
