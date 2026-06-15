@@ -3,6 +3,17 @@ export type ContentOrgId = "gonzales" | "ascension";
 /** ContentOrgId plus tournament-only orgs that only use the bracket system */
 export type BracketOrgId = ContentOrgId | "ladistrict2" | "ladistrict6";
 
+/** Official DYB mark from dybusa.org (Louisiana District 6 site + bracket flyers). */
+export const DYB_DISTRICT6_LOGO_URL =
+  "https://dybusa.org/mediacontent/2026/01/26/11/u_New_DYB_Logo_copy_1769454568974_1_88301504_249670.png";
+
+/** Brand colors sampled from the official DYB logo (navy square + red diamond). */
+export const DYB_DISTRICT6_BRAND = {
+  primaryHex: "#051140",
+  primaryDarkHex: "#030B2E",
+  accentHex: "#B60813",
+} as const;
+
 export interface SiteConfig {
   orgId: OrgId;
   name: string;
@@ -105,11 +116,11 @@ const configs: Record<OrgId, SiteConfig> = {
     description:
       "Official tournament brackets and schedule for Louisiana DYB District 6.",
     siteUrl: "https://district6.apbaseball.com",
-    logoPath: "/images/dyb-logo.png",
-    faviconPath: "/images/dyb-logo.png",
-    colorPrimary: "#590275",
-    colorPrimaryDark: "#4a0163",
-    colorAccent: "#ffcb29",
+    logoPath: "/images/dyb-district6-logo.png",
+    faviconPath: "/images/dyb-district6-logo.png",
+    colorPrimary: DYB_DISTRICT6_BRAND.primaryHex,
+    colorPrimaryDark: DYB_DISTRICT6_BRAND.primaryDarkHex,
+    colorAccent: DYB_DISTRICT6_BRAND.accentHex,
     assignrSiteId: "",
     assignrLeagueId: "",
     tournamentOnly: true,

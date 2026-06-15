@@ -31,6 +31,8 @@ Run Prisma CLI yourself when schema or migrations change (or when verifying the 
 
 For local work, Prisma CLI and dev servers use the **DEV** database: `prisma.config.ts` loads `.env.local` first, then **`.env.development.local`** (which overrides it). On **dev-box**, dev is **local Postgres** (`127.0.0.1:5432`, database `apbaseball_dev`) — see `docs/local-dev-database.md`. Do not run `migrate dev` or `db push` against production. To deploy migrations to prod, use an explicit `DATABASE_URL` with `prisma migrate deploy` only after dev is verified.
 
+**Dev-box is the live dev site:** after bracket, schema, seed, or data changes, sync to dev-box and apply DB updates there (`pnpm seed:ladistrict6-tournament`, `pnpm prisma db push` on dev-box). See `.cursor/rules/dev-box-preview.mdc`.
+
 ## Clarifying questions
 
 When the agent needs user choices on ambiguous work, it should use **clickable options** via the `AskQuestion` tool (see `.cursor/rules/clarifying-questions.mdc`), not prose-only questions.

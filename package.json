@@ -28,7 +28,9 @@
     "dev:ladistrict2:webpack": "SITE_ORG=ladistrict2 next dev --webpack",
     "dev:ladistrict6": "SITE_ORG=ladistrict6 next dev",
     "dev:ladistrict6:webpack": "SITE_ORG=ladistrict6 next dev --webpack",
-    "seed:ladistrict6-tournament": "tsx scripts/seed-ladistrict6-tournament-2026.ts"
+    "seed:ladistrict6-tournament": "tsx --env-file=.env.local --env-file=.env.development.local scripts/seed-ladistrict6-tournament-2026.ts",
+    "sync:dev-box": "bash scripts/sync-dev-box.sh",
+    "sync:dev-box:restart": "bash scripts/sync-dev-box.sh --restart"
   },
   "dependencies": {
     "@prisma/adapter-pg": "^7.7.0",
