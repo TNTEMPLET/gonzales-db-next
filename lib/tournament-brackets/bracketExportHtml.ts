@@ -4,6 +4,7 @@ import {
   declaredChampionFromFinalSlots,
   declaredThirdPlaceFromSlots,
   formatBracketGameBadge,
+  formatChampionshipGameBadge,
   matchCardGameInfoLines,
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
@@ -816,8 +817,11 @@ function isSixTeamEightSlotByeLayoutHtml(rounds: LayoutRound[], laneRows: number
   );
 }
 
-function matchGameBadgeHtml(m: { officialGameNumber?: string }): string {
-  const badge = formatBracketGameBadge(m.officialGameNumber);
+function matchGameBadgeHtml(m: {
+  officialGameNumber?: string;
+  championshipRole?: "grand_final" | "if_necessary";
+}): string {
+  const badge = formatChampionshipGameBadge(m);
   if (!badge) return "";
   return `<div class="match-game-badge">${esc(badge)}</div>`;
 }

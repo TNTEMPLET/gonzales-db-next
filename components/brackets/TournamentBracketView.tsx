@@ -4,15 +4,13 @@ import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import type { BracketLayout, BracketLayoutPodium, LayoutMatch, LayoutRound } from "@/lib/tournament-brackets/bracketLayout";
-import {
-  collectAllDoubleElimMatchesByGame,
-  isFiveTeamDoubleElimFullPattern,
-} from "@/lib/tournament-brackets/bracketLayout";
+import { collectAllDoubleElimMatchesByGame } from "@/lib/tournament-brackets/bracketLayout";
+import { resolveClassicDoubleElimSlots } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
 import {
   declaredChampionFromFinalSlots,
   declaredThirdPlaceFromSlots,
   bracketSurfaceTitle,
-  formatBracketGameBadge,
+  formatChampionshipGameBadge,
   matchCardGameInfoLines,
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
@@ -30,11 +28,7 @@ import {
 } from "@/lib/tournament-brackets/bracketScoring";
 
 import { BracketConnectorCell, FinalChampionConnectorCell } from "@/components/brackets/BracketConnector";
-import FiveTeamDoubleElimFullDiagram from "@/components/brackets/FiveTeamDoubleElimFullDiagram";
-import FiveTeamDoubleElimWinnersGrid, {
-  collectMatchesByOfficialGameNumber,
-  isFiveTeamDoubleElimWinnersPattern,
-} from "@/components/brackets/FiveTeamDoubleElimWinnersGrid";
+import ClassicDoubleElimDiagram from "@/components/brackets/ClassicDoubleElimDiagram";
 import {
   BRACKET_PODIUM_CHAMPION_SOURCE_ATTR,
   BRACKET_PODIUM_CHAMPION_TARGET_ATTR,
@@ -85,6 +79,8 @@ type Props = {
    * (e.g. BracketProject.name from the admin list). Normalized with `bracketSurfaceTitle` (label only, or `— suffix` when used).
    */
   surfaceTitleOverride?: string | null;
+  /** Public page: grid columns flex to container width (no fixed min-width scroll). */
+  fluidWidth?: boolean;
 };
 
 export type BracketParentOrganizationLogo = {
@@ -130,8 +126,8 @@ function isSixTeamEightSlotByeLayout(rounds: LayoutRound[], laneRows: number) {
   );
 }
 
-function matchGameBadge(m: Pick<LayoutMatch, "officialGameNumber">): string | undefined {
-  return formatBracketGameBadge(m.officialGameNumber);
+function matchGameBadge(m: Pick<LayoutMatch, "officialGameNumber" | "championshipRole">): string | undefined {
+  return formatChampionshipGameBadge(m);
 }
 
 function liveStatusLabel(status: BracketLiveGameStatus | null | undefined): string | undefined {
@@ -221,7 +217,10 @@ function BracketMatchSlotRow({
   const showScore = !isBye && (editing || scoreValue != null);
 
   return (
-    <div className={`${styles.slot}${byeSlotClass(label)}${showScore ? ` ${styles.slotWithScore}` : ""}`}>
+    <div
+      className={`${styles.slot}${byeSlotClass(label)}${showScore ? ` ${styles.slotWithScore}` : ""}`}
+      data-bracket-match-slot={side}
+    >
       <BracketSlotLabel label={label} />
       {showScore ? (
         <BracketSlotScore
@@ -1334,13 +1333,15 @@ function DoubleEliminationBracketView({
     layout.losersBracket?.rounds,
     layout.championship?.matches,
   );
-  const useFullFiveTeamDiagram = isFiveTeamDoubleElimFullPattern(allMatchesByGame);
-
-  const winnersByGame = collectMatchesByOfficialGameNumber(layout.winnersBracket.rounds);
-  const useFiveTeamWinners =
-    !useFullFiveTeamDiagram &&
-    layout.winnersBracket.winnersDiagram === "five_team" &&
-    isFiveTeamDoubleElimWinnersPattern(winnersByGame);
+  const ifNecessaryMatch =
+    layout.mode === "double_elimination" ? layout.classicChampionshipPodium?.ifNecessaryMatch : null;
+  if (ifNecessaryMatch?.officialGameNumber?.trim()) {
+    allMatchesByGame.set(ifNecessaryMatch.officialGameNumber.trim(), ifNecessaryMatch);
+  }
+  const classicSlots =
+    layout.diagramStyle === "classic_unified"
+      ? resolveClassicDoubleElimSlots(allMatchesByGame)
+      : null;
 
   const renderMatch = (props: {
     match: LayoutMatch;
@@ -1382,9 +1383,10 @@ function DoubleEliminationBracketView({
         gameChangerEnabled={gameChangerEnabled}
       />
       <FullBracketDiagramFrame>
-        {useFullFiveTeamDiagram ? (
-          <FiveTeamDoubleElimFullDiagram
-            matchesByGame={allMatchesByGame}
+        {classicSlots ? (
+          <ClassicDoubleElimDiagram
+            slots={classicSlots}
+            championPodium={layout.classicChampionshipPodium ?? null}
             renderMatch={renderMatch}
             scoring={scoring}
             liveGameStatuses={liveGameStatuses}
@@ -1392,73 +1394,62 @@ function DoubleEliminationBracketView({
             gameChangerEnabled={gameChangerEnabled}
           />
         ) : (
-          <div className={styles.doubleElimDiagram}>
-            <div className={styles.doubleElimMainRow}>
-              <div className={styles.doubleElimSection}>
-                <p className={styles.doubleElimSectionLabel}>{layout.winnersBracket.label}</p>
-                {useFiveTeamWinners ? (
-                  <FiveTeamDoubleElimWinnersGrid
-                    matchesByGame={winnersByGame}
-                    renderMatch={renderMatch}
-                    scoring={scoring}
-                    liveGameStatuses={liveGameStatuses}
-                    onMatchClick={onMatchClick}
-                    gameChangerEnabled={gameChangerEnabled}
-                  />
-                ) : (
-                  <ConnectedBracketGrid
-                    embedded
-                    rounds={layout.winnersBracket.rounds}
-                    laneRows={layout.winnersBracket.connectedLaneRowCount}
-                    title=""
-                    rootClass={rootClass}
-                    colorScheme={colorScheme}
-                    scoring={scoring}
-                    liveGameStatuses={liveGameStatuses}
-                    onMatchClick={onMatchClick}
-                    gameChangerEnabled={gameChangerEnabled}
-                  />
-                )}
-              </div>
-              {layout.losersBracket ? (
-                <div className={styles.doubleElimSection}>
-                  <p className={styles.doubleElimSectionLabel}>{layout.losersBracket.label}</p>
-                  <ConnectedBracketGrid
-                    embedded
-                    rounds={layout.losersBracket.rounds}
-                    laneRows={layout.losersBracket.connectedLaneRowCount}
-                    title=""
-                    rootClass={rootClass}
-                    colorScheme={colorScheme}
-                    scoring={scoring}
-                    liveGameStatuses={liveGameStatuses}
-                    onMatchClick={onMatchClick}
-                    gameChangerEnabled={gameChangerEnabled}
-                  />
-                </div>
-              ) : null}
-              {layout.championship ? (
-                <div className={styles.doubleElimChampionship}>
-                  <p className={styles.doubleElimSectionLabel}>{layout.championship.label}</p>
-                  <ol className={styles.doubleElimChampionshipList}>
-                    {layout.championship.matches.map((m) => (
-                      <li key={m.id}>
-                        <MatchArticle
-                          match={m}
-                          gameLabel={matchGameBadge(m)}
-                          liveStatus={liveGameStatuses?.[m.id]}
-                          schedule={m}
-                          scoring={scoring}
-                          onMatchClick={onMatchClick}
-                          gameChangerEnabled={gameChangerEnabled}
-                        />
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-              ) : null}
+        <div className={styles.doubleElimDiagram}>
+          <div className={styles.doubleElimMainRow}>
+            <div className={styles.doubleElimSection}>
+              <p className={styles.doubleElimSectionLabel}>{layout.winnersBracket.label}</p>
+              <ConnectedBracketGrid
+                embedded
+                rounds={layout.winnersBracket.rounds}
+                laneRows={layout.winnersBracket.connectedLaneRowCount}
+                title=""
+                rootClass={rootClass}
+                colorScheme={colorScheme}
+                scoring={scoring}
+                liveGameStatuses={liveGameStatuses}
+                onMatchClick={onMatchClick}
+                gameChangerEnabled={gameChangerEnabled}
+              />
             </div>
+            {layout.losersBracket ? (
+              <div className={styles.doubleElimSection}>
+                <p className={styles.doubleElimSectionLabel}>{layout.losersBracket.label}</p>
+                <ConnectedBracketGrid
+                  embedded
+                  rounds={layout.losersBracket.rounds}
+                  laneRows={layout.losersBracket.connectedLaneRowCount}
+                  title=""
+                  rootClass={rootClass}
+                  colorScheme={colorScheme}
+                  scoring={scoring}
+                  liveGameStatuses={liveGameStatuses}
+                  onMatchClick={onMatchClick}
+                  gameChangerEnabled={gameChangerEnabled}
+                />
+              </div>
+            ) : null}
+            {layout.championship ? (
+              <div className={styles.doubleElimChampionship}>
+                <p className={styles.doubleElimSectionLabel}>{layout.championship.label}</p>
+                <ol className={styles.doubleElimChampionshipList}>
+                  {layout.championship.matches.map((m) => (
+                    <li key={m.id}>
+                      <MatchArticle
+                        match={m}
+                        gameLabel={matchGameBadge(m)}
+                        liveStatus={liveGameStatuses?.[m.id]}
+                        schedule={m}
+                        scoring={scoring}
+                        onMatchClick={onMatchClick}
+                        gameChangerEnabled={gameChangerEnabled}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
           </div>
+        </div>
         )}
       </FullBracketDiagramFrame>
     </BracketSurface>
@@ -1479,8 +1470,11 @@ export default function TournamentBracketView({
   onMatchClick,
   gameChangerEnabled,
   surfaceTitleOverride,
+  fluidWidth = false,
 }: Props) {
-  const rootClass = [styles.root, className].filter(Boolean).join(" ");
+  const rootClass = [styles.root, fluidWidth ? styles.rootFluidWidth : null, className]
+    .filter(Boolean)
+    .join(" ");
   const rootStyle = mergeRootStyle(themeColors, colorScheme, style);
   const divisionForHeading = layout.mode === "empty" ? undefined : layout.divisionLabel;
   const headingLabel = surfaceTitleOverride?.trim() || divisionForHeading;

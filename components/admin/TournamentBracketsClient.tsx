@@ -27,6 +27,7 @@ import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-bracket
 import { buildBracketSvgPreview } from "@/lib/tournament-brackets/bracketSvgPreview";
 import { isBracketSetupWizardComplete, safeParseBracketSpec, type BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { comparePublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
+import { isClassicDoubleElimLayoutLocked } from "@/lib/tournament-brackets/doubleEliminationClassicLayoutTemplate";
 import {
   canUseConnectedBracketScoring,
   clearBracketScoringFromSpec,
@@ -40,13 +41,11 @@ import { bracketWatermarkSrc } from "@/lib/tournament-brackets/bracketWatermark"
 import { normalizeHex6, resolveBracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { ALLOWED_REFERENCE_HOST_SUFFIXES, isReferenceUrlAllowed } from "@/lib/tournament-brackets/referenceAllowlist";
 import {
-  CONTENT_ORGS,
+  BRACKET_ORGS,
   getContentOrgBrandColors,
-  getOrgDisplayName,
   getTournamentBracketBrandingForOrg,
   getBracketOrgDisplayName,
   type BracketOrgId,
-  type ContentOrgId,
 } from "@/lib/siteConfig";
 
 type ProjectRow = {
@@ -379,6 +378,10 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
 
   const spec = bracketSpecParse?.spec ?? null;
   const setupComplete = useMemo(() => (spec ? isBracketSetupWizardComplete(spec) : false), [spec]);
+  const classicLayoutLocked = useMemo(
+    () => (spec ? isClassicDoubleElimLayoutLocked(spec) : false),
+    [spec],
+  );
 
   useEffect(() => {
     if (!pendingWizardScroll || !project || !spec || setupComplete) return;
@@ -449,8 +452,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const projectsPanelRef = useRef<HTMLDetailsElement>(null);
   const setupWizardRef = useRef<HTMLDivElement>(null);
 
-  const svgMarkup = spec ? buildBracketSvgPreview(spec) : "";
-  const bracketLayoutBuild = useMemo(() => {
+  const baseLayoutBuild = useMemo(() => {
     if (!spec) return { layout: null as BracketLayout | null, error: null as string | null };
     try {
       return { layout: buildBracketLayout(spec), error: null };
@@ -461,11 +463,11 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     }
   }, [spec]);
 
-  const bracketLayout = bracketLayoutBuild.layout;
+  const baseLayout = baseLayoutBuild.layout;
 
   const scoringSupported = useMemo(
-    () => Boolean(spec && bracketLayout && canUseConnectedBracketScoring(spec, bracketLayout)),
-    [spec, bracketLayout],
+    () => Boolean(spec && baseLayout && canUseConnectedBracketScoring(spec, baseLayout)),
+    [spec, baseLayout],
   );
 
   const bracketHasSavedScores = useMemo(() => Boolean(spec && specHasSavedScores(spec)), [spec]);
@@ -488,6 +490,22 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     }, 0);
     return () => window.clearTimeout(id);
   }, [project?.id, project?.updatedAt, spec, scoringSupported]);
+
+  const bracketLayoutBuild = useMemo(() => {
+    if (!spec) return baseLayoutBuild;
+    if (!scoringSupported || Object.keys(scoreDraft).length === 0) return baseLayoutBuild;
+    try {
+      return { layout: buildBracketLayout(mergeMatchScoresIntoSpec(spec, scoreDraft)), error: null };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[bracket-layout] buildBracketLayout threw:", msg, e);
+      return { layout: null, error: msg };
+    }
+  }, [baseLayoutBuild, scoreDraft, scoringSupported, spec]);
+
+  const bracketLayout = bracketLayoutBuild.layout;
+
+  const svgMarkup = bracketLayout ? buildBracketSvgPreview(spec) : "";
 
   const scoringView: BracketScoringViewProps | null = useMemo(() => {
     if (!scoringSupported) return null;
@@ -1286,6 +1304,11 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       if (merged.thirdPlaceGame) {
         specPatch.thirdPlaceGame = merged.thirdPlaceGame;
       }
+      if (merged.championTeamName?.trim()) {
+        specPatch.championTeamName = merged.championTeamName.trim();
+      } else {
+        specPatch.championTeamName = null;
+      }
       await patchSpec(specPatch);
       setNotice("Bracket scores saved.");
       setScoreEditing(false);
@@ -1315,6 +1338,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       await patchSpec({
         rounds: cleared.rounds,
         thirdPlaceGame: null,
+        championTeamName: null,
       });
       setNotice("All bracket scores cleared.");
       setScoreEditing(false);
@@ -1652,14 +1676,14 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
               value={organizationId}
               aria-label="Managing site for bracket projects"
               onChange={(e) => {
-                const next = e.target.value as ContentOrgId;
+                const next = e.target.value as BracketOrgId;
                 router.push(`${pathname}?org=${encodeURIComponent(next)}`);
               }}
               className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 outline-none focus:border-zinc-500"
             >
-              {CONTENT_ORGS.map((id) => (
+              {BRACKET_ORGS.map((id) => (
                 <option key={id} value={id}>
-                  {getOrgDisplayName(id)}
+                  {getBracketOrgDisplayName(id)}
                 </option>
               ))}
             </select>
@@ -2157,14 +2181,15 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                   organizationId={project.organizationId}
                   seasonYear={project.seasonYear}
                   busy={busy}
-                  structureLocked={project.status === "READY"}
+                  structureLocked={project.status === "READY" || classicLayoutLocked}
+                  classicLayoutLocked={classicLayoutLocked}
                   onSave={async (patch) => {
                     setBusy(true);
                     setError("");
                     try {
                       await patchSpec({ ...patch });
                       setNotice(
-                        project.status === "READY"
+                        project.status === "READY" || classicLayoutLocked
                           ? "Bracket schedule saved."
                           : "Bracket structure saved.",
                       );

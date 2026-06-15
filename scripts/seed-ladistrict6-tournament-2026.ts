@@ -1,9 +1,30 @@
 import prisma from "@/lib/prisma";
+import { DYB_DISTRICT6_BRAND } from "@/lib/siteConfig";
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
+import {
+  classicDoubleElimLayoutLockPatch,
+  doubleEliminationClassicLayoutSpecDefaults,
+  resolveDoubleElimClassicLayoutGenerationOptions,
+} from "@/lib/tournament-brackets/doubleEliminationClassicLayoutTemplate";
+import {
+  applyScheduleByGameNumber,
+  withStableMatchIds,
+} from "@/lib/tournament-brackets/applyBracketSchedule";
+import { generateDoubleEliminationRoundsForFormat } from "@/lib/tournament-brackets/generateDoubleElimFromTeams";
+
+/**
+ * Seeds District 6 tournament brackets into the same BracketProject records the
+ * admin Tournament Bracket Creator uses (`/admin/tournament-brackets?org=ladistrict6`).
+ */
 
 const ORG_ID = "ladistrict6";
 const SEASON_YEAR = 2026;
 const VENUE = "Tee-Joe Gonzales Park";
+
+const DYB_PRIMARY_HEX = DYB_DISTRICT6_BRAND.primaryHex;
+const DYB_ACCENT_HEX = DYB_DISTRICT6_BRAND.accentHex;
+
+const TEN_U_TEAMS = ["Ponchatoula", "Loranger", "Kentwood", "Franklinton", "Gonzales"] as const;
 
 const parkInfo: NonNullable<BracketSpec["parkInfo"]> = {
   heading: "Tee-Joe Gonzales Park",
@@ -20,128 +41,64 @@ function baseFlyer() {
     includeSponsors: false,
     sponsorLayout: "none" as const,
     sponsorStrip: [],
+    logoUrl: "/images/dyb-district6-logo.png",
+    primaryHex: DYB_PRIMARY_HEX,
+    accentHex: DYB_ACCENT_HEX,
   };
 }
 
+function bracketThemeFields() {
+  return {
+    bracketThemePrimaryHex: DYB_PRIMARY_HEX,
+    bracketThemeAccentHex: DYB_ACCENT_HEX,
+  };
+}
+
+const TEN_U_BRACKET_NAME = "2026 Louisiana DYB District 6 Tournament — 10U";
+
 function build10USpec(): BracketSpec {
+  const teams = [...TEN_U_TEAMS];
+  const deDefaults = doubleEliminationClassicLayoutSpecDefaults();
+  const genOptions = resolveDoubleElimClassicLayoutGenerationOptions(
+    teams,
+    deDefaults.bracketFormat,
+  );
+  let rounds = generateDoubleEliminationRoundsForFormat(
+    teams,
+    deDefaults.bracketFormat,
+    genOptions,
+  );
+  rounds = withStableMatchIds(rounds, "10u");
+  rounds = applyScheduleByGameNumber(
+    rounds,
+    {
+      "1": scheduleMeta("Wed 6/18", "6:00 PM", "Berthelot"),
+      "2": scheduleMeta("Wed 6/18", "6:00 PM", "Patterson"),
+      "3": scheduleMeta("Thu 6/19", "6:00 PM", "Berthelot"),
+      "4": scheduleMeta("Thu 6/19", "8:00 PM", "Patterson"),
+      "5": scheduleMeta("Thu 6/19", "6:00 PM", "Patterson"),
+      "6": scheduleMeta("Fri 6/20", "9:00 AM", "Patterson"),
+      "7": scheduleMeta("Fri 6/20", "11:30 AM", "Patterson"),
+      "8": scheduleMeta("Fri 6/20", "2:00 PM", "Patterson"),
+      "9": scheduleMeta("Sat 6/21", "1:00 PM", "Patterson"),
+    },
+    VENUE,
+  );
+
   return {
     version: 1,
-    bracketFormat: "double_elimination",
+    ...deDefaults,
     divisionLabel: "10U",
     championAgeGroupLabel: "10U",
     governingBody: "Louisiana DYB District 6",
-    teams: ["Ponchatoula", "Loranger", "Kentwood", "Franklinton", "Gonzales"],
+    teams,
     setupWizardCompleted: true,
     parkInfo,
     flyer: baseFlyer(),
+    ...bracketThemeFields(),
+    ...classicDoubleElimLayoutLockPatch(teams, deDefaults.bracketFormat),
     ingestionWarnings: [],
-    rounds: [
-      {
-        id: "winners-r1",
-        label: "Winners Bracket — Round 1",
-        bracketSection: "winners",
-        matches: [
-          {
-            id: "10u-g1",
-            home: "Ponchatoula",
-            away: "Loranger",
-            officialGameNumber: "1",
-            ...scheduleMeta("Wed 6/18", "6:00 PM", "Berthelot"),
-          },
-          {
-            id: "10u-g2",
-            home: "Kentwood",
-            away: "Franklinton",
-            officialGameNumber: "2",
-            ...scheduleMeta("Wed 6/18", "6:00 PM", "Patterson"),
-          },
-        ],
-      },
-      {
-        id: "winners-r2",
-        label: "Winners Bracket — Round 2",
-        bracketSection: "winners",
-        matches: [
-          {
-            id: "10u-g3",
-            home: "W1",
-            away: "Gonzales",
-            officialGameNumber: "3",
-            ...scheduleMeta("Thu 6/19", "6:00 PM", "Berthelot"),
-          },
-        ],
-      },
-      {
-        id: "winners-r3",
-        label: "Winners Bracket Final",
-        bracketSection: "winners",
-        matches: [
-          {
-            id: "10u-g6",
-            home: "W3",
-            away: "W2",
-            officialGameNumber: "6",
-            ...scheduleMeta("Thu 6/19", "8:00 PM", "Patterson"),
-          },
-        ],
-      },
-      {
-        id: "losers-r1",
-        label: "Losers Bracket — Round 1",
-        bracketSection: "losers",
-        matches: [
-          {
-            id: "10u-g4",
-            home: "L1",
-            away: "L2",
-            officialGameNumber: "4",
-            ...scheduleMeta("Thu 6/19", "6:00 PM", "Patterson"),
-          },
-        ],
-      },
-      {
-        id: "losers-r2",
-        label: "Losers Bracket Final",
-        bracketSection: "losers",
-        matches: [
-          {
-            id: "10u-g5",
-            home: "W4",
-            away: "L3",
-            officialGameNumber: "5",
-            ...scheduleMeta("Fri 6/20", "9:00 AM", "Patterson"),
-          },
-        ],
-      },
-      {
-        id: "championship-r1",
-        label: "Championship Series",
-        bracketSection: "championship",
-        matches: [
-          {
-            id: "10u-g7",
-            home: "W6",
-            away: "W5",
-            officialGameNumber: "7",
-            ...scheduleMeta("Fri 6/20", "11:30 AM", "Patterson"),
-          },
-          {
-            id: "10u-g8",
-            home: "W7",
-            away: "L7",
-            officialGameNumber: "8",
-            ...scheduleMeta("Fri 6/20", "2:00 PM", "Patterson"),
-          },
-          {
-            id: "10u-g9",
-            home: "W8",
-            away: "L8",
-            officialGameNumber: "9",
-            ...scheduleMeta("Sat 6/21", "1:00 PM", "Patterson"),
-          },
-        ],
-      },
-    ],
+    rounds,
     games: [],
   };
 }
@@ -157,6 +114,7 @@ function build9USpec(): BracketSpec {
     setupWizardCompleted: true,
     parkInfo,
     flyer: baseFlyer(),
+    ...bracketThemeFields(),
     ingestionWarnings: [],
     rounds: [
       {
@@ -285,19 +243,33 @@ async function upsertGonzalesPromoNewsPost(): Promise<void> {
   console.log(`✓ Gonzales promo news created (slug=${slug}, id=${created.id})`);
 }
 
+async function recreate10UBracket(spec: BracketSpec): Promise<{ id: string }> {
+  await prisma.bracketProject.deleteMany({
+    where: { organizationId: ORG_ID, name: TEN_U_BRACKET_NAME, seasonYear: SEASON_YEAR },
+  });
+
+  const created = await prisma.bracketProject.create({
+    data: {
+      organizationId: ORG_ID,
+      name: TEN_U_BRACKET_NAME,
+      seasonYear: SEASON_YEAR,
+      status: "READY",
+      priority: 10,
+      spec: spec as object,
+    },
+  });
+  return { id: created.id };
+}
+
 async function main() {
-  const tenU = await upsertBracket(
-    "2026 Louisiana DYB District 6 Tournament — 10U",
-    build10USpec(),
-    10,
-  );
+  const tenU = await recreate10UBracket(build10USpec());
   const nineU = await upsertBracket(
     "2026 Louisiana DYB District 6 Tournament — 9U",
     build9USpec(),
     9,
   );
 
-  console.log(`✓ 10U bracket ${tenU.created ? "created" : "updated"} (id=${tenU.id})`);
+  console.log(`✓ 10U bracket recreated (id=${tenU.id})`);
   console.log(`✓ 9U bracket ${nineU.created ? "created" : "updated"} (id=${nineU.id})`);
   await upsertGonzalesPromoNewsPost();
   console.log("\nPublic: https://district6.apbaseball.com/tournaments");

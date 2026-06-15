@@ -184,7 +184,7 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
           </div>
         </div>
         <div
-          className={`relative mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border p-2 sm:p-3 ${
+          className={`relative mt-2 w-full min-w-0 overflow-x-hidden overflow-y-visible rounded-lg border p-2 sm:p-3 ${
             colorScheme === "dark"
               ? "border-zinc-700/70 bg-transparent"
               : "border-slate-600/50 bg-slate-300/30"
@@ -195,6 +195,7 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
               <TournamentBracketView
                 key={`${selectedBracket.id}:${selectedBracket.logoWatermarkUrl ?? ""}`}
                 layout={selectedBracket.layout}
+                fluidWidth
                 colorScheme={colorScheme}
                 themeColors={selectedBracket.themeColors}
                 logoWatermarkUrl={selectedBracket.logoWatermarkUrl ?? branding.targetLogoPath}
