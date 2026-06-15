@@ -4,6 +4,7 @@ import {
   declaredChampionFromFinalSlots,
   declaredThirdPlaceFromSlots,
   formatBracketGameBadge,
+  formatChampionshipGameBadge,
   matchCardGameInfoLines,
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
@@ -816,8 +817,11 @@ function isSixTeamEightSlotByeLayoutHtml(rounds: LayoutRound[], laneRows: number
   );
 }
 
-function matchGameBadgeHtml(m: { officialGameNumber?: string }): string {
-  const badge = formatBracketGameBadge(m.officialGameNumber);
+function matchGameBadgeHtml(m: {
+  officialGameNumber?: string;
+  championshipRole?: "grand_final" | "if_necessary";
+}): string {
+  const badge = formatChampionshipGameBadge(m);
   if (!badge) return "";
   return `<div class="match-game-badge">${esc(badge)}</div>`;
 }
@@ -1166,6 +1170,41 @@ function layoutToInnerHtml(
       })
       .join("");
     return bracketRootDocumentInner(title, `<ul class="grid">${items}</ul>`, options, themeStyle);
+  }
+
+  if (layout.mode === "double_elimination") {
+    const bracketTitle = esc(bracketSurfaceTitle(exportHeadingLabel));
+    const winnersHtml = buildConnectedBracketHtml(
+      {
+        mode: "tree",
+        divisionLabel: layout.divisionLabel,
+        rounds: layout.winnersBracket.rounds,
+        treeLayout: "connected",
+        connectedLaneRowCount: layout.winnersBracket.connectedLaneRowCount,
+      },
+      esc(layout.winnersBracket.label),
+      options,
+      themeStyle,
+    );
+    const losersHtml = layout.losersBracket
+      ? buildConnectedBracketHtml(
+          {
+            mode: "tree",
+            divisionLabel: layout.divisionLabel,
+            rounds: layout.losersBracket.rounds,
+            treeLayout: "connected",
+            connectedLaneRowCount: layout.losersBracket.connectedLaneRowCount,
+          },
+          esc(layout.losersBracket.label),
+          options,
+          themeStyle,
+        )
+      : "";
+    const champHtml = layout.championship
+      ? `<section class="round"><h4 class="de-section-label">${esc(layout.championship.label)}</h4><ol class="match-list">${layout.championship.matches.map((m) => `<li>${matchArticleHtml(m)}</li>`).join("")}</ol></section>`
+      : "";
+    const body = `<div class="double-elim-export">${winnersHtml}${losersHtml}${champHtml}</div>`;
+    return bracketRootDocumentInner(bracketTitle, body, options, themeStyle);
   }
 
   const bracketTitle = esc(bracketSurfaceTitle(exportHeadingLabel));

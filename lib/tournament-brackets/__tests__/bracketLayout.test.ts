@@ -4,10 +4,14 @@ import { describe, it } from "node:test";
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { isBracketSetupWizardComplete, mergeBracketSpec, parseBracketSpec, safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { resolveBracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
-import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
+import {
+  buildBracketLayout,
+  isPowerOfTwoDoubleElimPattern,
+} from "@/lib/tournament-brackets/bracketLayout";
 import {
   bracketSurfaceTitle,
   formatBracketGameBadge,
+  formatChampionshipGameBadge,
   formatSemiLoserSlotLabel,
   formatWinnerFeederSlotLabel,
   roundColumnScheduleHdrLines,
@@ -23,6 +27,11 @@ import {
   canAutoGenerateSingleEliminationRounds,
   generateSingleEliminationRoundsFromTeams,
 } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
+import {
+  district6TenUParticipantSlots,
+  generateDoubleEliminationRoundsForFormat,
+  generateDoubleEliminationRoundsFromTeams,
+} from "@/lib/tournament-brackets/generateDoubleElimFromTeams";
 
 function baseSpec(over: Partial<BracketSpec> = {}): BracketSpec {
   return {
@@ -280,6 +289,87 @@ describe("buildBracketLayout", () => {
     assert.equal(layout.mode, "empty");
   });
 
+  it("builds connected double elimination layout with tagged sections", () => {
+    const teams = ["A", "B", "C", "D"];
+    const rounds = generateDoubleEliminationRoundsFromTeams(teams);
+    const spec = baseSpec({
+      bracketFormat: "double_elimination",
+      divisionLabel: "10U",
+      teams,
+      rounds,
+    });
+    const layout = buildBracketLayout(spec);
+    assert.equal(layout.mode, "double_elimination");
+    if (layout.mode !== "double_elimination") return;
+    assert.equal(layout.winnersBracket.treeLayout, "connected");
+    assert.ok(layout.losersBracket);
+    assert.equal(layout.championship?.matches.length, 1);
+    assert.equal(layout.championship?.matches[0]?.championshipRole, "grand_final");
+    assert.equal(layout.classicChampionshipPodium?.championHeading, "10U Champion");
+    assert.equal(layout.classicChampionshipPodium?.showIfNecessaryDropLine, true);
+    assert.equal(layout.classicChampionshipPodium?.ifNecessaryMatch?.championshipRole, "if_necessary");
+    assert.equal(layout.classicChampionshipPodium?.ifNecessaryMatch?.officialGameNumber, "9");
+  });
+
+  it("builds District 6 10U pow2 layout with hidden byes and G3 W1 vs Gonzales", () => {
+    const teams = ["Ponchatoula", "Loranger", "Kentwood", "Franklinton", "Gonzales"];
+    const rounds = generateDoubleEliminationRoundsFromTeams(teams, {
+      participantSlots: district6TenUParticipantSlots(),
+    });
+    const spec = baseSpec({
+      bracketFormat: "double_elimination",
+      teams,
+      rounds,
+    });
+    assert.equal(isPowerOfTwoDoubleElimPattern(spec), true);
+    const layout = buildBracketLayout(spec);
+    assert.equal(layout.mode, "double_elimination");
+    if (layout.mode !== "double_elimination") return;
+    assert.equal(layout.diagramStyle, "classic_unified");
+    const wbR1 = spec.rounds.find((r) => r.bracketSection === "winners")!.matches;
+    const liveR1 = wbR1.filter((m) => m.officialGameNumber);
+    assert.equal(liveR1.length, 2);
+    assert.equal(liveR1[0]!.home, "Ponchatoula");
+    assert.equal(liveR1[0]!.away, "Loranger");
+    assert.equal(liveR1[0]!.officialGameNumber, "1");
+    assert.equal(liveR1[1]!.home, "Kentwood");
+    assert.equal(liveR1[1]!.away, "Franklinton");
+    assert.equal(liveR1[1]!.officialGameNumber, "2");
+    const wbR2 = spec.rounds.filter((r) => r.bracketSection === "winners")[1]!.matches;
+    const g3 = wbR2.find((m) => m.officialGameNumber === "3");
+    assert.ok(g3);
+    assert.equal(g3!.home, "W1");
+    assert.equal(g3!.away, "Gonzales");
+    assert.equal(layout.championship?.matches.length, 1);
+    assert.equal(layout.championship?.matches[0]?.championshipRole, "grand_final");
+    assert.equal(layout.classicChampionshipPodium?.championHeading, "10U Champion");
+    assert.equal(layout.classicChampionshipPodium?.showIfNecessaryDropLine, true);
+    assert.ok(layout.classicChampionshipPodium?.ifNecessaryMatch);
+    assert.equal(layout.classicChampionshipPodium?.ifNecessaryMatch?.officialGameNumber, "9");
+  });
+
+  it("includes classic championship podium for modified double elimination", () => {
+    const teams = ["Ponchatoula", "Loranger", "Kentwood", "Franklinton", "Gonzales"];
+    const rounds = generateDoubleEliminationRoundsForFormat(teams, "modified_double_elimination", {
+      participantSlots: district6TenUParticipantSlots(),
+    });
+    const spec = baseSpec({
+      bracketFormat: "modified_double_elimination",
+      divisionLabel: "10U",
+      teams,
+      rounds,
+    });
+    const layout = buildBracketLayout(spec);
+    assert.equal(layout.mode, "double_elimination");
+    if (layout.mode !== "double_elimination") return;
+    assert.equal(layout.diagramStyle, "classic_unified");
+    assert.equal(layout.classicChampionshipPodium?.championHeading, "10U Champion");
+    assert.equal(layout.classicChampionshipPodium?.showIfNecessaryDropLine, false);
+    assert.equal(layout.classicChampionshipPodium?.ifNecessaryMatch, null);
+    assert.equal(layout.championship?.matches.length, 1);
+    assert.equal(layout.championship?.matches[0]?.championshipRole, "grand_final");
+  });
+
   it("maps legacy llOfficialGameNumber to officialGameNumber when parsing", () => {
     const parsed = parseBracketSpec({
       version: 1,
@@ -332,6 +422,43 @@ describe("buildBracketLayout", () => {
     assert.equal(rounds[0]?.matches[3]?.home, "C");
     assert.equal(rounds[0]?.matches[3]?.away, "F");
   });
+
+  it("builds power-of-2 double elimination layout from auto-generated 8-team bracket", () => {
+    const teams = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"];
+    const rounds = generateDoubleEliminationRoundsFromTeams(teams);
+    const spec = baseSpec({
+      bracketFormat: "double_elimination",
+      teams,
+      rounds,
+    });
+    assert.equal(isPowerOfTwoDoubleElimPattern(spec), true);
+    const layout = buildBracketLayout(spec);
+    assert.equal(layout.mode, "double_elimination");
+    if (layout.mode !== "double_elimination") return;
+    assert.equal(layout.diagramStyle, "connected_columns");
+    assert.equal(layout.winnersBracket.treeLayout, "connected");
+    assert.ok(layout.losersBracket);
+    assert.equal(layout.losersBracket!.rounds.length >= 2, true);
+    assert.equal(layout.losersBracket!.rounds[0]?.matches.length, 2);
+    assert.equal(layout.championship?.matches.length, 1);
+    assert.equal(layout.championship?.matches[0]?.championshipRole, "grand_final");
+  });
+
+  it("builds modified double elimination layout with winner-take-all championship only", () => {
+    const teams = ["T1", "T2", "T3", "T4", "T5", "T6", "T7", "T8"];
+    const rounds = generateDoubleEliminationRoundsForFormat(teams, "modified_double_elimination");
+    const spec = baseSpec({
+      bracketFormat: "modified_double_elimination",
+      teams,
+      rounds,
+    });
+    assert.equal(isPowerOfTwoDoubleElimPattern(spec), true);
+    const layout = buildBracketLayout(spec);
+    assert.equal(layout.mode, "double_elimination");
+    if (layout.mode !== "double_elimination") return;
+    assert.equal(layout.championship?.matches.length, 1);
+    assert.equal(layout.championship?.matches[0]?.championshipRole, "grand_final");
+  });
 });
 
 describe("bracket display labels", () => {
@@ -349,6 +476,8 @@ describe("bracket display labels", () => {
   it("formats game badge and winner feeder placeholders", () => {
     assert.equal(formatBracketGameBadge(undefined), undefined);
     assert.equal(formatBracketGameBadge("  12 "), "G12");
+    assert.equal(formatChampionshipGameBadge({ officialGameNumber: "8", championshipRole: "grand_final" }), "G8 — Championship");
+    assert.equal(formatChampionshipGameBadge({ officialGameNumber: "9", championshipRole: "if_necessary" }), "G9 (if necessary)");
     assert.equal(formatWinnerFeederSlotLabel({ officialGameNumber: "7" }, 99), "W7");
     assert.equal(formatWinnerFeederSlotLabel({}, 3), "W3");
   });

@@ -50,6 +50,8 @@ const bracketMatchInputSchema = z.object({
   time: z.string().max(80).optional(),
   venue: z.string().max(160).optional(),
   field: z.string().max(160).optional(),
+  /** Championship series: grand final or if-necessary reset game. */
+  championshipRole: z.enum(["grand_final", "if_necessary"]).optional(),
 });
 
 export const bracketMatchSchema = bracketMatchInputSchema.transform(
@@ -66,6 +68,7 @@ export const bracketMatchSchema = bracketMatchInputSchema.transform(
     time,
     venue,
     field,
+    championshipRole,
   }) => {
     const o = officialGameNumber?.trim() ?? "";
     const legacy = llOfficialGameNumber?.trim() ?? "";
@@ -82,6 +85,7 @@ export const bracketMatchSchema = bracketMatchInputSchema.transform(
       time?: string;
       venue?: string;
       field?: string;
+      championshipRole?: "grand_final" | "if_necessary";
     } = {
       id,
       home,
@@ -91,6 +95,7 @@ export const bracketMatchSchema = bracketMatchInputSchema.transform(
     if (awayScore != null) out.awayScore = awayScore;
     if (winnerSide) out.winnerSide = winnerSide;
     if (merged) out.officialGameNumber = merged;
+    if (championshipRole) out.championshipRole = championshipRole;
     const d = dateLabel?.trim();
     if (d) out.dateLabel = d;
     const t = time?.trim();
@@ -122,6 +127,8 @@ export const bracketRoundSchema = z.object({
   id: z.string(),
   label: z.string(),
   matches: z.array(bracketMatchSchema).default([]),
+  /** Double elimination: which bracket panel this round belongs to. */
+  bracketSection: z.enum(["winners", "losers", "championship"]).optional(),
 });
 
 export const bracketGameRowSchema = z.object({
@@ -142,7 +149,14 @@ export const bracketSpecSchema = z.object({
   divisionLabel: z.string().optional(),
   governingBody: z.string().optional(),
   bracketFormat: z
-    .enum(["double_elimination", "single_elimination", "pool_play", "custom", "unknown"])
+    .enum([
+      "double_elimination",
+      "modified_double_elimination",
+      "single_elimination",
+      "pool_play",
+      "custom",
+      "unknown",
+    ])
     .default("unknown"),
   teams: z.array(z.string()).default([]),
   rounds: z.array(bracketRoundSchema).default([]),
@@ -176,6 +190,19 @@ export const bracketSpecSchema = z.object({
   thirdPlaceGame: bracketThirdPlaceGameSchema.optional(),
   /** GameChanger tournament scoreboard widget (Tools → Create Scoreboard on web.gc.com). */
   gameChanger: bracketGameChangerSchema.optional(),
+  /**
+   * Double elimination championship scheduling style.
+   * `always_scheduled_reset`: Grand Final + If-Necessary games are always listed on the bracket.
+   * `winner_take_all`: Grand Final only (modified double elimination).
+   */
+  championshipSeriesStyle: z.enum(["always_scheduled_reset", "winner_take_all"]).optional(),
+  /** Set when the tournament champion is decided (double elim championship). */
+  championTeamName: z.string().max(120).optional(),
+  /**
+   * Classic unified double-elimination diagram (G1–G9, champion column) is frozen.
+   * Only scores, team name labels, and schedule metadata may change.
+   */
+  classicDoubleElimLayoutLocked: z.boolean().optional(),
 });
 
 export type BracketSpec = z.infer<typeof bracketSpecSchema>;
@@ -296,6 +323,7 @@ export function mergeBracketSpec(
     "bracketThemePrimaryHex",
     "bracketThemeAccentHex",
     "championAgeGroupLabel",
+    "championTeamName",
     "rosterAgeGroup",
     "divisionLabel",
   ] as const) {
@@ -313,6 +341,14 @@ export function mergeBracketSpec(
       delete (next as Record<string, unknown>)["singleElimIncludeThirdPlace"];
     } else {
       (next as Record<string, unknown>).singleElimIncludeThirdPlace = Boolean(v);
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(partial, "classicDoubleElimLayoutLocked")) {
+    const v = partial.classicDoubleElimLayoutLocked;
+    if (v === null || v === undefined || v === false) {
+      delete (next as Record<string, unknown>)["classicDoubleElimLayoutLocked"];
+    } else {
+      (next as Record<string, unknown>).classicDoubleElimLayoutLocked = true;
     }
   }
   if (Object.prototype.hasOwnProperty.call(partial, "thirdPlaceGame")) {

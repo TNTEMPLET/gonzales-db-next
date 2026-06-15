@@ -90,6 +90,50 @@ export function bracketConnectorHorizontalAtPercentFromSize(
   return { viewBox: `0 0 40 ${vbH}`, d };
 }
 
+/** Vertical trace centered in a narrow gutter column. */
+export function bracketConnectorVerticalLineFromSize(
+  widthPx: number,
+  heightPx: number,
+): { viewBox: string; d: string } {
+  const w = Math.max(4, widthPx);
+  const h = Math.max(4, heightPx);
+  const vbH = (40 * h) / w;
+  const s = vbH / 100;
+  const x = 20;
+  const d = `M ${x} ${2 * s} L ${x} ${98 * s}`;
+  return { viewBox: `0 0 40 ${vbH}`, d };
+}
+
+/** Vertical trace through full cell height (if-necessary drop meets a horizontal branch). */
+export function bracketConnectorVerticalLineFullHeightFromSize(
+  widthPx: number,
+  heightPx: number,
+): { viewBox: string; d: string } {
+  const w = Math.max(4, widthPx);
+  const h = Math.max(4, heightPx);
+  const vbH = (40 * h) / w;
+  const s = vbH / 100;
+  const x = 20;
+  const d = `M ${x} ${2 * s} L ${x} ${vbH}`;
+  return { viewBox: `0 0 40 ${vbH}`, d };
+}
+
+/** Horizontal trace from left inset to right edge (if-necessary branch meets a vertical drop). */
+export function bracketConnectorHorizontalToRightEdgeFromSize(
+  widthPx: number,
+  heightPx: number,
+  yPercent: number,
+): { viewBox: string; d: string } {
+  const w = Math.max(4, widthPx);
+  const h = Math.max(4, heightPx);
+  const vbH = (40 * h) / w;
+  const s = vbH / 100;
+  const yv = (v: number) => v * s;
+  const y = Math.max(2, Math.min(98, yPercent));
+  const d = `M 2 ${yv(y)} L 40 ${yv(y)}`;
+  return { viewBox: `0 0 40 ${vbH}`, d };
+}
+
 /** Midpoint Y (0–100) between two vertical centers relative to a gutter cell rect. */
 export function bracketConnectorYPercentBetweenCenters(
   cellTop: number,
@@ -112,6 +156,38 @@ export function bracketConnectorYPercentForCenter(
   if (cellHeight < 2) return 50;
   const pct = ((centerY - cellTop) / cellHeight) * 100;
   return Math.max(5, Math.min(95, pct));
+}
+
+/** G2 horizontal passthrough at source row Y. */
+export function bracketConnectorHorizontalAtYFromSize(
+  widthPx: number,
+  heightPx: number,
+  yPercent: number,
+): { viewBox: string; d: string } {
+  const w = Math.max(4, widthPx);
+  const h = Math.max(4, heightPx);
+  const vbH = (40 * h) / w;
+  const s = vbH / 100;
+  const yv = (v: number) => Math.max(2, Math.min(98, v)) * s;
+  const y = yv(yPercent);
+  const d = `M 2 ${y} L 38 ${y}`;
+  return { viewBox: `0 0 40 ${vbH}`, d };
+}
+
+/** G2 row → up into G4 away slot: corner at entry Y then vertical to target. */
+export function bracketConnectorRouteCornerInFromSize(
+  widthPx: number,
+  heightPx: number,
+  entryYPercent: number,
+  targetYPercent: number,
+): { viewBox: string; d: string } {
+  const w = Math.max(4, widthPx);
+  const h = Math.max(4, heightPx);
+  const vbH = (40 * h) / w;
+  const s = vbH / 100;
+  const yv = (v: number) => Math.max(2, Math.min(98, v)) * s;
+  const d = `M 2 ${yv(entryYPercent)} L 20 ${yv(entryYPercent)} L 20 ${yv(targetYPercent)} L 38 ${yv(targetYPercent)}`;
+  return { viewBox: `0 0 40 ${vbH}`, d };
 }
 
 export const BRACKET_PODIUM_THIRD_SOURCE_ATTR = "data-bracket-podium-third-source";

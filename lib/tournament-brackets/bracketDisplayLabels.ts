@@ -12,6 +12,21 @@ export function formatBracketGameBadge(officialGameNumber: string | undefined): 
   return `G${t}`;
 }
 
+/** Game badge with optional championship series suffix. */
+export function formatChampionshipGameBadge(m: {
+  officialGameNumber?: string;
+  championshipRole?: "grand_final" | "if_necessary";
+}): string | undefined {
+  const base = formatBracketGameBadge(m.officialGameNumber);
+  if (m.championshipRole === "if_necessary") {
+    return base ? `${base} (if necessary)` : "If necessary";
+  }
+  if (m.championshipRole === "grand_final") {
+    return base ? `${base} — Championship` : "Championship";
+  }
+  return base;
+}
+
 /**
  * Placeholder for the loser of a semi-final match (e.g. `L8` = loser of game 8).
  * Prefers `officialGameNumber`, then `bracketGameNumber`; otherwise `TBD`.
