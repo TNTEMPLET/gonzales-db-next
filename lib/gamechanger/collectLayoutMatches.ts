@@ -17,6 +17,38 @@ export function collectLayoutMatchesForGc(layout: BracketLayout): GcBracketMatch
     }));
   }
 
+  if (layout.mode === "double_elimination") {
+    const refs: GcBracketMatchRef[] = [];
+    for (const section of [layout.winnersBracket, layout.losersBracket]) {
+      if (!section) continue;
+      for (const round of section.rounds) {
+        for (const m of round.matches) {
+          refs.push({
+            id: m.id,
+            home: m.slotHome,
+            away: m.slotAway,
+            officialGameNumber: m.officialGameNumber,
+            dateLabel: m.dateLabel,
+            time: m.time,
+          });
+        }
+      }
+    }
+    if (layout.championship) {
+      for (const m of layout.championship.matches) {
+        refs.push({
+          id: m.id,
+          home: m.slotHome,
+          away: m.slotAway,
+          officialGameNumber: m.officialGameNumber,
+          dateLabel: m.dateLabel,
+          time: m.time,
+        });
+      }
+    }
+    return refs;
+  }
+
   const refs: GcBracketMatchRef[] = [];
   for (const round of layout.rounds) {
     for (const m of round.matches) {

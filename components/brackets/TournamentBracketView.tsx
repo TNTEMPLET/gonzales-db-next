@@ -4,11 +4,13 @@ import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
 import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import type { BracketLayout, BracketLayoutPodium, LayoutMatch, LayoutRound } from "@/lib/tournament-brackets/bracketLayout";
+import { collectAllDoubleElimMatchesByGame } from "@/lib/tournament-brackets/bracketLayout";
+import { resolveClassicDoubleElimSlots } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
 import {
   declaredChampionFromFinalSlots,
   declaredThirdPlaceFromSlots,
   bracketSurfaceTitle,
-  formatBracketGameBadge,
+  formatChampionshipGameBadge,
   matchCardGameInfoLines,
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
@@ -26,6 +28,7 @@ import {
 } from "@/lib/tournament-brackets/bracketScoring";
 
 import { BracketConnectorCell, FinalChampionConnectorCell } from "@/components/brackets/BracketConnector";
+import ClassicDoubleElimDiagram from "@/components/brackets/ClassicDoubleElimDiagram";
 import {
   BRACKET_PODIUM_CHAMPION_SOURCE_ATTR,
   BRACKET_PODIUM_CHAMPION_TARGET_ATTR,
@@ -76,6 +79,8 @@ type Props = {
    * (e.g. BracketProject.name from the admin list). Normalized with `bracketSurfaceTitle` (label only, or `— suffix` when used).
    */
   surfaceTitleOverride?: string | null;
+  /** Public page: grid columns flex to container width (no fixed min-width scroll). */
+  fluidWidth?: boolean;
 };
 
 export type BracketParentOrganizationLogo = {
@@ -121,8 +126,8 @@ function isSixTeamEightSlotByeLayout(rounds: LayoutRound[], laneRows: number) {
   );
 }
 
-function matchGameBadge(m: Pick<LayoutMatch, "officialGameNumber">): string | undefined {
-  return formatBracketGameBadge(m.officialGameNumber);
+function matchGameBadge(m: Pick<LayoutMatch, "officialGameNumber" | "championshipRole">): string | undefined {
+  return formatChampionshipGameBadge(m);
 }
 
 function liveStatusLabel(status: BracketLiveGameStatus | null | undefined): string | undefined {
@@ -212,7 +217,10 @@ function BracketMatchSlotRow({
   const showScore = !isBye && (editing || scoreValue != null);
 
   return (
-    <div className={`${styles.slot}${byeSlotClass(label)}${showScore ? ` ${styles.slotWithScore}` : ""}`}>
+    <div
+      className={`${styles.slot}${byeSlotClass(label)}${showScore ? ` ${styles.slotWithScore}` : ""}`}
+      data-bracket-match-slot={side}
+    >
       <BracketSlotLabel label={label} />
       {showScore ? (
         <BracketSlotScore
@@ -999,6 +1007,7 @@ function ConnectedBracketGrid({
   liveGameStatuses,
   onMatchClick,
   gameChangerEnabled,
+  embedded = false,
 }: {
   rounds: LayoutRound[];
   /** Full first-round width (leaf rows); used for grid row template and spans. */
@@ -1015,6 +1024,8 @@ function ConnectedBracketGrid({
   liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
   onMatchClick?: (matchId: string) => void;
   gameChangerEnabled?: boolean;
+  /** When true, render only the connected grid (no BracketSurface wrapper). */
+  embedded?: boolean;
 }) {
   const R = rounds.length;
   const N = laneRows > 0 ? laneRows : rounds[0]?.layoutSlotCount ?? rounds[0]?.matches.length ?? 0;
@@ -1246,6 +1257,16 @@ function ConnectedBracketGrid({
     );
   }
 
+  const grid = (
+    <div ref={gridRef} className={`${styles.bracketGrid} ${styles.bracketGridScroll}`} style={gridStyle}>
+      {cells}
+    </div>
+  );
+
+  if (embedded) {
+    return <FullBracketDiagramFrame>{grid}</FullBracketDiagramFrame>;
+  }
+
   return (
     <BracketSurface
       rootClass={rootClass}
@@ -1267,10 +1288,169 @@ function ConnectedBracketGrid({
         onMatchClick={onMatchClick}
         gameChangerEnabled={gameChangerEnabled}
       />
+      <FullBracketDiagramFrame>{grid}</FullBracketDiagramFrame>
+    </BracketSurface>
+  );
+}
+
+function DoubleEliminationBracketView({
+  layout,
+  rootClass,
+  rootStyle,
+  colorScheme,
+  bracketTitle,
+  parkInfo,
+  logoWatermarkUrl,
+  parentOrganizationLogo,
+  scoring,
+  liveGameStatuses,
+  onMatchClick,
+  gameChangerEnabled,
+}: {
+  layout: Extract<BracketLayout, { mode: "double_elimination" }>;
+  rootClass: string;
+  rootStyle?: CSSProperties;
+  colorScheme: BracketColorScheme;
+  bracketTitle: string;
+  parkInfo?: BracketParkInfo | null;
+  logoWatermarkUrl?: string | null;
+  parentOrganizationLogo?: BracketParentOrganizationLogo | null;
+  scoring?: BracketScoringViewProps | null;
+  liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
+  onMatchClick?: (matchId: string) => void;
+  gameChangerEnabled?: boolean;
+}) {
+  const mobileRounds: LayoutRound[] = [
+    layout.winnersBracket.rounds,
+    layout.losersBracket?.rounds ?? [],
+    layout.championship
+      ? [{ id: "championship", label: layout.championship.label, matches: layout.championship.matches }]
+      : [],
+  ].flat();
+
+  const allMatchesByGame = collectAllDoubleElimMatchesByGame(
+    layout.winnersBracket.rounds,
+    layout.losersBracket?.rounds,
+    layout.championship?.matches,
+  );
+  const ifNecessaryMatch =
+    layout.mode === "double_elimination" ? layout.classicChampionshipPodium?.ifNecessaryMatch : null;
+  if (ifNecessaryMatch?.officialGameNumber?.trim()) {
+    allMatchesByGame.set(ifNecessaryMatch.officialGameNumber.trim(), ifNecessaryMatch);
+  }
+  const classicSlots =
+    layout.diagramStyle === "classic_unified"
+      ? resolveClassicDoubleElimSlots(allMatchesByGame)
+      : null;
+
+  const renderMatch = (props: {
+    match: LayoutMatch;
+    scoring?: BracketScoringViewProps | null;
+    liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
+    onMatchClick?: (matchId: string) => void;
+    gameChangerEnabled?: boolean;
+  }) => (
+    <MatchArticle
+      match={props.match}
+      gameLabel={matchGameBadge(props.match)}
+      liveStatus={props.liveGameStatuses?.[props.match.id]}
+      schedule={props.match}
+      scoring={props.scoring}
+      onMatchClick={props.onMatchClick}
+      gameChangerEnabled={props.gameChangerEnabled}
+    />
+  );
+
+  return (
+    <BracketSurface
+      rootClass={rootClass}
+      rootStyle={rootStyle ?? {}}
+      colorScheme={colorScheme}
+      ariaLabel="Double elimination tournament bracket"
+      title={bracketTitle ? <h3 className={styles.title}>{bracketTitle}</h3> : null}
+      parkInfo={parkInfo}
+      logoWatermarkUrl={logoWatermarkUrl}
+      parentOrganizationLogo={parentOrganizationLogo}
+      podium={null}
+      parkBelowTitle={hasBracketParkInfo(parkInfo)}
+    >
+      <MobileBracketRounds
+        rounds={mobileRounds}
+        podium={null}
+        scoring={scoring}
+        liveGameStatuses={liveGameStatuses}
+        onMatchClick={onMatchClick}
+        gameChangerEnabled={gameChangerEnabled}
+      />
       <FullBracketDiagramFrame>
-        <div ref={gridRef} className={`${styles.bracketGrid} ${styles.bracketGridScroll}`} style={gridStyle}>
-          {cells}
+        {classicSlots ? (
+          <ClassicDoubleElimDiagram
+            slots={classicSlots}
+            championPodium={layout.classicChampionshipPodium ?? null}
+            renderMatch={renderMatch}
+            scoring={scoring}
+            liveGameStatuses={liveGameStatuses}
+            onMatchClick={onMatchClick}
+            gameChangerEnabled={gameChangerEnabled}
+          />
+        ) : (
+        <div className={styles.doubleElimDiagram}>
+          <div className={styles.doubleElimMainRow}>
+            <div className={styles.doubleElimSection}>
+              <p className={styles.doubleElimSectionLabel}>{layout.winnersBracket.label}</p>
+              <ConnectedBracketGrid
+                embedded
+                rounds={layout.winnersBracket.rounds}
+                laneRows={layout.winnersBracket.connectedLaneRowCount}
+                title=""
+                rootClass={rootClass}
+                colorScheme={colorScheme}
+                scoring={scoring}
+                liveGameStatuses={liveGameStatuses}
+                onMatchClick={onMatchClick}
+                gameChangerEnabled={gameChangerEnabled}
+              />
+            </div>
+            {layout.losersBracket ? (
+              <div className={styles.doubleElimSection}>
+                <p className={styles.doubleElimSectionLabel}>{layout.losersBracket.label}</p>
+                <ConnectedBracketGrid
+                  embedded
+                  rounds={layout.losersBracket.rounds}
+                  laneRows={layout.losersBracket.connectedLaneRowCount}
+                  title=""
+                  rootClass={rootClass}
+                  colorScheme={colorScheme}
+                  scoring={scoring}
+                  liveGameStatuses={liveGameStatuses}
+                  onMatchClick={onMatchClick}
+                  gameChangerEnabled={gameChangerEnabled}
+                />
+              </div>
+            ) : null}
+            {layout.championship ? (
+              <div className={styles.doubleElimChampionship}>
+                <p className={styles.doubleElimSectionLabel}>{layout.championship.label}</p>
+                <ol className={styles.doubleElimChampionshipList}>
+                  {layout.championship.matches.map((m) => (
+                    <li key={m.id}>
+                      <MatchArticle
+                        match={m}
+                        gameLabel={matchGameBadge(m)}
+                        liveStatus={liveGameStatuses?.[m.id]}
+                        schedule={m}
+                        scoring={scoring}
+                        onMatchClick={onMatchClick}
+                        gameChangerEnabled={gameChangerEnabled}
+                      />
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
+          </div>
         </div>
+        )}
       </FullBracketDiagramFrame>
     </BracketSurface>
   );
@@ -1290,8 +1470,11 @@ export default function TournamentBracketView({
   onMatchClick,
   gameChangerEnabled,
   surfaceTitleOverride,
+  fluidWidth = false,
 }: Props) {
-  const rootClass = [styles.root, className].filter(Boolean).join(" ");
+  const rootClass = [styles.root, fluidWidth ? styles.rootFluidWidth : null, className]
+    .filter(Boolean)
+    .join(" ");
   const rootStyle = mergeRootStyle(themeColors, colorScheme, style);
   const divisionForHeading = layout.mode === "empty" ? undefined : layout.divisionLabel;
   const headingLabel = surfaceTitleOverride?.trim() || divisionForHeading;
@@ -1345,6 +1528,26 @@ export default function TournamentBracketView({
           ))}
         </ul>
       </BracketSurface>
+    );
+  }
+
+  if (layout.mode === "double_elimination") {
+    const bracketTitle = bracketSurfaceTitle(headingLabel);
+    return (
+      <DoubleEliminationBracketView
+        layout={layout}
+        rootClass={rootClass}
+        rootStyle={rootStyle}
+        colorScheme={colorScheme}
+        bracketTitle={bracketTitle}
+        parkInfo={parkInfo}
+        logoWatermarkUrl={logoWatermarkUrl}
+        parentOrganizationLogo={parentOrganizationLogo}
+        scoring={scoring}
+        liveGameStatuses={liveGameStatuses}
+        onMatchClick={onMatchClick}
+        gameChangerEnabled={gameChangerEnabled}
+      />
     );
   }
 

@@ -1,0 +1,56 @@
+---
+description: Dev-box sync, dev database, and preview before commit/push
+alwaysApply: true
+---
+
+# Dev-box live dev site
+
+Treat **dev-box** (`/srv/code/gonzales-db-next`, Postgres `apbaseball_dev`) as the **live dev environment** — not just a code mirror. After bracket, schema, seed, or data work, **sync code and apply DB changes on dev-box** before considering the task done.
+
+## Code sync
+
+When working on **Louisiana DYB District 6** (`ladistrict6`), tournament brackets, or related UI/branding:
+
+1. **Sync** the latest changes to dev-box:
+   ```bash
+   pnpm sync:dev-box:restart   # sync + restart 3002/3004 (after next.config changes)
+   pnpm sync:dev-box           # sync only (HMR picks up file changes on dev-box)
+   ```
+2. **LAN / hot reload**: Browsers at `http://192.168.100.156:3002` require `192.168.100.156` (hostname **without port**) in `next.config.ts` `allowedDevOrigins`. If buttons are dead, check the **Dev live** badge (bottom-right): it should say “Client hydrated” and “Hot reload connected”. Restart dev servers after `next.config.ts` edits.
+3. **Start** dev servers on dev-box if not already listening:
+   - **District 6 public** (port 3004):
+   ```bash
+   cd /srv/code/gonzales-db-next && \
+   NODE_OPTIONS='--max-old-space-size=1536' SITE_ORG=ladistrict6 NEXT_DIST_DIR=.next-ladistrict6 \
+   nohup pnpm exec next dev -p 3004 --hostname 0.0.0.0 > /tmp/ladistrict6-dev.log 2>&1 &
+   ```
+   - **Master admin / Bracket Creator** (port 3002):
+   ```bash
+   cd /srv/code/gonzales-db-next && \
+   NODE_OPTIONS='--max-old-space-size=1536' SITE_ORG=master NEXT_DIST_DIR=.next-master \
+   nohup pnpm exec next dev -p 3002 --hostname 0.0.0.0 > /tmp/master-dev.log 2>&1 &
+   ```
+4. **Poll** until both respond (200): `http://127.0.0.1:3004/tournaments` and `http://127.0.0.1:3002/admin/login`.
+
+## Dev database (required)
+
+After syncing code, **push data/schema to the dev database on dev-box** — do not leave changes only in local files or local DB:
+
+```bash
+ssh dev-box 'cd /srv/code/gonzales-db-next && pnpm seed:ladistrict6-tournament'   # bracket/news seeds
+ssh dev-box 'cd /srv/code/gonzales-db-next && pnpm prisma db push'                 # schema changes
+```
+
+- Seeds load `.env.local` + `.env.development.local` automatically (`apbaseball_dev` on `127.0.0.1:5432`).
+- **Never** run `migrate dev`, `db push`, or seeds against **production** unless the user explicitly asks.
+- Production promotion stays separate (Vercel / explicit `migrate deploy` after dev is verified).
+
+## Preview links
+
+Give the user these links to review before committing or pushing:
+
+- Tournaments: `http://192.168.100.156:3004/tournaments`
+- Bracket admin: `http://192.168.100.156:3002/admin/tournament-brackets?org=ladistrict6`
+- Public hostname (if tunneled): `https://ladistrict6-dev.duckroostdigital.com/tournaments`
+
+Do not push to git until the user has had a chance to preview on dev-box (unless they explicitly ask to push without preview).

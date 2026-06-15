@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname } from "next/navigation";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import {
   resolvePreviewUserAccess,
@@ -149,6 +150,7 @@ export default function AdminRolePreviewControl({
   allowViewByUser?: boolean;
   viewByUserOrgScope?: "all" | "current";
 }) {
+  const pathname = usePathname();
   const [context, setContext] = useState<AdminViewPreviewContext>({
     mode: "role",
     role: "NONE",
@@ -172,11 +174,12 @@ export default function AdminRolePreviewControl({
   useEffect(() => {
     if (!enabled) return;
     const cls = "admin-preview-readonly";
+    const onTournamentBrackets = pathname?.startsWith("/admin/tournament-brackets") ?? false;
     const previewRole =
       context.mode === "user" && context.user
         ? readAdminViewPreviewRole(currentOrg)
         : context.role;
-    if (previewRole === "ALL_STAR_VIEW_ONLY") {
+    if (previewRole === "ALL_STAR_VIEW_ONLY" && !onTournamentBrackets) {
       document.body.classList.add(cls);
     } else {
       document.body.classList.remove(cls);
@@ -184,7 +187,7 @@ export default function AdminRolePreviewControl({
     return () => {
       document.body.classList.remove(cls);
     };
-  }, [enabled, context, currentOrg]);
+  }, [enabled, context, currentOrg, pathname]);
 
   useEffect(() => {
     if (!enabled || !allowViewByUser) return;
@@ -309,6 +312,14 @@ export default function AdminRolePreviewControl({
         body.admin-preview-readonly main section[data-admin-vault-interactive="true"] input,
         body.admin-preview-readonly main section[data-admin-vault-interactive="true"] textarea,
         body.admin-preview-readonly main section[data-admin-vault-interactive="true"] select {
+          pointer-events: auto !important;
+          opacity: 1 !important;
+        }
+        /* Tournament bracket builder stays fully interactive under vault-limited preview. */
+        body.admin-preview-readonly main section[data-admin-tournament-brackets="true"] button,
+        body.admin-preview-readonly main section[data-admin-tournament-brackets="true"] input,
+        body.admin-preview-readonly main section[data-admin-tournament-brackets="true"] textarea,
+        body.admin-preview-readonly main section[data-admin-tournament-brackets="true"] select {
           pointer-events: auto !important;
           opacity: 1 !important;
         }

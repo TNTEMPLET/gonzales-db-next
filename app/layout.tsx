@@ -6,6 +6,7 @@ import "./globals.css";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
 import SponsorScroller from "../components/sponsors/SponsorScroller";
+import DevLiveIndicator from "../components/dev/DevLiveIndicator";
 import { getSiteConfig, isTournamentOnlyDeployment } from "@/lib/siteConfig";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -58,6 +59,7 @@ export default function RootLayout({
         {children}
         <Footer brand={brand} />
         <SponsorScroller />
+        {process.env.NODE_ENV === "development" ? <DevLiveIndicator /> : null}
       </body>
     </html>
   );

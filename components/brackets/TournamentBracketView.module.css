@@ -849,6 +849,8 @@
   color: var(--bracket-connector-fg);
   opacity: var(--bracket-connector-opacity);
   min-width: 0;
+  position: relative;
+  overflow: visible;
 }
 
 /* Final → Champion gutter: champion midline + measured 3rd-place pairing line. */
@@ -905,6 +907,230 @@
 .bracketMainPane {
   flex: 1 1 0;
   min-width: 0;
+}
+
+.doubleElimDiagram {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+  width: 100%;
+  min-width: 0;
+}
+
+.doubleElimMainRow {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 1rem;
+  width: 100%;
+  min-width: 0;
+  overflow-x: auto;
+}
+
+.doubleElimSection {
+  flex: 1 1 auto;
+  min-width: min(100%, 28rem);
+}
+
+.doubleElimSectionLabel {
+  margin: 0 0 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--bracket-round-label-fg);
+  background: var(--bracket-chrome);
+  padding: 0.35rem 0.5rem;
+  border-radius: 0.25rem;
+  box-shadow: var(--bracket-round-label-inset);
+}
+
+.doubleElimChampionship {
+  flex: 0 0 minmax(10rem, 14rem);
+  min-width: 10rem;
+}
+
+.doubleElimChampionshipList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.doubleElimUnified {
+  width: 100%;
+  min-width: 0;
+  min-height: 44rem;
+  padding-bottom: 0.5rem;
+}
+
+.classicDoubleElimUnified {
+  min-height: 0;
+}
+
+.classicDoubleElimGrid {
+  min-height: 0;
+  padding-top: 0.35rem;
+  overflow: visible;
+}
+
+.classicDoubleElimWinnersTopPad {
+  /* LOCKED: slight winners-band lift */
+  min-height: 1.25rem;
+}
+
+.classicDoubleElimBandGap {
+  /* LOCKED: separates winners/losers so G8 can center on G4+G7 midpoint */
+  min-height: 2.75rem;
+}
+
+.classicDoubleElimGrid .gridMatchWrap {
+  justify-content: center;
+  position: relative;
+  z-index: 1;
+}
+
+.classicDoubleElimGrandFinalWrap {
+  justify-content: flex-start;
+  position: relative;
+}
+
+.classicDoubleElimIfNecessaryWrap {
+  /* LOCKED: G9 top-center under if-necessary drop (measured in ClassicIfNecessaryMatchCell) */
+  justify-content: flex-end;
+  align-self: end;
+  z-index: 3;
+  overflow: visible;
+}
+
+.classicDoubleElimIfNecessaryInner {
+  position: absolute;
+  bottom: 0;
+  box-sizing: border-box;
+}
+
+.classicDoubleElimGrandFinalWithSeries {
+  overflow: visible;
+}
+
+.classicDoubleElimWithChampionColumn .bracketGridScroll {
+  min-width: 86rem;
+}
+
+.classicDoubleElimChampionWrap {
+  justify-content: flex-start;
+  position: relative;
+}
+
+.classicDoubleElimChampionshipColumn {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  width: 100%;
+  gap: 0;
+  z-index: 1;
+}
+
+.classicDoubleElimChampionshipColumn .gridMatchWrap {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.classicDoubleElimChampionSlot {
+  flex: 0 0 auto;
+  margin: 0;
+  min-width: 0;
+}
+
+.classicDoubleElimChampionSlot .championPlaque {
+  width: 100%;
+}
+
+.classicDoubleElimGrandFinalInner {
+  position: absolute;
+  left: 0;
+  right: 0;
+  width: 100%;
+}
+
+.classicDoubleElimGrid .connectorCell {
+  z-index: 2;
+  position: relative;
+  overflow: visible;
+}
+
+.connectorIfNecessaryDrop {
+  pointer-events: none;
+  z-index: 1;
+  overflow: visible;
+  flex: none !important;
+  min-height: 0 !important;
+  max-height: none;
+  color: inherit;
+  opacity: inherit;
+}
+
+.connectorIfNecessaryDrop[data-bracket-connector="if-necessary-drop"] {
+  width: 100%;
+}
+
+.connectorIfNecessaryDrop .connectorSvgDynamic {
+  flex: none;
+  min-height: 0;
+}
+
+.classicDoubleElimGrid .connectorCell[data-bracket-conn="g2-thru"] {
+  z-index: 3;
+}
+
+.classicDoubleElimGrid .gridSlotFiller {
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+.doubleElimUnified .bracketGridScroll {
+  min-width: 84rem;
+}
+
+.doubleElimUnified.classicDoubleElimUnified .bracketGridScroll {
+  min-width: 72rem;
+}
+
+.doubleElimBandLabel {
+  margin: 0;
+  align-self: stretch;
+  text-align: center;
+}
+
+.doubleElimChampionshipColumn {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-start;
+  gap: 0;
+  min-height: 100%;
+  min-width: 0;
+}
+
+.doubleElimChampionshipColumn .gridMatchWrap {
+  flex: 0 0 auto;
+}
+
+.doubleElimSeriesConnector {
+  flex: 0 0 1.35rem;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: stretch;
+  min-height: 1.35rem;
+  margin: 0.1rem 0 0.15rem;
+  color: var(--bracket-connector-fg);
+  opacity: var(--bracket-connector-opacity);
+}
+
+.doubleElimSeriesConnector .connectorDynamicWrap {
+  min-height: 1.35rem;
 }
 
 .flatChampionGutter {
@@ -1131,6 +1357,21 @@
 
 .fullBracketDiagramBody {
   min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+}
+
+@media (min-width: 641px) {
+  .rootFluidWidth .fullBracketDiagramBody {
+    overflow-x: hidden;
+  }
+
+  .rootFluidWidth .classicDoubleElimWithChampionColumn .bracketGridScroll,
+  .rootFluidWidth .doubleElimUnified.classicDoubleElimUnified .bracketGridScroll,
+  .rootFluidWidth .doubleElimUnified .bracketGridScroll {
+    min-width: 0;
+    width: 100%;
+  }
 }
 
 .mobileBracketIntro {
@@ -1340,15 +1581,22 @@
   }
 
   .fullBracketDiagramBody > .bracketGridScroll,
-  .fullBracketDiagramBody > .tree {
+  .fullBracketDiagramBody > .tree,
+  .fullBracketDiagramBody .doubleElimUnified .bracketGridScroll {
     transform: scale(var(--mobile-full-bracket-scale));
     transform-origin: top left;
   }
 
-  .fullBracketDiagramBody > .bracketGridScroll {
+  .fullBracketDiagramBody > .bracketGridScroll,
+  .fullBracketDiagramBody .doubleElimUnified .bracketGridScroll {
     width: 70rem !important;
     min-width: 70rem !important;
     max-width: none !important;
+  }
+
+  .fullBracketDiagramBody .doubleElimUnified .bracketGridScroll {
+    width: 78rem !important;
+    min-width: 78rem !important;
   }
 
   .fullBracketDiagramBody > .tree {
@@ -1506,11 +1754,17 @@
   }
 
   .fullBracketDiagramBody > .bracketGridScroll,
-  .fullBracketDiagramBody > .tree {
+  .fullBracketDiagramBody > .tree,
+  .fullBracketDiagramBody .doubleElimUnified .bracketGridScroll {
     transform: none;
     width: 70rem !important;
     min-width: 70rem !important;
     max-width: none !important;
+  }
+
+  .fullBracketDiagramBody .doubleElimUnified .bracketGridScroll {
+    width: 78rem !important;
+    min-width: 78rem !important;
   }
 }
 
