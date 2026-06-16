@@ -53,11 +53,14 @@ scripts/refactor-*.mjs
 scripts/apply-minimal-*.py
 scripts/*-ui-helpers.txt
 
-# Local prod audit / one-off data fix scripts (keep on dev-box only)
-scripts/check-prod-*.ts
-scripts/fix-prod-*.ts
-scripts/check-*-prod*.ts
-scripts/fix-*-prod*.ts
+# Local data exports (PII — never commit)
+/exports/
+/public/exports/
+
+# Local audit / one-off data fix scripts (keep on dev-box only)
+scripts/check-*.ts
+scripts/fix-*.ts
+scripts/dump-brackets.ts
 scripts/migrate-6u-*.ts
 scripts/restore-*.ts
 scripts/get-cycle-ids.ts
@@ -66,6 +69,8 @@ scripts/get-cycle-ids.ts
 .next-gonzales
 .next-ascension
 .next-master
+.next-ladistrict2
+.next-ladistrict6
 
 # Claude Code project memory (local AI session data)
 .claude/
