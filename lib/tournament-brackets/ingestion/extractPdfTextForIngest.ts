@@ -76,7 +76,7 @@ export async function extractPdfTextForIngest(
     mode === "vision" ||
     (mode === "auto" && weakEmbedded && bracketPdfVisionApiKey());
 
-  if (shouldOcr || mode === "ocr") {
+  if (shouldOcr) {
     try {
       ocrText = await ocrPdfBuffer(buffer);
       if (ocrText.trim()) {
@@ -111,12 +111,6 @@ export async function extractPdfTextForIngest(
     source = ocrText?.trim() ? "merged" : "vision";
   } else if (ocrText?.trim() && weakEmbedded) {
     source = embeddedText.trim() ? "merged" : "ocr";
-  }
-
-  if (mode === "off" && weakEmbedded && !text.trim()) {
-    warnings.push(
-      "Visual reader is off (BRACKET_PDF_VISUAL_READER=off). Scanned PDFs may not parse — set auto, ocr, or vision.",
-    );
   }
 
   return {

@@ -87,6 +87,7 @@ function build10USpec(): BracketSpec {
 
   return {
     version: 1,
+    layoutPreference: "official",
     ...deDefaults,
     divisionLabel: "10U",
     championAgeGroupLabel: "10U",
@@ -106,6 +107,7 @@ function build10USpec(): BracketSpec {
 function build9USpec(): BracketSpec {
   return {
     version: 1,
+    layoutPreference: "connected_columns",
     bracketFormat: "custom",
     divisionLabel: "9U",
     championAgeGroupLabel: "9U",

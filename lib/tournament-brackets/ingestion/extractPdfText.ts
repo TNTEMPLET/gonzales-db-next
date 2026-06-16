@@ -4,10 +4,15 @@
  */
 export async function extractPdfText(buffer: ArrayBuffer): Promise<string> {
   try {
-    const pdfParse = (await import("pdf-parse")).default;
-    const result = await pdfParse(Buffer.from(buffer));
-    const text = typeof result.text === "string" ? result.text.trim() : "";
-    if (text.length > 0) return text;
+    const { PDFParse } = await import("pdf-parse");
+    const parser = new PDFParse({ data: Buffer.from(buffer) });
+    try {
+      const result = await parser.getText();
+      const text = typeof result.text === "string" ? result.text.trim() : "";
+      if (text.length > 0) return text;
+    } finally {
+      await parser.destroy();
+    }
   } catch {
     // pdf-parse missing or failed — try heuristic extraction below
   }

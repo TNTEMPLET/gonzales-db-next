@@ -1,7 +1,4 @@
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
-import { collectAllDoubleElimMatchesByGame } from "@/lib/tournament-brackets/bracketLayout";
-import { resolveClassicDoubleElimSlots } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
-import { resolveClassicSixTeamModifiedDeSlots } from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
 import { isDoubleEliminationFormat } from "@/lib/tournament-brackets/bracketFormat";
 import { getOfficialTemplate } from "@/lib/tournament-brackets/officialTemplates";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
@@ -76,19 +73,19 @@ export function appliesDoubleElimClassicLayoutTemplate(
   return false;
 }
 
-/** True when the spec has a complete classic game tree (5-team G1–G9 or 6-team G1–G11). */
+/** True when the spec has a complete classic game tree (5-team G1–G8 or 6-team G1–G10). */
 export function hasClassicDoubleElimGameStructure(spec: BracketSpec): boolean {
   if (!isDoubleEliminationFormat(spec.bracketFormat)) return false;
-  const winners = spec.rounds.filter((r) => r.bracketSection === "winners");
-  const losers = spec.rounds.filter((r) => r.bracketSection === "losers");
-  const championshipMatches = spec.rounds
-    .filter((r) => r.bracketSection === "championship")
-    .flatMap((r) => r.matches);
-  const allByGame = collectAllDoubleElimMatchesByGame(winners, losers, championshipMatches);
-  return (
-    resolveClassicDoubleElimSlots(allByGame) !== null ||
-    resolveClassicSixTeamModifiedDeSlots(allByGame) !== null
-  );
+  const gameNumbers = new Set<string>();
+  for (const round of spec.rounds) {
+    for (const match of round.matches) {
+      const key = match.officialGameNumber?.trim();
+      if (key) gameNumbers.add(key);
+    }
+  }
+  const fiveTeam = ["1", "2", "3", "4", "5", "6", "7", "8"].every((g) => gameNumbers.has(g));
+  const sixTeam = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"].every((g) => gameNumbers.has(g));
+  return fiveTeam || sixTeam;
 }
 
 /** Layout is frozen — only scores and labels should change the live bracket. */

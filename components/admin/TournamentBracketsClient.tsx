@@ -505,7 +505,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
 
   const bracketLayout = bracketLayoutBuild.layout;
 
-  const svgMarkup = bracketLayout ? buildBracketSvgPreview(spec) : "";
+  const svgMarkup = bracketLayout && spec ? buildBracketSvgPreview(spec) : "";
 
   const scoringView: BracketScoringViewProps | null = useMemo(() => {
     if (!scoringSupported) return null;
