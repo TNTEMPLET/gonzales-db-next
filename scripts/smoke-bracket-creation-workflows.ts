@@ -315,7 +315,7 @@ async function main() {
         (await prisma.bracketProject.findUnique({ where: { id: p.id } }))!.spec,
       );
       const layout = buildBracketLayout(spec);
-      if (layout.mode !== "single_elimination") issues.push(`expected single_elim, got ${layout.mode}`);
+      if (layout.mode !== "tree") issues.push(`expected single_elim tree layout, got ${layout.mode}`);
       record({
         start,
         id: "wizard-4se",

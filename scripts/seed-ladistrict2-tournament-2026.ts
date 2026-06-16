@@ -86,6 +86,8 @@ function buildSixTeamSpec(opts: {
   return {
     version: 1,
     ...defaults,
+    layoutPreference: defaults.layoutPreference ?? "official",
+    bracketFormat,
     divisionLabel: opts.divisionLabel,
     championAgeGroupLabel: opts.championAgeGroupLabel,
     governingBody: "little_league",
