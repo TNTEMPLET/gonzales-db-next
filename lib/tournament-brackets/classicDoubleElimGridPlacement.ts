@@ -18,6 +18,7 @@ export type ClassicGridPlacement = {
 
 export type ClassicDoubleElimGridSlots = {
   winnersTopPad: ClassicGridPlacement;
+  tournamentInfo: ClassicGridPlacement;
   g1: ClassicGridPlacement;
   winnersR1Bot: ClassicGridPlacement;
   g2: ClassicGridPlacement;
@@ -73,6 +74,7 @@ export function classicDoubleElimGridSlots(): ClassicDoubleElimGridSlots {
 
   return {
     winnersTopPad: { col: 1, row: topPad, span: 1 },
+    tournamentInfo: { col: 5, row: topPad, span: 1, colSpan: 3 },
     g1: { col: 1, row: wR1Top, span: winnersPairSpan },
     winnersR1Bot: { col: 1, row: wR1Bot, span: 1 },
     g3: { col: 3, row: wR1Top, span: winnersPairSpan },

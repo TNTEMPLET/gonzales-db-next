@@ -25,10 +25,17 @@ export type ClassicDoubleElimSlots = {
   ifNecessary?: LayoutMatch | null;
 };
 
+export function isFeederSlotLabel(label: string): boolean {
+  const t = label.trim();
+  return /^[WL]\d+$/.test(t) || t === BYE_SLOT_LABEL || t === "TBD";
+}
+
 /**
  * Maps live game numbers from a sparse 8-slot DE bracket into classic diagram slots.
  * Expected: G1/G2 openers, G3 semi, G4 winners final, G5–G7 losers, G8 grand final.
  * G9 (if necessary) is shown below G8 on the classic diagram for standard double elimination.
+ *
+ * Rejects 6-team Little League trees (three openers, championship on G11, live G10).
  */
 export function resolveClassicDoubleElimSlots(
   matchesByGame: Map<string, LayoutMatch>,
@@ -43,6 +50,22 @@ export function resolveClassicDoubleElimSlots(
   const g8 = matchesByGame.get("8");
 
   if (!g1 || !g2 || !g3 || !g4 || !g5 || !g6 || !g7 || !g8) return null;
+
+  const grandFinalByRole = [...matchesByGame.values()].find(
+    (m) => m.championshipRole === "grand_final",
+  );
+  const grandFinalGame = grandFinalByRole?.officialGameNumber?.trim();
+  if (grandFinalGame && grandFinalGame !== "8") return null;
+
+  // 6-team modified DE uses G10–G11; classic 5-team stops at G9 (if necessary).
+  if (matchesByGame.has("10")) {
+    const g10 = matchesByGame.get("10");
+    if (!g10 || g10.championshipRole !== "if_necessary") return null;
+  }
+  if (matchesByGame.has("11")) return null;
+
+  // Classic 5-team: G3 is a semi (feeder vs team). 6-team: G3 is a third opener (E vs F).
+  if (!isFeederSlotLabel(g3.home) && !isFeederSlotLabel(g3.away)) return null;
 
   return {
     openers: [g1, g2],

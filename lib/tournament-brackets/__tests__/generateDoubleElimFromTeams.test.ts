@@ -9,6 +9,7 @@ import {
   generateDoubleEliminationRoundsForFormat,
   generateDoubleEliminationRoundsFromTeams,
 } from "@/lib/tournament-brackets/generateDoubleElimFromTeams";
+import { littleLeagueSixTeamParticipantSlots } from "@/lib/tournament-brackets/littleLeagueParticipantShells";
 
 function allMatches(rounds: ReturnType<typeof generateDoubleEliminationRoundsFromTeams>) {
   return rounds.flatMap((r) => r.matches);
@@ -160,5 +161,28 @@ describe("generateDoubleElimFromTeams", () => {
     assert.equal(g7!.home, "L4");
     assert.equal(g7!.away, "W6");
     assert.equal(wb.filter((m) => !m.officialGameNumber).length >= 2, true);
+  });
+
+  it("Little League 6-team shell: two R1 games and W1/E, W2/F semis", () => {
+    const teams = ["A", "B", "C", "D", "E", "F"];
+    const rounds = generateDoubleEliminationRoundsFromTeams(teams, {
+      participantSlots: littleLeagueSixTeamParticipantSlots(teams),
+      includeIfNecessaryGame: false,
+    });
+    const wb = rounds.filter((r) => r.bracketSection === "winners").flatMap((r) => r.matches);
+    const g1 = wb.find((m) => m.officialGameNumber === "1");
+    const g2 = wb.find((m) => m.officialGameNumber === "2");
+    const g3 = wb.find((m) => m.officialGameNumber === "3");
+    const g4 = wb.find((m) => m.officialGameNumber === "4");
+    assert.equal(g1!.home, "A");
+    assert.equal(g1!.away, "B");
+    assert.equal(g2!.home, "C");
+    assert.equal(g2!.away, "D");
+    assert.equal(g3!.home, "W1");
+    assert.equal(g3!.away, "E");
+    assert.equal(g4!.home, "W2");
+    assert.equal(g4!.away, "F");
+    const liveR1 = wb.filter((m) => m.officialGameNumber === "1" || m.officialGameNumber === "2");
+    assert.equal(liveR1.length, 2);
   });
 });

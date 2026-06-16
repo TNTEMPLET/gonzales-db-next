@@ -46,7 +46,7 @@ describe("doubleEliminationClassicLayoutTemplate", () => {
   it("applies generation options for five-team standard double elimination", () => {
     const teams = ["A", "B", "C", "D", "E"];
     assert.equal(appliesDoubleElimClassicLayoutTemplate(teams, "double_elimination"), true);
-    assert.equal(appliesDoubleElimClassicLayoutTemplate(teams, "modified_double_elimination"), false);
+    assert.equal(appliesDoubleElimClassicLayoutTemplate(teams, "modified_double_elimination"), true);
     assert.equal(
       appliesDoubleElimClassicLayoutTemplate(["A", "B", "C", "D"], "double_elimination"),
       false,

@@ -1,6 +1,10 @@
 import { z } from "zod";
 
 import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
+import {
+  defaultOfficialTemplateForNewProject,
+  specDefaultsFromOfficialTemplate,
+} from "@/lib/tournament-brackets/officialTemplates";
 
 export const bracketSpecVersion = 1 as const;
 
@@ -30,6 +34,15 @@ export const bracketParkInfoSchema = z.object({
   body: z.string().max(4000).optional(),
   /** Up to four contacts; admin UI currently edits the first two slots. */
   contacts: z.array(bracketParkContactSchema).max(4).optional(),
+});
+
+/** Official LL bracket header block (Division, Site(s), etc.) shown in the classic diagram inset. */
+export const bracketTournamentInfoSchema = z.object({
+  division: z.string().max(200).optional(),
+  sites: z.string().max(500).optional(),
+  updatePhone: z.string().max(80).optional(),
+  tournamentDirector: z.string().max(120).optional(),
+  nextLevel: z.string().max(200).optional(),
 });
 
 const bracketScoreSchema = z.number().int().min(0).max(99);
@@ -148,6 +161,10 @@ export const bracketSpecSchema = z.object({
   version: z.literal(1).default(1),
   divisionLabel: z.string().optional(),
   governingBody: z.string().optional(),
+  /** Official tournament-legal template from the governing-body registry. */
+  officialTemplateId: z.string().optional(),
+  /** Prefer classic unified diagram vs connected column trees when both are possible. */
+  layoutPreference: z.enum(["official", "connected_columns"]).default("official"),
   bracketFormat: z
     .enum([
       "double_elimination",
@@ -168,6 +185,8 @@ export const bracketSpecSchema = z.object({
   }),
   /** Shown on bracket preview + HTML export (e.g. complex address, parking gates). */
   parkInfo: bracketParkInfoSchema.optional(),
+  /** Official LL tournament header table (classic unified diagram top-right inset). */
+  tournamentInfo: bracketTournamentInfoSchema.optional(),
   ingestionWarnings: z.array(z.string()).default([]),
   referenceUrl: z.string().optional(),
   fetchedReferenceExcerpt: z.string().optional(),
@@ -203,6 +222,20 @@ export const bracketSpecSchema = z.object({
    * Only scores, team name labels, and schedule metadata may change.
    */
   classicDoubleElimLayoutLocked: z.boolean().optional(),
+  /** Set when a governing-body PDF bracket was imported and wizard fields were pre-filled. */
+  pdfIngestHints: z
+    .object({
+      templateId: z.string(),
+      templateLabel: z.string(),
+      teamCount: z.number().int().positive().optional(),
+      artifactUrl: z.string().optional(),
+      importedAt: z.string().optional(),
+      roundsBuilt: z.boolean().optional(),
+      gamesBuilt: z.number().int().nonnegative().optional(),
+      scheduleLinesApplied: z.number().int().nonnegative().optional(),
+      routingVerified: z.boolean().optional(),
+    })
+    .optional(),
 });
 
 export type BracketSpec = z.infer<typeof bracketSpecSchema>;
@@ -213,8 +246,11 @@ export type BracketThirdPlaceGame = z.infer<typeof bracketThirdPlaceGameSchema>;
 export type FlyerOptions = z.infer<typeof flyerOptionsSchema>;
 export type BracketParkInfo = z.infer<typeof bracketParkInfoSchema>;
 export type BracketParkContact = z.infer<typeof bracketParkContactSchema>;
+export type BracketTournamentInfo = z.infer<typeof bracketTournamentInfoSchema>;
+
 export function defaultBracketSpec(): BracketSpec {
-  return bracketSpecSchema.parse({});
+  const template = defaultOfficialTemplateForNewProject();
+  return bracketSpecSchema.parse(specDefaultsFromOfficialTemplate(template.id));
 }
 
 /** Prefix for grep-friendly server / browser logs when troubleshooting corrupt specs. */
@@ -307,6 +343,32 @@ export function mergeBracketSpec(
       }
     }
   }
+  if (Object.prototype.hasOwnProperty.call(partial, "tournamentInfo")) {
+    if (partial.tournamentInfo == null || typeof partial.tournamentInfo !== "object") {
+      delete next.tournamentInfo;
+    } else {
+      const merged = { ...(current.tournamentInfo ?? {}), ...(partial.tournamentInfo as object) } as Record<
+        string,
+        unknown
+      >;
+      const cleaned: BracketTournamentInfo = {};
+      for (const key of [
+        "division",
+        "sites",
+        "updatePhone",
+        "tournamentDirector",
+        "nextLevel",
+      ] as const) {
+        const v = merged[key];
+        if (typeof v === "string" && v.trim()) cleaned[key] = v.trim();
+      }
+      if (Object.keys(cleaned).length === 0) {
+        delete next.tournamentInfo;
+      } else {
+        next.tournamentInfo = cleaned;
+      }
+    }
+  }
   if (Array.isArray(partial.games)) {
     next.games = partial.games;
   }
@@ -326,6 +388,10 @@ export function mergeBracketSpec(
     "championTeamName",
     "rosterAgeGroup",
     "divisionLabel",
+    "officialTemplateId",
+    "governingBody",
+    "layoutPreference",
+    "championshipSeriesStyle",
   ] as const) {
     if (!Object.prototype.hasOwnProperty.call(partial, key)) continue;
     const v = partial[key];
@@ -372,6 +438,13 @@ export function mergeBracketSpec(
         throw new Error(`GameChanger config invalid: ${issues}`);
       }
       next.gameChanger = mergedGc.data;
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(partial, "pdfIngestHints")) {
+    if (partial.pdfIngestHints == null) {
+      delete (next as Record<string, unknown>).pdfIngestHints;
+    } else if (typeof partial.pdfIngestHints === "object") {
+      (next as Record<string, unknown>).pdfIngestHints = partial.pdfIngestHints;
     }
   }
   const mergedParse = bracketSpecSchema.safeParse(next);
