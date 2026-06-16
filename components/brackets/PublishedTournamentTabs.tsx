@@ -9,7 +9,7 @@ import { useGameChangerLive } from "@/hooks/useGameChangerLive";
 import { bracketMatchLabelForId, bracketMatchRefForId } from "@/lib/gamechanger/collectLayoutMatches";
 import type { BracketGameChanger } from "@/lib/gamechanger/types";
 import type { BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
-import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
+import type { BracketParkInfo, BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
 import type { BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 
 export type PublishedTournamentTabBracket = {
@@ -19,6 +19,7 @@ export type PublishedTournamentTabBracket = {
   updatedAtLabel: string;
   layout: BracketLayout;
   parkInfo?: BracketParkInfo | null;
+  tournamentInfo?: BracketTournamentInfo | null;
   themeColors: BracketThemeColors;
   /** Per-bracket flyer logo; falls back to org default when omitted. */
   logoWatermarkUrl?: string | null;
@@ -204,6 +205,7 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
                   name: branding.parentName,
                 }}
                 parkInfo={selectedBracket.parkInfo}
+                tournamentInfo={selectedBracket.tournamentInfo}
                 surfaceTitleOverride={selectedBracket.name}
                 liveGameStatuses={liveGameStatuses}
                 gameChangerEnabled={gcEnabled}

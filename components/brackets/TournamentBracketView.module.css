@@ -235,6 +235,67 @@
   margin-top: 0.08rem;
 }
 
+.classicTournamentInfoCell {
+  z-index: 2;
+  align-self: start;
+  justify-self: end;
+  min-width: 0;
+  max-width: 100%;
+  padding: 0.15rem 0.5rem 0 0;
+}
+
+.classicTournamentInfoTable {
+  width: 100%;
+  max-width: 18rem;
+  margin: 0;
+  border-collapse: collapse;
+  border: 1px solid var(--bracket-border);
+  border-radius: 0.35rem;
+  background: var(--bracket-park-aside-bg);
+  box-shadow: var(--bracket-subtle-shadow);
+  font-size: 0.625rem;
+  line-height: 1.35;
+}
+
+.classicTournamentInfoCaption {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.classicTournamentInfoTable th,
+.classicTournamentInfoTable td {
+  padding: 0.28rem 0.45rem;
+  vertical-align: top;
+  text-align: left;
+}
+
+.classicTournamentInfoTable th {
+  width: 38%;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bracket-body-emphasis);
+  border-right: 1px solid var(--bracket-subtle-border);
+  white-space: nowrap;
+}
+
+.classicTournamentInfoTable td {
+  color: var(--bracket-muted);
+  overflow-wrap: anywhere;
+}
+
+.classicTournamentInfoTable tr + tr th,
+.classicTournamentInfoTable tr + tr td {
+  border-top: 1px solid var(--bracket-subtle-border);
+}
+
 .title {
   position: relative;
   font-size: clamp(1.05rem, 2.8vw, 1.45rem);
@@ -645,6 +706,7 @@
   overflow-x: visible;
   overflow-y: visible;
   padding-bottom: 0.35rem;
+  box-sizing: border-box;
 }
 
 .gridColumnScheduleHdr {
@@ -1017,6 +1079,12 @@
 
 .classicDoubleElimWithChampionColumn .bracketGridScroll {
   min-width: 86rem;
+  padding-inline-end: 1.5rem;
+  box-sizing: border-box;
+}
+
+.root:has(.classicDoubleElimWithChampionColumn) {
+  padding-inline-end: 1.75rem;
 }
 
 .classicDoubleElimChampionWrap {
@@ -1366,11 +1434,20 @@
     overflow-x: hidden;
   }
 
+  .rootFluidWidth:has(.classicDoubleElimWithChampionColumn) {
+    padding-inline-end: 1.75rem;
+  }
+
+  .rootFluidWidth .fullBracketDiagramBody:has(.classicDoubleElimWithChampionColumn) {
+    padding-inline-end: 0.5rem;
+  }
+
   .rootFluidWidth .classicDoubleElimWithChampionColumn .bracketGridScroll,
   .rootFluidWidth .doubleElimUnified.classicDoubleElimUnified .bracketGridScroll,
   .rootFluidWidth .doubleElimUnified .bracketGridScroll {
     min-width: 0;
     width: 100%;
+    padding-inline-end: 0.75rem;
   }
 }
 

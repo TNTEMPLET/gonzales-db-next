@@ -100,5 +100,9 @@ describe("classicDoubleElimGridPlacement", () => {
       { col: p.champion.col, row: p.champion.row, span: p.champion.span },
       { col: LOCKED.championCol, row: 2, span: 8 },
     );
+    assert.deepEqual(
+      { col: p.tournamentInfo.col, row: p.tournamentInfo.row, colSpan: p.tournamentInfo.colSpan },
+      { col: 5, row: 1, colSpan: 3 },
+    );
   });
 });

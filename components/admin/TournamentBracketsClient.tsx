@@ -505,8 +505,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
 
   const bracketLayout = bracketLayoutBuild.layout;
 
-  const svgMarkup =
-    bracketLayout && bracketSpecParse?.ok ? buildBracketSvgPreview(bracketSpecParse.spec) : "";
+  const svgMarkup = bracketLayout ? buildBracketSvgPreview(spec) : "";
 
   const scoringView: BracketScoringViewProps | null = useMemo(() => {
     if (!scoringSupported) return null;
@@ -554,12 +553,13 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     return () => window.clearTimeout(id);
   }, [resolvedBracketTheme.primaryHex, resolvedBracketTheme.accentHex]);
 
-  const [parkHeadingDraft, setParkHeadingDraft] = useState("");
-  const [parkBodyDraft, setParkBodyDraft] = useState("");
-  const [parkContactsDraft, setParkContactsDraft] = useState<{ name: string; phone: string }[]>([
-    { name: "", phone: "" },
-    { name: "", phone: "" },
-  ]);
+  const [tournamentInfoDraft, setTournamentInfoDraft] = useState({
+    division: "",
+    sites: "",
+    updatePhone: "",
+    tournamentDirector: "",
+    nextLevel: "",
+  });
   const [championAgeGroupDraft, setChampionAgeGroupDraft] = useState("");
   const [thirdPlaceInfoDraft, setThirdPlaceInfoDraft] = useState({
     officialGameNumber: "",
@@ -594,12 +594,13 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     let id: number;
     if (!spec) {
       id = window.setTimeout(() => {
-        setParkHeadingDraft("");
-        setParkBodyDraft("");
-        setParkContactsDraft([
-          { name: "", phone: "" },
-          { name: "", phone: "" },
-        ]);
+        setTournamentInfoDraft({
+          division: "",
+          sites: "",
+          updatePhone: "",
+          tournamentDirector: "",
+          nextLevel: "",
+        });
         setChampionAgeGroupDraft("");
         setThirdPlaceInfoDraft({
           officialGameNumber: "",
@@ -614,14 +615,15 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       }, 0);
       return () => window.clearTimeout(id);
     }
-    const c = spec.parkInfo?.contacts ?? [];
+    const info = spec.tournamentInfo;
     id = window.setTimeout(() => {
-      setParkHeadingDraft(spec.parkInfo?.heading ?? "");
-      setParkBodyDraft(spec.parkInfo?.body ?? "");
-      setParkContactsDraft([
-        { name: c[0]?.name ?? "", phone: c[0]?.phone ?? "" },
-        { name: c[1]?.name ?? "", phone: c[1]?.phone ?? "" },
-      ]);
+      setTournamentInfoDraft({
+        division: info?.division ?? "",
+        sites: info?.sites ?? "",
+        updatePhone: info?.updatePhone ?? "",
+        tournamentDirector: info?.tournamentDirector ?? "",
+        nextLevel: info?.nextLevel ?? "",
+      });
       setChampionAgeGroupDraft(spec.championAgeGroupLabel ?? "");
       setThirdPlaceInfoDraft({
         officialGameNumber: spec.thirdPlaceGame?.officialGameNumber ?? "",
@@ -695,27 +697,21 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     setNotice("Parsed widget ID from embed snippet. Click Save GameChanger to store it.");
   }
 
-  async function saveParkInfo() {
+  async function saveTournamentInfo() {
     if (!projectId) return;
     setBusy(true);
     setError("");
     try {
-      const contactsBuilt = parkContactsDraft
-        .map((row) => {
-          const n = row.name.trim();
-          const p = row.phone.trim();
-          if (!n && !p) return null;
-          return { ...(n ? { name: n } : {}), ...(p ? { phone: p } : {}) };
-        })
-        .filter((x): x is { name?: string; phone?: string } => x != null);
       await patchSpec({
-        parkInfo: {
-          heading: parkHeadingDraft.trim() || undefined,
-          body: parkBodyDraft.trim() || undefined,
-          contacts: contactsBuilt,
+        tournamentInfo: {
+          division: tournamentInfoDraft.division.trim() || undefined,
+          sites: tournamentInfoDraft.sites.trim() || undefined,
+          updatePhone: tournamentInfoDraft.updatePhone.trim() || undefined,
+          tournamentDirector: tournamentInfoDraft.tournamentDirector.trim() || undefined,
+          nextLevel: tournamentInfoDraft.nextLevel.trim() || undefined,
         },
       });
-      setNotice("Park information saved for this bracket.");
+      setNotice("Tournament information saved for this bracket.");
       await loadProject(projectId);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1011,7 +1007,14 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
         body: form,
       });
       const json = await readApiJson<{
-        data?: { gamesImported?: number; warnings?: string[] };
+        data?: {
+          gamesImported?: number;
+          warnings?: string[];
+          wizardPrefilled?: boolean;
+          pdfTemplateDetected?: string | null;
+          roundsBuilt?: number;
+          artifactUrl?: string | null;
+        };
         error?: string;
         hint?: string;
       }>(res);
@@ -1020,11 +1023,20 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       }
       const w = json.data?.warnings?.join(" ") ?? "";
       const n = json.data?.gamesImported ?? 0;
-      setNotice(
-        n > 0
-          ? `Imported ${n} games.${w ? ` ${w}` : ""}`.trim()
-          : `Ingest completed with 0 games.${w ? ` ${w}` : " No warnings returned."}`.trim(),
-      );
+      if (json.data?.wizardPrefilled) {
+        const roundsBuilt = json.data.roundsBuilt ?? 0;
+        setNotice(
+          roundsBuilt > 0
+            ? `Bracket PDF recognized${json.data.pdfTemplateDetected ? ` (${json.data.pdfTemplateDetected})` : ""} — ${roundsBuilt} games built from routing. Replace placeholder team names (A–F), then enter scores in the preview.${w ? ` ${w}` : ""}`.trim()
+            : `Bracket PDF recognized${json.data.pdfTemplateDetected ? ` (${json.data.pdfTemplateDetected})` : ""}. Guided setup was pre-filled — replace placeholder team names (A–F), then build the bracket.${w ? ` ${w}` : ""}`.trim(),
+        );
+      } else {
+        setNotice(
+          n > 0
+            ? `Imported ${n} games.${w ? ` ${w}` : ""}`.trim()
+            : `Ingest completed with 0 games.${w ? ` ${w}` : " No warnings returned."}`.trim(),
+        );
+      }
       try {
         await loadProject(projectId);
       } catch (refreshErr: unknown) {
@@ -1358,7 +1370,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
         src: bracketBranding.parentLogoPath,
         name: bracketBranding.parentName,
       },
-      parkInfo: spec?.parkInfo,
+      tournamentInfo: spec?.tournamentInfo,
       surfaceHeadingLabel: project.name,
     });
     const blob = new Blob([html], { type: "text/html;charset=utf-8" });
@@ -1988,105 +2000,68 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
 
         <div className="space-y-3 border-t border-zinc-800 pt-5">
           <div>
-            <h3 className="text-sm font-semibold text-zinc-200">Park information (bracket block)</h3>
+            <h3 className="text-sm font-semibold text-zinc-200">Tournament information</h3>
             <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-              Optional heading, notes (addresses, parking, gate policy), and up to two points of contact (name +
-              phone) appear on the printable bracket below the title—same content in preview, HTML export, and flyer PDF
-              snapshot.
+              Division, site(s), update phone, tournament director, and next level appear in the top-right table on
+              classic brackets (preview, public site, HTML export, and flyer PDF). Empty rows are hidden. PDF import
+              can pre-fill these fields from the Little League header.
             </p>
           </div>
-          <label className="block text-xs font-medium text-zinc-500">
-            Block heading
-            <input
-              value={parkHeadingDraft}
-              onChange={(e) => setParkHeadingDraft(e.target.value)}
-              disabled={!projectId || busy}
-              placeholder="e.g. Jambalaya Park"
-              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
-            />
-          </label>
-          <label className="block text-xs font-medium text-zinc-500">
-            Details (one line per paragraph)
-            <textarea
-              value={parkBodyDraft}
-              onChange={(e) => setParkBodyDraft(e.target.value)}
-              disabled={!projectId || busy}
-              rows={4}
-              placeholder={"123 Main St…\nParking: lot B"}
-              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 font-mono text-xs leading-relaxed"
-            />
-          </label>
-          <div className="space-y-3">
-            <p className="text-xs font-medium text-zinc-500">Point of contact (optional — two slots)</p>
-            {[0, 1].map((slot) => (
-              <div
-                key={slot}
-                className="grid gap-2 rounded-lg border border-zinc-800/80 bg-zinc-950/40 p-2 sm:grid-cols-2"
-              >
-                <label className="block text-[11px] text-zinc-500">
-                  Name {slot + 1}
-                  <input
-                    value={parkContactsDraft[slot]?.name ?? ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setParkContactsDraft((prev) => {
-                        const next = [...prev];
-                        next[slot] = { ...(next[slot] ?? { name: "", phone: "" }), name: v };
-                        return next;
-                      });
-                    }}
-                    disabled={!projectId || busy}
-                    placeholder="Jane Smith"
-                    className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm"
-                  />
-                </label>
-                <label className="block text-[11px] text-zinc-500">
-                  Phone {slot + 1}
-                  <input
-                    type="tel"
-                    value={parkContactsDraft[slot]?.phone ?? ""}
-                    onChange={(e) => {
-                      const v = e.target.value;
-                      setParkContactsDraft((prev) => {
-                        const next = [...prev];
-                        next[slot] = { ...(next[slot] ?? { name: "", phone: "" }), phone: v };
-                        return next;
-                      });
-                    }}
-                    disabled={!projectId || busy}
-                    placeholder="555-123-4567"
-                    className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm tabular-nums"
-                  />
-                </label>
-              </div>
-            ))}
-          </div>
+          {(
+            [
+              ["division", "Division"],
+              ["sites", "Site(s)"],
+              ["updatePhone", "Update Phone"],
+              ["tournamentDirector", "Tournament Director"],
+              ["nextLevel", "Next Level"],
+            ] as const
+          ).map(([key, label]) => (
+            <label key={key} className="block text-xs font-medium text-zinc-500">
+              {label}
+              <input
+                value={tournamentInfoDraft[key]}
+                onChange={(e) =>
+                  setTournamentInfoDraft((prev) => ({ ...prev, [key]: e.target.value }))
+                }
+                disabled={!projectId || busy}
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
+              />
+            </label>
+          ))}
           <button
             type="button"
             disabled={!projectId || busy}
-            onClick={() => void saveParkInfo()}
+            onClick={() => void saveTournamentInfo()}
             className="rounded-lg border border-zinc-600 px-3 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-800 disabled:opacity-40"
           >
-            Save park block
+            Save tournament information
           </button>
         </div>
 
         <details className="border-t border-zinc-800 pt-5 group">
           <summary className="cursor-pointer list-none text-sm font-semibold text-zinc-300 marker:content-none [&::-webkit-details-marker]:hidden">
             <span className="underline decoration-zinc-600 underline-offset-2 group-open:text-zinc-100">
-              Optional: import schedule spreadsheet (advanced)
+              Optional: import bracket PDF or schedule spreadsheet
             </span>
-            <span className="ml-2 text-xs font-normal text-zinc-500">- XLSX / XLS / PDF</span>
+            <span className="ml-2 text-xs font-normal text-zinc-500">- PDF / XLSX / XLS</span>
           </summary>
           <div className="mt-3 space-y-2 border-l-2 border-zinc-700 pl-4">
             <p className="text-xs leading-relaxed text-zinc-500">
-              <strong className="text-zinc-400">Excel (.xlsx / .xls):</strong> when the sheet matches the AP tournament
-              schedule template, rows import into the flat <strong className="text-zinc-400">games</strong> list (grid /
-              flyer PDF), not into the column bracket. <strong className="text-zinc-400">PDF:</strong> stored for notes
-              only—pairings are not parsed from PDF.
+              <strong className="text-zinc-400">PDF bracket diagram:</strong> when the file matches a
+              Little League template (e.g. 6-team double elimination), the guided setup wizard is
+              pre-filled with format and placeholder teams (A–F), and the game tree is built from PDF
+              routing (G1–G11) with schedule lines when present. Scanned or image-only PDFs use local
+              OCR (Tesseract) automatically when embedded text is missing; set{" "}
+              <code className="text-zinc-400">BRACKET_PDF_VISION_API_KEY</code> for cloud vision fallback.
+              Replace placeholder teams with real names, then enter scores in the preview. The PDF is
+              stored under source artifacts.
+              <strong className="text-zinc-400"> Excel (.xlsx / .xls):</strong> when the sheet matches
+              the AP tournament schedule template, rows import into the flat{" "}
+              <strong className="text-zinc-400">games</strong> list (grid / flyer PDF), not into the
+              column bracket.
             </p>
             <label className="block text-xs font-medium text-zinc-500">
-              Schedule file
+              Bracket PDF or schedule file
               <input
                 type="file"
                 accept=".xlsx,.xls,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,application/vnd.ms-excel,application/pdf"
@@ -2553,7 +2528,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                               src: bracketBranding.parentLogoPath,
                               name: bracketBranding.parentName,
                             }}
-                            parkInfo={spec?.parkInfo}
+                            tournamentInfo={spec?.tournamentInfo}
                             scoring={scoringView}
                             surfaceTitleOverride={projectNameDraft.trim() || project.name}
                             liveGameStatuses={adminLiveStatuses}
