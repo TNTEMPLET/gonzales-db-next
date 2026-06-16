@@ -369,7 +369,7 @@ export function generateDoubleEliminationRoundsFromTeams(
 ): BracketRound[] {
   const slots = options?.participantSlots;
   const participants =
-    slots?.length > 0
+    slots && slots.length > 0
       ? slots
       : expandTeamsWithTopSeedByes(teams);
   const N = participants.length;
@@ -381,7 +381,8 @@ export function generateDoubleEliminationRoundsFromTeams(
 
   const nextLive = { value: 1 };
   const winnersNextPairings =
-    slots?.length &&
+    slots &&
+    slots.length > 0 &&
     (isDistrict6TenUParticipantSlots(slots) || isClassicFiveTeamParticipantShell(slots))
       ? DISTRICT6_TEN_U_WINNERS_NEXT_PAIRINGS
       : undefined;
