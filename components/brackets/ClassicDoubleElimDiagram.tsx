@@ -8,8 +8,10 @@ import {
   BracketIfNecessaryDropConnector,
   type BracketConnectorAnchor,
 } from "@/components/brackets/BracketConnector";
+import ClassicTournamentInfoTable from "@/components/brackets/ClassicTournamentInfoTable";
 import styles from "@/components/brackets/TournamentBracketView.module.css";
 import { BRACKET_PODIUM_CHAMPION_TARGET_ATTR } from "@/lib/tournament-brackets/bracketConnectorPaths";
+import type { BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
 import type { ClassicDoubleElimChampionshipPodium, LayoutMatch } from "@/lib/tournament-brackets/bracketLayout";
 import type { ClassicDoubleElimSlots } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
 import {
@@ -17,6 +19,7 @@ import {
   classicDoubleElimGridSlots,
   type ClassicGridPlacement,
 } from "@/lib/tournament-brackets/classicDoubleElimGridPlacement";
+import { classicUnifiedGridTemplateColumns } from "@/lib/tournament-brackets/classicUnifiedGridColumns";
 import type { BracketMatchScores } from "@/lib/tournament-brackets/bracketScoring";
 
 /** Whole-card vertical center for all classic diagram connectors. */
@@ -48,6 +51,7 @@ type MatchRenderProps = {
 
 type Props = {
   slots: ClassicDoubleElimSlots;
+  tournamentInfo?: BracketTournamentInfo | null;
   /** Champion plaque in a column right of G8 (both DE formats on classic diagram). */
   championPodium?: ClassicDoubleElimChampionshipPodium | null;
   renderMatch: (props: MatchRenderProps & { match: LayoutMatch }) => ReactNode;
@@ -55,20 +59,9 @@ type Props = {
   liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
   onMatchClick?: (matchId: string) => void;
   gameChangerEnabled?: boolean;
+  /** Public viewer: shrink column mins so the full diagram fits without clipping. */
+  fluidWidth?: boolean;
 };
-
-const GRID_COLUMN_MATCH = "minmax(11rem, 1fr)";
-const GRID_COLUMN_CONN = "minmax(1.25rem, 0.28fr)";
-const GRID_COLUMNS_BASE = [
-  GRID_COLUMN_MATCH,
-  GRID_COLUMN_CONN,
-  GRID_COLUMN_MATCH,
-  GRID_COLUMN_CONN,
-  GRID_COLUMN_MATCH,
-  GRID_COLUMN_CONN,
-  GRID_COLUMN_MATCH,
-].join(" ");
-const GRID_COLUMNS_WITH_CHAMPION = `${GRID_COLUMNS_BASE} ${GRID_COLUMN_CONN} ${GRID_COLUMN_MATCH}`;
 
 const GRID_ROW_TRACK = `repeat(${CLASSIC_DE_LANE_ROWS}, minmax(2.75rem, auto))`;
 
@@ -316,7 +309,7 @@ function connCell(
 }
 
 /** Pin G9 so its top-center sits under the G8→champion gutter drop line. */
-function ClassicIfNecessaryMatchCell({
+export function ClassicIfNecessaryMatchCell({
   placement,
   dropLineConnKey,
   matchId,
@@ -396,12 +389,14 @@ function ClassicIfNecessaryMatchCell({
  */
 export default function ClassicDoubleElimDiagram({
   slots,
+  tournamentInfo,
   championPodium,
   renderMatch,
   scoring,
   liveGameStatuses,
   onMatchClick,
   gameChangerEnabled,
+  fluidWidth = false,
 }: Props) {
   const [g1, g2] = slots.openers;
   const g3 = slots.winnersSemi;
@@ -418,7 +413,10 @@ export default function ClassicDoubleElimDiagram({
 
   const gridStyle: CSSProperties = {
     display: "grid",
-    gridTemplateColumns: showChampionColumn ? GRID_COLUMNS_WITH_CHAMPION : GRID_COLUMNS_BASE,
+    gridTemplateColumns: classicUnifiedGridTemplateColumns({
+      withChampionColumn: showChampionColumn,
+      fluidWidth,
+    }),
     gridTemplateRows: GRID_ROW_TRACK,
     columnGap: "0.35rem",
     rowGap: "0.25rem",
@@ -434,6 +432,10 @@ export default function ClassicDoubleElimDiagram({
     ...grid.bandGap,
     colSpan: showChampionColumn ? 9 : grid.bandGap.colSpan,
   };
+  const tournamentInfoPlacement: ClassicGridPlacement = {
+    ...grid.tournamentInfo,
+    colSpan: showChampionColumn ? 5 : grid.tournamentInfo.colSpan,
+  };
 
   return (
     <div
@@ -445,6 +447,7 @@ export default function ClassicDoubleElimDiagram({
         style={gridStyle}
       >
         {fillerCell("winners-top-pad", grid.winnersTopPad, styles.classicDoubleElimWinnersTopPad)}
+        <ClassicTournamentInfoTable info={tournamentInfo} placement={tournamentInfoPlacement} />
         {matchCell("g1", grid.g1, render(g1))}
         {fillerCell("winners-r1-bot", grid.winnersR1Bot)}
 

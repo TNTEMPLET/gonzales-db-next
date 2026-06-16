@@ -1,6 +1,7 @@
 import type { BracketMatch, BracketRound, BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { includesIfNecessaryChampionshipGame } from "@/lib/tournament-brackets/bracketFormat";
 import { isClassicFiveTeamParticipantShell } from "@/lib/tournament-brackets/doubleEliminationClassicLayoutTemplate";
+import { isLittleLeagueSixTeamShellStructure } from "@/lib/tournament-brackets/littleLeagueParticipantShells";
 import {
   BYE_SLOT_LABEL,
   expandTeamsWithTopSeedByes,
@@ -35,10 +36,15 @@ export function district6TenUParticipantSlots(): string[] {
   ];
 }
 
-/** Winners advancement for District 6 10U: W(G1) vs Gonzales, W(G2) vs BYE path. */
+/** Winners advancement for District 6 10U / classic 5-team: W(G1) vs bye, W(G2) vs bye path. */
 export const DISTRICT6_TEN_U_WINNERS_NEXT_PAIRINGS: number[][][] = [
   [[0, 3], [1, 2]],
   [[0, 1]],
+];
+
+/** Winners R2 for 6-team LL on 8-slot shell: W(G1) vs bye(E), W(G2) vs bye(F). */
+export const LITTLE_LEAGUE_SIX_TEAM_WINNERS_NEXT_PAIRINGS: number[][][] = [
+  [[0, 2], [1, 3]],
 ];
 
 export function isDistrict6TenUParticipantSlots(slots: string[]): boolean {
@@ -381,10 +387,12 @@ export function generateDoubleEliminationRoundsFromTeams(
 
   const nextLive = { value: 1 };
   const winnersNextPairings =
-    slots?.length &&
-    (isDistrict6TenUParticipantSlots(slots) || isClassicFiveTeamParticipantShell(slots))
-      ? DISTRICT6_TEN_U_WINNERS_NEXT_PAIRINGS
-      : undefined;
+    slots?.length && isLittleLeagueSixTeamShellStructure(slots)
+      ? LITTLE_LEAGUE_SIX_TEAM_WINNERS_NEXT_PAIRINGS
+      : slots?.length &&
+          (isDistrict6TenUParticipantSlots(slots) || isClassicFiveTeamParticipantShell(slots))
+        ? DISTRICT6_TEN_U_WINNERS_NEXT_PAIRINGS
+        : undefined;
   const { rounds: winnersRounds, finalMatch: wbFinal } = buildWinnersBracket(
     participants,
     N,
@@ -410,11 +418,18 @@ export function generateDoubleEliminationRoundsFromTeams(
 export function generateDoubleEliminationRoundsForFormat(
   teams: string[],
   bracketFormat: BracketSpec["bracketFormat"],
-  options?: Omit<GenerateDoubleElimOptions, "includeIfNecessaryGame">,
+  options?: Omit<GenerateDoubleElimOptions, "includeIfNecessaryGame"> & {
+    championshipSeriesStyle?: BracketSpec["championshipSeriesStyle"];
+  },
 ): BracketRound[] {
+  const includeIfNecessary =
+    options?.championshipSeriesStyle != null
+      ? options.championshipSeriesStyle === "always_scheduled_reset"
+      : includesIfNecessaryChampionshipGame({ bracketFormat, championshipSeriesStyle: undefined });
+  const { championshipSeriesStyle: _drop, ...rest } = options ?? {};
   return generateDoubleEliminationRoundsFromTeams(teams, {
-    ...options,
-    includeIfNecessaryGame: includesIfNecessaryChampionshipGame(bracketFormat),
+    ...rest,
+    includeIfNecessaryGame: includeIfNecessary,
   });
 }
 

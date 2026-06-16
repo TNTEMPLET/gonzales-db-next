@@ -80,4 +80,27 @@ describe("classicDoubleElimDiagram", () => {
     const map = new Map<string, LayoutMatch>([["1", match("1", "A", "B")]]);
     assert.equal(resolveClassicDoubleElimSlots(map), null);
   });
+
+  it("rejects 6-team Little League G1–G11 trees (championship on G11, three openers)", () => {
+    const map = new Map<string, LayoutMatch>([
+      ["1", match("1", "A", "B")],
+      ["2", match("2", "C", "D")],
+      ["3", match("3", "E", "F")],
+      ["4", match("4", "W1", "W2")],
+      ["5", match("5", "L1", "L4")],
+      ["6", match("6", "L2", "L3")],
+      ["7", match("7", "W3", "W4")],
+      ["8", match("8", "W5", "W6")],
+      ["9", match("9", "L7", "W8")],
+      ["10", match("10", "W7", "W9")],
+      [
+        "11",
+        {
+          ...match("11", "W10", "L10"),
+          championshipRole: "grand_final" as const,
+        },
+      ],
+    ]);
+    assert.equal(resolveClassicDoubleElimSlots(map), null);
+  });
 });
