@@ -1,6 +1,4 @@
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
-import { collectAllDoubleElimMatchesByGame } from "@/lib/tournament-brackets/bracketLayout";
-import { resolveClassicDoubleElimSlots } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
 
 /**
@@ -77,13 +75,14 @@ export function appliesDoubleElimClassicLayoutTemplate(
 /** True when the spec has a complete classic G1–G8 (optional G9) game tree. */
 export function hasClassicDoubleElimGameStructure(spec: BracketSpec): boolean {
   if (spec.bracketFormat !== "double_elimination") return false;
-  const winners = spec.rounds.filter((r) => r.bracketSection === "winners");
-  const losers = spec.rounds.filter((r) => r.bracketSection === "losers");
-  const championshipMatches = spec.rounds
-    .filter((r) => r.bracketSection === "championship")
-    .flatMap((r) => r.matches);
-  const allByGame = collectAllDoubleElimMatchesByGame(winners, losers, championshipMatches);
-  return resolveClassicDoubleElimSlots(allByGame) !== null;
+  const gameNumbers = new Set<string>();
+  for (const round of spec.rounds) {
+    for (const match of round.matches) {
+      const key = match.officialGameNumber?.trim();
+      if (key) gameNumbers.add(key);
+    }
+  }
+  return ["1", "2", "3", "4", "5", "6", "7", "8"].every((g) => gameNumbers.has(g));
 }
 
 /** Layout is frozen — only scores and labels should change the live bracket. */
