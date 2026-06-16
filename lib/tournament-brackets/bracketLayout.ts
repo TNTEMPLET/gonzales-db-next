@@ -9,6 +9,9 @@ import {
   canUseClassicUnifiedDoubleElimDiagram,
   resolveClassicDoubleElimSlots,
 } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
+import {
+  resolveClassicSixTeamModifiedDeSlots,
+} from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
 
 /** One row in a classic column bracket (home/away are stored labels; slots are what we render). */
 export type LayoutMatch = {
@@ -90,6 +93,8 @@ export type BracketLayout =
       divisionLabel?: string;
       /** `classic_unified`: single scrollable winners/losers/championship diagram (5–7 team DE). */
       diagramStyle: "classic_unified" | "connected_columns";
+      /** Which classic template geometry to render (when `diagramStyle` is `classic_unified`). */
+      classicVariant?: "five_team" | "six_team_modified_de";
       winnersBracket: DoubleElimConnectedSection;
       losersBracket: DoubleElimConnectedSection | null;
       championship: DoubleElimChampionshipSection | null;
@@ -577,7 +582,7 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
 
   const champMatchesRaw = championship.flatMap((r) => r.matches.map((m) => baseMatch(m)));
   /** If-necessary games stay in the spec for scoring but are not shown on the bracket surface. */
-  const champMatches = includesIfNecessaryChampionshipGame(spec.bracketFormat)
+  const champMatches = includesIfNecessaryChampionshipGame(spec)
     ? champMatchesRaw.filter((m) => m.championshipRole !== "if_necessary")
     : champMatchesRaw;
   const championshipSection: DoubleElimChampionshipSection | null =
@@ -595,9 +600,12 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
     losersBracket?.rounds,
     championshipSection?.matches,
   );
+  const classicSix = resolveClassicSixTeamModifiedDeSlots(allByGame);
+  const classicFive = classicSix ? null : resolveClassicDoubleElimSlots(allByGame);
   const useClassic =
-    canUseClassicUnifiedDoubleElimDiagram(allByGame) &&
-    resolveClassicDoubleElimSlots(allByGame) !== null;
+    classicSix !== null ||
+    (canUseClassicUnifiedDoubleElimDiagram(allByGame) && classicFive !== null);
+  const classicVariant = classicSix ? "six_team_modified_de" : classicFive ? "five_team" : undefined;
 
   const age =
     spec.championAgeGroupLabel?.trim() ||
@@ -608,8 +616,8 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
       ? {
           championHeading: `${age} Champion`,
           championTeamName: resolveDoubleElimChampionTeamName(spec),
-          showIfNecessaryDropLine: includesIfNecessaryChampionshipGame(spec.bracketFormat),
-          ifNecessaryMatch: includesIfNecessaryChampionshipGame(spec.bracketFormat)
+          showIfNecessaryDropLine: includesIfNecessaryChampionshipGame(spec),
+          ifNecessaryMatch: includesIfNecessaryChampionshipGame(spec)
             ? (champMatchesRaw.find((m) => m.championshipRole === "if_necessary") ?? null)
             : null,
         }
@@ -618,6 +626,7 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
   return {
     mode: "double_elimination",
     diagramStyle: useClassic ? "classic_unified" : "connected_columns",
+    ...(classicVariant ? { classicVariant } : {}),
     divisionLabel: spec.divisionLabel,
     winnersBracket: winnersBracket ?? buildLinearConnectedSection("Winners Bracket", [], laneRows),
     losersBracket,

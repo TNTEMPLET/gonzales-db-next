@@ -257,7 +257,7 @@ export function advanceDoubleElimination(spec: BracketSpec): BracketSpec {
 
   const rounds = cloneSpecRounds(spec);
   let base: BracketSpec = { ...spec, rounds };
-  const usesIfNecessary = includesIfNecessaryChampionshipGame(spec.bracketFormat);
+  const usesIfNecessary = includesIfNecessaryChampionshipGame(spec);
 
   const allEntries: { match: BracketMatch; gameNum: number }[] = [];
   for (const r of base.rounds) {

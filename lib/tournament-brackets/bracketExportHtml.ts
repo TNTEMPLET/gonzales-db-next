@@ -8,7 +8,8 @@ import {
   matchCardGameInfoLines,
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
-import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
+import type { BracketParkInfo, BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
+import { tournamentInfoRows } from "@/lib/tournament-brackets/tournamentInfo";
 import { matchGridPlacement, podiumColumnGridPlacement } from "@/lib/tournament-brackets/bracketGridPlacement";
 import {
   BRACKET_CONNECTOR_EXPORT_ASSUMED_H,
@@ -237,6 +238,63 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
   color: var(--bracket-muted);
   font-variant-numeric: tabular-nums;
   margin-top: 0.08rem;
+}
+.bracket-title-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(10rem, 18rem);
+  gap: 0.65rem 1rem;
+  align-items: start;
+  margin: 0 0 1.15rem;
+}
+.bracket-title-row .bracket-title { margin: 0; }
+.bracket-tournament-info-inset {
+  justify-self: end;
+  min-width: 0;
+  max-width: 18rem;
+}
+.bracket-tournament-info-table {
+  width: 100%;
+  border-collapse: collapse;
+  border: 1px solid var(--bracket-border);
+  border-radius: 0.35rem;
+  background: rgb(255 255 255 / 0.72);
+  box-shadow: 0 1px 2px rgb(0 47 108 / 0.06);
+  font-size: 0.625rem;
+  line-height: 1.35;
+}
+.bracket-tournament-info-table th,
+.bracket-tournament-info-table td {
+  padding: 0.28rem 0.45rem;
+  vertical-align: top;
+  text-align: left;
+}
+.bracket-tournament-info-table th {
+  width: 38%;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--bracket-navy-deep);
+  border-right: 1px solid var(--bracket-round-divider);
+  white-space: nowrap;
+}
+.bracket-tournament-info-table td {
+  color: var(--bracket-muted);
+  overflow-wrap: anywhere;
+}
+.bracket-tournament-info-table tr + tr th,
+.bracket-tournament-info-table tr + tr td {
+  border-top: 1px solid var(--bracket-round-divider);
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
 }
 .match-schedule-meta {
   padding: 0.35rem 0.55rem 0.45rem;
@@ -833,9 +891,22 @@ export type BracketExportViewOptions = {
     name?: string;
   } | null;
   parkInfo?: BracketParkInfo | null;
+  tournamentInfo?: BracketTournamentInfo | null;
   /** Optional label for the bracket surface H2 (e.g. project name); else `layout.divisionLabel`. */
   surfaceHeadingLabel?: string | null;
 };
+
+function tournamentInfoTableHtml(info: BracketTournamentInfo | null | undefined): string {
+  const rows = tournamentInfoRows(info);
+  if (rows.length === 0) return "";
+  const body = rows
+    .map(
+      ({ label, value }) =>
+        `<tr><th scope="row">${esc(label)}</th><td>${esc(value)}</td></tr>`,
+    )
+    .join("");
+  return `<div class="bracket-tournament-info-inset" aria-label="Tournament information"><table class="bracket-tournament-info-table"><caption class="sr-only">Tournament information</caption><tbody>${body}</tbody></table></div>`;
+}
 
 function parkInfoAsideHtml(park: BracketParkInfo | null | undefined): string {
   const h = park?.heading?.trim();
@@ -990,6 +1061,7 @@ function bracketRootDocumentInner(
   themeStyle: string,
   parkBelowTitle = true,
   rootExtraClass = "",
+  includeTournamentInfoInset = false,
 ): string {
   const watermark = options?.logoWatermarkUrl?.trim();
   const wm = watermark
@@ -1003,9 +1075,18 @@ function bracketRootDocumentInner(
     ? `<div class="bracket-powered-by" aria-label="Powered by parent organization"><span class="bracket-powered-by-text">powered by:</span><img src="${esc(parentLogo)}" alt="${esc(parentLogoAlt)}" class="bracket-powered-by-logo" draggable="false" decoding="async" /></div>`
     : "";
   const park = parkBelowTitle ? parkInfoAsideHtml(options?.parkInfo) : "";
-  const titleBlock = bracketTitle.trim()
+  const tournamentInfoHtml = includeTournamentInfoInset
+    ? tournamentInfoTableHtml(options?.tournamentInfo)
+    : "";
+  const titleInner = bracketTitle.trim()
     ? `<h2 class="bracket-title">${esc(bracketTitle)}</h2>`
     : "";
+  const titleBlock =
+    tournamentInfoHtml && titleInner
+      ? `<div class="bracket-title-row">${titleInner}${tournamentInfoHtml}</div>`
+      : tournamentInfoHtml && !titleInner
+        ? tournamentInfoHtml
+        : titleInner;
   return `<section class="bracket-root${rootExtraClass}" style="${themeStyle}" aria-label="Tournament bracket">
 ${wm}
 <div class="bracket-root-foreground">
@@ -1022,6 +1103,7 @@ function buildConnectedBracketHtml(
   bracketTitle: string,
   options: BracketExportViewOptions | undefined,
   themeStyle: string,
+  includeTournamentInfoInset = false,
 ): string {
   const rounds = layout.rounds;
   const R = rounds.length;
@@ -1144,6 +1226,7 @@ function buildConnectedBracketHtml(
     themeStyle,
     !parkInPodiumHeader,
     useCompactSixTeamByeLayout ? " bracket-root-compact-six-team" : "",
+    includeTournamentInfoInset,
   );
 }
 
@@ -1169,7 +1252,7 @@ function layoutToInnerHtml(
         return `<li class="game-card"><div class="game-meta">${esc(meta)}</div><div>${esc(g.homeTeam)}<div class="vs">vs</div>${esc(g.awayTeam)}</div></li>`;
       })
       .join("");
-    return bracketRootDocumentInner(title, `<ul class="grid">${items}</ul>`, options, themeStyle);
+    return bracketRootDocumentInner(title, `<ul class="grid">${items}</ul>`, options, themeStyle, true, "", true);
   }
 
   if (layout.mode === "double_elimination") {
@@ -1204,12 +1287,12 @@ function layoutToInnerHtml(
       ? `<section class="round"><h4 class="de-section-label">${esc(layout.championship.label)}</h4><ol class="match-list">${layout.championship.matches.map((m) => `<li>${matchArticleHtml(m)}</li>`).join("")}</ol></section>`
       : "";
     const body = `<div class="double-elim-export">${winnersHtml}${losersHtml}${champHtml}</div>`;
-    return bracketRootDocumentInner(bracketTitle, body, options, themeStyle);
+    return bracketRootDocumentInner(bracketTitle, body, options, themeStyle, true, "", true);
   }
 
   const bracketTitle = esc(bracketSurfaceTitle(exportHeadingLabel));
   if (layout.treeLayout === "connected") {
-    return buildConnectedBracketHtml(layout, bracketTitle, options, themeStyle);
+    return buildConnectedBracketHtml(layout, bracketTitle, options, themeStyle, true);
   }
 
   const roundsHtml = layout.rounds
@@ -1225,7 +1308,7 @@ function layoutToInnerHtml(
   const treeInner = `<div class="tree">${roundsHtml}</div>`;
   const body = layout.podium ? wrapTreeBodyWithPodium(treeInner, layout.podium, options) : treeInner;
   const parkBelowTitle = !(layout.podium && hasBracketParkInfo(options?.parkInfo));
-  return bracketRootDocumentInner(bracketTitle, body, options, themeStyle, parkBelowTitle);
+  return bracketRootDocumentInner(bracketTitle, body, options, themeStyle, parkBelowTitle, "", true);
 }
 
 /** Self-contained HTML document for download or hosting elsewhere. */

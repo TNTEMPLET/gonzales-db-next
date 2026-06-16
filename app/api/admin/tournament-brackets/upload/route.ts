@@ -1,16 +1,15 @@
-import crypto from "node:crypto";
 import path from "node:path";
-import { mkdir, writeFile } from "node:fs/promises";
 
-import { put } from "@vercel/blob";
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureTournamentBracketsMaster } from "@/lib/tournament-brackets/auth";
+import { storeBracketArtifact } from "@/lib/tournament-brackets/ingestion/storeBracketArtifact";
 import prisma from "@/lib/prisma";
 
 export const runtime = "nodejs";
 
 const MAX_BYTES = 12 * 1024 * 1024;
+
 const ALLOWED = new Set([
   "image/png",
   "image/jpeg",
@@ -61,23 +60,7 @@ export async function POST(request: NextRequest) {
   }
 
   const buf = Buffer.from(await file.arrayBuffer());
-  const uniqueName = `tournament-brackets/${Date.now()}-${crypto.randomBytes(6).toString("hex")}-${file.name.replace(/[^a-zA-Z0-9._-]/g, "_")}`;
-
-  let url: string;
-  if (process.env.NODE_ENV === "production") {
-    const blob = await put(uniqueName, buf, {
-      access: "public",
-      addRandomSuffix: false,
-      contentType: mimeType,
-    });
-    url = blob.url;
-  } else {
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "tournament-brackets");
-    await mkdir(uploadDir, { recursive: true });
-    const localName = path.basename(uniqueName);
-    await writeFile(path.join(uploadDir, localName), buf);
-    url = `/uploads/tournament-brackets/${localName}`;
-  }
+  const stored = await storeBracketArtifact(buf, file.name, mimeType);
 
   if (projectId) {
     const row = await prisma.bracketProject.findUnique({ where: { id: projectId } });
@@ -85,7 +68,7 @@ export async function POST(request: NextRequest) {
       const urls = Array.isArray(row.sourceArtifactUrls)
         ? (row.sourceArtifactUrls as string[])
         : [];
-      urls.push(url);
+      urls.push(stored.url);
       await prisma.bracketProject.update({
         where: { id: projectId },
         data: { sourceArtifactUrls: urls },
@@ -93,5 +76,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  return NextResponse.json({ data: { url, mimeType, size: file.size } });
+  return NextResponse.json({
+    data: { url: stored.url, mimeType: stored.mimeType, size: stored.size },
+  });
 }

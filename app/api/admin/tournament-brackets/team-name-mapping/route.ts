@@ -9,7 +9,7 @@ import {
 } from "@/lib/tournament-brackets/bracketTeamRename";
 import { teamNameSourcesFromParsedSpec } from "@/lib/tournament-brackets/teamNameSourcesForProject";
 import prisma from "@/lib/prisma";
-import { isContentOrgId } from "@/lib/siteConfig";
+import { isBracketOrgId } from "@/lib/siteConfig";
 
 const applyBodySchema = z.object({
   updates: z.array(
@@ -32,7 +32,7 @@ export async function GET(request: NextRequest) {
   }
 
   const organizationId = request.nextUrl.searchParams.get("organizationId")?.trim();
-  if (!organizationId || !isContentOrgId(organizationId)) {
+  if (!organizationId || !isBracketOrgId(organizationId)) {
     return NextResponse.json({ error: "organizationId is required." }, { status: 400 });
   }
 

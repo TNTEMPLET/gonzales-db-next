@@ -6,6 +6,7 @@ import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 import type { BracketLayout, BracketLayoutPodium, LayoutMatch, LayoutRound } from "@/lib/tournament-brackets/bracketLayout";
 import { collectAllDoubleElimMatchesByGame } from "@/lib/tournament-brackets/bracketLayout";
 import { resolveClassicDoubleElimSlots } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
+import { resolveClassicSixTeamModifiedDeSlots } from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
 import {
   declaredChampionFromFinalSlots,
   declaredThirdPlaceFromSlots,
@@ -14,7 +15,8 @@ import {
   matchCardGameInfoLines,
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
-import type { BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
+import type { BracketParkInfo, BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
+import { hasBracketTournamentInfo } from "@/lib/tournament-brackets/tournamentInfo";
 import type { BracketColorScheme, BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { bracketThemeCssVars } from "@/lib/tournament-brackets/bracketTheme";
 import { resolveMatchDisplayStatus } from "@/lib/gamechanger/matchDisplayStatus";
@@ -29,6 +31,7 @@ import {
 
 import { BracketConnectorCell, FinalChampionConnectorCell } from "@/components/brackets/BracketConnector";
 import ClassicDoubleElimDiagram from "@/components/brackets/ClassicDoubleElimDiagram";
+import ClassicSixTeamModifiedDeDiagram from "@/components/brackets/ClassicSixTeamModifiedDeDiagram";
 import {
   BRACKET_PODIUM_CHAMPION_SOURCE_ATTR,
   BRACKET_PODIUM_CHAMPION_TARGET_ATTR,
@@ -64,8 +67,10 @@ type Props = {
   colorScheme?: BracketColorScheme;
   /** League logo from flyer options — large, low-opacity background (same origin as uploads). */
   logoWatermarkUrl?: string | null;
-  /** Park / venue copy shown under the bracket title. */
+  /** Park / venue copy shown under the bracket title (legacy; classic unified uses `tournamentInfo` inset). */
   parkInfo?: BracketParkInfo | null;
+  /** Official LL tournament header table (classic unified diagram). */
+  tournamentInfo?: BracketTournamentInfo | null;
   /** Parent organization badge shown at the bottom-right of the bracket surface. */
   parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   scoring?: BracketScoringViewProps | null;
@@ -774,6 +779,8 @@ function MatchGameInfoBetweenTeams({
   meta: Pick<LayoutMatch, "dateLabel" | "time" | "venue" | "field">;
 }) {
   const { when, where, isPlaceholder } = matchCardGameInfoLines(meta);
+  if (isPlaceholder) return null;
+  if (!when && !where) return null;
   return (
     <div
       className={[
@@ -1300,12 +1307,14 @@ function DoubleEliminationBracketView({
   colorScheme,
   bracketTitle,
   parkInfo,
+  tournamentInfo,
   logoWatermarkUrl,
   parentOrganizationLogo,
   scoring,
   liveGameStatuses,
   onMatchClick,
   gameChangerEnabled,
+  fluidWidth = false,
 }: {
   layout: Extract<BracketLayout, { mode: "double_elimination" }>;
   rootClass: string;
@@ -1313,12 +1322,14 @@ function DoubleEliminationBracketView({
   colorScheme: BracketColorScheme;
   bracketTitle: string;
   parkInfo?: BracketParkInfo | null;
+  tournamentInfo?: BracketTournamentInfo | null;
   logoWatermarkUrl?: string | null;
   parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   scoring?: BracketScoringViewProps | null;
   liveGameStatuses?: Record<string, BracketLiveGameStatus> | null;
   onMatchClick?: (matchId: string) => void;
   gameChangerEnabled?: boolean;
+  fluidWidth?: boolean;
 }) {
   const mobileRounds: LayoutRound[] = [
     layout.winnersBracket.rounds,
@@ -1338,8 +1349,12 @@ function DoubleEliminationBracketView({
   if (ifNecessaryMatch?.officialGameNumber?.trim()) {
     allMatchesByGame.set(ifNecessaryMatch.officialGameNumber.trim(), ifNecessaryMatch);
   }
-  const classicSlots =
-    layout.diagramStyle === "classic_unified"
+  const classicSixSlots =
+    layout.diagramStyle === "classic_unified" && layout.classicVariant === "six_team_modified_de"
+      ? resolveClassicSixTeamModifiedDeSlots(allMatchesByGame)
+      : null;
+  const classicFiveSlots =
+    layout.diagramStyle === "classic_unified" && layout.classicVariant !== "six_team_modified_de"
       ? resolveClassicDoubleElimSlots(allMatchesByGame)
       : null;
 
@@ -1361,6 +1376,8 @@ function DoubleEliminationBracketView({
     />
   );
 
+  const useClassicUnifiedDiagram = Boolean(classicSixSlots || classicFiveSlots);
+
   return (
     <BracketSurface
       rootClass={rootClass}
@@ -1372,7 +1389,7 @@ function DoubleEliminationBracketView({
       logoWatermarkUrl={logoWatermarkUrl}
       parentOrganizationLogo={parentOrganizationLogo}
       podium={null}
-      parkBelowTitle={hasBracketParkInfo(parkInfo)}
+      parkBelowTitle={!useClassicUnifiedDiagram && hasBracketParkInfo(parkInfo)}
     >
       <MobileBracketRounds
         rounds={mobileRounds}
@@ -1383,15 +1400,29 @@ function DoubleEliminationBracketView({
         gameChangerEnabled={gameChangerEnabled}
       />
       <FullBracketDiagramFrame>
-        {classicSlots ? (
-          <ClassicDoubleElimDiagram
-            slots={classicSlots}
+        {classicSixSlots ? (
+          <ClassicSixTeamModifiedDeDiagram
+            slots={classicSixSlots}
+            tournamentInfo={tournamentInfo}
             championPodium={layout.classicChampionshipPodium ?? null}
             renderMatch={renderMatch}
             scoring={scoring}
             liveGameStatuses={liveGameStatuses}
             onMatchClick={onMatchClick}
             gameChangerEnabled={gameChangerEnabled}
+            fluidWidth={fluidWidth}
+          />
+        ) : classicFiveSlots ? (
+          <ClassicDoubleElimDiagram
+            slots={classicFiveSlots}
+            tournamentInfo={tournamentInfo}
+            championPodium={layout.classicChampionshipPodium ?? null}
+            renderMatch={renderMatch}
+            scoring={scoring}
+            liveGameStatuses={liveGameStatuses}
+            onMatchClick={onMatchClick}
+            gameChangerEnabled={gameChangerEnabled}
+            fluidWidth={fluidWidth}
           />
         ) : (
         <div className={styles.doubleElimDiagram}>
@@ -1465,6 +1496,7 @@ export default function TournamentBracketView({
   logoWatermarkUrl,
   parentOrganizationLogo,
   parkInfo,
+  tournamentInfo,
   scoring,
   liveGameStatuses,
   onMatchClick,
@@ -1541,12 +1573,14 @@ export default function TournamentBracketView({
         colorScheme={colorScheme}
         bracketTitle={bracketTitle}
         parkInfo={parkInfo}
+        tournamentInfo={tournamentInfo}
         logoWatermarkUrl={logoWatermarkUrl}
         parentOrganizationLogo={parentOrganizationLogo}
         scoring={scoring}
         liveGameStatuses={liveGameStatuses}
         onMatchClick={onMatchClick}
         gameChangerEnabled={gameChangerEnabled}
+        fluidWidth={fluidWidth}
       />
     );
   }

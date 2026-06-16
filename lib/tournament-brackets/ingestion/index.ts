@@ -1,6 +1,6 @@
 import type { BracketGameRow } from "@/lib/tournament-brackets/bracketSpec";
 
-import { ingestPdfStub } from "@/lib/tournament-brackets/ingestion/pdfStub";
+import { ingestPdfBracket } from "@/lib/tournament-brackets/ingestion/pdfBracketProfile";
 import {
   inferMimeFromFilename,
   normalizeClientMime,
@@ -8,6 +8,13 @@ import {
 } from "@/lib/tournament-brackets/ingestion/mime";
 import type { IngestionProfile, IngestionResult } from "@/lib/tournament-brackets/ingestion/types";
 import { ingestXlsxTournamentSchedule } from "@/lib/tournament-brackets/ingestion/xlsxProfile";
+import type { BracketPdfVisualReaderMode } from "@/lib/tournament-brackets/ingestion/bracketPdfVisualReaderConfig";
+
+function visualReaderModeForProfile(profile: IngestionProfile): BracketPdfVisualReaderMode | undefined {
+  if (profile === "pdf_ocr") return "ocr";
+  if (profile === "pdf_vision") return "vision";
+  return undefined;
+}
 
 export type IngestBufferInput = {
   buffer: ArrayBuffer;
@@ -54,7 +61,9 @@ export async function ingestBracketBuffer(input: IngestBufferInput): Promise<Ing
   }
 
   if (mime === "application/pdf") {
-    return ingestPdfStub(input.buffer);
+    return ingestPdfBracket(input.buffer, {
+      visualReaderMode: visualReaderModeForProfile(input.profile),
+    });
   }
 
   warnings.push(`Unsupported file type for ingestion: ${mime || "(empty)"}`);

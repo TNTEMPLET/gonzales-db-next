@@ -1,6 +1,9 @@
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { collectAllDoubleElimMatchesByGame } from "@/lib/tournament-brackets/bracketLayout";
 import { resolveClassicDoubleElimSlots } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
+import { resolveClassicSixTeamModifiedDeSlots } from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
+import { isDoubleEliminationFormat } from "@/lib/tournament-brackets/bracketFormat";
+import { getOfficialTemplate } from "@/lib/tournament-brackets/officialTemplates";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
 
 /**
@@ -68,22 +71,24 @@ export function appliesDoubleElimClassicLayoutTemplate(
   bracketFormat: BracketSpec["bracketFormat"],
 ): boolean {
   const count = teams.map((s) => s.trim()).filter(Boolean).length;
-  return (
-    bracketFormat === DOUBLE_ELIMINATION_CLASSIC_LAYOUT_TEMPLATE.bracketFormat &&
-    count === 5
-  );
+  if (count === 5 && isDoubleEliminationFormat(bracketFormat)) return true;
+  if (count === 6 && isDoubleEliminationFormat(bracketFormat)) return true;
+  return false;
 }
 
-/** True when the spec has a complete classic G1–G8 (optional G9) game tree. */
+/** True when the spec has a complete classic game tree (5-team G1–G9 or 6-team G1–G11). */
 export function hasClassicDoubleElimGameStructure(spec: BracketSpec): boolean {
-  if (spec.bracketFormat !== "double_elimination") return false;
+  if (!isDoubleEliminationFormat(spec.bracketFormat)) return false;
   const winners = spec.rounds.filter((r) => r.bracketSection === "winners");
   const losers = spec.rounds.filter((r) => r.bracketSection === "losers");
   const championshipMatches = spec.rounds
     .filter((r) => r.bracketSection === "championship")
     .flatMap((r) => r.matches);
   const allByGame = collectAllDoubleElimMatchesByGame(winners, losers, championshipMatches);
-  return resolveClassicDoubleElimSlots(allByGame) !== null;
+  return (
+    resolveClassicDoubleElimSlots(allByGame) !== null ||
+    resolveClassicSixTeamModifiedDeSlots(allByGame) !== null
+  );
 }
 
 /** Layout is frozen — only scores and labels should change the live bracket. */
@@ -120,4 +125,15 @@ export function doubleEliminationClassicLayoutSpecDefaults(): Pick<
     bracketFormat: DOUBLE_ELIMINATION_CLASSIC_LAYOUT_TEMPLATE.bracketFormat,
     championshipSeriesStyle: DOUBLE_ELIMINATION_CLASSIC_LAYOUT_TEMPLATE.championshipSeriesStyle,
   };
+}
+
+
+/** Lock layout when an official template with lockLayout is built. */
+export function officialTemplateLayoutLockPatch(
+  officialTemplateId: string | undefined,
+): Pick<BracketSpec, "classicDoubleElimLayoutLocked"> | Record<string, never> {
+  if (!officialTemplateId) return {};
+  const template = getOfficialTemplate(officialTemplateId);
+  if (!template?.lockLayout) return {};
+  return { classicDoubleElimLayoutLocked: true };
 }

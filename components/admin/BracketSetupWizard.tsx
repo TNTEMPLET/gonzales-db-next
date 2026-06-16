@@ -4,7 +4,6 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 
 import BracketTeamPicker from "@/components/admin/BracketTeamPicker";
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
-import { isDoubleEliminationFormat } from "@/lib/tournament-brackets/bracketFormat";
 import {
   BYE_SLOT_LABEL,
   canAutoGenerateSingleEliminationRounds,
@@ -20,14 +19,28 @@ import {
   generateDoubleEliminationRoundsForFormat,
 } from "@/lib/tournament-brackets/generateDoubleElimFromTeams";
 import {
-  appliesDoubleElimClassicLayoutTemplate,
+  isDoubleEliminationFormat,
+  bracketFormatForChampionshipSeriesStyle,
+  resolveChampionshipSeriesStyle,
+  type ChampionshipSeriesStyle,
+} from "@/lib/tournament-brackets/bracketFormat";
+import {
   classicDoubleElimLayoutLockPatch,
+  officialTemplateLayoutLockPatch,
   CLASSIC_DOUBLE_ELIM_LAYOUT_LOCKED_ADMIN_MESSAGE,
   isClassicDoubleElimLayoutLocked,
   resolveDoubleElimClassicLayoutGenerationOptions,
 } from "@/lib/tournament-brackets/doubleEliminationClassicLayoutTemplate";
+import {
+  buildRoundsFromOfficialTemplate,
+  defaultOfficialTemplateForNewProject,
+  getOfficialTemplate,
+  officialTemplateChampionshipLabel,
+  type OfficialTemplateId,
+} from "@/lib/tournament-brackets/officialTemplates";
 
 type BracketFormat = BracketSpec["bracketFormat"];
+type SetupMode = "official" | "custom";
 
 type Step = "format" | "division" | "champion" | "teams" | "byes" | "confirm" | "non_single_done";
 
@@ -56,7 +69,13 @@ export default function BracketSetupWizard({
 }: Props) {
   const [showWizardSession, setShowWizardSession] = useState(false);
   const [step, setStep] = useState<Step>("format");
-  const [bracketFormat, setBracketFormat] = useState<BracketFormat>("single_elimination");
+  const defaultTemplate = defaultOfficialTemplateForNewProject();
+  const [setupMode, setSetupMode] = useState<SetupMode>("official");
+  const [officialTemplateId, setOfficialTemplateId] = useState<OfficialTemplateId>(defaultTemplate.id);
+  const [championshipSeriesStyle, setChampionshipSeriesStyle] = useState<ChampionshipSeriesStyle>(
+    defaultTemplate.defaultChampionshipSeriesStyle,
+  );
+  const [bracketFormat, setBracketFormat] = useState<BracketFormat>("modified_double_elimination");
   const [divisionLabel, setDivisionLabel] = useState("");
   const [championAgeGroupDraft, setChampionAgeGroupDraft] = useState("");
   const [includeThirdPlaceDraft, setIncludeThirdPlaceDraft] = useState(false);
@@ -65,21 +84,33 @@ export default function BracketSetupWizard({
   const [byeAck, setByeAck] = useState(false);
 
   const seedFromSpec = useCallback(() => {
-    setBracketFormat(spec.bracketFormat === "unknown" ? "single_elimination" : spec.bracketFormat);
+    if (spec.officialTemplateId && getOfficialTemplate(spec.officialTemplateId)) {
+      setSetupMode("official");
+      setOfficialTemplateId(spec.officialTemplateId as OfficialTemplateId);
+      const style = resolveChampionshipSeriesStyle(spec) ?? defaultTemplate.defaultChampionshipSeriesStyle;
+      setChampionshipSeriesStyle(style);
+      setBracketFormat(bracketFormatForChampionshipSeriesStyle(style));
+    } else if (spec.bracketFormat === "unknown") {
+      setSetupMode("official");
+      setOfficialTemplateId(defaultTemplate.id);
+      setChampionshipSeriesStyle(defaultTemplate.defaultChampionshipSeriesStyle);
+      setBracketFormat("modified_double_elimination");
+    } else {
+      setSetupMode("custom");
+      setBracketFormat(spec.bracketFormat);
+      const style = resolveChampionshipSeriesStyle(spec);
+      if (style) setChampionshipSeriesStyle(style);
+    }
     setDivisionLabel(spec.divisionLabel ?? "");
     setChampionAgeGroupDraft(spec.championAgeGroupLabel?.trim() || spec.divisionLabel?.trim() || "");
     setIncludeThirdPlaceDraft(Boolean(spec.singleElimIncludeThirdPlace));
-    setTeams(spec.teams.filter(Boolean));
+    setTeams(spec.teams.length > 0 ? spec.teams.filter(Boolean) : defaultTemplate.teamCount ? Array.from({ length: defaultTemplate.teamCount }, (_, i) => String.fromCharCode(65 + i)) : []);
     setRosterAgeGroupDraft(spec.rosterAgeGroup?.trim() ?? "");
     setByeAck(false);
     setStep("format");
   }, [
-    spec.bracketFormat,
-    spec.championAgeGroupLabel,
-    spec.divisionLabel,
-    spec.rosterAgeGroup,
-    spec.singleElimIncludeThirdPlace,
-    spec.teams,
+    defaultTemplate,
+    spec,
   ]);
 
   useEffect(() => {
@@ -87,36 +118,54 @@ export default function BracketSetupWizard({
     setShowWizardSession(false);
   }, [projectId, seedFromSpec]);
 
+  useEffect(() => {
+    if (!setupComplete && spec.pdfIngestHints) {
+      setShowWizardSession(true);
+    }
+  }, [projectId, setupComplete, spec.pdfIngestHints]);
+
   const teamsText = useMemo(() => teams.join("\n"), [teams]);
+  const liveTeamCount = useMemo(() => teams.map((t) => t.trim()).filter(Boolean).length, [teams]);
+  const activeOfficialTemplate = useMemo(
+    () => (setupMode === "official" ? getOfficialTemplate(officialTemplateId) : undefined),
+    [officialTemplateId, setupMode],
+  );
   const byeCount = useMemo(() => {
+    if (activeOfficialTemplate && activeOfficialTemplate.teamCount <= 6) return 0;
     if (isDoubleEliminationFormat(bracketFormat)) return countByesForDoubleElimTeamList(teams);
     return countByesForTeamList(teams);
-  }, [bracketFormat, teams]);
+  }, [activeOfficialTemplate, bracketFormat, teams]);
   const slotN = useMemo(() => (teams.length >= 1 ? nextPowerOfTwoAtLeast(teams.length) : 0), [teams.length]);
   const canBuildSingle = useMemo(
     () => canAutoGenerateSingleEliminationRounds(teams, "single_elimination"),
     [teams],
   );
-  const canBuildDouble = useMemo(
-    () => isDoubleEliminationFormat(bracketFormat) && canAutoGenerateDoubleEliminationRounds(teams, bracketFormat),
-    [bracketFormat, teams],
-  );
+  const canBuildDouble = useMemo(() => {
+    if (activeOfficialTemplate) return liveTeamCount === activeOfficialTemplate.teamCount;
+    return isDoubleEliminationFormat(bracketFormat) && canAutoGenerateDoubleEliminationRounds(teams, bracketFormat);
+  }, [activeOfficialTemplate, bracketFormat, liveTeamCount, teams]);
   const canBuild =
-    bracketFormat === "single_elimination"
-      ? canBuildSingle
-      : isDoubleEliminationFormat(bracketFormat)
-        ? canBuildDouble
-        : false;
+    setupMode === "official"
+      ? canBuildDouble
+      : bracketFormat === "single_elimination"
+        ? canBuildSingle
+        : isDoubleEliminationFormat(bracketFormat)
+          ? canBuildDouble
+          : false;
 
   const previewRounds = useMemo(() => {
     if (teams.length < 1) return null;
     try {
+      if (activeOfficialTemplate && canBuildDouble) {
+        return buildRoundsFromOfficialTemplate(activeOfficialTemplate.id, teams, {
+          championshipSeriesStyle,
+        });
+      }
       if (isDoubleEliminationFormat(bracketFormat) && canBuildDouble) {
-        return generateDoubleEliminationRoundsForFormat(
-          teams,
-          bracketFormat,
-          resolveDoubleElimClassicLayoutGenerationOptions(teams, bracketFormat),
-        );
+        return generateDoubleEliminationRoundsForFormat(teams, bracketFormat, {
+          ...resolveDoubleElimClassicLayoutGenerationOptions(teams, bracketFormat),
+          championshipSeriesStyle,
+        });
       }
       if (bracketFormat === "single_elimination" && canBuildSingle) {
         return generateSingleEliminationRoundsFromTeams(teams);
@@ -125,7 +174,7 @@ export default function BracketSetupWizard({
     } catch {
       return null;
     }
-  }, [bracketFormat, canBuildDouble, canBuildSingle, teams]);
+  }, [activeOfficialTemplate, bracketFormat, canBuildDouble, canBuildSingle, championshipSeriesStyle, teams]);
 
   const showFullWizard = !setupComplete || showWizardSession;
 
@@ -151,19 +200,24 @@ export default function BracketSetupWizard({
   }
 
   async function applyDoubleElimBuild() {
-    if (!previewRounds || !isDoubleEliminationFormat(bracketFormat)) return;
+    if (!previewRounds) return;
+    if (setupMode !== "official" && !isDoubleEliminationFormat(bracketFormat)) return;
     const label = divisionLabel.trim();
+    const syncedFormat = bracketFormatForChampionshipSeriesStyle(championshipSeriesStyle);
     await onApply({
-      bracketFormat,
+      bracketFormat: syncedFormat,
+      officialTemplateId: activeOfficialTemplate?.id ?? null,
+      layoutPreference: activeOfficialTemplate ? "official" : "connected_columns",
+      governingBody: activeOfficialTemplate?.governingBody ?? null,
       divisionLabel: label.length > 0 ? label : "",
       championAgeGroupLabel: championAgeGroupDraft.trim() || null,
       rosterAgeGroup: rosterAgeGroupDraft.trim() || null,
-      championshipSeriesStyle:
-        bracketFormat === "double_elimination" ? "always_scheduled_reset" : "winner_take_all",
+      championshipSeriesStyle,
       teams,
       rounds: previewRounds,
       setupWizardCompleted: true,
-      ...classicDoubleElimLayoutLockPatch(teams, bracketFormat),
+      ...classicDoubleElimLayoutLockPatch(teams, syncedFormat),
+      ...officialTemplateLayoutLockPatch(activeOfficialTemplate?.id),
     });
     setShowWizardSession(false);
   }
@@ -179,7 +233,10 @@ export default function BracketSetupWizard({
   }
 
   function goNextFromFormat() {
-    if (bracketFormat === "single_elimination" || isDoubleEliminationFormat(bracketFormat)) {
+    if (setupMode === "official" || bracketFormat === "single_elimination" || isDoubleEliminationFormat(bracketFormat)) {
+      if (setupMode === "official") {
+        setBracketFormat(bracketFormatForChampionshipSeriesStyle(championshipSeriesStyle));
+      }
       setStep("division");
     } else {
       setStep("non_single_done");
@@ -249,9 +306,38 @@ export default function BracketSetupWizard({
         </p>
       ) : null}
 
+      {spec.pdfIngestHints ? (
+        <p className="mt-2 rounded-lg border border-emerald-900/50 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-100">
+          Imported from PDF: <strong>{spec.pdfIngestHints.templateLabel}</strong>.
+          {spec.pdfIngestHints.roundsBuilt ? (
+            <>
+              {" "}
+              <strong>{spec.pdfIngestHints.gamesBuilt ?? 11} games</strong> were built from PDF routing
+              {spec.pdfIngestHints.scheduleLinesApplied
+                ? ` (${spec.pdfIngestHints.scheduleLinesApplied} with schedule lines)`
+                : ""}
+              . Replace placeholder teams (A–
+              {spec.pdfIngestHints.teamCount
+                ? String.fromCharCode(64 + spec.pdfIngestHints.teamCount)
+                : "?"}
+              ) via Team name mapping or the Teams step — you can skip the wizard to use the live preview.
+            </>
+          ) : (
+            <>
+              {" "}
+              Placeholder teams (A–
+              {spec.pdfIngestHints.teamCount
+                ? String.fromCharCode(64 + spec.pdfIngestHints.teamCount)
+                : "?"}
+              ) are pre-filled — replace them with real league names on the Teams step.
+            </>
+          )}
+        </p>
+      ) : null}
+
       <ol className="mt-3 flex flex-wrap gap-2 text-[11px] text-zinc-500">
-        <li className={step === "format" ? "text-violet-300" : ""}>1. Format</li>
-        {bracketFormat === "single_elimination" || isDoubleEliminationFormat(bracketFormat) ? (
+        <li className={step === "format" ? "text-violet-300" : ""}>1. Template</li>
+        {setupMode === "official" || bracketFormat === "single_elimination" || isDoubleEliminationFormat(bracketFormat) ? (
           <>
             <li className={step === "division" ? "text-violet-300" : ""}>2. Division</li>
             <li className={step === "champion" ? "text-violet-300" : ""}>3. Champion</li>
@@ -268,20 +354,87 @@ export default function BracketSetupWizard({
 
       {step === "format" ? (
         <div className="mt-4 space-y-3">
-          <p className="text-sm text-zinc-300">What kind of bracket is this?</p>
-          <select
-            className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
-            value={bracketFormat}
-            disabled={busy}
-            onChange={(e) => setBracketFormat(e.target.value as BracketFormat)}
-          >
-            <option value="single_elimination">Single elimination</option>
-            <option value="double_elimination">Double elimination</option>
-            <option value="modified_double_elimination">Modified double elimination</option>
-            <option value="pool_play">Pool play</option>
-            <option value="custom">Custom</option>
-            <option value="unknown">Unknown / not set</option>
-          </select>
+          <p className="text-sm text-zinc-300">Choose an official tournament template or a custom format.</p>
+          <label className="block text-xs font-medium text-zinc-500">
+            Setup mode
+            <select
+              className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
+              value={setupMode}
+              disabled={busy}
+              onChange={(e) => {
+                const mode = e.target.value as SetupMode;
+                setSetupMode(mode);
+                if (mode === "official") {
+                  const tmpl = getOfficialTemplate(officialTemplateId) ?? defaultTemplate;
+                  setChampionshipSeriesStyle(tmpl.defaultChampionshipSeriesStyle);
+                  setBracketFormat(bracketFormatForChampionshipSeriesStyle(tmpl.defaultChampionshipSeriesStyle));
+                }
+              }}
+            >
+              <option value="official">Official tournament-legal template (recommended)</option>
+              <option value="custom">Custom bracket format</option>
+            </select>
+          </label>
+          {setupMode === "official" ? (
+            <>
+              <label className="block text-xs font-medium text-zinc-500">
+                Little League template
+                <select
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
+                  value={officialTemplateId}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const id = e.target.value as OfficialTemplateId;
+                    setOfficialTemplateId(id);
+                    const tmpl = getOfficialTemplate(id);
+                    if (tmpl) {
+                      setChampionshipSeriesStyle(tmpl.defaultChampionshipSeriesStyle);
+                      setBracketFormat(bracketFormatForChampionshipSeriesStyle(tmpl.defaultChampionshipSeriesStyle));
+                      if (teams.length === 0 || teams.every((x) => /^[A-Z]$/.test(x))) {
+                        setTeams(Array.from({ length: tmpl.teamCount }, (_, i) => String.fromCharCode(65 + i)));
+                      }
+                    }
+                  }}
+                >
+                  <option value="little_league_5_team_de">Official 5-team double elimination (Little League)</option>
+                  <option value="little_league_6_team_de">Official 6-team double elimination (Little League)</option>
+                  <option value="little_league_7_team_de">Official 7-team double elimination (Little League)</option>
+                  <option value="little_league_8_team_de">Official 8-team double elimination (Little League)</option>
+                </select>
+              </label>
+              <label className="block text-xs font-medium text-zinc-500">
+                Championship series
+                <select
+                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
+                  value={championshipSeriesStyle}
+                  disabled={busy}
+                  onChange={(e) => {
+                    const style = e.target.value as ChampionshipSeriesStyle;
+                    setChampionshipSeriesStyle(style);
+                    setBracketFormat(bracketFormatForChampionshipSeriesStyle(style));
+                  }}
+                >
+                  <option value="winner_take_all">Modified — winner-take-all final (no if-necessary game)</option>
+                  <option value="always_scheduled_reset">Standard — grand final + if-necessary game</option>
+                </select>
+              </label>
+              <p className="text-xs text-zinc-500">{officialTemplateChampionshipLabel(championshipSeriesStyle)}</p>
+            </>
+          ) : (
+            <select
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
+              value={bracketFormat}
+              disabled={busy}
+              onChange={(e) => setBracketFormat(e.target.value as BracketFormat)}
+            >
+              <option value="single_elimination">Single elimination</option>
+              <option value="double_elimination">Double elimination</option>
+              <option value="modified_double_elimination">Modified double elimination</option>
+              <option value="pool_play">Pool play</option>
+              <option value="custom">Custom</option>
+              <option value="unknown">Unknown / not set</option>
+            </select>
+          )}
           <div className="flex flex-wrap gap-2">
             <button
               type="button"
@@ -490,13 +643,18 @@ export default function BracketSetupWizard({
           <p className="text-xs text-zinc-500">Final step: verify everything below, then build the bracket.</p>
           <ul className="list-inside list-disc text-xs text-zinc-400">
             <li>
-              Format:{" "}
-              {bracketFormat === "modified_double_elimination"
-                ? "modified double elimination"
-                : bracketFormat === "double_elimination"
-                  ? "double elimination"
-                  : "single elimination"}
+              Template:{" "}
+              {activeOfficialTemplate
+                ? activeOfficialTemplate.label
+                : bracketFormat === "modified_double_elimination"
+                  ? "modified double elimination"
+                  : bracketFormat === "double_elimination"
+                    ? "double elimination"
+                    : "single elimination"}
             </li>
+            {setupMode === "official" || isDoubleEliminationFormat(bracketFormat) ? (
+              <li>Championship: {officialTemplateChampionshipLabel(championshipSeriesStyle)}</li>
+            ) : null}
             {divisionLabel.trim() ? <li>Title: {divisionLabel.trim()}</li> : <li>Title: (none)</li>}
             <li>
               Champion label:{" "}
@@ -508,16 +666,7 @@ export default function BracketSetupWizard({
             </li>
             {bracketFormat === "single_elimination" ? (
               <li>3rd place game: {includeThirdPlaceDraft ? "yes" : "no"}</li>
-            ) : bracketFormat === "modified_double_elimination" ? (
-              <li>Championship: Winner-take-all final (no if-necessary game)</li>
-            ) : (
-              <li>
-                Championship: G8 + G9 if necessary (always scheduled)
-                {appliesDoubleElimClassicLayoutTemplate(teams, bracketFormat)
-                  ? " — classic unified diagram (G1–G9)"
-                  : ""}
-              </li>
-            )}
+            ) : null}
             {rosterAgeGroupDraft.trim() ? <li>Roster age group: {rosterAgeGroupDraft.trim()}</li> : null}
             <li>
               Teams: {teams.length} ({slotN}-slot bracket{byeCount > 0 ? `, ${byeCount} BYE${byeCount === 1 ? "" : "s"}` : ""})
@@ -525,7 +674,7 @@ export default function BracketSetupWizard({
             {isDoubleEliminationFormat(bracketFormat) && slotN >= 2 ? (
               <li>
                 Games:{" "}
-                {bracketFormat === "modified_double_elimination"
+                {championshipSeriesStyle === "winner_take_all"
                   ? `${countDoubleElimGamesMin(slotN)} (winner-take-all championship)`
                   : `${countDoubleElimGamesMin(slotN)}–${countDoubleElimGamesMax(slotN)} (including if-necessary)`}
               </li>
@@ -575,7 +724,11 @@ export default function BracketSetupWizard({
               disabled={busy || !previewRounds}
               className="rounded-lg bg-emerald-700 px-3 py-2 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-40"
               onClick={() =>
-                void (isDoubleEliminationFormat(bracketFormat) ? applyDoubleElimBuild() : applySingleElim())
+                void (
+                  setupMode === "official" || isDoubleEliminationFormat(bracketFormat)
+                    ? applyDoubleElimBuild()
+                    : applySingleElim()
+                )
               }
             >
               Build bracket

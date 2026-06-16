@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import PublishedTournamentTabs, { type PublishedTournamentTabBracket } from "@/components/brackets/PublishedTournamentTabs";
 import prisma from "@/lib/prisma";
 import { bracketGameChangerSchema, type BracketGameChanger } from "@/lib/gamechanger/types";
-import { safeParseBracketSpec, type BracketParkInfo } from "@/lib/tournament-brackets/bracketSpec";
+import { safeParseBracketSpec, type BracketParkInfo, type BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
 import { resolveBracketThemeColors, type BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { sortPublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
@@ -29,6 +29,7 @@ type PublishedBracket = {
   divisionLabel?: string | null;
   layout: BracketLayout;
   parkInfo?: BracketParkInfo | null;
+  tournamentInfo?: BracketTournamentInfo | null;
   themeColors: BracketThemeColors;
   logoWatermarkUrl: string;
   gameChanger?: BracketGameChanger | null;
@@ -94,6 +95,7 @@ export default async function TournamentsPage({
           divisionLabel: parsed.spec.divisionLabel,
           layout: buildBracketLayout(parsed.spec),
           parkInfo: parsed.spec.parkInfo,
+          tournamentInfo: parsed.spec.tournamentInfo,
           themeColors: resolveBracketThemeColors(parsed.spec, siteThemeDefaults),
           logoWatermarkUrl: bracketWatermarkSrc(
             parsed.spec.flyer?.logoUrl,
@@ -118,6 +120,7 @@ export default async function TournamentsPage({
     updatedAtLabel: bracket.updatedAt.toLocaleDateString("en-US"),
     layout: bracket.layout,
     parkInfo: bracket.parkInfo,
+    tournamentInfo: bracket.tournamentInfo,
     themeColors: bracket.themeColors,
     logoWatermarkUrl: bracket.logoWatermarkUrl,
     gameChanger: bracket.gameChanger ?? null,
