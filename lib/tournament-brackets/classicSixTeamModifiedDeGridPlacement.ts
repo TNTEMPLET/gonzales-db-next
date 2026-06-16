@@ -74,6 +74,7 @@ export function classicSixTeamModifiedDeGridSlots(): ClassicSixTeamModifiedDeGri
     connG8G9: { col: 4, row: lR1, span: losersRound1Span },
     connFinalsG10: { col: 6, row: finalsRow, span: finalsSpan + 1 },
     connG10Champion: { col: 8, row: finalsRow, span: finalsSpan + 1 },
-    champion: { col: 9, row: finalsRow, span: finalsSpan + 1 },
+    /** Same row band as G10 so the plaque shares G10's vertical center (measured in diagram). */
+    champion: { col: 9, row: finalsRow, span: finalsSpan },
   };
 }

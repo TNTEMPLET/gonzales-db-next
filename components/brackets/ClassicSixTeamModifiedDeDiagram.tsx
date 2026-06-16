@@ -144,10 +144,18 @@ function ClassicGrandFinalCell({
     };
     measure();
     const raf = window.requestAnimationFrame(measure);
+    const raf2 = window.requestAnimationFrame(() => window.requestAnimationFrame(measure));
     const ro = new ResizeObserver(measure);
-    if (wrapRef.current) ro.observe(wrapRef.current);
+    const wrap = wrapRef.current;
+    if (wrap) ro.observe(wrap);
+    const gridEl = wrap?.closest(`.${styles.classicDoubleElimGrid}`);
+    for (const id of [topMatchId, bottomMatchId, selfMatchId]) {
+      const match = gridEl?.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(id)}"]`);
+      if (match) ro.observe(match);
+    }
     return () => {
       window.cancelAnimationFrame(raf);
+      window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
   }, [bottomMatchId, selfMatchId, topMatchId]);
@@ -197,10 +205,18 @@ function ClassicAlignedToMatchCell({
     };
     measure();
     const raf = window.requestAnimationFrame(measure);
+    const raf2 = window.requestAnimationFrame(() => window.requestAnimationFrame(measure));
     const ro = new ResizeObserver(measure);
-    if (wrapRef.current) ro.observe(wrapRef.current);
+    const wrap = wrapRef.current;
+    if (wrap) ro.observe(wrap);
+    const gridEl = wrap?.closest(`.${styles.classicDoubleElimGrid}`);
+    for (const id of [alignToMatchId, CLASSIC_DE_CHAMPION_SLOT_MATCH_ID]) {
+      const match = gridEl?.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(id)}"]`);
+      if (match) ro.observe(match);
+    }
     return () => {
       window.cancelAnimationFrame(raf);
+      window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
   }, [alignToMatchId]);
