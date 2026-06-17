@@ -149,11 +149,15 @@ function ClassicDoubleElimChampionPlaque({
 function ClassicAlignedToMatchCell({
   placement,
   alignToMatchId,
+  alignBetweenTopMatchId,
+  alignBetweenBottomMatchId,
   children,
   wrapClassName,
 }: {
   placement: ClassicGridPlacement;
-  alignToMatchId: string;
+  alignToMatchId?: string;
+  alignBetweenTopMatchId?: string;
+  alignBetweenBottomMatchId?: string;
   children: ReactNode;
   wrapClassName?: string;
 }) {
@@ -168,14 +172,30 @@ function ClassicAlignedToMatchCell({
       const gridEl = wrap.closest(`.${styles.classicDoubleElimGrid}`);
       if (!gridEl) return;
 
-      const refMatch = gridEl.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(alignToMatchId)}"]`);
+      let targetCenter: number;
+      if (alignBetweenTopMatchId && alignBetweenBottomMatchId) {
+        const topMatch = gridEl.querySelector(
+          `article[${MATCH_ID_ATTR}="${CSS.escape(alignBetweenTopMatchId)}"]`,
+        );
+        const bottomMatch = gridEl.querySelector(
+          `article[${MATCH_ID_ATTR}="${CSS.escape(alignBetweenBottomMatchId)}"]`,
+        );
+        if (!topMatch || !bottomMatch) return;
+        targetCenter = (matchCenterY(topMatch) + matchCenterY(bottomMatch)) / 2;
+      } else if (alignToMatchId) {
+        const refMatch = gridEl.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(alignToMatchId)}"]`);
+        if (!refMatch) return;
+        targetCenter = matchCenterY(refMatch);
+      } else {
+        return;
+      }
+
       const selfMatch =
         wrap.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(CLASSIC_DE_CHAMPION_SLOT_MATCH_ID)}"]`) ??
         wrap.querySelector("article");
-      if (!refMatch || !selfMatch) return;
+      if (!selfMatch) return;
 
       const wrapRect = wrap.getBoundingClientRect();
-      const targetCenter = matchCenterY(refMatch);
       const selfHeight = selfMatch.getBoundingClientRect().height;
       if (selfHeight <= 0) return;
 
@@ -189,7 +209,13 @@ function ClassicAlignedToMatchCell({
     const wrap = wrapRef.current;
     if (wrap) ro.observe(wrap);
     const gridEl = wrap?.closest(`.${styles.classicDoubleElimGrid}`);
-    for (const id of [alignToMatchId, CLASSIC_DE_CHAMPION_SLOT_MATCH_ID]) {
+    const observeIds = [
+      alignToMatchId,
+      alignBetweenTopMatchId,
+      alignBetweenBottomMatchId,
+      CLASSIC_DE_CHAMPION_SLOT_MATCH_ID,
+    ].filter((id): id is string => Boolean(id));
+    for (const id of observeIds) {
       const match = gridEl?.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(id)}"]`);
       if (match) ro.observe(match);
     }
@@ -198,7 +224,7 @@ function ClassicAlignedToMatchCell({
       window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
-  }, [alignToMatchId]);
+  }, [alignBetweenBottomMatchId, alignBetweenTopMatchId, alignToMatchId]);
 
   const wrapClass = [styles.gridMatchWrap, wrapClassName].filter(Boolean).join(" ");
 
@@ -557,7 +583,8 @@ export default function ClassicDoubleElimDiagram({
             ) : null}
             <ClassicAlignedToMatchCell
               placement={grid.champion}
-              alignToMatchId={g8.id}
+              alignBetweenTopMatchId={g4.id}
+              alignBetweenBottomMatchId={g7.id}
               wrapClassName={styles.classicDoubleElimChampionWrap}
             >
               <ClassicDoubleElimChampionPlaque
