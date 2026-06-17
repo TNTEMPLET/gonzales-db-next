@@ -26,9 +26,23 @@ test("5-team modified DE omits if-necessary game", () => {
   const rounds = buildRoundsFromOfficialTemplate("little_league_5_team_de", teams, {
     championshipSeriesStyle: "winner_take_all",
   });
+  const byGame = new Map(
+    rounds
+      .flatMap((r) => r.matches)
+      .filter((m) => m.officialGameNumber)
+      .map((m) => [m.officialGameNumber!, m]),
+  );
   const champ = rounds.flatMap((r) => r.matches).filter((m) => m.championshipRole);
   assert.equal(champ.some((m) => m.championshipRole === "if_necessary"), false);
   assert.equal(champ.some((m) => m.championshipRole === "grand_final"), true);
+  assert.equal(byGame.get("4")?.home, "L1");
+  assert.equal(byGame.get("4")?.away, "L2");
+  assert.equal(byGame.get("5")?.home, "W3");
+  assert.equal(byGame.get("5")?.away, "W2");
+  assert.equal(byGame.get("6")?.home, "W4");
+  assert.equal(byGame.get("6")?.away, "L3");
+  assert.equal(byGame.get("8")?.home, "W5");
+  assert.equal(byGame.get("8")?.away, "W7");
 });
 
 test("6-team standard builds classic unified diagram with if-necessary drop", () => {

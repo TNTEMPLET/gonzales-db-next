@@ -495,8 +495,8 @@ export default function ClassicDoubleElimDiagram({
           <BracketConnectorCell
             variant="both"
             anchorY={anchorY}
-            topMatchId={g3.id}
-            bottomMatchId={g2.id}
+            topMatchId={g2.id}
+            bottomMatchId={g3.id}
             targetMatchId={g4.id}
           />,
         )}

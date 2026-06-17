@@ -32,7 +32,8 @@ export function isFeederSlotLabel(label: string): boolean {
 
 /**
  * Maps live game numbers from a sparse 8-slot DE bracket into classic diagram slots.
- * Expected: G1/G2 openers, G3 semi, G4 winners final, G5–G7 losers, G8 grand final.
+ * Expected: G1/G2 openers, G3 semi, G4 losers opener, G5 winners final,
+ * G6/G7 losers, G8 grand final.
  * G9 (if necessary) is shown below G8 on the classic diagram for standard double elimination.
  *
  * Rejects 6-team Little League trees (three openers, championship on G11, live G10).
@@ -70,8 +71,8 @@ export function resolveClassicDoubleElimSlots(
   return {
     openers: [g1, g2],
     winnersSemi: g3,
-    winnersFinal: g4,
-    losersRound1: g5,
+    winnersFinal: g5,
+    losersRound1: g4,
     losersCrossover: g6,
     losersFinal: g7,
     grandFinal: g8,

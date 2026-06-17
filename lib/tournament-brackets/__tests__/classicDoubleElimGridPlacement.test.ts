@@ -20,14 +20,14 @@ const LOCKED = {
 } as const;
 
 describe("classicDoubleElimGridPlacement", () => {
-  it("aligns G1 with G3, centers G4 on G3/G2, single finals connector", () => {
+  it("places G2 above aligned G1/G3 and centers the winners final, single finals connector", () => {
     const p = classicDoubleElimGridSlots();
     assert.equal(p.g1.span, 2);
     assert.equal(p.g3.span, 2);
     assert.equal(p.g1.row, p.g3.row);
     assert.equal(p.g4.row, CLASSIC_DE_ROWS.wR1Top);
     assert.equal(p.g4.span, CLASSIC_DE_ROWS.wR1Bot - CLASSIC_DE_ROWS.wR1Top + 1);
-    assert.equal(p.g2.row, CLASSIC_DE_ROWS.wR1Bot);
+    assert.equal(p.g2.row, CLASSIC_DE_ROWS.wR1Top);
     assert.equal(p.g5.row, CLASSIC_DE_ROWS.losers);
     assert.equal(p.bandGap.row, CLASSIC_DE_ROWS.bandGapTop);
     assert.equal(p.bandGap.span, CLASSIC_DE_ROWS.bandGapBot - CLASSIC_DE_ROWS.bandGapTop + 1);
@@ -47,15 +47,15 @@ describe("classicDoubleElimGridPlacement", () => {
 
     assert.deepEqual(
       { col: p.g1.col, row: p.g1.row, span: p.g1.span },
-      { col: 1, row: 2, span: 2 },
+      { col: 1, row: 3, span: 2 },
     );
     assert.deepEqual(
       { col: p.g2.col, row: p.g2.row, span: p.g2.span },
-      { col: 3, row: 4, span: 1 },
+      { col: 3, row: 2, span: 1 },
     );
     assert.deepEqual(
       { col: p.g3.col, row: p.g3.row, span: p.g3.span },
-      { col: 3, row: 2, span: 2 },
+      { col: 3, row: 3, span: 2 },
     );
     assert.deepEqual(
       { col: p.g4.col, row: p.g4.row, span: p.g4.span },
