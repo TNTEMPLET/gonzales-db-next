@@ -33,7 +33,7 @@ describe("classicDoubleElimGridPlacement", () => {
     assert.equal(p.bandGap.span, CLASSIC_DE_ROWS.bandGapBot - CLASSIC_DE_ROWS.bandGapTop + 1);
     assert.equal(p.g8.row, CLASSIC_DE_ROWS.wR1Top);
     assert.equal(p.g8.span, CLASSIC_DE_ROWS.losers - CLASSIC_DE_ROWS.wR1Top + 1);
-    assert.equal(p.connFinalsG8.span, CLASSIC_DE_ROWS.losers - CLASSIC_DE_ROWS.wR1Mid + 1);
+    assert.equal(p.connFinalsG8.span, CLASSIC_DE_ROWS.losers - CLASSIC_DE_ROWS.wR1Top + 1);
     assert.ok(!("connG4G8" in p));
   });
 
@@ -87,7 +87,7 @@ describe("classicDoubleElimGridPlacement", () => {
     );
     assert.deepEqual(
       { col: p.connFinalsG8.col, row: p.connFinalsG8.row, span: p.connFinalsG8.span },
-      { col: LOCKED.connFinalsCol, row: 3, span: 7 },
+      { col: LOCKED.connFinalsCol, row: 2, span: 8 },
     );
     assert.equal(p.connWinnersG4.col, 4);
     assert.ok(!("connG4G8" in p));

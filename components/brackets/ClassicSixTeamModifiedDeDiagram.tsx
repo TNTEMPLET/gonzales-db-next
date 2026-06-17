@@ -114,12 +114,14 @@ function ClassicGrandFinalCell({
   topMatchId,
   bottomMatchId,
   selfMatchId,
+  alignToBracketMidline = false,
   children,
 }: {
   placement: ClassicGridPlacement;
   topMatchId: string;
   bottomMatchId: string;
   selfMatchId: string;
+  alignToBracketMidline?: boolean;
   children: ReactNode;
 }) {
   const { col, row, span } = placement;
@@ -137,7 +139,9 @@ function ClassicGrandFinalCell({
       const selfMatch = gridEl.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(selfMatchId)}"]`);
       if (!topMatch || !bottomMatch || !selfMatch) return;
       const wrapRect = wrap.getBoundingClientRect();
-      const targetCenter = (matchCenterY(topMatch) + matchCenterY(bottomMatch)) / 2;
+      const targetCenter = alignToBracketMidline
+        ? (wrapRect.top + wrapRect.bottom) / 2
+        : (matchCenterY(topMatch) + matchCenterY(bottomMatch)) / 2;
       const selfHeight = selfMatch.getBoundingClientRect().height;
       if (selfHeight <= 0) return;
       setTopPx(targetCenter - wrapRect.top - selfHeight / 2);
@@ -158,7 +162,7 @@ function ClassicGrandFinalCell({
       window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
-  }, [bottomMatchId, selfMatchId, topMatchId]);
+  }, [alignToBracketMidline, bottomMatchId, selfMatchId, topMatchId]);
 
   return (
     <div
@@ -178,6 +182,7 @@ function ClassicAlignedToMatchCell({
   alignToMatchId,
   alignBetweenTopMatchId,
   alignBetweenBottomMatchId,
+  alignToBracketMidline = false,
   children,
 }: {
   placement: ClassicGridPlacement;
@@ -186,6 +191,7 @@ function ClassicAlignedToMatchCell({
   /** Center on the midpoint between two feeders — same math as ClassicGrandFinalCell. */
   alignBetweenTopMatchId?: string;
   alignBetweenBottomMatchId?: string;
+  alignToBracketMidline?: boolean;
   children: ReactNode;
 }) {
   const { col, row, span } = placement;
@@ -200,7 +206,10 @@ function ClassicAlignedToMatchCell({
       if (!gridEl) return;
 
       let targetCenter: number;
-      if (alignBetweenTopMatchId && alignBetweenBottomMatchId) {
+      const wrapRect = wrap.getBoundingClientRect();
+      if (alignToBracketMidline) {
+        targetCenter = (wrapRect.top + wrapRect.bottom) / 2;
+      } else if (alignBetweenTopMatchId && alignBetweenBottomMatchId) {
         const topMatch = gridEl.querySelector(
           `article[${MATCH_ID_ATTR}="${CSS.escape(alignBetweenTopMatchId)}"]`,
         );
@@ -221,7 +230,6 @@ function ClassicAlignedToMatchCell({
         wrap.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(CLASSIC_DE_CHAMPION_SLOT_MATCH_ID)}"]`) ??
         wrap.querySelector("article");
       if (!selfMatch) return;
-      const wrapRect = wrap.getBoundingClientRect();
       const selfHeight = selfMatch.getBoundingClientRect().height;
       if (selfHeight <= 0) return;
       setTopPx(targetCenter - wrapRect.top - selfHeight / 2);
@@ -248,7 +256,7 @@ function ClassicAlignedToMatchCell({
       window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
-  }, [alignBetweenBottomMatchId, alignBetweenTopMatchId, alignToMatchId]);
+  }, [alignBetweenBottomMatchId, alignBetweenTopMatchId, alignToBracketMidline, alignToMatchId]);
 
   return (
     <div
@@ -418,6 +426,7 @@ export default function ClassicSixTeamModifiedDeDiagram({
           topMatchId={g7.id}
           bottomMatchId={g9.id}
           selfMatchId={g10.id}
+          alignToBracketMidline
         >
           {render(g10)}
         </ClassicGrandFinalCell>
@@ -456,8 +465,7 @@ export default function ClassicSixTeamModifiedDeDiagram({
             ) : null}
             <ClassicAlignedToMatchCell
               placement={grid.champion}
-              alignBetweenTopMatchId={g7.id}
-              alignBetweenBottomMatchId={g9.id}
+              alignToBracketMidline
             >
               <ClassicChampionPlaque heading={championPodium.championHeading} teamName={championPodium.championTeamName} />
             </ClassicAlignedToMatchCell>
