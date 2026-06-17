@@ -27,13 +27,12 @@ export function compactSixPodiumBandPlacement(laneRows: number): { rowStart: num
   return { rowStart: 3, span: 3 };
 }
 
-/** Final match + champion column rows (full bracket height unless compact 6-team). */
+/** Final match + champion column rows: always span the full live bracket lane band. */
 export function podiumColumnGridPlacement(
   laneRows: number,
   useCompactSixTeamByeLayout: boolean,
 ): { rowStart: number; span: number } {
-  const compact = useCompactSixTeamByeLayout ? compactSixPodiumBandPlacement(laneRows) : null;
-  if (compact) return compact;
+  void useCompactSixTeamByeLayout;
   return { rowStart: 2, span: laneRows };
 }
 
@@ -52,11 +51,6 @@ export function matchGridPlacement(
 
   if (!useCompactSixTeamByeLayout || roundIndex === 0) {
     return { rowStart, span };
-  }
-
-  if (slotCount === 1) {
-    const compactFinal = compactSixPodiumBandPlacement(laneRows);
-    if (compactFinal) return compactFinal;
   }
 
   const variant = incomingFeederVariant(rounds, roundIndex, slotIndex);

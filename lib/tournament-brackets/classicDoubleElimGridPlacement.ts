@@ -91,7 +91,7 @@ export function classicDoubleElimGridSlots(): ClassicDoubleElimGridSlots {
     connWinnersG4: { col: 4, row: wR1Top, span: winnersFeederSpan },
     connG5G6: { col: 2, row: losers, span: 1 },
     connG6G7: { col: 4, row: losers, span: 1 },
-    connFinalsG8: { col: 6, row: wR1Mid, span: losers - wR1Mid + 1 },
+    connFinalsG8: { col: 6, row: finalsRow, span: finalsSpan },
     connG8Champion: { col: 8, row: finalsRow, span: finalsSpan },
     champion: { col: 9, row: finalsRow, span: finalsSpan },
   };

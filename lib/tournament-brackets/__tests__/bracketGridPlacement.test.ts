@@ -52,8 +52,8 @@ describe("matchGridPlacement", () => {
 
     const finalRoundIndex = rounds.length - 1;
     const rFinal = matchGridPlacement(rounds, finalRoundIndex, 0, N, true);
-    assert.deepEqual(rFinal, { rowStart: 3, span: 3 });
-    assert.deepEqual(podiumColumnGridPlacement(N, true), { rowStart: 3, span: 3 });
+    assert.deepEqual(rFinal, { rowStart: 2, span: 4 });
+    assert.deepEqual(podiumColumnGridPlacement(N, true), { rowStart: 2, span: 4 });
   });
 
   it("keeps default two-row spans for non-compact brackets", () => {

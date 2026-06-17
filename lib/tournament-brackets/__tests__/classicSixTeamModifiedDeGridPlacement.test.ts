@@ -16,8 +16,8 @@ describe("classicSixTeamModifiedDeGridPlacement", () => {
     assert.deepEqual({ col: p.g6.col, row: p.g6.row }, { col: 1, row: 7 });
     assert.deepEqual({ col: p.g8.col, row: p.g8.row, span: p.g8.span }, { col: 3, row: 6, span: 2 });
     assert.deepEqual({ col: p.g9.col, row: p.g9.row, span: p.g9.span }, { col: 5, row: 6, span: 2 });
-    assert.deepEqual({ col: p.g10.col, row: p.g10.row, span: p.g10.span }, { col: 7, row: 2, span: 6 });
-    assert.deepEqual({ col: p.champion.col, row: p.champion.row, span: p.champion.span }, { col: 9, row: 2, span: 6 });
+    assert.deepEqual({ col: p.g10.col, row: p.g10.row, span: p.g10.span }, { col: 7, row: 2, span: 8 });
+    assert.deepEqual({ col: p.champion.col, row: p.champion.row, span: p.champion.span }, { col: 9, row: 2, span: 8 });
     assert.deepEqual({ col: p.g11.col, row: p.g11.row }, { col: 7, row: 8 });
 
     assert.ok(!("connG5G6" in p));
@@ -30,7 +30,7 @@ describe("classicSixTeamModifiedDeGridPlacement", () => {
     );
     assert.deepEqual(
       { col: p.connFinalsG10.col, row: p.connFinalsG10.row, span: p.connFinalsG10.span },
-      { col: 6, row: 2, span: 7 },
+      { col: 6, row: 2, span: 8 },
     );
     assert.deepEqual(
       { col: p.connG8G9.col, row: p.connG8G9.row, span: p.connG8G9.span },

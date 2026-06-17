@@ -151,6 +151,7 @@ function ClassicAlignedToMatchCell({
   alignToMatchId,
   alignBetweenTopMatchId,
   alignBetweenBottomMatchId,
+  alignToBracketMidline = false,
   children,
   wrapClassName,
 }: {
@@ -158,6 +159,7 @@ function ClassicAlignedToMatchCell({
   alignToMatchId?: string;
   alignBetweenTopMatchId?: string;
   alignBetweenBottomMatchId?: string;
+  alignToBracketMidline?: boolean;
   children: ReactNode;
   wrapClassName?: string;
 }) {
@@ -173,7 +175,10 @@ function ClassicAlignedToMatchCell({
       if (!gridEl) return;
 
       let targetCenter: number;
-      if (alignBetweenTopMatchId && alignBetweenBottomMatchId) {
+      const wrapRect = wrap.getBoundingClientRect();
+      if (alignToBracketMidline) {
+        targetCenter = (wrapRect.top + wrapRect.bottom) / 2;
+      } else if (alignBetweenTopMatchId && alignBetweenBottomMatchId) {
         const topMatch = gridEl.querySelector(
           `article[${MATCH_ID_ATTR}="${CSS.escape(alignBetweenTopMatchId)}"]`,
         );
@@ -195,7 +200,6 @@ function ClassicAlignedToMatchCell({
         wrap.querySelector("article");
       if (!selfMatch) return;
 
-      const wrapRect = wrap.getBoundingClientRect();
       const selfHeight = selfMatch.getBoundingClientRect().height;
       if (selfHeight <= 0) return;
 
@@ -224,7 +228,7 @@ function ClassicAlignedToMatchCell({
       window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
-  }, [alignBetweenBottomMatchId, alignBetweenTopMatchId, alignToMatchId]);
+  }, [alignBetweenBottomMatchId, alignBetweenTopMatchId, alignToBracketMidline, alignToMatchId]);
 
   const wrapClass = [styles.gridMatchWrap, wrapClassName].filter(Boolean).join(" ");
 
@@ -250,12 +254,14 @@ function ClassicGrandFinalCell({
   topMatchId,
   bottomMatchId,
   selfMatchId,
+  alignToBracketMidline = false,
   children,
 }: {
   placement: ClassicGridPlacement;
   topMatchId: string;
   bottomMatchId: string;
   selfMatchId: string;
+  alignToBracketMidline?: boolean;
   children: ReactNode;
 }) {
   const { col, row, span } = placement;
@@ -275,7 +281,9 @@ function ClassicGrandFinalCell({
       if (!topMatch || !bottomMatch || !selfMatch) return;
 
       const wrapRect = wrap.getBoundingClientRect();
-      const targetCenter = (matchCenterY(topMatch) + matchCenterY(bottomMatch)) / 2;
+      const targetCenter = alignToBracketMidline
+        ? (wrapRect.top + wrapRect.bottom) / 2
+        : (matchCenterY(topMatch) + matchCenterY(bottomMatch)) / 2;
       const selfHeight = selfMatch.getBoundingClientRect().height;
       if (selfHeight <= 0) return;
 
@@ -298,7 +306,7 @@ function ClassicGrandFinalCell({
       window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
-  }, [bottomMatchId, selfMatchId, topMatchId]);
+  }, [alignToBracketMidline, bottomMatchId, selfMatchId, topMatchId]);
 
   return (
     <div
@@ -545,6 +553,7 @@ export default function ClassicDoubleElimDiagram({
           topMatchId={g4.id}
           bottomMatchId={g7.id}
           selfMatchId={g8.id}
+          alignToBracketMidline
         >
           {render(g8)}
         </ClassicGrandFinalCell>
@@ -583,8 +592,7 @@ export default function ClassicDoubleElimDiagram({
             ) : null}
             <ClassicAlignedToMatchCell
               placement={grid.champion}
-              alignBetweenTopMatchId={g4.id}
-              alignBetweenBottomMatchId={g7.id}
+              alignToBracketMidline
               wrapClassName={styles.classicDoubleElimChampionWrap}
             >
               <ClassicDoubleElimChampionPlaque

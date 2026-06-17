@@ -45,12 +45,12 @@ const ROWS = {
  * Losers round 1 stacks G6 below G5; W5/W6 → G8 → G9 → G10. No winner-drop lines except G7→G10 finals.
  */
 export function classicSixTeamModifiedDeGridSlots(): ClassicSixTeamModifiedDeGridSlots {
-  const { topPad, wOp1, wOp2, bandGapTop, bandGapBot, lR1, lR2, lR3 } = ROWS;
+  const { topPad, wOp1, wOp2, bandGapTop, bandGapBot, lR1, lR2, lR3, lFinal } = ROWS;
   const openerPairSpan = wOp2 - wOp1 + 1;
   const bandGapSpan = bandGapBot - bandGapTop + 1;
   const losersRound1Span = lR2 - lR1 + 1;
   const finalsRow = wOp1;
-  const finalsSpan = lR3 - wOp1; // G10 ends row 7; G11 sits on row 8 (not row 9)
+  const finalsSpan = lFinal - wOp1 + 1;
 
   return {
     winnersTopPad: { col: 1, row: topPad, span: 1 },
@@ -72,8 +72,8 @@ export function classicSixTeamModifiedDeGridSlots(): ClassicSixTeamModifiedDeGri
     connWinnersG7: { col: 4, row: wOp1, span: openerPairSpan },
     connLosersG8: { col: 2, row: lR1, span: losersRound1Span },
     connG8G9: { col: 4, row: lR1, span: losersRound1Span },
-    connFinalsG10: { col: 6, row: finalsRow, span: finalsSpan + 1 },
-    connG10Champion: { col: 8, row: finalsRow, span: finalsSpan + 1 },
+    connFinalsG10: { col: 6, row: finalsRow, span: finalsSpan },
+    connG10Champion: { col: 8, row: finalsRow, span: finalsSpan },
     /** Same row band as G10 so the plaque shares G10's vertical center (measured in diagram). */
     champion: { col: 9, row: finalsRow, span: finalsSpan },
   };
