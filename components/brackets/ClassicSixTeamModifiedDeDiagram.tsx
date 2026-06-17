@@ -426,7 +426,6 @@ export default function ClassicSixTeamModifiedDeDiagram({
           topMatchId={g7.id}
           bottomMatchId={g9.id}
           selfMatchId={g10.id}
-          alignToBracketMidline
         >
           {render(g10)}
         </ClassicGrandFinalCell>
@@ -465,7 +464,7 @@ export default function ClassicSixTeamModifiedDeDiagram({
             ) : null}
             <ClassicAlignedToMatchCell
               placement={grid.champion}
-              alignToBracketMidline
+              alignToMatchId={g10.id}
             >
               <ClassicChampionPlaque heading={championPodium.championHeading} teamName={championPodium.championTeamName} />
             </ClassicAlignedToMatchCell>
