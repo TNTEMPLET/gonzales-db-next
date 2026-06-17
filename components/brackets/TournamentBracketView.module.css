@@ -244,17 +244,20 @@
   padding: 0.15rem 0.5rem 0 0;
 }
 
-.classicTournamentInfoTable {
+.classicTournamentInfoGrid {
   width: 100%;
-  max-width: 18rem;
+  max-width: 28rem;
   margin: 0;
-  border-collapse: collapse;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.18rem;
   border: 1px solid var(--bracket-border);
   border-radius: 0.35rem;
   background: var(--bracket-park-aside-bg);
   box-shadow: var(--bracket-subtle-shadow);
   font-size: 0.625rem;
   line-height: 1.35;
+  overflow: hidden;
 }
 
 .classicTournamentInfoCaption {
@@ -269,31 +272,62 @@
   border: 0;
 }
 
-.classicTournamentInfoTable th,
-.classicTournamentInfoTable td {
-  padding: 0.28rem 0.45rem;
-  vertical-align: top;
+.classicTournamentInfoCard {
+  min-width: 0;
+  padding: 0.32rem 0.38rem 0.36rem;
   text-align: left;
+  border-right: 1px solid var(--bracket-subtle-border);
+  background: rgb(255 255 255 / 0.26);
 }
 
-.classicTournamentInfoTable th {
-  width: 38%;
+.classicTournamentInfoCard:nth-of-type(5n) {
+  border-right: 0;
+}
+
+.classicTournamentInfoCardWide {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--bracket-subtle-border);
+  border-right: 0;
+}
+
+.classicTournamentInfoLabel {
+  margin: 0 0 0.18rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.045em;
   color: var(--bracket-body-emphasis);
-  border-right: 1px solid var(--bracket-subtle-border);
-  white-space: nowrap;
 }
 
-.classicTournamentInfoTable td {
+.classicTournamentInfoValue {
   color: var(--bracket-muted);
   overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
 }
 
-.classicTournamentInfoTable tr + tr th,
-.classicTournamentInfoTable tr + tr td {
-  border-top: 1px solid var(--bracket-subtle-border);
+.classicTournamentInfoLine {
+  margin: 0;
+}
+
+.classicTournamentInfoLineBreak {
+  height: 0.32rem;
+}
+
+@media (max-width: 900px) {
+  .classicTournamentInfoGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    max-width: 100%;
+  }
+
+  .classicTournamentInfoCard {
+    border-right: 0;
+    border-top: 1px solid var(--bracket-subtle-border);
+  }
+
+  .classicTournamentInfoCard:first-of-type,
+  .classicTournamentInfoCard:nth-of-type(2) {
+    border-top: 0;
+  }
 }
 
 .title {
