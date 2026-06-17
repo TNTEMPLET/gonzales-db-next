@@ -553,7 +553,6 @@ export default function ClassicDoubleElimDiagram({
           topMatchId={g4.id}
           bottomMatchId={g7.id}
           selfMatchId={g8.id}
-          alignToBracketMidline
         >
           {render(g8)}
         </ClassicGrandFinalCell>
@@ -592,7 +591,7 @@ export default function ClassicDoubleElimDiagram({
             ) : null}
             <ClassicAlignedToMatchCell
               placement={grid.champion}
-              alignToBracketMidline
+              alignToMatchId={g8.id}
               wrapClassName={styles.classicDoubleElimChampionWrap}
             >
               <ClassicDoubleElimChampionPlaque
