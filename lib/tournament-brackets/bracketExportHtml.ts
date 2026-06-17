@@ -9,7 +9,7 @@ import {
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
 import type { BracketParkInfo, BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
-import { tournamentInfoRows } from "@/lib/tournament-brackets/tournamentInfo";
+import { tournamentInfoFields } from "@/lib/tournament-brackets/tournamentInfo";
 import { matchGridPlacement, podiumColumnGridPlacement } from "@/lib/tournament-brackets/bracketGridPlacement";
 import {
   BRACKET_CONNECTOR_EXPORT_ASSUMED_H,
@@ -241,7 +241,7 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
 }
 .bracket-title-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(10rem, 18rem);
+  grid-template-columns: minmax(0, 1fr) minmax(16rem, 28rem);
   gap: 0.65rem 1rem;
   align-items: start;
   margin: 0 0 1.15rem;
@@ -250,40 +250,64 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
 .bracket-tournament-info-inset {
   justify-self: end;
   min-width: 0;
-  max-width: 18rem;
-}
-.bracket-tournament-info-table {
+  max-width: 28rem;
   width: 100%;
-  border-collapse: collapse;
+}
+.bracket-tournament-info-grid {
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.18rem;
   border: 1px solid var(--bracket-border);
   border-radius: 0.35rem;
   background: rgb(255 255 255 / 0.72);
   box-shadow: 0 1px 2px rgb(0 47 108 / 0.06);
   font-size: 0.625rem;
   line-height: 1.35;
+  overflow: hidden;
 }
-.bracket-tournament-info-table th,
-.bracket-tournament-info-table td {
-  padding: 0.28rem 0.45rem;
-  vertical-align: top;
+.bracket-tournament-info-card {
+  min-width: 0;
+  padding: 0.32rem 0.38rem 0.36rem;
   text-align: left;
+  border-right: 1px solid var(--bracket-round-divider);
+  background: rgb(255 255 255 / 0.26);
 }
-.bracket-tournament-info-table th {
-  width: 38%;
+.bracket-tournament-info-card:nth-of-type(5n) {
+  border-right: 0;
+}
+.bracket-tournament-info-card-wide {
+  grid-column: 1 / -1;
+  border-top: 1px solid var(--bracket-round-divider);
+  border-right: 0;
+}
+.bracket-tournament-info-label {
+  margin: 0 0 0.18rem;
   font-weight: 800;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.045em;
   color: var(--bracket-navy-deep);
-  border-right: 1px solid var(--bracket-round-divider);
-  white-space: nowrap;
 }
-.bracket-tournament-info-table td {
+.bracket-tournament-info-value {
   color: var(--bracket-muted);
   overflow-wrap: anywhere;
+  word-break: normal;
+  hyphens: auto;
 }
-.bracket-tournament-info-table tr + tr th,
-.bracket-tournament-info-table tr + tr td {
-  border-top: 1px solid var(--bracket-round-divider);
+.bracket-tournament-info-line { margin: 0; }
+.bracket-tournament-info-line-break { height: 0.32rem; }
+@media (max-width: 900px) {
+  .bracket-tournament-info-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .bracket-tournament-info-card {
+    border-right: 0;
+    border-top: 1px solid var(--bracket-round-divider);
+  }
+  .bracket-tournament-info-card:first-of-type,
+  .bracket-tournament-info-card:nth-of-type(2) {
+    border-top: 0;
+  }
 }
 .sr-only {
   position: absolute;
@@ -897,15 +921,25 @@ export type BracketExportViewOptions = {
 };
 
 function tournamentInfoTableHtml(info: BracketTournamentInfo | null | undefined): string {
-  const rows = tournamentInfoRows(info);
-  if (rows.length === 0) return "";
-  const body = rows
-    .map(
-      ({ label, value }) =>
-        `<tr><th scope="row">${esc(label)}</th><td>${esc(value)}</td></tr>`,
-    )
+  const fields = tournamentInfoFields(info);
+  if (fields.length === 0) return "";
+  const body = fields
+    .map(({ key, label, lines }) => {
+      const cls =
+        key === "nextLevel"
+          ? "bracket-tournament-info-card bracket-tournament-info-card-wide"
+          : "bracket-tournament-info-card";
+      const valueHtml = lines
+        .map((line) =>
+          line
+            ? `<div class="bracket-tournament-info-line">${esc(line)}</div>`
+            : `<div class="bracket-tournament-info-line-break" aria-hidden="true"></div>`,
+        )
+        .join("");
+      return `<section class="${cls}"><div class="bracket-tournament-info-label">${esc(label)}</div><div class="bracket-tournament-info-value">${valueHtml}</div></section>`;
+    })
     .join("");
-  return `<div class="bracket-tournament-info-inset" aria-label="Tournament information"><table class="bracket-tournament-info-table"><caption class="sr-only">Tournament information</caption><tbody>${body}</tbody></table></div>`;
+  return `<div class="bracket-tournament-info-inset" aria-label="Tournament information"><div class="bracket-tournament-info-grid"><div class="sr-only">Tournament information</div>${body}</div></div>`;
 }
 
 function parkInfoAsideHtml(park: BracketParkInfo | null | undefined): string {
