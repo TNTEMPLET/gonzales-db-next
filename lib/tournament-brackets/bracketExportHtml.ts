@@ -241,7 +241,7 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
 }
 .bracket-title-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(16rem, 28rem);
+  grid-template-columns: minmax(0, 1fr) minmax(18rem, 34rem);
   gap: 0.65rem 1rem;
   align-items: start;
   margin: 0 0 1.15rem;
@@ -250,13 +250,13 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
 .bracket-tournament-info-inset {
   justify-self: end;
   min-width: 0;
-  max-width: 28rem;
+  max-width: 34rem;
   width: 100%;
 }
 .bracket-tournament-info-grid {
   width: 100%;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.18rem;
   border: 1px solid var(--bracket-border);
   border-radius: 0.35rem;
@@ -273,7 +273,7 @@ h1 { font-size: 1.5rem; font-weight: 800; text-transform: uppercase; letter-spac
   border-right: 1px solid var(--bracket-round-divider);
   background: rgb(255 255 255 / 0.26);
 }
-.bracket-tournament-info-card:nth-of-type(5n) {
+.bracket-tournament-info-card:nth-of-type(4n) {
   border-right: 0;
 }
 .bracket-tournament-info-card-wide {

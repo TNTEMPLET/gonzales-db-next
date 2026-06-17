@@ -91,6 +91,21 @@ function splitStandardAddressText(value: string): string[] {
   return out.filter((line, idx, arr) => line || (idx > 0 && idx < arr.length - 1));
 }
 
+function splitTournamentDirectorText(value: string): string[] {
+  return splitManualLines(value).flatMap((line) =>
+    line
+      .split(/\s*\/\s*/)
+      .map((part) => part.trim())
+      .filter(Boolean),
+  );
+}
+
+function phoneOnlyText(value: string): string {
+  const trimmed = value.trim();
+  const phoneMatch = /^(\(?\d{3}\)?[\s.-]*\d{3}[\s.-]*\d{4})\b/.exec(trimmed);
+  return phoneMatch?.[1]?.trim() || trimmed;
+}
+
 export function tournamentInfoValueLines(
   key: keyof BracketTournamentInfo,
   value: string,
@@ -99,6 +114,12 @@ export function tournamentInfoValueLines(
   if (!trimmed) return [];
   if (key === "sites" || key === "nextLevel") {
     return splitStandardAddressText(trimmed);
+  }
+  if (key === "tournamentDirector") {
+    return splitTournamentDirectorText(trimmed);
+  }
+  if (key === "updatePhone") {
+    return splitManualLines(phoneOnlyText(trimmed));
   }
   return splitManualLines(trimmed);
 }
