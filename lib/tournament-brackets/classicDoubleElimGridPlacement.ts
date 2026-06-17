@@ -56,16 +56,17 @@ export const CLASSIC_DE_ROWS = {
 
 /**
  * Classic 5-team DE layout:
+ * - G2 sits above the G1/G3 row
  * - G1 play-in spans same rows as G3 (horizontal alignment)
- * - G2 under G3; G4 centered between G3 and G2
+ * - G5 winners final centers between G2 and G3
  * - Extra band-gap rows separate winners from losers for G8 centering
  * - Single finals connector G4 + G7 → G8
  */
 export function classicDoubleElimGridSlots(): ClassicDoubleElimGridSlots {
-  const { topPad, wR1Top, wR1Mid, wR1Bot, winnersEnd, bandGapTop, bandGapBot, losers } =
+  const { topPad, wR1Top, wR1Mid, wR1Bot, bandGapTop, bandGapBot, losers } =
     CLASSIC_DE_ROWS;
-  const winnersPairSpan = wR1Mid - wR1Top + 1;
-  /** Rows covered by G3 (top) through G2 (bottom) — G4 centers on this band. */
+  const openerSemiSpan = wR1Bot - wR1Mid + 1;
+  /** Rows covered by G2 (top) through G3 (bottom) — G5 centers on this band. */
   const winnersFeederSpan = wR1Bot - wR1Top + 1;
   const bandGapSpan = bandGapBot - bandGapTop + 1;
   /** Full winners→losers band; vertical position is measured in the diagram. */
@@ -75,10 +76,10 @@ export function classicDoubleElimGridSlots(): ClassicDoubleElimGridSlots {
   return {
     winnersTopPad: { col: 1, row: topPad, span: 1 },
     tournamentInfo: { col: 5, row: topPad, span: 1, colSpan: 3 },
-    g1: { col: 1, row: wR1Top, span: winnersPairSpan },
+    g1: { col: 1, row: wR1Mid, span: openerSemiSpan },
     winnersR1Bot: { col: 1, row: wR1Bot, span: 1 },
-    g3: { col: 3, row: wR1Top, span: winnersPairSpan },
-    g2: { col: 3, row: wR1Bot, span: 1 },
+    g2: { col: 3, row: wR1Top, span: 1 },
+    g3: { col: 3, row: wR1Mid, span: openerSemiSpan },
     g4: { col: 5, row: wR1Top, span: winnersFeederSpan },
     bandGap: { col: 1, row: bandGapTop, span: bandGapSpan, colSpan: 7 },
     g5: { col: 1, row: losers, span: 1 },
@@ -86,7 +87,7 @@ export function classicDoubleElimGridSlots(): ClassicDoubleElimGridSlots {
     g7: { col: 5, row: losers, span: 1 },
     g8: { col: 7, row: finalsRow, span: finalsSpan },
     g9: { col: 7, row: losers, span: 1 },
-    connG1G3: { col: 2, row: wR1Top, span: winnersPairSpan },
+    connG1G3: { col: 2, row: wR1Mid, span: openerSemiSpan },
     connWinnersG4: { col: 4, row: wR1Top, span: winnersFeederSpan },
     connG5G6: { col: 2, row: losers, span: 1 },
     connG6G7: { col: 4, row: losers, span: 1 },

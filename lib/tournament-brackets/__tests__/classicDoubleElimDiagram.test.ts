@@ -41,11 +41,11 @@ describe("classicDoubleElimDiagram", () => {
       ["1", match("1", "Ponchatoula", "Loranger")],
       ["2", match("2", "Kentwood", "Franklinton")],
       ["3", match("3", "W1", "Gonzales")],
-      ["4", match("4", "W3", "W2")],
-      ["5", match("5", "L1", "L2")],
-      ["6", match("6", "W5", "L3")],
+      ["4", match("4", "L1", "L2")],
+      ["5", match("5", "W3", "W2")],
+      ["6", match("6", "W4", "L3")],
       ["7", match("7", "L4", "W6")],
-      ["8", match("8", "W4", "W7")],
+      ["8", match("8", "W5", "W7")],
       ["9", match("9", "W8", "L8")],
     ]);
     const slots = resolveClassicDoubleElimSlots(map);
@@ -53,10 +53,10 @@ describe("classicDoubleElimDiagram", () => {
     assert.equal(slots!.openers[0]!.home, "Ponchatoula");
     assert.equal(slots!.winnersFinal.away, "W2");
     assert.equal(slots!.losersRound1.home, "L1");
-    assert.equal(slots!.losersCrossover.home, "W5");
+    assert.equal(slots!.losersCrossover.home, "W4");
     assert.equal(slots!.losersFinal.home, "L4");
     assert.equal(slots!.losersFinal.away, "W6");
-    assert.equal(slots!.grandFinal.home, "W4");
+    assert.equal(slots!.grandFinal.home, "W5");
     assert.equal(slots!.ifNecessary?.officialGameNumber, "9");
   });
 
@@ -65,11 +65,11 @@ describe("classicDoubleElimDiagram", () => {
       ["1", match("1", "A", "B")],
       ["2", match("2", "C", "D")],
       ["3", match("3", "W1", "E")],
-      ["4", match("4", "W3", "W2")],
-      ["5", match("5", "L1", "L2")],
-      ["6", match("6", "W5", "L3")],
+      ["4", match("4", "L1", "L2")],
+      ["5", match("5", "W3", "W2")],
+      ["6", match("6", "W4", "L3")],
       ["7", match("7", "L4", "W6")],
-      ["8", match("8", "W4", "W7")],
+      ["8", match("8", "W5", "W7")],
     ]);
     const slots = resolveClassicDoubleElimSlots(map);
     assert.ok(slots);

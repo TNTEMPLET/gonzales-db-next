@@ -156,10 +156,19 @@ describe("generateDoubleElimFromTeams", () => {
     assert.equal(g3!.home, "W1");
     assert.equal(g3!.away, "Gonzales");
     const lb = rounds.filter((r) => r.bracketSection === "losers").flatMap((r) => r.matches);
+    const g4 = lb.find((m) => m.officialGameNumber === "4");
+    const g6 = lb.find((m) => m.officialGameNumber === "6");
     const g7 = lb.find((m) => m.officialGameNumber === "7");
+    const champ = rounds.find((r) => r.bracketSection === "championship")!.matches[0]!;
+    assert.equal(g4!.home, "L1");
+    assert.equal(g4!.away, "L2");
+    assert.equal(g6!.home, "W4");
+    assert.equal(g6!.away, "L3");
     assert.ok(g7);
     assert.equal(g7!.home, "L4");
     assert.equal(g7!.away, "W6");
+    assert.equal(champ.home, "W5");
+    assert.equal(champ.away, "W7");
     assert.equal(wb.filter((m) => !m.officialGameNumber).length >= 2, true);
   });
 

@@ -334,6 +334,111 @@ function buildChampionshipRound(
   };
 }
 
+function buildClassicFiveTeamDoubleElimRounds(
+  participants: string[],
+  nextLive: { value: number },
+  includeIfNecessary: boolean,
+): BracketRound[] {
+  const g1: BracketMatch = {
+    id: newMatchId("w", 0, 0),
+    home: participants[0] ?? "TBD",
+    away: participants[7] ?? "TBD",
+    officialGameNumber: assignLiveGameNumber(nextLive),
+  };
+  const g2: BracketMatch = {
+    id: newMatchId("w", 0, 1),
+    home: participants[3] ?? "TBD",
+    away: participants[4] ?? "TBD",
+    officialGameNumber: assignLiveGameNumber(nextLive),
+  };
+  const hiddenByePair: BracketMatch = {
+    id: newMatchId("w", 0, 2),
+    home: BYE_SLOT_LABEL,
+    away: BYE_SLOT_LABEL,
+  };
+  const hiddenSeedBye: BracketMatch = {
+    id: newMatchId("w", 0, 3),
+    home: participants[2] ?? "TBD",
+    away: BYE_SLOT_LABEL,
+  };
+  const g3: BracketMatch = {
+    id: newMatchId("w", 1, 0),
+    home: "W1",
+    away: advancingTeamFromBye(hiddenSeedBye.home, hiddenSeedBye.away),
+    officialGameNumber: assignLiveGameNumber(nextLive),
+  };
+  const hiddenW2Bye: BracketMatch = {
+    id: newMatchId("w", 1, 1),
+    home: "W2",
+    away: BYE_SLOT_LABEL,
+  };
+  const g4: BracketMatch = {
+    id: newMatchId("l", 0, 0),
+    home: "L1",
+    away: "L2",
+    officialGameNumber: assignLiveGameNumber(nextLive),
+  };
+  const g5: BracketMatch = {
+    id: newMatchId("w", 2, 0),
+    home: "W3",
+    away: advancingTeamFromBye(hiddenW2Bye.home, hiddenW2Bye.away),
+    officialGameNumber: assignLiveGameNumber(nextLive),
+  };
+  const g6: BracketMatch = {
+    id: newMatchId("l", 1, 0),
+    home: "W4",
+    away: "L3",
+    officialGameNumber: assignLiveGameNumber(nextLive),
+  };
+  const g7: BracketMatch = {
+    id: newMatchId("l", 2, 0),
+    home: "L4",
+    away: "W6",
+    officialGameNumber: assignLiveGameNumber(nextLive),
+  };
+  const championshipRound = buildChampionshipRound(g5, g7, nextLive, includeIfNecessary);
+
+  return [
+    {
+      id: newRoundId("w", 0),
+      label: "Winners Bracket — Round 1",
+      bracketSection: "winners",
+      matches: [g1, g2, hiddenByePair, hiddenSeedBye],
+    },
+    {
+      id: newRoundId("w", 1),
+      label: "Winners Bracket — Semifinals",
+      bracketSection: "winners",
+      matches: [g3, hiddenW2Bye],
+    },
+    {
+      id: newRoundId("l", 0),
+      label: "Losers Bracket",
+      bracketSection: "losers",
+      matches: [g4],
+    },
+    {
+      id: newRoundId("w", 2),
+      label: "Winners Bracket — Final",
+      bracketSection: "winners",
+      matches: [g5],
+    },
+    {
+      id: newRoundId("l", 1),
+      label: "Losers Bracket",
+      bracketSection: "losers",
+      matches: [g6],
+    },
+    {
+      id: newRoundId("l", 2),
+      label: "Losers Bracket — Final",
+      bracketSection: "losers",
+      matches: [g7],
+    },
+    championshipRound,
+  ];
+}
+
 /**
  * Minimum games for a power-of-two double-elimination bracket (WB champ wins GF1).
  */
@@ -386,6 +491,14 @@ export function generateDoubleEliminationRoundsFromTeams(
   }
 
   const nextLive = { value: 1 };
+  if (slots && slots.length > 0 && isClassicFiveTeamParticipantShell(slots)) {
+    return buildClassicFiveTeamDoubleElimRounds(
+      participants,
+      nextLive,
+      options?.includeIfNecessaryGame !== false,
+    );
+  }
+
   const winnersNextPairings =
     slots && slots.length > 0 && isLittleLeagueSixTeamShellStructure(slots)
       ? LITTLE_LEAGUE_SIX_TEAM_WINNERS_NEXT_PAIRINGS
@@ -427,7 +540,9 @@ export function generateDoubleEliminationRoundsForFormat(
     options?.championshipSeriesStyle != null
       ? options.championshipSeriesStyle === "always_scheduled_reset"
       : includesIfNecessaryChampionshipGame({ bracketFormat, championshipSeriesStyle: undefined });
-  const { championshipSeriesStyle: _drop, ...rest } = options ?? {};
+  const rest: GenerateDoubleElimOptions = {
+    ...(options?.participantSlots ? { participantSlots: options.participantSlots } : {}),
+  };
   return generateDoubleEliminationRoundsFromTeams(teams, {
     ...rest,
     includeIfNecessaryGame: includeIfNecessary,
