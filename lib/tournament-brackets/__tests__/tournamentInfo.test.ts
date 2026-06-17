@@ -47,4 +47,18 @@ describe("tournamentInfo", () => {
       "St. Amant, LA 70774",
     ]);
   });
+
+  it("splits tournament directors on slashes", () => {
+    assert.deepEqual(
+      tournamentInfoValueLines("tournamentDirector", "Wayne Grenfell / Frank Renaudin"),
+      ["Wayne Grenfell", "Frank Renaudin"],
+    );
+  });
+
+  it("shows only the phone number for update phone values with trailing names", () => {
+    assert.deepEqual(
+      tournamentInfoValueLines("updatePhone", "(225) 223-9470 Wayne Grenfell"),
+      ["(225) 223-9470"],
+    );
+  });
 });

@@ -246,10 +246,10 @@
 
 .classicTournamentInfoGrid {
   width: 100%;
-  max-width: 28rem;
+  max-width: 34rem;
   margin: 0;
   display: grid;
-  grid-template-columns: repeat(5, minmax(0, 1fr));
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.18rem;
   border: 1px solid var(--bracket-border);
   border-radius: 0.35rem;
@@ -280,7 +280,7 @@
   background: rgb(255 255 255 / 0.26);
 }
 
-.classicTournamentInfoCard:nth-of-type(5n) {
+.classicTournamentInfoCard:nth-of-type(4n) {
   border-right: 0;
 }
 
