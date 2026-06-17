@@ -2158,6 +2158,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                   seasonYear={project.seasonYear}
                   busy={busy}
                   structureLocked={project.status === "READY" || classicLayoutLocked}
+                  publishedLocked={project.status === "READY"}
                   classicLayoutLocked={classicLayoutLocked}
                   onSave={async (patch) => {
                     setBusy(true);
