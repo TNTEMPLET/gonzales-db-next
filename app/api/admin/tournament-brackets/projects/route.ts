@@ -1,9 +1,50 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureTournamentBracketsMaster } from "@/lib/tournament-brackets/auth";
-import { defaultBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
+import {
+  defaultBracketSpec,
+  safeParseBracketSpec,
+  type BracketSpec,
+  type BracketTournamentInfo,
+} from "@/lib/tournament-brackets/bracketSpec";
 import prisma from "@/lib/prisma";
 import { isBracketOrgId, type BracketOrgId } from "@/lib/siteConfig";
+
+const SHARED_TOURNAMENT_INFO_KEYS = [
+  "sites",
+  "updatePhone",
+  "tournamentDirector",
+  "nextLevel",
+] as const satisfies readonly (keyof BracketTournamentInfo)[];
+
+function sharedTournamentInfoFromSpec(spec: BracketSpec): Omit<BracketTournamentInfo, "division"> | null {
+  const info = spec.tournamentInfo;
+  if (!info) return null;
+  const shared: Omit<BracketTournamentInfo, "division"> = {};
+  for (const key of SHARED_TOURNAMENT_INFO_KEYS) {
+    const value = info[key]?.trim();
+    if (value) shared[key] = value;
+  }
+  return Object.keys(shared).length > 0 ? shared : null;
+}
+
+async function findRecentTournamentInfoDefaults(
+  organizationId: BracketOrgId,
+  seasonYear: number,
+): Promise<Omit<BracketTournamentInfo, "division"> | null> {
+  const recent = await prisma.bracketProject.findMany({
+    where: { organizationId, seasonYear },
+    orderBy: { updatedAt: "desc" },
+    take: 20,
+    select: { spec: true },
+  });
+  for (const row of recent) {
+    const parsed = safeParseBracketSpec(row.spec);
+    const shared = sharedTournamentInfoFromSpec(parsed.spec);
+    if (shared) return shared;
+  }
+  return null;
+}
 
 export async function GET(request: NextRequest) {
   try {
@@ -73,6 +114,7 @@ export async function POST(request: NextRequest) {
         { status: 400 },
       );
     }
+    const organizationId = body.organizationId as BracketOrgId;
     const seasonYear =
       typeof body.seasonYear === "number" && Number.isFinite(body.seasonYear)
         ? body.seasonYear
@@ -84,10 +126,19 @@ export async function POST(request: NextRequest) {
         : 0;
 
     const spec = defaultBracketSpec();
+    const sharedTournamentInfo = await findRecentTournamentInfoDefaults(organizationId, seasonYear);
+    if (sharedTournamentInfo) {
+      spec.tournamentInfo = {
+        division: name,
+        ...sharedTournamentInfo,
+      };
+    }
+    spec.divisionLabel = name;
+    spec.championAgeGroupLabel = name;
 
     const created = await prisma.bracketProject.create({
       data: {
-        organizationId: body.organizationId,
+        organizationId,
         seasonYear,
         name,
         priority,
