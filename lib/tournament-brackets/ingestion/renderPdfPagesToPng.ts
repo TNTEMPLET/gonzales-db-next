@@ -3,9 +3,14 @@ async function installPdfDomPolyfills(): Promise<void> {
   if (typeof globalThis.DOMMatrix !== "undefined") return;
 
   const { DOMMatrix, ImageData, Path2D } = await import("@napi-rs/canvas");
-  globalThis.DOMMatrix = DOMMatrix;
-  globalThis.ImageData ??= ImageData;
-  globalThis.Path2D ??= Path2D;
+  const globals = globalThis as typeof globalThis & {
+    DOMMatrix: typeof DOMMatrix;
+    ImageData: typeof ImageData;
+    Path2D: typeof Path2D;
+  };
+  globals.DOMMatrix = DOMMatrix;
+  globals.ImageData ??= ImageData;
+  globals.Path2D ??= Path2D;
 }
 
 export async function renderPdfPagesToPng(
