@@ -1,7 +1,7 @@
 import { extractPdfText, extractPdfTextHeuristic } from "@/lib/tournament-brackets/ingestion/extractPdfText";
 import {
   bracketPdfOcrEnabled,
-  bracketPdfVisionApiKey,
+  bracketPdfVisionEnabled,
   mergePdfTextLayers,
   pdfTextIsWeakForBracketIngest,
   resolveBracketPdfVisualReaderMode,
@@ -38,6 +38,33 @@ export async function extractPdfTextForIngest(
   const warnings: string[] = [];
   const mode = opts?.mode ?? resolveBracketPdfVisualReaderMode();
 
+  const heuristicText = extractPdfTextHeuristic(buffer);
+  const weakHeuristic = pdfTextIsWeakForBracketIngest(heuristicText);
+  const hasPdfFormBracketTokens =
+    /\b\d{1,2}T-G\d+-(?:Info|T\d|Champion)\b/i.test(heuristicText) ||
+    /\bDocHub\b/i.test(heuristicText);
+  let ocrText: string | undefined;
+  let visionText: string | undefined;
+
+  const shouldOcr =
+    mode === "ocr" ||
+    (mode === "auto" && bracketPdfOcrEnabled() && (weakHeuristic || hasPdfFormBracketTokens));
+
+  // pdf-parse and pdf-to-img both use PDF.js internally. Some PDF.js versions
+  // register incompatible workers in-process, so render/OCR before pdf-parse.
+  if (shouldOcr) {
+    try {
+      ocrText = await ocrPdfBuffer(buffer);
+      if (ocrText.trim()) {
+        warnings.push("Applied local OCR (Tesseract) to read bracket text from the PDF image.");
+      } else {
+        warnings.push("OCR ran but returned no readable text.");
+      }
+    } catch (e) {
+      warnings.push(`OCR failed: ${e instanceof Error ? e.message : String(e)}`);
+    }
+  }
+
   let embeddedText = "";
   try {
     embeddedText = await extractPdfText(buffer);
@@ -47,12 +74,10 @@ export async function extractPdfTextForIngest(
     );
   }
   if (!embeddedText.trim()) {
-    embeddedText = extractPdfTextHeuristic(buffer);
+    embeddedText = heuristicText;
   }
 
   const embeddedSource: PdfTextExtractionSource = embeddedText.trim() ? "embedded" : "heuristic";
-  let ocrText: string | undefined;
-  let visionText: string | undefined;
 
   const weakEmbedded = pdfTextIsWeakForBracketIngest(embeddedText);
 
@@ -70,29 +95,16 @@ export async function extractPdfTextForIngest(
     };
   }
 
-  const shouldOcr =
-    mode === "ocr" || (mode === "auto" && bracketPdfOcrEnabled() && weakEmbedded);
   const shouldVision =
     mode === "vision" ||
-    (mode === "auto" && weakEmbedded && bracketPdfVisionApiKey());
-
-  if (shouldOcr) {
-    try {
-      ocrText = await ocrPdfBuffer(buffer);
-      if (ocrText.trim()) {
-        warnings.push("Applied local OCR (Tesseract) to read bracket text from the PDF image.");
-      } else {
-        warnings.push("OCR ran but returned no readable text.");
-      }
-    } catch (e) {
-      warnings.push(`OCR failed: ${e instanceof Error ? e.message : String(e)}`);
-    }
-  }
+    (mode === "auto" &&
+      bracketPdfVisionEnabled() &&
+      (weakEmbedded || (hasPdfFormBracketTokens && Boolean(ocrText?.trim()))));
 
   const mergedAfterOcr = mergePdfTextLayers([embeddedText, ocrText]);
   const stillWeak = pdfTextIsWeakForBracketIngest(mergedAfterOcr);
 
-  if (shouldVision && (mode === "vision" || stillWeak)) {
+  if (shouldVision && (mode === "vision" || stillWeak || hasPdfFormBracketTokens)) {
     try {
       visionText = await visionReadPdfBuffer(buffer);
       if (visionText.trim()) {
@@ -109,7 +121,7 @@ export async function extractPdfTextForIngest(
   let source: PdfTextExtractionSource = embeddedSource;
   if (visionText?.trim() && (mode === "vision" || !embeddedText.trim())) {
     source = ocrText?.trim() ? "merged" : "vision";
-  } else if (ocrText?.trim() && weakEmbedded) {
+  } else if (ocrText?.trim()) {
     source = embeddedText.trim() ? "merged" : "ocr";
   }
 

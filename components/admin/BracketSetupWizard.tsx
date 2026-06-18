@@ -35,6 +35,7 @@ import {
   buildRoundsFromOfficialTemplate,
   defaultOfficialTemplateForNewProject,
   getOfficialTemplate,
+  listOfficialTemplates,
   officialTemplateChampionshipLabel,
   type OfficialTemplateId,
 } from "@/lib/tournament-brackets/officialTemplates";
@@ -114,14 +115,21 @@ export default function BracketSetupWizard({
   ]);
 
   useEffect(() => {
-    seedFromSpec();
-    setShowWizardSession(false);
+    const timer = window.setTimeout(() => {
+      seedFromSpec();
+      setShowWizardSession(false);
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [projectId, seedFromSpec]);
 
   useEffect(() => {
     if (!setupComplete && spec.pdfIngestHints) {
-      setShowWizardSession(true);
+      const timer = window.setTimeout(() => {
+        setShowWizardSession(true);
+      }, 0);
+      return () => window.clearTimeout(timer);
     }
+    return undefined;
   }, [projectId, setupComplete, spec.pdfIngestHints]);
 
   const teamsText = useMemo(() => teams.join("\n"), [teams]);
@@ -130,6 +138,7 @@ export default function BracketSetupWizard({
     () => (setupMode === "official" ? getOfficialTemplate(officialTemplateId) : undefined),
     [officialTemplateId, setupMode],
   );
+  const officialTemplateOptions = useMemo(() => listOfficialTemplates("little_league"), []);
   const byeCount = useMemo(() => {
     if (activeOfficialTemplate && activeOfficialTemplate.teamCount <= 6) return 0;
     if (isDoubleEliminationFormat(bracketFormat)) return countByesForDoubleElimTeamList(teams);
@@ -377,31 +386,42 @@ export default function BracketSetupWizard({
           </label>
           {setupMode === "official" ? (
             <>
-              <label className="block text-xs font-medium text-zinc-500">
-                Little League template
-                <select
-                  className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-2 text-sm"
-                  value={officialTemplateId}
-                  disabled={busy}
-                  onChange={(e) => {
-                    const id = e.target.value as OfficialTemplateId;
-                    setOfficialTemplateId(id);
-                    const tmpl = getOfficialTemplate(id);
-                    if (tmpl) {
-                      setChampionshipSeriesStyle(tmpl.defaultChampionshipSeriesStyle);
-                      setBracketFormat(bracketFormatForChampionshipSeriesStyle(tmpl.defaultChampionshipSeriesStyle));
-                      if (teams.length === 0 || teams.every((x) => /^[A-Z]$/.test(x))) {
-                        setTeams(Array.from({ length: tmpl.teamCount }, (_, i) => String.fromCharCode(65 + i)));
-                      }
-                    }
-                  }}
-                >
-                  <option value="little_league_5_team_de">Official 5-team double elimination (Little League)</option>
-                  <option value="little_league_6_team_de">Official 6-team double elimination (Little League)</option>
-                  <option value="little_league_7_team_de">Official 7-team double elimination (Little League)</option>
-                  <option value="little_league_8_team_de">Official 8-team double elimination (Little League)</option>
-                </select>
-              </label>
+              <div>
+                <p className="text-xs font-medium text-zinc-500">Little League template</p>
+                <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                  {officialTemplateOptions.map((tmpl) => {
+                    const selected = tmpl.id === officialTemplateId;
+                    return (
+                      <button
+                        key={tmpl.id}
+                        type="button"
+                        disabled={busy}
+                        className={`rounded-lg border p-3 text-left text-sm transition ${
+                          selected
+                            ? "border-violet-500 bg-violet-950/50 text-violet-100"
+                            : "border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-zinc-500"
+                        } disabled:opacity-40`}
+                        onClick={() => {
+                          const id = tmpl.id as OfficialTemplateId;
+                          setOfficialTemplateId(id);
+                          setChampionshipSeriesStyle(tmpl.defaultChampionshipSeriesStyle);
+                          setBracketFormat(bracketFormatForChampionshipSeriesStyle(tmpl.defaultChampionshipSeriesStyle));
+                          if (teams.length === 0 || teams.every((x) => /^[A-Z]$/.test(x))) {
+                            setTeams(Array.from({ length: tmpl.teamCount }, (_, i) => String.fromCharCode(65 + i)));
+                          }
+                        }}
+                      >
+                        <span className="block font-semibold">{tmpl.teamCount}-team official DE</span>
+                        <span className="mt-1 block text-xs text-zinc-500">
+                          {tmpl.defaultChampionshipSeriesStyle === "winner_take_all"
+                            ? "Defaults to modified, winner-take-all final"
+                            : "Defaults to standard, if-necessary final"}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
               <label className="block text-xs font-medium text-zinc-500">
                 Championship series
                 <select

@@ -602,9 +602,11 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
   );
   const classicSix = resolveClassicSixTeamModifiedDeSlots(allByGame);
   const classicFive = classicSix ? null : resolveClassicDoubleElimSlots(allByGame);
+  const preferOfficialLayout = spec.layoutPreference !== "connected_columns";
   const useClassic =
-    classicSix !== null ||
-    (canUseClassicUnifiedDoubleElimDiagram(allByGame) && classicFive !== null);
+    preferOfficialLayout &&
+    (classicSix !== null ||
+      (canUseClassicUnifiedDoubleElimDiagram(allByGame) && classicFive !== null));
   const classicVariant = classicSix ? "six_team_modified_de" : classicFive ? "five_team" : undefined;
 
   const age =

@@ -1,4 +1,5 @@
 import {
+  bracketPdfVisionApiUrl,
   bracketPdfVisionApiKey,
 } from "@/lib/tournament-brackets/ingestion/bracketPdfVisualReaderConfig";
 import { renderPdfPagesToPng } from "@/lib/tournament-brackets/ingestion/renderPdfPagesToPng";
@@ -16,18 +17,23 @@ Return plain text only — one logical label or value per line. No commentary.`;
 
 /**
  * Vision-model read of bracket PDF pages (OpenAI-compatible chat completions API).
- * Requires BRACKET_PDF_VISION_API_KEY.
+ * Requires BRACKET_PDF_VISION_API_KEY for OpenAI, or BRACKET_PDF_VISION_API_URL for a local
+ * OpenAI-compatible OCR/vision service.
  */
 export async function visionReadPdfBuffer(buffer: ArrayBuffer): Promise<string> {
   const apiKey = bracketPdfVisionApiKey();
-  if (!apiKey) {
+  const apiUrl = bracketPdfVisionApiUrl();
+  if (!apiKey && !process.env.BRACKET_PDF_VISION_API_URL?.trim()) {
     throw new Error("BRACKET_PDF_VISION_API_KEY is not configured.");
   }
 
-  const apiUrl =
-    process.env.BRACKET_PDF_VISION_API_URL?.trim() ||
-    "https://api.openai.com/v1/chat/completions";
   const model = process.env.BRACKET_PDF_VISION_MODEL?.trim() || "gpt-4o-mini";
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+  };
+  if (apiKey) {
+    headers.Authorization = `Bearer ${apiKey}`;
+  }
 
   const pages = await renderPdfPagesToPng(buffer, { maxPages: 1, scale: 2 });
   if (pages.length === 0) return "";
@@ -35,10 +41,7 @@ export async function visionReadPdfBuffer(buffer: ArrayBuffer): Promise<string> 
   const imageB64 = pages[0]!.toString("base64");
   const res = await fetch(apiUrl, {
     method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
+    headers,
     body: JSON.stringify({
       model,
       temperature: 0,

@@ -6,7 +6,10 @@ async function getOcrWorker(): Promise<import("tesseract.js").Worker> {
   if (!workerPromise) {
     workerPromise = (async () => {
       const { createWorker } = await import("tesseract.js");
-      const worker = await createWorker("eng");
+      const worker = await createWorker("eng", undefined, {
+        cachePath: "/tmp/gonzales-db-next-tesseract",
+        cacheMethod: "refresh",
+      });
       return worker;
     })();
   }

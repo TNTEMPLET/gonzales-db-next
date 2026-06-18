@@ -10,6 +10,8 @@
  */
 export type BracketPdfVisualReaderMode = "off" | "auto" | "ocr" | "vision";
 
+const DEFAULT_VISION_API_URL = "https://api.openai.com/v1/chat/completions";
+
 export function resolveBracketPdfVisualReaderMode(): BracketPdfVisualReaderMode {
   const raw = (process.env.BRACKET_PDF_VISUAL_READER ?? "auto").trim().toLowerCase();
   if (raw === "off" || raw === "auto" || raw === "ocr" || raw === "vision") return raw;
@@ -26,12 +28,19 @@ export function bracketPdfVisionApiKey(): string | undefined {
   return key || undefined;
 }
 
+export function bracketPdfVisionApiUrl(): string {
+  return process.env.BRACKET_PDF_VISION_API_URL?.trim() || DEFAULT_VISION_API_URL;
+}
+
+export function bracketPdfVisionEnabled(): boolean {
+  return Boolean(bracketPdfVisionApiKey() || process.env.BRACKET_PDF_VISION_API_URL?.trim());
+}
+
 /** True when DocHub-style tokens or LL routing labels are missing from embedded text. */
 export function pdfTextIsWeakForBracketIngest(text: string): boolean {
   const t = text.trim();
   if (!t) return true;
   if (/\b\d{1,2}T-G\d+/i.test(t)) return false;
-  if (/Team\s+Little\s+League\s+Bracket/i.test(t)) return false;
   const winners = /Winner of Game #\d+/i.test(t);
   const losers = /Loser (?:From|of) Game #\d+/i.test(t);
   if (winners && losers) return false;

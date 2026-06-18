@@ -227,7 +227,9 @@ function isPow2DoubleElimSpec(spec: BracketSpec): boolean {
 
 function syncDoubleElimSlotsFromFresh(spec: BracketSpec, clearScores: boolean): BracketSpec {
   if (!isPow2DoubleElimSpec(spec)) return spec;
-  const fresh = generateDoubleEliminationRoundsForFormat(spec.teams, spec.bracketFormat);
+  const fresh = generateDoubleEliminationRoundsForFormat(spec.teams, spec.bracketFormat, {
+    championshipSeriesStyle: spec.championshipSeriesStyle,
+  });
   const freshByGame = new Map<string, BracketMatch>();
   for (const r of fresh) {
     for (const m of r.matches) {
@@ -256,7 +258,7 @@ export function advanceDoubleElimination(spec: BracketSpec): BracketSpec {
   if (!isDoubleEliminationFormat(spec.bracketFormat)) return spec;
 
   const rounds = cloneSpecRounds(spec);
-  let base: BracketSpec = { ...spec, rounds };
+  const base: BracketSpec = { ...spec, rounds };
   const usesIfNecessary = includesIfNecessaryChampionshipGame(spec);
 
   const allEntries: { match: BracketMatch; gameNum: number }[] = [];
@@ -300,7 +302,9 @@ export function advanceDoubleElimination(spec: BracketSpec): BracketSpec {
     const gfNum = Number.parseInt(gf.officialGameNumber?.trim() ?? "", 10);
     const gfOutcome = outcomes.get(gfNum);
     if (gfOutcome && ifNecessary && usesIfNecessary) {
-      const fresh = generateDoubleEliminationRoundsForFormat(base.teams, base.bracketFormat);
+      const fresh = generateDoubleEliminationRoundsForFormat(base.teams, base.bracketFormat, {
+        championshipSeriesStyle: base.championshipSeriesStyle,
+      });
       const freshGf = fresh
         .flatMap((r) => r.matches)
         .find((m) => m.championshipRole === "grand_final");
@@ -417,13 +421,13 @@ export function mergeMatchScoresIntoSpec(
     }
   }
 
-  let thirdPlaceGame = spec.thirdPlaceGame ? { ...spec.thirdPlaceGame } : undefined;
+  const thirdPlaceGame = spec.thirdPlaceGame ? { ...spec.thirdPlaceGame } : undefined;
   const thirdPatch = updates[BRACKET_THIRD_PLACE_MATCH_ID];
   if (thirdPatch && thirdPlaceGame) {
     applyScorePatchToMatch(thirdPlaceGame as BracketMatch, thirdPatch);
   }
 
-  let next: BracketSpec = { ...spec, rounds, ...(thirdPlaceGame ? { thirdPlaceGame } : {}) };
+  const next: BracketSpec = { ...spec, rounds, ...(thirdPlaceGame ? { thirdPlaceGame } : {}) };
   return advanceBracketTree(next);
 }
 
@@ -600,7 +604,7 @@ export function clearDownstreamBracketScores(spec: BracketSpec, matchIds: string
       m.away = "TBD";
     }
   }
-  let thirdPlaceGame = spec.thirdPlaceGame ? { ...spec.thirdPlaceGame } : undefined;
+  const thirdPlaceGame = spec.thirdPlaceGame ? { ...spec.thirdPlaceGame } : undefined;
   if (idSet.has(BRACKET_THIRD_PLACE_MATCH_ID) && thirdPlaceGame) {
     delete thirdPlaceGame.homeScore;
     delete thirdPlaceGame.awayScore;

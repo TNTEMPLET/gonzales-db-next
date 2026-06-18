@@ -18,6 +18,7 @@ import {
   inferSixTeamChampionshipSeriesStyleFromFeeders,
 } from "@/lib/tournament-brackets/ingestion/parsePdfGameRouting";
 import { parsePdfBracketTemplate } from "@/lib/tournament-brackets/ingestion/parsePdfBracketTemplate";
+import { extractVisualPdfTeams } from "@/lib/tournament-brackets/ingestion/parsePdfVisualBracketInfo";
 
 test("normalizePdfFeederLabel maps DocHub winner/loser labels", () => {
   assert.equal(normalizePdfFeederLabel("Winner of Game #3"), "W3");
@@ -100,6 +101,116 @@ test("parsePdfGameSchedule reads game info blocks from District 2 PDF", () => {
   const schedule = parsePdfGameSchedule(text);
   assert.ok(schedule.size >= 4);
   assert.deepEqual(schedule.get(1), { dateLabel: "6/26", time: "7:30pm", field: "F4" });
+});
+
+test("parsePdfGameSchedule reads visual game labels followed by schedule lines", () => {
+  const text = `5 Team Little League Bracket
+Game 1
+Loser to B
+6/27 12:00am F1
+Game 2
+Loser to A
+6/27 2:30pm F1
+Game 9
+Champion`;
+  const schedule = parsePdfGameSchedule(text);
+  assert.deepEqual(schedule.get(1), { dateLabel: "6/27", time: "12:00am", field: "F1" });
+  assert.deepEqual(schedule.get(2), { dateLabel: "6/27", time: "2:30pm", field: "F1" });
+  assert.equal(schedule.has(9), false);
+});
+
+test("extractVisualPdfTeams reads teams from 5-team LL visual layout", () => {
+  const text = `Division: Little League Minor 9
+5 Team Little League Bracket
+Winners' Bracket
+St. Charles
+Game 2
+Loser to A
+6/27 2:30pm F1
+Eastbank
+Westbank
+Game 1
+Loser to B
+6/27 12:00am F1
+NORD
+Game 3
+Loser to C
+6/28 10:00am F1
+Ascension
+Game 5
+Loser to D
+6/29 5:00pm F1`;
+  const template = parsePdfBracketTemplate(text);
+  assert.ok(template);
+  assert.deepEqual(extractVisualPdfTeams(text, template), [
+    "Westbank",
+    "NORD",
+    "St. Charles",
+    "Eastbank",
+    "Ascension",
+  ]);
+});
+
+test("5-team PDF ingest omits unscheduled if-necessary game", () => {
+  const text = `Division: Little League Minor 9
+5 Team Little League Bracket
+Winners' Bracket
+Game 1
+Loser to B
+6/27 12:00am F1
+Game 2
+Loser to A
+6/27 2:30pm F1
+Game 3
+Loser to C
+6/28 10:00am F1
+Game 5
+Loser to D
+6/29 5:00pm F1
+Losers' Bracket
+Game 4
+6/28 12:30pm F1
+Game 6
+6/29 7:30pm F1
+Game 7
+6/30 6:00pm F1
+Game 8
+Loser to E (if 1st Loss)
+Game 9
+Champion`;
+  const template = parsePdfBracketTemplate(text);
+  assert.ok(template);
+  const result = buildRoundsFromPdfIngest(template, text);
+  const matches = result.rounds.flatMap((round) => round.matches);
+  assert.equal(result.championshipSeriesStyle, "winner_take_all");
+  assert.equal(result.gamesBuilt, 8);
+  assert.equal(result.scheduleLinesApplied, 7);
+  assert.equal(matches.some((match) => match.championshipRole === "if_necessary"), false);
+  assert.equal(matches.find((match) => match.officialGameNumber === "8")?.championshipRole, "grand_final");
+});
+
+test("5-team PDF ingest includes if-necessary game when G9 has schedule", () => {
+  const text = `Division: Little League Minor 9
+5 Team Little League Bracket
+Winners' Bracket
+Game 1
+Loser to B
+6/27 12:00am F1
+Game 2
+Loser to A
+6/27 2:30pm F1
+Losers' Bracket
+Game 8
+6/30 7:30pm F1
+Game 9
+7/1 6:00pm F1
+Champion`;
+  const template = parsePdfBracketTemplate(text);
+  assert.ok(template);
+  const result = buildRoundsFromPdfIngest(template, text);
+  const matches = result.rounds.flatMap((round) => round.matches);
+  assert.equal(result.championshipSeriesStyle, "always_scheduled_reset");
+  assert.equal(matches.find((match) => match.officialGameNumber === "9")?.championshipRole, "if_necessary");
 });
 
 test("buildRoundsFromPdfIngest builds layout-ready rounds from District 2 PDF text", () => {
