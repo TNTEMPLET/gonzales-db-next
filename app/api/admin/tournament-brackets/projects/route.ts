@@ -6,6 +6,7 @@ import {
   safeParseBracketSpec,
   type BracketSpec,
   type BracketTournamentInfo,
+  type BracketVisualTuning,
 } from "@/lib/tournament-brackets/bracketSpec";
 import prisma from "@/lib/prisma";
 import { isBracketOrgId, type BracketOrgId } from "@/lib/siteConfig";
@@ -31,19 +32,27 @@ function sharedTournamentInfoFromSpec(spec: BracketSpec): Omit<BracketTournament
 async function findRecentTournamentInfoDefaults(
   organizationId: BracketOrgId,
   seasonYear: number,
-): Promise<Omit<BracketTournamentInfo, "division"> | null> {
+): Promise<{
+  tournamentInfo: Omit<BracketTournamentInfo, "division"> | null;
+  visualTuning: BracketVisualTuning | null;
+}> {
   const recent = await prisma.bracketProject.findMany({
     where: { organizationId, seasonYear },
     orderBy: { updatedAt: "desc" },
     take: 20,
     select: { spec: true },
   });
+  let tournamentInfo: Omit<BracketTournamentInfo, "division"> | null = null;
+  let visualTuning: BracketVisualTuning | null = null;
   for (const row of recent) {
     const parsed = safeParseBracketSpec(row.spec);
-    const shared = sharedTournamentInfoFromSpec(parsed.spec);
-    if (shared) return shared;
+    tournamentInfo ??= sharedTournamentInfoFromSpec(parsed.spec);
+    if (!visualTuning && parsed.spec.visualTuning && Object.keys(parsed.spec.visualTuning).length > 0) {
+      visualTuning = parsed.spec.visualTuning;
+    }
+    if (tournamentInfo && visualTuning) break;
   }
-  return null;
+  return { tournamentInfo, visualTuning };
 }
 
 export async function GET(request: NextRequest) {
@@ -126,12 +135,15 @@ export async function POST(request: NextRequest) {
         : 0;
 
     const spec = defaultBracketSpec();
-    const sharedTournamentInfo = await findRecentTournamentInfoDefaults(organizationId, seasonYear);
-    if (sharedTournamentInfo) {
+    const defaults = await findRecentTournamentInfoDefaults(organizationId, seasonYear);
+    if (defaults.tournamentInfo) {
       spec.tournamentInfo = {
         division: name,
-        ...sharedTournamentInfo,
+        ...defaults.tournamentInfo,
       };
+    }
+    if (defaults.visualTuning) {
+      spec.visualTuning = defaults.visualTuning;
     }
     spec.divisionLabel = name;
     spec.championAgeGroupLabel = name;

@@ -8,7 +8,6 @@ import {
   useMemo,
   useRef,
   useState,
-  type Ref,
 } from "react";
 
 import BracketSetupWizard from "@/components/admin/BracketSetupWizard";
@@ -39,6 +38,11 @@ import {
 } from "@/lib/tournament-brackets/bracketScoring";
 import { bracketWatermarkSrc } from "@/lib/tournament-brackets/bracketWatermark";
 import { normalizeHex6, resolveBracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
+import {
+  normalizeVisualTuningNumber,
+  VISUAL_TUNING_MAX_PX,
+  VISUAL_TUNING_MIN_PX,
+} from "@/lib/tournament-brackets/visualTuning";
 import { ALLOWED_REFERENCE_HOST_SUFFIXES, isReferenceUrlAllowed } from "@/lib/tournament-brackets/referenceAllowlist";
 import {
   BRACKET_ORGS,
@@ -73,6 +77,138 @@ type ProjectDetail = ProjectRow & {
   spec: unknown;
   sourceArtifactUrls: unknown;
 };
+
+type VisualTuningDraftAxis = {
+  x: string;
+  y: string;
+};
+
+type VisualTuningDraft = {
+  games: Record<string, VisualTuningDraftAxis>;
+  connectors: Record<string, VisualTuningDraftAxis>;
+};
+
+type VisualTuningRow = {
+  key: string;
+  label: string;
+};
+
+const VISUAL_TUNING_FIVE_TEAM_GAMES: VisualTuningRow[] = [
+  "G1",
+  "G2",
+  "G3",
+  "G4",
+  "G5",
+  "G6",
+  "G7",
+  "G8",
+  "G9",
+  "Champion",
+].map((key) => ({ key, label: key === "Champion" ? "Champion plaque" : key }));
+
+const VISUAL_TUNING_SIX_TEAM_GAMES: VisualTuningRow[] = [
+  "G1",
+  "G2",
+  "G3",
+  "G4",
+  "G5",
+  "G6",
+  "G7",
+  "G8",
+  "G9",
+  "G10",
+  "G11",
+  "Champion",
+].map((key) => ({ key, label: key === "Champion" ? "Champion plaque" : key }));
+
+const VISUAL_TUNING_FIVE_TEAM_CONNECTORS: VisualTuningRow[] = [
+  { key: "g1-g3", label: "G1 to G3" },
+  { key: "winners-g4", label: "G2/G3 to G4" },
+  { key: "g5-g6", label: "G5 to G6" },
+  { key: "g6-g7", label: "G6 to G7" },
+  { key: "finals-g8", label: "G4/G7 to G8" },
+  { key: "g8-champion", label: "G8 to champion" },
+];
+
+const VISUAL_TUNING_SIX_TEAM_CONNECTORS: VisualTuningRow[] = [
+  { key: "g1-g3", label: "G1 to G3" },
+  { key: "g2-g4", label: "G2 to G4" },
+  { key: "winners-g7", label: "G3/G4 to G7" },
+  { key: "losers-g8", label: "G5/G6 to G8" },
+  { key: "g8-g9", label: "G8 to G9" },
+  { key: "finals-g10", label: "G7/G9 to G10" },
+  { key: "g10-champion", label: "G10 to champion" },
+];
+
+function visualTuningRowsForLayout(layout: BracketLayout | null): {
+  games: VisualTuningRow[];
+  connectors: VisualTuningRow[];
+} {
+  if (layout?.mode !== "double_elimination" || layout.diagramStyle !== "classic_unified") {
+    return { games: [], connectors: [] };
+  }
+  if (layout.classicVariant === "six_team_modified_de") {
+    return {
+      games: VISUAL_TUNING_SIX_TEAM_GAMES,
+      connectors: VISUAL_TUNING_SIX_TEAM_CONNECTORS,
+    };
+  }
+  return {
+    games: VISUAL_TUNING_FIVE_TEAM_GAMES,
+    connectors: VISUAL_TUNING_FIVE_TEAM_CONNECTORS,
+  };
+}
+
+function visualTuningDraftFromSpec(
+  spec: BracketSpec | null | undefined,
+  rows: { games: VisualTuningRow[]; connectors: VisualTuningRow[] },
+): VisualTuningDraft {
+  const draft: VisualTuningDraft = { games: {}, connectors: {} };
+  for (const row of rows.games) {
+    const value = spec?.visualTuning?.games?.[row.key];
+    draft.games[row.key] = {
+      x: String(value?.xPx ?? 0),
+      y: String(value?.yPx ?? 0),
+    };
+  }
+  for (const row of rows.connectors) {
+    const value = spec?.visualTuning?.connectors?.[row.key];
+    const legacyChampionYOffset =
+      row.key === "g8-champion" || row.key === "g10-champion"
+        ? spec?.visualTuning?.championConnectorYOffsetPx
+        : undefined;
+    draft.connectors[row.key] = {
+      x: String(value?.xPx ?? 0),
+      y: String(value?.yPx ?? legacyChampionYOffset ?? 0),
+    };
+  }
+  return draft;
+}
+
+function visualTuningPayloadFromDraft(
+  draft: VisualTuningDraft,
+  rows: { games: VisualTuningRow[]; connectors: VisualTuningRow[] },
+) {
+  const games: Record<string, { xPx?: number; yPx?: number }> = {};
+  const connectors: Record<string, { xPx?: number; yPx?: number }> = {};
+
+  for (const row of rows.games) {
+    const value = draft.games[row.key] ?? { x: "0", y: "0" };
+    games[row.key] = {
+      xPx: normalizeVisualTuningNumber(value.x),
+      yPx: normalizeVisualTuningNumber(value.y),
+    };
+  }
+  for (const row of rows.connectors) {
+    const value = draft.connectors[row.key] ?? { x: "0", y: "0" };
+    connectors[row.key] = {
+      xPx: normalizeVisualTuningNumber(value.x),
+      yPx: normalizeVisualTuningNumber(value.y),
+    };
+  }
+
+  return { games, connectors };
+}
 
 /** Avoid `res.json()` on empty/HTML error bodies (gives clearer errors than "Unexpected end of JSON input"). */
 async function readApiJson<T extends Record<string, unknown>>(res: Response): Promise<T> {
@@ -539,11 +675,13 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const bracketWatermarkUrl = bracketWatermarkSrc(
     spec?.flyer?.logoUrl,
     bracketBranding.targetLogoPath,
-    project?.updatedAt ?? Date.now(),
+    project?.updatedAt,
   );
+  const visualTuningRows = useMemo(() => visualTuningRowsForLayout(bracketLayout), [bracketLayout]);
 
   const [bracketColorDraftPrimary, setBracketColorDraftPrimary] = useState(siteThemeDefaults.primaryHex);
   const [bracketColorDraftAccent, setBracketColorDraftAccent] = useState(siteThemeDefaults.accentHex);
+  const [visualTuningDraft, setVisualTuningDraft] = useState<VisualTuningDraft>({ games: {}, connectors: {} });
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -612,6 +750,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
         setGcWidgetIdDraft("");
         setGcEmbedSnippetDraft("");
         setGcMaxVerticalDraft("4");
+        setVisualTuningDraft({ games: {}, connectors: {} });
       }, 0);
       return () => window.clearTimeout(id);
     }
@@ -635,9 +774,10 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       setGcWidgetIdDraft(spec.gameChanger?.widgetId ?? "");
       setGcMaxVerticalDraft(String(spec.gameChanger?.maxVerticalGamesVisible ?? 4));
       setGcEmbedSnippetDraft("");
+      setVisualTuningDraft(visualTuningDraftFromSpec(spec, visualTuningRows));
     }, 0);
     return () => window.clearTimeout(id);
-  }, [spec]);
+  }, [spec, visualTuningRows]);
 
   async function saveGameChangerConfig() {
     if (!projectId) return;
@@ -1280,6 +1420,65 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     try {
       await patchSpec({ bracketThemePrimaryHex: null, bracketThemeAccentHex: null });
       setNotice("Bracket colors reset to target site defaults.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveVisualTuning() {
+    if (!projectId) return;
+    setBusy(true);
+    setError("");
+    try {
+      await patchSpec({
+        visualTuning: {
+          ...(spec?.visualTuning ?? {}),
+          championConnectorYOffsetPx: 0,
+          ...visualTuningPayloadFromDraft(visualTuningDraft, visualTuningRows),
+        },
+      });
+      setNotice("Visual tuning saved.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function updateVisualTuningDraftValue(
+    target: "games" | "connectors",
+    key: string,
+    axis: "x" | "y",
+    value: string,
+  ) {
+    setVisualTuningDraft((prev) => ({
+      ...prev,
+      [target]: {
+        ...prev[target],
+        [key]: {
+          ...(prev[target][key] ?? { x: "0", y: "0" }),
+          [axis]: value,
+        },
+      },
+    }));
+  }
+
+  async function resetVisualTuning() {
+    const resetDraft = visualTuningDraftFromSpec(undefined, visualTuningRows);
+    setVisualTuningDraft(resetDraft);
+    if (!projectId) return;
+    setBusy(true);
+    setError("");
+    try {
+      await patchSpec({
+        visualTuning: {
+          championConnectorYOffsetPx: 0,
+          ...visualTuningPayloadFromDraft(resetDraft, visualTuningRows),
+        },
+      });
+      setNotice("Visual tuning reset to defaults.");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -2203,17 +2402,19 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                   <details className="mt-3">
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-500">Preview settings</summary>
                   <div className="mt-3 space-y-3 rounded-lg border border-zinc-700 bg-zinc-950/50 p-3">
-                    <div>
-                      <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+                    <details className="rounded-lg border border-zinc-800 bg-zinc-950/30 p-3">
+                      <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-wide text-zinc-500 marker:content-none [&::-webkit-details-marker]:hidden">
                         Bracket appearance (LLBWS-style)
-                      </h3>
+                        <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-zinc-600">
+                          Expand for colors
+                        </span>
+                      </summary>
                       <p className="mt-1 text-xs leading-relaxed text-zinc-500">
                         Layout follows the printable Little League–style column bracket. Colors default to the
                         selected site ({getBracketOrgDisplayName(organizationId)}): primary for structure ink,
                         accent for highlights. Overrides apply to this preview and HTML export only.
                       </p>
-                    </div>
-                    <div className="grid gap-3 sm:flex sm:flex-wrap sm:items-end sm:gap-4">
+                    <div className="mt-3 grid gap-3 sm:flex sm:flex-wrap sm:items-end sm:gap-4">
                       <label className="block text-xs font-medium text-zinc-500">
                         Primary
                         <div className="mt-1 flex items-center gap-2">
@@ -2277,18 +2478,138 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         Reset to site defaults
                       </button>
                     </div>
-                    <div className="mt-3 space-y-3 border-t border-zinc-700 pt-3">
-                      <div>
-                        <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                    </details>
+                    <details className="mt-3 border-t border-zinc-700 pt-3">
+                      <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-wide text-zinc-500 marker:content-none [&::-webkit-details-marker]:hidden">
+                        Visual template tuning
+                        <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-zinc-600">
+                          Expand for game and connector offsets
+                        </span>
+                      </summary>
+                      <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                        Stored in the bracket spec JSON. Adjust game blocks and connector paths with X/Y pixel
+                        nudges; new same site/year brackets inherit the latest saved tuning.
+                      </p>
+                      {visualTuningRows.games.length === 0 && visualTuningRows.connectors.length === 0 ? (
+                        <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-[11px] text-zinc-500">
+                          Visual tuning is available for classic Little League bracket templates after rounds are
+                          generated.
+                        </p>
+                      ) : (
+                        <div className="mt-3 grid gap-4 lg:grid-cols-2">
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                            <h5 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                              Game blocks
+                            </h5>
+                            <div className="mt-2 grid grid-cols-[minmax(5rem,1fr)_4.75rem_4.75rem] gap-2 text-[11px] text-zinc-500">
+                              <span>Block</span>
+                              <span>X px</span>
+                              <span>Y px</span>
+                              {visualTuningRows.games.map((row) => (
+                                <div key={`game-${row.key}`} className="contents">
+                                  <span className="self-center text-zinc-300">{row.label}</span>
+                                  <input
+                                    type="number"
+                                    min={VISUAL_TUNING_MIN_PX}
+                                    max={VISUAL_TUNING_MAX_PX}
+                                    step={0.5}
+                                    value={visualTuningDraft.games[row.key]?.x ?? "0"}
+                                    onChange={(e) =>
+                                      updateVisualTuningDraftValue("games", row.key, "x", e.target.value)
+                                    }
+                                    disabled={busy}
+                                    className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
+                                  />
+                                  <input
+                                    type="number"
+                                    min={VISUAL_TUNING_MIN_PX}
+                                    max={VISUAL_TUNING_MAX_PX}
+                                    step={0.5}
+                                    value={visualTuningDraft.games[row.key]?.y ?? "0"}
+                                    onChange={(e) =>
+                                      updateVisualTuningDraftValue("games", row.key, "y", e.target.value)
+                                    }
+                                    disabled={busy}
+                                    className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                            <h5 className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                              Connectors
+                            </h5>
+                            <div className="mt-2 grid grid-cols-[minmax(7rem,1fr)_4.75rem_4.75rem] gap-2 text-[11px] text-zinc-500">
+                              <span>Connector</span>
+                              <span>X px</span>
+                              <span>Y px</span>
+                              {visualTuningRows.connectors.map((row) => (
+                                <div key={`connector-${row.key}`} className="contents">
+                                  <span className="self-center text-zinc-300">{row.label}</span>
+                                  <input
+                                    type="number"
+                                    min={VISUAL_TUNING_MIN_PX}
+                                    max={VISUAL_TUNING_MAX_PX}
+                                    step={0.5}
+                                    value={visualTuningDraft.connectors[row.key]?.x ?? "0"}
+                                    onChange={(e) =>
+                                      updateVisualTuningDraftValue("connectors", row.key, "x", e.target.value)
+                                    }
+                                    disabled={busy}
+                                    className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
+                                  />
+                                  <input
+                                    type="number"
+                                    min={VISUAL_TUNING_MIN_PX}
+                                    max={VISUAL_TUNING_MAX_PX}
+                                    step={0.5}
+                                    value={visualTuningDraft.connectors[row.key]?.y ?? "0"}
+                                    onChange={(e) =>
+                                      updateVisualTuningDraftValue("connectors", row.key, "y", e.target.value)
+                                    }
+                                    disabled={busy}
+                                    className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
+                                  />
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div className="mt-3 grid gap-2 sm:flex sm:flex-wrap">
+                        <button
+                          type="button"
+                          disabled={busy || (visualTuningRows.games.length === 0 && visualTuningRows.connectors.length === 0)}
+                          onClick={() => void saveVisualTuning()}
+                          className="min-h-10 rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-600 disabled:opacity-40"
+                        >
+                          Save tuning
+                        </button>
+                        <button
+                          type="button"
+                          disabled={busy || (visualTuningRows.games.length === 0 && visualTuningRows.connectors.length === 0)}
+                          onClick={() => void resetVisualTuning()}
+                          className="min-h-10 rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                        >
+                          Reset tuning
+                        </button>
+                      </div>
+                    </details>
+                    <details className="mt-3 border-t border-zinc-700 pt-3">
+                      <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-wide text-zinc-500 marker:content-none [&::-webkit-details-marker]:hidden">
                           GameChanger live scoreboard
-                        </h4>
+                        <span className="ml-2 text-[10px] font-normal normal-case tracking-normal text-zinc-600">
+                          Expand for live score settings
+                        </span>
+                      </summary>
                         <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
                           Paste the embed code from GameChanger (Tournament → Tools → Create Scoreboard). Published
                           brackets show live scores on cards; tapping a game opens that game&apos;s live scoreboard.
                           Final GameChanger games auto-import into bracket scores while you have this project open;
                           use Import completed GameChanger scores in the score toolbar to apply all finals now.
                         </p>
-                      </div>
+                      <div className="mt-3 space-y-3">
                       <label className="block text-[11px] text-zinc-500">
                         Widget ID
                         <input
@@ -2351,7 +2672,8 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                           </button>
                         ) : null}
                       </div>
-                    </div>
+                      </div>
+                    </details>
                     {spec.bracketFormat === "single_elimination" ? (
                       <div className="mt-3 space-y-3 border-t border-zinc-700 pt-3">
                         <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
@@ -2530,6 +2852,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                               name: bracketBranding.parentName,
                             }}
                             tournamentInfo={spec?.tournamentInfo}
+                            visualTuning={spec?.visualTuning}
                             scoring={scoringView}
                             surfaceTitleOverride={projectNameDraft.trim() || project.name}
                             liveGameStatuses={adminLiveStatuses}

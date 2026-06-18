@@ -705,10 +705,12 @@ export function BracketHorizontalGutterConnector({
   sourceMatchId,
   targetMatchId,
   anchorY = "match",
+  yOffsetPx = 0,
 }: {
   sourceMatchId: string;
   targetMatchId: string;
   anchorY?: BracketConnectorAnchor;
+  yOffsetPx?: number;
 }) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [{ viewBox, d, frameStyle }, setGeom] = useState<{
@@ -737,7 +739,7 @@ export function BracketHorizontalGutterConnector({
 
       const sourceCenter = matchAnchorCenterY(source, anchorY);
       const targetCenter = matchAnchorCenterY(target, anchorY);
-      const midCenter = (sourceCenter + targetCenter) / 2;
+      const midCenter = (sourceCenter + targetCenter) / 2 + yOffsetPx;
       const frameTop = midCenter - 2;
       const frameHeight = 4;
       const visualScale = visualToLayoutScale(cell as HTMLElement, cr);
@@ -772,7 +774,7 @@ export function BracketHorizontalGutterConnector({
       window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
-  }, [anchorY, sourceMatchId, targetMatchId]);
+  }, [anchorY, sourceMatchId, targetMatchId, yOffsetPx]);
 
   return (
     <div
@@ -801,12 +803,14 @@ export function BracketIfNecessaryDropConnector({
   targetMatchId,
   ifNecessaryMatchId,
   anchorY = "match",
+  yOffsetPx = 0,
 }: {
   sourceMatchId: string;
   targetMatchId: string;
   /** When set, the vertical drop ends at this match's top edge (G9 top-center junction). */
   ifNecessaryMatchId?: string;
   anchorY?: BracketConnectorAnchor;
+  yOffsetPx?: number;
 }) {
   const dropRef = useRef<HTMLDivElement>(null);
   const [dropGeom, setDropGeom] = useState<{
@@ -832,7 +836,7 @@ export function BracketIfNecessaryDropConnector({
 
       const sourceCenter = matchAnchorCenterY(source, anchorY);
       const targetCenter = matchAnchorCenterY(target, anchorY);
-      const midCenterY = (sourceCenter + targetCenter) / 2;
+      const midCenterY = (sourceCenter + targetCenter) / 2 + yOffsetPx;
       const ifNecessary = ifNecessaryMatchId ? matchById(scope, ifNecessaryMatchId) : null;
       const ifNecessaryRect = ifNecessary?.getBoundingClientRect();
       const dropBottomY =
@@ -874,7 +878,7 @@ export function BracketIfNecessaryDropConnector({
       window.cancelAnimationFrame(raf2);
       ro.disconnect();
     };
-  }, [anchorY, ifNecessaryMatchId, sourceMatchId, targetMatchId]);
+  }, [anchorY, ifNecessaryMatchId, sourceMatchId, targetMatchId, yOffsetPx]);
 
   return (
     <div

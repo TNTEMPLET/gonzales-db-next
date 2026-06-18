@@ -7,6 +7,7 @@ import {
   isLocalDevUploadUrl,
   resolveBracketWatermarkBase,
 } from "@/lib/tournament-brackets/bracketWatermark";
+import { defaultBracketSpec, mergeBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 
 const SAMPLE = { primaryHex: "#002f6c", accentHex: "#c8102e" };
 
@@ -91,5 +92,21 @@ describe("bracketWatermark", () => {
       bracketWatermarkSrc(siteDefault, siteDefault, 123),
       `${siteDefault}?v=123`,
     );
+  });
+});
+
+describe("bracket visual tuning", () => {
+  it("persists game and connector offsets in bracket spec JSON", () => {
+    const spec = defaultBracketSpec();
+    const tuned = mergeBracketSpec(spec, {
+      visualTuning: {
+        games: { G8: { xPx: 2, yPx: -1.5 } },
+        connectors: { "g8-champion": { xPx: 0, yPx: 3.5 } },
+      },
+    });
+
+    assert.equal(tuned.visualTuning?.games?.G8?.xPx, 2);
+    assert.equal(tuned.visualTuning?.games?.G8?.yPx, -1.5);
+    assert.equal(tuned.visualTuning?.connectors?.["g8-champion"]?.yPx, 3.5);
   });
 });

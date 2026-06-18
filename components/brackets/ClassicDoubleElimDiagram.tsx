@@ -11,9 +11,14 @@ import {
 import ClassicTournamentInfoTable from "@/components/brackets/ClassicTournamentInfoTable";
 import styles from "@/components/brackets/TournamentBracketView.module.css";
 import { BRACKET_PODIUM_CHAMPION_TARGET_ATTR } from "@/lib/tournament-brackets/bracketConnectorPaths";
-import type { BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
+import type { BracketTournamentInfo, BracketVisualTuning } from "@/lib/tournament-brackets/bracketSpec";
 import type { ClassicDoubleElimChampionshipPodium, LayoutMatch } from "@/lib/tournament-brackets/bracketLayout";
 import type { ClassicDoubleElimSlots } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
+import {
+  hasVisualOffset,
+  visualTuningOffset,
+  type BracketVisualOffset,
+} from "@/lib/tournament-brackets/visualTuning";
 import {
   CLASSIC_DE_LANE_ROWS,
   classicDoubleElimGridSlots,
@@ -52,6 +57,7 @@ type MatchRenderProps = {
 type Props = {
   slots: ClassicDoubleElimSlots;
   tournamentInfo?: BracketTournamentInfo | null;
+  visualTuning?: BracketVisualTuning | null;
   /** Champion plaque in a column right of G8 (both DE formats on classic diagram). */
   championPodium?: ClassicDoubleElimChampionshipPodium | null;
   renderMatch: (props: MatchRenderProps & { match: LayoutMatch }) => ReactNode;
@@ -66,6 +72,11 @@ type Props = {
 const GRID_ROW_TRACK = `repeat(${CLASSIC_DE_LANE_ROWS}, minmax(2.75rem, auto))`;
 
 const grid = classicDoubleElimGridSlots();
+
+function visualOffsetStyle(offset: BracketVisualOffset): CSSProperties | undefined {
+  if (!hasVisualOffset(offset)) return undefined;
+  return { transform: `translate(${offset.xPx}px, ${offset.yPx}px)` };
+}
 
 function fillerCell(
   key: string,
@@ -90,12 +101,13 @@ function matchCell(
   { col, row, span }: ClassicGridPlacement,
   content: ReactNode,
   wrapClassName?: string,
+  offset: BracketVisualOffset = { xPx: 0, yPx: 0 },
 ): ReactNode {
   return (
     <div
       key={key}
       className={wrapClassName ? `${styles.gridMatchWrap} ${wrapClassName}` : styles.gridMatchWrap}
-      style={{ gridColumn: col, gridRow: `${row} / span ${span}` }}
+      style={{ gridColumn: col, gridRow: `${row} / span ${span}`, ...visualOffsetStyle(offset) }}
     >
       {content}
     </div>
@@ -152,6 +164,7 @@ function ClassicAlignedToMatchCell({
   alignBetweenTopMatchId,
   alignBetweenBottomMatchId,
   alignToBracketMidline = false,
+  offset = { xPx: 0, yPx: 0 },
   children,
   wrapClassName,
 }: {
@@ -160,6 +173,7 @@ function ClassicAlignedToMatchCell({
   alignBetweenTopMatchId?: string;
   alignBetweenBottomMatchId?: string;
   alignToBracketMidline?: boolean;
+  offset?: BracketVisualOffset;
   children: ReactNode;
   wrapClassName?: string;
 }) {
@@ -240,7 +254,10 @@ function ClassicAlignedToMatchCell({
     >
       <div
         className={styles.classicDoubleElimGrandFinalInner}
-        style={topPx != null ? { top: topPx } : undefined}
+        style={{
+          ...(topPx != null ? { top: topPx } : {}),
+          ...visualOffsetStyle(offset),
+        }}
       >
         {children}
       </div>
@@ -255,6 +272,7 @@ function ClassicGrandFinalCell({
   bottomMatchId,
   selfMatchId,
   alignToBracketMidline = false,
+  offset = { xPx: 0, yPx: 0 },
   children,
 }: {
   placement: ClassicGridPlacement;
@@ -262,6 +280,7 @@ function ClassicGrandFinalCell({
   bottomMatchId: string;
   selfMatchId: string;
   alignToBracketMidline?: boolean;
+  offset?: BracketVisualOffset;
   children: ReactNode;
 }) {
   const { col, row, span } = placement;
@@ -316,7 +335,10 @@ function ClassicGrandFinalCell({
     >
       <div
         className={styles.classicDoubleElimGrandFinalInner}
-        style={topPx != null ? { top: topPx } : undefined}
+        style={{
+          ...(topPx != null ? { top: topPx } : {}),
+          ...visualOffsetStyle(offset),
+        }}
       >
         {children}
       </div>
@@ -329,12 +351,13 @@ function connCell(
   { col, row, span }: ClassicGridPlacement,
   content: ReactNode,
   dataBracketConn?: string,
+  offset: BracketVisualOffset = { xPx: 0, yPx: 0 },
 ): ReactNode {
   return (
     <div
       key={key}
       className={styles.connectorCell}
-      style={{ gridColumn: col, gridRow: `${row} / span ${span}` }}
+      style={{ gridColumn: col, gridRow: `${row} / span ${span}`, ...visualOffsetStyle(offset) }}
       {...(dataBracketConn ? { "data-bracket-conn": dataBracketConn } : {})}
     >
       {content}
@@ -348,12 +371,14 @@ export function ClassicIfNecessaryMatchCell({
   dropLineConnKey,
   matchId,
   widthMatchId,
+  offset = { xPx: 0, yPx: 0 },
   children,
 }: {
   placement: ClassicGridPlacement;
   dropLineConnKey: string;
   matchId: string;
   widthMatchId: string;
+  offset?: BracketVisualOffset;
   children: ReactNode;
 }) {
   const { col, row, span } = placement;
@@ -410,7 +435,10 @@ export function ClassicIfNecessaryMatchCell({
       className={`${styles.gridMatchWrap} ${styles.classicDoubleElimIfNecessaryWrap}`}
       style={{ gridColumn: col, gridRow: `${row} / span ${span}` }}
     >
-      <div className={styles.classicDoubleElimIfNecessaryInner} style={frameStyle}>
+      <div
+        className={styles.classicDoubleElimIfNecessaryInner}
+        style={{ ...(frameStyle ?? {}), ...visualOffsetStyle(offset) }}
+      >
         {children}
       </div>
     </div>
@@ -424,6 +452,7 @@ export function ClassicIfNecessaryMatchCell({
 export default function ClassicDoubleElimDiagram({
   slots,
   tournamentInfo,
+  visualTuning,
   championPodium,
   renderMatch,
   scoring,
@@ -443,6 +472,9 @@ export default function ClassicDoubleElimDiagram({
 
   const showChampionColumn = Boolean(championPodium);
   const showIfNecessaryGame = Boolean(championPodium?.showIfNecessaryDropLine && g9);
+  const gameOffset = (key: string) => visualTuningOffset(visualTuning, "games", key);
+  const connectorOffset = (key: string) => visualTuningOffset(visualTuning, "connectors", key);
+  const championConnectorOffset = connectorOffset("g8-champion");
   const anchorY = CLASSIC_DE_CONNECTOR_ANCHOR;
 
   const gridStyle: CSSProperties = {
@@ -482,7 +514,7 @@ export default function ClassicDoubleElimDiagram({
       >
         {fillerCell("winners-top-pad", grid.winnersTopPad, styles.classicDoubleElimWinnersTopPad)}
         <ClassicTournamentInfoTable info={tournamentInfo} placement={tournamentInfoPlacement} />
-        {matchCell("g1", grid.g1, render(g1))}
+        {matchCell("g1", grid.g1, render(g1), undefined, gameOffset("G1"))}
         {fillerCell("winners-r1-bot", grid.winnersR1Bot)}
 
         {connCell(
@@ -494,9 +526,11 @@ export default function ClassicDoubleElimDiagram({
             topMatchId={g1.id}
             targetMatchId={g3.id}
           />,
+          undefined,
+          connectorOffset("g1-g3"),
         )}
-        {matchCell("g3", grid.g3, render(g3))}
-        {matchCell("g2", grid.g2, render(g2))}
+        {matchCell("g3", grid.g3, render(g3), undefined, gameOffset("G3"))}
+        {matchCell("g2", grid.g2, render(g2), undefined, gameOffset("G2"))}
         {connCell(
           "c-winners-g4",
           grid.connWinnersG4,
@@ -507,12 +541,14 @@ export default function ClassicDoubleElimDiagram({
             bottomMatchId={g3.id}
             targetMatchId={g4.id}
           />,
+          undefined,
+          connectorOffset("winners-g4"),
         )}
-        {matchCell("g4", grid.g4, render(g4))}
+        {matchCell("g4", grid.g4, render(g4), undefined, gameOffset("G4"))}
 
         {fillerCell("band-gap", bandGapPlacement, styles.classicDoubleElimBandGap)}
 
-        {matchCell("g5", grid.g5, render(g5))}
+        {matchCell("g5", grid.g5, render(g5), undefined, gameOffset("G5"))}
         {connCell(
           "c-g5-g6",
           grid.connG5G6,
@@ -522,8 +558,10 @@ export default function ClassicDoubleElimDiagram({
             topMatchId={g5.id}
             targetMatchId={g6.id}
           />,
+          undefined,
+          connectorOffset("g5-g6"),
         )}
-        {matchCell("g6", grid.g6, render(g6))}
+        {matchCell("g6", grid.g6, render(g6), undefined, gameOffset("G6"))}
         {connCell(
           "c-g6-g7",
           grid.connG6G7,
@@ -533,8 +571,10 @@ export default function ClassicDoubleElimDiagram({
             topMatchId={g6.id}
             targetMatchId={g7.id}
           />,
+          undefined,
+          connectorOffset("g6-g7"),
         )}
-        {matchCell("g7", grid.g7, render(g7))}
+        {matchCell("g7", grid.g7, render(g7), undefined, gameOffset("G7"))}
 
         {connCell(
           "c-finals-g8",
@@ -546,6 +586,8 @@ export default function ClassicDoubleElimDiagram({
             bottomMatchId={g7.id}
             targetMatchId={g8.id}
           />,
+          undefined,
+          connectorOffset("finals-g8"),
         )}
 
         <ClassicGrandFinalCell
@@ -553,6 +595,7 @@ export default function ClassicDoubleElimDiagram({
           topMatchId={g4.id}
           bottomMatchId={g7.id}
           selfMatchId={g8.id}
+          offset={gameOffset("G8")}
         >
           {render(g8)}
         </ClassicGrandFinalCell>
@@ -567,6 +610,7 @@ export default function ClassicDoubleElimDiagram({
                   sourceMatchId={g8.id}
                   targetMatchId={CLASSIC_DE_CHAMPION_SLOT_MATCH_ID}
                   anchorY={anchorY}
+                  yOffsetPx={championConnectorOffset.yPx}
                 />
                 {championPodium.showIfNecessaryDropLine ? (
                   <BracketIfNecessaryDropConnector
@@ -574,10 +618,12 @@ export default function ClassicDoubleElimDiagram({
                     targetMatchId={CLASSIC_DE_CHAMPION_SLOT_MATCH_ID}
                     ifNecessaryMatchId={g9?.id}
                     anchorY={anchorY}
+                    yOffsetPx={championConnectorOffset.yPx}
                   />
                 ) : null}
               </>,
               "g8-champion",
+              { xPx: championConnectorOffset.xPx, yPx: 0 },
             )}
             {showIfNecessaryGame && g9 ? (
               <ClassicIfNecessaryMatchCell
@@ -585,6 +631,7 @@ export default function ClassicDoubleElimDiagram({
                 dropLineConnKey="g8-champion"
                 matchId={g9.id}
                 widthMatchId={g8.id}
+                offset={gameOffset("G9")}
               >
                 {render(g9)}
               </ClassicIfNecessaryMatchCell>
@@ -593,6 +640,7 @@ export default function ClassicDoubleElimDiagram({
               placement={grid.champion}
               alignToMatchId={g8.id}
               wrapClassName={styles.classicDoubleElimChampionWrap}
+              offset={gameOffset("Champion")}
             >
               <ClassicDoubleElimChampionPlaque
                 heading={championPodium.championHeading}
