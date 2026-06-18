@@ -99,7 +99,7 @@ export async function extractPdfTextForIngest(
     mode === "vision" ||
     (mode === "auto" &&
       bracketPdfVisionEnabled() &&
-      (weakEmbedded || (hasPdfFormBracketTokens && Boolean(ocrText?.trim()))));
+      (weakEmbedded || hasPdfFormBracketTokens));
 
   const mergedAfterOcr = mergePdfTextLayers([embeddedText, ocrText]);
   const stillWeak = pdfTextIsWeakForBracketIngest(mergedAfterOcr);
@@ -119,7 +119,9 @@ export async function extractPdfTextForIngest(
 
   const text = mergePdfTextLayers([embeddedText, ocrText, visionText]);
   let source: PdfTextExtractionSource = embeddedSource;
-  if (visionText?.trim() && (mode === "vision" || !embeddedText.trim())) {
+  if (visionText?.trim() && embeddedText.trim()) {
+    source = "merged";
+  } else if (visionText?.trim() && (mode === "vision" || !embeddedText.trim())) {
     source = ocrText?.trim() ? "merged" : "vision";
   } else if (ocrText?.trim()) {
     source = embeddedText.trim() ? "merged" : "ocr";

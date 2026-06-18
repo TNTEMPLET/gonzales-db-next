@@ -8,6 +8,9 @@ importers:
 
   .:
     dependencies:
+      '@napi-rs/canvas':
+        specifier: ^0.1.100
+        version: 0.1.100
       '@prisma/adapter-pg':
         specifier: ^7.7.0
         version: 7.8.0
@@ -5130,7 +5133,6 @@ snapshots:
       '@napi-rs/canvas-linux-x64-musl': 0.1.100
       '@napi-rs/canvas-win32-arm64-msvc': 0.1.100
       '@napi-rs/canvas-win32-x64-msvc': 0.1.100
-    optional: true
 
   '@napi-rs/canvas@0.1.80':
     optionalDependencies:
@@ -8052,7 +8054,7 @@ snapshots:
 
   pdfjs-dist@5.4.296:
     optionalDependencies:
-      '@napi-rs/canvas': 0.1.80
+      '@napi-rs/canvas': 0.1.100
 
   pdfjs-dist@5.4.624:
     optionalDependencies:
