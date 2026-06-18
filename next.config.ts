@@ -20,6 +20,7 @@ const ALLOWED_DEV_ORIGIN_HOSTS = [
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  serverExternalPackages: ["@napi-rs/canvas"],
   // Allow each dev:all instance to use its own .next dir (avoids multi-instance lock conflict)
   distDir: process.env.NEXT_DIST_DIR ?? ".next",
   allowedDevOrigins: [...ALLOWED_DEV_ORIGIN_HOSTS],
