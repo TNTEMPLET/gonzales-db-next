@@ -34,6 +34,12 @@ export async function visionReadPdfBuffer(buffer: ArrayBuffer): Promise<string> 
   if (apiKey) {
     headers.Authorization = `Bearer ${apiKey}`;
   }
+  const cfAccessClientId = process.env.BRACKET_PDF_VISION_CF_ACCESS_CLIENT_ID?.trim();
+  const cfAccessClientSecret = process.env.BRACKET_PDF_VISION_CF_ACCESS_CLIENT_SECRET?.trim();
+  if (cfAccessClientId && cfAccessClientSecret) {
+    headers["CF-Access-Client-Id"] = cfAccessClientId;
+    headers["CF-Access-Client-Secret"] = cfAccessClientSecret;
+  }
 
   const pages = await renderPdfPagesToPng(buffer, { maxPages: 1, scale: 2 });
   if (pages.length === 0) return "";
