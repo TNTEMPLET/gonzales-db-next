@@ -15,7 +15,7 @@ import {
 import ClassicTournamentInfoTable from "@/components/brackets/ClassicTournamentInfoTable";
 import styles from "@/components/brackets/TournamentBracketView.module.css";
 import { BRACKET_PODIUM_CHAMPION_TARGET_ATTR } from "@/lib/tournament-brackets/bracketConnectorPaths";
-import type { BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
+import type { BracketTournamentInfo, BracketVisualTuning } from "@/lib/tournament-brackets/bracketSpec";
 import type { ClassicDoubleElimChampionshipPodium, LayoutMatch } from "@/lib/tournament-brackets/bracketLayout";
 import type { ClassicSixTeamModifiedDeSlots } from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
 import type { ClassicGridPlacement } from "@/lib/tournament-brackets/classicDoubleElimGridPlacement";
@@ -25,11 +25,21 @@ import {
   classicSixTeamModifiedDeGridSlots,
 } from "@/lib/tournament-brackets/classicSixTeamModifiedDeGridPlacement";
 import type { BracketMatchScores } from "@/lib/tournament-brackets/bracketScoring";
+import {
+  hasVisualOffset,
+  visualTuningOffset,
+  type BracketVisualOffset,
+} from "@/lib/tournament-brackets/visualTuning";
 
 const GRID_ROW_TRACK = `repeat(${CLASSIC_6TEAM_DE_LANE_ROWS}, minmax(2.75rem, auto))`;
 const anchorY: BracketConnectorAnchor = "match";
 const grid = classicSixTeamModifiedDeGridSlots();
 const MATCH_ID_ATTR = "data-bracket-match-id";
+
+function visualOffsetStyle(offset: BracketVisualOffset): CSSProperties | undefined {
+  if (!hasVisualOffset(offset)) return undefined;
+  return { transform: `translate(${offset.xPx}px, ${offset.yPx}px)` };
+}
 
 type BracketScoringViewProps = {
   enabled: boolean;
@@ -55,6 +65,7 @@ type MatchRenderProps = {
 type Props = {
   slots: ClassicSixTeamModifiedDeSlots;
   tournamentInfo?: BracketTournamentInfo | null;
+  visualTuning?: BracketVisualTuning | null;
   championPodium?: ClassicDoubleElimChampionshipPodium | null;
   renderMatch: (props: MatchRenderProps & { match: LayoutMatch }) => ReactNode;
   scoring?: BracketScoringViewProps | null;
@@ -84,24 +95,36 @@ function fillerCell(key: string, { col, row, span, colSpan }: ClassicGridPlaceme
   );
 }
 
-function matchCell(key: string, { col, row, span }: ClassicGridPlacement, content: ReactNode, wrapClassName?: string): ReactNode {
+function matchCell(
+  key: string,
+  { col, row, span }: ClassicGridPlacement,
+  content: ReactNode,
+  wrapClassName?: string,
+  offset: BracketVisualOffset = { xPx: 0, yPx: 0 },
+): ReactNode {
   return (
     <div
       key={key}
       className={wrapClassName ? `${styles.gridMatchWrap} ${wrapClassName}` : styles.gridMatchWrap}
-      style={{ gridColumn: col, gridRow: `${row} / span ${span}` }}
+      style={{ gridColumn: col, gridRow: `${row} / span ${span}`, ...visualOffsetStyle(offset) }}
     >
       {content}
     </div>
   );
 }
 
-function connCell(key: string, { col, row, span }: ClassicGridPlacement, content: ReactNode, dataBracketConn?: string): ReactNode {
+function connCell(
+  key: string,
+  { col, row, span }: ClassicGridPlacement,
+  content: ReactNode,
+  dataBracketConn?: string,
+  offset: BracketVisualOffset = { xPx: 0, yPx: 0 },
+): ReactNode {
   return (
     <div
       key={key}
       className={styles.connectorCell}
-      style={{ gridColumn: col, gridRow: `${row} / span ${span}` }}
+      style={{ gridColumn: col, gridRow: `${row} / span ${span}`, ...visualOffsetStyle(offset) }}
       {...(dataBracketConn ? { "data-bracket-conn": dataBracketConn } : {})}
     >
       {content}
@@ -115,6 +138,7 @@ function ClassicGrandFinalCell({
   bottomMatchId,
   selfMatchId,
   alignToBracketMidline = false,
+  offset = { xPx: 0, yPx: 0 },
   children,
 }: {
   placement: ClassicGridPlacement;
@@ -122,6 +146,7 @@ function ClassicGrandFinalCell({
   bottomMatchId: string;
   selfMatchId: string;
   alignToBracketMidline?: boolean;
+  offset?: BracketVisualOffset;
   children: ReactNode;
 }) {
   const { col, row, span } = placement;
@@ -170,7 +195,13 @@ function ClassicGrandFinalCell({
       className={`${styles.gridMatchWrap} ${styles.classicDoubleElimGrandFinalWrap}`}
       style={{ gridColumn: col, gridRow: `${row} / span ${span}` }}
     >
-      <div className={styles.classicDoubleElimGrandFinalInner} style={topPx != null ? { top: topPx } : undefined}>
+      <div
+        className={styles.classicDoubleElimGrandFinalInner}
+        style={{
+          ...(topPx != null ? { top: topPx } : {}),
+          ...visualOffsetStyle(offset),
+        }}
+      >
         {children}
       </div>
     </div>
@@ -183,6 +214,7 @@ function ClassicAlignedToMatchCell({
   alignBetweenTopMatchId,
   alignBetweenBottomMatchId,
   alignToBracketMidline = false,
+  offset = { xPx: 0, yPx: 0 },
   children,
 }: {
   placement: ClassicGridPlacement;
@@ -192,6 +224,7 @@ function ClassicAlignedToMatchCell({
   alignBetweenTopMatchId?: string;
   alignBetweenBottomMatchId?: string;
   alignToBracketMidline?: boolean;
+  offset?: BracketVisualOffset;
   children: ReactNode;
 }) {
   const { col, row, span } = placement;
@@ -264,7 +297,13 @@ function ClassicAlignedToMatchCell({
       className={`${styles.gridMatchWrap} ${styles.classicDoubleElimChampionWrap}`}
       style={{ gridColumn: col, gridRow: `${row} / span ${span}` }}
     >
-      <div className={styles.classicDoubleElimGrandFinalInner} style={topPx != null ? { top: topPx } : undefined}>
+      <div
+        className={styles.classicDoubleElimGrandFinalInner}
+        style={{
+          ...(topPx != null ? { top: topPx } : {}),
+          ...visualOffsetStyle(offset),
+        }}
+      >
         {children}
       </div>
     </div>
@@ -301,6 +340,7 @@ function ClassicChampionPlaque({ heading, teamName }: { heading: string; teamNam
 export default function ClassicSixTeamModifiedDeDiagram({
   slots,
   tournamentInfo,
+  visualTuning,
   championPodium,
   renderMatch,
   scoring,
@@ -320,6 +360,9 @@ export default function ClassicSixTeamModifiedDeDiagram({
 
   const showChampionColumn = Boolean(championPodium);
   const showIfNecessaryGame = Boolean(championPodium?.showIfNecessaryDropLine && g11);
+  const gameOffset = (key: string) => visualTuningOffset(visualTuning, "games", key);
+  const connectorOffset = (key: string) => visualTuningOffset(visualTuning, "connectors", key);
+  const championConnectorOffset = connectorOffset("g10-champion");
   const matchProps = { scoring, liveGameStatuses, onMatchClick, gameChangerEnabled };
   const render = (match: LayoutMatch) => renderMatch({ match, ...matchProps });
 
@@ -357,21 +400,25 @@ export default function ClassicSixTeamModifiedDeDiagram({
       >
         {fillerCell("winners-top-pad", grid.winnersTopPad, styles.classicDoubleElimWinnersTopPad)}
         <ClassicTournamentInfoTable info={tournamentInfo} placement={tournamentInfoPlacement} />
-        {matchCell("g1", grid.g1, render(g1))}
-        {matchCell("g2", grid.g2, render(g2))}
+        {matchCell("g1", grid.g1, render(g1), undefined, gameOffset("G1"))}
+        {matchCell("g2", grid.g2, render(g2), undefined, gameOffset("G2"))}
 
         {connCell(
           "c-g1-g3",
           grid.connG1G3,
           <BracketConnectorCell variant="top" anchorY={anchorY} topMatchId={g1.id} targetMatchId={g3.id} />,
+          undefined,
+          connectorOffset("g1-g3"),
         )}
         {connCell(
           "c-g2-g4",
           grid.connG2G4,
           <BracketConnectorCell variant="top" anchorY={anchorY} topMatchId={g2.id} targetMatchId={g4.id} />,
+          undefined,
+          connectorOffset("g2-g4"),
         )}
-        {matchCell("g3", grid.g3, render(g3))}
-        {matchCell("g4", grid.g4, render(g4))}
+        {matchCell("g3", grid.g3, render(g3), undefined, gameOffset("G3"))}
+        {matchCell("g4", grid.g4, render(g4), undefined, gameOffset("G4"))}
 
         {connCell(
           "c-winners-g7",
@@ -383,13 +430,15 @@ export default function ClassicSixTeamModifiedDeDiagram({
             bottomMatchId={g4.id}
             targetMatchId={g7.id}
           />,
+          undefined,
+          connectorOffset("winners-g7"),
         )}
-        {matchCell("g7", grid.g7, render(g7))}
+        {matchCell("g7", grid.g7, render(g7), undefined, gameOffset("G7"))}
 
         {fillerCell("band-gap", bandGapPlacement, styles.classicDoubleElimBandGap)}
 
-        {matchCell("g5", grid.g5, render(g5))}
-        {matchCell("g6", grid.g6, render(g6))}
+        {matchCell("g5", grid.g5, render(g5), undefined, gameOffset("G5"))}
+        {matchCell("g6", grid.g6, render(g6), undefined, gameOffset("G6"))}
         {connCell(
           "c-losers-g8",
           grid.connLosersG8,
@@ -400,14 +449,18 @@ export default function ClassicSixTeamModifiedDeDiagram({
             bottomMatchId={g6.id}
             targetMatchId={g8.id}
           />,
+          undefined,
+          connectorOffset("losers-g8"),
         )}
-        {matchCell("g8", grid.g8, render(g8))}
+        {matchCell("g8", grid.g8, render(g8), undefined, gameOffset("G8"))}
         {connCell(
           "c-g8-g9",
           grid.connG8G9,
           <BracketConnectorCell variant="top" anchorY={anchorY} topMatchId={g8.id} targetMatchId={g9.id} />,
+          undefined,
+          connectorOffset("g8-g9"),
         )}
-        {matchCell("g9", grid.g9, render(g9))}
+        {matchCell("g9", grid.g9, render(g9), undefined, gameOffset("G9"))}
 
         {connCell(
           "c-finals-g10",
@@ -419,6 +472,8 @@ export default function ClassicSixTeamModifiedDeDiagram({
             bottomMatchId={g9.id}
             targetMatchId={g10.id}
           />,
+          undefined,
+          connectorOffset("finals-g10"),
         )}
 
         <ClassicGrandFinalCell
@@ -426,6 +481,7 @@ export default function ClassicSixTeamModifiedDeDiagram({
           topMatchId={g7.id}
           bottomMatchId={g9.id}
           selfMatchId={g10.id}
+          offset={gameOffset("G10")}
         >
           {render(g10)}
         </ClassicGrandFinalCell>
@@ -440,6 +496,7 @@ export default function ClassicSixTeamModifiedDeDiagram({
                   sourceMatchId={g10.id}
                   targetMatchId={CLASSIC_DE_CHAMPION_SLOT_MATCH_ID}
                   anchorY={anchorY}
+                  yOffsetPx={championConnectorOffset.yPx}
                 />
                 {championPodium.showIfNecessaryDropLine ? (
                   <BracketIfNecessaryDropConnector
@@ -447,10 +504,12 @@ export default function ClassicSixTeamModifiedDeDiagram({
                     targetMatchId={CLASSIC_DE_CHAMPION_SLOT_MATCH_ID}
                     ifNecessaryMatchId={g11?.id}
                     anchorY={anchorY}
+                    yOffsetPx={championConnectorOffset.yPx}
                   />
                 ) : null}
               </>,
               "g10-champion",
+              { xPx: championConnectorOffset.xPx, yPx: 0 },
             )}
             {showIfNecessaryGame && g11 ? (
               <ClassicIfNecessaryMatchCell
@@ -458,6 +517,7 @@ export default function ClassicSixTeamModifiedDeDiagram({
                 dropLineConnKey="g10-champion"
                 matchId={g11.id}
                 widthMatchId={g10.id}
+                offset={gameOffset("G11")}
               >
                 {render(g11)}
               </ClassicIfNecessaryMatchCell>
@@ -465,6 +525,7 @@ export default function ClassicSixTeamModifiedDeDiagram({
             <ClassicAlignedToMatchCell
               placement={grid.champion}
               alignToMatchId={g10.id}
+              offset={gameOffset("Champion")}
             >
               <ClassicChampionPlaque heading={championPodium.championHeading} teamName={championPodium.championTeamName} />
             </ClassicAlignedToMatchCell>

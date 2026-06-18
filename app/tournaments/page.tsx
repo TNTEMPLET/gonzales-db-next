@@ -4,7 +4,7 @@ import { connection } from "next/server";
 import PublishedTournamentTabs, { type PublishedTournamentTabBracket } from "@/components/brackets/PublishedTournamentTabs";
 import prisma from "@/lib/prisma";
 import { bracketGameChangerSchema, type BracketGameChanger } from "@/lib/gamechanger/types";
-import { safeParseBracketSpec, type BracketParkInfo, type BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
+import { safeParseBracketSpec, type BracketParkInfo, type BracketTournamentInfo, type BracketVisualTuning } from "@/lib/tournament-brackets/bracketSpec";
 import { resolveBracketThemeColors, type BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { sortPublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
@@ -30,6 +30,7 @@ type PublishedBracket = {
   layout: BracketLayout;
   parkInfo?: BracketParkInfo | null;
   tournamentInfo?: BracketTournamentInfo | null;
+  visualTuning?: BracketVisualTuning | null;
   themeColors: BracketThemeColors;
   logoWatermarkUrl: string;
   gameChanger?: BracketGameChanger | null;
@@ -96,6 +97,7 @@ export default async function TournamentsPage({
           layout: buildBracketLayout(parsed.spec),
           parkInfo: parsed.spec.parkInfo,
           tournamentInfo: parsed.spec.tournamentInfo,
+          visualTuning: parsed.spec.visualTuning,
           themeColors: resolveBracketThemeColors(parsed.spec, siteThemeDefaults),
           logoWatermarkUrl: bracketWatermarkSrc(
             parsed.spec.flyer?.logoUrl,
@@ -121,6 +123,7 @@ export default async function TournamentsPage({
     layout: bracket.layout,
     parkInfo: bracket.parkInfo,
     tournamentInfo: bracket.tournamentInfo,
+    visualTuning: bracket.visualTuning,
     themeColors: bracket.themeColors,
     logoWatermarkUrl: bracket.logoWatermarkUrl,
     gameChanger: bracket.gameChanger ?? null,

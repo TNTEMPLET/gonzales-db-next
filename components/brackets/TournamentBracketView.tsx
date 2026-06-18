@@ -15,7 +15,7 @@ import {
   matchCardGameInfoLines,
 } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
-import type { BracketParkInfo, BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
+import type { BracketParkInfo, BracketTournamentInfo, BracketVisualTuning } from "@/lib/tournament-brackets/bracketSpec";
 import { hasBracketTournamentInfo } from "@/lib/tournament-brackets/tournamentInfo";
 import type { BracketColorScheme, BracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import { bracketThemeCssVars } from "@/lib/tournament-brackets/bracketTheme";
@@ -71,6 +71,8 @@ type Props = {
   parkInfo?: BracketParkInfo | null;
   /** Official LL tournament header table (classic unified diagram). */
   tournamentInfo?: BracketTournamentInfo | null;
+  /** DB-backed visual tuning values for classic bracket diagrams. */
+  visualTuning?: BracketVisualTuning | null;
   /** Parent organization badge shown at the bottom-right of the bracket surface. */
   parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   scoring?: BracketScoringViewProps | null;
@@ -1308,6 +1310,7 @@ function DoubleEliminationBracketView({
   bracketTitle,
   parkInfo,
   tournamentInfo,
+  visualTuning,
   logoWatermarkUrl,
   parentOrganizationLogo,
   scoring,
@@ -1323,6 +1326,7 @@ function DoubleEliminationBracketView({
   bracketTitle: string;
   parkInfo?: BracketParkInfo | null;
   tournamentInfo?: BracketTournamentInfo | null;
+  visualTuning?: BracketVisualTuning | null;
   logoWatermarkUrl?: string | null;
   parentOrganizationLogo?: BracketParentOrganizationLogo | null;
   scoring?: BracketScoringViewProps | null;
@@ -1404,6 +1408,7 @@ function DoubleEliminationBracketView({
           <ClassicSixTeamModifiedDeDiagram
             slots={classicSixSlots}
             tournamentInfo={tournamentInfo}
+            visualTuning={visualTuning}
             championPodium={layout.classicChampionshipPodium ?? null}
             renderMatch={renderMatch}
             scoring={scoring}
@@ -1416,6 +1421,7 @@ function DoubleEliminationBracketView({
           <ClassicDoubleElimDiagram
             slots={classicFiveSlots}
             tournamentInfo={tournamentInfo}
+            visualTuning={visualTuning}
             championPodium={layout.classicChampionshipPodium ?? null}
             renderMatch={renderMatch}
             scoring={scoring}
@@ -1497,6 +1503,7 @@ export default function TournamentBracketView({
   parentOrganizationLogo,
   parkInfo,
   tournamentInfo,
+  visualTuning,
   scoring,
   liveGameStatuses,
   onMatchClick,
@@ -1574,6 +1581,7 @@ export default function TournamentBracketView({
         bracketTitle={bracketTitle}
         parkInfo={parkInfo}
         tournamentInfo={tournamentInfo}
+        visualTuning={visualTuning}
         logoWatermarkUrl={logoWatermarkUrl}
         parentOrganizationLogo={parentOrganizationLogo}
         scoring={scoring}

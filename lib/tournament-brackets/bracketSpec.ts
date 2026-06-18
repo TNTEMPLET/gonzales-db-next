@@ -45,6 +45,19 @@ export const bracketTournamentInfoSchema = z.object({
   nextLevel: z.string().max(200).optional(),
 });
 
+/** Pixel-level visual alignment overrides for classic bracket diagrams. */
+export const bracketVisualOffsetSchema = z.object({
+  xPx: z.number().min(-96).max(96).optional(),
+  yPx: z.number().min(-96).max(96).optional(),
+});
+
+export const bracketVisualTuningSchema = z.object({
+  /** @deprecated Use connectors.{g8-champion|g10-champion}.yPx. Kept for saved specs from the first tuning pass. */
+  championConnectorYOffsetPx: z.number().min(-24).max(24).optional(),
+  games: z.record(z.string(), bracketVisualOffsetSchema).optional(),
+  connectors: z.record(z.string(), bracketVisualOffsetSchema).optional(),
+});
+
 const bracketScoreSchema = z.number().int().min(0).max(99);
 
 const bracketMatchInputSchema = z.object({
@@ -187,6 +200,8 @@ export const bracketSpecSchema = z.object({
   parkInfo: bracketParkInfoSchema.optional(),
   /** Official LL tournament header table (classic unified diagram top-right inset). */
   tournamentInfo: bracketTournamentInfoSchema.optional(),
+  /** DB-backed visual tuning, inherited by new brackets for the same site/year. */
+  visualTuning: bracketVisualTuningSchema.optional(),
   ingestionWarnings: z.array(z.string()).default([]),
   referenceUrl: z.string().optional(),
   fetchedReferenceExcerpt: z.string().optional(),
@@ -247,6 +262,7 @@ export type FlyerOptions = z.infer<typeof flyerOptionsSchema>;
 export type BracketParkInfo = z.infer<typeof bracketParkInfoSchema>;
 export type BracketParkContact = z.infer<typeof bracketParkContactSchema>;
 export type BracketTournamentInfo = z.infer<typeof bracketTournamentInfoSchema>;
+export type BracketVisualTuning = z.infer<typeof bracketVisualTuningSchema>;
 
 export function defaultBracketSpec(): BracketSpec {
   const template = defaultOfficialTemplateForNewProject();
@@ -366,6 +382,25 @@ export function mergeBracketSpec(
         delete next.tournamentInfo;
       } else {
         next.tournamentInfo = cleaned;
+      }
+    }
+  }
+  if (Object.prototype.hasOwnProperty.call(partial, "visualTuning")) {
+    if (partial.visualTuning == null || typeof partial.visualTuning !== "object") {
+      delete next.visualTuning;
+    } else {
+      const parsed = bracketVisualTuningSchema.safeParse({
+        ...(current.visualTuning ?? {}),
+        ...(partial.visualTuning as Record<string, unknown>),
+      });
+      if (!parsed.success) {
+        const issues = formatBracketSpecZodIssues(parsed.error);
+        throw new Error(`Visual tuning invalid: ${issues}`);
+      }
+      if (Object.keys(parsed.data).length === 0) {
+        delete next.visualTuning;
+      } else {
+        next.visualTuning = parsed.data;
       }
     }
   }
