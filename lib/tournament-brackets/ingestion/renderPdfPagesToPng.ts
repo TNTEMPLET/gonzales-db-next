@@ -1,10 +1,16 @@
 /** Render PDF pages to PNG buffers for OCR / vision (Node server only). */
 async function installPdfDomPolyfills(): Promise<void> {
-  if (typeof globalThis.DOMMatrix !== "undefined") return;
+  if (
+    typeof globalThis.DOMMatrix !== "undefined" &&
+    typeof globalThis.ImageData !== "undefined" &&
+    typeof globalThis.Path2D !== "undefined"
+  ) {
+    return;
+  }
 
   const { DOMMatrix, ImageData, Path2D } = await import("@napi-rs/canvas");
   const globals = globalThis as Record<string, unknown>;
-  globals.DOMMatrix = DOMMatrix;
+  globals.DOMMatrix ??= DOMMatrix;
   globals.ImageData ??= ImageData;
   globals.Path2D ??= Path2D;
 }
