@@ -1,14 +1,10 @@
 import type { BracketRound, BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import {
-  classicFiveTeamParticipantSlots,
-} from "@/lib/tournament-brackets/doubleEliminationClassicLayoutTemplate";
-import {
   bracketFormatForChampionshipSeriesStyle,
   type ChampionshipSeriesStyle,
 } from "@/lib/tournament-brackets/bracketFormat";
 import {
   generateDoubleEliminationRoundsForFormat,
-  generateDoubleEliminationRoundsFromTeams,
 } from "@/lib/tournament-brackets/generateDoubleElimFromTeams";
 import {
   buildLittleLeagueSixTeamModifiedDeRounds,
@@ -46,15 +42,94 @@ export type OfficialTemplate = {
 
 const BOTH_STYLES: ChampionshipSeriesStyle[] = ["always_scheduled_reset", "winner_take_all"];
 
+export const GOVERNING_BODY_STUBS: { id: GoverningBodyId; label: string; implemented: boolean }[] = [
+  { id: "little_league", label: "Little League", implemented: true },
+  { id: "babe_ruth", label: "Babe Ruth", implemented: false },
+  { id: "cal_ripken", label: "Cal Ripken", implemented: false },
+];
+
+function schedulePatch(scheduleByGame: Map<number, PdfGameScheduleLine> | undefined, gameNumber: number) {
+  const schedule = scheduleByGame?.get(gameNumber);
+  if (!schedule) return {};
+  return {
+    ...(schedule.dateLabel ? { dateLabel: schedule.dateLabel } : {}),
+    ...(schedule.time ? { time: schedule.time } : {}),
+    ...(schedule.field ? { field: schedule.field } : {}),
+  };
+}
+
+function officialMatch(
+  section: "winners" | "losers" | "championship",
+  gameNumber: number,
+  home: string,
+  away: string,
+  scheduleByGame?: Map<number, PdfGameScheduleLine>,
+  championshipRole?: "grand_final" | "if_necessary",
+) {
+  return {
+    id: `official-${section}-g${gameNumber}-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Date.now()}`,
+    home,
+    away,
+    officialGameNumber: String(gameNumber),
+    ...(championshipRole ? { championshipRole } : {}),
+    ...schedulePatch(scheduleByGame, gameNumber),
+  };
+}
+
+function officialRound(
+  section: "winners" | "losers" | "championship",
+  idx: number,
+  label: string,
+  matches: ReturnType<typeof officialMatch>[],
+): BracketRound {
+  return {
+    id: `official-${section}-r${idx}-${typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID().slice(0, 8) : Date.now()}`,
+    label,
+    bracketSection: section,
+    matches,
+  };
+}
+
 function buildFiveTeamOfficialRounds(
   teams: string[],
   opts: OfficialTemplateBuildOptions,
 ): BracketRound[] {
-  const includeIfNecessary = opts.championshipSeriesStyle === "always_scheduled_reset";
-  return generateDoubleEliminationRoundsFromTeams(teams, {
-    participantSlots: classicFiveTeamParticipantSlots(teams),
-    includeIfNecessaryGame: includeIfNecessary,
-  });
+  const t = teams.map((s) => s.trim()).filter(Boolean);
+  if (t.length !== 5) {
+    throw new Error(`Official 5-team template requires exactly 5 teams (got ${t.length}).`);
+  }
+  const schedule = opts.scheduleByGame;
+  const championshipMatches = [
+    officialMatch("championship", 8, "W5", "W7", schedule, "grand_final"),
+  ];
+  if (opts.championshipSeriesStyle === "always_scheduled_reset") {
+    championshipMatches.push(
+      officialMatch("championship", 9, "W8", "L8", schedule, "if_necessary"),
+    );
+  }
+
+  return [
+    officialRound("winners", 0, "Winners Bracket — Round 1", [
+      officialMatch("winners", 1, t[0]!, t[1]!, schedule),
+      officialMatch("winners", 2, t[2]!, t[3]!, schedule),
+    ]),
+    officialRound("winners", 1, "Winners Bracket — Semifinals", [
+      officialMatch("winners", 3, "W1", t[4]!, schedule),
+    ]),
+    officialRound("losers", 0, "Losers Bracket", [
+      officialMatch("losers", 4, "L2", "L1", schedule),
+    ]),
+    officialRound("winners", 2, "Winners Bracket — Final", [
+      officialMatch("winners", 5, "W2", "W3", schedule),
+    ]),
+    officialRound("losers", 1, "Losers Bracket", [
+      officialMatch("losers", 6, "W4", "L3", schedule),
+    ]),
+    officialRound("losers", 2, "Losers Bracket — Final", [
+      officialMatch("losers", 7, "L5", "W6", schedule),
+    ]),
+    officialRound("championship", 0, "Championship Series", championshipMatches),
+  ];
 }
 
 function buildSixTeamOfficialRounds(
@@ -72,6 +147,52 @@ function buildSixTeamOfficialRounds(
     return buildLittleLeagueSixTeamModifiedDeRounds(trimmed, opts.scheduleByGame);
   }
   return buildLittleLeagueSixTeamStandardDeRounds(trimmed, opts.scheduleByGame);
+}
+
+function buildSevenTeamOfficialRounds(
+  teams: string[],
+  opts: OfficialTemplateBuildOptions,
+): BracketRound[] {
+  const t = teams.map((s) => s.trim()).filter(Boolean);
+  if (t.length !== 7) {
+    throw new Error(`Official 7-team template requires exactly 7 teams (got ${t.length}).`);
+  }
+  const schedule = opts.scheduleByGame;
+  const championshipMatches = [
+    officialMatch("championship", 12, "W8", "W11", schedule, "grand_final"),
+  ];
+  if (opts.championshipSeriesStyle === "always_scheduled_reset") {
+    championshipMatches.push(
+      officialMatch("championship", 13, "W12", "L12", schedule, "if_necessary"),
+    );
+  }
+
+  return [
+    officialRound("winners", 0, "Winners Bracket — Round 1", [
+      officialMatch("winners", 1, t[0]!, t[1]!, schedule),
+      officialMatch("winners", 2, t[2]!, t[3]!, schedule),
+      officialMatch("winners", 3, t[4]!, t[5]!, schedule),
+    ]),
+    officialRound("winners", 1, "Winners Bracket — Round 2", [
+      officialMatch("winners", 4, "W1", t[6]!, schedule),
+      officialMatch("winners", 5, "W2", "W3", schedule),
+    ]),
+    officialRound("winners", 2, "Winners Bracket — Final", [
+      officialMatch("winners", 8, "W4", "W5", schedule),
+    ]),
+    officialRound("losers", 0, "Losers Bracket — Round 1", [
+      officialMatch("losers", 6, "L2", "L3", schedule),
+      officialMatch("losers", 7, "L1", "W6", schedule),
+    ]),
+    officialRound("losers", 1, "Losers Bracket — Round 2", [
+      officialMatch("losers", 9, "L5", "W7", schedule),
+      officialMatch("losers", 10, "L4", "W9", schedule),
+    ]),
+    officialRound("losers", 2, "Losers Bracket — Final", [
+      officialMatch("losers", 11, "L8", "W10", schedule),
+    ]),
+    officialRound("championship", 0, "Championship", championshipMatches),
+  ];
 }
 
 function buildGenericOfficialRounds(
@@ -114,7 +235,7 @@ export const OFFICIAL_TEMPLATES: OfficialTemplate[] = [
     supportedChampionshipSeriesStyles: BOTH_STYLES,
     lockLayout: false,
     pdfTemplateId: "little_league_7_team_de",
-    buildRounds: buildGenericOfficialRounds,
+    buildRounds: buildSevenTeamOfficialRounds,
   },
   {
     id: "little_league_8_team_de",

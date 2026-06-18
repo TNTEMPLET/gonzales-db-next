@@ -2,13 +2,13 @@ import type { BracketRound } from "@/lib/tournament-brackets/bracketSpec";
 import { generateDoubleEliminationRoundsForFormat } from "@/lib/tournament-brackets/generateDoubleElimFromTeams";
 import { generateSingleEliminationRoundsFromTeams } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
 import {
-  bracketFormatForChampionshipSeriesStyle,
   type ChampionshipSeriesStyle,
   isDoubleEliminationFormat,
 } from "@/lib/tournament-brackets/bracketFormat";
 import {
   parsePdfGameFeederSlots,
   parsePdfGameSchedule,
+  type PdfGameScheduleLine,
   pdfFeedersMatchLittleLeagueSixTeamDe,
   inferSixTeamChampionshipSeriesStyleFromFeeders,
 } from "@/lib/tournament-brackets/ingestion/parsePdfGameRouting";
@@ -26,6 +26,14 @@ export type PdfRoundsBuildResult = {
   routingVerified: boolean;
   championshipSeriesStyle?: ChampionshipSeriesStyle;
 };
+
+function inferFiveTeamChampionshipSeriesStyleFromSchedule(
+  scheduleByGame: Map<number, PdfGameScheduleLine>,
+): ChampionshipSeriesStyle {
+  // LL visual PDFs may draw a dotted G9 reset placeholder. If G9 has no game info,
+  // the district is using a modified/winner-take-all championship.
+  return scheduleByGame.has(9) ? "always_scheduled_reset" : "winner_take_all";
+}
 
 /**
  * Phase 2: build structured `rounds` from a recognized PDF template plus extracted routing/schedule text.
@@ -47,6 +55,9 @@ export function buildRoundsFromPdfIngest(
     if (template.templateId === "little_league_6_team_de" && feederSlots.length > 0) {
       const inferred = inferSixTeamChampionshipSeriesStyleFromFeeders(feederSlots);
       if (inferred) style = inferred;
+    }
+    if (template.templateId === "little_league_5_team_de") {
+      style = inferFiveTeamChampionshipSeriesStyleFromSchedule(scheduleByGame);
     }
 
     const routingVerified =

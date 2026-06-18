@@ -6,6 +6,7 @@ import { includesIfNecessaryChampionshipGame } from "@/lib/tournament-brackets/b
 import {
   buildRoundsFromOfficialTemplate,
   defaultOfficialTemplateForNewProject,
+  GOVERNING_BODY_STUBS,
   getOfficialTemplate,
   specDefaultsFromOfficialTemplate,
 } from "@/lib/tournament-brackets/officialTemplates";
@@ -35,12 +36,14 @@ test("5-team modified DE omits if-necessary game", () => {
   const champ = rounds.flatMap((r) => r.matches).filter((m) => m.championshipRole);
   assert.equal(champ.some((m) => m.championshipRole === "if_necessary"), false);
   assert.equal(champ.some((m) => m.championshipRole === "grand_final"), true);
-  assert.equal(byGame.get("4")?.home, "L1");
-  assert.equal(byGame.get("4")?.away, "L2");
-  assert.equal(byGame.get("5")?.home, "W3");
-  assert.equal(byGame.get("5")?.away, "W2");
+  assert.equal(byGame.get("4")?.home, "L2");
+  assert.equal(byGame.get("4")?.away, "L1");
+  assert.equal(byGame.get("5")?.home, "W2");
+  assert.equal(byGame.get("5")?.away, "W3");
   assert.equal(byGame.get("6")?.home, "W4");
   assert.equal(byGame.get("6")?.away, "L3");
+  assert.equal(byGame.get("7")?.home, "L5");
+  assert.equal(byGame.get("7")?.away, "W6");
   assert.equal(byGame.get("8")?.home, "W5");
   assert.equal(byGame.get("8")?.away, "W7");
 });
@@ -97,4 +100,46 @@ test("championshipSeriesStyle overrides format for if-necessary", () => {
 test("defaultOfficialTemplateForNewProject is 6-team", () => {
   assert.equal(defaultOfficialTemplateForNewProject().id, "little_league_6_team_de");
   assert.equal(getOfficialTemplate("little_league_6_team_de")?.teamCount, 6);
+});
+
+test("registry exposes future governing-body stubs", () => {
+  assert.equal(GOVERNING_BODY_STUBS.some((body) => body.id === "babe_ruth" && !body.implemented), true);
+  assert.equal(GOVERNING_BODY_STUBS.some((body) => body.id === "cal_ripken" && !body.implemented), true);
+});
+
+test("7-team official LL builder uses fixed game numbers and style-specific reset", () => {
+  const teams = ["A", "B", "C", "D", "E", "F", "G"];
+  const standard = buildRoundsFromOfficialTemplate("little_league_7_team_de", teams, {
+    championshipSeriesStyle: "always_scheduled_reset",
+  });
+  const modified = buildRoundsFromOfficialTemplate("little_league_7_team_de", teams, {
+    championshipSeriesStyle: "winner_take_all",
+  });
+  const standardGames = new Map(
+    standard.flatMap((round) => round.matches).map((match) => [match.officialGameNumber, match]),
+  );
+  assert.equal(standardGames.get("4")?.home, "W1");
+  assert.equal(standardGames.get("4")?.away, "G");
+  assert.equal(standardGames.get("12")?.championshipRole, "grand_final");
+  assert.equal(standardGames.get("13")?.championshipRole, "if_necessary");
+  assert.equal(
+    modified.flatMap((round) => round.matches).some((match) => match.championshipRole === "if_necessary"),
+    false,
+  );
+});
+
+test("layoutPreference connected_columns opts out of classic unified layout", () => {
+  const teams = ["A", "B", "C", "D", "E"];
+  const rounds = buildRoundsFromOfficialTemplate("little_league_5_team_de", teams, {
+    championshipSeriesStyle: "always_scheduled_reset",
+  });
+  const layout = buildBracketLayout({
+    ...specDefaultsFromOfficialTemplate("little_league_5_team_de", "always_scheduled_reset"),
+    layoutPreference: "connected_columns",
+    teams,
+    rounds,
+  });
+  assert.equal(layout.mode, "double_elimination");
+  if (layout.mode !== "double_elimination") return;
+  assert.equal(layout.diagramStyle, "connected_columns");
 });

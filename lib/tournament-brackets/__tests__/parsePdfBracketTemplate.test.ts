@@ -71,6 +71,36 @@ Loser From Game #10`;
   assert.equal(match.bracketFormat, "modified_double_elimination");
 });
 
+test("parsePdfBracketTemplate treats unscheduled 5-team reset marker as modified", () => {
+  const minor9Text = `Division: Little League Minor 9
+Site(s): Butch Gore Park
+Top 2 teams advance to State. Modified Bracket
+5 Team Little League Bracket
+Winners' Bracket
+Game 1
+Loser to B
+Game 2
+Loser to A
+Game 3
+Loser to C
+Game 5
+Loser to D
+Losers' Bracket
+Game 4
+Game 6
+Game 7
+Game 8
+Loser to E (if 1st Loss)
+Game 9
+Champion`;
+  const match = parsePdfBracketTemplate(minor9Text);
+  assert.ok(match);
+  assert.equal(match.templateId, "little_league_5_team_de");
+  assert.equal(match.bracketFormat, "modified_double_elimination");
+  assert.equal(match.championshipSeriesStyle, "winner_take_all");
+  assert.deepEqual(match.placeholderTeams, ["A", "B", "C", "D", "E"]);
+});
+
 test("parsePdfBracketTemplate returns null for unrelated PDF text", () => {
   assert.equal(parsePdfBracketTemplate("Random tournament flyer"), null);
 });

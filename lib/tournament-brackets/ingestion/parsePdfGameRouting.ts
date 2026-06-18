@@ -69,6 +69,28 @@ export function parsePdfGameSchedule(text: string): Map<number, PdfGameScheduleL
     if (parsed) map.set(gameNumber, parsed);
   }
 
+  // Visual PDF text often appears as:
+  //   Game 4
+  //   Loser to B
+  //   6/28 12:30pm F1
+  // Keep scanning after each game label until the next game label.
+  const lines = text
+    .split(/\n/)
+    .map((line) => line.trim())
+    .filter(Boolean);
+  let currentGame: number | null = null;
+  for (const line of lines) {
+    const game = /^Game\s*#?\s*(\d+)\b/i.exec(line);
+    if (game) {
+      const n = Number.parseInt(game[1] ?? "", 10);
+      currentGame = Number.isFinite(n) ? n : null;
+      continue;
+    }
+    if (currentGame == null || map.has(currentGame)) continue;
+    const parsed = parseScheduleLine(line);
+    if (parsed) map.set(currentGame, parsed);
+  }
+
   return map;
 }
 

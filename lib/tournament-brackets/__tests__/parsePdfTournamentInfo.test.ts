@@ -41,6 +41,31 @@ North Park Complex
     assert.deepEqual(parsePdfTournamentInfo(text), { nextLevel: "State Tournament" });
   });
 
+  it("collects multiline visual PDF header fields", () => {
+    const text = `
+Division: Little League Minor 9
+Site(s): Butch Gore Park
+14450 Harry Savoy Road St. Amant, LA 70774
+Update Phone: (225) 223-9470 Wayne Grenfell
+Tournament Director: Wayne Grenfell/Frank Renaudin
+Next Level: Little League State Tourney July 17-23
+St. Julien Park, 701 Nazare Rd. Broussard, LA 70518
+Top 2 teams advance to State. Modified Bracket
+5 Team Little League Bracket
+Winners' Bracket
+Game 1
+`.trim();
+
+    assert.deepEqual(parsePdfTournamentInfo(text), {
+      division: "Little League Minor 9",
+      sites: "Butch Gore Park\n14450 Harry Savoy Road St. Amant, LA 70774",
+      updatePhone: "(225) 223-9470",
+      tournamentDirector: "Wayne Grenfell/Frank Renaudin",
+      nextLevel:
+        "Little League State Tourney July 17-23\nSt. Julien Park, 701 Nazare Rd. Broussard, LA 70518\nTop 2 teams advance to State. Modified Bracket",
+    });
+  });
+
   it("returns undefined when no fields are present", () => {
     assert.equal(parsePdfTournamentInfo("Winners bracket\nGame 1"), undefined);
   });

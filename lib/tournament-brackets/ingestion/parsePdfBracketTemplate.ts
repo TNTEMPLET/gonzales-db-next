@@ -17,8 +17,8 @@ const LITTLE_LEAGUE_BRACKET_RE =
 /** DocHub / LL bracket PDFs embed game ids like `6T-G11-Champion`. */
 const GOVERNING_BODY_GAME_ID_RE = /\b(\d{1,2})T-G\d+/i;
 
-const DIVISION_LINE_RE = /^Division:\s*(.+)$/im;
-const SITE_LINE_RE = /^Site\(s\):\s*(.+)$/im;
+const DIVISION_LINE_RE = /^Division:[^\S\r\n]*(.+)$/im;
+const SITE_LINE_RE = /^Site\(s\):[^\S\r\n]*(.+)$/im;
 
 function inferTeamCount(text: string): number | null {
   const titleMatch = LITTLE_LEAGUE_BRACKET_RE.exec(text);
@@ -34,7 +34,13 @@ function inferTeamCount(text: string): number | null {
   return null;
 }
 
-function inferBracketFormat(text: string): {
+function hasStandardResetGameMarker(text: string, teamCount: number): boolean {
+  void teamCount;
+  if (/\bif\s+necessary\b/i.test(text)) return true;
+  return false;
+}
+
+function inferBracketFormat(text: string, teamCount: number): {
   bracketFormat: BracketSpec["bracketFormat"];
   championshipSeriesStyle?: BracketSpec["championshipSeriesStyle"];
 } {
@@ -47,7 +53,7 @@ function inferBracketFormat(text: string): {
     /\bloser\s+to\s+[A-F]\b/i.test(text);
 
   if ((hasWinners && hasLosers) || hasDoubleElimLabel || hasLoserRouting) {
-    if (hasChampion && /\bif\s+necessary\b/i.test(text)) {
+    if (hasChampion && hasStandardResetGameMarker(text, teamCount)) {
       return {
         bracketFormat: "double_elimination",
         championshipSeriesStyle: "always_scheduled_reset",
@@ -82,7 +88,7 @@ export function parsePdfBracketTemplate(text: string): PdfBracketTemplateMatch |
   const hasGameIds = GOVERNING_BODY_GAME_ID_RE.test(trimmed);
   if (!hasTitle && !hasGameIds) return null;
 
-  const { bracketFormat, championshipSeriesStyle } = inferBracketFormat(trimmed);
+  const { bracketFormat, championshipSeriesStyle } = inferBracketFormat(trimmed, teamCount);
 
   const divisionFromLine = DIVISION_LINE_RE.exec(trimmed)?.[1]?.trim();
   const siteFromLine = SITE_LINE_RE.exec(trimmed)?.[1]?.trim();

@@ -8,6 +8,12 @@ import {
   type BracketTournamentInfo,
   type BracketVisualTuning,
 } from "@/lib/tournament-brackets/bracketSpec";
+import {
+  getOfficialTemplate,
+  specDefaultsFromOfficialTemplate,
+  type OfficialTemplateId,
+} from "@/lib/tournament-brackets/officialTemplates";
+import type { ChampionshipSeriesStyle } from "@/lib/tournament-brackets/bracketFormat";
 import prisma from "@/lib/prisma";
 import { isBracketOrgId, type BracketOrgId } from "@/lib/siteConfig";
 
@@ -110,6 +116,8 @@ export async function POST(request: NextRequest) {
       seasonYear?: number;
       name?: string;
       priority?: number;
+      officialTemplateId?: string;
+      championshipSeriesStyle?: ChampionshipSeriesStyle;
     };
     try {
       body = (await request.json()) as typeof body;
@@ -134,7 +142,34 @@ export async function POST(request: NextRequest) {
         ? Math.trunc(body.priority)
         : 0;
 
+    const requestedTemplateId = body.officialTemplateId?.trim();
+    const requestedTemplate = requestedTemplateId ? getOfficialTemplate(requestedTemplateId) : undefined;
+    const requestedChampionshipStyle =
+      body.championshipSeriesStyle === "always_scheduled_reset" ||
+      body.championshipSeriesStyle === "winner_take_all"
+        ? body.championshipSeriesStyle
+        : undefined;
+    if (body.championshipSeriesStyle && !requestedChampionshipStyle) {
+      return NextResponse.json(
+        { error: "championshipSeriesStyle must be always_scheduled_reset or winner_take_all" },
+        { status: 400 },
+      );
+    }
     const spec = defaultBracketSpec();
+    if (requestedTemplate) {
+      Object.assign(
+        spec,
+        specDefaultsFromOfficialTemplate(
+          requestedTemplate.id as OfficialTemplateId,
+          requestedChampionshipStyle,
+        ),
+      );
+    } else if (requestedTemplateId) {
+      return NextResponse.json(
+        { error: `Unknown officialTemplateId: ${requestedTemplateId}` },
+        { status: 400 },
+      );
+    }
     const defaults = await findRecentTournamentInfoDefaults(organizationId, seasonYear);
     if (defaults.tournamentInfo) {
       spec.tournamentInfo = {

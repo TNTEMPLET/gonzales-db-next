@@ -3,6 +3,7 @@ import { bracketFormatForChampionshipSeriesStyle, type ChampionshipSeriesStyle }
 import { extractPdfTextForIngest } from "@/lib/tournament-brackets/ingestion/extractPdfTextForIngest";
 import { buildRoundsFromPdfIngest } from "@/lib/tournament-brackets/ingestion/buildRoundsFromPdfIngest";
 import { parsePdfBracketTemplate } from "@/lib/tournament-brackets/ingestion/parsePdfBracketTemplate";
+import { extractVisualPdfTeams } from "@/lib/tournament-brackets/ingestion/parsePdfVisualBracketInfo";
 import type { IngestionResult } from "@/lib/tournament-brackets/ingestion/types";
 import { parsePdfTournamentInfo } from "@/lib/tournament-brackets/ingestion/parsePdfTournamentInfo";
 import { resolveOfficialTemplateByPdfId } from "@/lib/tournament-brackets/officialTemplates";
@@ -75,10 +76,12 @@ export async function ingestPdfBracket(
 ): Promise<IngestionResult> {
   const warnings: string[] = [];
   let rawText = "";
+  let visualText = "";
   let extractionSource: string | undefined;
   try {
     const extracted = await extractPdfTextForIngest(buffer, { mode: opts?.visualReaderMode });
     rawText = extracted.text;
+    visualText = extracted.visionText?.trim() || extracted.ocrText?.trim() || rawText;
     extractionSource = extracted.source;
     warnings.push(...extracted.warnings);
     if (extracted.source !== "embedded" && extracted.source !== "heuristic") {
@@ -104,26 +107,40 @@ export async function ingestPdfBracket(
     return { warnings, games: [], rawText };
   }
 
-  const roundsResult = buildRoundsFromPdfIngest(template, rawText);
+  const visualTeams = extractVisualPdfTeams(visualText, template);
+  const effectiveTemplate = visualTeams
+    ? { ...template, placeholderTeams: visualTeams }
+    : template;
+  if (visualTeams) {
+    warnings.push(
+      `Read ${visualTeams.length} team name${visualTeams.length === 1 ? "" : "s"} from the PDF bracket: ${visualTeams.join(", ")}.`,
+    );
+  }
+
+  const roundsResult = buildRoundsFromPdfIngest(effectiveTemplate, rawText);
   warnings.push(...roundsResult.warnings);
 
-  const specPatch = buildPdfWizardSpecPatch(template, {
+  const specPatch = buildPdfWizardSpecPatch(effectiveTemplate, {
     rounds: roundsResult.rounds,
     gamesBuilt: roundsResult.gamesBuilt,
     scheduleLinesApplied: roundsResult.scheduleLinesApplied,
     routingVerified: roundsResult.routingVerified,
     championshipSeriesStyle: roundsResult.championshipSeriesStyle,
     textExtractionSource: extractionSource,
-    rawText,
+    rawText: visualText,
   });
 
   if (roundsResult.gamesBuilt > 0) {
     warnings.unshift(
-      `Detected "${template.templateLabel}" and built ${roundsResult.gamesBuilt} games from PDF routing. Replace placeholder teams (A–${template.placeholderTeams.at(-1)}) in Team name mapping or guided setup, then save scores as games are played.`,
+      visualTeams
+        ? `Detected "${template.templateLabel}" and built ${roundsResult.gamesBuilt} games using team names read from the PDF.`
+        : `Detected "${template.templateLabel}" and built ${roundsResult.gamesBuilt} games from PDF routing. Replace placeholder teams (A–${template.placeholderTeams.at(-1)}) in Team name mapping or guided setup, then save scores as games are played.`,
     );
   } else {
     warnings.push(
-      `Detected "${template.templateLabel}" (${template.bracketFormat.replace(/_/g, " ")}). Guided setup was pre-filled with ${template.teamCount} placeholder teams — replace A–${template.placeholderTeams.at(-1)} with real team names, then build the bracket.`,
+      visualTeams
+        ? `Detected "${template.templateLabel}" (${template.bracketFormat.replace(/_/g, " ")}). Guided setup was pre-filled with team names read from the PDF.`
+        : `Detected "${template.templateLabel}" (${template.bracketFormat.replace(/_/g, " ")}). Guided setup was pre-filled with ${template.teamCount} placeholder teams — replace A–${template.placeholderTeams.at(-1)} with real team names, then build the bracket.`,
     );
   }
 
@@ -131,7 +148,7 @@ export async function ingestPdfBracket(
     warnings,
     games: [],
     rawText,
-    pdfTemplate: template,
+    pdfTemplate: effectiveTemplate,
     specPatch,
     roundsBuilt: roundsResult.gamesBuilt,
   };
