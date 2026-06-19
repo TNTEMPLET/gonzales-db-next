@@ -12,6 +12,14 @@ type LinkBody = {
   teams?: Array<{ teamName: string; ageGroup?: string | null }>;
 };
 
+function routeError(err: unknown, fallback: string) {
+  const message = err instanceof Error ? err.message : String(err || fallback);
+  const hint = /TournamentRoster|does not exist|table.*not found|Unknown model/i.test(message)
+    ? "Roster intake database tables are missing. Apply the Prisma schema to the connected database."
+    : undefined;
+  return NextResponse.json({ error: message || fallback, hint }, { status: 500 });
+}
+
 function publicUrl(request: NextRequest, token: string) {
   return `${request.nextUrl.origin}/tournament-rosters/${encodeURIComponent(token)}`;
 }
@@ -36,89 +44,96 @@ function linkSelect() {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureTournamentBracketsMaster(request);
-  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  const organizationId = request.nextUrl.searchParams.get("organizationId");
-  if (!isBracketOrgId(organizationId)) return NextResponse.json({ error: "organizationId is required" }, { status: 400 });
-  const seasonYear = Number.parseInt(request.nextUrl.searchParams.get("seasonYear") ?? "", 10);
-  if (!Number.isFinite(seasonYear)) return NextResponse.json({ error: "seasonYear is required" }, { status: 400 });
-  const bracketProjectId = request.nextUrl.searchParams.get("bracketProjectId")?.trim() || null;
-  const links = await prisma.tournamentRosterIntakeLink.findMany({
-    where: { organizationId, seasonYear, bracketProjectId },
-    orderBy: [{ teamName: "asc" }],
-    select: linkSelect(),
-  });
-  return NextResponse.json({ data: links });
+  try {
+    const auth = await ensureTournamentBracketsMaster(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+    const organizationId = request.nextUrl.searchParams.get("organizationId");
+    if (!isBracketOrgId(organizationId)) return NextResponse.json({ error: "organizationId is required" }, { status: 400 });
+    const seasonYear = Number.parseInt(request.nextUrl.searchParams.get("seasonYear") ?? "", 10);
+    if (!Number.isFinite(seasonYear)) return NextResponse.json({ error: "seasonYear is required" }, { status: 400 });
+    const bracketProjectId = request.nextUrl.searchParams.get("bracketProjectId")?.trim() || null;
+    const links = await prisma.tournamentRosterIntakeLink.findMany({
+      where: { organizationId, seasonYear, bracketProjectId },
+      orderBy: [{ teamName: "asc" }],
+      select: linkSelect(),
+    });
+    return NextResponse.json({ data: links });
+  } catch (err: unknown) {
+    return routeError(err, "Failed to load roster links");
+  }
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await ensureTournamentBracketsMaster(request);
-  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  const body = (await request.json()) as LinkBody;
-  if (!isBracketOrgId(body.organizationId)) return NextResponse.json({ error: "organizationId is required" }, { status: 400 });
-  const seasonYear = Number.isFinite(body.seasonYear) ? Math.trunc(body.seasonYear!) : null;
-  if (!seasonYear) return NextResponse.json({ error: "seasonYear is required" }, { status: 400 });
-  const bracketProjectId = body.bracketProjectId?.trim() || null;
-  const teams = (body.teams ?? [])
-    .map((team) => ({ teamName: team.teamName.trim(), ageGroup: team.ageGroup?.trim() || null }))
-    .filter((team) => team.teamName);
-  if (!teams.length) return NextResponse.json({ error: "At least one team is required" }, { status: 400 });
+  try {
+    const auth = await ensureTournamentBracketsMaster(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+    const body = (await request.json()) as LinkBody;
+    if (!isBracketOrgId(body.organizationId)) return NextResponse.json({ error: "organizationId is required" }, { status: 400 });
+    const seasonYear = Number.isFinite(body.seasonYear) ? Math.trunc(body.seasonYear!) : null;
+    if (!seasonYear) return NextResponse.json({ error: "seasonYear is required" }, { status: 400 });
+    const bracketProjectId = body.bracketProjectId?.trim() || null;
+    const teams = (body.teams ?? [])
+      .map((team) => ({ teamName: team.teamName.trim(), ageGroup: team.ageGroup?.trim() || null }))
+      .filter((team) => team.teamName);
+    if (!teams.length) return NextResponse.json({ error: "At least one team is required" }, { status: 400 });
 
-  const created: Array<{ linkId: string; teamName: string; publicUrl: string }> = [];
-  for (const team of teams) {
-    const existing = await prisma.tournamentRosterIntakeLink.findFirst({
-      where: {
-        organizationId: body.organizationId,
-        seasonYear,
-        bracketProjectId,
-        teamName: team.teamName,
-      },
+    const created: Array<{ linkId: string; teamName: string; publicUrl: string }> = [];
+    for (const team of teams) {
+      const existing = await prisma.tournamentRosterIntakeLink.findFirst({
+        where: { organizationId: body.organizationId, seasonYear, bracketProjectId, teamName: team.teamName },
+      });
+      if (existing) continue;
+      const token = createRosterIntakeToken();
+      const link = await prisma.tournamentRosterIntakeLink.create({
+        data: {
+          organizationId: body.organizationId,
+          seasonYear,
+          bracketProjectId,
+          teamName: team.teamName,
+          ageGroup: team.ageGroup,
+          tokenHash: rosterTokenHash(token),
+          createdByAdminId: auth.adminUserId,
+        },
+      });
+      created.push({ linkId: link.id, teamName: link.teamName, publicUrl: publicUrl(request, token) });
+    }
+
+    const links = await prisma.tournamentRosterIntakeLink.findMany({
+      where: { organizationId: body.organizationId, seasonYear, bracketProjectId },
+      orderBy: [{ teamName: "asc" }],
+      select: linkSelect(),
     });
-    if (existing) continue;
-    const token = createRosterIntakeToken();
-    const link = await prisma.tournamentRosterIntakeLink.create({
-      data: {
-        organizationId: body.organizationId,
-        seasonYear,
-        bracketProjectId,
-        teamName: team.teamName,
-        ageGroup: team.ageGroup,
-        tokenHash: rosterTokenHash(token),
-        createdByAdminId: auth.adminUserId,
-      },
-    });
-    created.push({ linkId: link.id, teamName: link.teamName, publicUrl: publicUrl(request, token) });
+    return NextResponse.json({ data: { links, created } });
+  } catch (err: unknown) {
+    return routeError(err, "Failed to create roster links");
   }
-
-  const links = await prisma.tournamentRosterIntakeLink.findMany({
-    where: { organizationId: body.organizationId, seasonYear, bracketProjectId },
-    orderBy: [{ teamName: "asc" }],
-    select: linkSelect(),
-  });
-  return NextResponse.json({ data: { links, created } });
 }
 
 export async function PATCH(request: NextRequest) {
-  const auth = await ensureTournamentBracketsMaster(request);
-  if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
-  const body = (await request.json()) as { linkId?: string; action?: "regenerate" | "disable" | "enable" };
-  if (!body.linkId) return NextResponse.json({ error: "linkId is required" }, { status: 400 });
-  const existing = await prisma.tournamentRosterIntakeLink.findUnique({ where: { id: body.linkId } });
-  if (!existing) return NextResponse.json({ error: "Link not found" }, { status: 404 });
-  if (body.action === "regenerate") {
-    const token = createRosterIntakeToken();
+  try {
+    const auth = await ensureTournamentBracketsMaster(request);
+    if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+    const body = (await request.json()) as { linkId?: string; action?: "regenerate" | "disable" | "enable" };
+    if (!body.linkId) return NextResponse.json({ error: "linkId is required" }, { status: 400 });
+    const existing = await prisma.tournamentRosterIntakeLink.findUnique({ where: { id: body.linkId } });
+    if (!existing) return NextResponse.json({ error: "Link not found" }, { status: 404 });
+    if (body.action === "regenerate") {
+      const token = createRosterIntakeToken();
+      const link = await prisma.tournamentRosterIntakeLink.update({
+        where: { id: existing.id },
+        data: { tokenHash: rosterTokenHash(token), status: "ACTIVE", disabledAt: null },
+        select: linkSelect(),
+      });
+      return NextResponse.json({ data: { link, publicUrl: publicUrl(request, token) } });
+    }
+    const status = body.action === "enable" ? "ACTIVE" : "DISABLED";
     const link = await prisma.tournamentRosterIntakeLink.update({
       where: { id: existing.id },
-      data: { tokenHash: rosterTokenHash(token), status: "ACTIVE", disabledAt: null },
+      data: { status, disabledAt: status === "DISABLED" ? new Date() : null },
       select: linkSelect(),
     });
-    return NextResponse.json({ data: { link, publicUrl: publicUrl(request, token) } });
+    return NextResponse.json({ data: { link } });
+  } catch (err: unknown) {
+    return routeError(err, "Failed to update roster link");
   }
-  const status = body.action === "enable" ? "ACTIVE" : "DISABLED";
-  const link = await prisma.tournamentRosterIntakeLink.update({
-    where: { id: existing.id },
-    data: { status, disabledAt: status === "DISABLED" ? new Date() : null },
-    select: linkSelect(),
-  });
-  return NextResponse.json({ data: { link } });
 }
