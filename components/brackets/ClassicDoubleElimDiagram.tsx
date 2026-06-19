@@ -470,9 +470,12 @@ export default function ClassicDoubleElimDiagram({
   const g8 = slots.grandFinal;
   const g9 = slots.ifNecessary;
   const championshipSeries = slots.championshipSeries ?? [];
-  const championshipSeriesTarget = championshipSeries[0] ?? null;
+  const championshipSeriesTarget = championshipSeries[1] ?? championshipSeries[0] ?? null;
   const finalTarget = g8 ?? championshipSeriesTarget;
-  const losersFinalPlacement = g6 ? grid.g7 : grid.g6;
+  const isThreeGameChampionshipSeries = championshipSeries.length > 0;
+  const losersRound1Placement = isThreeGameChampionshipSeries ? grid.g6 : grid.g5;
+  const losersFinalPlacement = isThreeGameChampionshipSeries ? grid.g7 : g6 ? grid.g7 : grid.g6;
+  const losersConnectorPlacement = isThreeGameChampionshipSeries ? grid.connG6G7 : grid.connG5G6;
 
   const showChampionColumn = Boolean(championPodium && !championshipSeriesTarget && g8);
   const showIfNecessaryGame = Boolean(championPodium?.showIfNecessaryDropLine && g9);
@@ -552,10 +555,10 @@ export default function ClassicDoubleElimDiagram({
 
         {fillerCell("band-gap", bandGapPlacement, styles.classicDoubleElimBandGap)}
 
-        {matchCell("g5", grid.g5, render(g5), undefined, gameOffset("G5"))}
+        {matchCell("g5", losersRound1Placement, render(g5), undefined, gameOffset("G5"))}
         {connCell(
           "c-g5-g6",
-          grid.connG5G6,
+          losersConnectorPlacement,
           <BracketConnectorCell
             variant="top"
             anchorY={anchorY}
