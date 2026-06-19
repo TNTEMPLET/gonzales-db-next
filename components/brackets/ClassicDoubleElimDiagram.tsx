@@ -285,6 +285,7 @@ function ClassicGrandFinalCell({
 }) {
   const { col, row, span } = placement;
   const wrapRef = useRef<HTMLDivElement>(null);
+  const innerRef = useRef<HTMLDivElement>(null);
   const [topPx, setTopPx] = useState<number | null>(null);
 
   useLayoutEffect(() => {
@@ -297,16 +298,19 @@ function ClassicGrandFinalCell({
       const topMatch = gridEl.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(topMatchId)}"]`);
       const bottomMatch = gridEl.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(bottomMatchId)}"]`);
       const selfMatch = gridEl.querySelector(`article[${MATCH_ID_ATTR}="${CSS.escape(selfMatchId)}"]`);
-      if (!topMatch || !bottomMatch || !selfMatch) return;
+      const inner = innerRef.current;
+      if (!topMatch || !bottomMatch || !selfMatch || !inner) return;
 
       const wrapRect = wrap.getBoundingClientRect();
       const targetCenter = alignToBracketMidline
         ? (wrapRect.top + wrapRect.bottom) / 2
         : (matchCenterY(topMatch) + matchCenterY(bottomMatch)) / 2;
-      const selfHeight = selfMatch.getBoundingClientRect().height;
-      if (selfHeight <= 0) return;
+      const innerRect = inner.getBoundingClientRect();
+      const selfRect = selfMatch.getBoundingClientRect();
+      const selfCenterWithinInner = (selfRect.top + selfRect.bottom) / 2 - innerRect.top;
+      if (selfRect.height <= 0) return;
 
-      setTopPx(targetCenter - wrapRect.top - selfHeight / 2);
+      setTopPx(targetCenter - wrapRect.top - selfCenterWithinInner);
     };
 
     measure();
@@ -334,6 +338,7 @@ function ClassicGrandFinalCell({
       style={{ gridColumn: col, gridRow: `${row} / span ${span}` }}
     >
       <div
+        ref={innerRef}
         className={styles.classicDoubleElimGrandFinalInner}
         style={{
           ...(topPx != null ? { top: topPx } : {}),
