@@ -469,8 +469,12 @@ export default function ClassicDoubleElimDiagram({
   const g7 = slots.losersFinal;
   const g8 = slots.grandFinal;
   const g9 = slots.ifNecessary;
+  const championshipSeries = slots.championshipSeries ?? [];
+  const championshipSeriesTarget = championshipSeries[0] ?? null;
+  const finalTarget = g8 ?? championshipSeriesTarget;
+  const losersFinalPlacement = g6 ? grid.g7 : grid.g6;
 
-  const showChampionColumn = Boolean(championPodium);
+  const showChampionColumn = Boolean(championPodium && !championshipSeriesTarget && g8);
   const showIfNecessaryGame = Boolean(championPodium?.showIfNecessaryDropLine && g9);
   const gameOffset = (key: string) => visualTuningOffset(visualTuning, "games", key);
   const connectorOffset = (key: string) => visualTuningOffset(visualTuning, "connectors", key);
@@ -556,51 +560,74 @@ export default function ClassicDoubleElimDiagram({
             variant="top"
             anchorY={anchorY}
             topMatchId={g5.id}
-            targetMatchId={g6.id}
+            targetMatchId={(g6 ?? g7).id}
           />,
           undefined,
           connectorOffset("g5-g6"),
         )}
-        {matchCell("g6", grid.g6, render(g6), undefined, gameOffset("G6"))}
-        {connCell(
-          "c-g6-g7",
-          grid.connG6G7,
-          <BracketConnectorCell
-            variant="top"
-            anchorY={anchorY}
-            topMatchId={g6.id}
-            targetMatchId={g7.id}
-          />,
-          undefined,
-          connectorOffset("g6-g7"),
-        )}
-        {matchCell("g7", grid.g7, render(g7), undefined, gameOffset("G7"))}
+        {g6 ? (
+          <>
+            {matchCell("g6", grid.g6, render(g6), undefined, gameOffset("G6"))}
+            {connCell(
+              "c-g6-g7",
+              grid.connG6G7,
+              <BracketConnectorCell
+                variant="top"
+                anchorY={anchorY}
+                topMatchId={g6.id}
+                targetMatchId={g7.id}
+              />,
+              undefined,
+              connectorOffset("g6-g7"),
+            )}
+          </>
+        ) : null}
+        {matchCell("g7", losersFinalPlacement, render(g7), undefined, gameOffset("G7"))}
 
-        {connCell(
-          "c-finals-g8",
-          grid.connFinalsG8,
-          <BracketConnectorCell
-            variant="both"
-            anchorY={anchorY}
+        {finalTarget
+          ? connCell(
+              "c-finals-g8",
+              grid.connFinalsG8,
+              <BracketConnectorCell
+                variant="both"
+                anchorY={anchorY}
+                topMatchId={g4.id}
+                bottomMatchId={g7.id}
+                targetMatchId={finalTarget.id}
+              />,
+              undefined,
+              connectorOffset("finals-g8"),
+            )
+          : null}
+
+        {g8 ? (
+          <ClassicGrandFinalCell
+            placement={grid.g8}
             topMatchId={g4.id}
             bottomMatchId={g7.id}
-            targetMatchId={g8.id}
-          />,
-          undefined,
-          connectorOffset("finals-g8"),
-        )}
+            selfMatchId={g8.id}
+            offset={gameOffset("G8")}
+          >
+            {render(g8)}
+          </ClassicGrandFinalCell>
+        ) : championshipSeriesTarget ? (
+          <ClassicGrandFinalCell
+            placement={grid.g8}
+            topMatchId={g4.id}
+            bottomMatchId={g7.id}
+            selfMatchId={championshipSeriesTarget.id}
+            offset={gameOffset("G8")}
+          >
+            <div className={styles.classicDoubleElimChampionshipSeriesStack}>
+              <p className={styles.classicDoubleElimChampionshipSeriesLabel}>Championship Series</p>
+              {championshipSeries.map((match) => (
+                <div key={match.id}>{render(match)}</div>
+              ))}
+            </div>
+          </ClassicGrandFinalCell>
+        ) : null}
 
-        <ClassicGrandFinalCell
-          placement={grid.g8}
-          topMatchId={g4.id}
-          bottomMatchId={g7.id}
-          selfMatchId={g8.id}
-          offset={gameOffset("G8")}
-        >
-          {render(g8)}
-        </ClassicGrandFinalCell>
-
-        {showChampionColumn && championPodium ? (
+        {showChampionColumn && championPodium && g8 ? (
           <>
             {connCell(
               "c-g8-champion",

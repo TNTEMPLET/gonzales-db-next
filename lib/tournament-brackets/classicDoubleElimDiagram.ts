@@ -19,10 +19,11 @@ export type ClassicDoubleElimSlots = {
   winnersSemi: LayoutMatch;
   winnersFinal: LayoutMatch;
   losersRound1: LayoutMatch;
-  losersCrossover: LayoutMatch;
+  losersCrossover?: LayoutMatch | null;
   losersFinal: LayoutMatch;
-  grandFinal: LayoutMatch;
+  grandFinal?: LayoutMatch | null;
   ifNecessary?: LayoutMatch | null;
+  championshipSeries?: LayoutMatch[];
 };
 
 export function isFeederSlotLabel(label: string): boolean {
@@ -49,6 +50,27 @@ export function resolveClassicDoubleElimSlots(
   const g6 = matchesByGame.get("6");
   const g7 = matchesByGame.get("7");
   const g8 = matchesByGame.get("8");
+  const g9 = matchesByGame.get("9");
+
+  if (g1 && g2 && g3 && g4 && g5 && g6 && g7 && g8 && g9) {
+    const championshipSeries = [g7, g8, g9];
+    const isThreeGameChampionshipSeries = championshipSeries.every(
+      (m) => !m.championshipRole && m.home.trim() === "W6" && m.away.trim() === "W5",
+    );
+    if (isThreeGameChampionshipSeries) {
+      return {
+        openers: [g1, g2],
+        winnersSemi: g3,
+        winnersFinal: g6,
+        losersRound1: g4,
+        losersCrossover: null,
+        losersFinal: g5,
+        grandFinal: null,
+        ifNecessary: null,
+        championshipSeries,
+      };
+    }
+  }
 
   if (!g1 || !g2 || !g3 || !g4 || !g5 || !g6 || !g7 || !g8) return null;
 
@@ -76,7 +98,7 @@ export function resolveClassicDoubleElimSlots(
     losersCrossover: g6,
     losersFinal: g7,
     grandFinal: g8,
-    ifNecessary: matchesByGame.get("9") ?? null,
+    ifNecessary: g9 ?? null,
   };
 }
 

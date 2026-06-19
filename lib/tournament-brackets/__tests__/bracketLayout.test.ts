@@ -348,6 +348,66 @@ describe("buildBracketLayout", () => {
     assert.equal(layout.classicChampionshipPodium?.ifNecessaryMatch?.officialGameNumber, "9");
   });
 
+  it("keeps District 6 10U three-game championship series on the classic pre-series layout", () => {
+    const spec = baseSpec({
+      bracketFormat: "double_elimination",
+      championshipSeriesStyle: "winner_take_all",
+      layoutPreference: "official",
+      teams: ["Ponchatoula", "Loranger", "Kentwood", "Franklinton", "Gonzales"],
+      rounds: [
+        {
+          id: "winners-r1",
+          label: "Winners Bracket — Round 1",
+          bracketSection: "winners",
+          matches: [
+            { id: "10u-g1", officialGameNumber: "1", home: "Ponchatoula", away: "Loranger" },
+            { id: "10u-g2", officialGameNumber: "2", home: "Kentwood", away: "Franklinton" },
+          ],
+        },
+        {
+          id: "winners-r2",
+          label: "Winners Bracket — Round 2",
+          bracketSection: "winners",
+          matches: [{ id: "10u-g3", officialGameNumber: "3", home: "Loranger", away: "Gonzales" }],
+        },
+        {
+          id: "winners-r3",
+          label: "Winners Bracket Final",
+          bracketSection: "winners",
+          matches: [{ id: "10u-g6", officialGameNumber: "6", home: "W3", away: "Franklinton" }],
+        },
+        {
+          id: "losers-r1",
+          label: "Losers Bracket — Round 1",
+          bracketSection: "losers",
+          matches: [{ id: "10u-g4", officialGameNumber: "4", home: "Ponchatoula", away: "Kentwood" }],
+        },
+        {
+          id: "losers-r2",
+          label: "Losers Bracket Final",
+          bracketSection: "losers",
+          matches: [{ id: "10u-g5", officialGameNumber: "5", home: "W4", away: "L3" }],
+        },
+        {
+          id: "championship-r1",
+          label: "Championship Series (Best 2 of 3)",
+          bracketSection: "championship",
+          matches: [
+            { id: "10u-g7", officialGameNumber: "7", home: "W6", away: "W5" },
+            { id: "10u-g8", officialGameNumber: "8", home: "W6", away: "W5" },
+            { id: "10u-g9", officialGameNumber: "9", home: "W6", away: "W5" },
+          ],
+        },
+      ],
+    });
+    const layout = buildBracketLayout(spec);
+    assert.equal(layout.mode, "double_elimination");
+    if (layout.mode !== "double_elimination") return;
+    assert.equal(layout.diagramStyle, "classic_unified");
+    assert.equal(layout.classicVariant, "five_team");
+    assert.equal(layout.championship?.matches.length, 3);
+  });
+
   it("includes classic championship podium for modified double elimination", () => {
     const teams = ["Ponchatoula", "Loranger", "Kentwood", "Franklinton", "Gonzales"];
     const rounds = generateDoubleEliminationRoundsForFormat(teams, "modified_double_elimination", {
