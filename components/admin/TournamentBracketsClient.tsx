@@ -15,6 +15,7 @@ import BracketStructureEditor from "@/components/admin/BracketStructureEditor";
 import BracketTeamNameBulkMapper from "@/components/admin/BracketTeamNameBulkMapper";
 import BracketGameChangerEventMappingEditor from "@/components/admin/BracketGameChangerEventMappingEditor";
 import BracketTeamNameMappingEditor from "@/components/admin/BracketTeamNameMappingEditor";
+import TournamentRosterIntakeAdmin from "@/components/admin/TournamentRosterIntakeAdmin";
 import GameChangerScoreboardModal from "@/components/brackets/GameChangerScoreboardModal";
 import TournamentBracketView, { type BracketScoringViewProps } from "@/components/brackets/TournamentBracketView";
 import { useGameChangerAdminSync } from "@/hooks/useGameChangerAdminSync";
@@ -37,6 +38,7 @@ import {
   type BracketMatchScores,
 } from "@/lib/tournament-brackets/bracketScoring";
 import { bracketWatermarkSrc } from "@/lib/tournament-brackets/bracketWatermark";
+import { extractRosterTeamsFromBracketSpec } from "@/lib/tournament-rosters/teams";
 import { normalizeHex6, resolveBracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import {
   normalizeVisualTuningNumber,
@@ -649,6 +651,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   }, [baseLayoutBuild, scoreDraft, scoringSupported, spec]);
 
   const bracketLayout = bracketLayoutBuild.layout;
+  const rosterIntakeTeams = useMemo(() => (spec ? extractRosterTeamsFromBracketSpec(spec) : []), [spec]);
   const svgMarkup = bracketLayout && spec ? buildBracketSvgPreview(spec) : "";
 
   const scoringView: BracketScoringViewProps | null = useMemo(() => {
@@ -2432,6 +2435,13 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                     />
                   </div>
                 </details>
+                <TournamentRosterIntakeAdmin
+                  organizationId={project.organizationId}
+                  seasonYear={project.seasonYear}
+                  bracketProjectId={project.id}
+                  teams={rosterIntakeTeams}
+                  ageGroup={spec.divisionLabel ?? project.name}
+                />
                 {gcConfig ? (
                   <details
                     className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`}
