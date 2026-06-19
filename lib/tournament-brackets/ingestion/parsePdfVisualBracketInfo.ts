@@ -20,6 +20,15 @@ function visualCandidateFromLine(line: string): string | null {
   return value;
 }
 
+function cleanVisualTeamName(value: string): string {
+  return value
+    .replace(/\bAP(?=[A-Z][a-z])/g, "AP ")
+    .replace(/\b(Eastbank)(?=Navy|Vegas|Red|Blue|Gold|Black|White)/gi, "$1 ")
+    .replace(/\b(Westbank)(?=Navy|Vegas|Red|Blue|Gold|Black|White)/gi, "$1 ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
 function isLikelyTeamName(value: string): boolean {
   if (value.length < 2 || value.length > 40) return false;
   if (/[\u0000-\u001f\u007f-\u009f]/.test(value)) return false;
@@ -157,6 +166,31 @@ function fiveTeamOcrReadingOrderTeams(lines: string[]): string[] | null {
   return uniqueComplete(reordered, 5);
 }
 
+function sixTeamOcrReadingOrderTeams(lines: string[]): string[] | null {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const firstBracketLine = lines.findIndex((line) => /Winners['’]?\s+Bracket/i.test(line));
+  const lastWinnersLine = lines.findIndex((line) => /Losers['’]?\s+Bracket/i.test(line));
+  const bracketLines =
+    firstBracketLine >= 0
+      ? lines.slice(firstBracketLine + 1, lastWinnersLine > firstBracketLine ? lastWinnersLine : undefined)
+      : lines;
+  for (const line of bracketLines) {
+    const candidate = visualCandidateFromLine(line);
+    if (!candidate || !isLikelyTeamName(candidate)) continue;
+    const cleaned = cleanVisualTeamName(candidate);
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(cleaned);
+  }
+  if (candidates.length < 6) return null;
+
+  // OCR commonly reads the 6-team LL form by columns: E, A, B, C, D, F.
+  const reordered = [candidates[1], candidates[2], candidates[3], candidates[4], candidates[0], candidates[5]];
+  return uniqueComplete(reordered, 6);
+}
+
 /**
  * Best-effort team-name extraction from visual Little League PDFs.
  *
@@ -183,6 +217,9 @@ export function extractVisualPdfTeams(
       5,
     );
     return positioned ?? fiveTeamOcrReadingOrderTeams(lines);
+  }
+  if (template.templateId === "little_league_6_team_de") {
+    return sixTeamOcrReadingOrderTeams(lines);
   }
   return null;
 }

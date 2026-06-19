@@ -15,7 +15,7 @@ export type PdfGameScheduleLine = {
 
 const FEEDER_SLOT_RE = /6T-G(\d+)-T([12])\s*\n([^\n]+)/gi;
 const GAME_INFO_SCHEDULE_RE = /6T-G(\d+)-Info\s*\nGame #\d+ Info\s*\n([^\n]+)/gi;
-const SCHEDULE_LINE_RE = /^(\d{1,2}\/\d{1,2})\s+(\d{1,2}:\d{2}\s*(?:am|pm))\s+(\S+)$/i;
+const SCHEDULE_LINE_RE = /^(\d{1,2}\/\d{1,2})\s*(\d{1,2}:\d{2}\s*(?:am|pm))\s*([A-Z]\d+)\b/i;
 
 /** Convert DocHub labels like "Winner of Game #1" into bracket feeder tokens. */
 export function normalizePdfFeederLabel(label: string): PdfGameFeeder {
