@@ -40,6 +40,17 @@ function latestSubmission(link: LinkRow): Submission | null {
   return link.submissions[0] ?? null;
 }
 
+async function readRosterApiJson<T extends Record<string, unknown>>(res: Response): Promise<T> {
+  const raw = await res.text();
+  const trimmed = raw.trim();
+  if (!trimmed) throw new Error(`Empty response from roster API (HTTP ${res.status}).`);
+  try {
+    return JSON.parse(trimmed) as T;
+  } catch {
+    throw new Error(`Roster API returned non-JSON (HTTP ${res.status}): ${trimmed.slice(0, 180)}`);
+  }
+}
+
 export default function TournamentRosterIntakeAdmin({
   organizationId,
   seasonYear,
@@ -61,7 +72,7 @@ export default function TournamentRosterIntakeAdmin({
     if (!bracketProjectId) return;
     const qs = new URLSearchParams({ organizationId, seasonYear: String(seasonYear), bracketProjectId });
     const res = await fetch(`/api/admin/tournament-rosters/links?${qs.toString()}`, { cache: "no-store" });
-    const json = (await res.json()) as { data?: LinkRow[]; error?: string };
+    const json = await readRosterApiJson<{ data?: LinkRow[]; error?: string }>(res);
     if (!res.ok) throw new Error(json.error ?? `Could not load roster links (${res.status})`);
     setLinks(json.data ?? []);
     const nextDrafts: Record<string, RosterPlayerInput[]> = {};
@@ -104,7 +115,7 @@ export default function TournamentRosterIntakeAdmin({
           teams: missingTeams.map((teamName) => ({ teamName, ageGroup })),
         }),
       });
-      const json = (await res.json()) as { data?: { links: LinkRow[]; created: CreatedLink[] }; error?: string };
+      const json = await readRosterApiJson<{ data?: { links: LinkRow[]; created: CreatedLink[] }; error?: string }>(res);
       if (!res.ok) throw new Error(json.error ?? `Could not generate links (${res.status})`);
       setLinks(json.data?.links ?? []);
       setCreatedLinks((prev) => {
@@ -129,7 +140,7 @@ export default function TournamentRosterIntakeAdmin({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ linkId, action: "regenerate" }),
       });
-      const json = (await res.json()) as { data?: { link: LinkRow; publicUrl: string }; error?: string };
+      const json = await readRosterApiJson<{ data?: { link: LinkRow; publicUrl: string }; error?: string }>(res);
       if (!res.ok) throw new Error(json.error ?? `Could not regenerate link (${res.status})`);
       if (json.data) {
         setCreatedLinks((prev) => ({ ...prev, [linkId]: json.data!.publicUrl }));
@@ -159,7 +170,7 @@ export default function TournamentRosterIntakeAdmin({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, players: drafts[submissionId] }),
       });
-      const json = (await res.json()) as { error?: string; errors?: string[] };
+      const json = await readRosterApiJson<{ error?: string; errors?: string[] }>(res);
       if (!res.ok) throw new Error(json.errors?.join("\n") || json.error || `Review failed (${res.status})`);
       await loadLinks();
       setNotice(action === "approve" ? "Roster approved." : action === "reject" ? "Roster rejected." : "Roster reopened.");
