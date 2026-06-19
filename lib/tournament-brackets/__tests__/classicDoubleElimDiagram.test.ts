@@ -53,10 +53,10 @@ describe("classicDoubleElimDiagram", () => {
     assert.equal(slots!.openers[0]!.home, "Ponchatoula");
     assert.equal(slots!.winnersFinal.away, "W2");
     assert.equal(slots!.losersRound1.home, "L1");
-    assert.equal(slots!.losersCrossover.home, "W4");
+    assert.equal(slots!.losersCrossover!.home, "W4");
     assert.equal(slots!.losersFinal.home, "L4");
     assert.equal(slots!.losersFinal.away, "W6");
-    assert.equal(slots!.grandFinal.home, "W5");
+    assert.equal(slots!.grandFinal!.home, "W5");
     assert.equal(slots!.ifNecessary?.officialGameNumber, "9");
   });
 
@@ -74,6 +74,31 @@ describe("classicDoubleElimDiagram", () => {
     const slots = resolveClassicDoubleElimSlots(map);
     assert.ok(slots);
     assert.equal(slots!.ifNecessary, null);
+  });
+
+  it("maps District 6 10U three-game championship series into classic pre-series slots", () => {
+    const map = new Map<string, LayoutMatch>([
+      ["1", match("1", "Ponchatoula", "Loranger")],
+      ["2", match("2", "Kentwood", "Franklinton")],
+      ["3", match("3", "Loranger", "Gonzales")],
+      ["4", match("4", "Ponchatoula", "Kentwood")],
+      ["5", match("5", "W4", "L3")],
+      ["6", match("6", "W3", "Franklinton")],
+      ["7", match("7", "W6", "W5")],
+      ["8", match("8", "W6", "W5")],
+      ["9", match("9", "W6", "W5")],
+    ]);
+    const slots = resolveClassicDoubleElimSlots(map);
+    assert.ok(slots);
+    assert.equal(slots!.winnersFinal.officialGameNumber, "6");
+    assert.equal(slots!.losersRound1.officialGameNumber, "4");
+    assert.equal(slots!.losersCrossover, null);
+    assert.equal(slots!.losersFinal.officialGameNumber, "5");
+    assert.equal(slots!.grandFinal, null);
+    assert.deepEqual(
+      slots!.championshipSeries?.map((m) => m.officialGameNumber),
+      ["7", "8", "9"],
+    );
   });
 
   it("returns null when a required game is missing", () => {
