@@ -5,7 +5,10 @@ import { useLayoutEffect, useRef, useState, type RefObject } from "react";
 
 import type { BracketLayout, BracketLayoutPodium, LayoutMatch, LayoutRound } from "@/lib/tournament-brackets/bracketLayout";
 import { collectAllDoubleElimMatchesByGame } from "@/lib/tournament-brackets/bracketLayout";
-import { resolveClassicDoubleElimSlots } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
+import {
+  resolveClassicDoubleElimSlots,
+  resolveClassicThreeTeamDoubleElimSlots,
+} from "@/lib/tournament-brackets/classicDoubleElimDiagram";
 import { resolveClassicSixTeamModifiedDeSlots } from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
 import {
   declaredChampionFromFinalSlots,
@@ -1357,8 +1360,12 @@ function DoubleEliminationBracketView({
     layout.diagramStyle === "classic_unified" && layout.classicVariant === "six_team_modified_de"
       ? resolveClassicSixTeamModifiedDeSlots(allMatchesByGame)
       : null;
+  const classicThreeSlots =
+    layout.diagramStyle === "classic_unified" && layout.classicVariant === "three_team"
+      ? resolveClassicThreeTeamDoubleElimSlots(allMatchesByGame)
+      : null;
   const classicFiveSlots =
-    layout.diagramStyle === "classic_unified" && layout.classicVariant !== "six_team_modified_de"
+    layout.diagramStyle === "classic_unified" && layout.classicVariant === "five_team"
       ? resolveClassicDoubleElimSlots(allMatchesByGame)
       : null;
 
@@ -1380,7 +1387,7 @@ function DoubleEliminationBracketView({
     />
   );
 
-  const useClassicUnifiedDiagram = Boolean(classicSixSlots || classicFiveSlots);
+  const useClassicUnifiedDiagram = Boolean(classicThreeSlots || classicSixSlots || classicFiveSlots);
 
   return (
     <BracketSurface
@@ -1417,9 +1424,24 @@ function DoubleEliminationBracketView({
             gameChangerEnabled={gameChangerEnabled}
             fluidWidth={fluidWidth}
           />
+        ) : classicThreeSlots ? (
+          <ClassicDoubleElimDiagram
+            slots={classicThreeSlots}
+            variant="three_team"
+            tournamentInfo={tournamentInfo}
+            visualTuning={visualTuning}
+            championPodium={layout.classicChampionshipPodium ?? null}
+            renderMatch={renderMatch}
+            scoring={scoring}
+            liveGameStatuses={liveGameStatuses}
+            onMatchClick={onMatchClick}
+            gameChangerEnabled={gameChangerEnabled}
+            fluidWidth={fluidWidth}
+          />
         ) : classicFiveSlots ? (
           <ClassicDoubleElimDiagram
             slots={classicFiveSlots}
+            variant="five_team"
             tournamentInfo={tournamentInfo}
             visualTuning={visualTuning}
             championPodium={layout.classicChampionshipPodium ?? null}
