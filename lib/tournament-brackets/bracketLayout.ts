@@ -321,7 +321,7 @@ export function computePodiumForSingleElimTree(
       : formatSemiLoserSlotLabel(sm1);
 
   return {
-    championHeading: `${age} Champion`,
+    championHeading: championPlaqueHeading(age),
     finalMatch,
     thirdPlaceSlotHome: thirdHome,
     thirdPlaceSlotAway: thirdAway,
@@ -342,6 +342,13 @@ export function computePodiumForSingleElimTree(
         }
       : undefined,
   };
+}
+
+function championPlaqueHeading(label: string): string {
+  const trimmed = label.trim() || "Tournament";
+  const withoutLittleLeague = trimmed.replace(/^Little\s+League\s+/i, "").trim() || trimmed;
+  const normalizedDivision = withoutLittleLeague.replace(/\bCoach(?:es)?\s+Pitch\b/i, "Coaches Pitch");
+  return `${normalizedDivision} Champion`;
 }
 
 function withTreePodium(
@@ -625,7 +632,7 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
   const classicChampionshipPodium =
     useClassic && isDoubleEliminationFormat(spec.bracketFormat)
       ? {
-          championHeading: `${age} Champion`,
+          championHeading: championPlaqueHeading(age),
           championTeamName: resolveDoubleElimChampionTeamName(spec),
           showIfNecessaryDropLine: includesIfNecessaryChampionshipGame(spec),
           ifNecessaryMatch: includesIfNecessaryChampionshipGame(spec)
