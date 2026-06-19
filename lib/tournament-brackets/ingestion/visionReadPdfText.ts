@@ -41,10 +41,17 @@ export async function visionReadPdfBuffer(buffer: ArrayBuffer): Promise<string> 
     headers["CF-Access-Client-Secret"] = cfAccessClientSecret;
   }
 
-  const pages = await renderPdfPagesToPng(buffer, { maxPages: 1, scale: 2 });
-  if (pages.length === 0) return "";
+  const usePdfDirect =
+    /\barchie-rapidocr\b/i.test(model) || /bracket-vision\.duckroostdigital\.com/i.test(apiUrl);
+  let dataUrl: string;
+  if (usePdfDirect) {
+    dataUrl = `data:application/pdf;base64,${Buffer.from(buffer).toString("base64")}`;
+  } else {
+    const pages = await renderPdfPagesToPng(buffer, { maxPages: 1, scale: 2 });
+    if (pages.length === 0) return "";
+    dataUrl = `data:image/png;base64,${pages[0]!.toString("base64")}`;
+  }
 
-  const imageB64 = pages[0]!.toString("base64");
   const res = await fetch(apiUrl, {
     method: "POST",
     headers,
@@ -59,7 +66,7 @@ export async function visionReadPdfBuffer(buffer: ArrayBuffer): Promise<string> 
             { type: "text", text: VISION_PROMPT },
             {
               type: "image_url",
-              image_url: { url: `data:image/png;base64,${imageB64}` },
+              image_url: { url: dataUrl },
             },
           ],
         },

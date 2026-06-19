@@ -45,10 +45,14 @@ export async function extractPdfTextForIngest(
     /\bDocHub\b/i.test(heuristicText);
   let ocrText: string | undefined;
   let visionText: string | undefined;
+  const preferRemoteVision = Boolean(process.env.VERCEL) && bracketPdfVisionEnabled();
 
   const shouldOcr =
     mode === "ocr" ||
-    (mode === "auto" && bracketPdfOcrEnabled() && (weakHeuristic || hasPdfFormBracketTokens));
+    (mode === "auto" &&
+      !preferRemoteVision &&
+      bracketPdfOcrEnabled() &&
+      (weakHeuristic || hasPdfFormBracketTokens));
 
   // pdf-parse and pdf-to-img both use PDF.js internally. Some PDF.js versions
   // register incompatible workers in-process, so render/OCR before pdf-parse.
