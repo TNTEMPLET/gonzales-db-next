@@ -344,7 +344,7 @@ export function computePodiumForSingleElimTree(
   };
 }
 
-function championPlaqueHeading(label: string): string {
+export function championPlaqueHeading(label: string): string {
   const trimmed = label.trim() || "Tournament";
   const withoutLittleLeague = trimmed.replace(/^Little\s+League\s+/i, "").trim() || trimmed;
   const normalizedDivision = withoutLittleLeague.replace(/\bCoach(?:es)?\s+Pitch\b/i, "Coaches Pitch");
