@@ -14,6 +14,7 @@ import {
   normalizePdfFeederLabel,
   parsePdfGameFeederSlots,
   parsePdfGameSchedule,
+  parseScheduleLine,
   pdfFeedersMatchLittleLeagueSixTeamDe,
   inferSixTeamChampionshipSeriesStyleFromFeeders,
 } from "@/lib/tournament-brackets/ingestion/parsePdfGameRouting";
@@ -119,6 +120,19 @@ Champion`;
   assert.equal(schedule.has(9), false);
 });
 
+test("parsePdfGameSchedule reads compact OCR schedule lines", () => {
+  assert.deepEqual(parseScheduleLine("6/274:00pmF2"), {
+    dateLabel: "6/27",
+    time: "4:00pm",
+    field: "F2",
+  });
+  assert.deepEqual(parseScheduleLine("6/307:30pmF2（Ship)"), {
+    dateLabel: "6/30",
+    time: "7:30pm",
+    field: "F2",
+  });
+});
+
 test("extractVisualPdfTeams reads teams from 5-team LL visual layout", () => {
   const text = `Division: Little League Minor 9
 5 Team Little League Bracket
@@ -148,6 +162,63 @@ Loser to D
     "St. Charles",
     "Eastbank",
     "Ascension",
+  ]);
+});
+
+test("extractVisualPdfTeams reads teams from 6-team LL visual OCR order", () => {
+  const text = `NOTICE!
+Thisscheduleis subjectto
+Division:LitleLeagueCoachPitch
+Change!
+TheNumberof teamsdetermine
+Sit(s）:ButchGoreBallpark
+thnfinal echedule
+14550HarrySavoyRoadSt.Amant.LA70774
+6Team Little LeagueBracket
+Winners'Bracket
+Update Phone:(225）223-9470Wayne Grenfell
+APNavy
+Toumament Director:WayneGrenfel/FrankRenaudir
+Next Level:LouisianaLitle LeagueStateTourney
+Loser to D
+Westbank
+701St.NazaireRd Broussard,LA70518
+6/274:00pmF2
+Game 1
+Top2Teamsadvance/ModifiedBracket
+Loser to A
+Revisions Highlighted in Yellow
+6/2711:30amF2
+Game 7
+APRed
+Loser to E
+6/285:00pmF2
+Bogalusa
+Game2
+Loser to C
+6/272:30pmF2
+Game4
+Loser to B
+EastbankNavy
+6/275:30pmF2
+Game10
+EastbankVegas
+Loser to F (if 1st Loss)
+6/307:30pmF2（Ship)
+Losers'Bracket
+Game 11
+Champion`;
+  const template = parsePdfBracketTemplate(
+    "6 Team Little League Bracket\nWinners' Bracket\nLosers' Bracket",
+  );
+  assert.ok(template);
+  assert.deepEqual(extractVisualPdfTeams(text, template), [
+    "Westbank",
+    "AP Red",
+    "Bogalusa",
+    "Eastbank Navy",
+    "AP Navy",
+    "Eastbank Vegas",
   ]);
 });
 
