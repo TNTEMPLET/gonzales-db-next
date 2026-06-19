@@ -58,6 +58,8 @@ type Props = {
   slots: ClassicDoubleElimSlots;
   tournamentInfo?: BracketTournamentInfo | null;
   visualTuning?: BracketVisualTuning | null;
+  /** Geometry variant for the classic diagram shell. */
+  variant?: "three_team" | "five_team";
   /** Champion plaque in a column right of G8 (both DE formats on classic diagram). */
   championPodium?: ClassicDoubleElimChampionshipPodium | null;
   renderMatch: (props: MatchRenderProps & { match: LayoutMatch }) => ReactNode;
@@ -456,6 +458,7 @@ export function ClassicIfNecessaryMatchCell({
  */
 export default function ClassicDoubleElimDiagram({
   slots,
+  variant = "five_team",
   tournamentInfo,
   visualTuning,
   championPodium,
@@ -514,6 +517,137 @@ export default function ClassicDoubleElimDiagram({
     ...grid.tournamentInfo,
     colSpan: showChampionColumn ? 5 : grid.tournamentInfo.colSpan,
   };
+
+  if (variant === "three_team") {
+    const teeBallG1 = slots.openers[0];
+    const teeBallG2 = slots.winnersSemi;
+    const teeBallG3 = slots.losersRound1;
+    const teeBallG4 = slots.grandFinal;
+    const teeBallG5 = slots.ifNecessary;
+    if (!teeBallG4) return null;
+    const showThreeTeamChampionColumn = Boolean(championPodium);
+    const showThreeTeamIfNecessary = Boolean(championPodium?.showIfNecessaryDropLine && teeBallG5);
+    const threeTeam = {
+      winnersTopPad: { col: 1, row: 1, span: 1 },
+      tournamentInfo: { col: 4, row: 1, span: 2, colSpan: 4 },
+      g1: { col: 1, row: 3, span: 2 },
+      connG1G2: { col: 2, row: 3, span: 2 },
+      g2: { col: 3, row: 3, span: 2 },
+      g3: { col: 3, row: 7, span: 1 },
+      connFinalsG4: { col: 4, row: 3, span: 5 },
+      g4: { col: 5, row: 4, span: 3 },
+      g5: { col: 5, row: 8, span: 1 },
+      connG4Champion: { col: 6, row: 4, span: 3 },
+      champion: { col: 7, row: 4, span: 3 },
+      bandGap: { col: 1, row: 6, span: 1, colSpan: 7 },
+    } satisfies Record<string, ClassicGridPlacement>;
+    const threeTeamGridStyle: CSSProperties = {
+      ...gridStyle,
+      gridTemplateColumns: classicUnifiedGridTemplateColumns({
+        withChampionColumn: false,
+        fluidWidth,
+      }),
+      gridTemplateRows: "minmax(1.5rem, auto) minmax(3rem, auto) repeat(6, minmax(2.75rem, auto))",
+    };
+
+    return (
+      <div
+        className={`${styles.doubleElimUnified} ${styles.classicDoubleElimUnified} ${styles.classicThreeTeamDoubleElimUnified}`}
+        data-connector-anchor={anchorY}
+      >
+        <div
+          className={`${styles.bracketGrid} ${styles.bracketGridScroll} ${styles.classicDoubleElimGrid}`}
+          style={threeTeamGridStyle}
+        >
+          {fillerCell("winners-top-pad", threeTeam.winnersTopPad, styles.classicDoubleElimWinnersTopPad)}
+          <ClassicTournamentInfoTable info={tournamentInfo} placement={threeTeam.tournamentInfo} />
+          {matchCell("g1", threeTeam.g1, render(teeBallG1), undefined, gameOffset("G1"))}
+          {connCell(
+            "c-g1-g2",
+            threeTeam.connG1G2,
+            <BracketConnectorCell
+              variant="top"
+              anchorY={anchorY}
+              topMatchId={teeBallG1.id}
+              targetMatchId={teeBallG2.id}
+            />,
+            undefined,
+            connectorOffset("g1-g2"),
+          )}
+          {matchCell("g2", threeTeam.g2, render(teeBallG2), undefined, gameOffset("G2"))}
+          {fillerCell("band-gap", threeTeam.bandGap, styles.classicDoubleElimBandGap)}
+          {matchCell("g3", threeTeam.g3, render(teeBallG3), undefined, gameOffset("G3"))}
+          {connCell(
+            "c-finals-g4",
+            threeTeam.connFinalsG4,
+            <BracketConnectorCell
+              variant="both"
+              anchorY={anchorY}
+              topMatchId={teeBallG2.id}
+              bottomMatchId={teeBallG3.id}
+              targetMatchId={teeBallG4.id}
+            />,
+            undefined,
+            connectorOffset("finals-g4"),
+          )}
+          <ClassicGrandFinalCell
+            placement={threeTeam.g4}
+            topMatchId={teeBallG2.id}
+            bottomMatchId={teeBallG3.id}
+            selfMatchId={teeBallG4.id}
+            offset={gameOffset("G4")}
+          >
+            {render(teeBallG4)}
+          </ClassicGrandFinalCell>
+
+          {showThreeTeamChampionColumn && championPodium ? (
+            <>
+              {connCell(
+                "c-g4-champion",
+                threeTeam.connG4Champion,
+                <>
+                  <BracketHorizontalGutterConnector
+                    sourceMatchId={teeBallG4.id}
+                    targetMatchId={CLASSIC_DE_CHAMPION_SLOT_MATCH_ID}
+                    anchorY={anchorY}
+                    yOffsetPx={championConnectorOffset.yPx}
+                  />
+                  {championPodium.showIfNecessaryDropLine ? (
+                    <BracketIfNecessaryDropConnector
+                      sourceMatchId={teeBallG4.id}
+                      targetMatchId={CLASSIC_DE_CHAMPION_SLOT_MATCH_ID}
+                      ifNecessaryMatchId={teeBallG5?.id}
+                      anchorY={anchorY}
+                      yOffsetPx={championConnectorOffset.yPx}
+                    />
+                  ) : null}
+                </>,
+                "g4-champion",
+                { xPx: championConnectorOffset.xPx, yPx: 0 },
+              )}
+              {showThreeTeamIfNecessary && teeBallG5
+                ? matchCell("g5", threeTeam.g5, render(teeBallG5), undefined, {
+                    ...gameOffset("G5"),
+                    xPx: gameOffset("G5").xPx + 132,
+                  })
+                : null}
+              <ClassicAlignedToMatchCell
+                placement={threeTeam.champion}
+                alignToMatchId={teeBallG4.id}
+                wrapClassName={styles.classicDoubleElimChampionWrap}
+                offset={gameOffset("Champion")}
+              >
+                <ClassicDoubleElimChampionPlaque
+                  heading={championPodium.championHeading}
+                  teamName={championPodium.championTeamName}
+                />
+              </ClassicAlignedToMatchCell>
+            </>
+          ) : null}
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div

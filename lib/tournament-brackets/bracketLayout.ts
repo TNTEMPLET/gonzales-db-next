@@ -8,6 +8,7 @@ import { resolveDoubleElimChampionTeamName } from "@/lib/tournament-brackets/bra
 import {
   canUseClassicUnifiedDoubleElimDiagram,
   resolveClassicDoubleElimSlots,
+  resolveClassicThreeTeamDoubleElimSlots,
 } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
 import {
   resolveClassicSixTeamModifiedDeSlots,
@@ -94,7 +95,7 @@ export type BracketLayout =
       /** `classic_unified`: single scrollable winners/losers/championship diagram (5–7 team DE). */
       diagramStyle: "classic_unified" | "connected_columns";
       /** Which classic template geometry to render (when `diagramStyle` is `classic_unified`). */
-      classicVariant?: "five_team" | "six_team_modified_de";
+      classicVariant?: "three_team" | "five_team" | "six_team_modified_de";
       winnersBracket: DoubleElimConnectedSection;
       losersBracket: DoubleElimConnectedSection | null;
       championship: DoubleElimChampionshipSection | null;
@@ -600,14 +601,22 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
     losersBracket?.rounds,
     championshipSection?.matches,
   );
-  const classicSix = resolveClassicSixTeamModifiedDeSlots(allByGame);
-  const classicFive = classicSix ? null : resolveClassicDoubleElimSlots(allByGame);
+  const classicThree = resolveClassicThreeTeamDoubleElimSlots(allByGame);
+  const classicSix = classicThree ? null : resolveClassicSixTeamModifiedDeSlots(allByGame);
+  const classicFive = classicThree || classicSix ? null : resolveClassicDoubleElimSlots(allByGame);
   const preferOfficialLayout = spec.layoutPreference !== "connected_columns";
   const useClassic =
     preferOfficialLayout &&
-    (classicSix !== null ||
+    (classicThree !== null ||
+      classicSix !== null ||
       (canUseClassicUnifiedDoubleElimDiagram(allByGame) && classicFive !== null));
-  const classicVariant = classicSix ? "six_team_modified_de" : classicFive ? "five_team" : undefined;
+  const classicVariant = classicThree
+    ? "three_team"
+    : classicSix
+      ? "six_team_modified_de"
+      : classicFive
+        ? "five_team"
+        : undefined;
 
   const age =
     spec.championAgeGroupLabel?.trim() ||
