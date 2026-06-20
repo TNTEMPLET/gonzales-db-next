@@ -153,17 +153,31 @@ function findHeaderRow(rows: string[][]): { rowIndex: number; headers: string[] 
   return best && best.score >= 8 ? { rowIndex: best.rowIndex, headers: best.headers } : null;
 }
 
+function normalizeSuffix(value: string): string | null {
+  const suffix = clean(value).replace(/\.+$/g, "").toUpperCase();
+  if (["JR", "SR"].includes(suffix)) return `${suffix[0]}${suffix.slice(1).toLowerCase()}.`;
+  if (["II", "III", "IV", "V"].includes(suffix)) return suffix;
+  return null;
+}
+
 function splitFullName(value: string): { firstName: string; lastName: string } {
   const normalized = clean(value).replace(/\s+/g, " ");
   if (!normalized) return { firstName: "", lastName: "" };
   if (normalized.includes(",")) {
-    const [last, rest] = normalized.split(/,(.+)/).map(clean);
-    const first = clean((rest ?? "").split(/\s+/)[0]);
-    return { firstName: first, lastName: last };
+    const [lastPart, rest] = normalized.split(/,(.+)/).map(clean);
+    const firstParts = clean(rest ?? "").split(/\s+/).filter(Boolean);
+    const firstName = firstParts[0] ?? "";
+    const suffixFromFirst = normalizeSuffix(firstParts[firstParts.length - 1] ?? "");
+    const lastName = suffixFromFirst ? `${lastPart} ${suffixFromFirst}`.trim() : lastPart;
+    return { firstName, lastName };
   }
   const parts = normalized.split(/\s+/).filter(Boolean);
   if (parts.length === 1) return { firstName: parts[0] ?? "", lastName: "" };
-  return { firstName: parts[0] ?? "", lastName: parts[parts.length - 1] ?? "" };
+  const suffix = normalizeSuffix(parts[parts.length - 1] ?? "");
+  const firstName = parts[0] ?? "";
+  const lastNameParts = suffix ? parts.slice(1, -1) : parts.slice(1);
+  const lastName = [...lastNameParts, ...(suffix ? [suffix] : [])].join(" ");
+  return { firstName, lastName };
 }
 
 function valueAt(row: string[], index: number): string {
