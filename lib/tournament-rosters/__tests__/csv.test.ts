@@ -28,12 +28,13 @@ Coaches/Mgr,,,
 });
 
 test("parseRosterCsv keeps suffixes with last names", () => {
-  const result = parseRosterCsv("Jersey,Player Name\n0,Rickey Duronslet III\n2,Ramon Brue Jr.\n5,\"Hilliard Jr., Tony\"");
+  const result = parseRosterCsv("Jersey,Player Name\n0,\"Rickey Duronslet, III\"\n2,\"Ramon Brue, Jr.\"\n5,\"Tony Hilliard, Jr.\"\n11,\"Helmstetter Jr., Nicholas\"\nCoaching Staff\nBrian Randolph");
   assert.deepEqual(result.errors, []);
   assert.deepEqual(result.players, [
     { firstName: "Rickey", lastName: "Duronslet III", jerseyNumber: "0" },
     { firstName: "Ramon", lastName: "Brue Jr.", jerseyNumber: "2" },
     { firstName: "Tony", lastName: "Hilliard Jr.", jerseyNumber: "5" },
+    { firstName: "Nicholas", lastName: "Helmstetter Jr.", jerseyNumber: "11" },
   ]);
 });
 

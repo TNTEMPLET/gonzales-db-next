@@ -160,24 +160,33 @@ function normalizeSuffix(value: string): string | null {
   return null;
 }
 
+function splitSpaceSeparatedName(value: string, suffix?: string): { firstName: string; lastName: string } {
+  const parts = clean(value).replace(/\s+/g, " ").split(/\s+/).filter(Boolean);
+  if (parts.length === 0) return { firstName: "", lastName: "" };
+  if (parts.length === 1) return { firstName: parts[0] ?? "", lastName: suffix ?? "" };
+  const embeddedSuffix = normalizeSuffix(parts[parts.length - 1] ?? "");
+  const finalSuffix = suffix ?? embeddedSuffix;
+  const firstName = parts[0] ?? "";
+  const lastNameParts = embeddedSuffix ? parts.slice(1, -1) : parts.slice(1);
+  const lastName = [...lastNameParts, ...(finalSuffix ? [finalSuffix] : [])].join(" ");
+  return { firstName, lastName };
+}
+
 function splitFullName(value: string): { firstName: string; lastName: string } {
   const normalized = clean(value).replace(/\s+/g, " ");
   if (!normalized) return { firstName: "", lastName: "" };
   if (normalized.includes(",")) {
-    const [lastPart, rest] = normalized.split(/,(.+)/).map(clean);
-    const firstParts = clean(rest ?? "").split(/\s+/).filter(Boolean);
+    const [leftPart, rightPart] = normalized.split(/,(.+)/).map(clean);
+    const suffixAfterComma = normalizeSuffix(rightPart ?? "");
+    if (suffixAfterComma) return splitSpaceSeparatedName(leftPart, suffixAfterComma);
+
+    const firstParts = clean(rightPart ?? "").split(/\s+/).filter(Boolean);
     const firstName = firstParts[0] ?? "";
     const suffixFromFirst = normalizeSuffix(firstParts[firstParts.length - 1] ?? "");
-    const lastName = suffixFromFirst ? `${lastPart} ${suffixFromFirst}`.trim() : lastPart;
+    const lastName = suffixFromFirst ? `${leftPart} ${suffixFromFirst}`.trim() : leftPart;
     return { firstName, lastName };
   }
-  const parts = normalized.split(/\s+/).filter(Boolean);
-  if (parts.length === 1) return { firstName: parts[0] ?? "", lastName: "" };
-  const suffix = normalizeSuffix(parts[parts.length - 1] ?? "");
-  const firstName = parts[0] ?? "";
-  const lastNameParts = suffix ? parts.slice(1, -1) : parts.slice(1);
-  const lastName = [...lastNameParts, ...(suffix ? [suffix] : [])].join(" ");
-  return { firstName, lastName };
+  return splitSpaceSeparatedName(normalized);
 }
 
 function valueAt(row: string[], index: number): string {
@@ -201,6 +210,7 @@ function parseRowsWithHeader(rows: string[][], headerRow: { rowIndex: number; he
       lastName ||= fromFullName.lastName;
     }
     if (!firstName && !lastName && !jerseyNumber) continue;
+    if (firstIndex < 0 && lastIndex < 0 && fullNameIndex >= 0 && (!firstName || !lastName)) continue;
     players.push({ firstName, lastName, jerseyNumber });
   }
   return players;
