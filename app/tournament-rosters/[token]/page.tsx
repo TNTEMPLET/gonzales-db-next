@@ -20,7 +20,7 @@ export default async function TournamentRosterIntakePage({
   if (!link) notFound();
   const latest = link.submissions[0];
   return (
-    <main className="min-h-screen bg-zinc-950 px-4 py-8 text-white sm:py-12">
+    <main className="min-h-screen bg-zinc-950 px-3 py-4 text-white sm:px-4 sm:py-8">
       <section className="mx-auto max-w-4xl">
         <RosterIntakeForm
           token={token}

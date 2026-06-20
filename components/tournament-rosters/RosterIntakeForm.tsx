@@ -97,8 +97,11 @@ export default function RosterIntakeForm({ token, teamName, ageGroup, latestStat
     <div className="space-y-5 rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 shadow-xl sm:p-6">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-sky-300">District 2 Tournament Roster</p>
-        <h1 className="mt-1 text-2xl font-bold text-white">{teamName}</h1>
+        <h1 className="mt-1 text-2xl font-bold text-white sm:text-3xl">{teamName}</h1>
         {ageGroup ? <p className="mt-1 text-sm text-zinc-400">Division: {ageGroup}</p> : null}
+        <p className="mt-3 rounded-xl border border-sky-900/60 bg-sky-950/30 px-3 py-2 text-sm text-sky-100/90">
+          Upload a CSV if you have one, or enter players manually below. We only need first name, last name, and jersey number.
+        </p>
         {latestStatus ? (
           <p className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/60 px-3 py-2 text-xs text-zinc-400">
             Latest submission status: <span className="font-semibold text-zinc-200">{latestStatus}</span>
@@ -106,28 +109,28 @@ export default function RosterIntakeForm({ token, teamName, ageGroup, latestStat
         ) : null}
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="block text-sm text-zinc-300">
+      <div className="grid gap-3 md:grid-cols-3">
+        <label className="block text-sm font-medium text-zinc-300">
           Your name
-          <input value={submitterName} onChange={(e) => setSubmitterName(e.target.value)} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2" />
+          <input value={submitterName} onChange={(e) => setSubmitterName(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white md:text-sm" autoComplete="name" />
         </label>
-        <label className="block text-sm text-zinc-300">
+        <label className="block text-sm font-medium text-zinc-300">
           Email
-          <input value={submitterEmail} onChange={(e) => setSubmitterEmail(e.target.value)} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2" inputMode="email" />
+          <input value={submitterEmail} onChange={(e) => setSubmitterEmail(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white md:text-sm" inputMode="email" autoComplete="email" />
         </label>
-        <label className="block text-sm text-zinc-300">
+        <label className="block text-sm font-medium text-zinc-300">
           Phone
-          <input value={submitterPhone} onChange={(e) => setSubmitterPhone(e.target.value)} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2" inputMode="tel" />
+          <input value={submitterPhone} onChange={(e) => setSubmitterPhone(e.target.value)} className="mt-1 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white md:text-sm" inputMode="tel" autoComplete="tel" />
         </label>
       </div>
 
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/50 p-3 sm:p-4">
         <label className="block text-sm font-medium text-zinc-200">
           Upload CSV
           <input
             type="file"
-            accept=".csv,text/csv"
-            className="mt-2 block w-full text-sm text-zinc-300"
+            accept=".csv,text/csv,.tsv,text/tab-separated-values"
+            className="mt-2 block min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 file:mr-3 file:rounded-md file:border-0 file:bg-sky-700 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-white"
             onChange={(e) => {
               const file = e.target.files?.[0];
               if (file) void handleCsv(file);
@@ -135,34 +138,47 @@ export default function RosterIntakeForm({ token, teamName, ageGroup, latestStat
             }}
           />
         </label>
-        <p className="mt-2 text-xs text-zinc-500">
+        <p className="mt-2 text-xs leading-relaxed text-zinc-400">
           Accepted formats: First/Last/Jersey columns, Player or Name plus Jersey, or copied CSV/TSV rows from a spreadsheet.
         </p>
       </div>
 
-      <div className="space-y-2">
-        <div className="grid grid-cols-[1fr_1fr_6rem_2.5rem] gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+      <div className="space-y-3">
+        <div className="hidden grid-cols-[1fr_1fr_6rem_2.5rem] gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500 md:grid">
           <span>First name</span>
           <span>Last name</span>
           <span>Jersey #</span>
           <span />
         </div>
         {players.map((player, index) => (
-          <div key={index} className="grid grid-cols-[1fr_1fr_6rem_2.5rem] gap-2">
-            <input value={player.firstName} onChange={(e) => updatePlayer(index, { firstName: e.target.value })} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
-            <input value={player.lastName} onChange={(e) => updatePlayer(index, { lastName: e.target.value })} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
-            <input value={player.jerseyNumber} onChange={(e) => updatePlayer(index, { jerseyNumber: e.target.value })} className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm" />
-            <button type="button" onClick={() => setPlayers((prev) => prev.filter((_, i) => i !== index))} className="rounded-lg border border-zinc-700 text-xs text-zinc-400 hover:bg-zinc-800" aria-label={`Remove row ${index + 1}`}>X</button>
+          <div key={index} className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-3 md:grid md:grid-cols-[1fr_1fr_6rem_2.5rem] md:gap-2 md:border-0 md:bg-transparent md:p-0">
+            <div className="mb-3 flex items-center justify-between md:hidden">
+              <p className="text-sm font-semibold text-zinc-200">Player {index + 1}</p>
+              <button type="button" onClick={() => setPlayers((prev) => prev.filter((_, i) => i !== index))} className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800" aria-label={`Remove player ${index + 1}`}>Remove</button>
+            </div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-zinc-500 md:contents">
+              <span className="md:hidden">First name</span>
+              <input value={player.firstName} onChange={(e) => updatePlayer(index, { firstName: e.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white md:mt-0 md:text-sm" autoComplete="given-name" />
+            </label>
+            <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-zinc-500 md:contents">
+              <span className="md:hidden">Last name</span>
+              <input value={player.lastName} onChange={(e) => updatePlayer(index, { lastName: e.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white md:mt-0 md:text-sm" autoComplete="family-name" />
+            </label>
+            <label className="mt-3 block text-xs font-semibold uppercase tracking-wide text-zinc-500 md:contents">
+              <span className="md:hidden">Jersey #</span>
+              <input value={player.jerseyNumber} onChange={(e) => updatePlayer(index, { jerseyNumber: e.target.value })} className="mt-1 min-h-11 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white md:mt-0 md:text-sm" inputMode="numeric" pattern="[0-9A-Za-z-]*" autoComplete="off" />
+            </label>
+            <button type="button" onClick={() => setPlayers((prev) => prev.filter((_, i) => i !== index))} className="hidden rounded-lg border border-zinc-700 text-xs text-zinc-400 hover:bg-zinc-800 md:block" aria-label={`Remove row ${index + 1}`}>X</button>
           </div>
         ))}
-        <button type="button" onClick={() => setPlayers((prev) => [...prev, blankPlayer()])} className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800">
+        <button type="button" onClick={() => setPlayers((prev) => [...prev, blankPlayer()])} className="min-h-11 w-full rounded-lg border border-zinc-700 px-3 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 sm:w-auto">
           Add player row
         </button>
       </div>
 
       <label className="block text-sm text-zinc-300">
         Notes for District 2
-        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2" />
+        <textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-base text-white md:text-sm" />
       </label>
 
       {errors.length ? (
@@ -171,11 +187,11 @@ export default function RosterIntakeForm({ token, teamName, ageGroup, latestStat
         </div>
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-3">
-        <button type="button" disabled={state === "submitting" || filledPlayers.length === 0} onClick={() => void submitRoster()} className="rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:opacity-40">
+      <div className="space-y-3 sm:flex sm:flex-wrap sm:items-center sm:gap-3 sm:space-y-0">
+        <button type="button" disabled={state === "submitting" || filledPlayers.length === 0} onClick={() => void submitRoster()} className="min-h-11 w-full rounded-lg bg-sky-700 px-4 py-2 text-sm font-semibold text-white hover:bg-sky-600 disabled:opacity-40 sm:w-auto">
           {state === "submitting" ? "Submitting..." : "Submit roster for review"}
         </button>
-        <p className="text-xs text-zinc-500">No login required. This private link is tied to {teamName}.</p>
+        <p className="text-xs leading-relaxed text-zinc-500">No login required. This private link is tied to {teamName}.</p>
       </div>
     </div>
   );
