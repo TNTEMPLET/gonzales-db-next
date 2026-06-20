@@ -12,8 +12,25 @@ type LinkBody = {
   teams?: Array<{ teamName: string; ageGroup?: string | null }>;
 };
 
+function readableUnknown(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.message;
+  if (Array.isArray(value)) return value.map(readableUnknown).filter(Boolean).join("\n");
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === "string") return record.message;
+    if (typeof record.error === "string") return record.error;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value ?? "");
+}
+
 function routeError(err: unknown, fallback: string) {
-  const message = err instanceof Error ? err.message : String(err || fallback);
+  const message = readableUnknown(err) || fallback;
   const hint = /TournamentRoster|does not exist|table.*not found|Unknown model/i.test(message)
     ? "Roster intake database tables are missing. Apply the Prisma schema to the connected database."
     : undefined;

@@ -35,6 +35,34 @@ type Props = {
 };
 
 type CreatedLink = { linkId: string; teamName: string; publicUrl: string };
+type RosterApiError = { error?: unknown; errors?: unknown; hint?: unknown };
+
+function readableUnknown(value: unknown): string {
+  if (typeof value === "string") return value;
+  if (value instanceof Error) return value.message;
+  if (Array.isArray(value)) return value.map(readableUnknown).filter(Boolean).join("\n");
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    if (typeof record.message === "string") return record.message;
+    if (typeof record.error === "string") return record.error;
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
+  }
+  return String(value ?? "");
+}
+
+function rosterErrorMessage(json: RosterApiError, fallback: string): string {
+  const message = readableUnknown(json.errors) || readableUnknown(json.error) || fallback;
+  const hint = readableUnknown(json.hint);
+  return hint ? `${message} ${hint}` : message;
+}
+
+function caughtErrorMessage(err: unknown): string {
+  return readableUnknown(err) || "Unexpected roster intake error";
+}
 
 function latestSubmission(link: LinkRow): Submission | null {
   return link.submissions[0] ?? null;
@@ -72,8 +100,8 @@ export default function TournamentRosterIntakeAdmin({
     if (!bracketProjectId) return;
     const qs = new URLSearchParams({ organizationId, seasonYear: String(seasonYear), bracketProjectId });
     const res = await fetch(`/api/admin/tournament-rosters/links?${qs.toString()}`, { cache: "no-store" });
-    const json = await readRosterApiJson<{ data?: LinkRow[]; error?: string }>(res);
-    if (!res.ok) throw new Error(json.error ?? `Could not load roster links (${res.status})`);
+    const json = await readRosterApiJson<{ data?: LinkRow[] } & RosterApiError>(res);
+    if (!res.ok) throw new Error(rosterErrorMessage(json, `Could not load roster links (${res.status})`));
     setLinks(json.data ?? []);
     const nextDrafts: Record<string, RosterPlayerInput[]> = {};
     for (const link of json.data ?? []) {
@@ -91,7 +119,7 @@ export default function TournamentRosterIntakeAdmin({
 
   useEffect(() => {
     const id = window.setTimeout(() => {
-      void loadLinks().catch((err: unknown) => setError(err instanceof Error ? err.message : String(err)));
+      void loadLinks().catch((err: unknown) => setError(caughtErrorMessage(err)));
     }, 0);
     return () => window.clearTimeout(id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -115,8 +143,8 @@ export default function TournamentRosterIntakeAdmin({
           teams: missingTeams.map((teamName) => ({ teamName, ageGroup })),
         }),
       });
-      const json = await readRosterApiJson<{ data?: { links: LinkRow[]; created: CreatedLink[] }; error?: string }>(res);
-      if (!res.ok) throw new Error(json.error ?? `Could not generate links (${res.status})`);
+      const json = await readRosterApiJson<{ data?: { links: LinkRow[]; created: CreatedLink[] } } & RosterApiError>(res);
+      if (!res.ok) throw new Error(rosterErrorMessage(json, `Could not generate links (${res.status})`));
       setLinks(json.data?.links ?? []);
       setCreatedLinks((prev) => {
         const next = { ...prev };
@@ -125,7 +153,7 @@ export default function TournamentRosterIntakeAdmin({
       });
       setNotice(`Generated ${json.data?.created.length ?? 0} roster link(s). Copy them now or regenerate later.`);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(caughtErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -140,15 +168,15 @@ export default function TournamentRosterIntakeAdmin({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ linkId, action: "regenerate" }),
       });
-      const json = await readRosterApiJson<{ data?: { link: LinkRow; publicUrl: string }; error?: string }>(res);
-      if (!res.ok) throw new Error(json.error ?? `Could not regenerate link (${res.status})`);
+      const json = await readRosterApiJson<{ data?: { link: LinkRow; publicUrl: string } } & RosterApiError>(res);
+      if (!res.ok) throw new Error(rosterErrorMessage(json, `Could not regenerate link (${res.status})`));
       if (json.data) {
         setCreatedLinks((prev) => ({ ...prev, [linkId]: json.data!.publicUrl }));
         await loadLinks();
       }
       setNotice("Roster link regenerated. Copy the new link now.");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(caughtErrorMessage(err));
     } finally {
       setBusy(false);
     }
@@ -170,12 +198,12 @@ export default function TournamentRosterIntakeAdmin({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, players: drafts[submissionId] }),
       });
-      const json = await readRosterApiJson<{ error?: string; errors?: string[] }>(res);
-      if (!res.ok) throw new Error(json.errors?.join("\n") || json.error || `Review failed (${res.status})`);
+      const json = await readRosterApiJson<RosterApiError>(res);
+      if (!res.ok) throw new Error(rosterErrorMessage(json, `Review failed (${res.status})`));
       await loadLinks();
       setNotice(action === "approve" ? "Roster approved." : action === "reject" ? "Roster rejected." : "Roster reopened.");
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : String(err));
+      setError(caughtErrorMessage(err));
     } finally {
       setBusy(false);
     }
