@@ -135,7 +135,9 @@ export default function RosterIntakeForm({ token, teamName, ageGroup, latestStat
             }}
           />
         </label>
-        <p className="mt-2 text-xs text-zinc-500">Accepted columns: First Name, Last Name, Jersey Number.</p>
+        <p className="mt-2 text-xs text-zinc-500">
+          Accepted formats: First/Last/Jersey columns, Player or Name plus Jersey, or copied CSV/TSV rows from a spreadsheet.
+        </p>
       </div>
 
       <div className="space-y-2">
