@@ -56,22 +56,22 @@ CREATE TABLE "TournamentRosterSubmissionPlayer" (
 CREATE UNIQUE INDEX "TournamentRosterIntakeLink_tokenHash_key" ON "TournamentRosterIntakeLink"("tokenHash");
 
 -- CreateIndex
-CREATE UNIQUE INDEX "TournamentRosterIntakeLink_organizationId_seasonYear_bracketProjectId_teamName_key" ON "TournamentRosterIntakeLink"("organizationId", "seasonYear", "bracketProjectId", "teamName");
+CREATE UNIQUE INDEX "TRosterLink_org_season_project_team_key" ON "TournamentRosterIntakeLink"("organizationId", "seasonYear", "bracketProjectId", "teamName");
 
 -- CreateIndex
-CREATE INDEX "TournamentRosterIntakeLink_organizationId_seasonYear_bracketProjectId_idx" ON "TournamentRosterIntakeLink"("organizationId", "seasonYear", "bracketProjectId");
+CREATE INDEX "TRosterLink_org_season_project_idx" ON "TournamentRosterIntakeLink"("organizationId", "seasonYear", "bracketProjectId");
 
 -- CreateIndex
-CREATE INDEX "TournamentRosterIntakeLink_status_updatedAt_idx" ON "TournamentRosterIntakeLink"("status", "updatedAt");
+CREATE INDEX "TRosterLink_status_updated_idx" ON "TournamentRosterIntakeLink"("status", "updatedAt");
 
 -- CreateIndex
-CREATE INDEX "TournamentRosterSubmission_linkId_status_createdAt_idx" ON "TournamentRosterSubmission"("linkId", "status", "createdAt");
+CREATE INDEX "TRosterSubmission_link_status_created_idx" ON "TournamentRosterSubmission"("linkId", "status", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "TournamentRosterSubmission_status_createdAt_idx" ON "TournamentRosterSubmission"("status", "createdAt");
+CREATE INDEX "TRosterSubmission_status_created_idx" ON "TournamentRosterSubmission"("status", "createdAt");
 
 -- CreateIndex
-CREATE INDEX "TournamentRosterSubmissionPlayer_submissionId_rowNumber_idx" ON "TournamentRosterSubmissionPlayer"("submissionId", "rowNumber");
+CREATE INDEX "TRosterPlayer_submission_row_idx" ON "TournamentRosterSubmissionPlayer"("submissionId", "rowNumber");
 
 -- AddForeignKey
 ALTER TABLE "TournamentRosterSubmission" ADD CONSTRAINT "TournamentRosterSubmission_linkId_fkey" FOREIGN KEY ("linkId") REFERENCES "TournamentRosterIntakeLink"("id") ON DELETE CASCADE ON UPDATE CASCADE;
