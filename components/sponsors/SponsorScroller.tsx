@@ -17,6 +17,7 @@ function hideScrollerPath(pathname: string | null) {
   if (!pathname) return true;
   if (pathname.startsWith("/dugout")) return true;
   if (pathname.startsWith("/admin")) return true;
+  if (pathname.startsWith("/tournament-rosters")) return true;
   return false;
 }
 
