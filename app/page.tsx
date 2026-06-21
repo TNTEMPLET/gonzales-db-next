@@ -43,6 +43,50 @@ type HomepageFeaturedPost = {
   publishedAt: Date | null;
 };
 
+const TOURNAMENT_PARK = {
+  name: "Butch Gore Memorial Park",
+  addressLine1: "14450 Harry Savoy Road",
+  addressLine2: "St. Amant, LA 70774",
+  mapsQuery: "Butch Gore Memorial Park, 14450 Harry Savoy Road, St. Amant, LA 70774",
+};
+
+const PARK_DIRECTION_ORIGINS = [
+  {
+    label: "Eastbank Little League",
+    origin: "Butch Duhe Sportsplex, 1710 10th Street, Kenner, LA 70062",
+  },
+  {
+    label: "Bogalusa Little League",
+    origin: "Bogalusa Little League, 640 Avenue U, Bogalusa, LA 70427",
+  },
+  {
+    label: "St. Charles Little League",
+    origin: "East Bank Bridge Park, 13244 River Road, Destrehan, LA 70047",
+  },
+  {
+    label: "Greater New Orleans LL",
+    origin: "John A. Alario Sr. Event Center, 2000 Segnette Boulevard, Westwego, LA 70094",
+  },
+] as const;
+
+function googleDirectionsUrl(origin: string) {
+  const params = new URLSearchParams({
+    api: "1",
+    origin,
+    destination: TOURNAMENT_PARK.mapsQuery,
+    travelmode: "driving",
+  });
+  return `https://www.google.com/maps/dir/?${params.toString()}`;
+}
+
+function googleMapEmbedUrl() {
+  const params = new URLSearchParams({
+    q: TOURNAMENT_PARK.mapsQuery,
+    output: "embed",
+  });
+  return `https://www.google.com/maps?${params.toString()}`;
+}
+
 function formatPublishedDate(value: Date | null) {
   if (!value) return "Draft";
   return new Intl.DateTimeFormat("en-US", {
@@ -50,6 +94,115 @@ function formatPublishedDate(value: Date | null) {
     day: "numeric",
     year: "numeric",
   }).format(value);
+}
+
+function TournamentLandingPage() {
+  const site = getSiteConfig();
+
+  return (
+    <main className="min-h-screen bg-zinc-950 text-white">
+      <section className="mx-auto flex min-h-[calc(100svh-5rem)] max-w-5xl flex-col justify-center px-4 py-12 sm:px-6 sm:py-16">
+        <div className="rounded-3xl border border-zinc-800 bg-zinc-900/75 p-6 shadow-2xl shadow-black/20 sm:p-8 md:p-10">
+          <div className="flex flex-col gap-6 sm:flex-row sm:items-center">
+            <div className="relative h-20 w-28 shrink-0 sm:h-24 sm:w-32">
+              <Image
+                src={site.logoPath}
+                alt={site.name}
+                fill
+                priority
+                sizes="128px"
+                className="object-contain"
+              />
+            </div>
+            <div className="min-w-0">
+              <p className="mb-3 inline-flex rounded-full bg-brand-purple px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+                2026 Tournament Central
+              </p>
+              <h1 className="text-3xl font-bold leading-tight tracking-tight text-white sm:text-4xl md:text-5xl">
+                {site.name}
+              </h1>
+              <p className="mt-3 max-w-2xl text-sm leading-6 text-zinc-300 sm:text-base">
+                Compact access to District 2 brackets, live scores, tournament updates, and team rosters.
+              </p>
+            </div>
+          </div>
+
+          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+            <Link
+              href="/tournaments"
+              className="rounded-2xl bg-brand-purple px-5 py-4 text-center font-semibold text-white transition hover:bg-brand-purple-dark"
+            >
+              View Brackets
+            </Link>
+            <Link
+              href="/rosters"
+              className="rounded-2xl border border-zinc-700 px-5 py-4 text-center font-semibold text-zinc-100 transition hover:border-brand-gold hover:text-brand-gold"
+            >
+              View Rosters
+            </Link>
+          </div>
+
+          <div className="mt-6 grid gap-3 text-sm text-zinc-400 sm:grid-cols-3">
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <p className="font-semibold text-zinc-100">Live Scores</p>
+              <p className="mt-1">GameChanger links appear on bracket games when available.</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <p className="font-semibold text-zinc-100">Published Brackets</p>
+              <p className="mt-1">Division brackets are updated from the tournament admin.</p>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">
+              <p className="font-semibold text-zinc-100">Rosters</p>
+              <p className="mt-1">Approved tournament rosters will be posted by division.</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-5 rounded-3xl border border-zinc-800 bg-zinc-900/75 p-5 shadow-2xl shadow-black/20 sm:p-6 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
+          <div>
+            <p className="mb-3 inline-flex rounded-full bg-brand-purple px-4 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-white">
+              Park Information
+            </p>
+            <h2 className="text-2xl font-bold tracking-tight text-white">
+              {TOURNAMENT_PARK.name}
+            </h2>
+            <p className="mt-2 text-sm leading-6 text-zinc-300">
+              {TOURNAMENT_PARK.addressLine1}
+              <br />
+              {TOURNAMENT_PARK.addressLine2}
+            </p>
+            <p className="mt-3 text-sm text-zinc-400">
+              Use these Google Maps links for live driving directions from the I-10 corridor to the park.
+            </p>
+
+            <div className="mt-5 grid gap-2 sm:grid-cols-2">
+              {PARK_DIRECTION_ORIGINS.map((route) => (
+                <a
+                  key={route.label}
+                  href={googleDirectionsUrl(route.origin)}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="rounded-xl border border-zinc-700 bg-zinc-950/50 px-4 py-3 text-sm font-semibold text-zinc-100 transition hover:border-brand-gold hover:text-brand-gold"
+                >
+                  Directions from {route.label}
+                </a>
+              ))}
+            </div>
+          </div>
+
+          <div className="overflow-hidden rounded-2xl border border-zinc-800 bg-zinc-950/60">
+            <iframe
+              title={`${TOURNAMENT_PARK.name} map`}
+              src={googleMapEmbedUrl()}
+              className="h-64 w-full border-0 sm:h-72 lg:h-full"
+              loading="lazy"
+              referrerPolicy="no-referrer-when-downgrade"
+            />
+          </div>
+        </div>
+      </section>
+    </main>
+  );
 }
 
 export default async function Home({
@@ -64,7 +217,7 @@ export default async function Home({
   }
 
   if (isTournamentOnlyDeployment()) {
-    redirect("/tournaments");
+    return <TournamentLandingPage />;
   }
 
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
