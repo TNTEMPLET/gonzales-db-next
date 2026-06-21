@@ -11,6 +11,7 @@ type FooterProps = {
     shortName: string;
     displayNameLine2: string;
     logoPath: string;
+    tournamentOnly?: boolean;
   };
 };
 
@@ -20,6 +21,7 @@ export default function Footer({ brand }: FooterProps) {
   if (pathname.startsWith("/dugout")) return null;
 
   const isMaster = brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
+  const isTournamentOnly = brand.tournamentOnly ?? false;
 
   return (
     <footer className="border-t border-zinc-800 bg-zinc-950 py-10 sm:py-14 md:py-16">
@@ -45,9 +47,9 @@ export default function Footer({ brand }: FooterProps) {
             </div>
           </div>
           <p className="text-sm text-zinc-400 max-w-xs">
-            Official youth baseball league in Ascension Parish, Louisiana.
-            Providing fun, skill development, and competitive play for ages
-            3–12.
+            {isTournamentOnly
+              ? "Official tournament information, brackets, and rosters."
+              : "Official youth baseball league in Ascension Parish, Louisiana. Providing fun, skill development, and competitive play for ages 3-12."}
           </p>
         </div>
 
@@ -103,6 +105,33 @@ export default function Footer({ brand }: FooterProps) {
                     className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     The Board Room
+                  </a>
+                </li>
+              </>
+            ) : isTournamentOnly ? (
+              <>
+                <li>
+                  <a
+                    href="/"
+                    className="text-zinc-100 hover:text-brand-gold transition"
+                  >
+                    Home
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/tournaments"
+                    className="text-zinc-100 hover:text-brand-gold transition"
+                  >
+                    Brackets
+                  </a>
+                </li>
+                <li>
+                  <a
+                    href="/rosters"
+                    className="text-zinc-100 hover:text-brand-gold transition"
+                  >
+                    Rosters
                   </a>
                 </li>
               </>
