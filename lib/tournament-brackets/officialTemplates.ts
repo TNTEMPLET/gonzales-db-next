@@ -18,6 +18,7 @@ import { placeholderTeamsForCount } from "@/lib/tournament-brackets/ingestion/pa
 export type GoverningBodyId = "little_league" | "babe_ruth" | "cal_ripken";
 
 export type OfficialTemplateId =
+  | "little_league_3_team_de"
   | "little_league_5_team_de"
   | "little_league_6_team_de"
   | "little_league_7_team_de"
@@ -88,6 +89,38 @@ function officialRound(
     bracketSection: section,
     matches,
   };
+}
+
+function buildThreeTeamOfficialRounds(
+  teams: string[],
+  opts: OfficialTemplateBuildOptions,
+): BracketRound[] {
+  const t = teams.map((s) => s.trim()).filter(Boolean);
+  if (t.length !== 3) {
+    throw new Error("Official 3-team template requires exactly 3 teams (got " + t.length + ").");
+  }
+  const schedule = opts.scheduleByGame;
+  const championshipMatches = [
+    officialMatch("championship", 4, "W2", "W3", schedule, "grand_final"),
+  ];
+  if (opts.championshipSeriesStyle === "always_scheduled_reset") {
+    championshipMatches.push(
+      officialMatch("championship", 5, "W4", "L4", schedule, "if_necessary"),
+    );
+  }
+
+  return [
+    officialRound("winners", 0, "Winners Bracket — Semifinals", [
+      officialMatch("winners", 1, t[1]!, t[2]!, schedule),
+    ]),
+    officialRound("winners", 1, "Winners Bracket — Final", [
+      officialMatch("winners", 2, t[0]!, "W1", schedule),
+    ]),
+    officialRound("losers", 0, "Losers Bracket", [
+      officialMatch("losers", 3, "L1", "L2", schedule),
+    ]),
+    officialRound("championship", 0, "Championship Series", championshipMatches),
+  ];
 }
 
 function buildFiveTeamOfficialRounds(
@@ -204,6 +237,17 @@ function buildGenericOfficialRounds(
 }
 
 export const OFFICIAL_TEMPLATES: OfficialTemplate[] = [
+  {
+    id: "little_league_3_team_de",
+    governingBody: "little_league",
+    label: "Official 3-team double elimination (Little League)",
+    teamCount: 3,
+    defaultChampionshipSeriesStyle: "always_scheduled_reset",
+    supportedChampionshipSeriesStyles: BOTH_STYLES,
+    lockLayout: true,
+    pdfTemplateId: "little_league_3_team_de",
+    buildRounds: buildThreeTeamOfficialRounds,
+  },
   {
     id: "little_league_5_team_de",
     governingBody: "little_league",

@@ -102,6 +102,30 @@ export function resolveClassicDoubleElimSlots(
   };
 }
 
+
+export function resolveClassicThreeTeamDoubleElimSlots(
+  matchesByGame: Map<string, LayoutMatch>,
+): ClassicDoubleElimSlots | null {
+  const g1 = matchesByGame.get("1");
+  const g2 = matchesByGame.get("2");
+  const g3 = matchesByGame.get("3");
+  const g4 = matchesByGame.get("4");
+  const g5 = matchesByGame.get("5");
+  if (!g1 || !g2 || !g3 || !g4) return null;
+  if (g4.championshipRole && g4.championshipRole !== "grand_final") return null;
+  if (g5 && g5.championshipRole !== "if_necessary") return null;
+  return {
+    openers: [g1, g1],
+    winnersSemi: g2,
+    winnersFinal: g2,
+    losersRound1: g3,
+    losersCrossover: null,
+    losersFinal: g3,
+    grandFinal: g4,
+    ifNecessary: g5 ?? null,
+  };
+}
+
 export function isRenderableClassicMatch(m: LayoutMatch): boolean {
   const h = m.home.trim();
   const a = m.away.trim();

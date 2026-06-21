@@ -285,6 +285,68 @@ model BracketProject {
 
 /// Effective admin role for a specific organization (gonzales | ascension).
 /// Master Admin (`AdminUser.isMaster`) does not require a row — they apply everywhere.
+
+model TournamentRosterIntakeLink {
+  id              String   @id @default(cuid())
+  organizationId  String
+  seasonYear      Int
+  bracketProjectId String?
+  teamName        String
+  ageGroup        String?
+  tokenHash       String   @unique
+  status          String   @default("ACTIVE")
+  createdByAdminId String?
+  expiresAt       DateTime?
+  disabledAt      DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  submissions TournamentRosterSubmission[]
+
+  @@unique([organizationId, seasonYear, bracketProjectId, teamName], map: "TRosterLink_org_season_project_team_key")
+  @@index([organizationId, seasonYear, bracketProjectId], map: "TRosterLink_org_season_project_idx")
+  @@index([status, updatedAt], map: "TRosterLink_status_updated_idx")
+}
+
+model TournamentRosterSubmission {
+  id                String   @id @default(cuid())
+  linkId            String
+  status            String   @default("PENDING")
+  source            String
+  submitterName     String?
+  submitterEmail    String?
+  submitterPhone    String?
+  notes             String?
+  originalFilename  String?
+  rawCsv            String?
+  reviewedByAdminId String?
+  reviewedAt        DateTime?
+  rejectionReason   String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  link    TournamentRosterIntakeLink       @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  players TournamentRosterSubmissionPlayer[]
+
+  @@index([linkId, status, createdAt], map: "TRosterSubmission_link_status_created_idx")
+  @@index([status, createdAt], map: "TRosterSubmission_status_created_idx")
+}
+
+model TournamentRosterSubmissionPlayer {
+  id              String   @id @default(cuid())
+  submissionId    String
+  rowNumber       Int
+  firstName       String
+  lastName        String
+  jerseyNumber    String
+  validationNotes Json?
+  createdAt       DateTime @default(now())
+
+  submission TournamentRosterSubmission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+
+  @@index([submissionId, rowNumber], map: "TRosterPlayer_submission_row_idx")
+}
+
 model AdminOrgMembership {
   id             String    @id @default(cuid())
   adminUserId    String

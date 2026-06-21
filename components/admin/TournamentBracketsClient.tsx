@@ -15,6 +15,7 @@ import BracketStructureEditor from "@/components/admin/BracketStructureEditor";
 import BracketTeamNameBulkMapper from "@/components/admin/BracketTeamNameBulkMapper";
 import BracketGameChangerEventMappingEditor from "@/components/admin/BracketGameChangerEventMappingEditor";
 import BracketTeamNameMappingEditor from "@/components/admin/BracketTeamNameMappingEditor";
+import TournamentRosterIntakeAdmin from "@/components/admin/TournamentRosterIntakeAdmin";
 import GameChangerScoreboardModal from "@/components/brackets/GameChangerScoreboardModal";
 import TournamentBracketView, { type BracketScoringViewProps } from "@/components/brackets/TournamentBracketView";
 import { useGameChangerAdminSync } from "@/hooks/useGameChangerAdminSync";
@@ -22,7 +23,7 @@ import { bracketMatchLabelForId, bracketMatchRefForId } from "@/lib/gamechanger/
 import { parseGameChangerEmbedSnippet } from "@/lib/gamechanger/parseEmbedSnippet";
 import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
 import { buildBracketExportHtmlDocument } from "@/lib/tournament-brackets/bracketExportHtml";
-import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
+import { buildBracketLayout, championPlaqueHeading, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { buildBracketSvgPreview } from "@/lib/tournament-brackets/bracketSvgPreview";
 import { isBracketSetupWizardComplete, safeParseBracketSpec, type BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { comparePublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
@@ -37,6 +38,7 @@ import {
   type BracketMatchScores,
 } from "@/lib/tournament-brackets/bracketScoring";
 import { bracketWatermarkSrc } from "@/lib/tournament-brackets/bracketWatermark";
+import { extractRosterTeamsFromBracketSpec } from "@/lib/tournament-rosters/teams";
 import { normalizeHex6, resolveBracketThemeColors } from "@/lib/tournament-brackets/bracketTheme";
 import {
   normalizeVisualTuningNumber,
@@ -86,6 +88,15 @@ type VisualTuningDraftAxis = {
 type VisualTuningDraft = {
   games: Record<string, VisualTuningDraftAxis>;
   connectors: Record<string, VisualTuningDraftAxis>;
+};
+
+type PreviewSettingsSnapshot = {
+  championAgeGroupLabel?: string;
+  tournamentInfo?: BracketSpec["tournamentInfo"];
+  projectName?: string;
+  bracketThemePrimaryHex?: string;
+  bracketThemeAccentHex?: string;
+  visualTuning?: BracketSpec["visualTuning"];
 };
 
 type VisualTuningRow = {
@@ -640,7 +651,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   }, [baseLayoutBuild, scoreDraft, scoringSupported, spec]);
 
   const bracketLayout = bracketLayoutBuild.layout;
-
+  const rosterIntakeTeams = useMemo(() => (spec ? extractRosterTeamsFromBracketSpec(spec) : []), [spec]);
   const svgMarkup = bracketLayout && spec ? buildBracketSvgPreview(spec) : "";
 
   const scoringView: BracketScoringViewProps | null = useMemo(() => {
@@ -710,11 +721,46 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const [gcEmbedSnippetDraft, setGcEmbedSnippetDraft] = useState("");
   const [gcMaxVerticalDraft, setGcMaxVerticalDraft] = useState("4");
   const [adminGcModalMatchId, setAdminGcModalMatchId] = useState<string | null>(null);
+  const championPlaqueDraftSource = championAgeGroupDraft.trim() || spec?.divisionLabel?.trim() || "Tournament";
+  const championPlaquePreview = championPlaqueHeading(championPlaqueDraftSource);
+  const [settingsPreviewSnapshot, setSettingsPreviewSnapshot] = useState<PreviewSettingsSnapshot | null>(null);
 
   const gcConfigParsed = spec?.gameChanger
     ? bracketGameChangerSchema.safeParse(spec.gameChanger)
     : null;
   const gcConfig = gcConfigParsed?.success ? gcConfigParsed.data : null;
+  const settingsPreviewSpec = useMemo(() => {
+    if (!spec || !settingsPreviewSnapshot) return spec;
+    return {
+      ...spec,
+      championAgeGroupLabel: settingsPreviewSnapshot.championAgeGroupLabel,
+      tournamentInfo: settingsPreviewSnapshot.tournamentInfo,
+      bracketThemePrimaryHex: settingsPreviewSnapshot.bracketThemePrimaryHex,
+      bracketThemeAccentHex: settingsPreviewSnapshot.bracketThemeAccentHex,
+      visualTuning: settingsPreviewSnapshot.visualTuning,
+    } as BracketSpec;
+  }, [settingsPreviewSnapshot, spec]);
+  const previewProjectName = settingsPreviewSnapshot?.projectName ?? project?.name ?? "Bracket";
+  const previewBracketLayoutBuild = useMemo(() => {
+    if (!settingsPreviewSpec) return bracketLayoutBuild;
+    if (!settingsPreviewSnapshot) return bracketLayoutBuild;
+    try {
+      const layoutSpec =
+        scoringSupported && Object.keys(scoreDraft).length > 0
+          ? mergeMatchScoresIntoSpec(settingsPreviewSpec, scoreDraft)
+          : settingsPreviewSpec;
+      return { layout: buildBracketLayout(layoutSpec), error: null };
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : String(e);
+      console.error("[bracket-layout] build preview settings layout threw:", msg, e);
+      return { layout: null, error: msg };
+    }
+  }, [bracketLayoutBuild, scoreDraft, scoringSupported, settingsPreviewSnapshot, settingsPreviewSpec]);
+  const previewBracketLayout = previewBracketLayoutBuild.layout;
+  const previewBracketTheme = useMemo(
+    () => resolveBracketThemeColors(settingsPreviewSpec, siteThemeDefaults),
+    [settingsPreviewSpec, siteThemeDefaults],
+  );
   const {
     liveGameStatuses: adminLiveStatuses,
     eventsByMatchId: adminEventsByMatchId,
@@ -778,6 +824,84 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     }, 0);
     return () => window.clearTimeout(id);
   }, [spec, visualTuningRows]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => setSettingsPreviewSnapshot(null), 0);
+    return () => window.clearTimeout(id);
+  }, [project?.id, project?.updatedAt]);
+
+  function previewSettingsSnapshotFromDraft(): PreviewSettingsSnapshot {
+    const primary = normalizeHex6(bracketColorDraftPrimary);
+    const accent = normalizeHex6(bracketColorDraftAccent);
+    const visualTuning = {
+      ...(spec?.visualTuning ?? {}),
+      championConnectorYOffsetPx: 0,
+      ...visualTuningPayloadFromDraft(visualTuningDraft, visualTuningRows),
+    };
+    return {
+      championAgeGroupLabel: championAgeGroupDraft.trim() || undefined,
+      tournamentInfo: {
+        division: tournamentInfoDraft.division.trim() || undefined,
+        sites: tournamentInfoDraft.sites.trim() || undefined,
+        updatePhone: tournamentInfoDraft.updatePhone.trim() || undefined,
+        tournamentDirector: tournamentInfoDraft.tournamentDirector.trim() || undefined,
+        nextLevel: tournamentInfoDraft.nextLevel.trim() || undefined,
+      },
+      projectName: projectNameDraft.trim() || project?.name,
+      ...(primary ? { bracketThemePrimaryHex: primary } : {}),
+      ...(accent ? { bracketThemeAccentHex: accent } : {}),
+      visualTuning,
+    };
+  }
+
+  function applyPreviewSettingsDraftToPreview() {
+    setSettingsPreviewSnapshot(previewSettingsSnapshotFromDraft());
+  }
+
+  async function savePreviewSettings() {
+    if (!projectId || !project) return;
+    const snapshot = previewSettingsSnapshotFromDraft();
+    const primary = snapshot.bracketThemePrimaryHex;
+    const accent = snapshot.bracketThemeAccentHex;
+    if (!primary || !accent) {
+      setError("Enter valid hex colors (e.g. #590275).");
+      return;
+    }
+    const siteP = normalizeHex6(siteThemeDefaults.primaryHex);
+    const siteA = normalizeHex6(siteThemeDefaults.accentHex);
+    const sameAsSite =
+      siteP && siteA && primary.toLowerCase() === siteP.toLowerCase() && accent.toLowerCase() === siteA.toLowerCase();
+    const priority = Number.parseInt(projectPriorityDraft, 10);
+    setBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/tournament-brackets/projects/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          name: snapshot.projectName,
+          ...(Number.isFinite(priority) ? { priority: Math.trunc(priority) } : {}),
+          specPatch: {
+            championAgeGroupLabel: snapshot.championAgeGroupLabel ?? null,
+            tournamentInfo: snapshot.tournamentInfo,
+            bracketThemePrimaryHex: sameAsSite ? null : primary,
+            bracketThemeAccentHex: sameAsSite ? null : accent,
+            visualTuning: snapshot.visualTuning,
+          },
+        }),
+      });
+      const json = await readApiJson<{ error?: string; hint?: string }>(res);
+      if (!res.ok) throw new Error(apiErrorMessage(json, "Could not save preview settings"));
+      setSettingsPreviewSnapshot(snapshot);
+      await loadProject(projectId);
+      await loadProjects();
+      setNotice("Preview settings saved to the live bracket.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   async function saveGameChangerConfig() {
     if (!projectId) return;
@@ -866,7 +990,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     setError("");
     try {
       await patchSpec({ championAgeGroupLabel: championAgeGroupDraft.trim() || null });
-      setNotice("Champion banner label saved.");
+      setNotice("Champion plaque placeholder saved to this bracket.");
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -2311,6 +2435,13 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                     />
                   </div>
                 </details>
+                <TournamentRosterIntakeAdmin
+                  organizationId={project.organizationId}
+                  seasonYear={project.seasonYear}
+                  bracketProjectId={project.id}
+                  teams={rosterIntakeTeams}
+                  ageGroup={spec.divisionLabel ?? project.name}
+                />
                 {gcConfig ? (
                   <details
                     className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`}
@@ -2349,7 +2480,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                     </div>
                   </details>
                 ) : null}
-                <details className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`} {...(!focusPreview ? { open: true } : {})}><summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">Bracket structure</summary><div className="border-t border-zinc-800 p-4 sm:p-5">                <BracketStructureEditor
+                <details id="bracket-structure-editor" className={`rounded-xl border border-zinc-800 bg-zinc-900/70 ${focusPreview ? "order-2" : ""}`} {...(!focusPreview ? { open: true } : {})}><summary className="cursor-pointer p-4 text-xs font-semibold uppercase text-zinc-400 marker:content-none [&::-webkit-details-marker]:hidden">Bracket structure</summary><div className="border-t border-zinc-800 p-4 sm:p-5">                <BracketStructureEditor
                   spec={spec}
                   projectId={project.id}
                   projectUpdatedAt={project.updatedAt}
@@ -2399,9 +2530,127 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                     </div>
                     </div>
                   </div>
-                  <details className="mt-3">
+                  <details id="bracket-preview-settings" className="mt-3" open>
                     <summary className="cursor-pointer text-xs font-semibold text-zinc-500">Preview settings</summary>
                   <div className="mt-3 space-y-3 rounded-lg border border-zinc-700 bg-zinc-950/50 p-3">
+                    <div className="rounded-lg border border-emerald-900/60 bg-emerald-950/15 p-3">
+                      <h3 className="text-xs font-semibold uppercase tracking-wide text-emerald-200/80">
+                        Live page display controls
+                      </h3>
+                      <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                        These settings mirror the live page. Leaving a field updates this preview only; Save settings writes the current values to the public bracket.
+                      </p>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          disabled={busy}
+                          onClick={() => void savePreviewSettings()}
+                          className="min-h-10 rounded-lg bg-emerald-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-600 disabled:opacity-40"
+                        >
+                          Save settings
+                        </button>
+                      </div>
+                      <div className="mt-3 space-y-4">
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-950/35 p-3">
+                          <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                            Champion plaque placeholder
+                          </h4>
+                          <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                            Used only until a winner is entered. Once the bracket has a champion, the team name replaces this placeholder automatically.
+                          </p>
+                          <div className="mt-3 grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                            <label className="block text-xs font-medium text-zinc-500">
+                              Placeholder label source
+                              <input
+                                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
+                                value={championAgeGroupDraft}
+                                disabled={busy}
+                                onChange={(e) => setChampionAgeGroupDraft(e.target.value)}
+                                onBlur={applyPreviewSettingsDraftToPreview}
+                                spellCheck={false}
+                                placeholder={spec.divisionLabel?.trim() || project.name || "e.g. Tee Ball"}
+                              />
+                            </label>
+                          </div>
+                          <p className="mt-2 text-[11px] text-zinc-500">
+                            Current rendered placeholder: <span className="font-semibold text-zinc-300">{championPlaquePreview}</span>
+                          </p>
+                        </div>
+
+                        <div className="grid gap-4 lg:grid-cols-2">
+                          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/35 p-3">
+                            <div>
+                              <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Tournament info</h4>
+                              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                                Shows in the classic header table.
+                              </p>
+                            </div>
+                            <div className="grid gap-2 sm:grid-cols-2">
+                              {(
+                                [
+                                  ["division", "Division"],
+                                  ["sites", "Site(s)"],
+                                  ["updatePhone", "Update Phone"],
+                                  ["tournamentDirector", "Tournament Director"],
+                                  ["nextLevel", "Next Level"],
+                                ] as const
+                              ).map(([key, label]) => (
+                                <label key={`preview-live-${key}`} className="block text-[11px] text-zinc-500">
+                                  {label}
+                                  <input
+                                    value={tournamentInfoDraft[key]}
+                                    onChange={(e) => setTournamentInfoDraft((prev) => ({ ...prev, [key]: e.target.value }))}
+                                    onBlur={applyPreviewSettingsDraftToPreview}
+                                    disabled={busy}
+                                    className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
+                                    spellCheck={false}
+                                  />
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+
+                          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/35 p-3">
+                            <div>
+                              <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Bracket title and order</h4>
+                              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                                Controls public tabs and exported bracket title.
+                              </p>
+                            </div>
+                            <label className="block text-[11px] text-zinc-500">
+                              Project title
+                              <input
+                                value={projectNameDraft}
+                                onChange={(e) => setProjectNameDraft(e.target.value)}
+                                onBlur={applyPreviewSettingsDraftToPreview}
+                                disabled={busy}
+                                className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
+                                spellCheck={false}
+                              />
+                            </label>
+                            <label className="block text-[11px] text-zinc-500">
+                              Public tab priority
+                              <select
+                                value={projectPriorityDraft}
+                                onChange={(e) => setProjectPriorityDraft(e.target.value)}
+                                onBlur={applyPreviewSettingsDraftToPreview}
+                                disabled={busy}
+                                className="mt-0.5 w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
+                                aria-label="Preview settings project priority"
+                              >
+                                {projectPriorityOptions.map((priority) => (
+                                  <option key={`preview-priority-${priority}`} value={String(priority)}>
+                                    Priority {priority}
+                                    {priority === 0 ? " (highest)" : ""}
+                                  </option>
+                                ))}
+                              </select>
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <details className="rounded-lg border border-zinc-800 bg-zinc-950/30 p-3">
                       <summary className="cursor-pointer list-none text-xs font-semibold uppercase tracking-wide text-zinc-500 marker:content-none [&::-webkit-details-marker]:hidden">
                         Bracket appearance (LLBWS-style)
@@ -2412,7 +2661,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       <p className="mt-1 text-xs leading-relaxed text-zinc-500">
                         Layout follows the printable Little League–style column bracket. Colors default to the
                         selected site ({getBracketOrgDisplayName(organizationId)}): primary for structure ink,
-                        accent for highlights. Overrides apply to this preview and HTML export only.
+                        accent for highlights. Overrides are saved to this bracket in the database and apply to preview, public pages, HTML export, and flyer PDF.
                       </p>
                     <div className="mt-3 grid gap-3 sm:flex sm:flex-wrap sm:items-end sm:gap-4">
                       <label className="block text-xs font-medium text-zinc-500">
@@ -2422,6 +2671,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                             type="color"
                             value={bracketColorDraftPrimary}
                             onChange={(e) => setBracketColorDraftPrimary(e.target.value)}
+                            onBlur={applyPreviewSettingsDraftToPreview}
                             disabled={busy}
                             className="h-9 w-12 cursor-pointer rounded border border-zinc-600 bg-zinc-950 disabled:opacity-40"
                             aria-label="Bracket primary color"
@@ -2444,6 +2694,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                             type="color"
                             value={bracketColorDraftAccent}
                             onChange={(e) => setBracketColorDraftAccent(e.target.value)}
+                            onBlur={applyPreviewSettingsDraftToPreview}
                             disabled={busy}
                             className="h-9 w-12 cursor-pointer rounded border border-zinc-600 bg-zinc-950 disabled:opacity-40"
                             aria-label="Bracket accent color"
@@ -2487,8 +2738,8 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                         </span>
                       </summary>
                       <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-                        Stored in the bracket spec JSON. Adjust game blocks and connector paths with X/Y pixel
-                        nudges; new same site/year brackets inherit the latest saved tuning.
+                        Saved in this bracket spec JSON. Adjust game blocks and connector paths with X/Y pixel
+                        nudges; the public page reads these values from the database without a deploy.
                       </p>
                       {visualTuningRows.games.length === 0 && visualTuningRows.connectors.length === 0 ? (
                         <p className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3 text-[11px] text-zinc-500">
@@ -2518,6 +2769,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                                       updateVisualTuningDraftValue("games", row.key, "x", e.target.value)
                                     }
                                     disabled={busy}
+                                    onBlur={applyPreviewSettingsDraftToPreview}
                                     className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
                                   />
                                   <input
@@ -2530,6 +2782,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                                       updateVisualTuningDraftValue("games", row.key, "y", e.target.value)
                                     }
                                     disabled={busy}
+                                    onBlur={applyPreviewSettingsDraftToPreview}
                                     className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
                                   />
                                 </div>
@@ -2557,6 +2810,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                                       updateVisualTuningDraftValue("connectors", row.key, "x", e.target.value)
                                     }
                                     disabled={busy}
+                                    onBlur={applyPreviewSettingsDraftToPreview}
                                     className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
                                   />
                                   <input
@@ -2569,6 +2823,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                                       updateVisualTuningDraftValue("connectors", row.key, "y", e.target.value)
                                     }
                                     disabled={busy}
+                                    onBlur={applyPreviewSettingsDraftToPreview}
                                     className="w-full rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm text-zinc-100"
                                   />
                                 </div>
@@ -2809,7 +3064,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                     ) : null}
                   </div>
                   </details>
-                  {bracketLayout ? (
+                  {previewBracketLayout ? (
                     <div className="mt-2 flex flex-col gap-2 rounded-lg border border-zinc-700/50 bg-zinc-950/35 px-3 py-2 text-xs text-zinc-400 sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-4">
                       <label className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
                         <span className="shrink-0 font-medium text-zinc-500">Preview zoom</span>
@@ -2832,7 +3087,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                       </p>
                     </div>
                   ) : null}
-                  <div className="mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-2 sm:p-3">{bracketLayout ? (
+                  <div className="mt-2 w-full min-w-0 overflow-x-auto overflow-y-visible rounded-lg border border-slate-600/50 bg-slate-300/30 p-2 sm:p-3">{previewBracketLayout ? (
                       <div
                         ref={bracketPdfCaptureRef}
                         className="block w-full min-w-0 max-w-full align-top"
@@ -2843,18 +3098,18 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                           style={{ zoom: bracketPreviewZoom }}
                         >
                           <TournamentBracketView
-                            layout={bracketLayout}
+                            layout={previewBracketLayout}
                             colorScheme="light"
-                            themeColors={resolvedBracketTheme}
+                            themeColors={previewBracketTheme}
                             logoWatermarkUrl={bracketWatermarkUrl}
                             parentOrganizationLogo={{
                               src: bracketBranding.parentLogoPath,
                               name: bracketBranding.parentName,
                             }}
-                            tournamentInfo={spec?.tournamentInfo}
-                            visualTuning={spec?.visualTuning}
+                            tournamentInfo={settingsPreviewSpec?.tournamentInfo}
+                            visualTuning={settingsPreviewSpec?.visualTuning}
                             scoring={scoringView}
-                            surfaceTitleOverride={projectNameDraft.trim() || project.name}
+                            surfaceTitleOverride={previewProjectName}
                             liveGameStatuses={adminLiveStatuses}
                             gameChangerEnabled={Boolean(gcConfig)}
                             onMatchClick={

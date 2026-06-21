@@ -1221,6 +1221,15 @@
   min-width: 72rem;
 }
 
+
+.doubleElimUnified.classicThreeTeamDoubleElimUnified .bracketGridScroll {
+  min-width: 58rem;
+}
+
+.classicThreeTeamDoubleElimUnified .classicDoubleElimBandGap {
+  min-height: 1.2rem;
+}
+
 .doubleElimBandLabel {
   margin: 0;
   align-self: stretch;
