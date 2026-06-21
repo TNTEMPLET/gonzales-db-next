@@ -13,6 +13,10 @@ type ApiResponse = {
   error?: string;
 };
 
+type SponsorScrollerProps = {
+  placement?: "dock" | "after-footer";
+};
+
 function hideScrollerPath(pathname: string | null) {
   if (!pathname) return true;
   if (pathname.startsWith("/dugout")) return true;
@@ -21,10 +25,13 @@ function hideScrollerPath(pathname: string | null) {
   return false;
 }
 
-export default function SponsorScroller() {
+export default function SponsorScroller({
+  placement = "dock",
+}: SponsorScrollerProps) {
   const pathname = usePathname();
   const [items, setItems] = useState<SponsorScrollerItem[]>([]);
   const hidden = hideScrollerPath(pathname);
+  const dock = placement === "dock";
 
   useEffect(() => {
     let active = true;
@@ -54,7 +61,7 @@ export default function SponsorScroller() {
   }, [pathname]);
 
   useEffect(() => {
-    if (hidden || items.length === 0) {
+    if (!dock || hidden || items.length === 0) {
       document.body.classList.remove("has-sponsor-dock");
       return;
     }
@@ -66,6 +73,10 @@ export default function SponsorScroller() {
 
   if (hidden) return null;
   if (items.length === 0) return null;
+
+  if (!dock) {
+    return <SponsorMarquee items={items} />;
+  }
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-[100] pb-safe">

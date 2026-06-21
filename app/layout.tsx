@@ -58,7 +58,7 @@ export default function RootLayout({
         </Suspense>
         {children}
         <Footer brand={brand} />
-        <SponsorScroller />
+        <SponsorScroller placement={site.orgId === "ladistrict2" ? "after-footer" : "dock"} />
         {process.env.NODE_ENV === "development" ? <DevLiveIndicator /> : null}
       </body>
     </html>
