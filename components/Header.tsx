@@ -58,7 +58,7 @@ export default function Header({ brand }: HeaderProps) {
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   const currentOrgParam = searchParams.get("org");
-  const [regOpen, setRegOpen] = useState(false);
+  const [regOpen] = useState(() => isRegistrationOpen());
   const isMasterHeader =
     brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
   const isTournamentOnly = brand.tournamentOnly ?? false;
@@ -140,10 +140,6 @@ export default function Header({ brand }: HeaderProps) {
       ? "block px-3 py-2 text-left text-sm text-red-200 bg-red-950/35"
       : "block px-3 py-2 text-left text-sm text-zinc-200 hover:bg-red-950/25 hover:text-red-100";
   }
-
-  useEffect(() => {
-    setRegOpen(isRegistrationOpen());
-  }, []);
 
   useEffect(() => {
     let active = true;
@@ -240,7 +236,7 @@ export default function Header({ brand }: HeaderProps) {
     };
   }, [openMasterMenu]);
 
-  if (pathname.startsWith("/dugout")) return null;
+  if (pathname.startsWith("/dugout") || pathname.startsWith("/tournament-rosters")) return null;
 
   const masterRole = adminRole ? toAdminRole(adminRole) : null;
   const masterOrgSuffix =

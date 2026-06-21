@@ -48,6 +48,32 @@ test("placeholderTeamsForCount uses A–F for six teams", () => {
   assert.deepEqual(placeholderTeamsForCount(6), ["A", "B", "C", "D", "E", "F"]);
 });
 
+test("parsePdfBracketTemplate detects 3-team Little League Tee Ball bracket", () => {
+  const text = [
+    "Division: Little League Tee Ball",
+    "3 Team Little League Bracket",
+    "Winners Bracket",
+    "Game 1",
+    "Loser to A",
+    "Game 2",
+    "Loser to B",
+    "Losers Bracket",
+    "Game 3",
+    "Game 4",
+    "Loser to C (if 1st Loss)",
+    "Game 5",
+    "Champion",
+    "if necessary",
+  ].join("\n");
+  const match = parsePdfBracketTemplate(text);
+  assert.ok(match);
+  assert.equal(match.templateId, "little_league_3_team_de");
+  assert.equal(match.teamCount, 3);
+  assert.equal(match.bracketFormat, "double_elimination");
+  assert.equal(match.championshipSeriesStyle, "always_scheduled_reset");
+  assert.deepEqual(match.placeholderTeams, ["A", "B", "C"]);
+});
+
 test("parsePdfBracketTemplate detects 6-team Little League double elimination", () => {
   const match = parsePdfBracketTemplate(DISTRICT2_PDF_TEXT);
   assert.ok(match);

@@ -146,6 +146,31 @@ function uniqueComplete(values: Array<string | null>, expectedCount: number): st
   return out;
 }
 
+function threeTeamOcrReadingOrderTeams(lines: string[]): string[] | null {
+  const candidates: string[] = [];
+  const seen = new Set<string>();
+  const firstBracketLine = lines.findIndex((line) => /Winners[\x27’]?\s+Bracket/i.test(line));
+  const lastWinnersLine = lines.findIndex((line) => /Losers[\x27’]?\s+Bracket/i.test(line));
+  const bracketLines =
+    firstBracketLine >= 0
+      ? lines.slice(firstBracketLine + 1, lastWinnersLine > firstBracketLine ? lastWinnersLine : undefined)
+      : lines;
+  for (const line of bracketLines) {
+    const candidate = visualCandidateFromLine(line);
+    if (!candidate || !isLikelyTeamName(candidate)) continue;
+    const cleaned = cleanVisualTeamName(candidate);
+    const key = cleaned.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    candidates.push(cleaned);
+  }
+  if (candidates.length < 3) return null;
+
+  // OCR/vision reads the 3-team LL form in visual order: B slot, C slot, A bye slot.
+  const reordered = [candidates[2], candidates[0], candidates[1]];
+  return uniqueComplete(reordered, 3);
+}
+
 function fiveTeamOcrReadingOrderTeams(lines: string[]): string[] | null {
   const candidates: string[] = [];
   const seen = new Set<string>();
@@ -205,6 +230,17 @@ export function extractVisualPdfTeams(
 ): string[] | null {
   const lines = normalizedLines(text);
   const games = gameLineIndexes(lines);
+  if (template.templateId === "little_league_3_team_de") {
+    const positioned = uniqueComplete(
+      [
+        nextVisualValue(lines, games.get(2) ?? -1),
+        previousVisualValue(lines, games.get(1) ?? -1),
+        nextVisualValue(lines, games.get(1) ?? -1),
+      ],
+      3,
+    );
+    return positioned ?? threeTeamOcrReadingOrderTeams(lines);
+  }
   if (template.templateId === "little_league_5_team_de") {
     const positioned = uniqueComplete(
       [

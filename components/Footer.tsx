@@ -18,7 +18,7 @@ type FooterProps = {
 export default function Footer({ brand }: FooterProps) {
   const pathname = usePathname();
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
-  if (pathname.startsWith("/dugout")) return null;
+  if (pathname.startsWith("/dugout") || pathname.startsWith("/tournament-rosters")) return null;
 
   const isMaster = brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
   const isTournamentOnly = brand.tournamentOnly ?? false;

@@ -22,6 +22,37 @@ test("defaultBracketSpec uses official 6-team LL template", () => {
   assert.equal(spec.teams.length, 6);
 });
 
+test("3-team official LL builder follows Tee Ball PDF routing", () => {
+  const teams = ["Eastbank", "Ascension LL", "GNO"];
+  const standard = buildRoundsFromOfficialTemplate("little_league_3_team_de", teams, {
+    championshipSeriesStyle: "always_scheduled_reset",
+  });
+  const byGame = new Map(
+    standard.flatMap((round) => round.matches).map((match) => [match.officialGameNumber, match]),
+  );
+
+  assert.equal(byGame.get("1")?.home, "Ascension LL");
+  assert.equal(byGame.get("1")?.away, "GNO");
+  assert.equal(byGame.get("2")?.home, "Eastbank");
+  assert.equal(byGame.get("2")?.away, "W1");
+  assert.equal(byGame.get("3")?.home, "L1");
+  assert.equal(byGame.get("3")?.away, "L2");
+  assert.equal(byGame.get("4")?.home, "W2");
+  assert.equal(byGame.get("4")?.away, "W3");
+  assert.equal(byGame.get("4")?.championshipRole, "grand_final");
+  assert.equal(byGame.get("5")?.home, "W4");
+  assert.equal(byGame.get("5")?.away, "L4");
+  assert.equal(byGame.get("5")?.championshipRole, "if_necessary");
+
+  const modified = buildRoundsFromOfficialTemplate("little_league_3_team_de", teams, {
+    championshipSeriesStyle: "winner_take_all",
+  });
+  assert.equal(
+    modified.flatMap((round) => round.matches).some((match) => match.officialGameNumber === "5"),
+    false,
+  );
+});
+
 test("5-team modified DE omits if-necessary game", () => {
   const teams = ["A", "B", "C", "D", "E"];
   const rounds = buildRoundsFromOfficialTemplate("little_league_5_team_de", teams, {
