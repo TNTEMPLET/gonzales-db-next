@@ -390,6 +390,7 @@ export default function ParentCapOrdersPanel() {
   const allOrders = data ? [...data.gonzales, ...data.ascension, ...data.unknown] : [];
   const totalQty = countTotal(allOrders);
   const fulfilledQty = countFulfilled(allOrders);
+  const openQty = totalQty - fulfilledQty;
 
   return (
     <div className="space-y-4">
@@ -402,6 +403,11 @@ export default function ParentCapOrdersPanel() {
               <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
               Live · refreshes every 30s
             </span>
+            {data ? (
+              <span className="rounded-full border border-zinc-700 bg-zinc-950 px-2 py-0.5 text-xs text-zinc-400">
+                {allOrders.length} orders · {fulfilledQty}/{totalQty} caps fulfilled · {openQty} open
+              </span>
+            ) : null}
           </div>
           <div className="flex gap-2">
             <button
@@ -420,7 +426,7 @@ export default function ParentCapOrdersPanel() {
               className="flex items-center gap-1.5 rounded-lg border border-blue-700/60 bg-blue-950/20 px-3 py-2 text-sm text-blue-300 hover:bg-blue-900/30 disabled:opacity-50"
             >
               <PayPalIcon />
-              {syncing ? "Syncing…" : "Sync from PayPal"}
+              {syncing ? "Syncing…" : "Sync latest PayPal orders"}
             </button>
             <button
               type="button"

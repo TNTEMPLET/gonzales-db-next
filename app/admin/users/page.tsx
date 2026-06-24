@@ -59,9 +59,16 @@ export default async function AdminUsersPage({
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Admin User Management
           </h1>
-          <p className="text-zinc-400 max-w-2xl">
-            Promote registered Google users to admin access and demote admins as
-            needed.
+          <p className="text-zinc-400 max-w-3xl">
+            Review who can sign in, who can coach, and who can manage this
+            organization. Use this page when adding a trusted admin, checking
+            duplicate family accounts, or removing access that should no longer
+            apply.
+          </p>
+          <p className="mt-2 text-sm text-amber-200/90 max-w-3xl">
+            Permission changes take effect immediately for the selected organization.
+            Double-check the target org above before promoting, demoting, or changing
+            roles.
           </p>
         </div>
 

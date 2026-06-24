@@ -71,8 +71,11 @@ export default async function AdminPaymentsPage({
             All-Star Payment Rosters
           </h1>
           <p className="text-zinc-400 max-w-3xl">
-            Payment records for each All-Star roster, organized by team. Mark players paid or unpaid as fees are collected.
+            Use this after final All-Star rosters are set. Seed or sync payment rows from finalized rosters, import PayPal activity, and keep paid/unpaid status current before families receive follow-up reminders.
           </p>
+          <div className="mt-4 rounded-xl border border-amber-800/50 bg-amber-950/20 p-3 text-sm text-amber-100">
+            Payments follow the roster decisions made in the All-Star Vault. If a player is missing here, confirm the cycle roster is finalized before editing payment rows by hand.
+          </div>
         </div>
 
         {/* ── Settings ──────────────────────────────────────────────────────── */}

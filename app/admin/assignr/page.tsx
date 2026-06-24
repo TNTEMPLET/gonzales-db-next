@@ -58,8 +58,9 @@ export default async function AdminAssignrPage({
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">Assignr</h1>
           <p className="text-zinc-400 max-w-2xl">
-            Server-side read/write workflows for schedules, assignments, officials, and
-            statement reconciliation.
+            Use this when a schedule, official, assignment, or statement needs
+            attention in Assignr. Pick the job below and confirm the selected
+            site before making changes, because these tools connect to Assignr.
           </p>
         </div>
         <AdminAssignrHub targetOrg={orgId} />

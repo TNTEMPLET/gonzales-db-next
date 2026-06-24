@@ -56,6 +56,31 @@ export default function AdminAlertsManager({ activeAlerts, availableOrgs, defaul
 
   return (
     <div className="space-y-10">
+      <section className="grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl border border-red-800/50 bg-red-950/20 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-red-200">
+            Public impact
+          </p>
+          <p className="mt-2 text-sm text-red-100/90">
+            Posting here shows a rainout message on the public site for the
+            selected site. Clear it as soon as play resumes.
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+            Active now
+          </p>
+          <p className="mt-2 text-2xl font-bold text-white">
+            {activeAlerts.length}
+          </p>
+          <p className="mt-1 text-xs text-zinc-400">
+            {availableOrgs.length === 1
+              ? "Showing the selected site only."
+              : "Showing every site you can manage from MASTER."}
+          </p>
+        </div>
+      </section>
+
       {/* Active Alerts */}
       <section>
         <h2 className="mb-4 text-xl font-bold">Active Alerts</h2>
@@ -192,6 +217,11 @@ export default function AdminAlertsManager({ activeAlerts, availableOrgs, defaul
             <p className="mt-1 text-xs text-zinc-500">
               Uses your browser&apos;s local time. Alert clears automatically after this time.
             </p>
+          </div>
+
+          <div className="rounded-xl border border-amber-700/60 bg-amber-950/20 p-3 text-sm text-amber-100/90">
+            Check the site and scope before posting. This message is visible to
+            families until the expiration time or until you clear it.
           </div>
 
           <button

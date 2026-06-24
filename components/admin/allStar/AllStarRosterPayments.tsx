@@ -559,6 +559,9 @@ export default function AllStarRosterPayments({ org }: { org: string }) {
       <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h2 className="text-lg font-semibold text-white">All-Star Payment Rosters</h2>
+          <p className="mt-1 max-w-2xl text-sm text-zinc-400">
+            Seed rows from finalized All-Star rosters, then mark payments as families pay. Unpaid counts are the follow-up list for board members and coaches.
+          </p>
           {data && (
             <p className="text-xs text-zinc-400 mt-0.5">
               {data.grandTotals.total} players · {data.grandTotals.paidCount} paid · {fmtMoney(data.grandTotals.collectedCents)} collected

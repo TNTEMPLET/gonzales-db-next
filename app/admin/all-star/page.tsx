@@ -66,8 +66,22 @@ export default async function AdminAllStarPage({
             All-Star Voting Management
           </h1>
           <p className="text-zinc-400 max-w-3xl">
-            Manage ballot cycles, import players, assign head coaches, control vault access, publish invite links, and export voting results.
+            Use this seasonal workspace to move each All-Star age group from setup to coach voting, final roster decisions, payment tracking, and parent cap orders. Start with the active site and season, then publish only the cycles that are ready for coaches.
           </p>
+          <div className="mt-4 grid gap-3 text-sm text-zinc-300 md:grid-cols-3">
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Season flow</p>
+              <p className="mt-1">Create cycle, load candidates, assign coaches, open voting, close results.</p>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">After voting</p>
+              <p className="mt-1">Review standings, make roster overrides, then use Payments and Cap Orders for parent follow-through.</p>
+            </div>
+            <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-3">
+              <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Site context</p>
+              <p className="mt-1">All edits apply to the selected organization. Switch sites before changing cycles or access.</p>
+            </div>
+          </div>
         </div>
 
         <AllStarVaultManager

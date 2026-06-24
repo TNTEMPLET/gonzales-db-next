@@ -142,11 +142,22 @@ export default function OrgDocumentsManager({
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
 
   const currentFolderId = pathStack[pathStack.length - 1]!.id;
+  const currentFolderName = pathStack[pathStack.length - 1]!.name;
 
   const sortedFiles = useMemo(
     () => sortFileRows(files, sortKey, sortDir),
     [files, sortKey, sortDir],
   );
+
+  const documentStats = useMemo(() => {
+    const folderCount = files.filter((file) => file.mimeType === FOLDER_MIME).length;
+    return {
+      fileCount: files.length - folderCount,
+      folderCount,
+      permissionCount: permissions.length,
+      total: files.length,
+    };
+  }, [files, permissions.length]);
 
   function handleSortHeaderClick(key: FileSortKey) {
     if (sortKey === key) {
@@ -286,6 +297,36 @@ export default function OrgDocumentsManager({
 
   return (
     <div className="space-y-10">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+            Drive folder health
+          </p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Viewing {currentFolderName}. File links open in Google Drive and only
+            work for people with Drive access. Sharing changes affect the Drive
+            folder, not public website pages.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Items</p>
+            <p className="mt-1 text-2xl font-semibold">{documentStats.total}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Folders</p>
+            <p className="mt-1 text-2xl font-semibold">{documentStats.folderCount}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Files</p>
+            <p className="mt-1 text-2xl font-semibold">{documentStats.fileCount}</p>
+          </div>
+          <div className="rounded-lg border border-blue-900/50 bg-blue-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-blue-300/80">Shared entries</p>
+            <p className="mt-1 text-2xl font-semibold text-blue-100">{documentStats.permissionCount}</p>
+          </div>
+        </div>
+      </div>
       {driveApiEnabled ? (
         <>
           <div>

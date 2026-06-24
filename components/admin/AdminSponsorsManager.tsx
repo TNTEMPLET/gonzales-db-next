@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 
 import { SPONSOR_PACKAGE_TYPES, type SponsorPackageTypeValue } from "@/lib/sponsors/catalog";
-import { formatOrganizationIdDisplay, type ContentOrgId } from "@/lib/siteConfig";
+import { CONTENT_ORGS, formatOrganizationIdDisplay, type ContentOrgId } from "@/lib/siteConfig";
 import { SPONSOR_PACKAGE_TEMPLATES } from "@/lib/sponsors/templates";
 
 type SponsorPlacement = {
@@ -464,6 +464,21 @@ export default function AdminSponsorsManager({
     }
   }
 
+  const sponsorStats = useMemo(() => {
+    const active = sponsors.filter((sponsor) => sponsor.isActive).length;
+    const currentOrgSponsors = sponsors.filter((sponsor) =>
+      sponsor.placements.some((placement) => placement.organizationId === targetOrg),
+    ).length;
+    const scrollerVisible = sponsors.filter((sponsor) =>
+      sponsor.placements.some(
+        (placement) =>
+          placement.organizationId === targetOrg && placement.showInFooterScroller,
+      ),
+    ).length;
+
+    return { active, currentOrgSponsors, scrollerVisible, total: sponsors.length };
+  }, [sponsors, targetOrg]);
+
   const sortedScrollerSponsors = useMemo(
     () =>
       [...sponsors]
@@ -498,6 +513,37 @@ export default function AdminSponsorsManager({
           {notice}
         </div>
       ) : null}
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+            Sponsor visibility for {formatOrganizationIdDisplay(targetOrg)}
+          </p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Active sponsors assigned to this org can appear on public pages when
+            website logo and footer scroller options are enabled. Check the preview
+            before saving public visibility changes.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Total</p>
+            <p className="mt-1 text-2xl font-semibold">{sponsorStats.total}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">This org</p>
+            <p className="mt-1 text-2xl font-semibold">{sponsorStats.currentOrgSponsors}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-emerald-300/80">Active</p>
+            <p className="mt-1 text-2xl font-semibold text-emerald-100">{sponsorStats.active}</p>
+          </div>
+          <div className="rounded-lg border border-blue-900/50 bg-blue-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-blue-300/80">Scroller</p>
+            <p className="mt-1 text-2xl font-semibold text-blue-100">{sponsorStats.scrollerVisible}</p>
+          </div>
+        </div>
+      </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex items-center justify-between gap-3">
@@ -699,15 +745,19 @@ export default function AdminSponsorsManager({
             <p className="text-xs font-semibold text-zinc-300 mb-2">
               Organization Targets
             </p>
+            <p className="mb-2 text-xs text-zinc-500">
+              Checked organizations receive this sponsor placement. Public display
+              still depends on Active, Website Logo, and Footer Scroller settings.
+            </p>
             <div className="flex gap-4 text-sm">
-              {(["gonzales", "ascension"] as const).map((org) => (
+              {CONTENT_ORGS.map((org) => (
                 <label key={org} className="inline-flex items-center gap-2">
                   <input
                     type="checkbox"
                     checked={form.orgTargets.includes(org)}
                     onChange={() => toggleTargetOrg(org)}
                   />
-                  <span>{org}</span>
+                  <span>{formatOrganizationIdDisplay(org)}</span>
                 </label>
               ))}
             </div>
@@ -916,6 +966,10 @@ export default function AdminSponsorsManager({
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
         <h2 className="text-lg font-semibold">Footer Scroller Preview</h2>
+        <p className="text-sm text-zinc-400">
+          These sponsors are selected for the public footer scroller for{" "}
+          {formatOrganizationIdDisplay(targetOrg)} in display order.
+        </p>
         <div className="flex flex-wrap gap-3 rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
           {sortedScrollerSponsors.length === 0 ? (
             <p className="text-sm text-zinc-500">No logos selected for the scroller.</p>

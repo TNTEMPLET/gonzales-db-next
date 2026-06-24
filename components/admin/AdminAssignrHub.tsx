@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 
-import type { ContentOrgId } from "@/lib/siteConfig";
+import { getOrgDisplayName, type ContentOrgId } from "@/lib/siteConfig";
 
 type HealthResponse = {
   ok?: boolean;
@@ -42,6 +42,8 @@ export default function AdminAssignrHub({ targetOrg }: { targetOrg: ContentOrgId
     };
   }, [targetOrg]);
 
+  const targetOrgName = getOrgDisplayName(targetOrg);
+
   const cards = [
     {
       href: `/admin/assignr/assignments?org=${targetOrg}`,
@@ -68,11 +70,25 @@ export default function AdminAssignrHub({ targetOrg }: { targetOrg: ContentOrgId
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
+        <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+          Selected site
+        </p>
+        <h2 className="mt-2 text-xl font-semibold text-white">{targetOrgName}</h2>
+        <p className="mt-2 max-w-3xl text-sm text-zinc-400">
+          Start with Assignments for open game slots, Officials for contact or
+          role fixes, Pay & statements for reconciliation, and Bulk games import
+          when a schedule needs to be prepared for Assignr. Changes in these
+          areas can update the connected Assignr league for this site.
+        </p>
+      </div>
+
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-5">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <h2 className="text-lg font-semibold text-white">Connection</h2>
             <p className="mt-1 text-sm text-zinc-400">
-              Server-side Assignr OAuth with read/write scope for the active organization league.
+              Connected-service status for this site. If this is unavailable,
+              assignment and official updates may not reach Assignr.
             </p>
           </div>
           <div className="text-sm">

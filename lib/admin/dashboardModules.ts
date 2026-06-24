@@ -24,24 +24,29 @@ export const ADMIN_DASHBOARD_CATEGORY_META: Record<
   CategoryMeta
 > = {
   program: {
-    label: "Program",
-    description: "Season setup, standings, sponsors, and All-Star operations.",
+    label: "Season Operations",
+    description:
+      "Run the season: teams, scores, tournaments, All-Star work, sponsors, and park details.",
   },
   publishing: {
-    label: "Publishing",
-    description: "News, social, and organization communications.",
+    label: "Publishing & Messages",
+    description:
+      "Publish news, social posts, documents, and approved messages for families and coaches.",
   },
   operations: {
-    label: "Operations",
-    description: "Access governance, reporting, and back-office administration.",
+    label: "Access & Back Office",
+    description:
+      "Manage admin access, reports, rainout alerts, and office workflows.",
   },
   integrations: {
-    label: "Integrations",
-    description: "External services connected to AP Baseball administration.",
+    label: "Connected Services",
+    description:
+      "Open shared files and services that support schedules, officials, and league operations.",
   },
   community: {
-    label: "Community",
-    description: "Coach and community moderation for internal league channels.",
+    label: "Community Safety",
+    description:
+      "Review coach community activity and handle moderation.",
   },
 };
 

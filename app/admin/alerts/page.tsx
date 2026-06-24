@@ -85,8 +85,9 @@ export default async function AdminAlertsPage({
             Rainout Alerts
           </h1>
           <p className="text-zinc-400">
-            Post a manual rainout alert that overrides automatic Assignr detection.
-            The modal displays on the public site until the alert expires or is cleared.
+            Post a rainout notice when the public site needs a clear message right
+            away. Manual alerts appear to families and take priority over
+            automatic Assignr rainout detection until they expire or are cleared.
           </p>
         </div>
 

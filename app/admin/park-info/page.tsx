@@ -60,8 +60,10 @@ export default async function AdminParkInfoPage({
         </div>
         <h2 className="mb-1 text-lg font-bold">Park Info Editor</h2>
         <p className="mb-6 text-sm text-zinc-400">
-          Manage tournament rules, parking information, and the field layout image for{" "}
-          <strong className="text-zinc-200">{org}</strong>.{" "}
+          Keep tournament rules, parking notes, and the field map ready for
+          families visiting <strong className="text-zinc-200">{org}</strong>.
+          Save after each update; published content is visible on the park info
+          page for the selected site.{" "}
           {!isMasterDeployment() && (
             <span>Visible at <code className="text-xs">/park-info</code> on this site.</span>
           )}

@@ -126,12 +126,18 @@ export default async function AdminDashboardPage({
       },
       {
         module: "SCORES" as AdminModule,
-        href: moduleHref("/admin/scores", "SCORES"),
+        href: currentOrg ? moduleHref("/admin/scores", "SCORES") : "/admin/scores",
         title: "Scores & Standings",
         description: masterMode
-          ? "Capture game outcomes, correct results, and keep standings accurate for the selected site."
-          : "Enter game scores and automatically power standings by age group.",
-        action: masterMode ? "Open Game Ops" : "Open Score Entry",
+          ? currentOrg
+            ? "Enter scores and keep standings accurate for the selected site."
+            : "Review scores and standings across every site from the aggregate view."
+          : "Enter game scores and keep standings current by age group.",
+        action: masterMode
+          ? currentOrg
+            ? "Open Site Scores"
+            : "Open All Scores"
+          : "Open Score Entry",
       },
       {
         module: "ALL_STAR_VAULT" as AdminModule,
@@ -165,8 +171,17 @@ export default async function AdminDashboardPage({
         href: "/admin/tournament-brackets",
         title: "Tournament Brackets",
         description:
-          "Master-only: tournament brackets for any event—auto single-elim from seeds, preview, optional XLSX import, HTML export, flyer PDF.",
+          "Build tournament brackets from seeds, review the bracket, and export printable flyers or web-ready files.",
         action: "Open Bracket Creator",
+      },
+      {
+        module: "PARK_INFO" as AdminModule,
+        href: moduleHref("/admin/park-info", "PARK_INFO"),
+        title: "Park Info",
+        description: masterMode
+          ? "Manage tournament rules, parking details, and field layout images for the selected site."
+          : "Manage tournament rules, parking details, and field layout images for your park.",
+        action: "Open Park Info",
       },
       {
         module: "SPONSORS" as AdminModule,
@@ -215,21 +230,21 @@ export default async function AdminDashboardPage({
       },
       {
         module: "ASSIGNR" as const,
-        href: "/admin/assignr",
+        href: moduleHref("/admin/assignr", "ASSIGNR"),
         title: "Assignr",
         description: masterMode
-          ? "Connect roster, schedule, and registration workflows with Assignr read/write access."
-          : "Connect roster, schedule, and registration workflows with Assignr.",
-        action: masterMode ? "Open Assignr Hub" : "Open Assignr",
+          ? "Open Assignr for the selected site to keep schedules and officials aligned."
+          : "Manage schedule and official assignments through Assignr.",
+        action: "Open Assignr",
       },
       {
         module: "USERS" as AdminModule,
         href: moduleHref("/admin/users", "USERS"),
         title: "User Management",
         description: masterMode
-          ? "Control admin access, role elevation, and account governance for the active organization."
-          : "Promote/demote admins and manage user access roles.",
-        action: masterMode ? "Open Access Console" : "Open Users",
+          ? "Manage who can help run the selected site and what admin tools they can use."
+          : "Manage admin users and access roles.",
+        action: masterMode ? "Open Access" : "Open Users",
       },
       {
         module: "REPORTS" as AdminModule,
@@ -254,9 +269,9 @@ export default async function AdminDashboardPage({
         href: moduleHref("/admin/dugout", "DUGOUT_MODERATION"),
         title: "Dugout Moderation",
         description: masterMode
-          ? "Monitor internal coach conversations and enforce moderation standards from one command post."
-          : "Edit or remove any post in The Dugout feed.",
-        action: masterMode ? "Open Dugout Watch" : "Open Dugout Moderation",
+          ? "Review coach conversations and remove posts that need moderator attention."
+          : "Edit or remove posts in The Dugout feed.",
+        action: "Open Dugout Moderation",
       },
     ]
       .map((card) => ({
@@ -275,6 +290,31 @@ export default async function AdminDashboardPage({
       ),
   );
 
+  const visibleModuleCount = new Set(cards.map((card) => card.module)).size;
+  const communicationsAccessCount = communicationsEnabled
+    ? CONTENT_ORGS.filter((orgId) => hasModuleAccess(orgId, "COMMUNICATIONS")).length
+    : 0;
+  const targetExplanation = currentOrg
+    ? "You are working on " +
+      getOrgDisplayName(currentOrg) +
+      ". Dashboard links keep that site selected so changes apply there."
+    : "All Sites shows every dashboard tool you can use somewhere. Site-specific tools open the first site you can manage, while Scores opens the all-site aggregate view.";
+  const accessSummaryByOrg = CONTENT_ORGS.map((orgId) => {
+    const accessibleModuleCount = new Set(
+      cards
+        .filter((card) => hasModuleAccess(orgId, card.module))
+        .map((card) => card.module),
+    ).size;
+
+    return {
+      orgId,
+      name: getOrgDisplayName(orgId),
+      role: roleByOrg[orgId],
+      accessibleModuleCount,
+    };
+  });
+
+
   const statusChips = [
     {
       label: "Platform",
@@ -282,10 +322,26 @@ export default async function AdminDashboardPage({
         ? "AP Baseball Master"
         : getOrgDisplayName(getDefaultContentOrg()),
     },
-    { label: "Target Site", value: currentOrg ? getOrgDisplayName(currentOrg) : "Not selected" },
+    {
+      label: "Target Site",
+      value: currentOrg ? getOrgDisplayName(currentOrg) : "All Sites",
+    },
+    { label: "Visible Modules", value: visibleModuleCount + " available" },
+    {
+      label: "Communications",
+      value: communicationsEnabled
+        ? currentOrg
+          ? hasModuleAccess(currentOrg, "COMMUNICATIONS")
+            ? "Available"
+            : "No access"
+          : communicationsAccessCount +
+            " site" +
+            (communicationsAccessCount === 1 ? "" : "s")
+        : "Disabled",
+    },
     {
       label: "Endpoint",
-      value: currentSite ? currentSite.siteUrl.replace("https://", "") : "Select a target site",
+      value: currentSite ? currentSite.siteUrl.replace("https://", "") : "Aggregate view",
       href: currentSite ? currentSite.siteUrl : undefined,
     },
   ];
@@ -293,10 +349,10 @@ export default async function AdminDashboardPage({
   const oversightCards = [
     {
       title: "Organization Target",
-      value: currentOrg ? getOrgDisplayName(currentOrg) : "Not selected",
+      value: currentOrg ? getOrgDisplayName(currentOrg) : "All Sites",
       detail: currentOrg
         ? `Operations currently pointed at ${currentSite?.name}.`
-        : "Choose a target site or continue with access-based module defaults.",
+        : "Showing tools available across your sites. Cards pick an eligible site when they need one.",
     },
     {
       title: "Publishing Scope",
@@ -360,6 +416,10 @@ export default async function AdminDashboardPage({
                   ? "Direct operations for Gonzales DYB and Ascension Little League from a single administrative surface. Switch target sites, publish updates, manage access, and monitor league operations without dropping context."
                   : "Manage users, publish league updates, and moderate dugout posts from one place."}
               </p>
+              <div className="mt-5 max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-300">
+                <span className="font-semibold text-white">Selected target: </span>
+                {targetExplanation}
+              </div>
             </div>
 
             <div className="flex min-w-0 flex-col gap-4 xl:min-w-[320px] xl:max-w-90">
@@ -408,31 +468,51 @@ export default async function AdminDashboardPage({
         </div>
 
         {masterMode ? (
-          <div className="mb-8 flex flex-wrap gap-2 sm:gap-3">
-            {statusChips.map((item) => (
-              <div
-                key={item.label}
-                className="rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-2 sm:px-4"
-              >
-                <span className="mr-2 text-[10px] uppercase tracking-[0.24em] text-zinc-500">
-                  {item.label}
-                </span>
-                {item.href ? (
-                  <a
-                    href={item.href}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="text-sm font-semibold text-zinc-200"
-                  >
-                    {item.value}
-                  </a>
-                ) : (
-                  <span className="text-sm font-semibold text-zinc-200">
-                    {item.value}
+          <div className="mb-8 space-y-3">
+            <div className="flex flex-wrap gap-2 sm:gap-3">
+              {statusChips.map((item) => (
+                <div
+                  key={item.label}
+                  className="rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-2 sm:px-4"
+                >
+                  <span className="mr-2 text-[10px] uppercase tracking-[0.24em] text-zinc-500">
+                    {item.label}
                   </span>
-                )}
+                  {item.href ? (
+                    <a
+                      href={item.href}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="text-sm font-semibold text-zinc-200"
+                    >
+                      {item.value}
+                    </a>
+                  ) : (
+                    <span className="text-sm font-semibold text-zinc-200">
+                      {item.value}
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+            {!currentOrg ? (
+              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-300">
+                <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">
+                  Role & Access By Site
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {accessSummaryByOrg.map((item) => (
+                    <span
+                      key={item.orgId}
+                      className="rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs text-zinc-200"
+                    >
+                      {item.name}: {item.role.replace("_", " ")} -{" "}
+                      {item.accessibleModuleCount} modules
+                    </span>
+                  ))}
+                </div>
               </div>
-            ))}
+            ) : null}
           </div>
         ) : null}
 

@@ -63,9 +63,14 @@ export default async function AdminCommunicationsPage({
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Centralized Communications
           </h1>
-          <p className="text-zinc-400 max-w-2xl">
-            Draft, approve, schedule, and send audience-targeted campaign messages.
+          <p className="text-zinc-400 max-w-3xl">
+            Create family and coach messages in a clear order: choose the audience,
+            preview the recipient count, submit for approval, then schedule or send.
             Email delivery is active; SMS consent and infrastructure are staged.
+          </p>
+          <p className="mt-2 text-sm text-zinc-500 max-w-3xl">
+            The target organization above controls the default audience and keeps
+            MASTER-site messages from accidentally going to the wrong league.
           </p>
         </div>
 

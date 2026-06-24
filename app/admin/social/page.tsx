@@ -49,12 +49,14 @@ export default async function AdminSocialPage() {
             Social media
           </h1>
           <p className="text-zinc-400 max-w-3xl">
-            One shared feed for the AP Baseball Facebook Page—same list for every admin, not
-            per league site. Add an optional link and image URL, then publish when ready. Requires{" "}
-            <code className="text-zinc-300">FACEBOOK_PAGE_ID</code> and{" "}
+            Manage the shared AP Baseball Facebook Page. Drafts stay private here;
+            publishing posts to Facebook can be visible to families and the public
+            right away. Use Sync to pull recent Page posts back into this list.
+          </p>
+          <p className="mt-2 text-sm text-zinc-500 max-w-3xl">
+            Publishing requires <code className="text-zinc-300">FACEBOOK_PAGE_ID</code> and{" "}
             <code className="text-zinc-300">FACEBOOK_PAGE_ACCESS_TOKEN</code> in server
-            environment. The Meta app that issued the Page token must also be in Live mode;
-            Development mode limits API-published posts to app role holders. Use{" "}
+            environment. The Meta app that issued the Page token must also be in Live mode. Use{" "}
             <a
               href={metaPrivacyPolicyUrl}
               target="_blank"

@@ -178,6 +178,19 @@ export default function AdminReportsManager({ targetOrg }: Props) {
   const [notice, setNotice] = useState("");
 
   const orgQuery = useMemo(() => `org=${targetOrg}`, [targetOrg]);
+  const generatedPayTotal = useMemo(() => {
+    if (rows.length === 0) return 0;
+    if (mode === "main") {
+      return (rows as MainReportRow[]).reduce(
+        (sum, row) => sum + row.gamePayTotal,
+        0,
+      );
+    }
+    return (rows as UmpireReportRow[]).reduce(
+      (sum, row) => sum + row.totalPay,
+      0,
+    );
+  }, [mode, rows]);
 
   const umpireGroups = useMemo(() => {
     if (mode !== "umpire") return [] as UmpireParkGroup[];
@@ -776,9 +789,38 @@ export default function AdminReportsManager({ targetOrg }: Props) {
   return (
     <div className="space-y-6">
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
-        <h2 className="mb-4 text-lg font-semibold text-zinc-100">
+        <h2 className="mb-2 text-lg font-semibold text-zinc-100">
           Reports Manager
         </h2>
+        <p className="mb-4 text-sm text-zinc-400">
+          Set the report window first. Main Report is best for game-by-game
+          review; Umpire Report groups pay by person for reconciliation.
+        </p>
+
+        <div className="mb-4 grid gap-3 md:grid-cols-3">
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Selected site
+            </p>
+            <p className="mt-2 text-sm font-semibold text-zinc-100">
+              {targetOrg}
+            </p>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Generated rows
+            </p>
+            <p className="mt-2 text-2xl font-bold text-white">{rows.length}</p>
+          </div>
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+              Estimated pay
+            </p>
+            <p className="mt-2 text-2xl font-bold text-emerald-300">
+              {formatMoney(generatedPayTotal)}
+            </p>
+          </div>
+        </div>
 
         <div className="mb-4 grid gap-3 sm:grid-cols-3 sm:gap-4">
           <div>
