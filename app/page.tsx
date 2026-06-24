@@ -171,6 +171,16 @@ function TournamentLandingPage() {
               <br />
               {TOURNAMENT_PARK.addressLine2}
             </p>
+            <div className="mt-5 rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-300">
+              <p className="font-semibold text-zinc-100">Tournament Details</p>
+              <ul className="mt-3 grid gap-2 sm:grid-cols-2">
+                <li>$5 entry per person</li>
+                <li>Ages 10 and under are free</li>
+                <li>Tents and chairs are encouraged</li>
+                <li>Cash and card accepted</li>
+              </ul>
+            </div>
+
             <p className="mt-3 text-sm text-zinc-400">
               Use these Google Maps links for live driving directions from the I-10 corridor to the park.
             </p>
