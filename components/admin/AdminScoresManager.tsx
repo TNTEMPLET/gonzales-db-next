@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, useMemo, type Dispatch, type SetStateActio
 import { useRouter } from "next/navigation";
 
 import {
+  assignrScopeLabel,
   assignrScopeToQueryParam,
   type AdminAssignrScope,
 } from "@/lib/admin/assignrScopeShared";
@@ -319,6 +320,11 @@ export default function AdminScoresManager({
   }, [nonRainoutGames]);
 
   const selectedAgeGroup = activeAgeGroup || ageGroups[0] || "";
+  const totalPlayableGames = nonRainoutGames.length;
+  const totalScoredCount = nonRainoutGames.filter((game) =>
+    Boolean(savedGameIds[game.gameExternalId]),
+  ).length;
+  const totalUnscoredCount = Math.max(totalPlayableGames - totalScoredCount, 0);
 
   const filteredGames = useMemo(() => {
     const source = selectedAgeGroup
@@ -638,6 +644,45 @@ export default function AdminScoresManager({
         </div>
       ) : null}
 
+      <div className="grid gap-3 md:grid-cols-3">
+        <div className="rounded-xl border border-amber-700/50 bg-amber-950/20 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">
+            Score queue
+          </p>
+          <p className="mt-2 text-2xl font-bold text-white">
+            {totalUnscoredCount}
+          </p>
+          <p className="mt-1 text-xs text-amber-100/80">
+            Playable games still need final scores. Start with the age groups
+            marked open below.
+          </p>
+        </div>
+        <div className="rounded-xl border border-emerald-700/50 bg-emerald-950/20 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">
+            Saved scores
+          </p>
+          <p className="mt-2 text-2xl font-bold text-white">
+            {totalScoredCount}
+          </p>
+          <p className="mt-1 text-xs text-emerald-100/80">
+            These games are counted in standings and can be edited if a score
+            needs correction.
+          </p>
+        </div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+            Current view
+          </p>
+          <p className="mt-2 text-lg font-semibold text-white">
+            {assignrScopeLabel(scope)}
+          </p>
+          <p className="mt-1 text-xs text-zinc-400">
+            Upload a scores file for bulk entry, or choose an age group and save
+            one final at a time.
+          </p>
+        </div>
+      </div>
+
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex flex-wrap items-center gap-2">
           <button
@@ -756,6 +801,15 @@ export default function AdminScoresManager({
                   }`}
                 >
                   {ageGroup}
+                  {hasZeroUnscored ? (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide">
+                      complete
+                    </span>
+                  ) : (
+                    <span className="ml-2 text-[10px] uppercase tracking-wide">
+                      {ageGroupUnscoredCounts[ageGroup]} open
+                    </span>
+                  )}
                 </button>
               );
             })(),

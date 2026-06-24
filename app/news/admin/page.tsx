@@ -63,8 +63,10 @@ export default async function NewsAdminPage({
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             News Admin
           </h1>
-          <p className="text-zinc-400 max-w-2xl">
-            Manage published announcements and drafts from one place.
+          <p className="text-zinc-400 max-w-3xl">
+            Write announcements for families, keep drafts private until ready, and
+            choose which organization news feed should show the post. Published AP
+            Baseball news can appear on public pages immediately.
           </p>
         </div>
 

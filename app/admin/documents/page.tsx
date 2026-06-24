@@ -56,10 +56,14 @@ export default async function AdminDocumentsPage() {
             Google Drive
           </h1>
           <p className="text-zinc-400 max-w-3xl">
-            Browse the shared AP Baseball Google Drive here. <strong>Click a file name</strong> to open
-            it in a new tab on Google; you must use your workspace Google account (and have been granted
-            access in Drive). Master admins can invite people by email below. For site images, still use
-            News/Social uploads so assets stay on this site.
+            Browse the shared AP Baseball Google Drive for bylaws, policies, board
+            files, and other organization documents. Click a file name to open it
+            in Google Drive with your approved Google account.
+          </p>
+          <p className="mt-2 text-sm text-zinc-500 max-w-3xl">
+            Drive sharing changes affect access to the shared folder, not public
+            website pages. For public images or announcements, use News or Social
+            uploads so assets stay on this site.
           </p>
         </div>
 

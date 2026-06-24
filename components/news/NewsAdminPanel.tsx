@@ -161,6 +161,14 @@ export default function NewsAdminPanel({
     [posts, selectedSlug],
   );
 
+  const newsStats = useMemo(() => {
+    const drafts = posts.filter((post) => post.status === "DRAFT").length;
+    const published = posts.filter((post) => post.status === "PUBLISHED").length;
+    const rotator = posts.filter((post) => post.rotatorEnabled).length;
+
+    return { drafts, published, rotator, total: posts.length };
+  }, [posts]);
+
   async function loadPosts() {
     setBusy(true);
     setError("");
@@ -661,8 +669,27 @@ export default function NewsAdminPanel({
           Signed in as {adminEmail}
         </h2>
         <p className="text-zinc-400 text-sm mb-4">
-          Your account has admin access to create, update, and delete posts.
+          Your account can create, update, and delete news for the selected org.
+          Drafts stay private; published posts can appear on public family pages.
         </p>
+        <div className="mb-4 grid gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Total</p>
+            <p className="mt-1 text-2xl font-semibold">{newsStats.total}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Drafts</p>
+            <p className="mt-1 text-2xl font-semibold">{newsStats.drafts}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-emerald-300/80">Published</p>
+            <p className="mt-1 text-2xl font-semibold text-emerald-100">{newsStats.published}</p>
+          </div>
+          <div className="rounded-lg border border-blue-900/50 bg-blue-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-blue-300/80">Rotator</p>
+            <p className="mt-1 text-2xl font-semibold text-blue-100">{newsStats.rotator}</p>
+          </div>
+        </div>
         <div className="flex flex-col md:flex-row gap-3">
           <button
             onClick={loadPosts}
@@ -698,6 +725,10 @@ export default function NewsAdminPanel({
           className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3"
         >
           <h2 className="font-semibold text-lg">Create Post</h2>
+          <p className="text-sm text-zinc-400">
+            Save as draft while writing. Choose Published only when the article is
+            ready for families to see on the public news feed.
+          </p>
           <input
             required
             placeholder="Title"
@@ -841,6 +872,10 @@ export default function NewsAdminPanel({
             <div className="rounded-lg border border-zinc-800 bg-zinc-950/80 p-3 space-y-2">
               <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-400">
                 Publish Targets
+              </p>
+              <p className="text-xs text-zinc-500">
+                On the MASTER site, checked organizations receive their own copy
+                of this post. Leave unchecked organizations unchanged.
               </p>
               <div className="flex flex-wrap gap-3">
                 {CONTENT_ORGS.map((org) => (

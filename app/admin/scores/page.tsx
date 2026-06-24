@@ -158,8 +158,9 @@ function ScoresPageHeader({
         Enter Game Scores
       </h1>
       <p className="text-zinc-400 max-w-2xl">
-        Save final scores for completed games. Standings update from these scores
-        by age group.
+        Use this after games finish or after a scores file is ready. Enter the
+        missing finals, then review the scored list so standings stay current for
+        the selected site.
       </p>
     </div>
   );

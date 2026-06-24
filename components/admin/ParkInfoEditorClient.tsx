@@ -77,9 +77,44 @@ export default function ParkInfoEditorClient({ org, initial }: Props) {
   const previewHtml = preview && section !== "field"
     ? String(marked.parse(currentMarkdown))
     : "";
+  const rulesReady = rules.trim().length > 0;
+  const parkingReady = parking.trim().length > 0;
+  const fieldReady = Boolean(fieldImageUrl);
 
   return (
     <div className="space-y-4">
+      <div className="grid gap-3 md:grid-cols-3">
+        {[
+          { label: "Rules", ready: rulesReady },
+          { label: "Parking", ready: parkingReady },
+          { label: "Field map", ready: fieldReady },
+        ].map((item) => (
+          <div
+            key={item.label}
+            className={`rounded-xl border p-3 ${
+              item.ready
+                ? "border-emerald-700/50 bg-emerald-950/20"
+                : "border-amber-700/50 bg-amber-950/20"
+            }`}
+          >
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
+              {item.label}
+            </p>
+            <p
+              className={`mt-1 text-sm font-semibold ${
+                item.ready ? "text-emerald-200" : "text-amber-200"
+              }`}
+            >
+              {item.ready ? "Ready" : "Needs content"}
+            </p>
+          </div>
+        ))}
+      </div>
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 text-sm text-zinc-300">
+        These sections are public-facing for the selected tournament site. Use
+        Preview before saving long updates, then check the live park info page if
+        the change affects arrival instructions.
+      </div>
       {/* Tab bar */}
       <div className="flex gap-1 rounded-xl border border-zinc-800 bg-zinc-900/60 p-1">
         {tabs.map((t) => (

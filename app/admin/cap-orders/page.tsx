@@ -62,10 +62,12 @@ export default async function AdminCapOrdersPage({
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Parent Cap Orders
           </h1>
-          <p className="text-zinc-400 max-w-2xl">
-            All-Star cap orders submitted by parents via PayPal, grouped by organization.
-            Hat size is captured from the payer&apos;s note at checkout.
+          <p className="text-zinc-400 max-w-3xl">
+            Track parent cap orders that arrive through All-Star PayPal checkout. Sync orders, review payer notes for hat sizes, mark each cap fulfilled, and export the open list for pickup or vendor coordination.
           </p>
+          <div className="mt-4 rounded-xl border border-sky-800/50 bg-sky-950/20 p-3 text-sm text-sky-100">
+            Cap orders are the last step after roster and payment setup. Recheck payer notes before fulfillment because size details come from parent-entered checkout text.
+          </div>
         </div>
 
         <ParentCapOrdersPanel />

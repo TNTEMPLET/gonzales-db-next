@@ -61,7 +61,8 @@ export default async function AdminSponsorsPage({
           </h1>
           <p className="text-zinc-400 max-w-3xl">
             Track sponsor packages, upload logo assets, assign organizations, and
-            manage which sponsors appear in the footer scroller.
+            decide which sponsors appear on public AP Baseball pages. Footer
+            scroller changes can be visible to families immediately after saving.
           </p>
         </div>
         <AdminSponsorsManager targetOrg={currentOrg} />

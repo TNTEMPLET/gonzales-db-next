@@ -59,10 +59,12 @@ export default async function AdminDugoutPage({
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
             Dugout Moderation
           </h1>
-          <p className="text-zinc-400 max-w-2xl">
-            Review, edit, and remove dugout posts to keep coach communication
-            clear and appropriate.
+          <p className="text-zinc-400 max-w-3xl">
+            Review coach community posts, correct small issues, and remove content that should not remain visible in The Dugout. Use the selected site context because edits affect that organization&apos;s feed.
           </p>
+          <div className="mt-4 rounded-xl border border-amber-800/50 bg-amber-950/20 p-3 text-sm text-amber-100">
+            Moderation changes can affect public trust even when the discussion is coach-focused. Prefer edits for clarity and deletion for unsafe, private, or inappropriate content.
+          </div>
         </div>
 
         <DugoutModerationPanel targetOrg={currentOrg} />

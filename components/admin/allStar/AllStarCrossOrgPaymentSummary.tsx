@@ -1115,6 +1115,8 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
 
   const [activeFilter, setActiveFilter] = useState<"total" | "paid" | "unpaid" | null>(null);
   const [filterQuery, setFilterQuery] = useState("");
+  const totalCyclesWithPayments = data?.orgs.reduce((count, report) => count + report.cycles.filter((cycle) => cycle.summary.total > 0).length, 0) ?? 0;
+  const paymentCompletionPct = data?.grandTotals.total ? paidPct(data.grandTotals.paidCount, data.grandTotals.total) : 0;
 
   const didFetch = useRef(false);
 
@@ -1328,7 +1330,7 @@ export default function AllStarCrossOrgPaymentSummary({ org }: { org?: string })
           </button>
           {data && (
             <span className="text-xs text-zinc-500 bg-zinc-800 rounded px-2 py-0.5">
-              {data.grandTotals.total} players across all leagues
+              {data.grandTotals.total} players · {paymentCompletionPct}% collected · {totalCyclesWithPayments} roster cycles
             </span>
           )}
         </div>

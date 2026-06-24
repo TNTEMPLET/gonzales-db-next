@@ -554,6 +554,14 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     }
     return ready;
   }, [projects, project]);
+  const projectStatusCounts = useMemo(
+    () =>
+      projects.reduce(
+        (counts, item) => ({ ...counts, [item.status]: counts[item.status] + 1 }),
+        { DRAFT: 0, READY: 0, ARCHIVED: 0 } as Record<ProjectStatus, number>,
+      ),
+    [projects],
+  );
   const projectPriorityOptions = useMemo(() => {
     const current = Number(projectPriorityDraft);
     const maxPriority = Math.max(
@@ -1087,7 +1095,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
 
   async function handleDeleteProject(p: ProjectRow) {
     const ok = window.confirm(
-      `Delete “${p.name}” (${p.seasonYear}, ${p.status})? This cannot be undone.`,
+      `Delete “${p.name}” (${p.seasonYear}, ${p.status})? This removes the admin project, bracket setup, imported games, and public preview data for ${getBracketOrgDisplayName(organizationId)}. This cannot be undone.`,
     );
     if (!ok) return;
     setBusy(true);
@@ -1715,8 +1723,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Tournament page</h3>
             <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-              Current status: <span className="font-semibold text-zinc-300">{project.status}</span>. READY brackets
-              appear on the public Tournaments page.
+              Current status: <span className="font-semibold text-zinc-300">{project.status}</span>. READY brackets appear on the public Tournaments page; keep projects in DRAFT while importing schedules, mapping teams, or checking scores.
             </p>
           </div>
           <a
@@ -1809,7 +1816,6 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   }
 
   function renderCompactProjectStrip() {
-    const readyCount = readyProjectsForStrip.filter((p) => p.status === "READY").length;
     return (
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3">
         <label className="min-w-0 flex-1">
@@ -1838,7 +1844,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           <p className="mt-1 text-[11px] text-zinc-500">
             {getBracketOrgDisplayName(organizationId)}
             {project ? ` · ${project.seasonYear}` : ` · ${seasonYear}`}
-            {readyCount > 1 ? ` · ${readyCount} ready` : null}
+            {` · ${projectStatusCounts.DRAFT} draft · ${projectStatusCounts.READY} public · ${projectStatusCounts.ARCHIVED} archived`}
           </p>
         </label>
         <div className="flex flex-wrap items-center gap-2">

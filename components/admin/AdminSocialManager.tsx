@@ -113,6 +113,13 @@ export default function AdminSocialManager() {
   const [attachmentOpen, setAttachmentOpen] = useState({ link: false, image: false });
   const [imageUploadBusy, setImageUploadBusy] = useState(false);
   const charCount = useMemo(() => form.body.length, [form.body]);
+  const socialStats = useMemo(() => {
+    const drafts = posts.filter((post) => post.status === "DRAFT").length;
+    const failed = posts.filter((post) => post.status === "FAILED").length;
+    const published = posts.filter((post) => post.status === "PUBLISHED").length;
+
+    return { drafts, failed, published, total: posts.length };
+  }, [posts]);
   const canSave = Boolean(form.body.trim() || form.imageUrl.trim());
 
   useEffect(() => {
@@ -382,6 +389,36 @@ export default function AdminSocialManager() {
         </div>
       ) : null}
 
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+            Shared AP Baseball Facebook page
+          </p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Drafts stay in this admin tool. Published posts are public on Facebook;
+            failed posts need review before trying again.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-4">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Total</p>
+            <p className="mt-1 text-2xl font-semibold">{socialStats.total}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Drafts</p>
+            <p className="mt-1 text-2xl font-semibold">{socialStats.drafts}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-emerald-300/80">Published</p>
+            <p className="mt-1 text-2xl font-semibold text-emerald-100">{socialStats.published}</p>
+          </div>
+          <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-red-300/80">Needs review</p>
+            <p className="mt-1 text-2xl font-semibold text-red-100">{socialStats.failed}</p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid gap-8 lg:grid-cols-[1fr_280px] lg:items-start">
         <div className="min-w-0 w-full overflow-hidden rounded-xl border border-zinc-700/90 bg-[#242526] shadow-[0_12px_28px_rgba(0,0,0,0.45)]">
           <div className="relative flex items-center justify-center border-b border-zinc-600/80 px-4 py-3">
@@ -398,9 +435,14 @@ export default function AdminSocialManager() {
                 </svg>
               </button>
             ) : null}
-            <h2 className="text-lg font-bold text-zinc-100">
-              {editingId ? "Edit post" : "Create post"}
-            </h2>
+            <div className="text-center">
+              <h2 className="text-lg font-bold text-zinc-100">
+                {editingId ? "Edit post" : "Create post"}
+              </h2>
+              <p className="text-xs text-zinc-400">
+                Save drafts for review; publish only when ready for the public Page.
+              </p>
+            </div>
           </div>
 
           <div className="px-4 pt-4">

@@ -60,8 +60,9 @@ export default async function AdminReportsPage({
             Umpire Reports
           </h1>
           <p className="text-zinc-400 max-w-2xl">
-            Generate game and umpire payout reports in the AP Baseball control
-            center style.
+            Use this when you need game assignment totals, umpire pay summaries,
+            or exports for review. Choose the site, date range, and league first,
+            then generate the report before downloading files.
           </p>
         </div>
 

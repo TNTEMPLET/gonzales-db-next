@@ -434,6 +434,20 @@ export default function AdminUsersManager({
     return counts;
   }, [sortedFilteredCoachUsers, coachAgeGroupFilter]);
 
+  const userHealthStats = useMemo(() => {
+    const blockedCount = registeredUsers.filter((user) => user.isBlocked).length;
+    const coachCount = registeredUsers.filter((user) => user.isCoach).length;
+    const pendingDuplicateCount = duplicateCandidates.length;
+
+    return {
+      adminCount: admins.length,
+      blockedCount,
+      coachCount,
+      pendingDuplicateCount,
+      registeredCount: registeredUsers.length,
+    };
+  }, [admins.length, duplicateCandidates.length, registeredUsers]);
+
   const coachesByAgeGroup = useMemo(() => {
     const groups = new Map<string, RegisteredUser[]>();
 
@@ -1039,12 +1053,49 @@ export default function AdminUsersManager({
         </div>
       ) : null}
 
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+            Access health for {targetOrg}
+          </p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Use these counts as a quick check before changing access. Promote only
+            people who should manage this organization, and review duplicates or
+            blocked accounts before merging or removing anyone.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Registered</p>
+            <p className="mt-1 text-2xl font-semibold">{userHealthStats.registeredCount}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Admins</p>
+            <p className="mt-1 text-2xl font-semibold">{userHealthStats.adminCount}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Coaches</p>
+            <p className="mt-1 text-2xl font-semibold">{userHealthStats.coachCount}</p>
+          </div>
+          <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-amber-300/80">Duplicate review</p>
+            <p className="mt-1 text-2xl font-semibold text-amber-100">{userHealthStats.pendingDuplicateCount}</p>
+          </div>
+          <div className="rounded-lg border border-red-900/50 bg-red-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-red-300/80">Blocked</p>
+            <p className="mt-1 text-2xl font-semibold text-red-100">{userHealthStats.blockedCount}</p>
+          </div>
+        </div>
+      </div>
+
       <div className="grid grid-cols-1 gap-6">
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
           <div>
             <h2 className="font-semibold text-lg">Registered Users</h2>
             <p className="text-zinc-400 text-sm mt-1">
-              Users are listed here after successful Google sign-in.
+              Users are listed here after successful Google sign-in. Promoting a
+              user gives admin access for the selected organization only unless a
+              Master Admin changes their role below.
             </p>
             <label className="mt-3 flex items-center gap-2 text-sm text-zinc-300 cursor-pointer select-none">
               <input
@@ -1689,7 +1740,7 @@ export default function AdminUsersManager({
             <h2 className="font-semibold text-lg">Admin Accounts</h2>
             <p className="text-zinc-400 text-sm mt-1">
               Admins for{" "}
-              <span className="text-zinc-300">{targetOrg}</span>. Organization sites can grant{" "}
+              <span className="text-zinc-300">{targetOrg}</span>. Role changes here affect what this person can manage for the selected org. Organization sites can grant{" "}
               <strong className="font-medium text-zinc-300">Site Admin</strong> only; Park Director and Board Member are assigned on the Master Admin site for this organization.
             </p>
             {currentAdminOrgRole ? (
@@ -1773,7 +1824,7 @@ export default function AdminUsersManager({
                               adminId: admin.id,
                               email: admin.email,
                               role: nextRole,
-                              label: `Set ${admin.email} to ${nextRole.replaceAll("_", " ")}?`,
+                              label: `Change ${admin.email} to ${nextRole.replaceAll("_", " ")} for ${targetOrg}? This updates their admin permissions immediately.`,
                             });
                           }}
                           className="text-xs rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-zinc-200 disabled:opacity-60"
@@ -1806,7 +1857,7 @@ export default function AdminUsersManager({
                               kind: "demote",
                               adminId: admin.id,
                               email: admin.email,
-                              label: `Demote ${admin.email} from admin access?`,
+                              label: `Remove ${admin.email} from admin access for ${targetOrg}? This takes effect immediately.`,
                             })
                           }
                           className="text-xs rounded-lg border border-red-700 text-red-300 hover:bg-red-950/40 px-3 py-1.5 disabled:opacity-60"

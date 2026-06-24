@@ -128,7 +128,13 @@ export default function DugoutModerationPanel({
   }
 
   async function deletePost(postId: string) {
-    if (!confirm("Delete this dugout post?")) return;
+    const post = posts.find((entry) => entry.id === postId);
+    const authorName = post ? getDisplayName(post.author) : "this author";
+    if (
+      !confirm(
+        `Delete this Dugout post by ${authorName}? It will be removed from the ${targetOrg} community feed for coaches and cannot be restored from this screen.`,
+      )
+    ) return;
 
     setBusy(true);
     setError("");
@@ -173,7 +179,10 @@ export default function DugoutModerationPanel({
         <div>
           <h2 className="text-2xl font-semibold">Moderate Dugout Feed</h2>
           <p className="text-zinc-400 text-sm mt-1">
-            Edit or remove coach posts across The Dugout feed.
+            Review the selected site&apos;s coach community feed. Edit for clarity; delete only when a post is unsafe, private, or inappropriate for the community.
+          </p>
+          <p className="mt-2 text-xs text-zinc-500">
+            {posts.length} post{posts.length === 1 ? "" : "s"} loaded · {filtered.length} shown by current search.
           </p>
         </div>
         <button

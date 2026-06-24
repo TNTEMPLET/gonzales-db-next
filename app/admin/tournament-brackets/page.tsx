@@ -80,9 +80,10 @@ export default async function AdminTournamentBracketsPage({
               </span>
             </summary>
             <p className="mt-2 leading-relaxed">
-              Master Admin: build single-elimination (and custom) brackets for any tournament, preview them in a
-              printable program style, optionally import schedule XLSX into the games grid, export standalone HTML,
-              and generate a flyer PDF.
+              Master Admin: create the bracket structure, map teams, import schedule data when needed, preview the public layout, then mark only reviewed brackets READY. READY brackets appear on the public Tournaments page; DRAFT and ARCHIVED projects stay out of public view.
+            </p>
+            <p className="mt-2 leading-relaxed text-amber-300/90">
+              Import and publish actions can change what families see. Preview after every import and keep tournament-only work in the bracket module.
             </p>
           </details>
         </div>

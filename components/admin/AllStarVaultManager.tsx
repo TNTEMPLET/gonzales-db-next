@@ -24,6 +24,7 @@ import {
   getCycleTierDisplayLabel,
   getRunoffVotePanelSplitLabels,
 } from "@/lib/allStar/cycleUiLabels";
+import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 import { getCycleStatusChipLabel, isPublishedCycleWithinOpenWindow } from "@/lib/allStar/cycleType";
 import {
   DEFAULT_VOTE_EXPORT_TOP_COUNT,
@@ -75,7 +76,7 @@ function ViewCycleIcon({ className }: { className?: string }) {
 
 type Cycle = {
   id: string;
-  organizationId: "gonzales" | "ascension";
+  organizationId: ContentOrgId;
   seasonYear: number;
   ageGroup: string;
   allStarAgeGroupId: string | null;
@@ -120,7 +121,7 @@ type CycleCoachOption = {
 
 type VaultAccess = {
   id: string;
-  organizationId: "gonzales" | "ascension";
+  organizationId: ContentOrgId;
   role: "FULL_ACCESS" | "LIMITED_ADMIN";
   isImplicit?: boolean;
   registeredUser: {
@@ -258,7 +259,7 @@ function getVisibilityForPreset(preset: ModulePreset): EditModuleVisibility {
 }
 
 type AllStarVaultManagerProps = {
-  initialOrg: "gonzales" | "ascension";
+  initialOrg: ContentOrgId;
   isMasterMode: boolean;
   initialSelectedCycleId?: string;
   initialOpenEditModules?: boolean;
@@ -278,7 +279,7 @@ type AllStarVaultManagerProps = {
 };
 
 function getCycleTierBadgeClass(
-  organizationId: "gonzales" | "ascension",
+  organizationId: ContentOrgId,
   title: string | null,
 ) {
   const displayLabel = getCycleTierDisplayLabel(organizationId, title);
@@ -509,7 +510,7 @@ export default function AllStarVaultManager({
   const auditorObserverToolsRef = useRef<HTMLDivElement | null>(null);
   const scrollEditModulesIntoViewAfterExpand = useRef(false);
   const [previewRole, setPreviewRole] = useState<AdminViewPreviewRole>("NONE");
-  const [org, setOrg] = useState<"gonzales" | "ascension">(initialOrg);
+  const [org, setOrg] = useState<ContentOrgId>(initialOrg);
   const [seasonYear, setSeasonYear] = useState(new Date().getFullYear());
   const [cycles, setCycles] = useState<Cycle[]>([]);
   const [selectedCycleId, setSelectedCycleId] = useState(initialSelectedCycleId);
@@ -1276,7 +1277,12 @@ export default function AllStarVaultManager({
 
   async function deleteCycle() {
     if (!selectedCycleId || !canDeleteCycles) return;
-    if (!window.confirm("Delete this cycle and all related votes/candidates?")) {
+    const cycleName = selectedCycle?.title?.trim() || selectedCycle?.ageGroup || "this All-Star cycle";
+    if (
+      !window.confirm(
+        `Delete ${cycleName}? This removes the cycle, candidate roster, coach ballots, vote results, invite links, and final-roster decisions for ${org}. Payments and cap-order follow-up may no longer match the vault.`,
+      )
+    ) {
       return;
     }
 
@@ -2485,6 +2491,16 @@ export default function AllStarVaultManager({
   ).sort((a, b) => b - a);
   const selectedCycle = cycles.find((entry) => entry.id === selectedCycleId) || null;
   const canRefreshVoteSummary = isCycleOpenAndPublished(selectedCycle);
+  const cycleStatusCounts = useMemo(
+    () =>
+      cycles.reduce(
+        (counts, cycle) => ({ ...counts, [cycle.status]: counts[cycle.status] + 1 }),
+        { DRAFT: 0, PUBLISHED: 0, CLOSED: 0, ARCHIVED: 0 } as Record<Cycle["status"], number>,
+      ),
+    [cycles],
+  );
+  const activeCycleCount = cycleStatusCounts.DRAFT + cycleStatusCounts.PUBLISHED;
+  const finalRosterCount = candidates.filter((candidate) => candidate.finalRosterOverride === "SELECTED" || candidate.finalRosterOverride === "SECOND_TEAM").length;
   const isInviteListCycle = selectedCycle?.accessMode === "INVITE_LIST";
   const activeRunoffCandidates = useMemo(
     () => candidates.filter((candidate) => candidate.isActive !== false),
@@ -3222,6 +3238,28 @@ export default function AllStarVaultManager({
           </div>
         </div>
       ) : null}
+      <div className="grid gap-3 text-sm md:grid-cols-4">
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-3">
+          <p className="text-xs uppercase tracking-wide text-zinc-500">Cycles loaded</p>
+          <p className="mt-1 text-2xl font-bold text-white">{cycles.length}</p>
+          <p className="text-xs text-zinc-500">{activeCycleCount} draft/open</p>
+        </div>
+        <div className="rounded-xl border border-emerald-800/50 bg-emerald-950/20 p-3">
+          <p className="text-xs uppercase tracking-wide text-emerald-300/80">Voting open</p>
+          <p className="mt-1 text-2xl font-bold text-emerald-100">{cycleStatusCounts.PUBLISHED}</p>
+          <p className="text-xs text-emerald-200/70">Coach ballots visible</p>
+        </div>
+        <div className="rounded-xl border border-amber-800/50 bg-amber-950/20 p-3">
+          <p className="text-xs uppercase tracking-wide text-amber-300/80">Needs review</p>
+          <p className="mt-1 text-2xl font-bold text-amber-100">{cycleStatusCounts.CLOSED}</p>
+          <p className="text-xs text-amber-200/70">Close out rosters</p>
+        </div>
+        <div className="rounded-xl border border-sky-800/50 bg-sky-950/20 p-3">
+          <p className="text-xs uppercase tracking-wide text-sky-300/80">Selected cycle roster</p>
+          <p className="mt-1 text-2xl font-bold text-sky-100">{finalRosterCount}</p>
+          <p className="text-xs text-sky-200/70">Feeds payment follow-up</p>
+        </div>
+      </div>
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
       {isMasterAuditAdmin ? (
@@ -3273,13 +3311,14 @@ export default function AllStarVaultManager({
                 {isMasterMode ? (
                   <select
                     value={org}
-                    onChange={(e) =>
-                      setOrg(e.target.value as "gonzales" | "ascension")
-                    }
+                    onChange={(e) => setOrg(e.target.value as ContentOrgId)}
                     className="rounded-lg bg-zinc-950 border border-emerald-800/60 px-3 py-2 text-sm text-emerald-50 min-w-[170px]"
                   >
-                    <option value="gonzales">Gonzales DYB</option>
-                    <option value="ascension">Ascension LLB</option>
+                    {CONTENT_ORGS.map((orgId) => (
+                      <option key={orgId} value={orgId}>
+                        {formatOrganizationLabel(orgId)}
+                      </option>
+                    ))}
                   </select>
                 ) : null}
                 <select
@@ -3912,11 +3951,14 @@ export default function AllStarVaultManager({
               {isMasterMode ? (
                 <select
                   value={org}
-                  onChange={(e) => setOrg(e.target.value as "gonzales" | "ascension")}
+                  onChange={(e) => setOrg(e.target.value as ContentOrgId)}
                   className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]"
                 >
-                  <option value="gonzales">Gonzales DYB</option>
-                  <option value="ascension">Ascension LLB</option>
+                  {CONTENT_ORGS.map((orgId) => (
+                    <option key={orgId} value={orgId}>
+                      {formatOrganizationLabel(orgId)}
+                    </option>
+                  ))}
                 </select>
               ) : null}
               <select
@@ -4020,9 +4062,12 @@ export default function AllStarVaultManager({
         <h2 className="text-lg font-semibold">{usesTabbedWorkspace ? "Ballot settings" : "Cycle Management"}</h2>
         <div className="flex flex-wrap items-center justify-start gap-3">
           {isMasterMode ? (
-            <select value={org} onChange={(e) => setOrg(e.target.value as "gonzales" | "ascension")} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]">
-              <option value="gonzales">Gonzales DYB</option>
-              <option value="ascension">Ascension LLB</option>
+            <select value={org} onChange={(e) => setOrg(e.target.value as ContentOrgId)} className="rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm min-w-[170px]">
+              {CONTENT_ORGS.map((orgId) => (
+                <option key={orgId} value={orgId}>
+                  {formatOrganizationLabel(orgId)}
+                </option>
+              ))}
             </select>
           ) : (
             <div className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-300 min-w-[170px]">
