@@ -1,8 +1,9 @@
 import { formatOrganizationLabel } from "@/lib/allStar/cycleSetupHelpers";
 import { getCycleStatusChipLabel, isRunoffCycleTitle } from "@/lib/allStar/cycleType";
+import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
 export type AllStarCycleListLabelInput = {
-  organizationId: "gonzales" | "ascension";
+  organizationId: ContentOrgId;
   seasonYear: number;
   ageGroup: string;
   title: string | null;
@@ -13,7 +14,7 @@ export type AllStarCycleListLabelInput = {
 };
 
 export function getDisplayedCycleAgeGroup(cycle: {
-  organizationId: "gonzales" | "ascension";
+  organizationId: ContentOrgId;
   ageGroup: string;
   title: string | null;
 }) {
@@ -33,7 +34,7 @@ export function getDisplayedCycleAgeGroup(cycle: {
  * while keeping the league suffix (e.g. " LLB"). Avoids bracketed forms like `10U LLB [11U]`.
  */
 export function getDisplayedCycleAgeGroupWithAllStarAge(cycle: {
-  organizationId: "gonzales" | "ascension";
+  organizationId: ContentOrgId;
   ageGroup: string;
   title: string | null;
   allStarAgeGroupLabel?: string | null;
@@ -56,7 +57,7 @@ export function getCycleTierLabel(title: string | null) {
 }
 
 export function getCycleTierDisplayLabel(
-  organizationId: "gonzales" | "ascension",
+  organizationId: ContentOrgId,
   title: string | null,
 ) {
   const normalizedTitle = (title || "").trim().toUpperCase();
@@ -111,13 +112,13 @@ export function formatAllStarCyclePipeListLabel(
 
 /** All-caps headings for runoff vote panel / CSV tiers (NAVY / RED, etc.). */
 export function getRunoffVotePanelPrimaryTeamHeading(
-  organizationId: "gonzales" | "ascension",
+  organizationId: ContentOrgId,
   title: string | null,
 ) {
   return getCycleTierDisplayLabel(organizationId, title);
 }
 
-export function getRunoffVotePanelSecondaryTeamHeading(organizationId: "gonzales" | "ascension") {
+export function getRunoffVotePanelSecondaryTeamHeading(organizationId: ContentOrgId) {
   return organizationId === "ascension" ? "RED" : "GOLD";
 }
 
@@ -126,7 +127,7 @@ function pluralizePlayer(count: number | null | undefined) {
 }
 
 export function getRunoffVotePanelSplitLabels(cycle: {
-  organizationId: "gonzales" | "ascension";
+  organizationId: ContentOrgId;
   title: string | null;
   runoffIsFinalVote?: boolean | null;
   runoffTeamTarget?: "FIRST_TEAM" | "SECOND_TEAM" | null;
@@ -159,7 +160,7 @@ export function getRunoffVotePanelSplitLabels(cycle: {
 
 /** Pipe list label from vote-summary / export cycle meta (organizationId from DB). */
 export function getRunoffExportTeamColorWord(
-  organizationId: "gonzales" | "ascension",
+  organizationId: ContentOrgId,
   team: "primary" | "secondary",
   title: string | null,
 ) {
@@ -183,7 +184,9 @@ export function formatAllStarCyclePipeListLabelFromOrgMeta(
   },
   options?: { omitStatus?: boolean; teamColorWord?: string },
 ) {
-  const orgId = cycle.organizationId === "ascension" ? "ascension" : "gonzales";
+  const orgId = isContentOrgId(cycle.organizationId)
+    ? cycle.organizationId
+    : "gonzales";
   return formatAllStarCyclePipeListLabel(
     {
       organizationId: orgId,

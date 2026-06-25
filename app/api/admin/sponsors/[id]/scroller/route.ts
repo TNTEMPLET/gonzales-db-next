@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { CONTENT_ORGS, resolveAdminTargetOrg, type ContentOrgId } from "@/lib/siteConfig";
 
 type ScrollerPatchPayload = {
   showInFooterScroller?: boolean;
@@ -52,8 +52,8 @@ export async function PATCH(
 
     const orgTargets = Array.isArray(body.orgTargets)
       ? body.orgTargets.filter(
-          (entry): entry is "gonzales" | "ascension" =>
-            entry === "gonzales" || entry === "ascension",
+          (entry): entry is ContentOrgId =>
+            CONTENT_ORGS.includes(entry as ContentOrgId),
         )
       : [targetOrg];
     const uniqueTargets = Array.from(new Set(orgTargets));

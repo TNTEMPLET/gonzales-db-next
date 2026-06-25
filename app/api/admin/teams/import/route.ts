@@ -25,6 +25,47 @@ type ImportSkipDetail = {
   teamName?: string;
 };
 
+const PLAYER_IMPORT_DIVISION_KEYS = [
+  "Division Name",
+  "Division",
+  "Program Division",
+  "Program Name",
+  "Age Group",
+  "age_group",
+  "AGE_GROUP",
+];
+
+const PLAYER_IMPORT_TEAM_KEYS = [
+  "Team Name",
+  "Team",
+  "Roster Team Name",
+  "Assigned Team",
+  "team_name",
+  "assigned_team",
+  "ASSIGNED_TEAM",
+];
+
+const PLAYER_IMPORT_NAME_KEYS = [
+  "Player Full Name",
+  "Participant Full Name",
+  "Participant Name",
+  "Player Name",
+  "Child Name",
+  "Registrant Name",
+  "Full Name",
+  "Player",
+  "full_name",
+];
+
+const PLAYER_IMPORT_EMAIL_KEYS = [
+  "User Email",
+  "Account Email",
+  "Parent Email",
+  "Guardian Email",
+  "Email",
+  "email",
+];
+
 function getRowValue(row: Row, keys: string[]) {
   for (const key of keys) {
     const value = row[key];
@@ -265,8 +306,7 @@ async function applyImportRows(params: {
     if (!latestBatch || latestBatch.status !== "RUNNING") {
       break;
     }
-    const rawAgeGroup =
-      getRowValue(row, ["Division Name", "Age Group", "age_group", "AGE_GROUP"]) || "";
+    const rawAgeGroup = getRowValue(row, PLAYER_IMPORT_DIVISION_KEYS) || "";
     if (shouldSkipDivisionImport(rawAgeGroup)) {
       skipped += 1;
       pushSkipDetail(row, "Division is excluded from player imports", {
@@ -276,10 +316,9 @@ async function applyImportRows(params: {
     }
     const mappedAgeGroup = divisionMappings.get(rawAgeGroup.trim().toLowerCase());
     const ageGroup = mappedAgeGroup || rawAgeGroup;
-    const rawTeamName =
-      getRowValue(row, ["Team Name", "team_name", "assigned_team", "ASSIGNED_TEAM"]) || "";
+    const rawTeamName = getRowValue(row, PLAYER_IMPORT_TEAM_KEYS) || "";
     const teamName = teamMappings.get(normalizeLooseName(rawTeamName)) || rawTeamName;
-    const programName = getRowValue(row, ["Program Name", "Season", "season"]);
+    const programName = getRowValue(row, ["Program Name", "Program", "Season", "season"]);
     const seasonYear = explicitSeasonYear || parseSeasonYearFromProgramName(programName);
     if (!ageGroup || !teamName || !seasonYear) {
       skipped += 1;
@@ -314,23 +353,17 @@ async function applyImportRows(params: {
       continue;
     }
     const fullName =
-      getRowValue(row, [
-        "Player Full Name",
-        "Participant Full Name",
-        "Full Name",
-        "Player Name",
-        "Player",
-      ]) ||
+      getRowValue(row, PLAYER_IMPORT_NAME_KEYS) ||
       [
-        getRowValue(row, ["Player First Name", "First Name", "first_name"]),
-        getRowValue(row, ["Player Last Name", "Last Name", "last_name"]),
+        getRowValue(row, ["Player First Name", "Participant First Name", "First Name", "first_name"]),
+        getRowValue(row, ["Player Last Name", "Participant Last Name", "Last Name", "last_name"]),
       ]
         .filter(Boolean)
         .join(" ")
         .trim() ||
       [
-        getRowValue(row, ["Account First Name", "Parent First Name"]),
-        getRowValue(row, ["Account Last Name", "Parent Last Name"]),
+        getRowValue(row, ["Account First Name", "Parent First Name", "Guardian First Name"]),
+        getRowValue(row, ["Account Last Name", "Parent Last Name", "Guardian Last Name"]),
       ]
         .filter(Boolean)
         .join(" ")
@@ -345,6 +378,8 @@ async function applyImportRows(params: {
     }
     const contactPhone = getRowValue(row, [
       "Player Telephone",
+      "Participant Phone",
+      "Player Phone",
       "Player Cellphone",
       "Parent Phone",
       "Telephone",
@@ -353,26 +388,42 @@ async function applyImportRows(params: {
       "Phone",
       "phone",
     ]);
-    const guardianFirstName = getRowValue(row, ["Account First Name", "Parent First Name"]);
-    const guardianLastName = getRowValue(row, ["Account Last Name", "Parent Last Name"]);
-    const guardianEmail = getRowValue(row, ["User Email", "Email", "Parent Email"]);
+    const guardianFirstName = getRowValue(row, [
+      "Account First Name",
+      "Parent First Name",
+      "Guardian First Name",
+    ]);
+    const guardianLastName = getRowValue(row, [
+      "Account Last Name",
+      "Parent Last Name",
+      "Guardian Last Name",
+    ]);
+    const guardianEmail = getRowValue(row, PLAYER_IMPORT_EMAIL_KEYS);
     const guardianPhone = getRowValue(row, [
       "Telephone",
+      "Account Phone",
       "Cellphone",
       "Other Phone",
       "Parent Phone",
+      "Guardian Phone",
       "Phone",
     ]);
-    const gender = getRowValue(row, ["Player Gender", "Gender"]);
-    const birthDate = parseDateValue(getRowValue(row, ["Player Birth Date", "Birth Date", "DOB"]));
-    const orderPaymentStatus = getRowValue(row, ["Order Payment Status", "Payment Status"]);
+    const gender = getRowValue(row, ["Player Gender", "Participant Gender", "Gender"]);
+    const birthDate = parseDateValue(
+      getRowValue(row, ["Player Birth Date", "Participant Birth Date", "Birth Date", "DOB"]),
+    );
+    const orderPaymentStatus = getRowValue(row, [
+      "Order Payment Status",
+      "Payment Status",
+      "Balance Status",
+    ]);
     const birthCertStatus = getRowValue(row, ["Birth Certificate Upload", "Birth Certificate"]);
     const rosterStatus =
       getRowValue(row, ["Roster Status", "Status", "status"]) ||
       [orderPaymentStatus, birthCertStatus].filter(Boolean).join(" | ") ||
       null;
-    const registrationOrderNo = getRowValue(row, ["Order No", "Order Number"]);
-    const registrationOrderDate = parseDateValue(getRowValue(row, ["Order Date"]));
+    const registrationOrderNo = getRowValue(row, ["Order No", "Order Number", "Order ID"]);
+    const registrationOrderDate = parseDateValue(getRowValue(row, ["Order Date", "Registration Date"]));
     const jerseyNumber =
       getRowValue(row, [
         "Jersey Number",
@@ -380,7 +431,12 @@ async function applyImportRows(params: {
         "jersey_number",
       ]) || null;
     const jerseySize =
-      getRowValue(row, ["What is the players jersey size?", "Jersey Size"]) || null;
+      getRowValue(row, [
+        "What is the players jersey size?",
+        "Jersey Size",
+        "Shirt Size",
+        "Uniform Size",
+      ]) || null;
     const explicitAllStarAgeBand = parseAllStarAgeBand(
       getRowValue(row, [
         "All-Star Age Band",
@@ -408,8 +464,8 @@ async function applyImportRows(params: {
       getRowValue(row, ["Did you play in the Gonzales DYB Spring/Summer 2025 Season?"]),
     );
     const priorSeasonTeamInfo = getRowValue(row, ["If YES, to above, which team and age group?"]);
-    const streetAddress = getRowValue(row, ["Street Address"]);
-    const unit = getRowValue(row, ["Unit"]);
+    const streetAddress = getRowValue(row, ["Street Address", "Address", "Address Line 1"]);
+    const unit = getRowValue(row, ["Unit", "Address Line 2"]);
     const city = getRowValue(row, ["City"]);
     const state = getRowValue(row, ["State"]);
     const postalCode = getRowValue(row, ["Postal Code", "Zip", "Zip Code"]);

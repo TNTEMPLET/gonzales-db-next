@@ -9,7 +9,11 @@ import {
 } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AdminSponsorsManager from "@/components/admin/AdminSponsorsManager";
-import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getSiteConfig,
+  isAdminModuleEnabledForOrg,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -26,6 +30,9 @@ export default async function AdminSponsorsPage({
 }) {
   const { org } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org);
+  if (!isAdminModuleEnabledForOrg(currentOrg, "SPONSORS")) {
+    redirect(`/admin?org=${currentOrg}&denied=sponsors`);
+  }
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;

@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { formatAllStarAuditActionLabel } from "@/lib/allStar/auditLogLabels";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 type AuditLogRow = {
   id: string;
@@ -23,7 +24,7 @@ type AuditMeta = {
 };
 
 type AllStarAuditLogPanelProps = {
-  org: "gonzales" | "ascension";
+  org: ContentOrgId;
   cycleId?: string | null;
   onReverted?: () => void;
 };

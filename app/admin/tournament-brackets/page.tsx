@@ -13,7 +13,14 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { BRACKET_ORGS, getSiteConfig, isContentOrgId, isMasterDeployment, resolveBracketAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  BRACKET_ORGS,
+  getSiteConfig,
+  isAdminModuleEnabledForOrg,
+  isContentOrgId,
+  isMasterDeployment,
+  resolveBracketAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -34,6 +41,9 @@ export default async function AdminTournamentBracketsPage({
   }
 
   const { org } = await searchParams;
+  if (org === "fallball" || !isAdminModuleEnabledForOrg(isContentOrgId(org) ? org : null, "TOURNAMENT_BRACKETS")) {
+    redirect("/admin?org=fallball&denied=tournament-brackets");
+  }
   const bracketOrg = resolveBracketAdminTargetOrg(org);
 
   const cookieStore = await cookies();
@@ -83,7 +93,7 @@ export default async function AdminTournamentBracketsPage({
               Master Admin: create the bracket structure, map teams, import schedule data when needed, preview the public layout, then mark only reviewed brackets READY. READY brackets appear on the public Tournaments page; DRAFT and ARCHIVED projects stay out of public view.
             </p>
             <p className="mt-2 leading-relaxed text-amber-300/90">
-              Import and publish actions can change what families see. Preview after every import and keep tournament-only work in the bracket module.
+              Import and publish actions can change what families see. Preview after every import and keep Fall Ball out of this module.
             </p>
           </details>
         </div>

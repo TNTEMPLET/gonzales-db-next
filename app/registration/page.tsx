@@ -13,8 +13,10 @@ export function generateMetadata() {
 
 export default function RegistrationPage() {
   const regOpen = isRegistrationOpen();
+  const site = getSiteConfig();
+  const isFallBall = site.orgId === "fallball";
 
-  if (!regOpen) {
+  if (!regOpen && !isFallBall) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center px-6 max-w-2xl">
@@ -32,6 +34,81 @@ export default function RegistrationPage() {
           >
             Return to Home
           </Link>
+        </div>
+      </main>
+    );
+  }
+
+  if (isFallBall) {
+    return (
+      <main className="min-h-screen bg-black text-white">
+        <section className="bg-zinc-900 border-b border-zinc-800 py-14 px-6 text-center">
+          <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-6">
+            FALL BALL 2026
+          </div>
+          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+            AP Baseball Fall Ball Registration
+          </h1>
+          <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
+            Fall Ball is an independent AP Baseball league program. It is not
+            affiliated with Gonzales Diamond Baseball or Ascension Little League.
+          </p>
+        </section>
+
+        <div className="max-w-3xl mx-auto px-6 py-12 space-y-8">
+          <section className="space-y-4 text-zinc-300 leading-relaxed">
+            <p>
+              Player registration is handled through SportsConnect at
+              APBaseball.com. After registration reports are exported from
+              SportsConnect, AP Baseball staff can import the CSV directly into
+              the Fall Ball Teams module from the master admin site.
+            </p>
+            <div className="border border-brand-gold/40 bg-brand-gold/5 rounded-xl p-5">
+              <p className="font-bold text-brand-gold tracking-wide">
+                IMPORTANT: Registration records are managed in SportsConnect.
+              </p>
+              <p className="mt-2 text-sm text-zinc-300">
+                The Fall Ball site is the league operations hub for teams,
+                rosters, schedules, communications, sponsors, and reporting
+                after players are registered.
+              </p>
+            </div>
+          </section>
+
+          <section className="grid gap-4 sm:grid-cols-2">
+            <div className="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
+              <h2 className="font-semibold text-white mb-2">Families</h2>
+              <p className="text-zinc-400 text-sm">
+                Register players on APBaseball.com using your SportsConnect
+                account. Registration availability and payment details are
+                controlled there.
+              </p>
+            </div>
+            <div className="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
+              <h2 className="font-semibold text-white mb-2">Admins</h2>
+              <p className="text-zinc-400 text-sm">
+                Use Master Admin, select AP Fall Ball, then open Teams to import
+                SportsConnect CSV or XLSX registration exports.
+              </p>
+            </div>
+          </section>
+
+          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
+            <a
+              href="http://www.apbaseball.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-10 py-4 rounded-xl text-center transition-all active:scale-95"
+            >
+              Register at APBaseball.com
+            </a>
+            <Link
+              href="/"
+              className="border-2 border-white hover:bg-white hover:text-black font-semibold text-lg px-10 py-4 rounded-xl text-center transition-all"
+            >
+              Fall Ball Home
+            </Link>
+          </div>
         </div>
       </main>
     );

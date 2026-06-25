@@ -1,4 +1,6 @@
-export type ContentOrgId = "gonzales" | "ascension";
+import type { ContentOrgId } from "@/lib/siteConfig";
+
+export type { ContentOrgId };
 
 export type AllStarAgeOption = {
   id: string;
@@ -6,7 +8,9 @@ export type AllStarAgeOption = {
 };
 
 export function formatOrganizationLabel(org: ContentOrgId) {
-  return org === "gonzales" ? "Gonzales DYB" : "Ascension LLB";
+  if (org === "gonzales") return "Gonzales DYB";
+  if (org === "ascension") return "Ascension LLB";
+  return "AP Fall Ball";
 }
 
 export function parsePrimaryAgeFromAgeGroup(ageGroup: string) {

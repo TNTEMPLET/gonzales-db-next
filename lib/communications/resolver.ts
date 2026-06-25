@@ -10,7 +10,7 @@ import type {
 
 type RecipientBucket = Map<string, AudienceRecipient>;
 
-function recipientKey(recipientType: "REGISTERED_USER" | "ADMIN_USER", id: string) {
+function recipientKey(recipientType: AudienceRecipient["recipientType"], id: string) {
   return `${recipientType}:${id}`;
 }
 
@@ -53,6 +53,7 @@ async function fetchRegisteredCandidates(rule: AudienceRuleInput): Promise<Audie
     recipientType: "REGISTERED_USER",
     registeredUserId: user.id,
     adminUserId: null,
+    coachingInterestSubmissionId: null,
     organizationId: user.organizationId,
     email: user.email,
     phone: user.contactPhone ?? null,
@@ -120,12 +121,45 @@ async function fetchAdminRoleCandidates(rule: AudienceRuleInput): Promise<Audien
     recipientType: "ADMIN_USER",
     registeredUserId: null,
     adminUserId: admin.id,
+    coachingInterestSubmissionId: null,
     organizationId: admin.org,
     email: admin.email,
     phone: null,
     isCoach: false,
     adminRole: admin.role,
     matchReasons: [`ADMIN_ROLE:${rule.adminRole}`],
+  }));
+}
+
+async function fetchCoachingInterestCandidates(rule: AudienceRuleInput): Promise<AudienceRecipient[]> {
+  const organizationId = rule.organizationId ?? undefined;
+  const rows = await prisma.coachingInterestSubmission.findMany({
+    where: {
+      organizationId,
+      status: rule.coachingInterestStatus ?? {
+        in: ["NEW", "CONTACTED"],
+      },
+    },
+    select: {
+      id: true,
+      organizationId: true,
+      email: true,
+      cellPhone: true,
+      status: true,
+    },
+  });
+
+  return rows.map((row) => ({
+    recipientType: "COACHING_INTEREST",
+    registeredUserId: null,
+    adminUserId: null,
+    coachingInterestSubmissionId: row.id,
+    organizationId: row.organizationId,
+    email: row.email,
+    phone: row.cellPhone,
+    isCoach: false,
+    adminRole: null,
+    matchReasons: [`COACHING_INTEREST:${row.status}`],
   }));
 }
 
@@ -136,6 +170,8 @@ async function resolveRuleRecipients(rule: AudienceRuleInput): Promise<AudienceR
     case "ALL_COACHES":
     case "ORGANIZATION_COACHES":
       return fetchRegisteredCandidates(rule);
+    case "COACHING_INTEREST":
+      return fetchCoachingInterestCandidates(rule);
     case "ADMIN_ROLE":
       return fetchAdminRoleCandidates(rule);
     default:
@@ -146,7 +182,7 @@ async function resolveRuleRecipients(rule: AudienceRuleInput): Promise<AudienceR
 function toBucket(rows: AudienceRecipient[]): RecipientBucket {
   const map: RecipientBucket = new Map();
   for (const row of rows) {
-    const id = row.registeredUserId || row.adminUserId;
+    const id = row.registeredUserId || row.adminUserId || row.coachingInterestSubmissionId;
     if (!id) continue;
     map.set(recipientKey(row.recipientType, id), row);
   }

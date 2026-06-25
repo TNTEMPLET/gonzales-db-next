@@ -5,6 +5,7 @@ import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import prisma from "@/lib/prisma";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 /**
  * Changing ballots, cycles, invites, etc. Allowed for Master Admins or registered
@@ -73,7 +74,7 @@ async function hasImplicitAllStarFullAccess(registeredUserId: string) {
 
 export async function getAllStarVaultRoleForUser(
   registeredUserId: string,
-  organizationId: "gonzales" | "ascension",
+  organizationId: ContentOrgId,
 ) {
   const access = await prisma.allStarVaultAccess.findUnique({
     where: {
@@ -91,7 +92,7 @@ export async function getAllStarVaultRoleForUser(
 
 export async function canViewAllStarVault(
   registeredUserId: string,
-  organizationId: "gonzales" | "ascension",
+  organizationId: ContentOrgId,
 ) {
   const role = await getAllStarVaultRoleForUser(registeredUserId, organizationId);
   return role === "FULL_ACCESS" || role === "LIMITED_ADMIN";
@@ -99,7 +100,7 @@ export async function canViewAllStarVault(
 
 export async function canManageAllStarVault(
   registeredUserId: string,
-  organizationId: "gonzales" | "ascension",
+  organizationId: ContentOrgId,
 ) {
   const role = await getAllStarVaultRoleForUser(registeredUserId, organizationId);
   return role === "FULL_ACCESS";
@@ -107,7 +108,7 @@ export async function canManageAllStarVault(
 
 export async function canEditFinalRosterForUser(
   registeredUserId: string,
-  organizationId: "gonzales" | "ascension",
+  organizationId: ContentOrgId,
   cycleId: string,
 ) {
   const role = await getAllStarVaultRoleForUser(registeredUserId, organizationId);
@@ -164,7 +165,7 @@ export async function ensureAllStarVaultFinalRosterAdmin(
 export async function resolveAllStarVaultAccessForAdmin(options: {
   isMaster: boolean;
   email: string;
-  organizationId: "gonzales" | "ascension";
+  organizationId: ContentOrgId;
 }) {
   if (options.isMaster) {
     return {

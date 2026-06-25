@@ -9,6 +9,7 @@ import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 const ORG_LABELS: Record<ContentOrgId, string> = {
   gonzales: "Gonzales Diamond Baseball",
   ascension: "Ascension Little League",
+  fallball: "AP Baseball Fall Ball",
 };
 
 // ─── GET: cross-org payment summary (master admin only) ─────────────────────
@@ -20,7 +21,7 @@ export async function GET(request: NextRequest) {
   const yearParam = request.nextUrl.searchParams.get("year");
   const year = yearParam ? parseInt(yearParam, 10) : null;
   const orgParam = request.nextUrl.searchParams.get("org");
-  const orgFilter = orgParam === "gonzales" || orgParam === "ascension" ? orgParam : null;
+  const orgFilter = CONTENT_ORGS.includes(orgParam as ContentOrgId) ? orgParam as ContentOrgId : null;
 
   try {
   const cycles = await withTransientDbRetry(() =>

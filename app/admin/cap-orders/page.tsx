@@ -7,7 +7,11 @@ import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import ParentCapOrdersPanel from "@/components/admin/capOrders/ParentCapOrdersPanel";
-import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getSiteConfig,
+  isAdminModuleEnabledForOrg,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -24,6 +28,9 @@ export default async function AdminCapOrdersPage({
 }) {
   const { org } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org ?? undefined);
+  if (!isAdminModuleEnabledForOrg(currentOrg, "ALL_STAR_PAYMENTS")) {
+    redirect(`/admin?org=${currentOrg}&denied=cap-orders`);
+  }
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;

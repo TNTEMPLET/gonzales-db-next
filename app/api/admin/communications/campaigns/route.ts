@@ -14,9 +14,16 @@ type CreateCampaignBody = {
   quietHoursStart?: number | null;
   quietHoursEnd?: number | null;
   rules?: Array<{
-    ruleType: "ALL_USERS" | "ORGANIZATION" | "ALL_COACHES" | "ORGANIZATION_COACHES" | "ADMIN_ROLE";
+    ruleType:
+      | "ALL_USERS"
+      | "ORGANIZATION"
+      | "ALL_COACHES"
+      | "ORGANIZATION_COACHES"
+      | "COACHING_INTEREST"
+      | "ADMIN_ROLE";
     organizationId?: string | null;
     adminRole?: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR" | null;
+    coachingInterestStatus?: "NEW" | "CONTACTED" | "NOT_INTERESTED" | "CONVERTED" | "ARCHIVED" | null;
   }>;
 };
 
@@ -80,6 +87,7 @@ export async function POST(request: NextRequest) {
             ruleType: rule.ruleType,
             organizationId: rule.organizationId ?? null,
             adminRole: rule.adminRole ?? null,
+            coachingInterestStatus: rule.coachingInterestStatus ?? null,
           })) ?? [],
       },
     },

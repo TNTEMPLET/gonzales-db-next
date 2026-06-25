@@ -20,7 +20,7 @@ export async function inferDefaultAdminTargetOrgForMasterDashboard(
     select: { organizationId: true, role: true },
   });
   const contentMemberships = memberships.flatMap((m) => {
-    if (m.organizationId !== "gonzales" && m.organizationId !== "ascension") {
+    if (!CONTENT_ORGS.includes(m.organizationId as ContentOrgId)) {
       return [];
     }
     return [{ organizationId: m.organizationId as ContentOrgId, role: m.role }];
@@ -53,9 +53,10 @@ export async function inferDefaultAdminTargetOrgForMasterDashboard(
 
   const vaultOrgs: ContentOrgId[] = [];
   for (const row of registered) {
-    if (row.organizationId !== "gonzales" && row.organizationId !== "ascension") continue;
-    if (await canViewAllStarVault(row.id, row.organizationId)) {
-      vaultOrgs.push(row.organizationId);
+    if (!CONTENT_ORGS.includes(row.organizationId as ContentOrgId)) continue;
+    const orgId = row.organizationId as ContentOrgId;
+    if (await canViewAllStarVault(row.id, orgId)) {
+      vaultOrgs.push(orgId);
     }
   }
   const uniqueVault = [...new Set(vaultOrgs)];

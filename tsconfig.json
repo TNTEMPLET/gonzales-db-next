@@ -44,7 +44,9 @@
     ".next-ladistrict2/types/**/*.ts",
     ".next-ladistrict2/dev/types/**/*.ts",
     ".next-ladistrict6/types/**/*.ts",
-    ".next-ladistrict6/dev/types/**/*.ts"
+    ".next-ladistrict6/dev/types/**/*.ts",
+    ".next-fallball/types/**/*.ts",
+    ".next-fallball/dev/types/**/*.ts"
   ],
   "exclude": [
     "node_modules"

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { usePathname } from "next/navigation";
-import type { ContentOrgId } from "@/lib/siteConfig";
+import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 import {
   resolvePreviewUserAccess,
   type PreviewUserSnapshot,
@@ -59,12 +59,16 @@ function normalizePreviewUser(raw: unknown): PreviewUserSnapshot | null {
       .map((entry) => {
         if (!entry || typeof entry !== "object") return null;
         const row = entry as Record<string, unknown>;
-        if (row.organizationId !== "gonzales" && row.organizationId !== "ascension") {
+        if (
+          typeof row.organizationId !== "string" ||
+          !isContentOrgId(row.organizationId)
+        ) {
           return null;
         }
         if (!isPreviewUserEffectiveRole(row.effectiveRole)) return null;
+        const organizationId = row.organizationId;
         return {
-          organizationId: row.organizationId,
+          organizationId,
           effectiveRole: row.effectiveRole,
           allStarVaultView: Boolean(row.allStarVaultView),
         };
@@ -84,7 +88,7 @@ function normalizePreviewUser(raw: unknown): PreviewUserSnapshot | null {
     isPreviewUserEffectiveRole(parsed.effectiveRole)
   ) {
     const [legacyUserId, organizationId] = parsed.id.split("::");
-    if (organizationId !== "gonzales" && organizationId !== "ascension") {
+    if (!isContentOrgId(organizationId)) {
       return null;
     }
     return {

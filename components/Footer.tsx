@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import DesignedByBrand from "@/components/ui/DesignedByBrand";
@@ -22,6 +23,7 @@ export default function Footer({ brand }: FooterProps) {
 
   const isMaster = brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
   const isTournamentOnly = brand.tournamentOnly ?? false;
+  const isFallBall = brand.displayNameLine2.toUpperCase() === "FALL BALL";
 
   return (
     <footer className="border-t border-zinc-800 bg-zinc-950 py-10 sm:py-14 md:py-16">
@@ -49,6 +51,8 @@ export default function Footer({ brand }: FooterProps) {
           <p className="text-sm text-zinc-400 max-w-xs">
             {isTournamentOnly
               ? "Official tournament information, brackets, and rosters."
+              : isFallBall
+              ? "AP Baseball Fall Ball league operations, registration updates, schedules, and team information."
               : "Official youth baseball league in Ascension Parish, Louisiana. Providing fun, skill development, and competitive play for ages 3-12."}
           </p>
         </div>
@@ -111,12 +115,12 @@ export default function Footer({ brand }: FooterProps) {
             ) : isTournamentOnly ? (
               <>
                 <li>
-                  <a
+                  <Link
                     href="/"
                     className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Home
-                  </a>
+                  </Link>
                 </li>
                 <li>
                   <a
@@ -139,7 +143,7 @@ export default function Footer({ brand }: FooterProps) {
               <>
                 <li>
                   <a
-                    href="#schedule"
+                    href="/schedule"
                     className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Schedules &amp; Standings
@@ -147,35 +151,19 @@ export default function Footer({ brand }: FooterProps) {
                 </li>
                 <li>
                   <a
-                    href="#register"
+                    href="/registration"
                     className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     Player Registration
                   </a>
                 </li>
                 <li>
-                  <a
-                    href="#teams"
-                    className="text-zinc-100 hover:text-brand-gold transition"
-                  >
-                    Teams &amp; Rosters
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="#fields"
-                    className="text-zinc-100 hover:text-brand-gold transition"
-                  >
-                    Field Status
-                  </a>
-                </li>
-                <li>
-                  <a
-                    href="#news"
+                  <Link
+                    href="/news"
                     className="text-zinc-100 hover:text-brand-gold transition"
                   >
                     News &amp; Announcements
-                  </a>
+                  </Link>
                 </li>
               </>
             )}
@@ -188,7 +176,7 @@ export default function Footer({ brand }: FooterProps) {
           <div className="space-y-3 text-sm text-zinc-400">
             <p>
               AP Baseball
-              {!isMaster && <> / Gonzales Diamond Baseball</>}
+              {!isMaster && !isFallBall && <> / Gonzales Diamond Baseball</>}
               <br />
               1943 S. Burnside Ave.
               <br />

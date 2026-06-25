@@ -2,6 +2,13 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  StatusCountPill,
+  TeamHealthSummaryGrid,
+  TeamsWorkflowNavigation,
+  WorkflowStepRow,
+  type TeamWorkflowSectionId,
+} from "./teams/TeamsWorkflowHelpers";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type Team = {
@@ -102,6 +109,14 @@ type ImportHistoryItem = ImportJobStatus & {
   createdAt: string;
   completedAt: string | null;
   undoneAt: string | null;
+  createdByName?: string | null;
+  createdByEmail?: string | null;
+  createdBy?: {
+    name?: string | null;
+    email?: string | null;
+  } | null;
+  organizationId?: string | null;
+  importType?: string | null;
 };
 type ImportSkippedRowDetail = {
   rowNumber: number | null;
@@ -113,11 +128,76 @@ type ImportSkippedRowDetail = {
 type CoachImportUndoData = {
   importBatchId?: string;
 };
+type TeamListImportAction = "CREATE" | "UPDATE" | "SKIP";
+type TeamListImportRow = {
+  rowNumber: number;
+  ageGroup: string;
+  teamName: string;
+  sponsor: string | null;
+  headCoachLastName: string | null;
+  action: TeamListImportAction;
+  errors: string[];
+  warnings: string[];
+  existingTeamId: string | null;
+};
+type TeamListImportSummary = {
+  total: number;
+  create: number;
+  update: number;
+  skip: number;
+  errors: number;
+  warnings: number;
+  affected?: number;
+};
+type TeamListImportResult = {
+  rows: TeamListImportRow[];
+  summary: TeamListImportSummary;
+  affectedTeams?: Team[];
+};
+type TeamListImportStep = "upload" | "preview" | "results";
 type UndoImportStatus = {
   status: "RUNNING" | "DONE";
   progress: number;
   message: string;
 };
+
+const PLAYER_IMPORT_DIVISION_KEYS = [
+  "Division Name",
+  "Division",
+  "Program Division",
+  "Program Name",
+  "Age Group",
+  "age_group",
+  "AGE_GROUP",
+];
+
+const PLAYER_IMPORT_TEAM_KEYS = [
+  "Team Name",
+  "Team",
+  "Roster Team Name",
+  "Assigned Team",
+  "assigned_team",
+  "ASSIGNED_TEAM",
+];
+
+const PLAYER_IMPORT_NAME_KEYS = [
+  "Player Full Name",
+  "Participant Name",
+  "Player Name",
+  "Child Name",
+  "Registrant Name",
+  "Full Name",
+  "full_name",
+];
+
+const PLAYER_IMPORT_EMAIL_KEYS = [
+  "User Email",
+  "Account Email",
+  "Parent Email",
+  "Guardian Email",
+  "Email",
+  "email",
+];
 
 function getImportRowValue(row: Record<string, unknown>, keys: string[]) {
   for (const key of keys) {
@@ -176,8 +256,113 @@ function toCsvSafeValue(value: string) {
   return value;
 }
 
+const PLAYER_IMPORT_STEPS = [
+  "Upload",
+  "Review mappings",
+  "Preview changes",
+  "Import",
+  "Review results",
+] as const;
+
+const COACH_IMPORT_STEPS = [
+  "Upload",
+  "Review age groups",
+  "Preview coach/team matches",
+  "Import",
+  "Review results",
+] as const;
+
+const TEAM_LIST_IMPORT_STEPS = ["Upload/Paste CSV", "Preview teams", "Import", "Results"] as const;
+
+const BASEBALL_AGE_DIVISIONS = ["6U", "8U", "10U", "12U", "14U", "16U", "18U"] as const;
+
+function getTeamsManagementAgeGroupDefaults(targetOrg: ContentOrgId) {
+  if (targetOrg === "fallball") {
+    return BASEBALL_AGE_DIVISIONS.map((division) => `${division} Fall`);
+  }
+  if (targetOrg === "ascension") {
+    return BASEBALL_AGE_DIVISIONS.map((division) => `${division} LLB`);
+  }
+  return BASEBALL_AGE_DIVISIONS.map((division) => {
+    const age = Number.parseInt(division, 10);
+    const program = age <= 12 ? "DYB" : age <= 14 ? "DBB" : "DPM";
+    return `${division} ${program}`;
+  });
+}
+
+function getAgeDivisionNumber(label: string) {
+  const match = label.match(/^(\d{1,2})U\b/i) || label.match(/\b(\d{1,2})U\b/i);
+  return match?.[1] ? Number.parseInt(match[1], 10) : null;
+}
+
+function sortTeamsManagementAgeGroups(a: string, b: string) {
+  const ageA = getAgeDivisionNumber(a);
+  const ageB = getAgeDivisionNumber(b);
+  if (ageA !== null && ageB !== null && ageA !== ageB) return ageA - ageB;
+  if (ageA !== null && ageB === null) return -1;
+  if (ageA === null && ageB !== null) return 1;
+  return a.localeCompare(b);
+}
+
+function mergeTeamsManagementAgeGroupOptions(
+  defaults: readonly string[],
+  existing: readonly string[],
+) {
+  const options = new Map<string, string>();
+  for (const value of [...defaults, ...existing]) {
+    const normalized = value.trim();
+    if (!normalized) continue;
+    const key = normalized.toLowerCase();
+    if (!options.has(key)) options.set(key, normalized);
+  }
+  return Array.from(options.values()).sort(sortTeamsManagementAgeGroups);
+}
+
+function getTeamListSampleCsv(targetOrg: ContentOrgId) {
+  const defaults = getTeamsManagementAgeGroupDefaults(targetOrg);
+  const sampleAgeGroups = ["8U", "10U"].map(
+    (ageDivision) =>
+      defaults.find((option) => option.toLowerCase().startsWith(ageDivision.toLowerCase())) ||
+      `${ageDivision}${targetOrg === "fallball" ? " Fall" : ""}`,
+  );
+
+  if (targetOrg === "fallball") {
+    return `Age Group,MLB Team
+${sampleAgeGroups[0]},Yankees
+${sampleAgeGroups[1]},Astros`;
+  }
+
+  return `Age Group,Team Name
+${sampleAgeGroups[0]},Acme Plumbing - Smith
+${sampleAgeGroups[1]},Main Street Dental - Garcia`;
+}
+
+function getImportHistoryActor(item: ImportHistoryItem) {
+  return (
+    item.createdByName ||
+    item.createdBy?.name ||
+    item.createdByEmail ||
+    item.createdBy?.email ||
+    "administrator not recorded"
+  );
+}
+
+function getImportHistoryWhat(item: ImportHistoryItem) {
+  const importType = item.importType || "player roster import";
+  const org = item.organizationId ? ` for ${item.organizationId}` : "";
+  return `${importType}${org}`;
+}
+
+function getImportHistoryUndoText(item: ImportHistoryItem) {
+  if (item.undoneAt) return `Already undone ${new Date(item.undoneAt).toLocaleString()}`;
+  if (item.status !== "DONE") return "Undo available after this batch finishes";
+  return "Undo can remove created rows and restore updated players";
+}
+
+
 export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrgId }) {
   const orgQuery = `org=${targetOrg}`;
+  const isFallBall = targetOrg === "fallball";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -212,6 +397,12 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   const [showPlayersImportModal, setShowPlayersImportModal] = useState(false);
   const [showCoachImportModal, setShowCoachImportModal] = useState(false);
   const [showCoachImportMappingModal, setShowCoachImportMappingModal] = useState(false);
+  const [showTeamListImportModal, setShowTeamListImportModal] = useState(false);
+  const [teamListImportStep, setTeamListImportStep] = useState<TeamListImportStep>("upload");
+  const [teamListCsvText, setTeamListCsvText] = useState("");
+  const [teamListImportBusy, setTeamListImportBusy] = useState(false);
+  const [teamListImportError, setTeamListImportError] = useState("");
+  const [teamListImportResult, setTeamListImportResult] = useState<TeamListImportResult | null>(null);
   const [importedDivisions, setImportedDivisions] = useState<string[]>([]);
   const [scheduleAgeGroupOptions, setScheduleAgeGroupOptions] = useState<string[]>([]);
   const [divisionMapping, setDivisionMapping] = useState<DivisionMapping>({});
@@ -227,9 +418,12 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   const [activeImportBatchId, setActiveImportBatchId] = useState<string | null>(null);
   const [importRows, setImportRows] = useState<Record<string, unknown>[]>([]);
   const [importSkippedDetails, setImportSkippedDetails] = useState<ImportSkippedRowDetail[]>([]);
+  const [importPreviewSkippedDivisionDetails, setImportPreviewSkippedDivisionDetails] = useState<ImportSkippedRowDetail[]>([]);
   const [stopImportRequested, setStopImportRequested] = useState(false);
   const [importHistory, setImportHistory] = useState<ImportHistoryItem[]>([]);
   const [pendingUndoImport, setPendingUndoImport] = useState<ImportHistoryItem | null>(null);
+  const [undoConfirmText, setUndoConfirmText] = useState("");
+  const [activeTeamsSection, setActiveTeamsSection] = useState<TeamWorkflowSectionId>("teams-build");
   const [undoImportStatus, setUndoImportStatus] = useState<UndoImportStatus | null>(null);
   const undoProgressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [coachImportFile, setCoachImportFile] = useState<File | null>(null);
@@ -253,6 +447,30 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   const [activeProfileSummaryPlayerId, setActiveProfileSummaryPlayerId] = useState<string | null>(null);
   const [editingCoachRoleId, setEditingCoachRoleId] = useState<string | null>(null);
   const [showCoachAssignmentsModal, setShowCoachAssignmentsModal] = useState(false);
+
+  const baseAgeGroupOptions = useMemo(
+    () => getTeamsManagementAgeGroupDefaults(targetOrg),
+    [targetOrg],
+  );
+  const existingTeamAgeGroupOptions = useMemo(
+    () =>
+      Array.from(
+        new Set(
+          teams
+            .map((team) => team.ageGroup.trim())
+            .filter((value) => value.length > 0),
+        ),
+      ),
+    [teams],
+  );
+  const teamManagementAgeGroupOptions = useMemo(
+    () => mergeTeamsManagementAgeGroupOptions(baseAgeGroupOptions, existingTeamAgeGroupOptions),
+    [baseAgeGroupOptions, existingTeamAgeGroupOptions],
+  );
+  const teamListSampleCsv = useMemo(() => getTeamListSampleCsv(targetOrg), [targetOrg]);
+  const teamListImportStepIndex =
+    teamListImportStep === "upload" ? 0 : teamListImportStep === "preview" ? 1 : 3;
+  const teamListImportHasErrors = (teamListImportResult?.summary.errors || 0) > 0;
 
   const selectedTeam = useMemo(
     () => teams.find((team) => team.id === selectedTeamId) || null,
@@ -278,10 +496,11 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   }, [teams, teamFilterSeasonYear]);
   const teamFilterAgeGroupOptions = useMemo(
     () =>
-      Array.from(new Set(teamsForSelectedSeason.map((team) => team.ageGroup))).sort((a, b) =>
-        a.localeCompare(b),
+      mergeTeamsManagementAgeGroupOptions(
+        baseAgeGroupOptions,
+        teamsForSelectedSeason.map((team) => team.ageGroup),
       ),
-    [teamsForSelectedSeason],
+    [baseAgeGroupOptions, teamsForSelectedSeason],
   );
 
   function downloadSkippedRowsCsv() {
@@ -337,12 +556,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     if (!confirmedImportAgeGroup) return [] as string[];
     const names = new Set<string>();
     for (const row of importRows) {
-      const rawDivision = getImportRowValue(row, [
-        "Division Name",
-        "Age Group",
-        "age_group",
-        "AGE_GROUP",
-      ]);
+      const rawDivision = getImportRowValue(row, PLAYER_IMPORT_DIVISION_KEYS);
       const mappedAgeGroup = divisionMapping[rawDivision] || rawDivision;
       if (
         !allAgesSelected &&
@@ -351,12 +565,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       ) {
         continue;
       }
-      const teamName = getImportRowValue(row, [
-        "Team Name",
-        "team_name",
-        "assigned_team",
-        "ASSIGNED_TEAM",
-      ]);
+      const teamName = getImportRowValue(row, PLAYER_IMPORT_TEAM_KEYS);
       if (teamName) names.add(teamName);
     }
     return Array.from(names).sort((a, b) => a.localeCompare(b));
@@ -375,19 +584,9 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     let matching = 0;
     let outOfScope = 0;
     for (const row of importRows) {
-      const rawDivision = getImportRowValue(row, [
-        "Division Name",
-        "Age Group",
-        "age_group",
-        "AGE_GROUP",
-      ]);
+      const rawDivision = getImportRowValue(row, PLAYER_IMPORT_DIVISION_KEYS);
       const mappedAgeGroup = divisionMapping[rawDivision] || rawDivision;
-      const teamName = getImportRowValue(row, [
-        "Team Name",
-        "team_name",
-        "assigned_team",
-        "ASSIGNED_TEAM",
-      ]);
+      const teamName = getImportRowValue(row, PLAYER_IMPORT_TEAM_KEYS);
       const mappedTeamName = teamMapping[teamName] || teamName;
       const allTeamsSelected = confirmedImportTeamName === "__ALL__";
       const ageMatches = allAgesSelected
@@ -414,6 +613,52 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     teamMapping,
   ]);
 
+  const teamHealthSummary = useMemo(() => {
+    let totalRosteredPlayers = 0;
+    let teamsMissingCoaches = 0;
+    let teamsWithNoPlayers = 0;
+
+    for (const team of teams) {
+      const playerCount =
+        team.id === selectedTeamId ? players.length : team._count?.players ?? 0;
+      const coachCount =
+        team.id === selectedTeamId ? assignments.length : team._count?.coachAssignments ?? 0;
+
+      totalRosteredPlayers += playerCount;
+      if (playerCount === 0) teamsWithNoPlayers += 1;
+      if (coachCount === 0) teamsMissingCoaches += 1;
+    }
+
+    const recentImport = importStatus || importHistory[0] || null;
+
+    return {
+      totalTeams: teams.length,
+      totalRosteredPlayers,
+      teamsMissingCoaches,
+      teamsWithNoPlayers,
+      recentImportLabel: recentImport
+        ? `${recentImport.status}: ${recentImport.processedRows}/${recentImport.totalRows} rows, ${recentImport.createdPlayers} created, ${recentImport.updatedPlayers} updated, ${recentImport.skippedRows} skipped`
+        : "No recent imports",
+    };
+  }, [assignments.length, importHistory, importStatus, players.length, selectedTeamId, teams]);
+
+  function handleWorkflowNavigation(sectionId: TeamWorkflowSectionId) {
+    setActiveTeamsSection(sectionId);
+    if (sectionId === "teams-import-players") {
+      setShowPlayersImportModal(true);
+      return;
+    }
+    if (sectionId === "teams-assign-coaches" && selectedTeamId) {
+      setShowCoachAssignmentsModal(true);
+    }
+    window.setTimeout(() => {
+      document.getElementById(sectionId)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    }, 0);
+  }
+
   useEffect(() => {
     void loadTeams();
     void loadCoachOptions(selectedTeamId || undefined);
@@ -422,33 +667,49 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   }, [targetOrg, selectedTeamId]);
 
   useEffect(() => {
-    void loadTeamSetupAgeGroupOptions();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetOrg, seasonYear]);
+    const timer = window.setTimeout(() => {
+      setSetupAgeGroupOptions(teamManagementAgeGroupOptions);
+      setAgeGroup((current) =>
+        current && teamManagementAgeGroupOptions.includes(current)
+          ? current
+          : teamManagementAgeGroupOptions[0] || "",
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [teamManagementAgeGroupOptions]);
 
   useEffect(() => {
-    if (!selectedTeamId) {
-      setPlayers([]);
-      setAssignments([]);
-      setTeamContactNotes("");
-      setTeamPracticePlan("");
-      return;
-    }
-    void loadTeamDetails(selectedTeamId);
+    const timer = window.setTimeout(() => {
+      if (!selectedTeamId) {
+        setPlayers([]);
+        setAssignments([]);
+        setTeamContactNotes("");
+        setTeamPracticePlan("");
+        return;
+      }
+      void loadTeamDetails(selectedTeamId);
+    }, 0);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedTeamId]);
 
   useEffect(() => {
     if (teamFilterSeasonYear || teamFilterSeasonOptions.length === 0) return;
-    setTeamFilterSeasonYear(String(teamFilterSeasonOptions[0]));
+    const timer = window.setTimeout(() => {
+      setTeamFilterSeasonYear(String(teamFilterSeasonOptions[0]));
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [teamFilterSeasonYear, teamFilterSeasonOptions]);
 
   useEffect(() => {
-    setSelectedTeamId((current) =>
-      current && filteredTeamOptions.some((team) => team.id === current)
-        ? current
-        : filteredTeamOptions[0]?.id || "",
-    );
+    const timer = window.setTimeout(() => {
+      setSelectedTeamId((current) =>
+        current && filteredTeamOptions.some((team) => team.id === current)
+          ? current
+          : filteredTeamOptions[0]?.id || "",
+      );
+    }, 0);
+    return () => window.clearTimeout(timer);
   }, [filteredTeamOptions]);
 
   useEffect(() => {
@@ -471,7 +732,6 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       })();
     }, 1000);
     return () => window.clearInterval(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeImportBatchId, busy, orgQuery]);
 
   async function safeJson(response: Response) {
@@ -548,34 +808,6 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     setIsEditingRoster(false);
   }
 
-  async function loadTeamSetupAgeGroupOptions() {
-    try {
-      const response = await fetch(
-        `/api/admin/age-groups?org=${targetOrg}&seasonYear=${seasonYear}`,
-        { cache: "no-store" },
-      );
-      const json = await safeJson(response);
-      if (!response.ok) {
-        throw new Error(String(json.error || "Failed to load age groups"));
-      }
-      const options = Array.isArray(json.ageGroups)
-        ? (json.ageGroups as unknown[])
-            .filter(
-              (value): value is string =>
-                typeof value === "string" && value.trim().length > 0,
-            )
-            .map((value) => value.trim())
-        : [];
-      setSetupAgeGroupOptions(options);
-      setAgeGroup((current) =>
-        current && options.includes(current) ? current : options[0] || "",
-      );
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to load age groups");
-      setSetupAgeGroupOptions([]);
-    }
-  }
-
   async function createOrUpdateTeam() {
     setBusy(true);
     setError("");
@@ -640,8 +872,118 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     }
   }
 
+  function emptyTeamListSummary(): TeamListImportSummary {
+    return { total: 0, create: 0, update: 0, skip: 0, errors: 0, warnings: 0 };
+  }
+
+  function resetTeamListImport(nextCsvText = teamListSampleCsv) {
+    setTeamListImportStep("upload");
+    setTeamListCsvText(nextCsvText);
+    setTeamListImportError("");
+    setTeamListImportResult(null);
+  }
+
+  function openTeamListImport() {
+    resetTeamListImport(teamListCsvText.trim() ? teamListCsvText : teamListSampleCsv);
+    setShowTeamListImportModal(true);
+  }
+
+  function downloadTeamListTemplate() {
+    const blob = new Blob([teamListSampleCsv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = isFallBall ? "fall-ball-team-list-template.csv" : "team-list-template.csv";
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleTeamListFile(file: File | null) {
+    if (!file) return;
+    setTeamListImportError("");
+    try {
+      setTeamListCsvText(await file.text());
+      setTeamListImportResult(null);
+      setTeamListImportStep("upload");
+    } catch (err: unknown) {
+      setTeamListImportError(err instanceof Error ? err.message : "Failed to read CSV file");
+    }
+  }
+
+  async function previewTeamListImport() {
+    setTeamListImportBusy(true);
+    setTeamListImportError("");
+    setTeamListImportResult(null);
+    try {
+      const response = await fetch(`/api/admin/teams/team-list-import?${orgQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "preview",
+          seasonYear,
+          csvText: teamListCsvText,
+          teamNameMode: isFallBall ? "mlb" : "standard",
+        }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String(json.error || "Failed to preview team list"));
+      setTeamListImportResult({
+        rows: Array.isArray(json.rows) ? (json.rows as TeamListImportRow[]) : [],
+        summary: (json.summary as TeamListImportSummary | undefined) || emptyTeamListSummary(),
+      });
+      setTeamListImportStep("preview");
+    } catch (err: unknown) {
+      setTeamListImportError(err instanceof Error ? err.message : "Failed to preview team list");
+    } finally {
+      setTeamListImportBusy(false);
+    }
+  }
+
+  async function confirmTeamListImport() {
+    setTeamListImportBusy(true);
+    setTeamListImportError("");
+    try {
+      const response = await fetch(`/api/admin/teams/team-list-import?${orgQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mode: "import",
+          seasonYear,
+          csvText: teamListCsvText,
+          teamNameMode: isFallBall ? "mlb" : "standard",
+        }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String(json.error || "Failed to import team list"));
+      setTeamListImportResult({
+        rows: Array.isArray(json.rows) ? (json.rows as TeamListImportRow[]) : [],
+        summary: (json.summary as TeamListImportSummary | undefined) || emptyTeamListSummary(),
+        affectedTeams: Array.isArray(json.affectedTeams) ? (json.affectedTeams as Team[]) : [],
+      });
+      setTeamListImportStep("results");
+      setNotice("Team list import complete.");
+      await loadTeams();
+    } catch (err: unknown) {
+      setTeamListImportError(err instanceof Error ? err.message : "Failed to import team list");
+    } finally {
+      setTeamListImportBusy(false);
+    }
+  }
+
   async function removeTeam(teamId: string) {
-    if (!window.confirm("Delete this team and all roster/coach assignments?")) return;
+    const team = teams.find((entry) => entry.id === teamId);
+    const teamName = team?.teamName || "this team";
+    const playerCount = teamId === selectedTeamId ? players.length : team?._count?.players ?? 0;
+    const coachCount =
+      teamId === selectedTeamId ? assignments.length : team?._count?.coachAssignments ?? 0;
+    const confirmation = window.prompt(
+      `Delete ${teamName}? This permanently removes the team, ${playerCount} rostered player${
+        playerCount === 1 ? "" : "s"
+      }, and ${coachCount} coach assignment${coachCount === 1 ? "" : "s"}. Type DELETE to confirm.`,
+    );
+    if (confirmation !== "DELETE") return;
     setBusy(true);
     setError("");
     setNotice("");
@@ -776,17 +1118,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   }
 
   async function loadScheduleAgeGroupOptions() {
-    const response = await fetch(`/api/admin/age-groups?${orgQuery}&seasonYear=${seasonYear}`, {
-      cache: "no-store",
-    });
-    const json = await safeJson(response);
-    if (!response.ok) {
-      throw new Error(String(json.error || "Failed to load schedule age groups"));
-    }
-    const raw = Array.isArray(json.ageGroups) ? (json.ageGroups as unknown[]) : [];
-    const options = raw
-      .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
-      .map((value) => value.trim());
+    const options = teamManagementAgeGroupOptions;
     setScheduleAgeGroupOptions(options);
     return options;
   }
@@ -1026,7 +1358,12 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     const workbook = XLSX.read(buffer, { type: "array" });
     const firstSheet = workbook.Sheets[workbook.SheetNames[0] || ""];
     if (!firstSheet) {
-      return { divisions: [] as string[], preview: [] as ImportPreviewRow[], rows: [] as Record<string, unknown>[] };
+      return {
+        divisions: [] as string[],
+        preview: [] as ImportPreviewRow[],
+        rows: [] as Record<string, unknown>[],
+        skippedDivisionDetails: [] as ImportSkippedRowDetail[],
+      };
     }
 
     const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
@@ -1040,25 +1377,34 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     const divisionSet = new Set<string>();
     const preview: ImportPreviewRow[] = [];
     const filteredRows: Record<string, unknown>[] = [];
+    const skippedDivisionDetails: ImportSkippedRowDetail[] = [];
     for (const row of rows) {
-      const divisionName = String(
-        row["Division Name"] || row["Age Group"] || row["age_group"] || "",
-      ).trim();
+      const divisionName = getImportRowValue(row, PLAYER_IMPORT_DIVISION_KEYS);
+      const teamName = getImportRowValue(row, PLAYER_IMPORT_TEAM_KEYS);
+      const playerName =
+        getImportRowValue(row, PLAYER_IMPORT_NAME_KEYS) ||
+        [
+          getImportRowValue(row, ["Player First Name", "Participant First Name", "First Name"]),
+          getImportRowValue(row, ["Player Last Name", "Participant Last Name", "Last Name"]),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .trim();
       if (shouldSkipDivisionImport(divisionName)) {
+        skippedDivisionDetails.push({
+          rowNumber:
+            typeof row.__importRowNumber === "number" ? row.__importRowNumber : null,
+          reason: divisionName
+            ? `Skipped division before import: ${divisionName}`
+            : "Skipped division before import",
+          playerName,
+          ageGroup: divisionName,
+          teamName,
+        });
         continue;
       }
       filteredRows.push(row);
-      const teamName = String(
-        row["Team Name"] || row["assigned_team"] || row["ASSIGNED_TEAM"] || "",
-      ).trim();
-      const playerName = [
-        String(row["Player First Name"] || row["First Name"] || "").trim(),
-        String(row["Player Last Name"] || row["Last Name"] || "").trim(),
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .trim();
-      const userEmail = String(row["User Email"] || row["Email"] || "").trim();
+      const userEmail = getImportRowValue(row, PLAYER_IMPORT_EMAIL_KEYS);
       if (divisionName) divisionSet.add(divisionName);
       if (preview.length < 25) {
         preview.push({
@@ -1074,6 +1420,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       divisions: Array.from(divisionSet).sort((a, b) => a.localeCompare(b)),
       preview,
       rows: filteredRows,
+      skippedDivisionDetails,
     };
   }
 
@@ -1096,6 +1443,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       setImportedDivisions(extracted.divisions);
       setImportPreviewRows(extracted.preview);
       setImportRows(extracted.rows);
+      setImportPreviewSkippedDivisionDetails(extracted.skippedDivisionDetails);
       setDivisionMapping(initialMapping);
       setTeamMapping({});
       setConfirmedImportAgeGroup("");
@@ -1236,6 +1584,19 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   }
 
   async function undoPreviousImport() {
+    const latestUndoableImport = importHistory.find((item) => !item.undoneAt);
+    if (latestUndoableImport) {
+      setUndoConfirmText("");
+      setPendingUndoImport(latestUndoableImport);
+      return;
+    }
+    if (
+      !window.confirm(
+        "Undo the last player import? This can remove teams and players created by the last import and restore players it updated. Continue only if you have reviewed the affected roster data.",
+      )
+    ) {
+      return;
+    }
     await undoImportById();
   }
 
@@ -1541,22 +1902,67 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       ) : null}
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Team workflow</p>
+            <h2 className="text-lg font-semibold">What do you need to do?</h2>
+          </div>
+          <TeamsWorkflowNavigation
+            activeSectionId={activeTeamsSection}
+            selectedTeamId={selectedTeamId}
+            onNavigate={handleWorkflowNavigation}
+          />
+        </div>
+        <TeamHealthSummaryGrid summary={teamHealthSummary} />
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            disabled={!selectedTeamId}
+            onClick={() => {
+              setActiveTeamsSection("teams-assign-coaches");
+              setShowCoachAssignmentsModal(true);
+            }}
+            className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+          >
+            Assign Coaches
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setActiveTeamsSection("teams-import-players");
+              setShowPlayersImportModal(true);
+            }}
+            className="rounded-lg border border-brand-purple text-brand-purple hover:bg-brand-purple/10 px-4 py-2 text-sm font-semibold"
+          >
+            Start Player Import
+          </button>
+        </div>
+      </div>
+
+      <div id="teams-build" className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Teams Setup</h2>
           <div className="flex items-center gap-2">
             <button
               type="button"
+              onClick={openTeamListImport}
+              className="text-xs rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-3 py-1.5 font-semibold"
+            >
+              Import Team List
+            </button>
+            <button
+              type="button"
               onClick={() => setShowCoachImportModal(true)}
               className="text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-1.5 font-semibold"
             >
-              Import Coaches
+              Start Coach Import
             </button>
             <button
               type="button"
               onClick={() => setShowPlayersImportModal(true)}
               className="text-xs rounded-lg border border-brand-purple text-brand-purple hover:bg-brand-purple/10 px-3 py-1.5 font-semibold"
             >
-              Import Players
+              Start Player Import
             </button>
           </div>
         </div>
@@ -1602,7 +2008,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
             onClick={() => void createOrUpdateTeam()}
             className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
           >
-            Save Team
+            Create / Update Team
           </button>
         </div>
         <p className="text-xs text-zinc-500">
@@ -1611,6 +2017,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
           {buildTeamNameFromSponsor(sponsorName, headCoachLastName)
             ? ` → ${buildTeamNameFromSponsor(sponsorName, headCoachLastName)}`
             : ""}
+          {isFallBall ? " Fall Ball teams use MLB team names instead of sponsors." : ""}
         </p>
 
         <div className="grid md:grid-cols-[180px_1fr_1fr_auto] gap-3 items-center">
@@ -1664,12 +2071,100 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
         </div>
       </div>
 
+      <div id="teams-import-history" className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4 scroll-mt-24">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h2 className="text-lg font-semibold">Import History</h2>
+            <p className="text-xs text-zinc-400">Review recent player import batches, who started them when available, what changed, and whether undo is still available.</p>
+          </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => void loadImportHistory()}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+            >
+              Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTeamsSection("teams-import-players");
+                setShowPlayersImportModal(true);
+              }}
+              className="rounded-lg border border-brand-purple px-3 py-1.5 text-xs font-semibold text-brand-purple hover:bg-brand-purple/10"
+            >
+              Start Player Import
+            </button>
+          </div>
+        </div>
+        <div className="overflow-auto rounded-lg border border-zinc-800">
+          <table className="w-full text-xs">
+            <thead className="bg-zinc-900 text-zinc-300">
+              <tr className="text-left">
+                <th className="px-3 py-2">Started / administrator</th>
+                <th className="px-3 py-2">Status / undo</th>
+                <th className="px-3 py-2">Rows</th>
+                <th className="px-3 py-2">What changed</th>
+                <th className="px-3 py-2">Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              {importHistory.length === 0 ? (
+                <tr>
+                  <td colSpan={5} className="px-3 py-3 text-zinc-500">
+                    No imports yet.
+                  </td>
+                </tr>
+              ) : (
+                importHistory.map((item) => (
+                  <tr key={item.id} className="border-t border-zinc-800">
+                    <td className="px-3 py-2">
+                      <div>{new Date(item.createdAt).toLocaleString()}</div>
+                      <div className="text-zinc-500">By {getImportHistoryActor(item)}</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <div>{item.undoneAt ? "UNDONE" : item.status || "Status unavailable"}</div>
+                      <div className="text-zinc-500">{getImportHistoryUndoText(item)}</div>
+                    </td>
+                    <td className="px-3 py-2">
+                      {item.processedRows}/{item.totalRows || "unknown"}
+                    </td>
+                    <td className="px-3 py-2">
+                      <div>{getImportHistoryWhat(item)}</div>
+                      <div className="text-zinc-500">
+                        +{item.createdTeams} teams, +{item.createdPlayers} players, {item.updatedPlayers} updated, {item.skippedRows} skipped
+                      </div>
+                    </td>
+                    <td className="px-3 py-2">
+                      <button
+                        type="button"
+                        disabled={busy || Boolean(item.undoneAt)}
+                        onClick={() => {
+                          setUndoConfirmText("");
+                          setPendingUndoImport(item);
+                        }}
+                        className="rounded border border-amber-700 px-2 py-1 text-amber-300 disabled:opacity-50"
+                      >
+                        Undo This Player Import
+                      </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
       {pendingUndoImport ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
           <div className="w-full max-w-xl rounded-xl border border-zinc-700 bg-zinc-950 p-5 space-y-4">
             <h3 className="text-base font-semibold">Confirm Import Undo</h3>
             <p className="text-sm text-zinc-300">
-              This will rollback this import batch and restore the previous state for players it updated.
+              Undo player import <code className="text-zinc-100">{pendingUndoImport.id}</code>. This can remove {pendingUndoImport.createdPlayers} player{pendingUndoImport.createdPlayers === 1 ? "" : "s"} and {pendingUndoImport.createdTeams} team{pendingUndoImport.createdTeams === 1 ? "" : "s"} created by that batch, then restore {pendingUndoImport.updatedPlayers} updated player{pendingUndoImport.updatedPlayers === 1 ? "" : "s"}.
+            </p>
+            <p className="text-sm text-amber-200">
+              Review the affected roster data first. Type <span className="font-semibold">UNDO</span> to continue.
             </p>
             <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-xs text-zinc-300 space-y-1">
               <p>Started: {new Date(pendingUndoImport.createdAt).toLocaleString()}</p>
@@ -1680,25 +2175,35 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               </p>
             </div>
             <div className="flex justify-end gap-2">
+              <input
+                value={undoConfirmText}
+                onChange={(event) => setUndoConfirmText(event.target.value)}
+                placeholder="Type UNDO"
+                className="mr-auto rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-sm"
+              />
               <button
                 type="button"
-                onClick={() => setPendingUndoImport(null)}
+                onClick={() => {
+                  setUndoConfirmText("");
+                  setPendingUndoImport(null);
+                }}
                 className="rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:bg-zinc-800"
               >
                 Cancel
               </button>
               <button
                 type="button"
-                disabled={busy}
+                disabled={busy || undoConfirmText !== "UNDO"}
                 onClick={async () => {
                   const selected = pendingUndoImport;
                   setPendingUndoImport(null);
+                  setUndoConfirmText("");
                   if (!selected) return;
                   await undoImportById(selected.id);
                 }}
                 className="rounded-lg border border-amber-700 px-4 py-2 text-sm text-amber-300 hover:bg-amber-950/30 disabled:opacity-60"
               >
-                Confirm Undo
+                Undo Last Player Import
               </button>
             </div>
           </div>
@@ -1707,20 +2212,19 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
 
       {selectedTeam ? (
         <>
-          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+          <div id="teams-review-rosters" className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4 scroll-mt-24">
             <div className="flex items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Roster</h2>
               <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  disabled={!isEditingRoster}
-                  onClick={() => setShowCoachAssignmentsModal(true)}
+                  disabled={!selectedTeamId}
+                  onClick={() => {
+                    setActiveTeamsSection("teams-assign-coaches");
+                    setShowCoachAssignmentsModal(true);
+                  }}
                   className="rounded-lg border border-brand-purple text-brand-purple hover:bg-brand-purple/10 px-3 py-1.5 text-xs disabled:opacity-50"
-                  title={
-                    isEditingRoster
-                      ? "Manage coach assignments"
-                      : "Click Edit first to manage assigned coaches"
-                  }
+                  title="Manage coach assignments"
                 >
                   Assign Coaches
                 </button>
@@ -1739,7 +2243,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 </button>
               </div>
             </div>
-            <div className="space-y-2">
+            <div id="teams-assign-coaches" className="space-y-2 scroll-mt-24">
               <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Coaches</p>
               <div className="rounded-lg border border-zinc-800 bg-zinc-950/40">
                 {assignments.length === 0 ? (
@@ -2335,11 +2839,171 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
         </div>
       ) : null}
 
+      {showTeamListImportModal ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-4">
+          <div className="max-h-[92vh] w-full max-w-5xl overflow-y-auto rounded-2xl border border-zinc-700 bg-zinc-950 p-5 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div>
+                <h2 className="text-lg font-semibold">Import Team List</h2>
+                <p className="text-xs text-zinc-400">
+                  Create or update teams for {seasonYear}. No teams are deleted.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowTeamListImportModal(false)}
+                disabled={teamListImportBusy}
+                className="text-xs rounded-lg border border-zinc-700 px-3 py-1.5 disabled:opacity-60"
+              >
+                Close
+              </button>
+            </div>
+            <WorkflowStepRow
+              steps={TEAM_LIST_IMPORT_STEPS}
+              currentIndex={teamListImportStepIndex}
+              description="Upload or paste a CSV, review CREATE/UPDATE/SKIP actions, then confirm import."
+            />
+            {isFallBall ? (
+              <div className="rounded-lg border border-sky-700/70 bg-sky-950/30 p-3 text-sm text-sky-100">
+                Fall Ball teams use MLB team names instead of sponsors. Use an <code>MLB Team</code> column, or provide <code>Team Name</code> to override it.
+              </div>
+            ) : null}
+            {teamListImportError ? (
+              <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
+                {teamListImportError}
+              </div>
+            ) : null}
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_320px]">
+              <div className="space-y-3">
+                <div className="flex flex-wrap items-center gap-3">
+                  <input
+                    type="file"
+                    accept=".csv,text/csv"
+                    onChange={(event) => void handleTeamListFile(event.target.files?.[0] || null)}
+                    disabled={teamListImportBusy}
+                    className="text-sm"
+                  />
+                  <button
+                    type="button"
+                    onClick={downloadTeamListTemplate}
+                    className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs text-zinc-200 hover:bg-zinc-800"
+                  >
+                    Download CSV Template
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => resetTeamListImport(teamListSampleCsv)}
+                    disabled={teamListImportBusy}
+                    className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-60"
+                  >
+                    Use Sample
+                  </button>
+                </div>
+                <label className="block space-y-1">
+                  <span className="text-xs uppercase tracking-wide text-zinc-400">CSV contents</span>
+                  <textarea
+                    value={teamListCsvText}
+                    onChange={(event) => {
+                      setTeamListCsvText(event.target.value);
+                      setTeamListImportResult(null);
+                      setTeamListImportStep("upload");
+                    }}
+                    rows={10}
+                    disabled={teamListImportBusy}
+                    className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 font-mono text-xs disabled:opacity-60"
+                    placeholder={teamListSampleCsv}
+                  />
+                </label>
+                <div className="flex flex-wrap items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void previewTeamListImport()}
+                    disabled={teamListImportBusy || !teamListCsvText.trim()}
+                    className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  >
+                    {teamListImportBusy ? "Working..." : "Preview Teams"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void confirmTeamListImport()}
+                    disabled={
+                      teamListImportBusy ||
+                      teamListImportStep !== "preview" ||
+                      !teamListImportResult ||
+                      teamListImportHasErrors
+                    }
+                    className="rounded-lg border border-emerald-700 px-4 py-2 text-sm font-semibold text-emerald-300 hover:bg-emerald-950/30 disabled:opacity-60"
+                  >
+                    Confirm Import
+                  </button>
+                </div>
+              </div>
+              <div className="rounded-lg border border-zinc-800 bg-zinc-900/60 p-3 text-xs text-zinc-300 space-y-2">
+                <p className="font-semibold text-zinc-100">Supported columns</p>
+                <p>Required: <code>Age Group</code> or <code>Division</code>. Use one of: {teamManagementAgeGroupOptions.join(", ")}.</p>
+                <p>Team name: <code>Team Name</code> or <code>MLB Team</code>.</p>
+                <p>For non-Fall Ball, rows can also build a name from <code>Sponsor</code> + <code>Head Coach Last Name</code> when Team Name is blank.</p>
+                <p>Additional team details like notes and practice plans can be filled in later from Team Settings/Profile.</p>
+                <pre className="overflow-x-auto rounded bg-zinc-950 p-2 text-[11px] text-zinc-400">{teamListSampleCsv}</pre>
+              </div>
+            </div>
+            {teamListImportResult ? (
+              <div className="space-y-3">
+                <div className="grid gap-2 sm:grid-cols-6">
+                  <StatusCountPill label="Rows" value={teamListImportResult.summary.total} valueClassName="text-xl font-semibold" />
+                  <StatusCountPill label="Create" value={teamListImportResult.summary.create} valueClassName="text-xl font-semibold text-emerald-300" />
+                  <StatusCountPill label="Update" value={teamListImportResult.summary.update} valueClassName="text-xl font-semibold text-sky-300" />
+                  <StatusCountPill label="Skip" value={teamListImportResult.summary.skip} valueClassName="text-xl font-semibold text-zinc-300" />
+                  <StatusCountPill label="Errors" value={teamListImportResult.summary.errors} valueClassName="text-xl font-semibold text-red-300" />
+                  <StatusCountPill label="Warnings" value={teamListImportResult.summary.warnings} valueClassName="text-xl font-semibold text-amber-300" />
+                </div>
+                {teamListImportStep === "results" ? (
+                  <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-200">
+                    Import complete. Affected teams: {teamListImportResult.summary.affected ?? teamListImportResult.affectedTeams?.length ?? 0}.
+                  </div>
+                ) : null}
+                <div className="max-h-80 overflow-auto rounded-lg border border-zinc-800">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-zinc-900 text-zinc-300">
+                      <tr className="text-left">
+                        <th className="px-3 py-2">Row</th>
+                        <th className="px-3 py-2">Action</th>
+                        <th className="px-3 py-2">Age Group</th>
+                        <th className="px-3 py-2">Team Name</th>
+                        <th className="px-3 py-2">Notes</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {teamListImportResult.rows.map((row) => (
+                        <tr key={`${row.rowNumber}-${row.teamName}`} className="border-t border-zinc-800 align-top">
+                          <td className="px-3 py-2 text-zinc-400">{row.rowNumber}</td>
+                          <td className="px-3 py-2 font-semibold">{row.action}</td>
+                          <td className="px-3 py-2">{row.ageGroup || "-"}</td>
+                          <td className="px-3 py-2">{row.teamName || "-"}</td>
+                          <td className="px-3 py-2 space-y-1">
+                            {row.errors.map((item) => (
+                              <div key={`error-${item}`} className="text-red-300">Error: {item}</div>
+                            ))}
+                            {row.warnings.map((item) => (
+                              <div key={`warning-${item}`} className="text-amber-300">Warning: {item}</div>
+                            ))}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            ) : null}
+          </div>
+        </div>
+      ) : null}
+
       {showCoachImportModal ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-3xl rounded-2xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Import Coaches</h2>
+              <h2 className="text-lg font-semibold">Start Coach Import</h2>
               <div className="flex items-center gap-2">
                 <a
                   href={`/api/admin/users/import/template?${orgQuery}`}
@@ -2364,6 +3028,20 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 {coachImportError}
               </div>
             ) : null}
+            <WorkflowStepRow
+              steps={COACH_IMPORT_STEPS}
+              currentIndex={coachImportNotice ? 4 : coachImportBusy ? 3 : 0}
+              description="Upload the coach export first. The next screen reviews imported age groups before the import runs."
+            />
+            <div className="rounded-lg border border-amber-700/80 bg-amber-950/20 p-3 text-xs text-amber-100 space-y-1">
+              <p className="font-semibold">Coach auto-assignment preview</p>
+              <p>
+                Imported coaches can be matched to existing teams by mapped age group and team names. Review coach/team assignments after import, especially when team names differ between SportsConnect and the schedule.
+              </p>
+              <p>
+                No live coach/team match preview is available before this import; unmatched team names are reported after the server finishes.
+              </p>
+            </div>
             {coachImportNotice ? (
               <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">
                 {coachImportNotice}
@@ -2413,7 +3091,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                   ? "Preparing Import..."
                   : coachImportBusy
                     ? "Importing..."
-                    : "Import Coaches"}
+                    : "Start Coach Import"}
               </button>
               <button
                 type="button"
@@ -2433,6 +3111,9 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               />
               Auto-assign imported coaches to matching teams
             </label>
+            <p className="text-xs text-zinc-500">
+              When enabled, the importer attempts assignment after creating coach accounts. Leave it off if an administrator wants to assign coaches manually after reviewing the roster.
+            </p>
           </div>
         </div>
       ) : null}
@@ -2454,11 +3135,22 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 Close
               </button>
             </div>
+            <WorkflowStepRow
+              steps={COACH_IMPORT_STEPS}
+              currentIndex={2}
+              description="Map every imported age group, then preview the expected coach/team matching behavior before importing."
+            />
             {coachMappingError ? (
               <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
                 {coachMappingError}
               </div>
             ) : null}
+            <div className="rounded-lg border border-amber-700/80 bg-amber-950/20 p-3 text-xs text-amber-100 space-y-1">
+              <p className="font-semibold">Preview coach/team matches</p>
+              <p>
+                This screen can confirm age-group mapping only. It does not have row-level coach/team preview data before import, so review assignments after the import completes.
+              </p>
+            </div>
             <div className="rounded-lg border border-zinc-800 overflow-hidden">
               <table className="w-full text-sm">
                 <thead className="bg-zinc-900">
@@ -2502,7 +3194,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 onClick={() => void confirmCoachImportWithMapping()}
                 className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
-                {coachImportBusy ? "Importing..." : "Import Coaches"}
+                {coachImportBusy ? "Importing..." : "Start Coach Import"}
               </button>
             </div>
           </div>
@@ -2513,7 +3205,9 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 px-4">
           <div className="w-full max-w-4xl rounded-2xl border border-zinc-700 bg-zinc-900 p-5 space-y-4">
             <div className="flex items-center justify-between gap-3">
-              <h2 className="text-lg font-semibold">Players Import</h2>
+              <h2 className="text-lg font-semibold">
+                {isFallBall ? "SportsConnect Player Import" : "Players Import"}
+              </h2>
               <div className="flex items-center gap-2">
                 <a
                   href={`/api/admin/teams/import/template?${orgQuery}`}
@@ -2533,6 +3227,11 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 </button>
               </div>
             </div>
+            <WorkflowStepRow
+              steps={PLAYER_IMPORT_STEPS}
+              currentIndex={importStatus ? (busy ? 3 : 4) : 0}
+              description="Upload the player file, review mappings and preview rows, then import and review results before leaving the workflow."
+            />
             <div className="flex items-center gap-3 flex-wrap">
               <input
                 type="file"
@@ -2546,7 +3245,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 onClick={() => void openImportMapping()}
                 className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
-                {importPreparing ? "Preparing Import..." : "Import Players"}
+                {importPreparing ? "Preparing Import..." : "Start Player Import"}
               </button>
               <button
                 type="button"
@@ -2554,7 +3253,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 onClick={() => void undoPreviousImport()}
                 className="rounded-lg border border-amber-700 text-amber-300 px-4 py-2 text-sm disabled:opacity-60"
               >
-                Undo Previous Import
+                Undo Last Player Import
               </button>
               {activeImportBatchId && busy ? (
                 <button
@@ -2617,7 +3316,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               <div className="rounded-lg border border-amber-700/80 bg-amber-950/20 p-3 text-xs text-amber-200 space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <p className="font-semibold">
-                    Skipped Rows ({importSkippedDetails.length}
+                    Skipped Player Rows ({importSkippedDetails.length}
                     {importSkippedDetails.length >= 20 ? "+" : ""})
                   </p>
                   <button
@@ -2625,7 +3324,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                     onClick={downloadSkippedRowsCsv}
                     className="rounded border border-amber-700 px-2 py-1 text-[11px] font-semibold text-amber-200 hover:bg-amber-900/30"
                   >
-                    Download Skipped Rows CSV
+                    Download Skipped Player Rows CSV
                   </button>
                 </div>
                 <div className="space-y-1">
@@ -2641,11 +3340,15 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               </div>
             ) : null}
             <p className="text-xs text-zinc-400">
-              Before import, you will map each Division Name to a schedule age group and review a preview.
+              Before import, map each Division Name to a schedule age group, choose the exact target scope, and review the preview before starting.
+              {isFallBall
+                ? " SportsConnect registration reports can be uploaded directly as CSV, XLSX, or XLS files; umpire, tee ball, and other skipped divisions are excluded before preview, and out-of-scope rows are reported instead of imported."
+                : " Rows outside the confirmed age group/team are skipped and reported instead of imported."}
             </p>
             <p className="text-xs text-zinc-400">
               Required in file: division/age group, team, player name (and program/season if not inferred
-              from the page season year). Optional: Jersey Number, phone, email, and other profile fields.
+              from the page season year). Optional: Jersey Number, phone, email, guardian contact,
+              registration order, jersey size, address, waiver, and other profile fields.
             </p>
             <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
               <div className="flex items-center justify-between gap-3">
@@ -2662,10 +3365,10 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 <table className="w-full text-xs">
                   <thead className="bg-zinc-900 text-zinc-300">
                     <tr className="text-left">
-                      <th className="px-3 py-2">Started</th>
-                      <th className="px-3 py-2">Status</th>
-                      <th className="px-3 py-2">Progress</th>
-                      <th className="px-3 py-2">Result</th>
+                      <th className="px-3 py-2">Started / administrator</th>
+                      <th className="px-3 py-2">Status / undo</th>
+                      <th className="px-3 py-2">Rows</th>
+                      <th className="px-3 py-2">What changed</th>
                       <th className="px-3 py-2">Action</th>
                     </tr>
                   </thead>
@@ -2679,15 +3382,22 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                     ) : (
                       importHistory.map((item) => (
                         <tr key={item.id} className="border-t border-zinc-800">
-                          <td className="px-3 py-2">{new Date(item.createdAt).toLocaleString()}</td>
                           <td className="px-3 py-2">
-                            {item.undoneAt ? "UNDONE" : item.status}
+                            <div>{new Date(item.createdAt).toLocaleString()}</div>
+                            <div className="text-zinc-500">By {getImportHistoryActor(item)}</div>
                           </td>
                           <td className="px-3 py-2">
-                            {item.processedRows}/{item.totalRows}
+                            <div>{item.undoneAt ? "UNDONE" : item.status || "Status unavailable"}</div>
+                            <div className="text-zinc-500">{getImportHistoryUndoText(item)}</div>
                           </td>
                           <td className="px-3 py-2">
-                            +{item.createdTeams} teams, +{item.createdPlayers} players, {item.updatedPlayers} updated, {item.skippedRows} skipped
+                            {item.processedRows}/{item.totalRows || "unknown"}
+                          </td>
+                          <td className="px-3 py-2">
+                            <div>{getImportHistoryWhat(item)}</div>
+                            <div className="text-zinc-500">
+                              +{item.createdTeams} teams, +{item.createdPlayers} players, {item.updatedPlayers} updated, {item.skippedRows} skipped
+                            </div>
                           </td>
                           <td className="px-3 py-2">
                             <button
@@ -2726,6 +3436,11 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 Close
               </button>
             </div>
+            <WorkflowStepRow
+              steps={PLAYER_IMPORT_STEPS}
+              currentIndex={2}
+              description="Review division mappings, confirmed scope, skipped divisions, and the first preview rows before starting the import."
+            />
             {mappingError ? (
               <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
                 {mappingError}
@@ -2782,7 +3497,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               </p>
               <div className="grid md:grid-cols-2 gap-3">
                 <label className="space-y-1">
-                  <span className="text-xs uppercase tracking-wide text-zinc-400">Confirm Age Group</span>
+                  <span className="text-xs uppercase tracking-wide text-zinc-400">Import into this age group</span>
                   <select
                     value={confirmedImportAgeGroup}
                     onChange={(event) => {
@@ -2802,7 +3517,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                   </select>
                 </label>
                 <label className="space-y-1">
-                  <span className="text-xs uppercase tracking-wide text-zinc-400">Confirm Team Name</span>
+                  <span className="text-xs uppercase tracking-wide text-zinc-400">Import into this team</span>
                   <select
                     value={confirmedImportTeamName}
                     onChange={(event) => setConfirmedImportTeamName(event.target.value)}
@@ -2832,6 +3547,11 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                       ? "Unmatched Imported Team Mapping"
                       : "Teams in this import"}
                   </p>
+                  {importUpdateExistingOnly ? (
+                    <p className="text-xs text-zinc-500">
+                      Unmatched team mapping connects spreadsheet team names to existing teams so updates land on the right roster. Rows stay skipped until every unmatched name is mapped.
+                    </p>
+                  ) : null}
                   {!importUpdateExistingOnly ? (
                     importedTeamNamesForConfirmedAgeGroup.length === 0 ? (
                       <p className="text-xs text-zinc-400">No team names found in rows for this scope.</p>
@@ -2896,16 +3616,26 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                   value={allStarCutoffDate}
                   onChange={(event) => setAllStarCutoffDate(event.target.value)}
                   className="w-full rounded bg-zinc-900 border border-zinc-700 px-2 py-1.5 text-sm"
+                  title="Used to calculate each player&apos;s All-Star age band for this season."
                 />
+                <span className="block text-[11px] text-zinc-500">
+                  Used to calculate each player&apos;s All-Star age band for this season. Confirm this before importing birth dates.
+                </span>
               </label>
-              <label className="inline-flex items-center gap-2 text-xs text-zinc-300">
+              <label
+                className="inline-flex items-center gap-2 text-xs text-zinc-300"
+                title="Use this when rosters already exist and the file should only refresh matching player records."
+              >
                 <input
                   type="checkbox"
                   checked={importUpdateExistingOnly}
                   onChange={(event) => setImportUpdateExistingOnly(event.target.checked)}
                 />
-                Update existing players only (do not create teams or players)
+                Only update players already on rosters (do not create teams or players)
               </label>
+              <p className="text-xs text-zinc-500">
+                Turn this on when an administrator wants to refresh existing roster records only. New teams and players from the file will be skipped instead of created.
+              </p>
               {!importUpdateExistingOnly ? (
                 <p className="text-xs text-amber-200/90">
                   This import will create missing teams and players from the file. Use Undo in import
@@ -2953,6 +3683,26 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               </div>
             </div>
 
+            {importPreviewSkippedDivisionDetails.length > 0 ? (
+              <div className="rounded-lg border border-amber-700/80 bg-amber-950/20 p-3 text-xs text-amber-200 space-y-2">
+                <p className="font-semibold">
+                  Skipped divisions before import: {importPreviewSkippedDivisionDetails.length}
+                </p>
+                <p>
+                  These rows were excluded from the preview and will not be sent to import because their divisions are intentionally skipped.
+                </p>
+                <div className="space-y-1">
+                  {importPreviewSkippedDivisionDetails.slice(0, 5).map((item, idx) => (
+                    <p key={`${item.rowNumber ?? "unknown"}-${idx}`}>
+                      Row {item.rowNumber ?? "?"}: {item.ageGroup || "division unavailable"}
+                      {item.playerName ? ` / ${item.playerName}` : ""}
+                      {item.teamName ? ` / ${item.teamName}` : ""}
+                    </p>
+                  ))}
+                </div>
+              </div>
+            ) : null}
+
             <div className="flex justify-end gap-2">
               <button
                 type="button"
@@ -2974,7 +3724,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 onClick={() => void confirmImportWithMapping()}
                 className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
-                Confirm Import
+                Start Player Import
               </button>
             </div>
           </div>

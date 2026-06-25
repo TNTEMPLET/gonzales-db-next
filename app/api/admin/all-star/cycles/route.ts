@@ -12,6 +12,7 @@ import prisma from "@/lib/prisma";
 import {
   getDefaultAllStarCutoffMonthDayForOrg,
   resolveAdminTargetOrg,
+  type ContentOrgId,
 } from "@/lib/siteConfig";
 
 
@@ -43,7 +44,7 @@ function deriveAllStarAgeBandFromBirthDate(birthDate: Date | null, cutoffDate: D
 }
 
 async function backfillAllStarAgeBandsForCyclePublish(
-  organizationId: "gonzales" | "ascension",
+  organizationId: ContentOrgId,
   seasonYear: number,
   ageGroup: string,
 ) {

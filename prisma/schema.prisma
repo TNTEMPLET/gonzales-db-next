@@ -151,12 +151,14 @@ enum CommunicationAudienceRuleType {
   ORGANIZATION
   ALL_COACHES
   ORGANIZATION_COACHES
+  COACHING_INTEREST
   ADMIN_ROLE
 }
 
 enum CommunicationRecipientType {
   REGISTERED_USER
   ADMIN_USER
+  COACHING_INTEREST
 }
 
 enum CommunicationDeliveryStatus {
@@ -167,6 +169,22 @@ enum CommunicationDeliveryStatus {
   SKIPPED_NO_CONSENT
   SKIPPED_NO_CONTACT
 }
+
+enum CoachingInterestRolePreference {
+  HEAD_COACH
+  ASSISTANT_COACH
+  EITHER
+}
+
+enum CoachingInterestStatus {
+  NEW
+  CONTACTED
+  NOT_INTERESTED
+  CONVERTED
+  ARCHIVED
+}
+
+
 
 enum TournamentIncomeCategory {
   ENTRY_FEE
@@ -181,6 +199,33 @@ enum TournamentIncomeClassificationStatus {
   UNMATCHED
   IGNORED
   MANUAL
+}
+
+enum ScheduleSeasonStatus {
+  DRAFT
+  ACTIVE
+  LOCKED
+  ARCHIVED
+}
+
+enum ScheduleAvailabilityType {
+  AVAILABLE
+  BLACKOUT
+}
+
+enum ScheduleDraftGameStatus {
+  DRAFT
+  READY
+  CONFLICT
+  LOCKED
+  EXPORTED
+  CANCELED
+}
+
+enum ScheduleExportBatchStatus {
+  PENDING
+  COMPLETED
+  FAILED
 }
 
 model NewsPost {
@@ -244,6 +289,8 @@ model AdminUser {
   allStarAuditLogsReverted     AllStarAuditLog[]       @relation("AllStarAuditReverter")
   allStarPaymentsMarkedPaid    AllStarPayment[]        @relation("AllStarPaymentMarkedPaidBy")
   parkInfoPagesUpdated         ParkInfoPage[]          @relation("ParkInfoUpdatedBy")
+  scheduleSeasonsCreated       ScheduleSeason[]        @relation("ScheduleSeasonCreatedBy")
+  scheduleExportBatchesCreated ScheduleExportBatch[]   @relation("ScheduleExportBatchCreatedBy")
 }
 
 enum BracketProjectStatus {
@@ -301,6 +348,7 @@ model BracketProject {
 
 /// Effective admin role for a specific organization (gonzales | ascension).
 /// Master Admin (`AdminUser.isMaster`) does not require a row — they apply everywhere.
+
 
 model TournamentIncomeTransaction {
   id                   String                               @id @default(cuid())
@@ -452,6 +500,32 @@ model RegisteredUser {
   @@unique([organizationId, email])
   @@index([organizationId])
   @@index([organizationId, duplicateReviewPending])
+}
+
+model CoachingInterestSubmission {
+  id                  String                         @id @default(cuid())
+  organizationId      String                         @default("fallball")
+  firstName           String
+  lastName            String
+  email               String
+  cellPhone           String
+  interestedDivision  String
+  rolePreference      CoachingInterestRolePreference @default(EITHER)
+  hasCoachedBefore    Boolean                        @default(false)
+  priorDivision       String?
+  notes               String?
+  status              CoachingInterestStatus         @default(NEW)
+  adminNotes          String?
+  contactedAt         DateTime?
+  convertedAt         DateTime?
+  createdAt           DateTime                       @default(now())
+  updatedAt           DateTime                       @updatedAt
+
+  @@unique([organizationId, email])
+  @@index([organizationId, status])
+  @@index([organizationId, rolePreference])
+  @@index([organizationId, interestedDivision])
+  @@index([createdAt])
 }
 
 model RegisteredUserDuplicateCandidate {
@@ -644,12 +718,14 @@ model CommunicationAudienceRule {
   ruleType     CommunicationAudienceRuleType
   organizationId String?
   adminRole    AdminRole?
+  coachingInterestStatus CoachingInterestStatus?
   createdAt    DateTime                   @default(now())
 
   campaign     CommunicationCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
   @@index([ruleType, organizationId, adminRole])
+  @@index([ruleType, organizationId, coachingInterestStatus])
 }
 
 model CommunicationApproval {
@@ -1023,6 +1099,8 @@ model Team {
   coachAssignments  TeamCoachAssignment[]
   players           TeamPlayer[]
   gameNotes         TeamGameNote[]
+  homeDraftGames    ScheduleDraftGame[] @relation("ScheduleDraftGameHomeTeam")
+  awayDraftGames    ScheduleDraftGame[] @relation("ScheduleDraftGameAwayTeam")
 
   @@unique([organizationId, seasonYear, ageGroup, teamName])
   @@index([organizationId, seasonYear, ageGroup])
@@ -1196,6 +1274,192 @@ model SponsorPlacement {
 
   @@unique([sponsorId, organizationId])
   @@index([organizationId, showInFooterScroller, sortOrder])
+}
+
+
+
+model ScheduleSeason {
+  id               String               @id @default(cuid())
+  organizationId   String
+  seasonYear       Int
+  name             String
+  status           ScheduleSeasonStatus @default(DRAFT)
+  startsOn         DateTime?
+  endsOn           DateTime?
+  defaultGameTimes Json                 @default("[]")
+  settings         Json                 @default("{}")
+  createdByAdminId String?
+  createdAt        DateTime             @default(now())
+  updatedAt        DateTime             @updatedAt
+
+  createdByAdmin AdminUser?                  @relation("ScheduleSeasonCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  availabilities ScheduleFieldAvailability[]
+  divisionRules  ScheduleDivisionRule[]
+  draftGames     ScheduleDraftGame[]
+  exportBatches  ScheduleExportBatch[]
+
+  @@unique([organizationId, seasonYear, name])
+  @@index([organizationId, status, seasonYear])
+  @@index([organizationId, updatedAt])
+  @@index([createdByAdminId])
+}
+
+model SchedulePark {
+  id             String   @id @default(cuid())
+  organizationId String
+  name           String
+  shortName      String?
+  address        String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  fields         ScheduleField[]
+  availabilities ScheduleFieldAvailability[]
+  divisionRules  ScheduleDivisionRule[]
+  draftGames     ScheduleDraftGame[]
+
+  @@unique([organizationId, name])
+  @@index([organizationId, isActive, name])
+}
+
+model ScheduleField {
+  id                 String   @id @default(cuid())
+  organizationId     String
+  parkId             String
+  name               String
+  shortName          String?
+  supportedAgeGroups Json     @default("[]")
+  supportedDivisions Json     @default("[]")
+  fieldMetadata      Json     @default("{}")
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  park           SchedulePark                @relation(fields: [parkId], references: [id], onDelete: Cascade)
+  availabilities ScheduleFieldAvailability[]
+  divisionRules  ScheduleDivisionRule[]
+  draftGames     ScheduleDraftGame[]
+
+  @@unique([parkId, name])
+  @@index([organizationId, isActive])
+  @@index([parkId, isActive, name])
+}
+
+model ScheduleFieldAvailability {
+  id               String                   @id @default(cuid())
+  organizationId   String
+  seasonId         String?
+  parkId           String
+  fieldId          String?
+  availabilityType ScheduleAvailabilityType @default(AVAILABLE)
+  date             DateTime?
+  dayOfWeek        Int?
+  startTime        String?
+  endTime          String?
+  notes            String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+
+  season ScheduleSeason? @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  park   SchedulePark    @relation(fields: [parkId], references: [id], onDelete: Cascade)
+  field  ScheduleField?  @relation(fields: [fieldId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, seasonId, availabilityType], map: "SchedAvail_org_season_type_idx")
+  @@index([parkId, date])
+  @@index([fieldId, date])
+  @@index([organizationId, dayOfWeek, startTime], map: "SchedAvail_org_day_start_idx")
+}
+
+model ScheduleDivisionRule {
+  id                  String   @id @default(cuid())
+  organizationId      String
+  seasonId            String
+  division            String
+  ageGroup            String?
+  preferredParkId     String?
+  preferredFieldId    String?
+  allowedParkIds      Json     @default("[]")
+  allowedFieldIds     Json     @default("[]")
+  allowedGameTimes    Json     @default("[]")
+  minDaysBetweenGames Int?
+  maxGamesPerWeek     Int?
+  avoidBackToBack     Boolean  @default(true)
+  ruleMetadata        Json     @default("{}")
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+
+  season         ScheduleSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  preferredPark  SchedulePark?  @relation(fields: [preferredParkId], references: [id], onDelete: SetNull)
+  preferredField ScheduleField? @relation(fields: [preferredFieldId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, seasonId, division])
+  @@index([preferredParkId])
+  @@index([preferredFieldId])
+}
+
+model ScheduleDraftGame {
+  id               String                  @id @default(cuid())
+  organizationId   String
+  seasonId         String
+  gameDate         DateTime?
+  startTime        String?
+  endTime          String?
+  parkId           String?
+  fieldId          String?
+  division         String
+  ageGroup         String?
+  homeTeamId       String?
+  awayTeamId       String?
+  homeTeamName     String
+  awayTeamName     String
+  status           ScheduleDraftGameStatus @default(DRAFT)
+  source           String                  @default("generated")
+  roundLabel       String?
+  gameNumber       Int?
+  sortOrder        Int                     @default(0)
+  conflictFlags    Json                    @default("[]")
+  fairnessScore    Float?
+  fairnessMetadata Json                    @default("{}")
+  schedulerNotes   String?
+  createdAt        DateTime                @default(now())
+  updatedAt        DateTime                @updatedAt
+
+  season   ScheduleSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  park     SchedulePark?   @relation(fields: [parkId], references: [id], onDelete: SetNull)
+  field    ScheduleField?  @relation(fields: [fieldId], references: [id], onDelete: SetNull)
+  homeTeam Team?           @relation("ScheduleDraftGameHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeam Team?           @relation("ScheduleDraftGameAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, seasonId, status, gameDate], map: "SchedDraftGame_org_season_status_date_idx")
+  @@index([seasonId, division, gameDate])
+  @@index([parkId, gameDate, startTime])
+  @@index([fieldId, gameDate, startTime])
+  @@index([homeTeamId, gameDate])
+  @@index([awayTeamId, gameDate])
+}
+
+model ScheduleExportBatch {
+  id               String                    @id @default(cuid())
+  organizationId   String
+  seasonId         String
+  status           ScheduleExportBatchStatus @default(PENDING)
+  format           String                    @default("CSV")
+  exportedGameIds  Json                      @default("[]")
+  rowCount         Int                       @default(0)
+  fileUrl          String?
+  notes            String?
+  createdByAdminId String?
+  createdAt        DateTime                  @default(now())
+  completedAt      DateTime?
+
+  season         ScheduleSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
+  createdByAdmin AdminUser?     @relation("ScheduleExportBatchCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, seasonId, createdAt], map: "SchedExportBatch_org_season_created_idx")
+  @@index([seasonId, status, createdAt])
+  @@index([createdByAdminId])
 }
 
 enum AssignrSyncJobStatus {

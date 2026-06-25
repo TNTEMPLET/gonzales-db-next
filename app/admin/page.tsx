@@ -6,6 +6,7 @@ import {
   hasAdminRoleAtLeast,
   toAdminRole,
   type AdminModule,
+  type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { canViewAllStarVault } from "@/lib/allStar/auth";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
@@ -23,6 +24,7 @@ import {
   getSiteConfig,
   getSiteConfigForOrg,
   isMasterDeployment,
+  isAdminModuleEnabledForOrg,
   type ContentOrgId,
 } from "@/lib/siteConfig";
 import { isCommunicationsModuleEnabled } from "@/lib/communications/config";
@@ -68,14 +70,14 @@ export default async function AdminDashboardPage({
     [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") ||
     adminUser.name ||
     adminUser.email;
-  const roleByOrg = {
-    gonzales:
-      (await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, "gonzales")) ??
-      toAdminRole(adminUser.role, adminUser.isMaster),
-    ascension:
-      (await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, "ascension")) ??
-      toAdminRole(adminUser.role, adminUser.isMaster),
-  };
+  const roleEntries = await Promise.all(
+    CONTENT_ORGS.map(async (orgId) => [
+      orgId,
+      (await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, orgId)) ??
+        toAdminRole(adminUser.role, adminUser.isMaster),
+    ] as const),
+  );
+  const roleByOrg = Object.fromEntries(roleEntries) as Record<ContentOrgId, AdminRole>;
   const adminRole = currentOrg ? roleByOrg[currentOrg] : toAdminRole(adminUser.role, adminUser.isMaster);
   const allowRolePreview = hasAdminRoleAtLeast(adminRole, "ADMIN");
   const communicationsEnabled = isCommunicationsModuleEnabled();
@@ -83,33 +85,33 @@ export default async function AdminDashboardPage({
     where: { email: { equals: adminUser.email, mode: "insensitive" } },
     select: { id: true, organizationId: true },
   });
-  const allStarVaultViewByOrg: Record<ContentOrgId, boolean> = {
-    gonzales: false,
-    ascension: false,
-  };
+  const allStarVaultViewByOrg = Object.fromEntries(
+    CONTENT_ORGS.map((orgId) => [orgId, false] as const),
+  ) as Record<ContentOrgId, boolean>;
   for (const row of allStarLinkedUsers) {
-    if (row.organizationId !== "gonzales" && row.organizationId !== "ascension") continue;
-    if (await canViewAllStarVault(row.id, row.organizationId)) {
-      allStarVaultViewByOrg[row.organizationId] = true;
+    if (!CONTENT_ORGS.includes(row.organizationId as ContentOrgId)) continue;
+    const orgId = row.organizationId as ContentOrgId;
+    if (await canViewAllStarVault(row.id, orgId)) {
+      allStarVaultViewByOrg[orgId] = true;
     }
   }
   const allStarVaultView = currentOrg
     ? allStarVaultViewByOrg[currentOrg]
-    : allStarVaultViewByOrg.gonzales || allStarVaultViewByOrg.ascension;
+    : CONTENT_ORGS.some((orgId) => allStarVaultViewByOrg[orgId]);
 
   const currentSite = currentOrg ? getSiteConfigForOrg(currentOrg) : null;
   const hasModuleAccess = (orgId: ContentOrgId, module: AdminModule) => {
+    if (!isAdminModuleEnabledForOrg(orgId, module)) return false;
     if (module === "ALL_STAR_VAULT") {
       return adminUser.isMaster || allStarVaultViewByOrg[orgId];
     }
     return canAccessAdminModule(roleByOrg[orgId], module);
   };
   const hasModuleAnyOrg = (module: AdminModule) =>
-    hasModuleAccess("gonzales", module) || hasModuleAccess("ascension", module);
+    CONTENT_ORGS.some((orgId) => hasModuleAccess(orgId, module));
   const preferredOrgForModule = (module: AdminModule): ContentOrgId => {
     if (currentOrg) return currentOrg;
-    if (hasModuleAccess("ascension", module)) return "ascension";
-    return "gonzales";
+    return CONTENT_ORGS.find((orgId) => hasModuleAccess(orgId, module)) ?? CONTENT_ORGS[0];
   };
   const moduleHref = (basePath: string, module: AdminModule) =>
     `${basePath}?org=${preferredOrgForModule(module)}`;
@@ -124,6 +126,34 @@ export default async function AdminDashboardPage({
           : "Manage team rosters, coach assignments, and season setup.",
         action: masterMode ? "Open Teams Console" : "Open Teams",
       },
+      ...(currentOrg === "fallball" || (!currentOrg && masterMode)
+        ? [
+            {
+              module: "TEAMS" as AdminModule,
+              href: currentOrg
+                ? moduleHref("/admin/scheduler", "TEAMS")
+                : "/admin/scheduler?org=fallball",
+              title: "Scheduler",
+              description:
+                "Build Fall Ball seasons, park and field availability, division rules, generated drafts, manual fixes, and CSV exports.",
+              action: "Open Scheduler",
+            },
+          ]
+        : []),
+      ...(currentOrg === "fallball" || (!currentOrg && masterMode)
+        ? [
+            {
+              module: "TEAMS" as AdminModule,
+              href: currentOrg
+                ? moduleHref("/admin/coaching-interest", "TEAMS")
+                : "/admin/coaching-interest?org=fallball",
+              title: "Coaching Interest",
+              description:
+                "Review Fall Ball coach leads, track follow-up status, and export the pipeline for registration planning.",
+              action: "Open Coach Pipeline",
+            },
+          ]
+        : []),
       {
         module: "SCORES" as AdminModule,
         href: currentOrg ? moduleHref("/admin/scores", "SCORES") : "/admin/scores",
@@ -314,7 +344,6 @@ export default async function AdminDashboardPage({
     };
   });
 
-
   const statusChips = [
     {
       label: "Platform",
@@ -413,7 +442,7 @@ export default async function AdminDashboardPage({
               </h1>
               <p className="text-zinc-400 max-w-3xl">
                 {masterMode
-                  ? "Direct operations for Gonzales DYB and Ascension Little League from a single administrative surface. Switch target sites, publish updates, manage access, and monitor league operations without dropping context."
+                  ? "Direct operations for Gonzales DYB, Ascension Little League, and AP Baseball Fall Ball from a single administrative surface. Switch target sites, publish updates, manage access, and monitor league operations without dropping context."
                   : "Manage users, publish league updates, and moderate dugout posts from one place."}
               </p>
               <div className="mt-5 max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-300">

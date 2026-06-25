@@ -27,6 +27,7 @@ export async function POST(
       ruleType: rule.ruleType,
       organizationId: rule.organizationId,
       adminRole: rule.adminRole,
+      coachingInterestStatus: rule.coachingInterestStatus,
     })),
     logicalMode: campaign.logicalMode,
   });

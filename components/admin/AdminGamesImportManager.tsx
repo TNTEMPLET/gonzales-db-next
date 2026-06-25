@@ -88,10 +88,13 @@ export default function AdminGamesImportManager({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [seasonYear, setSeasonYear] = useState("2026");
   const [league, setLeague] = useState("");
-  const [leagueByOrg, setLeagueByOrg] = useState<Record<ContentOrgId, string>>({
-    gonzales: "",
-    ascension: "",
-  });
+  const [leagueByOrg, setLeagueByOrg] = useState<Record<ContentOrgId, string>>(
+    () =>
+      Object.fromEntries(CONTENT_ORGS.map((org) => [org, ""] as const)) as Record<
+        ContentOrgId,
+        string
+      >,
+  );
   const [gameType, setGameType] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");

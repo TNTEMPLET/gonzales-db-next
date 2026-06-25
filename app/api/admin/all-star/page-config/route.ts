@@ -1,16 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { resolveAllStarVaultAccessForAdmin } from "@/lib/allStar/auth";
-import { getSiteConfig, isMasterDeployment } from "@/lib/siteConfig";
+import {
+  getDefaultContentOrg,
+  isContentOrgId,
+  isMasterDeployment,
+  type ContentOrgId,
+} from "@/lib/siteConfig";
 import prisma from "@/lib/prisma";
 
-function resolveOrg(request: NextRequest, adminUser: { isMaster: boolean }): string | null {
+function resolveOrg(request: NextRequest, adminUser: { isMaster: boolean }): ContentOrgId {
   const org = request.nextUrl.searchParams.get("org");
   if (isMasterDeployment() && adminUser.isMaster) {
-    if (org === "gonzales" || org === "ascension") return org;
-    return "gonzales"; // default
+    return isContentOrgId(org) ? org : "gonzales";
   }
-  return getSiteConfig().orgId === "ascension" ? "ascension" : "gonzales";
+  return getDefaultContentOrg();
 }
 
 export async function GET(request: NextRequest) {
@@ -23,7 +27,7 @@ export async function GET(request: NextRequest) {
   const { vaultView } = await resolveAllStarVaultAccessForAdmin({
     isMaster: adminUser.isMaster,
     email: adminUser.email,
-    organizationId: org as "gonzales" | "ascension",
+    organizationId: org,
   });
   if (!vaultView) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
@@ -49,7 +53,7 @@ export async function PATCH(request: NextRequest) {
   const { canManageAllStarVaultUi } = await resolveAllStarVaultAccessForAdmin({
     isMaster: adminUser.isMaster,
     email: adminUser.email,
-    organizationId: org as "gonzales" | "ascension",
+    organizationId: org,
   });
   if (!canManageAllStarVaultUi) return NextResponse.json({ error: "Forbidden — vault manage required" }, { status: 403 });
 

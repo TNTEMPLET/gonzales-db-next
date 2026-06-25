@@ -8,10 +8,11 @@ import {
   type AllStarWorkspaceTab,
 } from "@/components/admin/allStar/workspaceTypes";
 import { getCycleStatusChipLabel } from "@/lib/allStar/cycleType";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 type CycleSummary = {
   id: string;
-  organizationId: "gonzales" | "ascension";
+  organizationId: ContentOrgId;
   seasonYear: number;
   ageGroup: string;
   allStarAgeGroupLabel: string | null;
