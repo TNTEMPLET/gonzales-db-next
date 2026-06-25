@@ -168,6 +168,21 @@ enum CommunicationDeliveryStatus {
   SKIPPED_NO_CONTACT
 }
 
+enum TournamentIncomeCategory {
+  ENTRY_FEE
+  SPONSOR
+  MERCHANDISE
+  GATE
+  OTHER
+}
+
+enum TournamentIncomeClassificationStatus {
+  MATCHED
+  UNMATCHED
+  IGNORED
+  MANUAL
+}
+
 model NewsPost {
   id             String     @id @default(cuid())
   organizationId String     @default("gonzales")
@@ -277,6 +292,7 @@ model BracketProject {
 
   governingBodyTemplate GoverningBodyTemplate? @relation(fields: [governingBodyTemplateId], references: [id], onDelete: SetNull)
   createdByAdmin        AdminUser?             @relation("BracketProjectCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  incomeTransactions   TournamentIncomeTransaction[]
 
   @@index([organizationId, status, updatedAt])
   @@index([organizationId, priority])
@@ -285,6 +301,38 @@ model BracketProject {
 
 /// Effective admin role for a specific organization (gonzales | ascension).
 /// Master Admin (`AdminUser.isMaster`) does not require a row — they apply everywhere.
+
+model TournamentIncomeTransaction {
+  id                   String                               @id @default(cuid())
+  organizationId       String
+  seasonYear           Int
+  bracketProjectId     String?
+  category             TournamentIncomeCategory             @default(OTHER)
+  paypalTxId           String
+  paypalTxDate         DateTime
+  paypalStatus         String?
+  payerName            String?
+  payerEmail           String?
+  itemName             String?
+  paypalNote           String?
+  paypalMemo           String?
+  grossAmountCents     Int
+  feeAmountCents       Int                                  @default(0)
+  netAmountCents       Int
+  classificationStatus TournamentIncomeClassificationStatus @default(UNMATCHED)
+  adminNotes           String?
+  createdAt            DateTime                             @default(now())
+  updatedAt            DateTime                             @updatedAt
+
+  bracketProject BracketProject? @relation(fields: [bracketProjectId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, paypalTxId], map: "TIncomeTx_org_paypalTx_key")
+  @@index([organizationId, paypalTxDate], map: "TIncomeTx_org_paypalDate_idx")
+  @@index([organizationId, seasonYear, category], map: "TIncomeTx_org_season_category_idx")
+  @@index([organizationId, classificationStatus], map: "TIncomeTx_org_classification_idx")
+  @@index([organizationId, bracketProjectId], map: "TIncomeTx_org_bracket_idx")
+  @@index([bracketProjectId], map: "TIncomeTx_bracket_idx")
+}
 
 model TournamentRosterIntakeLink {
   id              String   @id @default(cuid())

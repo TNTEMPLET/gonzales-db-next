@@ -1,6 +1,7 @@
 //
 "use client";
 
+import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import autoTable from "jspdf-autotable";
@@ -796,6 +797,26 @@ export default function AdminReportsManager({ targetOrg }: Props) {
           Set the report window first. Main Report is best for game-by-game
           review; Umpire Report groups pay by person for reconciliation.
         </p>
+
+        <div className="mb-4 rounded-xl border border-emerald-800/50 bg-emerald-950/20 p-4">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h3 className="text-sm font-semibold text-emerald-100">
+                Tournament Income Report
+              </h3>
+              <p className="mt-1 text-sm text-emerald-200/80">
+                Review District 6 PayPal tournament income, payments that need
+                review, and CSV exports.
+              </p>
+            </div>
+            <Link
+              href="/admin/reports/tournament-income?org=ladistrict6"
+              className="inline-flex items-center justify-center rounded-lg border border-emerald-600/60 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20"
+            >
+              Open Income Report
+            </Link>
+          </div>
+        </div>
 
         <div className="mb-4 grid gap-3 md:grid-cols-3">
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
