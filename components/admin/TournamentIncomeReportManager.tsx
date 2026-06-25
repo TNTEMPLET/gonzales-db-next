@@ -8,6 +8,8 @@ type Category = "ENTRY_FEE" | "SPONSOR" | "MERCHANDISE" | "GATE" | "OTHER";
 type Classification = "MATCHED" | "UNMATCHED" | "IGNORED" | "MANUAL";
 type CategoryFilter = "all" | Category;
 type ClassificationFilter = "all" | Classification;
+type BulkCategory = "" | Category;
+type BulkClassification = "" | Classification;
 
 type IncomeTransaction = {
   id: string;
@@ -163,6 +165,12 @@ export default function TournamentIncomeReportManager({ initialOrg }: Props) {
   const [loading, setLoading] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [savingId, setSavingId] = useState<string | null>(null);
+  const [bulkSaving, setBulkSaving] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<string[]>([]);
+  const [bulkCategory, setBulkCategory] = useState<BulkCategory>("");
+  const [bulkClassification, setBulkClassification] = useState<BulkClassification>("");
+  const [replaceBulkNotes, setReplaceBulkNotes] = useState(false);
+  const [bulkAdminNotes, setBulkAdminNotes] = useState("");
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
@@ -181,6 +189,13 @@ export default function TournamentIncomeReportManager({ initialOrg }: Props) {
 
   const exportHref = `/api/admin/reports/tournament-income/export?${queryString}`;
   const unmatchedCount = summary?.byClassification.UNMATCHED.count ?? 0;
+  const selectedCount = selectedIds.length;
+  const selectedRows = useMemo(
+    () => transactions.filter((transaction) => selectedIds.includes(transaction.id)),
+    [transactions, selectedIds],
+  );
+  const allLoadedSelected = transactions.length > 0 && selectedCount === transactions.length;
+  const bulkHasChanges = Boolean(bulkCategory || bulkClassification || replaceBulkNotes);
 
   const loadReport = useCallback(async () => {
     setLoading(true);
@@ -194,6 +209,7 @@ export default function TournamentIncomeReportManager({ initialOrg }: Props) {
       setTransactions(json.data.transactions);
       setSummary(json.data.summary);
       setDrafts({});
+      setSelectedIds([]);
       setNotice(`Loaded ${json.data.transactions.length} PayPal transactions.`);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load tournament income");
@@ -219,6 +235,73 @@ export default function TournamentIncomeReportManager({ initialOrg }: Props) {
       ...current,
       [id]: { ...(current[id] ?? draftFromTransaction(row)), ...patch },
     }));
+  }
+
+  function toggleSelected(id: string, checked: boolean) {
+    setSelectedIds((current) => {
+      if (checked) return current.includes(id) ? current : [...current, id];
+      return current.filter((selectedId) => selectedId !== id);
+    });
+  }
+
+  function toggleAllLoaded(checked: boolean) {
+    setSelectedIds(checked ? transactions.map((transaction) => transaction.id) : []);
+  }
+
+  function resetBulkControls() {
+    setBulkCategory("");
+    setBulkClassification("");
+    setReplaceBulkNotes(false);
+    setBulkAdminNotes("");
+  }
+
+  async function applyBulkChanges() {
+    if (selectedRows.length === 0) {
+      setError("Select at least one transaction before applying a bulk change.");
+      return;
+    }
+    if (!bulkHasChanges) {
+      setError("Choose a category, classification, or notes action before applying.");
+      return;
+    }
+
+    const payload: Partial<Draft> = {};
+    if (bulkCategory) payload.category = bulkCategory;
+    if (bulkClassification) payload.classificationStatus = bulkClassification;
+    if (replaceBulkNotes) payload.adminNotes = bulkAdminNotes;
+
+    setBulkSaving(true);
+    setError("");
+    setNotice("");
+    try {
+      for (const row of selectedRows) {
+        const response = await fetch(
+          `/api/admin/reports/tournament-income/transactions/${row.id}?org=${organizationId}`,
+          {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ org: organizationId, ...payload }),
+          },
+        );
+        const json = (await response.json()) as { data?: IncomeTransaction; error?: string };
+        if (!response.ok || !json.data) {
+          throw new Error(json.error || `Failed to update ${row.payerName || row.paypalTxId}`);
+        }
+      }
+      setDrafts((current) => {
+        const next = { ...current };
+        for (const row of selectedRows) delete next[row.id];
+        return next;
+      });
+      setSelectedIds([]);
+      resetBulkControls();
+      setNotice(`Updated ${selectedRows.length} selected transaction${selectedRows.length === 1 ? "" : "s"}.`);
+      void loadReport();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update selected transactions");
+    } finally {
+      setBulkSaving(false);
+    }
   }
 
   async function saveTransaction(row: IncomeTransaction) {
@@ -434,12 +517,106 @@ export default function TournamentIncomeReportManager({ initialOrg }: Props) {
 
       <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/50">
         <div className="border-b border-zinc-800 px-4 py-3">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">PayPal Transactions</h2>
+          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">PayPal Transactions</h2>
+            <p className="text-xs text-zinc-500">
+              {selectedCount ? `${selectedCount} selected` : "Select rows to update several payments at once"}
+            </p>
+          </div>
         </div>
+
+        <div className="border-b border-zinc-800 bg-zinc-950/30 px-4 py-4">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-end">
+            <label className="inline-flex w-fit items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={allLoadedSelected}
+                onChange={(event) => toggleAllLoaded(event.target.checked)}
+                disabled={transactions.length === 0 || loading || bulkSaving}
+                className="h-4 w-4 rounded border-zinc-700 bg-zinc-900"
+              />
+              Select all loaded
+            </label>
+
+            <label className="min-w-44 flex-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 xl:max-w-52">
+              Category
+              <select
+                value={bulkCategory}
+                onChange={(event) => setBulkCategory(event.target.value as BulkCategory)}
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm normal-case text-zinc-100"
+              >
+                <option value="">Keep category</option>
+                {CATEGORY_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{CATEGORY_LABELS[option]}</option>
+                ))}
+              </select>
+            </label>
+
+            <label className="min-w-44 flex-1 text-xs font-semibold uppercase tracking-wide text-zinc-500 xl:max-w-52">
+              Classification
+              <select
+                value={bulkClassification}
+                onChange={(event) => setBulkClassification(event.target.value as BulkClassification)}
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm normal-case text-zinc-100"
+              >
+                <option value="">Keep classification</option>
+                {CLASSIFICATION_OPTIONS.map((option) => (
+                  <option key={option} value={option}>{CLASSIFICATION_LABELS[option]}</option>
+                ))}
+              </select>
+            </label>
+
+            <div className="flex-[1.5]">
+              <label className="inline-flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                <input
+                  type="checkbox"
+                  checked={replaceBulkNotes}
+                  onChange={(event) => setReplaceBulkNotes(event.target.checked)}
+                  className="h-4 w-4 rounded border-zinc-700 bg-zinc-900"
+                />
+                Replace admin notes
+              </label>
+              <textarea
+                value={bulkAdminNotes}
+                onChange={(event) => setBulkAdminNotes(event.target.value)}
+                rows={2}
+                disabled={!replaceBulkNotes}
+                className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-zinc-100 disabled:opacity-50"
+                placeholder="Notes to put on every selected transaction"
+              />
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                onClick={applyBulkChanges}
+                disabled={selectedCount === 0 || !bulkHasChanges || bulkSaving || loading}
+                className="rounded-lg border border-emerald-500/60 bg-emerald-500/10 px-4 py-2 text-sm font-semibold text-emerald-100 hover:bg-emerald-500/20 disabled:opacity-50"
+              >
+                {bulkSaving ? "Updating..." : "Apply to Selected"}
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setSelectedIds([]);
+                  resetBulkControls();
+                }}
+                disabled={selectedCount === 0 && !bulkHasChanges}
+                className="rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+        </div>
+
         <div className="overflow-x-auto">
-          <table className="min-w-[1200px] w-full text-left text-sm">
+          <table className="min-w-[1180px] w-full text-left text-sm">
             <thead className="bg-zinc-950/70 text-xs uppercase tracking-wide text-zinc-500">
               <tr>
+                <th className="px-3 py-3">
+                  <span className="sr-only">Select</span>
+                </th>
                 <th className="px-3 py-3">Date / Payer</th>
                 <th className="px-3 py-3">PayPal Item</th>
                 <th className="px-3 py-3 text-right">Gross</th>
@@ -448,27 +625,38 @@ export default function TournamentIncomeReportManager({ initialOrg }: Props) {
                 <th className="px-3 py-3">Category</th>
                 <th className="px-3 py-3">Classification</th>
                 <th className="px-3 py-3">Admin Notes</th>
-                <th className="px-3 py-3">Action</th>
+                <th className="sticky right-0 bg-zinc-950/90 px-3 py-3 shadow-[-12px_0_18px_rgba(9,9,11,0.7)]">Action</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-zinc-800">
               {transactions.length === 0 ? (
                 <tr>
-                  <td colSpan={9} className="px-4 py-8 text-center text-zinc-400">
+                  <td colSpan={10} className="px-4 py-8 text-center text-zinc-400">
                     No transactions found for these filters.
                   </td>
                 </tr>
               ) : (
                 transactions.map((row) => {
                   const draft = drafts[row.id] ?? draftFromTransaction(row);
+                  const selected = selectedIds.includes(row.id);
                   return (
-                    <tr key={row.id} className="align-top text-zinc-300">
+                    <tr key={row.id} className={`align-top text-zinc-300 ${selected ? "bg-emerald-950/10" : ""}`}>
+                      <td className="px-3 py-3">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          onChange={(event) => toggleSelected(row.id, event.target.checked)}
+                          disabled={bulkSaving || loading}
+                          aria-label={`Select transaction from ${row.payerName || row.payerEmail || row.paypalTxId}`}
+                          className="h-4 w-4 rounded border-zinc-700 bg-zinc-900"
+                        />
+                      </td>
                       <td className="px-3 py-3">
                         <div className="font-medium text-zinc-100">{formatDate(row.paypalTxDate)}</div>
                         <div className="text-xs text-zinc-500">{row.payerName || "Unknown payer"}</div>
                         <div className="text-xs text-zinc-500">{row.payerEmail}</div>
                       </td>
-                      <td className="max-w-xs px-3 py-3">
+                      <td className="max-w-[18rem] px-3 py-3">
                         <div className="font-medium text-zinc-100">{row.itemName || "No item name"}</div>
                         <div className="mt-1 text-xs text-zinc-500">Tx {row.paypalTxId}</div>
                         {row.paypalNote || row.paypalMemo ? (
@@ -482,7 +670,8 @@ export default function TournamentIncomeReportManager({ initialOrg }: Props) {
                         <select
                           value={draft.category}
                           onChange={(event) => updateDraft(row.id, { category: event.target.value as Category })}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-xs text-zinc-100"
+                          disabled={bulkSaving}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-xs text-zinc-100 disabled:opacity-50"
                         >
                           {CATEGORY_OPTIONS.map((option) => (
                             <option key={option} value={option}>{CATEGORY_LABELS[option]}</option>
@@ -493,7 +682,8 @@ export default function TournamentIncomeReportManager({ initialOrg }: Props) {
                         <select
                           value={draft.classificationStatus}
                           onChange={(event) => updateDraft(row.id, { classificationStatus: event.target.value as Classification })}
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-xs text-zinc-100"
+                          disabled={bulkSaving}
+                          className="w-full rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-xs text-zinc-100 disabled:opacity-50"
                         >
                           {CLASSIFICATION_OPTIONS.map((option) => (
                             <option key={option} value={option}>{CLASSIFICATION_LABELS[option]}</option>
@@ -505,15 +695,16 @@ export default function TournamentIncomeReportManager({ initialOrg }: Props) {
                           value={draft.adminNotes}
                           onChange={(event) => updateDraft(row.id, { adminNotes: event.target.value })}
                           rows={2}
-                          className="w-56 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-xs text-zinc-100"
+                          disabled={bulkSaving}
+                          className="w-44 rounded-lg border border-zinc-700 bg-zinc-800 px-2 py-2 text-xs text-zinc-100 disabled:opacity-50"
                           placeholder="Treasurer review notes"
                         />
                       </td>
-                      <td className="px-3 py-3">
+                      <td className="sticky right-0 bg-zinc-900/95 px-3 py-3 shadow-[-12px_0_18px_rgba(9,9,11,0.7)]">
                         <button
                           type="button"
                           onClick={() => saveTransaction(row)}
-                          disabled={savingId === row.id}
+                          disabled={savingId === row.id || bulkSaving}
                           className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-100 hover:bg-zinc-700 disabled:opacity-50"
                         >
                           {savingId === row.id ? "Saving..." : "Save"}
