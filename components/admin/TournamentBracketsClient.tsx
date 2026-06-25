@@ -75,6 +75,18 @@ const PROJECT_STATUS_PRIORITY: Record<ProjectStatus, number> = {
 };
 const PROJECT_PRIORITY_OPTION_FLOOR = 20;
 
+function projectStatusLabel(status: ProjectStatus) {
+  if (status === "READY") return "Live";
+  if (status === "ARCHIVED") return "Archived";
+  return "Draft";
+}
+
+function projectStatusHelp(status: ProjectStatus) {
+  if (status === "READY") return "Live brackets appear on the public Tournaments page.";
+  if (status === "ARCHIVED") return "Archived brackets are hidden from public pages and normal active workflows.";
+  return "Draft brackets stay hidden while schedules, teams, and scores are being checked.";
+}
+
 type ProjectDetail = ProjectRow & {
   spec: unknown;
   sourceArtifactUrls: unknown;
@@ -543,17 +555,10 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     () => sortProjectsForAdmin(projects, projectSortMode, projectSortDirection),
     [projects, projectSortMode, projectSortDirection],
   );
-  const readyProjectsForStrip = useMemo(() => {
-    const ready = sortProjectsForAdmin(
-      projects.filter((p) => p.status === "READY"),
-      "priority",
-      "asc",
-    );
-    if (project && !ready.some((p) => p.id === project.id)) {
-      return [project, ...ready];
-    }
-    return ready;
-  }, [projects, project]);
+  const readyProjectsForStrip = useMemo(
+    () => sortProjectsForAdmin(projects, "priority", "asc"),
+    [projects],
+  );
   const projectStatusCounts = useMemo(
     () =>
       projects.reduce(
@@ -1199,10 +1204,36 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     }
   }
 
+  async function updateProjectRowStatus(row: ProjectRow, nextStatus: ProjectStatus) {
+    if (row.status === nextStatus) {
+      setNotice("Bracket is already " + projectStatusLabel(nextStatus) + ".");
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await fetch("/api/admin/tournament-brackets/projects/" + row.id, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: nextStatus }),
+      });
+      const json = await readApiJson<{ error?: string; hint?: string }>(res);
+      if (!res.ok) throw new Error(apiErrorMessage(json, "Could not update bracket status"));
+      if (projectId === row.id) await loadProject(row.id);
+      await loadProjects();
+      setNotice(nextStatus === "READY" ? "Bracket marked Live and shown on the public Tournaments page." : nextStatus === "ARCHIVED" ? "Bracket archived and hidden from public pages." : "Bracket returned to Draft and hidden from public pages.");
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function updateProjectStatus(nextStatus: ProjectStatus) {
     if (!projectId || !project) return;
     if (project.status === nextStatus) {
-      setNotice(`Project is already ${nextStatus}.`);
+      setNotice("Bracket is already " + projectStatusLabel(nextStatus) + ".");
       return;
     }
     setBusy(true);
@@ -1220,10 +1251,10 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       await loadProjects();
       setNotice(
         nextStatus === "READY"
-          ? "Bracket posted to the public Tournaments page."
+          ? "Bracket marked Live and shown on the public Tournaments page."
           : nextStatus === "ARCHIVED"
-            ? "Bracket archived and hidden from the public Tournaments page."
-            : "Bracket returned to draft and hidden from the public Tournaments page.",
+            ? "Bracket archived and hidden from public pages."
+            : "Bracket returned to Draft and hidden from public pages.",
       );
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : String(e));
@@ -1723,7 +1754,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           <div>
             <h3 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Tournament page</h3>
             <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
-              Current status: <span className="font-semibold text-zinc-300">{project.status}</span>. READY brackets appear on the public Tournaments page; keep projects in DRAFT while importing schedules, mapping teams, or checking scores.
+              Current status: <span className="font-semibold text-zinc-300">{projectStatusLabel(project.status)}</span>. {projectStatusHelp(project.status)}
             </p>
           </div>
           <a
@@ -1740,7 +1771,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
             onClick={() => void updateProjectStatus("DRAFT")}
             className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 disabled:opacity-40"
           >
-            Save as draft
+            Draft
           </button>
           <button
             type="button"
@@ -1748,7 +1779,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
             onClick={() => void updateProjectStatus("READY")}
             className="rounded-lg border border-emerald-600/80 bg-emerald-900/80 px-3 py-2 text-xs font-semibold text-emerald-50 hover:bg-emerald-800 disabled:opacity-40"
           >
-            Post to Tournaments
+            Live
           </button>
           <button
             type="button"
@@ -1819,7 +1850,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     return (
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-zinc-800 bg-zinc-900/80 px-4 py-3">
         <label className="min-w-0 flex-1">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Ready bracket</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Bracket</span>
           <select
             value={projectId ?? ""}
             disabled={busy || readyProjectsForStrip.length === 0}
@@ -1827,16 +1858,16 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
               const nextId = e.target.value;
               if (nextId) setProjectId(nextId);
             }}
-            aria-label="Switch ready bracket"
+            aria-label="Switch bracket"
             className="mt-1 w-full min-w-0 truncate rounded-lg border border-zinc-700 bg-zinc-950 px-2.5 py-1.5 text-sm font-semibold text-zinc-100 outline-none focus:border-zinc-500 disabled:opacity-40"
           >
             {readyProjectsForStrip.length === 0 ? (
-              <option value="">No ready brackets yet</option>
+              <option value="">No brackets yet</option>
             ) : (
               readyProjectsForStrip.map((p) => (
                 <option key={p.id} value={p.id}>
                   {p.name}
-                  {p.status !== "READY" ? ` (${p.status})` : ""}
+                  {` (${projectStatusLabel(p.status)})`}
                 </option>
               ))
             )}
@@ -1844,9 +1875,17 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
           <p className="mt-1 text-[11px] text-zinc-500">
             {getBracketOrgDisplayName(organizationId)}
             {project ? ` · ${project.seasonYear}` : ` · ${seasonYear}`}
-            {` · ${projectStatusCounts.DRAFT} draft · ${projectStatusCounts.READY} public · ${projectStatusCounts.ARCHIVED} archived`}
+            {` · ${projectStatusCounts.DRAFT} draft · ${projectStatusCounts.READY} live · ${projectStatusCounts.ARCHIVED} archived`}
           </p>
         </label>
+        {project ? (
+          <div className="flex flex-wrap items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-950/70 p-1" aria-label="Bracket status controls">
+            <span className="px-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Status</span>
+            <button type="button" disabled={busy || project.status === "DRAFT"} title={projectStatusHelp("DRAFT")} onClick={() => void updateProjectStatus("DRAFT")} className="rounded-md border border-zinc-700 px-2.5 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-800 disabled:bg-zinc-700 disabled:text-white disabled:opacity-100">Draft</button>
+            <button type="button" disabled={busy || project.status === "READY"} title={projectStatusHelp("READY")} onClick={() => void updateProjectStatus("READY")} className="rounded-md border border-emerald-700 px-2.5 py-1 text-xs font-semibold text-emerald-100 hover:bg-emerald-900 disabled:bg-emerald-700 disabled:text-white disabled:opacity-100">Live</button>
+            <button type="button" disabled={busy || project.status === "ARCHIVED"} title={projectStatusHelp("ARCHIVED")} onClick={() => void updateProjectStatus("ARCHIVED")} className="rounded-md border border-amber-800 px-2.5 py-1 text-xs font-semibold text-amber-100 hover:bg-amber-950 disabled:bg-amber-800 disabled:text-amber-50 disabled:opacity-100">Archived</button>
+          </div>
+        ) : null}
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -2078,9 +2117,24 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                 >
                   {p.name}{" "}
                   <span className="text-zinc-500">
-                    ({p.seasonYear}) {p.status} · Priority {p.priority ?? 0}
+                    ({p.seasonYear}) {projectStatusLabel(p.status)} · Priority {p.priority ?? 0}
                   </span>
                 </button>
+                <select
+                  value={p.status}
+                  disabled={busy}
+                  aria-label={"Change status for " + p.name}
+                  onClick={(e) => e.stopPropagation()}
+                  onChange={(e) => {
+                    e.stopPropagation();
+                    void updateProjectRowStatus(p, e.target.value as ProjectStatus);
+                  }}
+                  className="shrink-0 rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] font-semibold text-zinc-200 outline-none hover:border-zinc-500 disabled:opacity-40"
+                >
+                  <option value="DRAFT">Draft</option>
+                  <option value="READY">Live</option>
+                  <option value="ARCHIVED">Archived</option>
+                </select>
                 <button
                   type="button"
                   title="Remove project"
