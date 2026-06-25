@@ -1,5 +1,11 @@
-export type OrgId = "gonzales" | "ascension" | "master" | "ladistrict2" | "ladistrict6";
-export type ContentOrgId = "gonzales" | "ascension";
+export type OrgId =
+  | "gonzales"
+  | "ascension"
+  | "fallball"
+  | "master"
+  | "ladistrict2"
+  | "ladistrict6";
+export type ContentOrgId = "gonzales" | "ascension" | "fallball";
 /** ContentOrgId plus tournament-only orgs that only use the bracket system */
 export type BracketOrgId = ContentOrgId | "ladistrict2" | "ladistrict6";
 
@@ -73,6 +79,23 @@ const configs: Record<OrgId, SiteConfig> = {
     assignrSiteId: process.env.ASSIGNR_SITE_ID ?? "",
     assignrLeagueId: process.env.ASSIGNR_LEAGUE_ID ?? "430676",
   },
+  fallball: {
+    orgId: "fallball",
+    name: "AP Baseball Fall Ball",
+    shortName: "AP Fall Ball",
+    displayNameLine1: "AP Baseball",
+    displayNameLine2: "FALL BALL",
+    description:
+      "Fall Ball registration, teams, schedules, and league operations managed by AP Baseball.",
+    siteUrl: "https://fallball.apbaseball.com",
+    logoPath: "/images/fallball-ap-baseball-logo.png",
+    faviconPath: "/images/ap-logo.png",
+    colorPrimary: "#cc0000",
+    colorPrimaryDark: "#9b0000",
+    colorAccent: "#f5f5f5",
+    assignrSiteId: "",
+    assignrLeagueId: "",
+  },
   master: {
     orgId: "master",
     name: "AP Baseball — Master Admin",
@@ -130,7 +153,7 @@ const configs: Record<OrgId, SiteConfig> = {
 function isContentOrgId(
   value: string | null | undefined,
 ): value is ContentOrgId {
-  return value === "gonzales" || value === "ascension";
+  return value === "gonzales" || value === "ascension" || value === "fallball";
 }
 
 export function isBracketOrgId(
@@ -164,13 +187,15 @@ export function isTournamentOnlyDeployment(): boolean {
 }
 
 export function getDefaultContentOrg(): ContentOrgId {
-  return getOrgId() === "ascension" ? "ascension" : "gonzales";
+  const orgId = getOrgId();
+  if (isContentOrgId(orgId)) return orgId;
+  return "gonzales";
 }
 
 /** Returns the bracket org for this deployment, including tournament-only orgs. */
 export function getBracketOrgForDeployment(): BracketOrgId {
   const orgId = getOrgId();
-  if (orgId === "ascension" || orgId === "ladistrict2" || orgId === "ladistrict6") return orgId;
+  if (isBracketOrgId(orgId)) return orgId;
   return "gonzales";
 }
 
@@ -184,7 +209,7 @@ export function getContentOrgBrandColors(org: BracketOrgId): { primaryHex: strin
 export function getDugoutRegisteredUserOrgId(): ContentOrgId {
   const org = getOrgId();
   if (org === "master" || org === "ladistrict2" || org === "ladistrict6") return getDefaultContentOrg();
-  return org as ContentOrgId;
+  return isContentOrgId(org) ? org : "gonzales";
 }
 
 export function resolveAdminTargetOrg(
@@ -249,7 +274,7 @@ export function getTournamentBracketBrandingForOrg(org: BracketOrgId): {
 export function getDefaultAllStarCutoffMonthDayForOrg(
   org: ContentOrgId,
 ): { month: number; day: number } {
-  if (org === "gonzales") {
+  if (org === "gonzales" || org === "fallball") {
     return { month: 4, day: 30 }; // DYB
   }
   return { month: 8, day: 31 }; // LLB
@@ -269,7 +294,7 @@ export function getBracketOrgDisplayName(org: BracketOrgId): string {
  */
 export function formatOrganizationIdDisplay(org: string | null | undefined): string {
   if (!org) return "Global";
-  if (org === "gonzales" || org === "ascension") {
+  if (org === "gonzales" || org === "ascension" || org === "fallball") {
     return getOrgDisplayName(org);
   }
   if (org === "ladistrict2") return configs.ladistrict2.shortName;
@@ -286,7 +311,7 @@ export function getAssignrLeagueId(org?: ContentOrgId): string {
 }
 
 /** Full league orgs — used by master admin for all-star, news, registration, scores, etc. */
-export const CONTENT_ORGS: ContentOrgId[] = ["gonzales", "ascension"];
+export const CONTENT_ORGS: ContentOrgId[] = ["gonzales", "ascension", "fallball"];
 
 /** All bracket-eligible orgs including tournament-only deployments. */
 export const BRACKET_ORGS: BracketOrgId[] = [
@@ -311,7 +336,39 @@ export function getCanonicalBallotOriginForOrganizationId(organizationId: string
   if (organizationId === "ascension") {
     return stripTrailingSlash(configs.ascension.siteUrl);
   }
+  if (organizationId === "fallball") {
+    return stripTrailingSlash(configs.fallball.siteUrl);
+  }
   return stripTrailingSlash(configs.master.siteUrl);
+}
+
+const FALLBALL_DISABLED_ADMIN_MODULES = new Set([
+  "ALL_STAR_VAULT",
+  "ALL_STAR_PAYMENTS",
+  "SPONSORS",
+  "TOURNAMENT_BRACKETS",
+]);
+
+const FALLBALL_DISABLED_PUBLIC_NAV = new Set(["all-stars", "tournaments"]);
+
+export function isAdminModuleEnabledForOrg(
+  org: ContentOrgId | null | undefined,
+  module: string,
+): boolean {
+  if (org === "fallball" && FALLBALL_DISABLED_ADMIN_MODULES.has(module)) {
+    return false;
+  }
+  return true;
+}
+
+export function isPublicNavEnabledForOrg(
+  org: OrgId | string | null | undefined,
+  navKey: string,
+): boolean {
+  if (org === "fallball" && FALLBALL_DISABLED_PUBLIC_NAV.has(navKey)) {
+    return false;
+  }
+  return true;
 }
 
 /** Skip cross-domain ballot redirect (local dev / Vercel preview). */

@@ -3,10 +3,9 @@
 import Link from "next/link";
 
 import {
-  BRACKET_ORGS,
+  CONTENT_ORGS,
   getBracketOrgDisplayName,
   type BracketOrgId,
-  type ContentOrgId,
 } from "@/lib/siteConfig";
 
 type AdminOrgSwitcherProps = {
@@ -14,7 +13,7 @@ type AdminOrgSwitcherProps = {
   currentPath: string;
   /** When false, hide the aggregate "All Sites" control (e.g. modules that always need a concrete org). */
   showAllSites?: boolean;
-  /** Override the list of orgs shown (defaults to BRACKET_ORGS). Pass CONTENT_ORGS for league-only pages. */
+  /** Override the list of orgs shown (defaults to CONTENT_ORGS; bracket admin passes BRACKET_ORGS). */
   orgs?: readonly BracketOrgId[];
 };
 
@@ -22,7 +21,7 @@ export default function AdminOrgSwitcher({
   currentOrg,
   currentPath,
   showAllSites = true,
-  orgs = BRACKET_ORGS,
+  orgs = CONTENT_ORGS,
 }: AdminOrgSwitcherProps) {
   return (
     <div className="w-full rounded-2xl border border-zinc-800 bg-zinc-950/80 p-1.5 sm:w-auto">

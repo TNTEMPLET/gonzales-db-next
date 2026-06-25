@@ -43,6 +43,25 @@ type HomepageFeaturedPost = {
   publishedAt: Date | null;
 };
 
+function getHomepageCopy(orgId: string) {
+  if (orgId === "fallball") {
+    return {
+      seasonBadge: "FALL BALL 2026",
+      tagline:
+        "Independent AP Baseball Fall Ball league operations, teams, schedules, and updates.",
+      registrationLabel: "SportsConnect Registration",
+      liveScoresText: "Schedules and scores will appear once Fall Ball games are published.",
+    };
+  }
+
+  return {
+    seasonBadge: "SPRING 2026 SEASON",
+    tagline: "Fun, development, and competition for kids ages 9–17 in Ascension Parish",
+    registrationLabel: "Registration",
+    liveScoresText: "Integrated with GameChanger",
+  };
+}
+
 const TOURNAMENT_PARK = {
   name: "Butch Gore Memorial Park",
   addressLine1: "14450 Harry Savoy Road",
@@ -181,7 +200,7 @@ function TournamentLandingPage() {
               </ul>
             </div>
 
-            <p className="mt-3 text-sm text-zinc-400">
+            <p className="mt-4 text-sm text-zinc-400">
               Use these Google Maps links for live driving directions from the I-10 corridor to the park.
             </p>
 
@@ -232,8 +251,10 @@ export default async function Home({
 
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const regOpen = isRegistrationOpen();
-  const defaultLeagueId = getAssignrLeagueId();
   const site = getSiteConfig();
+  const homepageCopy = getHomepageCopy(site.orgId);
+  const isFallBall = site.orgId === "fallball";
+  const defaultLeagueId = site.orgId === "fallball" ? site.assignrLeagueId : getAssignrLeagueId();
 
   let rotatorPosts: HomepageRotatorPost[] = [];
   let featuredPosts: HomepageFeaturedPost[] = [];
@@ -298,15 +319,17 @@ export default async function Home({
   let games: Game[] = [];
   let error: string | null = null;
 
-  try {
-    games = await fetchGames({
-      startDate,
-      endDate,
-      leagueId: defaultLeagueId,
-    });
-  } catch (err: unknown) {
-    error = err instanceof Error ? err.message : "Failed to load game data";
-    console.error(err);
+  if (defaultLeagueId) {
+    try {
+      games = await fetchGames({
+        startDate,
+        endDate,
+        leagueId: defaultLeagueId,
+      });
+    } catch (err: unknown) {
+      error = err instanceof Error ? err.message : "Failed to load game data";
+      console.error(err);
+    }
   }
 
   const orgAlert = await getActiveOrgAlert(getDefaultContentOrg()).catch(() => null);
@@ -381,7 +404,7 @@ export default async function Home({
 
           <div className="relative z-10 mx-auto max-w-5xl px-4 text-center sm:px-6">
             <div className="mb-5 inline-block rounded-full bg-brand-purple px-4 py-2 text-[11px] tracking-[2px] text-white sm:mb-6 sm:px-6 sm:text-xs sm:tracking-[3px]">
-              SPRING 2026 SEASON
+              {homepageCopy.seasonBadge}
             </div>
 
             <h1 className="mb-5 text-4xl font-bold leading-none tracking-tighter text-white sm:text-5xl md:mb-6 md:text-7xl">
@@ -389,19 +412,26 @@ export default async function Home({
             </h1>
 
             <p className="mx-auto mb-8 max-w-2xl text-lg text-brand-gold sm:text-2xl md:mb-10 md:text-3xl">
-              Fun, development, and competition for kids ages 9–17 in Ascension
-              Parish
+              {homepageCopy.tagline}
             </p>
 
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               {regOpen && (
                 <a
-                  href="#register"
+                  href="/registration"
                   className="rounded-xl bg-brand-purple px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
                 >
                   Register Now
                 </a>
               )}
+              {isFallBall ? (
+                <Link
+                  href="/coaching-interest"
+                  className="rounded-xl bg-brand-gold px-8 py-4 text-lg font-semibold text-zinc-950 transition-all hover:bg-brand-gold/90 active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
+                >
+                  Coaching Interest
+                </Link>
+              ) : null}
               <a
                 href="#schedule"
                 className="rounded-xl border-2 border-white px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-white hover:text-black sm:px-12 sm:py-5 sm:text-xl"
@@ -468,15 +498,25 @@ export default async function Home({
                 {todayDayLabel}
               </div>
             </div>
-            <h3 className="font-semibold text-xl mb-1 text-white">Registration</h3>
+            <h3 className="font-semibold text-xl mb-1 text-white">
+              {homepageCopy.registrationLabel}
+            </h3>
             <p className="text-brand-gold">
               {regOpen ? `${CURRENT_SEASON_LABEL} Season` : "Closed"}
             </p>
+            {isFallBall ? (
+              <Link
+                href="/coaching-interest"
+                className="mt-3 inline-flex text-sm font-semibold text-white underline decoration-brand-gold underline-offset-4 hover:text-brand-gold"
+              >
+                Join the coach interest list
+              </Link>
+            ) : null}
           </div>
           <div>
             <div className="text-6xl mb-3">📱</div>
             <h3 className="font-semibold text-xl mb-1 text-white">Live Scores</h3>
-            <p className="text-zinc-400">Integrated with GameChanger</p>
+            <p className="text-zinc-400">{homepageCopy.liveScoresText}</p>
           </div>
         </div>
       </section>

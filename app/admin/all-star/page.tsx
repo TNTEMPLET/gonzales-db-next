@@ -7,7 +7,12 @@ import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarVaultManager from "@/components/admin/AllStarVaultManager";
-import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getSiteConfig,
+  isAdminModuleEnabledForOrg,
+  isMasterDeployment,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -24,6 +29,9 @@ export default async function AdminAllStarPage({
 }) {
   const { org } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org);
+  if (!isAdminModuleEnabledForOrg(currentOrg, "ALL_STAR_VAULT")) {
+    redirect("/admin?org=fallball&denied=all-star");
+  }
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;

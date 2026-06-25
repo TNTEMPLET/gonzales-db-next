@@ -3,7 +3,7 @@ import type { SponsorPackageType } from "@prisma/client";
 
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg, type ContentOrgId } from "@/lib/siteConfig";
+import { CONTENT_ORGS, resolveAdminTargetOrg, type ContentOrgId } from "@/lib/siteConfig";
 import { getSponsorTemplate } from "@/lib/sponsors/templates";
 
 type SponsorUpsertPayload = {
@@ -37,7 +37,7 @@ type SponsorUpsertPayload = {
   sortOrder?: number;
 };
 
-const VALID_ORGS: ContentOrgId[] = ["gonzales", "ascension"];
+const VALID_ORGS: ContentOrgId[] = [...CONTENT_ORGS];
 
 function toNullableString(value: unknown) {
   if (typeof value !== "string") return null;

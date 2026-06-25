@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import {
   getDefaultAllStarCutoffMonthDayForOrg,
   resolveAdminTargetOrg,
+  type ContentOrgId,
 } from "@/lib/siteConfig";
 
 function parseSeasonYear(value: string | null): number | null {
@@ -14,7 +15,7 @@ function parseSeasonYear(value: string | null): number | null {
   return year;
 }
 
-function defaultCutoffDateForSeason(organizationId: "gonzales" | "ascension", seasonYear: number) {
+function defaultCutoffDateForSeason(organizationId: ContentOrgId, seasonYear: number) {
   const { month, day } = getDefaultAllStarCutoffMonthDayForOrg(organizationId);
   return new Date(Date.UTC(seasonYear, month - 1, day, 0, 0, 0, 0));
 }

@@ -28,6 +28,10 @@ const hasRequiredDelegates =
   "allStarVaultAccess" in cachedDelegates &&
   "bracketProject" in cachedDelegates &&
   "tournamentRosterIntakeLink" in cachedDelegates &&
+  "coachingInterestSubmission" in cachedDelegates &&
+  "scheduleSeason" in cachedDelegates &&
+  "scheduleDraftGame" in cachedDelegates &&
+  "scheduleExportBatch" in cachedDelegates &&
   "tournamentIncomeTransaction" in cachedDelegates &&
   "orgAlert" in cachedDelegates;
 const schemaVersionMatches =

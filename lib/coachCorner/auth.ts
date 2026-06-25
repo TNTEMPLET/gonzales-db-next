@@ -5,10 +5,10 @@ import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
 import prisma from "@/lib/prisma";
 import { recordDuplicateCandidatesForNewUser } from "@/lib/registeredUserDuplicates";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { resolveAdminTargetOrg, type ContentOrgId } from "@/lib/siteConfig";
 
 export type CoachCornerActor = {
-  targetOrg: "gonzales" | "ascension";
+  targetOrg: ContentOrgId;
   registeredUserId: string;
   isAdmin: boolean;
 };

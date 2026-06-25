@@ -16,7 +16,7 @@ import {
 import type { AdminDashboardCardModule } from "@/lib/admin/dashboardModules";
 import { resolvePreviewUserAccess, type PreviewUserSnapshot } from "@/lib/admin/viewPreview";
 import type { AdminModule } from "@/lib/auth/adminRoles";
-import type { ContentOrgId } from "@/lib/siteConfig";
+import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 
 type AdminDashboardCard = AdminDashboardCardDescriptor;
 
@@ -99,7 +99,7 @@ function canPreviewUserAccessModule(
 ) {
   const organizationIds: ContentOrgId[] = organizationId
     ? [organizationId]
-    : ["gonzales", "ascension"];
+    : [...CONTENT_ORGS];
   return organizationIds.some((orgId) => {
     const access = resolvePreviewUserAccess(user, orgId);
     if (module === "ALL_STAR_VAULT") return access.allStarVaultView;

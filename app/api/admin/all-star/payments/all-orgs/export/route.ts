@@ -10,6 +10,7 @@ import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 const ORG_LABELS: Record<ContentOrgId, string> = {
   gonzales: "Gonzales Diamond Baseball",
   ascension: "Ascension Little League",
+  fallball: "AP Baseball Fall Ball",
 };
 
 const ALL_STAR_FEE_CENTS = 9500;

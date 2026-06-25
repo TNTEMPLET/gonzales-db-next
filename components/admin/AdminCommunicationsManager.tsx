@@ -34,9 +34,11 @@ type Campaign = {
       | "ORGANIZATION"
       | "ALL_COACHES"
       | "ORGANIZATION_COACHES"
+      | "COACHING_INTEREST"
       | "ADMIN_ROLE";
     organizationId: string | null;
     adminRole: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR" | null;
+    coachingInterestStatus: "NEW" | "CONTACTED" | "NOT_INTERESTED" | "CONVERTED" | "ARCHIVED" | null;
   }>;
   _count?: {
     recipientSnapshots: number;
@@ -70,8 +72,41 @@ export default function AdminCommunicationsManager({
   const [ruleOrgUsers, setRuleOrgUsers] = useState(false);
   const [ruleAllCoaches, setRuleAllCoaches] = useState(false);
   const [ruleOrgCoaches, setRuleOrgCoaches] = useState(false);
+  const [ruleCoachingInterest, setRuleCoachingInterest] = useState(false);
+  const [coachingInterestStatus, setCoachingInterestStatus] = useState<
+    "" | "NEW" | "CONTACTED" | "NOT_INTERESTED" | "CONVERTED" | "ARCHIVED"
+  >("");
   const [roleRule, setRoleRule] = useState<"" | "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR">("");
   const [scheduleAtById, setScheduleAtById] = useState<Record<string, string>>({});
+  const isFallBall = targetOrg === "fallball";
+
+  const campaignStats = useMemo(() => {
+    const byStatus = campaigns.reduce<Record<Campaign["status"], number>>(
+      (acc, campaign) => {
+        acc[campaign.status] += 1;
+        return acc;
+      },
+      {
+        DRAFT: 0,
+        PENDING_APPROVAL: 0,
+        APPROVED: 0,
+        REJECTED: 0,
+        SCHEDULED: 0,
+        SENDING: 0,
+        SENT: 0,
+        FAILED: 0,
+        CANCELED: 0,
+      },
+    );
+
+    return {
+      drafts: byStatus.DRAFT,
+      pendingApproval: byStatus.PENDING_APPROVAL,
+      scheduled: byStatus.SCHEDULED,
+      sent: byStatus.SENT,
+      total: campaigns.length,
+    };
+  }, [campaigns]);
 
   const canCreate = title.trim().length > 0 && body.trim().length > 0;
 
@@ -93,23 +128,50 @@ export default function AdminCommunicationsManager({
   }
 
   useEffect(() => {
-    void loadCampaigns();
+    const timer = window.setTimeout(() => {
+      void loadCampaigns();
+    }, 0);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetOrg]);
 
   const rulePayload = useMemo(() => {
     const rules: Array<{
-      ruleType: "ALL_USERS" | "ORGANIZATION" | "ALL_COACHES" | "ORGANIZATION_COACHES" | "ADMIN_ROLE";
+      ruleType:
+        | "ALL_USERS"
+        | "ORGANIZATION"
+        | "ALL_COACHES"
+        | "ORGANIZATION_COACHES"
+        | "COACHING_INTEREST"
+        | "ADMIN_ROLE";
       organizationId?: string;
       adminRole?: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR";
+      coachingInterestStatus?: "NEW" | "CONTACTED" | "NOT_INTERESTED" | "CONVERTED" | "ARCHIVED" | null;
     }> = [];
     if (ruleAllUsers) rules.push({ ruleType: "ALL_USERS" });
     if (ruleOrgUsers) rules.push({ ruleType: "ORGANIZATION", organizationId: targetOrg });
     if (ruleAllCoaches) rules.push({ ruleType: "ALL_COACHES" });
     if (ruleOrgCoaches) rules.push({ ruleType: "ORGANIZATION_COACHES", organizationId: targetOrg });
+    if (isFallBall && ruleCoachingInterest) {
+      rules.push({
+        ruleType: "COACHING_INTEREST",
+        organizationId: targetOrg,
+        coachingInterestStatus: coachingInterestStatus || null,
+      });
+    }
     if (roleRule) rules.push({ ruleType: "ADMIN_ROLE", adminRole: roleRule, organizationId: targetOrg });
     return rules;
-  }, [ruleAllUsers, ruleOrgUsers, ruleAllCoaches, ruleOrgCoaches, roleRule, targetOrg]);
+  }, [
+    coachingInterestStatus,
+    isFallBall,
+    roleRule,
+    ruleAllCoaches,
+    ruleAllUsers,
+    ruleCoachingInterest,
+    ruleOrgCoaches,
+    ruleOrgUsers,
+    targetOrg,
+  ]);
 
   async function createCampaign() {
     if (!canCreate) return;
@@ -137,6 +199,8 @@ export default function AdminCommunicationsManager({
       setTitle("");
       setSubject("");
       setBody("");
+      setRuleCoachingInterest(false);
+      setCoachingInterestStatus("");
       await loadCampaigns();
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to create campaign");
@@ -175,11 +239,49 @@ export default function AdminCommunicationsManager({
 
   return (
     <section className="space-y-6">
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
+            Communication workflow for {targetOrgLabel}
+          </p>
+          <p className="mt-1 text-sm text-zinc-400">
+            Build the audience first, preview how many people will receive it,
+            submit for approval, then schedule or send. Global messages should be
+            used only when families across AP Baseball need the same update.
+          </p>
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Total</p>
+            <p className="mt-1 text-2xl font-semibold">{campaignStats.total}</p>
+          </div>
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/50 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-zinc-500">Drafts</p>
+            <p className="mt-1 text-2xl font-semibold">{campaignStats.drafts}</p>
+          </div>
+          <div className="rounded-lg border border-amber-900/50 bg-amber-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-amber-300/80">Needs approval</p>
+            <p className="mt-1 text-2xl font-semibold text-amber-100">{campaignStats.pendingApproval}</p>
+          </div>
+          <div className="rounded-lg border border-blue-900/50 bg-blue-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-blue-300/80">Scheduled</p>
+            <p className="mt-1 text-2xl font-semibold text-blue-100">{campaignStats.scheduled}</p>
+          </div>
+          <div className="rounded-lg border border-emerald-900/50 bg-emerald-950/20 p-3">
+            <p className="text-[11px] uppercase tracking-wide text-emerald-300/80">Sent</p>
+            <p className="mt-1 text-2xl font-semibold text-emerald-100">{campaignStats.sent}</p>
+          </div>
+        </div>
+      </div>
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Create campaign</h2>
+        <p className="text-sm text-zinc-400">
+          Start as a draft. Nothing sends until a campaign is approved and then
+          scheduled or sent now.
+        </p>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -236,14 +338,53 @@ export default function AdminCommunicationsManager({
         <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 space-y-2">
           <p className="text-sm font-medium">Audience rules</p>
           <p className="text-xs text-zinc-500">
-            Rules are always combined with <span className="text-zinc-400">AND</span>: recipients must match every rule you enable (narrower audience).
+            Audience choices are combined together: recipients must match every
+            option you enable. Select fewer boxes for a broader audience and more
+            boxes for a narrower list.
           </p>
           <div className="grid md:grid-cols-2 gap-2 text-sm">
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllUsers} onChange={(e) => setRuleAllUsers(e.target.checked)} />All users</label>
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgUsers} onChange={(e) => setRuleOrgUsers(e.target.checked)} />Users in {targetOrgLabel}</label>
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllCoaches} onChange={(e) => setRuleAllCoaches(e.target.checked)} />All coaches</label>
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgCoaches} onChange={(e) => setRuleOrgCoaches(e.target.checked)} />Coaches in {targetOrgLabel}</label>
+            {isFallBall ? (
+              <label className="inline-flex items-center gap-2">
+                <input
+                  type="checkbox"
+                  checked={ruleCoachingInterest}
+                  onChange={(e) => {
+                    const checked = e.target.checked;
+                    setRuleCoachingInterest(checked);
+                    if (checked) {
+                      setRuleAllUsers(false);
+                      setRuleOrgUsers(false);
+                      setRuleAllCoaches(false);
+                      setRuleOrgCoaches(false);
+                      setRoleRule("");
+                    }
+                  }}
+                />
+                Coaching Interest
+              </label>
+            ) : null}
           </div>
+          {isFallBall && ruleCoachingInterest ? (
+            <div>
+              <label className="text-xs text-zinc-500">Coaching interest status</label>
+              <select
+                value={coachingInterestStatus}
+                onChange={(e) => setCoachingInterestStatus(e.target.value as typeof coachingInterestStatus)}
+                className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-2 text-sm"
+              >
+                <option value="">New + Contacted</option>
+                <option value="NEW">New only</option>
+                <option value="CONTACTED">Contacted only</option>
+                <option value="NOT_INTERESTED">Not interested</option>
+                <option value="CONVERTED">Converted</option>
+                <option value="ARCHIVED">Archived</option>
+              </select>
+            </div>
+          ) : null}
           <div>
             <label className="text-xs text-zinc-500">Include admin role (optional)</label>
             <select
@@ -272,6 +413,10 @@ export default function AdminCommunicationsManager({
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
         <h2 className="text-lg font-semibold">Campaigns</h2>
+        <p className="text-sm text-zinc-400">
+          Use Preview before approval to confirm the recipient count. Send now is
+          available only after approval or scheduling.
+        </p>
         {campaigns.length === 0 ? (
           <p className="text-sm text-zinc-500">No campaigns yet.</p>
         ) : (

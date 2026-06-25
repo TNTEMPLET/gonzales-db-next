@@ -10,11 +10,17 @@ import {
   hasAdminRoleAtLeast,
   isAdminRole,
   toAdminRole,
+  type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
+import {
+  isAdminModuleEnabledForOrg,
+  isContentOrgId,
+  isPublicNavEnabledForOrg,
+} from "@/lib/siteConfig";
 
 type DugoutMeResponse = {
   user: {
@@ -50,8 +56,9 @@ export default function Header({ brand }: HeaderProps) {
   const searchParams = useSearchParams();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [openMasterMenu, setOpenMasterMenu] = useState<string | null>(null);
+  const [isCoachCornerOpen, setIsCoachCornerOpen] = useState(false);
   const masterMenuRef = useRef<HTMLDivElement | null>(null);
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const coachCornerMenuRef = useRef<HTMLDivElement | null>(null);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
   const [showAllStarLink, setShowAllStarLink] = useState(false);
   const [showParkInfoLink, setShowParkInfoLink] = useState(false);
@@ -62,20 +69,30 @@ export default function Header({ brand }: HeaderProps) {
   const isMasterHeader =
     brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
   const isTournamentOnly = brand.tournamentOnly ?? false;
+  const isFallBallHeader = brand.displayNameLine2.toUpperCase() === "FALL BALL";
 
   const headerClassName = isMasterHeader
     ? "sticky top-0 z-50 border-b border-red-900/60 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 shadow-[0_6px_24px_rgba(0,0,0,0.3)]"
+    : isFallBallHeader
+    ? "sticky top-0 z-50 border-b border-[#171717] bg-[#050505]"
     : "sticky top-0 z-50 bg-zinc-950 border-b border-zinc-800";
 
   const headerInnerClassName = isMasterHeader
     ? "mx-auto grid w-full max-w-7xl grid-cols-[1fr_auto] items-center gap-3 px-4 py-3 sm:px-6 md:grid-cols-[auto_minmax(0,1fr)] md:items-center md:gap-4 lg:gap-6"
+    : isFallBallHeader
+    ? "mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-1.5 sm:px-6"
     : "mx-auto flex max-w-7xl items-center justify-between gap-3 px-4 py-3 sm:px-6 sm:py-4";
 
   const logoFrameClassName = isMasterHeader
     ? "relative h-12 w-12 overflow-hidden rounded-full border-2 border-red-500/70 bg-zinc-900/60 ring-2 ring-red-900/50 md:h-14 md:w-14"
+    : isFallBallHeader
+    ? "relative h-12 w-32 shrink-0 overflow-visible md:h-14 md:w-40"
     : isTournamentOnly
     ? "relative h-12 w-20 md:h-14 md:w-24"
     : "relative h-12 w-12 overflow-hidden rounded-full border border-zinc-700 bg-zinc-900/40 md:h-14 md:w-14";
+
+  const logoImageClassName =
+    isTournamentOnly || isFallBallHeader ? "object-contain" : "rounded-full object-cover";
 
   const subLabelClassName = isMasterHeader
     ? "-mt-1 inline-flex rounded-full border border-red-700/60 bg-red-950/40 px-2 py-0.5 text-[10px] font-semibold tracking-[0.12em] text-red-200"
@@ -152,11 +169,9 @@ export default function Header({ brand }: HeaderProps) {
         ]);
 
         if (!dugoutRes.ok) {
-          if (active) setIsLoggedIn(false);
           if (active) setCanSeeDugout(false);
         } else {
           const json = (await dugoutRes.json()) as DugoutMeResponse;
-          if (active) setIsLoggedIn(Boolean(json.user));
           if (active)
             setCanSeeDugout(Boolean(json.user?.isCoach || json.user?.isAdmin));
         }
@@ -178,7 +193,6 @@ export default function Header({ brand }: HeaderProps) {
           }
         }
       } catch {
-        if (active) setIsLoggedIn(false);
         if (active) setCanSeeDugout(false);
         if (active) setAdminRole(null);
       }
@@ -220,13 +234,19 @@ export default function Header({ brand }: HeaderProps) {
   }, [pathname]);
 
   useEffect(() => {
-    if (!openMasterMenu) return;
+    if (!openMasterMenu && !isCoachCornerOpen) return;
     function onDocMouseDown(e: MouseEvent) {
-      const el = masterMenuRef.current;
-      if (el && !el.contains(e.target as Node)) setOpenMasterMenu(null);
+      const target = e.target as Node;
+      const masterEl = masterMenuRef.current;
+      const coachCornerEl = coachCornerMenuRef.current;
+      if (masterEl && !masterEl.contains(target)) setOpenMasterMenu(null);
+      if (coachCornerEl && !coachCornerEl.contains(target)) setIsCoachCornerOpen(false);
     }
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") setOpenMasterMenu(null);
+      if (e.key === "Escape") {
+        setOpenMasterMenu(null);
+        setIsCoachCornerOpen(false);
+      }
     }
     document.addEventListener("mousedown", onDocMouseDown);
     document.addEventListener("keydown", onKey);
@@ -234,25 +254,16 @@ export default function Header({ brand }: HeaderProps) {
       document.removeEventListener("mousedown", onDocMouseDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [openMasterMenu]);
+  }, [openMasterMenu, isCoachCornerOpen]);
 
   if (pathname.startsWith("/dugout") || pathname.startsWith("/tournament-rosters")) return null;
 
   const masterRole = adminRole ? toAdminRole(adminRole) : null;
   const masterOrgSuffix =
     isMasterHeader && currentOrgParam ? `?org=${encodeURIComponent(currentOrgParam)}` : "";
-  const allowModule = (
-    module:
-      | "USERS"
-      | "SPONSORS"
-      | "REPORTS"
-      | "SCORES"
-      | "DUGOUT_MODERATION"
-      | "SOCIAL_MEDIA"
-      | "ORG_DOCUMENTS"
-      | "TOURNAMENT_BRACKETS"
-      | "PARK_INFO",
-  ) => {
+  const currentMasterOrg = isContentOrgId(currentOrgParam) ? currentOrgParam : null;
+  const allowModule = (module: AdminModule) => {
+    if (!isAdminModuleEnabledForOrg(currentMasterOrg, module)) return false;
     if (!masterRole) return true;
     // isMasterDeployment() reads process.env which is unavailable client-side.
     // Use isMasterHeader (derived from brand prop, server-provided) instead.
@@ -267,6 +278,9 @@ export default function Header({ brand }: HeaderProps) {
           label: "Program",
           items: [
             { href: `/admin/teams${masterOrgSuffix}`, label: "Teams" },
+            ...(allowModule("TEAMS") && currentMasterOrg === "fallball"
+              ? [{ href: `/admin/coaching-interest${masterOrgSuffix}`, label: "Coaching Interest" }]
+              : []),
             ...(allowModule("SPONSORS")
               ? [{ href: `/admin/sponsors${masterOrgSuffix}`, label: "Sponsors" }]
               : []),
@@ -287,7 +301,9 @@ export default function Header({ brand }: HeaderProps) {
             ...(allowModule("PARK_INFO")
               ? [{ href: `/admin/park-info${masterOrgSuffix}`, label: "Park Info" }]
               : []),
-            { href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" },
+            ...(allowModule("ALL_STAR_VAULT")
+              ? [{ href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" }]
+              : []),
           ],
         },
         {
@@ -314,26 +330,39 @@ export default function Header({ brand }: HeaderProps) {
       ].filter((g) => g.items.length > 0)
     : [];
 
-  const publicNavLinks = isTournamentOnly
+  const publicNavLinks = (isTournamentOnly
     ? [
         { href: "/", label: "Home" },
-        { href: "/tournaments", label: "Brackets" },
+        { href: "/tournaments", label: "Brackets", key: "tournaments" },
         { href: "/rosters", label: "Rosters" },
         ...(showParkInfoLink ? [{ href: "/park-info", label: "Park Info" }] : []),
       ]
     : [
         { href: "/schedule", label: "Schedule" },
-        { href: "/tournaments", label: "Tournaments" },
-        ...(showAllStarLink ? [{ href: "/all-star", label: "All-Stars" }] : []),
+        { href: "/tournaments", label: "Tournaments", key: "tournaments" },
+        ...(showAllStarLink ? [{ href: "/all-star", label: "All-Stars", key: "all-stars" }] : []),
         ...(showParkInfoLink ? [{ href: "/park-info", label: "Park Info" }] : []),
         { href: "/news", label: "News" },
-        ...(regOpen ? [{ href: "/#register", label: "Registration" }] : []),
-        ...(isLoggedIn ? [{ href: "/#teams", label: "Teams" }] : []),
-        { href: "/#fields", label: "Fields" },
-        { href: "/#contact", label: "Contact" },
-        ...(canSeeDugout ? [{ href: "/coach-corner", label: "Coaches" }] : []),
-        ...(canSeeDugout ? [{ href: "/dugout", label: "Dugout" }] : []),
-      ];
+        ...(regOpen ? [{ href: "/registration", label: "Registration" }] : []),
+        ...(!isFallBallHeader && canSeeDugout ? [{ href: "/coach-corner", label: "Coaches" }] : []),
+        ...(!isFallBallHeader && canSeeDugout ? [{ href: "/dugout", label: "Dugout" }] : []),
+      ]).filter((link) =>
+        isPublicNavEnabledForOrg(isFallBallHeader ? "fallball" : null, link.key ?? link.label.toLowerCase()),
+      );
+
+  const fallBallCoachCornerLinks = isFallBallHeader
+    ? [
+        ...(isPublicNavEnabledForOrg("fallball", "coaching-interest")
+          ? [{ href: "/coaching-interest", label: "Coaching Interest" }]
+          : []),
+        ...(canSeeDugout && isPublicNavEnabledForOrg("fallball", "coaches")
+          ? [{ href: "/coach-corner", label: "Coaches" }]
+          : []),
+        ...(canSeeDugout && isPublicNavEnabledForOrg("fallball", "dugout")
+          ? [{ href: "/dugout", label: "Dugout" }]
+          : []),
+      ]
+    : [];
 
   return (
     <header className={headerClassName}>
@@ -349,7 +378,7 @@ export default function Header({ brand }: HeaderProps) {
               alt={`${brand.name} Logo`}
               fill
               sizes="64px"
-              className={isTournamentOnly ? "object-contain" : "rounded-full object-cover"}
+              className={logoImageClassName}
               priority
               onError={() => {
                 if (logoSrc.endsWith(".webp")) {
@@ -360,7 +389,7 @@ export default function Header({ brand }: HeaderProps) {
               }}
             />
           </div>
-          <div className="block min-w-0">
+          <div className={isFallBallHeader ? "sr-only" : "block min-w-0"}>
             <div className={brandTitleClassName}>{brand.displayNameLine1}</div>
             <div className={`${subLabelClassName} max-w-[11rem] truncate sm:max-w-none`}>
               {brand.displayNameLine2}
@@ -450,6 +479,47 @@ export default function Header({ brand }: HeaderProps) {
                 {link.label}
               </Link>
             ))}
+            {fallBallCoachCornerLinks.length > 0 ? (
+              <div ref={coachCornerMenuRef} className="relative">
+                <button
+                  type="button"
+                  aria-expanded={isCoachCornerOpen}
+                  aria-haspopup="true"
+                  className="inline-flex items-center gap-1 text-white transition-colors hover:text-brand-gold"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setIsCoachCornerOpen((open) => !open);
+                  }}
+                >
+                  Coach&apos;s Corner
+                  <svg
+                    className={`h-3.5 w-3.5 shrink-0 opacity-70 transition-transform ${isCoachCornerOpen ? "rotate-180" : ""}`}
+                    viewBox="0 0 24 24"
+                    fill="currentColor"
+                    aria-hidden
+                  >
+                    <path d="M7 10l5 5 5-5z" />
+                  </svg>
+                </button>
+                {isCoachCornerOpen ? (
+                  <div
+                    className="absolute right-0 top-full z-50 mt-3 min-w-48 rounded-lg border border-zinc-700 bg-zinc-950 py-1 shadow-xl"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    {fallBallCoachCornerLinks.map((item) => (
+                      <Link
+                        key={item.href}
+                        href={item.href}
+                        className="block px-4 py-2 text-sm text-white transition-colors hover:bg-zinc-800 hover:text-brand-gold"
+                        onClick={() => setIsCoachCornerOpen(false)}
+                      >
+                        {item.label}
+                      </Link>
+                    ))}
+                  </div>
+                ) : null}
+              </div>
+            ) : null}
             <CoachAuthButton />
           </nav>
         )}
@@ -457,7 +527,7 @@ export default function Header({ brand }: HeaderProps) {
         {/* Register Button */}
         {!isMasterHeader && !isTournamentOnly && regOpen && (
           <Link
-            href="/#register"
+            href="/registration"
             className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm text-white transition"
           >
             Register Now
@@ -521,27 +591,48 @@ export default function Header({ brand }: HeaderProps) {
                 ) : null}
               </>
             ) : (
-              publicNavLinks.map((link) => (
-                <Link
-                  key={link.href}
-                  href={link.href}
-                  onClick={() => setIsMenuOpen(false)}
-                  className={mobileLinkClassName(link.href)}
-                >
-                  {link.label}
-                </Link>
-              ))
+              <>
+                {publicNavLinks.map((link) => (
+                  <Link
+                    key={link.href}
+                    href={link.href}
+                    onClick={() => setIsMenuOpen(false)}
+                    className={mobileLinkClassName(link.href)}
+                  >
+                    {link.label}
+                  </Link>
+                ))}
+                {fallBallCoachCornerLinks.length > 0 ? (
+                  <div className="flex flex-col gap-2 rounded-lg border border-zinc-700/70 bg-zinc-950/40 p-3">
+                    <p className="text-xs font-semibold uppercase tracking-[0.14em] text-brand-gold">
+                      Coach&apos;s Corner
+                    </p>
+                    <div className="flex flex-col gap-2 border-l border-zinc-700 pl-3">
+                      {fallBallCoachCornerLinks.map((item) => (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          onClick={() => setIsMenuOpen(false)}
+                          className={mobileLinkClassName(item.href)}
+                        >
+                          {item.label}
+                        </Link>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </>
             )}
             {!isMasterHeader && !isTournamentOnly && regOpen && (
               <Link
-                href="/#register"
+                href="/registration"
                 onClick={() => setIsMenuOpen(false)}
                 className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
               >
                 Register for {CURRENT_SEASON_LABEL}
               </Link>
             )}
-            {!isMasterHeader && canSeeDugout && (
+            {!isMasterHeader && !isFallBallHeader && canSeeDugout && (
               <Link
                 href="/coach-corner"
                 onClick={() => setIsMenuOpen(false)}
@@ -550,7 +641,7 @@ export default function Header({ brand }: HeaderProps) {
                 Coach&apos;s Corner
               </Link>
             )}
-            {!isMasterHeader && canSeeDugout && (
+            {!isMasterHeader && !isFallBallHeader && canSeeDugout && (
               <Link
                 href="/dugout"
                 onClick={() => setIsMenuOpen(false)}

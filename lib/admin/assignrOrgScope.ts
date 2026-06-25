@@ -162,14 +162,12 @@ export function inferContentOrgFromGame(game: Game): ContentOrgId | null {
 }
 
 export function buildAgeGroupsByOrg(games: Game[]) {
-  const ageGroupsByOrg: Record<ContentOrgId, string[]> = {
-    gonzales: [],
-    ascension: [],
-  };
-  const seenByOrg: Record<ContentOrgId, Set<string>> = {
-    gonzales: new Set(),
-    ascension: new Set(),
-  };
+  const ageGroupsByOrg = Object.fromEntries(
+    CONTENT_ORGS.map((org) => [org, []] as const),
+  ) as unknown as Record<ContentOrgId, string[]>;
+  const seenByOrg = Object.fromEntries(
+    CONTENT_ORGS.map((org) => [org, new Set<string>()] as const),
+  ) as unknown as Record<ContentOrgId, Set<string>>;
 
   for (const game of games) {
     const ageGroup =

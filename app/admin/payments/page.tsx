@@ -11,7 +11,13 @@ import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarRosterPayments from "@/components/admin/allStar/AllStarRosterPayments";
 import AllStarCrossOrgPaymentSummary from "@/components/admin/allStar/AllStarCrossOrgPaymentSummary";
 import AllStarPageConfigPanel from "@/components/admin/allStar/AllStarPageConfigPanel";
-import { getSiteConfig, isMasterDeployment, isContentOrgId, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getSiteConfig,
+  isAdminModuleEnabledForOrg,
+  isMasterDeployment,
+  isContentOrgId,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -28,6 +34,9 @@ export default async function AdminPaymentsPage({
 }) {
   const { org } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org ?? undefined);
+  if (isContentOrgId(org) && !isAdminModuleEnabledForOrg(currentOrg, "ALL_STAR_PAYMENTS")) {
+    redirect(`/admin?org=${currentOrg}&denied=payments`);
+  }
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
