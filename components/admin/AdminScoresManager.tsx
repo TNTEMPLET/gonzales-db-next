@@ -1,1626 +1,187 @@
 "use client";
 
-import { useEffect, useRef, useState, useMemo, type Dispatch, type SetStateAction } from "react";
+import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
-import {
-  assignrScopeLabel,
-  assignrScopeToQueryParam,
-  type AdminAssignrScope,
-} from "@/lib/admin/assignrScopeShared";
-import { getOrgDisplayName, type ContentOrgId } from "@/lib/siteConfig";
+import { assignrScopeLabel, type AdminAssignrScope } from "@/lib/admin/assignrScopeShared";
+import { parseGameChangerEmbedSnippet } from "@/lib/gamechanger/parseEmbedSnippet";
+import type { UnifiedGameChangerConnection, UnifiedScoreGame, UnifiedScoreSourceType } from "@/lib/admin/unifiedScoreSources";
 
-type GameRow = {
-  gameExternalId: string;
-  organizationId: ContentOrgId;
-  ageGroup: string;
-  homeTeam: string;
-  awayTeam: string;
-  gameDate: string | null;
-  status: string;
-  venue: string | null;
-  subvenue: string | null;
-};
-
-type ExistingScore = {
-  gameExternalId: string;
-  homeScore: number;
-  awayScore: number;
-};
-
-type Props = {
-  games: GameRow[];
-  existingScores: ExistingScore[];
-  scope: AdminAssignrScope;
-};
-
-type ScoreState = {
-  homeScore: string;
-  awayScore: string;
-};
-
-type VenueCatalogEntry = {
-  venue: string;
-  subVenue: string;
-};
-
-type ScoresFieldOption = {
-  sourcePark: string;
-  sourceField: string;
-  key: string;
-};
-
-type ScoresImportPreviewSample = {
-  rowNumber: number;
-  matchId: string;
-  homeTeam: string;
-  awayTeam: string;
-  date: string;
-  startTime: string;
-  location: string;
-  field: string;
-  ageGroup: string;
-  homeScore: number | null;
-  awayScore: number | null;
-  outcome:
-    | "matched"
-    | "unmatched"
-    | "skippedMissingScore"
-    | "skippedRainedOut";
-  matchedGameId?: string;
-  matchedSubVenue?: string;
-  reason?: string;
-};
-
-type ScoresImportCandidateGame = {
-  gameExternalId: string;
-  ageGroup: string;
-  homeTeam: string;
-  awayTeam: string;
-  dateLabel: string;
-  startTime: string;
-  reason: string;
-};
-
-type ScoresImportUnmatchedRow = ScoresImportPreviewSample & {
-  candidateGames: ScoresImportCandidateGame[];
-  suggestedGameExternalId?: string;
-};
-
-type ScoresImportReviewRow = ScoresImportUnmatchedRow & {
-  autoMatchedGameId?: string;
-};
-
-type AssignrCancelledGameSummary = {
-  gameExternalId: string;
-  dateLabel: string;
-  startTime: string;
-  homeTeam: string;
-  awayTeam: string;
-  venue: string | null;
-  subvenue: string | null;
-  ageGroup: string | null;
-};
-
-type ScoresImportPreview = {
-  rowCount: number;
-  parks: string[];
-  fields: ScoresFieldOption[];
-  venues: string[];
-  venueCatalog: VenueCatalogEntry[];
-  suggestedMappings: {
-    parkMappings: Record<string, string>;
-    fieldMappings: Record<string, string>;
-    ageGroupMappings: Record<string, string>;
-    rowMappings: Record<string, string>;
-  };
-  ageGroups: string[];
-  importAgeGroups: string[];
-  summary: {
-    processed: number;
-    matched: number;
-    unmatched: number;
-    skippedMissingScore: number;
-    skippedRainedOut: number;
-  };
-  assignrCancelledGames: AssignrCancelledGameSummary[];
-  excludedCancelledDates: string[];
-  requiresCancelledAcknowledgement: boolean;
-  unmatchedRows: ScoresImportUnmatchedRow[];
-  reviewRows: ScoresImportReviewRow[];
-  cancelledRows: ScoresImportPreviewSample[];
-  samples: {
-    matched: ScoresImportPreviewSample[];
-    unmatched: ScoresImportPreviewSample[];
-    skippedMissingScore: ScoresImportPreviewSample[];
-    skippedRainedOut: ScoresImportPreviewSample[];
-  };
-  error?: string;
-};
-
-async function safeJson(response: Response) {
-  return response.json().catch(() => ({}));
+type Props = { games: UnifiedScoreGame[]; connections: UnifiedGameChangerConnection[]; scope: AdminAssignrScope; seasonYear: number };
+type ScoreDraft = Record<string, { homeScore: string; awayScore: string }>;
+type SourceTarget = { sourceType: UnifiedScoreSourceType; organizationId: string; organizationLabel: string; seasonYear: number; sourceKey: string; sourceLabel: string; ageDivisionLabel: string; projectId?: string };
+type PreviewRow = { matchId: string; homeTeam: string; awayTeam: string; gameLabel: string; eventStatus?: string; homeScore?: number | null; awayScore?: number | null; outcome: string };
+async function readJson(response: Response) { return response.json().catch(() => ({})); }
+function sourceKey(target: Pick<SourceTarget, "sourceType" | "organizationId" | "seasonYear" | "sourceKey">) { return `${target.sourceType}:${target.organizationId}:${target.seasonYear}:${target.sourceKey}`; }
+function sourceOptionLabel(target: SourceTarget) {
+  if (target.sourceType === "LEAGUE") return target.ageDivisionLabel;
+  return target.sourceLabel.includes(target.ageDivisionLabel) ? target.sourceLabel : `${target.ageDivisionLabel} · ${target.sourceLabel}`;
 }
+function formatScore(game: UnifiedScoreGame) { return game.scored ? `${game.homeScore ?? "-"} - ${game.awayScore ?? "-"}` : "Missing"; }
+function badgeClass(sourceType: UnifiedScoreSourceType) { return sourceType === "LEAGUE" ? "border-blue-500/40 bg-blue-950/40 text-blue-100" : "border-amber-500/40 bg-amber-950/40 text-amber-100"; }
 
-function getReviewRowSelectedGameId(
-  row: ScoresImportReviewRow,
-  rowMappings: Record<string, string>,
-) {
-  return (
-    rowMappings[String(row.rowNumber)]?.trim() ||
-    row.autoMatchedGameId?.trim() ||
-    row.matchedGameId?.trim() ||
-    ""
-  );
-}
-
-function isReviewRowResolved(
-  row: ScoresImportReviewRow,
-  rowMappings: Record<string, string>,
-) {
-  return Boolean(getReviewRowSelectedGameId(row, rowMappings));
-}
-
-function mergeSuggestedRowMappings(
-  reviewRows: ScoresImportReviewRow[],
-  rowMappings: Record<string, string>,
-) {
-  const next = { ...rowMappings };
-
-  for (const row of reviewRows) {
-    const rowKey = String(row.rowNumber);
-    if (next[rowKey]?.trim()) continue;
-    const suggested = row.suggestedGameExternalId?.trim();
-    if (suggested) {
-      next[rowKey] = suggested;
-    }
-  }
-
-  return next;
-}
-
-function formatGameDate(value: string | null) {
-  if (!value) return "Date TBD";
-  const parsed = new Date(value);
-  if (Number.isNaN(parsed.valueOf())) return "Date TBD";
-  return parsed.toLocaleString("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
-
-function getAgeGroupSortValue(ageGroup: string) {
-  const normalized = ageGroup.trim().toUpperCase();
-  const numericMatch =
-    normalized.match(/^(\d+)\s*U$/) || normalized.match(/^(\d+)/);
-  return numericMatch ? Number(numericMatch[1]) : Number.POSITIVE_INFINITY;
-}
-
-function sortAgeGroups(a: string, b: string) {
-  const aValue = getAgeGroupSortValue(a);
-  const bValue = getAgeGroupSortValue(b);
-  if (aValue !== bValue) return aValue - bValue;
-  return a.localeCompare(b);
-}
-
-export default function AdminScoresManager({
-  games,
-  existingScores,
-  scope,
-}: Props) {
+export default function AdminScoresManager({ games, connections, scope, seasonYear }: Props) {
   const router = useRouter();
-  const orgQuery = assignrScopeToQueryParam(scope);
-  const fileInputRef = useRef<HTMLInputElement | null>(null);
-  const initialScoresMap = useMemo(() => {
-    const map = new Map<string, ScoreState>();
-    for (const score of existingScores) {
-      map.set(score.gameExternalId, {
-        homeScore: String(score.homeScore),
-        awayScore: String(score.awayScore),
-      });
-    }
-    return map;
-  }, [existingScores]);
-
-  const [scores, setScores] = useState<Record<string, ScoreState>>(() => {
-    const mapEntries = Array.from(initialScoresMap.entries()).map(
-      ([gameExternalId, value]) => [gameExternalId, value] as const,
-    );
-    return Object.fromEntries(mapEntries);
-  });
-  const [lockedScores, setLockedScores] = useState<Record<string, boolean>>(
-    () => {
-      const entries = existingScores.map((score) => [
-        score.gameExternalId,
-        true,
-      ]);
-      return Object.fromEntries(entries);
-    },
-  );
-  const [savedGameIds, setSavedGameIds] = useState<Record<string, boolean>>(
-    () => {
-      const entries = existingScores.map((score) => [
-        score.gameExternalId,
-        true,
-      ]);
-      return Object.fromEntries(entries);
-    },
-  );
-  const [activeAgeGroup, setActiveAgeGroup] = useState<string>("");
-  const [savingGameId, setSavingGameId] = useState<string | null>(null);
-  const [importBusy, setImportBusy] = useState(false);
-  const [uploadedFile, setUploadedFile] = useState<File | null>(null);
-  const [importPreview, setImportPreview] = useState<ScoresImportPreview | null>(
-    null,
-  );
-  const [parkMappings, setParkMappings] = useState<Record<string, string>>({});
-  const [fieldMappings, setFieldMappings] = useState<Record<string, string>>({});
-  const [ageGroupMappings, setAgeGroupMappings] = useState<Record<string, string>>({});
-  const [rowMappings, setRowMappings] = useState<Record<string, string>>({});
-  const [acknowledgedCancelledGames, setAcknowledgedCancelledGames] =
-    useState(false);
+  const initialDraft = useMemo(() => Object.fromEntries(games.map((g) => [g.id, { homeScore: g.homeScore == null ? "" : String(g.homeScore), awayScore: g.awayScore == null ? "" : String(g.awayScore) }])) as ScoreDraft, [games]);
+  const [drafts, setDrafts] = useState<ScoreDraft>(initialDraft);
+  const [sourceFilter, setSourceFilter] = useState<"ALL" | UnifiedScoreSourceType>("ALL");
+  const [orgFilter, setOrgFilter] = useState("ALL");
+  const [ageFilter, setAgeFilter] = useState("ALL");
+  const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
+  const [selectedTargetSite, setSelectedTargetSite] = useState("");
+  const [selectedTargetSeason, setSelectedTargetSeason] = useState("");
+  const [selectedTargetKey, setSelectedTargetKey] = useState("");
+  const [widgetIdDraft, setWidgetIdDraft] = useState("");
+  const [embedSnippet, setEmbedSnippet] = useState("");
+  const [previewRows, setPreviewRows] = useState<PreviewRow[]>([]);
 
-  const subVenueOptionsByVenue = useMemo(() => {
-    const map = new Map<string, string[]>();
-    for (const entry of importPreview?.venueCatalog ?? []) {
-      const current = map.get(entry.venue) ?? [];
-      if (!current.includes(entry.subVenue)) {
-        current.push(entry.subVenue);
-      }
-      map.set(entry.venue, current);
-    }
-    for (const [venue, values] of map.entries()) {
-      map.set(
-        venue,
-        values.sort((a, b) => a.localeCompare(b)),
-      );
-    }
-    return map;
-  }, [importPreview?.venueCatalog]);
-
-  const missingParks = useMemo(() => {
-    return (importPreview?.parks ?? []).filter((park) => !parkMappings[park]?.trim());
-  }, [importPreview?.parks, parkMappings]);
-
-  const missingFields = useMemo(() => {
-    return (importPreview?.fields ?? []).filter(
-      (field) => !fieldMappings[field.key]?.trim(),
-    );
-  }, [fieldMappings, importPreview?.fields]);
-
-  const importAgeGroups = useMemo(() => {
-    return importPreview?.importAgeGroups ?? [];
-  }, [importPreview?.importAgeGroups]);
-
-  const missingAgeGroups = useMemo(() => {
-    return importAgeGroups.filter((group) => !ageGroupMappings[group]?.trim());
-  }, [ageGroupMappings, importAgeGroups]);
-
-  const unresolvedReviewRows = useMemo(() => {
-    return (importPreview?.reviewRows ?? []).filter(
-      (row) => !isReviewRowResolved(row, rowMappings),
-    );
-  }, [importPreview?.reviewRows, rowMappings]);
-
-  const nonRainoutGames = useMemo(
-    () => games.filter((game) => game.status !== "C"),
-    [games],
-  );
-
-  const ageGroups = useMemo(() => {
-    const groups = Array.from(
-      new Set(nonRainoutGames.map((game) => game.ageGroup)),
-    ).sort(sortAgeGroups);
-    return groups;
-  }, [nonRainoutGames]);
-
-  const selectedAgeGroup = activeAgeGroup || ageGroups[0] || "";
-  const totalPlayableGames = nonRainoutGames.length;
-  const totalScoredCount = nonRainoutGames.filter((game) =>
-    Boolean(savedGameIds[game.gameExternalId]),
-  ).length;
-  const totalUnscoredCount = Math.max(totalPlayableGames - totalScoredCount, 0);
-
-  const filteredGames = useMemo(() => {
-    const source = selectedAgeGroup
-      ? nonRainoutGames.filter((game) => game.ageGroup === selectedAgeGroup)
-      : nonRainoutGames;
-
-    return [...source].sort((a, b) => {
-      const aDate = a.gameDate ? new Date(a.gameDate).valueOf() : Infinity;
-      const bDate = b.gameDate ? new Date(b.gameDate).valueOf() : Infinity;
-      if (aDate !== bDate) return aDate - bDate;
-      return `${a.homeTeam} ${a.awayTeam}`.localeCompare(
-        `${b.homeTeam} ${b.awayTeam}`,
-      );
+  const sourceTargets = useMemo(() => {
+    const seen = new Set<string>();
+    return games.flatMap((game) => {
+      const target: SourceTarget = { sourceType: game.sourceType, organizationId: game.organizationId, organizationLabel: game.organizationLabel, seasonYear: game.seasonYear, sourceKey: game.sourceKey, sourceLabel: game.sourceLabel, ageDivisionLabel: game.sourceType === "LEAGUE" ? "All league divisions" : game.ageGroup, projectId: game.projectId };
+      const key = sourceKey(target); if (seen.has(key)) return []; seen.add(key); return [target];
     });
-  }, [nonRainoutGames, selectedAgeGroup]);
-
-  const { unscoredGames, scoredGames } = useMemo(() => {
-    const unscored: GameRow[] = [];
-    const scored: GameRow[] = [];
-
-    for (const game of filteredGames) {
-      const hasSavedScore = Boolean(savedGameIds[game.gameExternalId]);
-
-      if (hasSavedScore) {
-        scored.push(game);
-      } else {
-        unscored.push(game);
-      }
-    }
-
-    return { unscoredGames: unscored, scoredGames: scored };
-  }, [filteredGames, savedGameIds]);
-
-  const ageGroupUnscoredCounts = useMemo(() => {
-    const counts: Record<string, number> = {};
-
-    for (const game of nonRainoutGames) {
-      const hasSavedScore = Boolean(savedGameIds[game.gameExternalId]);
-
-      if (!hasSavedScore) {
-        counts[game.ageGroup] = (counts[game.ageGroup] || 0) + 1;
-      }
-    }
-
-    return counts;
-  }, [nonRainoutGames, savedGameIds]);
-
-  function updateScore(
-    gameExternalId: string,
-    side: "homeScore" | "awayScore",
-    value: string,
-  ) {
+  }, [games]);
+  const targetSiteOptions = Array.from(new Map(sourceTargets.map((item) => [item.organizationId, item.organizationLabel])).entries());
+  const activeTargetSite = selectedTargetSite || targetSiteOptions[0]?.[0] || "";
+  const targetSeasonOptions = Array.from(new Set(sourceTargets.filter((item) => item.organizationId === activeTargetSite).map((item) => item.seasonYear))).sort((a, b) => b - a);
+  const activeTargetSeason = selectedTargetSeason || (targetSeasonOptions[0] == null ? "" : String(targetSeasonOptions[0]));
+  const filteredSourceTargets = sourceTargets.filter((item) => item.organizationId === activeTargetSite && String(item.seasonYear) === activeTargetSeason);
+  const target = filteredSourceTargets.find((item) => sourceKey(item) === selectedTargetKey) ?? filteredSourceTargets[0] ?? sourceTargets[0];
+  const connectionByTarget = useMemo(() => new Map(connections.map((c) => [sourceKey(c), c])), [connections]);
+  const targetConnection = target ? connectionByTarget.get(sourceKey(target)) : undefined;
+  const visibleGames = useMemo(() => games.filter((game) => (sourceFilter === "ALL" || game.sourceType === sourceFilter) && (orgFilter === "ALL" || game.organizationId === orgFilter) && (ageFilter === "ALL" || game.ageGroup === ageFilter)), [ageFilter, games, orgFilter, sourceFilter]);
+  const orgs = Array.from(new Map(games.map((g) => [g.organizationId, g.organizationLabel])).entries());
+  const ageGroups = Array.from(new Set(games.map((g) => g.ageGroup))).sort((a, b) => a.localeCompare(b));
+  const scoredCount = games.filter((game) => game.scored).length;
+  const gcCount = games.filter((game) => game.hasGameChanger).length;
+  function updateDraft(gameId: string, side: "homeScore" | "awayScore", value: string) {
     if (!/^\d*$/.test(value)) return;
-    setScores((prev) => ({
-      ...prev,
-      [gameExternalId]: {
-        homeScore: prev[gameExternalId]?.homeScore ?? "",
-        awayScore: prev[gameExternalId]?.awayScore ?? "",
-        [side]: value,
-      },
-    }));
+    setDrafts((prev) => ({ ...prev, [gameId]: { homeScore: prev[gameId]?.homeScore ?? "", awayScore: prev[gameId]?.awayScore ?? "", [side]: value } }));
   }
-
-  async function saveScore(game: GameRow) {
-    if (game.status !== "A") {
-      setError("Rained-Out games cannot be scored.");
-      setNotice("");
-      return;
-    }
-
-    const row = scores[game.gameExternalId] || { homeScore: "", awayScore: "" };
-    const homeScore = Number(row.homeScore);
-    const awayScore = Number(row.awayScore);
-
-    if (
-      row.homeScore === "" ||
-      row.awayScore === "" ||
-      Number.isNaN(homeScore) ||
-      Number.isNaN(awayScore)
-    ) {
-      setError("Both scores are required.");
-      setNotice("");
-      return;
-    }
-
-    setSavingGameId(game.gameExternalId);
-    setError("");
-    setNotice("");
-
+  async function saveScore(game: UnifiedScoreGame) {
+    const draft = drafts[game.id] ?? { homeScore: "", awayScore: "" };
+    if (!draft.homeScore || !draft.awayScore) { setError("Enter both scores before saving."); setNotice(""); return; }
+    setBusyKey(game.id); setError(""); setNotice("");
     try {
-      const response = await fetch(
-        orgQuery ? `/api/admin/scores?${orgQuery}` : "/api/admin/scores",
-        {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameExternalId: game.gameExternalId,
-          organizationId: game.organizationId,
-          ageGroup: game.ageGroup,
-          homeTeam: game.homeTeam,
-          awayTeam: game.awayTeam,
-          gameDate: game.gameDate,
-          gameStatus: game.status,
-          homeScore,
-          awayScore,
-        }),
-      },
-      );
-
-      const json = await response.json();
-      if (!response.ok) {
-        throw new Error(
-          json && "error" in json ? json.error : "Failed to save score",
-        );
-      }
-
-      setNotice(
-        `Saved score: ${game.homeTeam} ${homeScore} - ${awayScore} ${game.awayTeam}`,
-      );
-      setLockedScores((prev) => ({
-        ...prev,
-        [game.gameExternalId]: true,
-      }));
-      setSavedGameIds((prev) => ({
-        ...prev,
-        [game.gameExternalId]: true,
-      }));
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to save score");
-    } finally {
-      setSavingGameId(null);
-    }
+      const res = await fetch("/api/admin/scores/unified", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ sourceType: game.sourceType, organizationId: game.organizationId, sourceKey: game.sourceKey, matchId: game.matchId, ageGroup: game.ageGroup, homeTeam: game.homeTeam, awayTeam: game.awayTeam, gameDate: game.gameDate, gameStatus: game.status, homeScore: Number(draft.homeScore), awayScore: Number(draft.awayScore) }) });
+      const json = await readJson(res); if (!res.ok) throw new Error(String(json.error || "Failed to save score"));
+      setNotice(`Saved ${game.homeTeam} vs ${game.awayTeam}.`); router.refresh();
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to save score"); }
+    finally { setBusyKey(""); }
   }
-
-  function downloadTemplate() {
-    window.location.href = "/api/admin/scores/template";
+  function applyEmbedSnippet() {
+    const result = parseGameChangerEmbedSnippet(embedSnippet);
+    if (!result.ok) { setError(result.error); return; }
+    setWidgetIdDraft(result.config.widgetId); setNotice("Parsed the GameChanger widget ID. Save the connection to use it here."); setError("");
   }
-
-  function resetImportState() {
-    setUploadedFile(null);
-    setImportPreview(null);
-    setParkMappings({});
-    setFieldMappings({});
-    setAgeGroupMappings({});
-    setRowMappings({});
-    setAcknowledgedCancelledGames(false);
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  }
-
-  async function refreshImportPreview() {
-    if (!uploadedFile) return;
-
-    setImportBusy(true);
-    setError("");
+  async function saveGameChanger() {
+    if (!target) return;
+    const widgetId = widgetIdDraft.trim() || targetConnection?.widgetId || "";
+    if (!widgetId) { setError("Enter a GameChanger widget ID first."); return; }
+    setBusyKey("gc-save"); setError(""); setNotice("");
     try {
-      const formData = new FormData();
-      formData.append("file", uploadedFile);
-      formData.append("parkMappings", JSON.stringify(parkMappings));
-      formData.append("fieldMappings", JSON.stringify(fieldMappings));
-      formData.append("ageGroupMappings", JSON.stringify(ageGroupMappings));
-      formData.append("rowMappings", JSON.stringify(rowMappings));
-
-      const response = await fetch(
-        orgQuery
-          ? `/api/admin/scores/import/preview?${orgQuery}`
-          : "/api/admin/scores/import/preview",
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-      const json = (await safeJson(response)) as ScoresImportPreview;
-      if (!response.ok) {
-        throw new Error(String(json.error || "Failed to refresh import preview"));
-      }
-
-      setImportPreview(json);
-      setRowMappings((current) =>
-        mergeSuggestedRowMappings(json.reviewRows ?? [], current),
-      );
-      setNotice(
-        `Refreshed matches. Matched ${json.summary.matched}, unmatched ${json.summary.unmatched}.`,
-      );
-    } catch (err: unknown) {
-      setError(
-        err instanceof Error ? err.message : "Failed to refresh import preview",
-      );
-    } finally {
-      setImportBusy(false);
-    }
+      const res = await fetch("/api/admin/scores/gamechanger", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ ...target, widgetId, autoImportFinalScores: true }) });
+      const json = await readJson(res); if (!res.ok) throw new Error(String(json.error || "Failed to save GameChanger connection"));
+      setNotice(`Connected GameChanger to ${target.sourceLabel}.`); router.refresh();
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to save GameChanger connection"); }
+    finally { setBusyKey(""); }
   }
-
-  async function handleImportPreview(file: File) {
-    setImportBusy(true);
-    setError("");
-    setNotice("");
-
+  async function previewGameChanger() {
+    if (!target) return;
+    setBusyKey("gc-preview"); setError(""); setNotice("");
     try {
-      const formData = new FormData();
-      formData.append("file", file);
-
-      const response = await fetch(
-        orgQuery
-          ? `/api/admin/scores/import/preview?${orgQuery}`
-          : "/api/admin/scores/import/preview",
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-      const json = (await safeJson(response)) as ScoresImportPreview;
-      if (!response.ok) {
-        throw new Error(String(json.error || "Failed to preview scores import"));
-      }
-
-      setUploadedFile(file);
-      setImportPreview(json);
-      setParkMappings(json.suggestedMappings.parkMappings ?? {});
-      setFieldMappings(json.suggestedMappings.fieldMappings ?? {});
-      setAgeGroupMappings(json.suggestedMappings.ageGroupMappings ?? {});
-      setRowMappings(
-        mergeSuggestedRowMappings(json.reviewRows ?? [], {}),
-      );
-      setAcknowledgedCancelledGames(false);
-      setNotice(
-        `Parsed ${json.rowCount} rows. Matched ${json.summary.matched}, unmatched ${json.summary.unmatched}, missing scores ${json.summary.skippedMissingScore}, rained-out skipped ${json.summary.skippedRainedOut}.`,
-      );
-    } catch (err: unknown) {
-      resetImportState();
-      setError(
-        err instanceof Error ? err.message : "Failed to preview scores import",
-      );
-    } finally {
-      setImportBusy(false);
-    }
+      const res = await fetch("/api/admin/scores/gamechanger/preview", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(target) });
+      const json = await readJson(res); if (!res.ok) throw new Error(String(json.error || "Failed to preview GameChanger scores"));
+      setPreviewRows(json.rows ?? []); setNotice(`Found ${(json.rows ?? []).filter((row: PreviewRow) => row.outcome === "completed").length} completed GameChanger games.`);
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to preview GameChanger scores"); }
+    finally { setBusyKey(""); }
   }
-
-  async function handleConfirmImport() {
-    if (!uploadedFile) {
-      setError("Upload a scores file before importing.");
-      return;
-    }
-    if (missingParks.length > 0 || missingFields.length > 0) {
-      setError("Complete park and field mappings before importing.");
-      return;
-    }
-    if (
-      importPreview?.requiresCancelledAcknowledgement &&
-      !acknowledgedCancelledGames
-    ) {
-      setError("Confirm Assignr cancelled games before importing.");
-      return;
-    }
-
-    setImportBusy(true);
-    setError("");
-    setNotice("");
-
+  async function importGameChanger() {
+    if (!target) return;
+    setBusyKey("gc-import"); setError(""); setNotice("");
     try {
-      const formData = new FormData();
-      formData.append("file", uploadedFile);
-      formData.append("parkMappings", JSON.stringify(parkMappings));
-      formData.append("fieldMappings", JSON.stringify(fieldMappings));
-      formData.append("ageGroupMappings", JSON.stringify(ageGroupMappings));
-      formData.append("rowMappings", JSON.stringify(rowMappings));
-      if (acknowledgedCancelledGames) {
-        formData.append("acknowledgeCancelledGames", "true");
-      }
-
-      const response = await fetch(
-        orgQuery
-          ? `/api/admin/scores/import?${orgQuery}`
-          : "/api/admin/scores/import",
-        {
-          method: "POST",
-          body: formData,
-        },
-      );
-      const json = (await safeJson(response)) as {
-        error?: string;
-        processed?: number;
-        matched?: number;
-        saved?: number;
-        unmatched?: number;
-        skippedMissingScore?: number;
-        skippedRainedOut?: number;
-      };
-
-      if (!response.ok) {
-        throw new Error(json.error || "Failed to import CSV");
-      }
-
-      setNotice(
-        `Import complete. Processed ${json.processed || 0}, matched ${json.matched || 0}, saved ${json.saved || 0}, unmatched ${json.unmatched || 0}, missing scores ${json.skippedMissingScore || 0}, rained-out skipped ${json.skippedRainedOut || 0}.`,
-      );
-      resetImportState();
-      router.refresh();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to import CSV");
-    } finally {
-      setImportBusy(false);
-    }
+      const res = await fetch("/api/admin/scores/gamechanger/import", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(target) });
+      const json = await readJson(res); if (!res.ok) throw new Error(String(json.error || "Failed to import GameChanger scores"));
+      setPreviewRows(json.rows ?? []); setNotice(`Imported ${json.importedCount ?? 0} completed GameChanger scores.`); router.refresh();
+    } catch (err) { setError(err instanceof Error ? err.message : "Failed to import GameChanger scores"); }
+    finally { setBusyKey(""); }
   }
-
   return (
-    <section className="space-y-5">
-      {error ? (
-        <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
-          {error}
-        </div>
-      ) : null}
-      {notice ? (
-        <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">
-          {notice}
-        </div>
-      ) : null}
-
-      <div className="grid gap-3 md:grid-cols-3">
-        <div className="rounded-xl border border-amber-700/50 bg-amber-950/20 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-amber-200">
-            Score queue
-          </p>
-          <p className="mt-2 text-2xl font-bold text-white">
-            {totalUnscoredCount}
-          </p>
-          <p className="mt-1 text-xs text-amber-100/80">
-            Playable games still need final scores. Start with the age groups
-            marked open below.
-          </p>
-        </div>
-        <div className="rounded-xl border border-emerald-700/50 bg-emerald-950/20 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-emerald-200">
-            Saved scores
-          </p>
-          <p className="mt-2 text-2xl font-bold text-white">
-            {totalScoredCount}
-          </p>
-          <p className="mt-1 text-xs text-emerald-100/80">
-            These games are counted in standings and can be edited if a score
-            needs correction.
-          </p>
-        </div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4">
-          <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
-            Current view
-          </p>
-          <p className="mt-2 text-lg font-semibold text-white">
-            {assignrScopeLabel(scope)}
-          </p>
-          <p className="mt-1 text-xs text-zinc-400">
-            Upload a scores file for bulk entry, or choose an age group and save
-            one final at a time.
-          </p>
-        </div>
+    <div className="space-y-6">
+      <div className="grid gap-4 md:grid-cols-4">
+        <SummaryCard label="Scope" value={assignrScopeLabel(scope)} detail={`${seasonYear} season`} />
+        <SummaryCard label="Games Loaded" value={String(games.length)} detail="League and tournament" />
+        <SummaryCard label="Scores Saved" value={`${scoredCount}/${games.length}`} detail="Manual or imported" />
+        <SummaryCard label="GameChanger" value={String(gcCount)} detail="Connected games" />
       </div>
-
-      <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-        <div className="flex flex-wrap items-center gap-2">
-          <button
-            type="button"
-            onClick={downloadTemplate}
-            className="text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-2"
-          >
-            Download Template
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".csv,.xlsx,.xls"
-            className="hidden"
-            onChange={(event) => {
-              const file = event.target.files?.[0];
-              if (file) {
-                void handleImportPreview(file);
-              }
-            }}
-          />
-          <button
-            type="button"
-            disabled={importBusy}
-            onClick={() => fileInputRef.current?.click()}
-            className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-3 py-2 disabled:opacity-60"
-          >
-            {importBusy ? "Working..." : "Upload Scores CSV"}
-          </button>
-          {importPreview ? (
-            <button
-              type="button"
-              disabled={importBusy}
-              onClick={resetImportState}
-              className="text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-2 disabled:opacity-60"
-            >
-              Cancel import
-            </button>
-          ) : null}
-        </div>
-
-        {importPreview ? (
-          <ScoresImportMappingPanel
-            ageGroupMappings={ageGroupMappings}
-            ageGroups={importPreview.ageGroups}
-            assignrCancelledGames={importPreview.assignrCancelledGames}
-            acknowledgedCancelledGames={acknowledgedCancelledGames}
-            cancelledRows={importPreview.cancelledRows}
-            excludedCancelledDates={importPreview.excludedCancelledDates}
-            fields={importPreview.fields}
-            fieldMappings={fieldMappings}
-            importAgeGroups={importAgeGroups}
-            missingAgeGroups={missingAgeGroups}
-            missingFields={missingFields}
-            missingParks={missingParks}
-            onRefreshPreview={() => void refreshImportPreview()}
-            parkMappings={parkMappings}
-            parks={importPreview.parks}
-            requiresCancelledAcknowledgement={
-              importPreview.requiresCancelledAcknowledgement
-            }
-            rowMappings={rowMappings}
-            setAcknowledgedCancelledGames={setAcknowledgedCancelledGames}
-            setAgeGroupMappings={setAgeGroupMappings}
-            setFieldMappings={setFieldMappings}
-            setParkMappings={setParkMappings}
-            setRowMappings={setRowMappings}
-            subVenueOptionsByVenue={subVenueOptionsByVenue}
-            summary={importPreview.summary}
-            reviewRows={importPreview.reviewRows}
-            unresolvedReviewCount={unresolvedReviewRows.length}
-            unresolvedReviewRows={unresolvedReviewRows}
-            venues={importPreview.venues}
-          />
-        ) : null}
-
-        {importPreview ? (
-          <div className="flex flex-wrap items-center gap-2">
-            <button
-              type="button"
-              disabled={
-                importBusy ||
-                missingParks.length > 0 ||
-                missingFields.length > 0 ||
-                unresolvedReviewRows.length > 0 ||
-                (importPreview.requiresCancelledAcknowledgement &&
-                  !acknowledgedCancelledGames)
-              }
-              onClick={() => void handleConfirmImport()}
-              className="text-xs rounded-lg border border-emerald-600 text-emerald-300 hover:bg-emerald-900/20 px-3 py-2 disabled:opacity-60"
-            >
-              {importBusy ? "Importing..." : "Confirm import"}
-            </button>
-          </div>
-        ) : null}
-
-        <div className="flex flex-wrap gap-2">
-          {ageGroups.map((ageGroup) =>
-            (() => {
-              const hasZeroUnscored =
-                (ageGroupUnscoredCounts[ageGroup] || 0) === 0;
-
-              return (
-                <button
-                  key={ageGroup}
-                  type="button"
-                  onClick={() => setActiveAgeGroup(ageGroup)}
-                  className={`rounded-full px-4 py-2 text-xs font-semibold tracking-wide border transition ${
-                    hasZeroUnscored
-                      ? selectedAgeGroup === ageGroup
-                        ? "border-emerald-400 text-emerald-300 bg-emerald-900/30"
-                        : "border-emerald-700 text-emerald-300 hover:bg-emerald-900/20"
-                      : selectedAgeGroup === ageGroup
-                        ? "border-brand-gold text-brand-gold bg-brand-gold/10"
-                        : "border-brand-gold/70 text-brand-gold hover:bg-brand-gold/10"
-                  }`}
-                >
-                  {ageGroup}
-                  {hasZeroUnscored ? (
-                    <span className="ml-2 text-[10px] uppercase tracking-wide">
-                      complete
-                    </span>
-                  ) : (
-                    <span className="ml-2 text-[10px] uppercase tracking-wide">
-                      {ageGroupUnscoredCounts[ageGroup]} open
-                    </span>
-                  )}
-                </button>
-              );
-            })(),
-          )}
-        </div>
-
-        <div className="max-h-152 overflow-auto rounded-lg border border-zinc-800">
-          {filteredGames.length === 0 ? (
-            <p className="text-zinc-500 text-sm p-4">
-              No games found for this age group.
-            </p>
-          ) : (
-            <>
-              <div className="px-3 py-2 border-b border-zinc-800 bg-zinc-900/60">
-                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-300">
-                  Unscored Games ({unscoredGames.length})
-                </p>
-              </div>
-              {unscoredGames.length === 0 ? (
-                <p className="text-zinc-500 text-sm p-4 border-b border-zinc-800">
-                  No unscored games in this age group.
-                </p>
-              ) : (
-                unscoredGames.map((game) => {
-                  const isCancelled = game.status === "C";
-                  const isLocked = Boolean(lockedScores[game.gameExternalId]);
-                  const canEditScore = game.status === "A" && !isLocked;
-                  const row = scores[game.gameExternalId] || {
-                    homeScore: "",
-                    awayScore: "",
-                  };
-
-                  return (
-                    <div
-                      key={game.gameExternalId}
-                      className="grid gap-3 px-3 py-3 border-b border-zinc-800 md:grid-cols-[1.3fr_210px_100px]"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {game.homeTeam} vs {game.awayTeam}
-                        </p>
-                        {scope === "all" ? (
-                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                            {getOrgDisplayName(game.organizationId)}
-                          </p>
-                        ) : null}
-                        <p className="text-xs text-zinc-500">
-                          {formatGameDate(game.gameDate)}
-                        </p>
-                        <p className="text-xs text-zinc-500">
-                          {[game.venue, game.subvenue]
-                            .filter(Boolean)
-                            .join(" · ") || "—"}
-                          {isCancelled ? (
-                            <span className="ml-2 text-red-400 font-semibold uppercase tracking-wide">
-                              Rained-Out
-                            </span>
-                          ) : null}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={row.homeScore}
-                          disabled={!canEditScore}
-                          onChange={(event) =>
-                            updateScore(
-                              game.gameExternalId,
-                              "homeScore",
-                              event.target.value,
-                            )
-                          }
-                          placeholder="Home"
-                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm disabled:opacity-50"
-                        />
-                        <span className="text-zinc-500">-</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={row.awayScore}
-                          disabled={!canEditScore}
-                          onChange={(event) =>
-                            updateScore(
-                              game.gameExternalId,
-                              "awayScore",
-                              event.target.value,
-                            )
-                          }
-                          placeholder="Away"
-                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm disabled:opacity-50"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={
-                          savingGameId === game.gameExternalId ||
-                          game.status !== "A"
-                        }
-                        onClick={() => {
-                          if (game.status !== "A") return;
-
-                          if (isLocked) {
-                            setError("");
-                            setNotice("");
-                            setLockedScores((prev) => ({
-                              ...prev,
-                              [game.gameExternalId]: false,
-                            }));
-                            return;
-                          }
-
-                          void saveScore(game);
-                        }}
-                        className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-3 py-2 disabled:opacity-60"
-                      >
-                        {game.status !== "A"
-                          ? "Rained-Out"
-                          : isLocked
-                            ? "Edit"
-                            : savingGameId === game.gameExternalId
-                              ? "Saving..."
-                              : "Save"}
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-
-              <div className="px-3 py-2 border-y border-zinc-800 bg-zinc-900/60">
-                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-300">
-                  Scored Games ({scoredGames.length})
-                </p>
-              </div>
-              {scoredGames.length === 0 ? (
-                <p className="text-zinc-500 text-sm p-4">
-                  No scored games in this age group yet.
-                </p>
-              ) : (
-                scoredGames.map((game) => {
-                  const isCancelled = game.status === "C";
-                  const isLocked = Boolean(lockedScores[game.gameExternalId]);
-                  const canEditScore = game.status === "A" && !isLocked;
-                  const row = scores[game.gameExternalId] || {
-                    homeScore: "",
-                    awayScore: "",
-                  };
-
-                  return (
-                    <div
-                      key={game.gameExternalId}
-                      className="grid gap-3 px-3 py-3 border-b border-zinc-800 last:border-b-0 md:grid-cols-[1.3fr_210px_100px]"
-                    >
-                      <div className="min-w-0">
-                        <p className="text-sm font-medium truncate">
-                          {game.homeTeam} vs {game.awayTeam}
-                        </p>
-                        {scope === "all" ? (
-                          <p className="text-[11px] uppercase tracking-wide text-zinc-500">
-                            {getOrgDisplayName(game.organizationId)}
-                          </p>
-                        ) : null}
-                        <p className="text-xs text-zinc-500">
-                          {formatGameDate(game.gameDate)}
-                        </p>
-                        <p className="text-xs text-zinc-500">
-                          {[game.venue, game.subvenue]
-                            .filter(Boolean)
-                            .join(" · ") || "—"}
-                          {isCancelled ? (
-                            <span className="ml-2 text-red-400 font-semibold uppercase tracking-wide">
-                              Rained-Out
-                            </span>
-                          ) : null}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={row.homeScore}
-                          disabled={!canEditScore}
-                          onChange={(event) =>
-                            updateScore(
-                              game.gameExternalId,
-                              "homeScore",
-                              event.target.value,
-                            )
-                          }
-                          placeholder="Home"
-                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm disabled:opacity-50"
-                        />
-                        <span className="text-zinc-500">-</span>
-                        <input
-                          type="text"
-                          inputMode="numeric"
-                          value={row.awayScore}
-                          disabled={!canEditScore}
-                          onChange={(event) =>
-                            updateScore(
-                              game.gameExternalId,
-                              "awayScore",
-                              event.target.value,
-                            )
-                          }
-                          placeholder="Away"
-                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm disabled:opacity-50"
-                        />
-                      </div>
-
-                      <button
-                        type="button"
-                        disabled={
-                          savingGameId === game.gameExternalId ||
-                          game.status !== "A"
-                        }
-                        onClick={() => {
-                          if (game.status !== "A") return;
-
-                          if (isLocked) {
-                            setError("");
-                            setNotice("");
-                            setLockedScores((prev) => ({
-                              ...prev,
-                              [game.gameExternalId]: false,
-                            }));
-                            return;
-                          }
-
-                          void saveScore(game);
-                        }}
-                        className="text-xs rounded-lg border border-brand-gold text-brand-gold hover:bg-brand-gold/10 px-3 py-2 disabled:opacity-60"
-                      >
-                        {game.status !== "A"
-                          ? "Rained-Out"
-                          : isLocked
-                            ? "Edit"
-                            : savingGameId === game.gameExternalId
-                              ? "Saving..."
-                              : "Save"}
-                      </button>
-                    </div>
-                  );
-                })
-              )}
-            </>
-          )}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function ScoresImportMappingPanel(props: {
-  summary: ScoresImportPreview["summary"];
-  parks: string[];
-  venues: string[];
-  fields: ScoresFieldOption[];
-  parkMappings: Record<string, string>;
-  setParkMappings: Dispatch<SetStateAction<Record<string, string>>>;
-  fieldMappings: Record<string, string>;
-  setFieldMappings: Dispatch<SetStateAction<Record<string, string>>>;
-  ageGroupMappings: Record<string, string>;
-  setAgeGroupMappings: Dispatch<SetStateAction<Record<string, string>>>;
-  ageGroups: string[];
-  importAgeGroups: string[];
-  missingAgeGroups: string[];
-  rowMappings: Record<string, string>;
-  setRowMappings: Dispatch<SetStateAction<Record<string, string>>>;
-  subVenueOptionsByVenue: Map<string, string[]>;
-  missingParks: string[];
-  missingFields: ScoresFieldOption[];
-  assignrCancelledGames: AssignrCancelledGameSummary[];
-  excludedCancelledDates: string[];
-  cancelledRows: ScoresImportPreviewSample[];
-  reviewRows: ScoresImportReviewRow[];
-  unresolvedReviewCount: number;
-  unresolvedReviewRows: ScoresImportReviewRow[];
-  requiresCancelledAcknowledgement: boolean;
-  acknowledgedCancelledGames: boolean;
-  setAcknowledgedCancelledGames: Dispatch<SetStateAction<boolean>>;
-  onRefreshPreview: () => void;
-}) {
-  const [showOnlyUnresolved, setShowOnlyUnresolved] = useState(
-    () => props.unresolvedReviewCount > 0,
-  );
-
-  useEffect(() => {
-    if (props.unresolvedReviewCount > 0) {
-      setShowOnlyUnresolved(true);
-      return;
-    }
-    setShowOnlyUnresolved(false);
-  }, [props.unresolvedReviewCount]);
-
-  const visibleReviewRows = showOnlyUnresolved
-    ? props.unresolvedReviewRows
-    : props.reviewRows;
-
-  return (
-    <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5 text-sm">
-        <div>
-          <p className="text-xs uppercase tracking-wide text-zinc-500">Processed</p>
-          <p className="font-semibold text-zinc-100">{props.summary.processed}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-zinc-500">Matched</p>
-          <p className="font-semibold text-emerald-300">{props.summary.matched}</p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-zinc-500">Unmatched</p>
-          <p className="font-semibold text-amber-300">{props.summary.unmatched}</p>
-          {props.unresolvedReviewCount > 0 ? (
-            <p className="mt-1 text-xs text-amber-300">
-              {props.unresolvedReviewCount} still need a manual match
-            </p>
-          ) : null}
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-zinc-500">
-            Missing scores
-          </p>
-          <p className="font-semibold text-zinc-100">
-            {props.summary.skippedMissingScore}
-          </p>
-        </div>
-        <div>
-          <p className="text-xs uppercase tracking-wide text-zinc-500">
-            Assignr cancelled skipped
-          </p>
-          <p className="font-semibold text-zinc-100">
-            {props.summary.skippedRainedOut}
-          </p>
-        </div>
-      </div>
-
-      {props.unresolvedReviewCount > 0 ? (
-        <div className="rounded-xl border border-amber-700/60 bg-amber-950/20 p-4 space-y-3">
+      {(notice || error) && <div className={`rounded-xl border px-4 py-3 text-sm ${error ? "border-red-500/40 bg-red-950/40 text-red-100" : "border-emerald-500/40 bg-emerald-950/40 text-emerald-100"}`}>{error || notice}</div>}
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div>
-            <h3 className="text-sm font-semibold text-amber-200">
-              {props.unresolvedReviewCount} upload row
-              {props.unresolvedReviewCount === 1 ? "" : "s"} still need a match
-            </h3>
-            <p className="mt-1 text-xs text-amber-100/80">
-              Pick an Assignr game for each row below, then refresh if you changed
-              age group or venue mappings.
-            </p>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-gold">GameChanger Service</p>
+            <h2 className="mt-1 text-2xl font-bold">Connect a scoreboard once, use it from Scores</h2>
+            <p className="mt-1 max-w-3xl text-sm text-zinc-400">Choose a league or tournament source, paste the public GameChanger widget ID or embed snippet, then preview and import completed finals.</p>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {props.unresolvedReviewRows.map((row) => (
-              <button
-                key={`unresolved-${row.rowNumber}`}
-                type="button"
-                onClick={() => {
-                  document
-                    .getElementById(`scores-import-row-${row.rowNumber}`)
-                    ?.scrollIntoView({ behavior: "smooth", block: "center" });
-                }}
-                className="rounded-full border border-amber-600/60 px-3 py-1 text-xs text-amber-100 hover:bg-amber-900/30"
-              >
-                Row {row.rowNumber}: {row.homeTeam || "Home"} vs{" "}
-                {row.awayTeam || "Away"}
-              </button>
-            ))}
+          <div className="flex gap-2">
+            <button type="button" onClick={previewGameChanger} disabled={!target || busyKey === "gc-preview"} className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold hover:border-brand-gold disabled:opacity-50">Preview</button>
+            <button type="button" onClick={importGameChanger} disabled={!target || busyKey === "gc-import"} className="rounded-lg bg-brand-purple px-4 py-2 text-sm font-semibold text-white hover:bg-brand-purple-dark disabled:opacity-50">Import Finals</button>
           </div>
         </div>
-      ) : null}
-
-      {props.importAgeGroups.length > 0 ? (
-        <div className="rounded-xl border border-zinc-800 overflow-hidden">
-          <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
-              Age group mapping
-            </h3>
-            {props.missingAgeGroups.length > 0 ? (
-              <p className="mt-1 text-xs text-amber-300">
-                {props.missingAgeGroups.length} imported age group
-                {props.missingAgeGroups.length === 1 ? "" : "s"} still need an
-                Assignr age group.
-              </p>
-            ) : null}
+        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.6fr_1.4fr_1fr_auto]">
+          <label className="text-sm text-zinc-300">Target Site
+            <select value={activeTargetSite} onChange={(e) => { setSelectedTargetSite(e.target.value); setSelectedTargetSeason(""); setSelectedTargetKey(""); setPreviewRows([]); }} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white">
+              {targetSiteOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+            </select>
+          </label>
+          <label className="text-sm text-zinc-300">Season
+            <select value={activeTargetSeason} onChange={(e) => { setSelectedTargetSeason(e.target.value); setSelectedTargetKey(""); setPreviewRows([]); }} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white">
+              {targetSeasonOptions.map((year) => <option key={year} value={year}>{year}</option>)}
+            </select>
+          </label>
+          <label className="text-sm text-zinc-300">Age Division
+            <select value={target ? sourceKey(target) : ""} onChange={(e) => { setSelectedTargetKey(e.target.value); setPreviewRows([]); }} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white">
+              {filteredSourceTargets.map((item) => <option key={sourceKey(item)} value={sourceKey(item)}>{sourceOptionLabel(item)}</option>)}
+            </select>
+          </label>
+          <label className="text-sm text-zinc-300">Widget ID
+            <input value={widgetIdDraft || targetConnection?.widgetId || ""} onChange={(e) => setWidgetIdDraft(e.target.value)} placeholder="GameChanger widget UUID" className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white" />
+          </label>
+          <button type="button" onClick={saveGameChanger} disabled={!target || busyKey === "gc-save"} className="self-end rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">Save Connection</button>
+        </div>
+        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+          <textarea value={embedSnippet} onChange={(e) => setEmbedSnippet(e.target.value)} rows={2} placeholder="Optional: paste the GameChanger embed snippet to extract the widget ID" className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white" />
+          <button type="button" onClick={applyEmbedSnippet} className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold hover:border-brand-gold">Parse Snippet</button>
+        </div>
+        {previewRows.length > 0 && <div className="mt-4 max-h-64 overflow-auto rounded-xl border border-zinc-800"><table className="min-w-full text-sm"><thead className="bg-zinc-950 text-xs uppercase tracking-wide text-zinc-400"><tr><th className="px-3 py-2 text-left">Game</th><th className="px-3 py-2 text-left">Match</th><th className="px-3 py-2 text-left">GC Status</th><th className="px-3 py-2 text-left">Score</th></tr></thead><tbody>{previewRows.slice(0, 40).map((row) => <tr key={row.matchId} className="border-t border-zinc-800"><td className="px-3 py-2">{row.gameLabel}</td><td className="px-3 py-2">{row.homeTeam} vs {row.awayTeam}</td><td className="px-3 py-2">{row.outcome}</td><td className="px-3 py-2">{row.homeScore ?? "-"} - {row.awayScore ?? "-"}</td></tr>)}</tbody></table></div>}
+      </section>
+      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl">
+        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+          <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-gold">Score Entry</p><h2 className="mt-1 text-2xl font-bold">League and tournament games</h2><p className="mt-1 text-sm text-zinc-400">Filter the loaded games, enter finals, and save without leaving the Scores module.</p></div>
+          <div className="grid gap-2 sm:grid-cols-3">
+            <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as "ALL" | UnifiedScoreSourceType)} className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"><option value="ALL">All sources</option><option value="LEAGUE">League</option><option value="TOURNAMENT">Tournament</option></select>
+            <select value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"><option value="ALL">All orgs</option>{orgs.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
+            <select value={ageFilter} onChange={(e) => setAgeFilter(e.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"><option value="ALL">All divisions</option>{ageGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select>
           </div>
-          <table className="w-full text-sm">
-            <thead className="bg-zinc-950">
-              <tr className="text-left text-zinc-400">
-                <th className="px-4 py-2">Imported age group</th>
-                <th className="px-4 py-2">Assignr age group</th>
-              </tr>
-            </thead>
+        </div>
+        <div className="mt-5 overflow-hidden rounded-xl border border-zinc-800">
+          <table className="min-w-full text-sm">
+            <thead className="bg-zinc-950 text-xs uppercase tracking-wide text-zinc-400"><tr><th className="px-3 py-2 text-left">Source</th><th className="px-3 py-2 text-left">Game</th><th className="px-3 py-2 text-left">Teams</th><th className="px-3 py-2 text-left">Current</th><th className="px-3 py-2 text-left">New Score</th><th className="px-3 py-2 text-right">Action</th></tr></thead>
             <tbody>
-              {props.importAgeGroups.map((group) => (
-                <tr key={group} className="border-t border-zinc-800">
-                  <td className="px-4 py-2">{group}</td>
-                  <td className="px-4 py-2">
-                    <select
-                      value={props.ageGroupMappings[group] || ""}
-                      onChange={(event) =>
-                        props.setAgeGroupMappings((current) => ({
-                          ...current,
-                          [group]: event.target.value,
-                        }))
-                      }
-                      className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-                    >
-                      <option value="">Select age group…</option>
-                      {props.ageGroups.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </td>
-                </tr>
-              ))}
+              {visibleGames.length === 0 ? <tr><td colSpan={6} className="px-3 py-8 text-center text-zinc-500">No games match the current filters.</td></tr> : visibleGames.slice(0, 250).map((game) => {
+                const draft = drafts[game.id] ?? { homeScore: "", awayScore: "" };
+                return <tr key={game.id} className="border-t border-zinc-800 align-top"><td className="px-3 py-3"><span className={`inline-flex rounded-full border px-2 py-1 text-xs font-semibold ${badgeClass(game.sourceType)}`}>{game.sourceType === "LEAGUE" ? "League" : "Tournament"}</span><div className="mt-1 text-xs text-zinc-500">{game.organizationLabel}</div></td><td className="px-3 py-3"><div className="font-medium text-white">{game.gameNumber ? `Game ${game.gameNumber}` : game.ageGroup}</div><div className="text-xs text-zinc-500">{game.dateLabel} {game.timeLabel}</div><div className="text-xs text-zinc-500">{game.sourceLabel}</div></td><td className="px-3 py-3"><div>{game.homeTeam}</div><div className="text-zinc-400">vs {game.awayTeam}</div></td><td className="px-3 py-3 font-semibold">{formatScore(game)}{game.hasGameChanger ? <div className="mt-1 text-xs text-emerald-300">GameChanger connected</div> : null}</td><td className="px-3 py-3"><div className="flex items-center gap-2"><input aria-label={`${game.homeTeam} score`} value={draft.homeScore} onChange={(e) => updateDraft(game.id, "homeScore", e.target.value)} className="w-16 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-center text-white" /><span className="text-zinc-500">-</span><input aria-label={`${game.awayTeam} score`} value={draft.awayScore} onChange={(e) => updateDraft(game.id, "awayScore", e.target.value)} className="w-16 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-center text-white" /></div></td><td className="px-3 py-3 text-right"><button type="button" onClick={() => saveScore(game)} disabled={!game.canManualScore || busyKey === game.id} className="rounded-lg bg-brand-purple px-3 py-2 text-xs font-semibold text-white hover:bg-brand-purple-dark disabled:opacity-50">Save</button></td></tr>;
+              })}
             </tbody>
           </table>
         </div>
-      ) : null}
-
-      {props.parks.length > 0 || props.fields.length > 0 ? (
-        <div className="grid gap-6 lg:grid-cols-2">
-          {props.parks.length > 0 ? (
-            <div className="rounded-xl border border-zinc-800 overflow-hidden">
-              <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
-                  Park to venue mapping
-                </h3>
-                {props.missingParks.length > 0 ? (
-                  <p className="mt-1 text-xs text-amber-300">
-                    {props.missingParks.length} park label
-                    {props.missingParks.length === 1 ? "" : "s"} still need a
-                    venue.
-                  </p>
-                ) : null}
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-zinc-950">
-                  <tr className="text-left text-zinc-400">
-                    <th className="px-4 py-2">Imported park</th>
-                    <th className="px-4 py-2">Assignr venue</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {props.parks.map((park) => (
-                    <tr key={park} className="border-t border-zinc-800">
-                      <td className="px-4 py-2">{park}</td>
-                      <td className="px-4 py-2">
-                        <select
-                          value={props.parkMappings[park] || ""}
-                          onChange={(event) =>
-                            props.setParkMappings((current) => ({
-                              ...current,
-                              [park]: event.target.value,
-                            }))
-                          }
-                          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-                        >
-                          <option value="">Select venue…</option>
-                          {props.venues.map((option) => (
-                            <option key={option} value={option}>
-                              {option}
-                            </option>
-                          ))}
-                        </select>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-
-          {props.fields.length > 0 ? (
-            <div className="rounded-xl border border-zinc-800 overflow-hidden">
-              <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
-                  Field to sub-venue mapping
-                </h3>
-                {props.missingFields.length > 0 ? (
-                  <p className="mt-1 text-xs text-amber-300">
-                    {props.missingFields.length} field label
-                    {props.missingFields.length === 1 ? "" : "s"} still need a
-                    sub-venue.
-                  </p>
-                ) : null}
-              </div>
-              <table className="w-full text-sm">
-                <thead className="bg-zinc-950">
-                  <tr className="text-left text-zinc-400">
-                    <th className="px-4 py-2">Imported field</th>
-                    <th className="px-4 py-2">Assignr sub-venue</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {props.fields.map((field) => {
-                    const mappedVenue = props.parkMappings[field.sourcePark] || "";
-                    const scopedOptions = mappedVenue
-                      ? props.subVenueOptionsByVenue.get(mappedVenue) ?? []
-                      : Array.from(props.subVenueOptionsByVenue.values()).flat();
-
-                    return (
-                      <tr key={field.key} className="border-t border-zinc-800">
-                        <td className="px-4 py-2">
-                          <div>{field.sourceField}</div>
-                          <div className="text-xs text-zinc-500">
-                            {field.sourcePark}
-                          </div>
-                        </td>
-                        <td className="px-4 py-2">
-                          <select
-                            value={props.fieldMappings[field.key] || ""}
-                            onChange={(event) =>
-                              props.setFieldMappings((current) => ({
-                                ...current,
-                                [field.key]: event.target.value,
-                              }))
-                            }
-                            className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-                          >
-                            <option value="">Select sub-venue…</option>
-                            {scopedOptions.map((option) => (
-                              <option key={option} value={option}>
-                                {option}
-                              </option>
-                            ))}
-                          </select>
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          ) : null}
-        </div>
-      ) : (
-        <p className="text-sm text-zinc-500">
-          No park or field labels were found in the upload. Matching will use
-          match IDs, age groups, and team/date fallbacks.
-        </p>
-      )}
-
-      {props.assignrCancelledGames.length > 0 ? (
-        <div className="rounded-xl border border-zinc-800 overflow-hidden">
-          <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
-              Assignr cancelled games
-            </h3>
-            <p className="mt-1 text-xs text-zinc-400">
-              These Assignr games are cancelled and will be removed from import.
-              {props.excludedCancelledDates.length > 0
-                ? ` Cancelled dates in this upload: ${props.excludedCancelledDates.join(", ")}.`
-                : ""}
-            </p>
-          </div>
-          <div className="max-h-64 overflow-auto">
-            <table className="w-full text-sm">
-              <thead className="bg-zinc-950">
-                <tr className="text-left text-zinc-400">
-                  <th className="px-4 py-2">Date</th>
-                  <th className="px-4 py-2">Matchup</th>
-                  <th className="px-4 py-2">Venue</th>
-                  <th className="px-4 py-2">Match ID</th>
-                </tr>
-              </thead>
-              <tbody>
-                {props.assignrCancelledGames.map((game) => (
-                  <tr key={game.gameExternalId} className="border-t border-zinc-800">
-                    <td className="px-4 py-2 whitespace-nowrap">
-                      {game.dateLabel}
-                      {game.startTime ? ` · ${game.startTime}` : ""}
-                    </td>
-                    <td className="px-4 py-2">
-                      {game.homeTeam} vs {game.awayTeam}
-                    </td>
-                    <td className="px-4 py-2">
-                      {[game.venue, game.subvenue].filter(Boolean).join(" · ") ||
-                        "—"}
-                    </td>
-                    <td className="px-4 py-2">{game.gameExternalId}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      ) : null}
-
-      {props.cancelledRows.length > 0 ? (
-        <div className="rounded-xl border border-zinc-800 overflow-hidden">
-          <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
-              Upload rows removed for Assignr cancellations
-            </h3>
-            <p className="mt-1 text-xs text-zinc-400">
-              {props.cancelledRows.length} row
-              {props.cancelledRows.length === 1 ? "" : "s"} will not be imported.
-            </p>
-          </div>
-          <ScoresImportIssueTable rows={props.cancelledRows} />
-        </div>
-      ) : null}
-
-      {props.reviewRows.length > 0 ? (
-        <div className="rounded-xl border border-zinc-800 overflow-hidden">
-          <div className="border-b border-zinc-800 bg-zinc-900/80 px-4 py-3">
-            <h3 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
-              Review game matches
-            </h3>
-            <p className="mt-1 text-xs text-zinc-400">
-              Auto-matching uses date, age group, and teams. Start time is only
-              used to rank suggestions. Override any row before confirming.
-            </p>
-            <div className="mt-3 flex flex-wrap items-center gap-2">
-              <button
-                type="button"
-                onClick={props.onRefreshPreview}
-                className="text-xs rounded-lg border border-zinc-600 text-zinc-200 hover:bg-zinc-800 px-3 py-2"
-              >
-                Refresh match suggestions
-              </button>
-              {props.unresolvedReviewCount > 0 ? (
-                <button
-                  type="button"
-                  onClick={() => setShowOnlyUnresolved((current) => !current)}
-                  className={`text-xs rounded-lg border px-3 py-2 ${
-                    showOnlyUnresolved
-                      ? "border-amber-600 text-amber-200 bg-amber-950/30"
-                      : "border-zinc-600 text-zinc-200 hover:bg-zinc-800"
-                  }`}
-                >
-                  {showOnlyUnresolved
-                    ? `Showing ${props.unresolvedReviewCount} unmatched row${props.unresolvedReviewCount === 1 ? "" : "s"}`
-                    : `Show unmatched only (${props.unresolvedReviewCount})`}
-                </button>
-              ) : null}
-            </div>
-          </div>
-          {visibleReviewRows.length > 0 ? (
-            <ScoresImportReviewTable
-              rowMappings={props.rowMappings}
-              rows={visibleReviewRows}
-              setRowMappings={props.setRowMappings}
-            />
-          ) : (
-            <p className="px-4 py-6 text-sm text-zinc-400">
-              No unmatched rows in this view. Turn off the unmatched filter to
-              review auto-matched rows.
-            </p>
-          )}
-        </div>
-      ) : null}
-
-      {props.requiresCancelledAcknowledgement ? (
-        <label className="flex items-start gap-3 rounded-lg border border-zinc-800 bg-zinc-900/60 px-4 py-3 text-sm text-zinc-300">
-          <input
-            type="checkbox"
-            checked={props.acknowledgedCancelledGames}
-            onChange={(event) =>
-              props.setAcknowledgedCancelledGames(event.target.checked)
-            }
-            className="mt-1"
-          />
-          <span>
-            I reviewed the Assignr cancelled games and understand those games and
-            cancelled dates will be removed from this import.
-          </span>
-        </label>
-      ) : null}
+        {visibleGames.length > 250 ? <p className="mt-3 text-xs text-zinc-500">Showing first 250 games. Use filters to narrow the list.</p> : null}
+      </section>
     </div>
   );
 }
-
-function ScoresImportReviewTable(props: {
-  rows: ScoresImportReviewRow[];
-  rowMappings: Record<string, string>;
-  setRowMappings: Dispatch<SetStateAction<Record<string, string>>>;
-}) {
-  return (
-    <div className="max-h-80 overflow-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-zinc-950">
-          <tr className="text-left text-zinc-400">
-            <th className="px-4 py-2">Row</th>
-            <th className="px-4 py-2">Status</th>
-            <th className="px-4 py-2">Age group</th>
-            <th className="px-4 py-2">Matchup</th>
-            <th className="px-4 py-2">Date</th>
-            <th className="px-4 py-2">Scores</th>
-            <th className="px-4 py-2">Assignr game</th>
-            <th className="px-4 py-2">Reason</th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.rows.map((row) => {
-            const rowKey = String(row.rowNumber);
-            const selectedGameId = getReviewRowSelectedGameId(row, props.rowMappings);
-            const resolved = isReviewRowResolved(row, props.rowMappings);
-
-            return (
-              <tr
-                id={`scores-import-row-${row.rowNumber}`}
-                key={`${row.rowNumber}-${row.matchId}-${row.date}`}
-                className={`border-t border-zinc-800 align-top ${
-                  resolved ? "" : "bg-amber-950/20"
-                }`}
-              >
-                <td className="px-4 py-2">{row.rowNumber}</td>
-                <td className="px-4 py-2">
-                  {resolved ? (
-                    <span className="text-emerald-300">Ready</span>
-                  ) : (
-                    <span className="text-amber-300">Needs match</span>
-                  )}
-                </td>
-                <td className="px-4 py-2">{row.ageGroup || "—"}</td>
-                <td className="px-4 py-2">
-                  {row.homeTeam || "—"} vs {row.awayTeam || "—"}
-                </td>
-                <td className="px-4 py-2 whitespace-nowrap">
-                  {row.date || "—"}
-                  {row.startTime ? ` · ${row.startTime}` : ""}
-                </td>
-                <td className="px-4 py-2 whitespace-nowrap">
-                  {row.homeScore ?? "—"} - {row.awayScore ?? "—"}
-                </td>
-                <td className="px-4 py-2 min-w-72">
-                  <select
-                    value={selectedGameId}
-                    onChange={(event) =>
-                      props.setRowMappings((current) => ({
-                        ...current,
-                        [rowKey]: event.target.value,
-                      }))
-                    }
-                    className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-                  >
-                    <option value="">Select Assignr game…</option>
-                    {row.candidateGames.map((candidate) => (
-                      <option
-                        key={candidate.gameExternalId}
-                        value={candidate.gameExternalId}
-                      >
-                        {candidate.ageGroup} · {candidate.homeTeam} vs{" "}
-                        {candidate.awayTeam} · {candidate.dateLabel}
-                        {candidate.startTime ? ` ${candidate.startTime}` : ""}
-                      </option>
-                    ))}
-                  </select>
-                  {row.candidateGames.length === 0 ? (
-                    <p className="mt-1 text-xs text-zinc-500">
-                      No likely Assignr games found. Adjust age group mapping and
-                      refresh suggestions.
-                    </p>
-                  ) : null}
-                </td>
-                <td className="px-4 py-2 text-zinc-400">{row.reason || "—"}</td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
-  );
-}
-
-function ScoresImportIssueTable(props: { rows: ScoresImportPreviewSample[] }) {
-  return (
-    <div className="max-h-72 overflow-auto">
-      <table className="w-full text-sm">
-        <thead className="bg-zinc-950">
-          <tr className="text-left text-zinc-400">
-            <th className="px-4 py-2">Row</th>
-            <th className="px-4 py-2">Matchup</th>
-            <th className="px-4 py-2">Date</th>
-            <th className="px-4 py-2">Scores</th>
-            <th className="px-4 py-2">Venue</th>
-            <th className="px-4 py-2">Match ID</th>
-            <th className="px-4 py-2">Reason</th>
-          </tr>
-        </thead>
-        <tbody>
-          {props.rows.map((row) => (
-            <tr
-              key={`${row.rowNumber}-${row.matchId}-${row.date}`}
-              className="border-t border-zinc-800"
-            >
-              <td className="px-4 py-2">{row.rowNumber}</td>
-              <td className="px-4 py-2">
-                {row.homeTeam || "—"} vs {row.awayTeam || "—"}
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap">
-                {row.date || "—"}
-                {row.startTime ? ` · ${row.startTime}` : ""}
-              </td>
-              <td className="px-4 py-2 whitespace-nowrap">
-                {row.homeScore ?? "—"} - {row.awayScore ?? "—"}
-              </td>
-              <td className="px-4 py-2">
-                {[row.location, row.field].filter(Boolean).join(" · ") || "—"}
-              </td>
-              <td className="px-4 py-2">{row.matchId || "—"}</td>
-              <td className="px-4 py-2 text-zinc-400">{row.reason || "—"}</td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
-  );
+function SummaryCard({ label, value, detail }: { label: string; value: string; detail: string }) {
+  return <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4"><p className="text-xs font-semibold uppercase tracking-[0.14em] text-zinc-500">{label}</p><p className="mt-2 text-2xl font-bold text-white">{value}</p><p className="mt-1 text-sm text-zinc-400">{detail}</p></div>;
 }

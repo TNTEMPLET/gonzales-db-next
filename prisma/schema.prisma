@@ -266,6 +266,7 @@ model AdminUser {
   sessions     AdminSession[]
   auditLogs    AdminAuditLog[] @relation("AdminActorLogs")
   enteredScores GameScore[]
+  gameChangerScoreboardConnections GameChangerScoreboardConnection[] @relation("GameChangerScoreboardConnectionCreatedBy")
   coachImportBatches CoachImportBatch[]
   allStarBallotCycles AllStarBallotCycle[] @relation("AllStarCycleCreatedBy")
   allStarHeadCoachAssignments AllStarHeadCoachAssignment[] @relation("AllStarHeadCoachAdmin")
@@ -822,6 +823,11 @@ model SmsConsent {
   @@index([registeredUserId, consentedAt, revokedAt])
 }
 
+enum GameChangerScoreboardSourceType {
+  LEAGUE
+  TOURNAMENT
+}
+
 model GameScore {
   id             String    @id @default(cuid())
   organizationId String    @default("gonzales")
@@ -841,6 +847,30 @@ model GameScore {
   @@unique([organizationId, gameExternalId])
   @@index([organizationId, ageGroup])
   @@index([organizationId, gameDate])
+}
+
+model GameChangerScoreboardConnection {
+  id                         String                          @id @default(cuid())
+  organizationId             String
+  seasonYear                 Int
+  sourceType                 GameChangerScoreboardSourceType
+  sourceKey                  String
+  sourceLabel                String?
+  widgetId                   String
+  maxVerticalGamesVisible    Int?
+  autoImportFinalScores      Boolean                         @default(true)
+  importedFinalEventIds      Json                            @default("[]")
+  matchEventPins             Json                            @default("{}")
+  createdByAdminId           String?
+  createdAt                  DateTime                        @default(now())
+  updatedAt                  DateTime                        @updatedAt
+
+  createdByAdmin AdminUser? @relation("GameChangerScoreboardConnectionCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, seasonYear, sourceType, sourceKey])
+  @@index([organizationId, seasonYear, sourceType])
+  @@index([sourceType, sourceKey])
+  @@index([createdByAdminId])
 }
 
 model CoachImportBatch {
