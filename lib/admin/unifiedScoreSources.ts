@@ -56,15 +56,43 @@ function connectionToPayload(row: RawConnection): UnifiedGameChangerConnection |
     ...(row.sourceType === "TOURNAMENT" ? { projectId: row.sourceKey } : {}), widgetId: row.widgetId, maxVerticalGamesVisible: row.maxVerticalGamesVisible,
     autoImportFinalScores: row.autoImportFinalScores };
 }
+function isMissingOptionalScoresTableError(error: unknown) {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
+  const message = error instanceof Error ? error.message : String(error);
+  return code === "P2021" || code === "P2022" || /does not exist|relation .* does not exist|table .* does not exist/i.test(message);
+}
+
+async function loadActiveLeagueSeasons(candidateLeagueOrgs: ContentOrgId[], seasonYear: number) {
+  if (!candidateLeagueOrgs.length) return [];
+  try {
+    return await prisma.scheduleSeason.findMany({
+      where: { organizationId: { in: candidateLeagueOrgs }, seasonYear, status: "ACTIVE" },
+      select: { organizationId: true },
+    });
+  } catch (error: unknown) {
+    if (isMissingOptionalScoresTableError(error)) return [];
+    throw error;
+  }
+}
+
+async function loadGameChangerConnections(allOrgs: string[], seasonYear: number): Promise<RawConnection[]> {
+  if (!allOrgs.length) return [];
+  try {
+    return await prisma.gameChangerScoreboardConnection.findMany({
+      where: { seasonYear, organizationId: { in: allOrgs } },
+      select: { id: true, organizationId: true, seasonYear: true, sourceType: true, sourceKey: true, sourceLabel: true, widgetId: true, maxVerticalGamesVisible: true, autoImportFinalScores: true },
+      orderBy: [{ sourceType: "asc" }, { sourceLabel: "asc" }],
+    }) as RawConnection[];
+  } catch (error: unknown) {
+    if (isMissingOptionalScoresTableError(error)) return [];
+    throw error;
+  }
+}
+
 export async function listUnifiedScoreGames(params: { scope: AdminAssignrScope; seasonYear: number; startDate: string; endDate: string }): Promise<UnifiedScoresPayload> {
   const candidateLeagueOrgs: ContentOrgId[] = params.scope === "all" ? [...CONTENT_ORGS] : isContentOrgId(params.scope) ? [params.scope] : [];
   const tournamentOrgs: BracketOrgId[] = params.scope === "all" ? [...BRACKET_ORGS] : isBracketOrgId(params.scope) ? [params.scope] : [];
-  const activeLeagueSeasons = candidateLeagueOrgs.length
-    ? await prisma.scheduleSeason.findMany({
-        where: { organizationId: { in: candidateLeagueOrgs }, seasonYear: params.seasonYear, status: "ACTIVE" },
-        select: { organizationId: true },
-      })
-    : [];
+  const activeLeagueSeasons = await loadActiveLeagueSeasons(candidateLeagueOrgs, params.seasonYear);
   const activeLeagueOrgSet = new Set(activeLeagueSeasons.map((season) => season.organizationId));
   const leagueOrgs = candidateLeagueOrgs.filter((org) => activeLeagueOrgSet.has(org));
   const allOrgs = Array.from(new Set([...leagueOrgs, ...tournamentOrgs]));
@@ -76,11 +104,7 @@ export async function listUnifiedScoreGames(params: { scope: AdminAssignrScope; 
       select: { id: true, organizationId: true, seasonYear: true, name: true, status: true, spec: true, priority: true, updatedAt: true },
       orderBy: [{ priority: "asc" }, { updatedAt: "desc" }],
     }) : Promise.resolve([]),
-    allOrgs.length ? prisma.gameChangerScoreboardConnection.findMany({
-      where: { seasonYear: params.seasonYear, organizationId: { in: allOrgs } },
-      select: { id: true, organizationId: true, seasonYear: true, sourceType: true, sourceKey: true, sourceLabel: true, widgetId: true, maxVerticalGamesVisible: true, autoImportFinalScores: true },
-      orderBy: [{ sourceType: "asc" }, { sourceLabel: "asc" }],
-    }) as Promise<RawConnection[]> : Promise.resolve([]),
+    loadGameChangerConnections(allOrgs, params.seasonYear),
   ]);
   const connections = rawConnections.map(connectionToPayload).filter((x): x is UnifiedGameChangerConnection => Boolean(x));
   const connectionsByKey = new Map(connections.map((c) => [connectionKey(c.sourceType, c.organizationId, c.seasonYear, c.sourceKey), c]));
