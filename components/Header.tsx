@@ -520,7 +520,7 @@ export default function Header({ brand }: HeaderProps) {
                 ) : null}
               </div>
             ) : null}
-            <CoachAuthButton />
+            {!isTournamentOnly ? <CoachAuthButton /> : null}
           </nav>
         )}
 
@@ -650,13 +650,15 @@ export default function Header({ brand }: HeaderProps) {
                 The Dugout
               </Link>
             )}
-            <div className="pt-2 border-t border-zinc-700 mt-2">
-              <CoachAuthButton
-                mobile
-                onNavigate={() => setIsMenuOpen(false)}
-                onAuthenticated={() => setIsMenuOpen(false)}
-              />
-            </div>
+            {!isTournamentOnly ? (
+              <div className="pt-2 border-t border-zinc-700 mt-2">
+                <CoachAuthButton
+                  mobile
+                  onNavigate={() => setIsMenuOpen(false)}
+                  onAuthenticated={() => setIsMenuOpen(false)}
+                />
+              </div>
+            ) : null}
           </div>
         </div>
       )}
