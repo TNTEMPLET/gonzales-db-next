@@ -78,6 +78,24 @@ async function loadGameChangerConnections(allOrgs: string[], seasonYear: number)
     throw error;
   }
 }
+async function loadReadyBracketProjects(tournamentOrgs: BracketOrgId[]) {
+  if (!tournamentOrgs.length) return [];
+  try {
+    return await prisma.bracketProject.findMany({
+      where: { organizationId: { in: tournamentOrgs }, status: "READY" },
+      select: { id: true, organizationId: true, seasonYear: true, name: true, status: true, spec: true, priority: true, updatedAt: true },
+      orderBy: [{ priority: "asc" }, { updatedAt: "desc" }],
+    });
+  } catch (error: unknown) {
+    console.error("[admin-scores] Failed to load ready brackets with priority order", error);
+    return await prisma.bracketProject.findMany({
+      where: { organizationId: { in: tournamentOrgs }, status: "READY" },
+      select: { id: true, organizationId: true, seasonYear: true, name: true, status: true, spec: true, updatedAt: true },
+      orderBy: [{ updatedAt: "desc" }],
+    });
+  }
+}
+
 
 export async function listUnifiedScoreGames(params: { scope: AdminAssignrScope; seasonYear: number; startDate: string; endDate: string }): Promise<UnifiedScoresPayload> {
   const tournamentOrgs: BracketOrgId[] = params.scope === "all" ? [...BRACKET_ORGS] : isBracketOrgId(params.scope) ? [params.scope] : [];
@@ -86,11 +104,7 @@ export async function listUnifiedScoreGames(params: { scope: AdminAssignrScope; 
   const [assignrGames, existingScores, bracketProjects, rawConnections] = await Promise.all([
     leagueOrgs.length ? fetchAssignrGamesForScope({ scope: params.scope, startDate: params.startDate, endDate: params.endDate }) : Promise.resolve([]),
     leagueOrgs.length ? prisma.gameScore.findMany({ where: { organizationId: { in: leagueOrgs } }, select: { organizationId: true, gameExternalId: true, homeScore: true, awayScore: true } }) : Promise.resolve([]),
-    tournamentOrgs.length ? prisma.bracketProject.findMany({
-      where: { organizationId: { in: tournamentOrgs }, status: "READY" },
-      select: { id: true, organizationId: true, seasonYear: true, name: true, status: true, spec: true, priority: true, updatedAt: true },
-      orderBy: [{ priority: "asc" }, { updatedAt: "desc" }],
-    }) : Promise.resolve([]),
+    loadReadyBracketProjects(tournamentOrgs),
     loadGameChangerConnections(allOrgs, params.seasonYear),
   ]);
   const connections = rawConnections.map(connectionToPayload).filter((x): x is UnifiedGameChangerConnection => Boolean(x));
@@ -110,6 +124,7 @@ export async function listUnifiedScoreGames(params: { scope: AdminAssignrScope; 
     });
   }
   for (const project of bracketProjects) {
+    try {
     if (!isBracketOrgId(project.organizationId)) continue;
     const parsed = safeParseBracketSpec(project.spec); if (!parsed.ok) continue;
     let refs; try { refs = collectLayoutMatchesForGc(buildBracketLayout(parsed.spec)); } catch { continue; }
@@ -134,6 +149,9 @@ export async function listUnifiedScoreGames(params: { scope: AdminAssignrScope; 
         awayScore: score?.awayScore ?? null, winnerSide: score?.winnerSide, scored: score?.homeScore != null && score?.awayScore != null, canManualScore: true,
         hasGameChanger: Boolean(widgetId), gameChangerWidgetId: widgetId,
       });
+    }
+    } catch (error: unknown) {
+      console.error("[admin-scores] Failed to normalize bracket project", project.id, error);
     }
   }
   return { games: games.sort(sortGames), connections };
