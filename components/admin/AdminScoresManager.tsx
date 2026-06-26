@@ -39,6 +39,7 @@ export default function AdminScoresManager({ games, connections, scope, seasonYe
   const [orgFilter, setOrgFilter] = useState("ALL");
   const [ageFilter, setAgeFilter] = useState("ALL");
   const [dateFilter, setDateFilter] = useState(() => todayDateKey());
+  const [gameChangerExpanded, setGameChangerExpanded] = useState(false);
   const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -132,43 +133,48 @@ export default function AdminScoresManager({ games, connections, scope, seasonYe
       </div>
       {(notice || error) && <div className={`rounded-xl border px-4 py-3 text-sm ${error ? "border-red-500/40 bg-red-950/40 text-red-100" : "border-emerald-500/40 bg-emerald-950/40 text-emerald-100"}`}>{error || notice}</div>}
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl">
-        <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
+        <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-gold">GameChanger Service</p>
             <h2 className="mt-1 text-2xl font-bold">Connect a scoreboard once, use it from Scores</h2>
-            <p className="mt-1 max-w-3xl text-sm text-zinc-400">Choose a league or tournament source, paste the public GameChanger widget ID or embed snippet, then preview and import completed finals.</p>
+            <p className="mt-1 max-w-3xl text-sm text-zinc-400">{gameChangerExpanded ? "Choose a league or tournament source, paste the public GameChanger widget ID or embed snippet, then preview and import completed finals." : `${gcCount} loaded games currently have GameChanger connected.`}</p>
           </div>
-          <div className="flex gap-2">
+          <button type="button" onClick={() => setGameChangerExpanded((current) => !current)} aria-expanded={gameChangerExpanded} className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-100 hover:border-brand-gold">
+            {gameChangerExpanded ? "Hide service" : "Show service"}
+          </button>
+        </div>
+        {gameChangerExpanded ? <>
+          <div className="mt-4 flex flex-wrap gap-2">
             <button type="button" onClick={previewGameChanger} disabled={!target || busyKey === "gc-preview"} className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold hover:border-brand-gold disabled:opacity-50">Preview</button>
             <button type="button" onClick={importGameChanger} disabled={!target || busyKey === "gc-import"} className="rounded-lg bg-brand-purple px-4 py-2 text-sm font-semibold text-white hover:bg-brand-purple-dark disabled:opacity-50">Import Finals</button>
           </div>
-        </div>
-        <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.6fr_1.4fr_1fr_auto]">
-          <label className="text-sm text-zinc-300">Target Site
-            <select value={activeTargetSite} onChange={(e) => { setSelectedTargetSite(e.target.value); setSelectedTargetSeason(""); setSelectedTargetKey(""); setPreviewRows([]); }} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white">
-              {targetSiteOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
-            </select>
-          </label>
-          <label className="text-sm text-zinc-300">Season
-            <select value={activeTargetSeason} onChange={(e) => { setSelectedTargetSeason(e.target.value); setSelectedTargetKey(""); setPreviewRows([]); }} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white">
-              {targetSeasonOptions.map((year) => <option key={year} value={year}>{year}</option>)}
-            </select>
-          </label>
-          <label className="text-sm text-zinc-300">Age Division
-            <select value={target ? sourceKey(target) : ""} onChange={(e) => { setSelectedTargetKey(e.target.value); setPreviewRows([]); }} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white">
-              {filteredSourceTargets.map((item) => <option key={sourceKey(item)} value={sourceKey(item)}>{sourceOptionLabel(item)}</option>)}
-            </select>
-          </label>
-          <label className="text-sm text-zinc-300">Widget ID
-            <input value={widgetIdDraft || targetConnection?.widgetId || ""} onChange={(e) => setWidgetIdDraft(e.target.value)} placeholder="GameChanger widget UUID" className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white" />
-          </label>
-          <button type="button" onClick={saveGameChanger} disabled={!target || busyKey === "gc-save"} className="self-end rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">Save Connection</button>
-        </div>
-        <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
-          <textarea value={embedSnippet} onChange={(e) => setEmbedSnippet(e.target.value)} rows={2} placeholder="Optional: paste the GameChanger embed snippet to extract the widget ID" className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white" />
-          <button type="button" onClick={applyEmbedSnippet} className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold hover:border-brand-gold">Parse Snippet</button>
-        </div>
-        {previewRows.length > 0 && <div className="mt-4 max-h-64 overflow-auto rounded-xl border border-zinc-800"><table className="min-w-full text-sm"><thead className="bg-zinc-950 text-xs uppercase tracking-wide text-zinc-400"><tr><th className="px-3 py-2 text-left">Game</th><th className="px-3 py-2 text-left">Match</th><th className="px-3 py-2 text-left">GC Status</th><th className="px-3 py-2 text-left">Score</th></tr></thead><tbody>{previewRows.slice(0, 40).map((row) => <tr key={row.matchId} className="border-t border-zinc-800"><td className="px-3 py-2">{row.gameLabel}</td><td className="px-3 py-2">{row.homeTeam} vs {row.awayTeam}</td><td className="px-3 py-2">{row.outcome}</td><td className="px-3 py-2">{row.homeScore ?? "-"} - {row.awayScore ?? "-"}</td></tr>)}</tbody></table></div>}
+          <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_0.6fr_1.4fr_1fr_auto]">
+            <label className="text-sm text-zinc-300">Target Site
+              <select value={activeTargetSite} onChange={(e) => { setSelectedTargetSite(e.target.value); setSelectedTargetSeason(""); setSelectedTargetKey(""); setPreviewRows([]); }} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white">
+                {targetSiteOptions.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
+              </select>
+            </label>
+            <label className="text-sm text-zinc-300">Season
+              <select value={activeTargetSeason} onChange={(e) => { setSelectedTargetSeason(e.target.value); setSelectedTargetKey(""); setPreviewRows([]); }} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white">
+                {targetSeasonOptions.map((year) => <option key={year} value={year}>{year}</option>)}
+              </select>
+            </label>
+            <label className="text-sm text-zinc-300">Age Division
+              <select value={target ? sourceKey(target) : ""} onChange={(e) => { setSelectedTargetKey(e.target.value); setPreviewRows([]); }} className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white">
+                {filteredSourceTargets.map((item) => <option key={sourceKey(item)} value={sourceKey(item)}>{sourceOptionLabel(item)}</option>)}
+              </select>
+            </label>
+            <label className="text-sm text-zinc-300">Widget ID
+              <input value={widgetIdDraft || targetConnection?.widgetId || ""} onChange={(e) => setWidgetIdDraft(e.target.value)} placeholder="GameChanger widget UUID" className="mt-1 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-white" />
+            </label>
+            <button type="button" onClick={saveGameChanger} disabled={!target || busyKey === "gc-save"} className="self-end rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500 disabled:opacity-50">Save Connection</button>
+          </div>
+          <div className="mt-3 grid gap-2 md:grid-cols-[1fr_auto]">
+            <textarea value={embedSnippet} onChange={(e) => setEmbedSnippet(e.target.value)} rows={2} placeholder="Optional: paste the GameChanger embed snippet to extract the widget ID" className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white" />
+            <button type="button" onClick={applyEmbedSnippet} className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold hover:border-brand-gold">Parse Snippet</button>
+          </div>
+          {previewRows.length > 0 && <div className="mt-4 max-h-64 overflow-auto rounded-xl border border-zinc-800"><table className="min-w-full text-sm"><thead className="bg-zinc-950 text-xs uppercase tracking-wide text-zinc-400"><tr><th className="px-3 py-2 text-left">Game</th><th className="px-3 py-2 text-left">Match</th><th className="px-3 py-2 text-left">GC Status</th><th className="px-3 py-2 text-left">Score</th></tr></thead><tbody>{previewRows.slice(0, 40).map((row) => <tr key={row.matchId} className="border-t border-zinc-800"><td className="px-3 py-2">{row.gameLabel}</td><td className="px-3 py-2">{row.homeTeam} vs {row.awayTeam}</td><td className="px-3 py-2">{row.outcome}</td><td className="px-3 py-2">{row.homeScore ?? "-"} - {row.awayScore ?? "-"}</td></tr>)}</tbody></table></div>}
+        </> : null}
       </section>
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
