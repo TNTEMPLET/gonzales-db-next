@@ -20,6 +20,17 @@ function sourceOptionLabel(target: SourceTarget) {
 function formatScore(game: UnifiedScoreGame) { return game.scored ? `${game.homeScore ?? "-"} - ${game.awayScore ?? "-"}` : "Missing"; }
 function badgeClass(sourceType: UnifiedScoreSourceType) { return sourceType === "LEAGUE" ? "border-blue-500/40 bg-blue-950/40 text-blue-100" : "border-amber-500/40 bg-amber-950/40 text-amber-100"; }
 
+function dateKeyFromValue(value: string | null | undefined) { return value?.trim().slice(0, 10) ?? ""; }
+function todayDateKey() {
+  const now = new Date();
+  const offsetMs = now.getTimezoneOffset() * 60_000;
+  return new Date(now.getTime() - offsetMs).toISOString().slice(0, 10);
+}
+function dateOptionLabel(key: string, fallback?: string) {
+  const today = todayDateKey();
+  return key === today ? `Today (${fallback || key})` : fallback || key;
+}
+
 export default function AdminScoresManager({ games, connections, scope, seasonYear }: Props) {
   const router = useRouter();
   const initialDraft = useMemo(() => Object.fromEntries(games.map((g) => [g.id, { homeScore: g.homeScore == null ? "" : String(g.homeScore), awayScore: g.awayScore == null ? "" : String(g.awayScore) }])) as ScoreDraft, [games]);
@@ -27,6 +38,7 @@ export default function AdminScoresManager({ games, connections, scope, seasonYe
   const [sourceFilter, setSourceFilter] = useState<"ALL" | UnifiedScoreSourceType>("ALL");
   const [orgFilter, setOrgFilter] = useState("ALL");
   const [ageFilter, setAgeFilter] = useState("ALL");
+  const [dateFilter, setDateFilter] = useState(() => todayDateKey());
   const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
@@ -52,9 +64,10 @@ export default function AdminScoresManager({ games, connections, scope, seasonYe
   const target = filteredSourceTargets.find((item) => sourceKey(item) === selectedTargetKey) ?? filteredSourceTargets[0] ?? sourceTargets[0];
   const connectionByTarget = useMemo(() => new Map(connections.map((c) => [sourceKey(c), c])), [connections]);
   const targetConnection = target ? connectionByTarget.get(sourceKey(target)) : undefined;
-  const visibleGames = useMemo(() => games.filter((game) => (sourceFilter === "ALL" || game.sourceType === sourceFilter) && (orgFilter === "ALL" || game.organizationId === orgFilter) && (ageFilter === "ALL" || game.ageGroup === ageFilter)), [ageFilter, games, orgFilter, sourceFilter]);
+  const visibleGames = useMemo(() => games.filter((game) => (sourceFilter === "ALL" || game.sourceType === sourceFilter) && (orgFilter === "ALL" || game.organizationId === orgFilter) && (ageFilter === "ALL" || game.ageGroup === ageFilter) && (dateFilter === "ALL" || dateKeyFromValue(game.gameDate) === dateFilter)), [ageFilter, dateFilter, games, orgFilter, sourceFilter]);
   const orgs = Array.from(new Map(games.map((g) => [g.organizationId, g.organizationLabel])).entries());
   const ageGroups = Array.from(new Set(games.map((g) => g.ageGroup))).sort((a, b) => a.localeCompare(b));
+  const dateOptions = Array.from(new Map(games.filter((g) => dateKeyFromValue(g.gameDate)).map((g) => [dateKeyFromValue(g.gameDate), g.dateLabel || dateKeyFromValue(g.gameDate)])).entries()).sort(([a], [b]) => a.localeCompare(b));
   const scoredCount = games.filter((game) => game.scored).length;
   const gcCount = games.filter((game) => game.hasGameChanger).length;
   function updateDraft(gameId: string, side: "homeScore" | "awayScore", value: string) {
@@ -160,10 +173,11 @@ export default function AdminScoresManager({ games, connections, scope, seasonYe
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl">
         <div className="flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
           <div><p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-gold">Score Entry</p><h2 className="mt-1 text-2xl font-bold">League and tournament games</h2><p className="mt-1 text-sm text-zinc-400">Filter the loaded games, enter finals, and save without leaving the Scores module.</p></div>
-          <div className="grid gap-2 sm:grid-cols-3">
+          <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
             <select value={sourceFilter} onChange={(e) => setSourceFilter(e.target.value as "ALL" | UnifiedScoreSourceType)} className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"><option value="ALL">All sources</option><option value="LEAGUE">League</option><option value="TOURNAMENT">Tournament</option></select>
             <select value={orgFilter} onChange={(e) => setOrgFilter(e.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"><option value="ALL">All orgs</option>{orgs.map(([id, label]) => <option key={id} value={id}>{label}</option>)}</select>
             <select value={ageFilter} onChange={(e) => setAgeFilter(e.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"><option value="ALL">All divisions</option>{ageGroups.map((group) => <option key={group} value={group}>{group}</option>)}</select>
+            <select value={dateFilter} onChange={(e) => setDateFilter(e.target.value)} className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-white"><option value="ALL">All dates</option>{dateOptions.map(([key, label]) => <option key={key} value={key}>{dateOptionLabel(key, label)}</option>)}</select>
           </div>
         </div>
         <div className="mt-5 overflow-hidden rounded-xl border border-zinc-800">
