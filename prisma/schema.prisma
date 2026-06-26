@@ -458,51 +458,51 @@ model AdminOrgMembership {
 }
 
 model RegisteredUser {
-  id                                              String                             @id @default(cuid())
-  organizationId                                  String                             @default("gonzales")
-  email                                           String
-  name                                            String?
-  firstName                                       String?
-  lastName                                        String?
-  isCoach                                         Boolean                            @default(false)
-  isBlocked                                       Boolean                            @default(false)
-  contactPhone                                    String?
-  ageGroup                                        String?
-  assignedTeam                                    String?
-  googleSub                                       String?                            @unique
-  passwordHash                                    String?
-  avatarUrl                                       String?
-  abuseAwarenessTrainingCertificateUrl            String?
-  abuseAwarenessTrainingCertificateFileName       String?
-  abuseAwarenessTrainingCertificateMimeType       String?
-  abuseAwarenessTrainingCertificateUploadedAt     DateTime?
+  id                              String                             @id @default(cuid())
+  organizationId                  String                             @default("gonzales")
+  email                           String
+  name                            String?
+  firstName                       String?
+  lastName                        String?
+  isCoach                         Boolean                            @default(false)
+  isBlocked                       Boolean                            @default(false)
+  contactPhone                    String?
+  ageGroup                        String?
+  assignedTeam                    String?
+  googleSub                       String?                            @unique
+  passwordHash                    String?
+  avatarUrl                       String?
+  abuseAwarenessTrainingCertificateUrl String?
+  abuseAwarenessTrainingCertificateFileName String?
+  abuseAwarenessTrainingCertificateMimeType String?
+  abuseAwarenessTrainingCertificateUploadedAt DateTime?
   /**
    * True when name-based duplicate detection flagged this account for admin review.
    */
-  duplicateReviewPending                          Boolean                            @default(false)
-  createdAt                                       DateTime                           @default(now())
-  updatedAt                                       DateTime                           @updatedAt
-  auditLogs                                       AdminAuditLog[]
-  sessions                                        CoachSession[]
-  dugoutPosts                                     DugoutPost[]
-  dugoutComments                                  DugoutComment[]
-  dugoutLikes                                     DugoutPostLike[]
-  dugoutNotificationCursor                        DugoutNotificationCursor?
-  dugoutNotificationReads                         DugoutNotificationRead[]
-  allStarVoteDrafts                               AllStarVoteDraft[]
-  allStarVoteSubmissions                          AllStarVoteSubmission[]
-  allStarHeadCoachAssignments                     AllStarHeadCoachAssignment[]       @relation("AllStarHeadCoachRegisteredUser")
-  allStarInvites                                  AllStarInvite[]                    @relation("AllStarInviteRegisteredUser")
-  allStarVaultAccess                              AllStarVaultAccess[]
-  teamCoachAssignments                            TeamCoachAssignment[]
-  teamGameNotes                                   TeamGameNote[]                     @relation("TeamGameNoteAuthor")
-  duplicateAsNewer                                RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsNewer")
-  duplicateAsCandidate                            RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsCandidate")
-  communicationsCreated                           CommunicationCampaign[]            @relation("CommunicationCampaignCreatedByRegisteredUser")
-  communicationRecipientSnapshots                 CommunicationRecipientSnapshot[]   @relation("CommunicationRecipientRegisteredUser")
-  communicationDeliveries                         CommunicationDelivery[]            @relation("CommunicationDeliveryRegisteredUser")
-  emailSuppressions                               EmailSuppression[]
-  smsConsents                                     SmsConsent[]
+  duplicateReviewPending          Boolean                            @default(false)
+  createdAt                       DateTime                           @default(now())
+  updatedAt                       DateTime                           @updatedAt
+  auditLogs                       AdminAuditLog[]
+  sessions                        CoachSession[]
+  dugoutPosts                     DugoutPost[]
+  dugoutComments                  DugoutComment[]
+  dugoutLikes                     DugoutPostLike[]
+  dugoutNotificationCursor        DugoutNotificationCursor?
+  dugoutNotificationReads         DugoutNotificationRead[]
+  allStarVoteDrafts               AllStarVoteDraft[]
+  allStarVoteSubmissions          AllStarVoteSubmission[]
+  allStarHeadCoachAssignments     AllStarHeadCoachAssignment[]       @relation("AllStarHeadCoachRegisteredUser")
+  allStarInvites                  AllStarInvite[]                    @relation("AllStarInviteRegisteredUser")
+  allStarVaultAccess              AllStarVaultAccess[]
+  teamCoachAssignments            TeamCoachAssignment[]
+  teamGameNotes                   TeamGameNote[]                     @relation("TeamGameNoteAuthor")
+  duplicateAsNewer                RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsNewer")
+  duplicateAsCandidate            RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsCandidate")
+  communicationsCreated           CommunicationCampaign[]            @relation("CommunicationCampaignCreatedByRegisteredUser")
+  communicationRecipientSnapshots CommunicationRecipientSnapshot[]   @relation("CommunicationRecipientRegisteredUser")
+  communicationDeliveries         CommunicationDelivery[]            @relation("CommunicationDeliveryRegisteredUser")
+  emailSuppressions               EmailSuppression[]
+  smsConsents                     SmsConsent[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
