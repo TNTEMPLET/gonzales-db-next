@@ -10,6 +10,7 @@ import type { ScheduleManagerActionSummary, ScheduleManagerRunMode } from "@/lib
 import { syncGameChangerToProject } from "@/lib/gamechanger/syncGameChangerToProject";
 import prisma from "@/lib/prisma";
 import { mergeBracketSpec, safeParseBracketSpec, type BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
+import { hashMonitorStatus, publishTournamentMonitorEvent } from "@/lib/tournament-monitor/events";
 
 export type RunScheduleManagerOptions = {
   mode: ScheduleManagerRunMode;
@@ -95,6 +96,28 @@ function pinCreatedEvent(spec: BracketSpec, matchId: string, eventId: string): B
         [matchId]: eventId,
       },
     },
+  });
+}
+
+async function publishScheduleManagerAlert(options: {
+  type: "GC_GAME_CREATED" | "GC_GAME_CREATE_WARNING" | "GC_GAME_CREATE_FAILED";
+  organizationId: string;
+  bracketProjectId: string;
+  projectName: string;
+  matchId: string;
+  title: string;
+  message: string;
+  payload: Record<string, unknown>;
+}) {
+  await publishTournamentMonitorEvent({
+    type: options.type,
+    organizationId: options.organizationId,
+    bracketProjectId: options.bracketProjectId,
+    matchId: options.matchId,
+    eventKey: `${options.type}:${options.bracketProjectId}:${options.matchId}:${hashMonitorStatus(options.payload)}`,
+    title: options.title,
+    message: options.message,
+    payload: toPrismaJson(options.payload),
   });
 }
 
@@ -223,6 +246,35 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
               data: { spec: JSON.parse(JSON.stringify(spec)) },
             });
             result.createdCount += 1;
+            if (!writeResult.dryRun) {
+              const payload = { action, eventId: writeResult.eventId, warnings: writeResult.warnings ?? [] };
+              await publishScheduleManagerAlert({
+                type: "GC_GAME_CREATED",
+                organizationId: row.organizationId,
+                bracketProjectId: row.id,
+                projectName: row.name,
+                matchId: action.matchId,
+                title: `GameChanger game created: ${row.name}`,
+                message: `${row.name} ${action.gameNumber ? `Game ${action.gameNumber}` : action.matchId} was created in GameChanger.
+${action.homeTeam} vs ${action.awayTeam}
+${action.dateLabel ?? "Date TBD"}${action.time ? ` at ${action.time}` : ""}
+Event ID: ${writeResult.eventId}`,
+                payload,
+              });
+              if (writeResult.warnings?.length) {
+                await publishScheduleManagerAlert({
+                  type: "GC_GAME_CREATE_WARNING",
+                  organizationId: row.organizationId,
+                  bracketProjectId: row.id,
+                  projectName: row.name,
+                  matchId: action.matchId,
+                  title: `GameChanger game needs location review: ${row.name}`,
+                  message: `${row.name} ${action.gameNumber ? `Game ${action.gameNumber}` : action.matchId} was created, but GameChanger reported location/field details need review.
+${writeResult.warnings.join("\n")}`,
+                  payload,
+                });
+              }
+            }
           }
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
@@ -236,6 +288,20 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
           });
           result.failedCount += 1;
           result.errors.push(`${row.name} ${action.matchId}: ${message}`);
+          if (options.mode === "LIVE") {
+            await publishScheduleManagerAlert({
+              type: "GC_GAME_CREATE_FAILED",
+              organizationId: row.organizationId,
+              bracketProjectId: row.id,
+              projectName: row.name,
+              matchId: action.matchId,
+              title: `GameChanger game creation failed: ${row.name}`,
+              message: `${row.name} ${action.gameNumber ? `Game ${action.gameNumber}` : action.matchId} could not be created in GameChanger.
+${action.homeTeam} vs ${action.awayTeam}
+Error: ${message}`,
+              payload: { action, error: message },
+            });
+          }
         }
       }
     }
