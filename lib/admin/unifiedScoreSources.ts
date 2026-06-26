@@ -6,7 +6,7 @@ import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
 import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { BRACKET_THIRD_PLACE_MATCH_ID, scoresFromSpec } from "@/lib/tournament-brackets/bracketScoring";
 import { safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
-import { BRACKET_ORGS, CONTENT_ORGS, getBracketOrgDisplayName, isBracketOrgId, isContentOrgId, type BracketOrgId, type ContentOrgId } from "@/lib/siteConfig";
+import { BRACKET_ORGS, getBracketOrgDisplayName, isBracketOrgId, type BracketOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
 export type UnifiedScoreSourceType = "LEAGUE" | "TOURNAMENT";
 export type UnifiedScoreGame = {
@@ -62,18 +62,6 @@ function isMissingOptionalScoresTableError(error: unknown) {
   return code === "P2021" || code === "P2022" || /does not exist|relation .* does not exist|table .* does not exist/i.test(message);
 }
 
-async function loadActiveLeagueSeasons(candidateLeagueOrgs: ContentOrgId[], seasonYear: number) {
-  if (!candidateLeagueOrgs.length) return [];
-  try {
-    return await prisma.scheduleSeason.findMany({
-      where: { organizationId: { in: candidateLeagueOrgs }, seasonYear, status: "ACTIVE" },
-      select: { organizationId: true },
-    });
-  } catch (error: unknown) {
-    if (isMissingOptionalScoresTableError(error)) return [];
-    throw error;
-  }
-}
 
 async function loadGameChangerConnections(allOrgs: string[], seasonYear: number): Promise<RawConnection[]> {
   if (!allOrgs.length) return [];
@@ -90,17 +78,14 @@ async function loadGameChangerConnections(allOrgs: string[], seasonYear: number)
 }
 
 export async function listUnifiedScoreGames(params: { scope: AdminAssignrScope; seasonYear: number; startDate: string; endDate: string }): Promise<UnifiedScoresPayload> {
-  const candidateLeagueOrgs: ContentOrgId[] = params.scope === "all" ? [...CONTENT_ORGS] : isContentOrgId(params.scope) ? [params.scope] : [];
   const tournamentOrgs: BracketOrgId[] = params.scope === "all" ? [...BRACKET_ORGS] : isBracketOrgId(params.scope) ? [params.scope] : [];
-  const activeLeagueSeasons = await loadActiveLeagueSeasons(candidateLeagueOrgs, params.seasonYear);
-  const activeLeagueOrgSet = new Set(activeLeagueSeasons.map((season) => season.organizationId));
-  const leagueOrgs = candidateLeagueOrgs.filter((org) => activeLeagueOrgSet.has(org));
+  const leagueOrgs: ContentOrgId[] = [];
   const allOrgs = Array.from(new Set([...leagueOrgs, ...tournamentOrgs]));
   const [assignrGames, existingScores, bracketProjects, rawConnections] = await Promise.all([
     leagueOrgs.length ? fetchAssignrGamesForScope({ scope: params.scope, startDate: params.startDate, endDate: params.endDate }) : Promise.resolve([]),
     leagueOrgs.length ? prisma.gameScore.findMany({ where: { organizationId: { in: leagueOrgs } }, select: { organizationId: true, gameExternalId: true, homeScore: true, awayScore: true } }) : Promise.resolve([]),
     tournamentOrgs.length ? prisma.bracketProject.findMany({
-      where: { organizationId: { in: tournamentOrgs }, seasonYear: params.seasonYear, status: "READY" },
+      where: { organizationId: { in: tournamentOrgs }, status: "READY" },
       select: { id: true, organizationId: true, seasonYear: true, name: true, status: true, spec: true, priority: true, updatedAt: true },
       orderBy: [{ priority: "asc" }, { updatedAt: "desc" }],
     }) : Promise.resolve([]),
