@@ -1,3 +1,5 @@
+import type { Prisma } from "@prisma/client";
+
 import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
 import {
   findUnlockedScheduleManagerGames,
@@ -34,6 +36,10 @@ type BracketProjectRow = {
   name: string;
   spec: unknown;
 };
+
+function toPrismaJson(value: unknown): Prisma.InputJsonValue {
+  return JSON.parse(JSON.stringify(value)) as Prisma.InputJsonValue;
+}
 
 async function loadEligibleBrackets(bracketProjectId?: string): Promise<BracketProjectRow[]> {
   return prisma.bracketProject.findMany({
@@ -99,9 +105,9 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
       mode: options.mode,
       status: "RUNNING",
       createdByAdminId: options.createdByAdminId,
-      payload: {
+      payload: toPrismaJson({
         bracketProjectId: options.bracketProjectId,
-      },
+      }),
     },
   });
 
@@ -168,7 +174,7 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
             homeTeam: action.homeTeam,
             awayTeam: action.awayTeam,
             status: "PLANNED",
-            requestSummary,
+            requestSummary: toPrismaJson(requestSummary),
             errorMessage: null,
           },
           create: {
@@ -183,7 +189,7 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
             homeTeam: action.homeTeam,
             awayTeam: action.awayTeam,
             status: "PLANNED",
-            requestSummary,
+            requestSummary: toPrismaJson(requestSummary),
           },
         });
 
@@ -206,8 +212,8 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
             data: {
               status: writeResult.dryRun ? "DRY_RUN" : "CREATED",
               gameChangerEventId: writeResult.eventId,
-              requestSummary: writeResult.requestSummary,
-              responseSummary: writeResult.responseSummary,
+              requestSummary: toPrismaJson(writeResult.requestSummary),
+              responseSummary: toPrismaJson(writeResult.responseSummary),
             },
           });
           if (writeResult.eventId) {
@@ -225,7 +231,7 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
             data: {
               status: "FAILED",
               errorMessage: message,
-              responseSummary: { error: message },
+              responseSummary: toPrismaJson({ error: message }),
             },
           });
           result.failedCount += 1;
@@ -248,7 +254,7 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
       createdCount: result.createdCount,
       skippedCount: result.skippedCount,
       failedCount: result.failedCount,
-      results: JSON.parse(JSON.stringify(result)),
+      results: toPrismaJson(result),
       errorMessage: result.errors[0],
       completedAt: new Date(),
     },

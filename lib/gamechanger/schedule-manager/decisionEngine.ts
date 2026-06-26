@@ -61,7 +61,7 @@ function labelForSide(match: LayoutMatch | BracketGameRow, side: "home" | "away"
 }
 
 function gameNumberFor(match: LayoutMatch | BracketGameRow): string | undefined {
-  return "officialGameNumber" in match ? match.officialGameNumber : match.gameNumber;
+  return "slotHome" in match ? match.officialGameNumber : match.gameNumber;
 }
 
 function parseScheduledFor(dateLabel: string | undefined, time: string | undefined, seasonYear: number): Date | undefined {
