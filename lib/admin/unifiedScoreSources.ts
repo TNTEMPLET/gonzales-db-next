@@ -65,8 +65,10 @@ function isMissingOptionalScoresTableError(error: unknown) {
 
 async function loadGameChangerConnections(allOrgs: string[], seasonYear: number): Promise<RawConnection[]> {
   if (!allOrgs.length) return [];
+  const client = prisma as unknown as { gameChangerScoreboardConnection?: { findMany(args: unknown): Promise<RawConnection[]> } };
+  if (!client.gameChangerScoreboardConnection) return [];
   try {
-    return await prisma.gameChangerScoreboardConnection.findMany({
+    return await client.gameChangerScoreboardConnection.findMany({
       where: { seasonYear, organizationId: { in: allOrgs } },
       select: { id: true, organizationId: true, seasonYear: true, sourceType: true, sourceKey: true, sourceLabel: true, widgetId: true, maxVerticalGamesVisible: true, autoImportFinalScores: true },
       orderBy: [{ sourceType: "asc" }, { sourceLabel: "asc" }],
