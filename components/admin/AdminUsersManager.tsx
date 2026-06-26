@@ -33,6 +33,10 @@ type RegisteredUser = {
   ageGroup: string | null;
   assignedTeam: string | null;
   coachRole: "HEAD_COACH" | "ASSISTANT_COACH" | null;
+  abuseAwarenessTrainingCertificateUrl: string | null;
+  abuseAwarenessTrainingCertificateFileName: string | null;
+  abuseAwarenessTrainingCertificateMimeType: string | null;
+  abuseAwarenessTrainingCertificateUploadedAt: string | null;
   duplicateReviewPending?: boolean;
   /** Per-team assignments for this org (age group + team + role). Used for coach list grouping. */
   coachTeamAssignments?: Array<{
@@ -1528,6 +1532,21 @@ export default function AdminUsersManager({
                             ) : null}
                           </>
                         ) : null}
+                        {user.abuseAwarenessTrainingCertificateUrl ? (
+                          <a
+                            href={user.abuseAwarenessTrainingCertificateUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="mt-1 inline-flex rounded-full border border-emerald-700 bg-emerald-950/30 px-2 py-0.5 text-[11px] text-emerald-300 hover:bg-emerald-950/50"
+                          >
+                            AAT uploaded
+                            {user.abuseAwarenessTrainingCertificateUploadedAt
+                              ? ` ${new Date(user.abuseAwarenessTrainingCertificateUploadedAt).toLocaleDateString()}`
+                              : ""}
+                          </a>
+                        ) : (
+                          <p className="mt-1 text-xs text-amber-300">AAT certificate not uploaded</p>
+                        )}
                       </div>
                       <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
                         <button

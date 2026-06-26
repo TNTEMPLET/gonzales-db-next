@@ -33,6 +33,10 @@ export async function GET(request: NextRequest) {
                   lastName: true,
                   name: true,
                   contactPhone: true,
+                  abuseAwarenessTrainingCertificateUrl: true,
+                  abuseAwarenessTrainingCertificateFileName: true,
+                  abuseAwarenessTrainingCertificateMimeType: true,
+                  abuseAwarenessTrainingCertificateUploadedAt: true,
                 },
               },
             },
@@ -63,6 +67,10 @@ export async function GET(request: NextRequest) {
                   lastName: true,
                   name: true,
                   contactPhone: true,
+                  abuseAwarenessTrainingCertificateUrl: true,
+                  abuseAwarenessTrainingCertificateFileName: true,
+                  abuseAwarenessTrainingCertificateMimeType: true,
+                  abuseAwarenessTrainingCertificateUploadedAt: true,
                 },
               },
             },
@@ -77,7 +85,7 @@ export async function GET(request: NextRequest) {
       });
 
   return NextResponse.json({
-    actor: { isAdmin: actor.isAdmin, targetOrg: actor.targetOrg },
+    actor: { isAdmin: actor.isAdmin, registeredUserId: actor.registeredUserId, targetOrg: actor.targetOrg },
     data: teams,
   });
 }

@@ -32,6 +32,10 @@ type TeamCoachAssignment = {
     firstName: string | null;
     lastName: string | null;
     name: string | null;
+    abuseAwarenessTrainingCertificateUrl: string | null;
+    abuseAwarenessTrainingCertificateFileName: string | null;
+    abuseAwarenessTrainingCertificateMimeType: string | null;
+    abuseAwarenessTrainingCertificateUploadedAt: string | null;
   };
 };
 
@@ -76,6 +80,8 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
   const [gameNotes, setGameNotes] = useState<Record<string, string>>({});
   const [availabilityNotes, setAvailabilityNotes] = useState<Record<string, string>>({});
   const [isActorAdmin, setIsActorAdmin] = useState(false);
+  const [actorRegisteredUserId, setActorRegisteredUserId] = useState<string | null>(null);
+  const [aatUploadingCoachId, setAatUploadingCoachId] = useState<string | null>(null);
   const [activeProfilePlayerId, setActiveProfilePlayerId] = useState<string | null>(null);
   const [activeProfileSummaryPlayerId, setActiveProfileSummaryPlayerId] = useState<string | null>(
     null,
@@ -242,10 +248,40 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
       const json = await safeJson(response);
       if (!response.ok) throw new Error(String(json.error || "Failed to load teams"));
       const data = Array.isArray(json.data) ? (json.data as TeamRecord[]) : [];
-      setIsActorAdmin(Boolean((json.actor as { isAdmin?: unknown } | undefined)?.isAdmin));
+      const actor = json.actor as
+        | { isAdmin?: unknown; registeredUserId?: unknown }
+        | undefined;
+      setIsActorAdmin(Boolean(actor?.isAdmin));
+      setActorRegisteredUserId(
+        typeof actor?.registeredUserId === "string" ? actor.registeredUserId : null,
+      );
       setTeams(data);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load teams");
+    }
+  }
+
+  async function uploadAbuseAwarenessCertificate(coachId: string, file: File) {
+    setAatUploadingCoachId(coachId);
+    setError("");
+    setNotice("");
+    try {
+      const formData = new FormData();
+      formData.append("certificate", file);
+      const response = await fetch(`/api/coach-corner/abuse-awareness?${orgQuery}`, {
+        method: "POST",
+        body: formData,
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to upload certificate"));
+      }
+      setNotice("Abuse Awareness Training certificate uploaded.");
+      await loadTeams();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to upload certificate");
+    } finally {
+      setAatUploadingCoachId(null);
     }
   }
 
@@ -443,6 +479,33 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
               <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">
                 Coaches
               </p>
+              <div className="rounded-lg border border-sky-800/60 bg-sky-950/25 p-3 text-xs text-sky-100 space-y-2">
+                <p className="font-semibold">Abuse Awareness Training certificate</p>
+                <p>
+                  New coaches: create a Little League University account at{" "}
+                  <a
+                    href="https://www.littleleague.org/university/articles/create-a-little-league-training-account/"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sky-300 underline"
+                  >
+                    Little League University account setup
+                  </a>
+                  , follow the email prompts, then log into LLU and open the Abuse Awareness Training (AAT) course.
+                </p>
+                <p>
+                  Previous 2025 coaches: log into LLU at{" "}
+                  <a
+                    href="https://littleleague.smarteru.com/user/learnerdashboard/v2/#/cat/6196/pg/25019/course/356266"
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-sky-300 underline"
+                  >
+                    Abuse Awareness Training course
+                  </a>{" "}
+                  and open the AAT course.
+                </p>
+              </div>
               <div className="rounded-lg border border-zinc-800 overflow-hidden">
                 {selectedTeam.coachAssignments.length === 0 ? (
                   <p className="text-zinc-500 text-sm p-3">No coaches assigned to this team.</p>
@@ -454,23 +517,66 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                         ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
                         : coach.name) || coach.email;
                     const canAdminTeam = assignment.role === "HEAD_COACH";
+                    const canUploadAat = coach.id === actorRegisteredUserId;
+                    const aatUploadedAt = coach.abuseAwarenessTrainingCertificateUploadedAt
+                      ? new Date(coach.abuseAwarenessTrainingCertificateUploadedAt).toLocaleDateString()
+                      : null;
                     return (
                       <div
                         key={assignment.id}
-                        className="flex flex-col gap-2 border-b border-zinc-800 px-3 py-2 last:border-b-0 sm:flex-row sm:items-center sm:justify-between sm:gap-3"
+                        className="flex flex-col gap-3 border-b border-zinc-800 px-3 py-3 last:border-b-0 sm:flex-row sm:items-start sm:justify-between sm:gap-3"
                       >
-                        <p className="text-sm">
-                          {label} ({coach.email})
-                        </p>
-                        <span
-                          className={`rounded-full px-2 py-0.5 text-[11px] ${
-                            canAdminTeam
-                              ? "border border-emerald-700 bg-emerald-950/40 text-emerald-300"
-                              : "border border-zinc-700 bg-zinc-950/40 text-zinc-300"
-                          }`}
-                        >
-                          {canAdminTeam ? "Can Admin Team" : "Coach Access"}
-                        </span>
+                        <div className="min-w-0 space-y-1">
+                          <p className="text-sm">
+                            {label} ({coach.email})
+                          </p>
+                          <div className="flex flex-wrap items-center gap-2 text-xs">
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[11px] ${
+                                canAdminTeam
+                                  ? "border border-emerald-700 bg-emerald-950/40 text-emerald-300"
+                                  : "border border-zinc-700 bg-zinc-950/40 text-zinc-300"
+                              }`}
+                            >
+                              {canAdminTeam ? "Can Admin Team" : "Coach Access"}
+                            </span>
+                            {coach.abuseAwarenessTrainingCertificateUrl ? (
+                              <a
+                                href={coach.abuseAwarenessTrainingCertificateUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="rounded-full border border-emerald-700 bg-emerald-950/30 px-2 py-0.5 text-[11px] text-emerald-300 hover:bg-emerald-950/50"
+                              >
+                                AAT uploaded{aatUploadedAt ? ` ${aatUploadedAt}` : ""}
+                              </a>
+                            ) : (
+                              <span className="rounded-full border border-amber-700 bg-amber-950/30 px-2 py-0.5 text-[11px] text-amber-300">
+                                AAT not uploaded
+                              </span>
+                            )}
+                          </div>
+                          {coach.abuseAwarenessTrainingCertificateFileName ? (
+                            <p className="text-xs text-zinc-500 truncate">
+                              {coach.abuseAwarenessTrainingCertificateFileName}
+                            </p>
+                          ) : null}
+                        </div>
+                        {canUploadAat ? (
+                          <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-sky-700 px-3 py-1.5 text-xs text-sky-200 hover:bg-sky-950/40">
+                            {aatUploadingCoachId === coach.id ? "Uploading..." : "Upload AAT"}
+                            <input
+                              type="file"
+                              accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
+                              disabled={aatUploadingCoachId !== null}
+                              className="sr-only"
+                              onChange={(event) => {
+                                const file = event.target.files?.[0];
+                                event.currentTarget.value = "";
+                                if (file) void uploadAbuseAwarenessCertificate(coach.id, file);
+                              }}
+                            />
+                          </label>
+                        ) : null}
                       </div>
                     );
                   })
