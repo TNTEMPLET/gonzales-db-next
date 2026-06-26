@@ -33,7 +33,7 @@ export default async function AdminScoresPage({ searchParams }: { searchParams: 
   const canAccessScores = canAccessAdminModule(role, "SCORES") || (masterMode && !currentOrg && orgRoles.some((orgRole) => orgRole && canAccessAdminModule(orgRole, "SCORES")));
   if (!canAccessScores) redirect("/admin?denied=scores");
   const canAccessAssignr = canAccessAdminModule(role, "ASSIGNR") || (masterMode && !currentOrg && orgRoles.some((orgRole) => orgRole && canAccessAdminModule(orgRole, "ASSIGNR")));
-  const scoresResult = await listUnifiedScoreGames({ scope, seasonYear: safeSeasonYear, startDate: SEASON_START_DATE, endDate: SEASON_END_DATE }).then((payload) => ({ payload, scoresLoadError: "" })).catch((error: unknown) => { const detail = error instanceof Error ? error.message : String(error); console.error("[admin-scores] Failed to load unified scores", error); return { payload: { games: [], connections: [] }, scoresLoadError: "Scores are temporarily loading in safe mode. Detail: " + detail.slice(0, 240) }; });  const { payload, scoresLoadError } = scoresResult;
+  const scoresResult = await listUnifiedScoreGames({ scope, seasonYear: safeSeasonYear, startDate: SEASON_START_DATE, endDate: SEASON_END_DATE }).then((payload) => ({ payload, scoresLoadError: "" })).catch((error: unknown) => { console.error("[admin-scores] Failed to load unified scores", error); return { payload: { games: [], connections: [] }, scoresLoadError: "Scores are temporarily loading in safe mode. Manual imports remain available while the unified data source is checked." }; });  const { payload, scoresLoadError } = scoresResult;
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
       <section className="mx-auto max-w-7xl px-4 sm:px-6">
