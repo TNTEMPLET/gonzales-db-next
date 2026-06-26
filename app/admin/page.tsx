@@ -205,6 +205,14 @@ export default async function AdminDashboardPage({
         action: "Open Bracket Creator",
       },
       {
+        module: "TOURNAMENT_ALERTS" as AdminModule,
+        href: "/admin/tournament-alerts",
+        title: "Tournament Alerts",
+        description:
+          "Phone-friendly tournament communications status: monitor runs, recent alerts, provider readiness, and email setup next steps.",
+        action: "Open Alert Status",
+      },
+      {
         module: "PARK_INFO" as AdminModule,
         href: moduleHref("/admin/park-info", "PARK_INFO"),
         title: "Park Info",
