@@ -26,17 +26,19 @@ type TeamPlayer = {
 type TeamCoachAssignment = {
   id: string;
   role: "HEAD_COACH" | "ASSISTANT_COACH";
-  registeredUser: {
-    id: string;
-    email: string;
-    firstName: string | null;
-    lastName: string | null;
-    name: string | null;
-    abuseAwarenessTrainingCertificateUrl: string | null;
-    abuseAwarenessTrainingCertificateFileName: string | null;
-    abuseAwarenessTrainingCertificateMimeType: string | null;
-    abuseAwarenessTrainingCertificateUploadedAt: string | null;
-  };
+  registeredUser: CoachProfile;
+};
+
+type CoachProfile = {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  name: string | null;
+  abuseAwarenessTrainingCertificateUrl: string | null;
+  abuseAwarenessTrainingCertificateFileName: string | null;
+  abuseAwarenessTrainingCertificateMimeType: string | null;
+  abuseAwarenessTrainingCertificateUploadedAt: string | null;
 };
 
 type TeamRecord = {
@@ -81,6 +83,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
   const [availabilityNotes, setAvailabilityNotes] = useState<Record<string, string>>({});
   const [isActorAdmin, setIsActorAdmin] = useState(false);
   const [actorRegisteredUserId, setActorRegisteredUserId] = useState<string | null>(null);
+  const [actorCoach, setActorCoach] = useState<CoachProfile | null>(null);
   const [aatUploadingCoachId, setAatUploadingCoachId] = useState<string | null>(null);
   const [activeProfilePlayerId, setActiveProfilePlayerId] = useState<string | null>(null);
   const [activeProfileSummaryPlayerId, setActiveProfileSummaryPlayerId] = useState<string | null>(
@@ -194,6 +197,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
       setScheduleGames([]);
       setGameNotes({});
       setAvailabilityNotes({});
+      setActorCoach(null);
       setIsEditingTeamProfile(false);
       setIsEditingRoster(false);
       setActiveProfilePlayerId(null);
@@ -249,11 +253,14 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
       if (!response.ok) throw new Error(String(json.error || "Failed to load teams"));
       const data = Array.isArray(json.data) ? (json.data as TeamRecord[]) : [];
       const actor = json.actor as
-        | { isAdmin?: unknown; registeredUserId?: unknown }
+        | { isAdmin?: unknown; registeredUserId?: unknown; coach?: unknown }
         | undefined;
       setIsActorAdmin(Boolean(actor?.isAdmin));
       setActorRegisteredUserId(
         typeof actor?.registeredUserId === "string" ? actor.registeredUserId : null,
+      );
+      setActorCoach(
+        actor?.coach && typeof actor.coach === "object" ? (actor.coach as CoachProfile) : null,
       );
       setTeams(data);
     } catch (err: unknown) {
@@ -403,6 +410,14 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
       selectedTeam?.players.find((player) => player.id === activeProfileSummaryPlayerId) || null,
     [selectedTeam, activeProfileSummaryPlayerId],
   );
+  const actorCoachLabel = actorCoach
+    ? (actorCoach.firstName || actorCoach.lastName
+        ? [actorCoach.firstName, actorCoach.lastName].filter(Boolean).join(" ")
+        : actorCoach.name) || actorCoach.email
+    : "";
+  const actorAatUploadedAt = actorCoach?.abuseAwarenessTrainingCertificateUploadedAt
+    ? new Date(actorCoach.abuseAwarenessTrainingCertificateUploadedAt).toLocaleDateString()
+    : null;
 
   return (
     <section className="space-y-6">
@@ -414,6 +429,90 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
       {notice ? (
         <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">
           {notice}
+        </div>
+      ) : null}
+
+      {actorCoach ? (
+        <div className="space-y-4 rounded-xl border border-sky-800/60 bg-sky-950/20 p-4 sm:p-5">
+          <div className="space-y-2 text-sm text-sky-100">
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wide text-sky-300">
+                  Coach Requirements
+                </p>
+                <h2 className="text-lg font-semibold text-zinc-100">
+                  Abuse Awareness Training certificate
+                </h2>
+                <p className="text-xs text-zinc-400">
+                  Signed in as {actorCoachLabel} ({actorCoach.email})
+                </p>
+              </div>
+              {actorCoach.abuseAwarenessTrainingCertificateUrl ? (
+                <a
+                  href={actorCoach.abuseAwarenessTrainingCertificateUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center justify-center rounded-full border border-emerald-700 bg-emerald-950/30 px-3 py-1 text-xs text-emerald-300 hover:bg-emerald-950/50"
+                >
+                  AAT uploaded{actorAatUploadedAt ? ` ${actorAatUploadedAt}` : ""}
+                </a>
+              ) : (
+                <span className="inline-flex items-center justify-center rounded-full border border-amber-700 bg-amber-950/30 px-3 py-1 text-xs text-amber-300">
+                  AAT not uploaded
+                </span>
+              )}
+            </div>
+            <p>
+              New coaches: create a Little League University account at{" "}
+              <a
+                href="https://www.littleleague.org/university/articles/create-a-little-league-training-account/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-300 underline"
+              >
+                Little League University account setup
+              </a>
+              , follow the email prompts, then log into LLU and open the Abuse Awareness Training
+              (AAT) course.
+            </p>
+            <p>
+              Previous 2025 coaches: log into LLU at{" "}
+              <a
+                href="https://littleleague.smarteru.com/user/learnerdashboard/v2/#/cat/6196/pg/25019/course/356266"
+                target="_blank"
+                rel="noreferrer"
+                className="text-sky-300 underline"
+              >
+                Abuse Awareness Training course
+              </a>{" "}
+              and open the AAT course.
+            </p>
+            {actorCoach.abuseAwarenessTrainingCertificateFileName ? (
+              <p className="text-xs text-zinc-500 truncate">
+                {actorCoach.abuseAwarenessTrainingCertificateFileName}
+              </p>
+            ) : null}
+          </div>
+          <label className="inline-flex cursor-pointer items-center justify-center rounded-lg border border-sky-700 px-3 py-1.5 text-xs text-sky-200 hover:bg-sky-950/40">
+            {aatUploadingCoachId === actorCoach.id ? "Uploading..." : "Upload AAT"}
+            <input
+              type="file"
+              accept="application/pdf,image/jpeg,image/png,image/webp,.pdf,.jpg,.jpeg,.png,.webp"
+              disabled={aatUploadingCoachId !== null}
+              className="sr-only"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                event.currentTarget.value = "";
+                if (file) void uploadAbuseAwarenessCertificate(actorCoach.id, file);
+              }}
+            />
+          </label>
+          {teams.length === 0 ? (
+            <p className="text-xs text-zinc-500">
+              No team is assigned to your coach account yet. You can still upload your AAT
+              certificate here.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -491,7 +590,8 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                   >
                     Little League University account setup
                   </a>
-                  , follow the email prompts, then log into LLU and open the Abuse Awareness Training (AAT) course.
+                  , follow the email prompts, then log into LLU and open the Abuse Awareness Training
+                  (AAT) course.
                 </p>
                 <p>
                   Previous 2025 coaches: log into LLU at{" "}
