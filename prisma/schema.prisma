@@ -184,8 +184,6 @@ enum CoachingInterestStatus {
   ARCHIVED
 }
 
-
-
 enum TournamentIncomeCategory {
   ENTRY_FEE
   SPONSOR
@@ -250,49 +248,49 @@ model NewsPost {
 }
 
 model AdminUser {
-  id           String          @id @default(cuid())
-  email        String          @unique
-  name         String?
-  firstName    String?
-  lastName     String?
-  role         AdminRole       @default(ADMIN)
-  isMaster     Boolean         @default(false)
-  passwordHash String?
-  avatarUrl    String?
+  id                               String                            @id @default(cuid())
+  email                            String                            @unique
+  name                             String?
+  firstName                        String?
+  lastName                         String?
+  role                             AdminRole                         @default(ADMIN)
+  isMaster                         Boolean                           @default(false)
+  passwordHash                     String?
+  avatarUrl                        String?
   /// Set when the admin signs in with Google; required to open org Drive files in the browser.
-  googleSub    String?         @unique
-  createdAt    DateTime        @default(now())
-  updatedAt    DateTime        @updatedAt
-  sessions     AdminSession[]
-  auditLogs    AdminAuditLog[] @relation("AdminActorLogs")
-  enteredScores GameScore[]
+  googleSub                        String?                           @unique
+  createdAt                        DateTime                          @default(now())
+  updatedAt                        DateTime                          @updatedAt
+  sessions                         AdminSession[]
+  auditLogs                        AdminAuditLog[]                   @relation("AdminActorLogs")
+  enteredScores                    GameScore[]
   gameChangerScoreboardConnections GameChangerScoreboardConnection[] @relation("GameChangerScoreboardConnectionCreatedBy")
-  coachImportBatches CoachImportBatch[]
-  allStarBallotCycles AllStarBallotCycle[] @relation("AllStarCycleCreatedBy")
-  allStarHeadCoachAssignments AllStarHeadCoachAssignment[] @relation("AllStarHeadCoachAdmin")
-  allStarInvites AllStarInvite[] @relation("AllStarInviteCreatedByAdmin")
-  allStarSecondPhaseOverrides AllStarCandidate[] @relation("AllStarSecondPhaseOverrideByAdmin")
-  allStarFinalRosterOverrides AllStarCandidate[] @relation("AllStarFinalRosterOverrideByAdmin")
-  allStarVaultAccessGrants AllStarVaultAccess[] @relation("AllStarVaultAccessGrantedByAdmin")
-  teamsCreated Team[]
-  teamPlayerImportBatches TeamPlayerImportBatch[]
-  socialPostsCreated      SocialPost[]
-  orgMemberships          AdminOrgMembership[]
-  communicationsCreated   CommunicationCampaign[] @relation("CommunicationCampaignCreatedBy")
-  communicationsApproved  CommunicationApproval[] @relation("CommunicationApprovedBy")
-  communicationRecipientSnapshots CommunicationRecipientSnapshot[] @relation("CommunicationRecipientAdminUser")
-  communicationDeliveries CommunicationDelivery[] @relation("CommunicationDeliveryAdminUser")
-  assignrSyncJobsCreated  AssignrSyncJob[]        @relation("AssignrSyncJobCreatedBy")
-  assignrAuditLogs        AssignrAuditLog[]       @relation("AssignrAuditActor")
-  bracketProjectsCreated       BracketProject[]        @relation("BracketProjectCreatedBy")
-  governingBodyTemplatesCreated GoverningBodyTemplate[] @relation("GoverningBodyTemplateCreatedBy")
-  scheduleManagerJobsCreated ScheduleManagerJob[] @relation("ScheduleManagerJobCreatedBy")
-  allStarAuditLogsActed        AllStarAuditLog[]       @relation("AllStarAuditActor")
-  allStarAuditLogsReverted     AllStarAuditLog[]       @relation("AllStarAuditReverter")
-  allStarPaymentsMarkedPaid    AllStarPayment[]        @relation("AllStarPaymentMarkedPaidBy")
-  parkInfoPagesUpdated         ParkInfoPage[]          @relation("ParkInfoUpdatedBy")
-  scheduleSeasonsCreated       ScheduleSeason[]        @relation("ScheduleSeasonCreatedBy")
-  scheduleExportBatchesCreated ScheduleExportBatch[]   @relation("ScheduleExportBatchCreatedBy")
+  coachImportBatches               CoachImportBatch[]
+  allStarBallotCycles              AllStarBallotCycle[]              @relation("AllStarCycleCreatedBy")
+  allStarHeadCoachAssignments      AllStarHeadCoachAssignment[]      @relation("AllStarHeadCoachAdmin")
+  allStarInvites                   AllStarInvite[]                   @relation("AllStarInviteCreatedByAdmin")
+  allStarSecondPhaseOverrides      AllStarCandidate[]                @relation("AllStarSecondPhaseOverrideByAdmin")
+  allStarFinalRosterOverrides      AllStarCandidate[]                @relation("AllStarFinalRosterOverrideByAdmin")
+  allStarVaultAccessGrants         AllStarVaultAccess[]              @relation("AllStarVaultAccessGrantedByAdmin")
+  teamsCreated                     Team[]
+  teamPlayerImportBatches          TeamPlayerImportBatch[]
+  socialPostsCreated               SocialPost[]
+  orgMemberships                   AdminOrgMembership[]
+  communicationsCreated            CommunicationCampaign[]           @relation("CommunicationCampaignCreatedBy")
+  communicationsApproved           CommunicationApproval[]           @relation("CommunicationApprovedBy")
+  communicationRecipientSnapshots  CommunicationRecipientSnapshot[]  @relation("CommunicationRecipientAdminUser")
+  communicationDeliveries          CommunicationDelivery[]           @relation("CommunicationDeliveryAdminUser")
+  assignrSyncJobsCreated           AssignrSyncJob[]                  @relation("AssignrSyncJobCreatedBy")
+  assignrAuditLogs                 AssignrAuditLog[]                 @relation("AssignrAuditActor")
+  bracketProjectsCreated           BracketProject[]                  @relation("BracketProjectCreatedBy")
+  governingBodyTemplatesCreated    GoverningBodyTemplate[]           @relation("GoverningBodyTemplateCreatedBy")
+  scheduleManagerJobsCreated       ScheduleManagerJob[]              @relation("ScheduleManagerJobCreatedBy")
+  allStarAuditLogsActed            AllStarAuditLog[]                 @relation("AllStarAuditActor")
+  allStarAuditLogsReverted         AllStarAuditLog[]                 @relation("AllStarAuditReverter")
+  allStarPaymentsMarkedPaid        AllStarPayment[]                  @relation("AllStarPaymentMarkedPaidBy")
+  parkInfoPagesUpdated             ParkInfoPage[]                    @relation("ParkInfoUpdatedBy")
+  scheduleSeasonsCreated           ScheduleSeason[]                  @relation("ScheduleSeasonCreatedBy")
+  scheduleExportBatchesCreated     ScheduleExportBatch[]             @relation("ScheduleExportBatchCreatedBy")
 }
 
 enum BracketProjectStatus {
@@ -304,7 +302,7 @@ enum BracketProjectStatus {
 /// Uploaded governing-body bracket / schedule template (PDF, XLSX, etc.) for reuse.
 model GoverningBodyTemplate {
   id               String   @id @default(cuid())
-  organizationId String
+  organizationId   String
   governingBody    String
   label            String
   parserProfileId  String?
@@ -315,7 +313,7 @@ model GoverningBodyTemplate {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  createdByAdmin AdminUser? @relation("GoverningBodyTemplateCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdByAdmin  AdminUser?       @relation("GoverningBodyTemplateCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
   bracketProjects BracketProject[]
 
   @@index([organizationId, governingBody])
@@ -323,26 +321,27 @@ model GoverningBodyTemplate {
 
 /// End-of-year or tournament bracket project: canonical spec JSON plus source artifact URLs.
 model BracketProject {
-  id                    String               @id @default(cuid())
-  organizationId        String
-  seasonYear            Int
-  name                  String
-  status                BracketProjectStatus @default(DRAFT)
+  id                      String               @id @default(cuid())
+  organizationId          String
+  seasonYear              Int
+  name                    String
+  status                  BracketProjectStatus @default(DRAFT)
   /// Lower numbers sort first when bracket priority ordering is used.
-  priority              Int                  @default(0)
+  priority                Int                  @default(0)
   /// Versioned bracket spec (structure, games, flyer options, ingestion warnings).
-  spec                  Json                 @default("{}")
+  spec                    Json                 @default("{}")
   /// Vercel Blob (or other) URLs for originals: templates, screenshots, logos, sponsor assets.
-  sourceArtifactUrls    Json                 @default("[]")
+  sourceArtifactUrls      Json                 @default("[]")
   governingBodyTemplateId String?
-  createdByAdminId    String?
-  createdAt             DateTime             @default(now())
-  updatedAt             DateTime             @updatedAt
+  createdByAdminId        String?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
 
-  governingBodyTemplate GoverningBodyTemplate? @relation(fields: [governingBodyTemplateId], references: [id], onDelete: SetNull)
-  createdByAdmin        AdminUser?             @relation("BracketProjectCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  governingBodyTemplate   GoverningBodyTemplate?        @relation(fields: [governingBodyTemplateId], references: [id], onDelete: SetNull)
+  createdByAdmin          AdminUser?                    @relation("BracketProjectCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
   incomeTransactions      TournamentIncomeTransaction[]
-  scheduleManagerActions ScheduleManagerAction[]
+  scheduleManagerActions  ScheduleManagerAction[]
+  tournamentMonitorEvents TournamentMonitorEvent[]
 
   @@index([organizationId, status, updatedAt])
   @@index([organizationId, priority])
@@ -351,7 +350,6 @@ model BracketProject {
 
 /// Effective admin role for a specific organization (gonzales | ascension).
 /// Master Admin (`AdminUser.isMaster`) does not require a row — they apply everywhere.
-
 
 model TournamentIncomeTransaction {
   id                   String                               @id @default(cuid())
@@ -386,19 +384,19 @@ model TournamentIncomeTransaction {
 }
 
 model TournamentRosterIntakeLink {
-  id              String   @id @default(cuid())
-  organizationId  String
-  seasonYear      Int
+  id               String    @id @default(cuid())
+  organizationId   String
+  seasonYear       Int
   bracketProjectId String?
-  teamName        String
-  ageGroup        String?
-  tokenHash       String   @unique
-  status          String   @default("ACTIVE")
+  teamName         String
+  ageGroup         String?
+  tokenHash        String    @unique
+  status           String    @default("ACTIVE")
   createdByAdminId String?
-  expiresAt       DateTime?
-  disabledAt      DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  expiresAt        DateTime?
+  disabledAt       DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   submissions TournamentRosterSubmission[]
 
@@ -408,9 +406,9 @@ model TournamentRosterIntakeLink {
 }
 
 model TournamentRosterSubmission {
-  id                String   @id @default(cuid())
+  id                String    @id @default(cuid())
   linkId            String
-  status            String   @default("PENDING")
+  status            String    @default("PENDING")
   source            String
   submitterName     String?
   submitterEmail    String?
@@ -421,10 +419,10 @@ model TournamentRosterSubmission {
   reviewedByAdminId String?
   reviewedAt        DateTime?
   rejectionReason   String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
-  link    TournamentRosterIntakeLink       @relation(fields: [linkId], references: [id], onDelete: Cascade)
+  link    TournamentRosterIntakeLink         @relation(fields: [linkId], references: [id], onDelete: Cascade)
   players TournamentRosterSubmissionPlayer[]
 
   @@index([linkId, status, createdAt], map: "TRosterSubmission_link_status_created_idx")
@@ -460,45 +458,47 @@ model AdminOrgMembership {
 }
 
 model RegisteredUser {
-  id             String   @id @default(cuid())
-  organizationId String   @default("gonzales")
-  email          String
-  name           String?
-  firstName      String?
-  lastName       String?
-  isCoach        Boolean  @default(false)
-  isBlocked      Boolean  @default(false)
-  contactPhone   String?
-  ageGroup       String?
-  assignedTeam   String?
-  googleSub      String?  @unique
-  passwordHash   String?
-  avatarUrl      String?
-  /** True when name-based duplicate detection flagged this account for admin review. */
-  duplicateReviewPending Boolean @default(false)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  auditLogs    AdminAuditLog[]
-  sessions     CoachSession[]
-  dugoutPosts  DugoutPost[]
-  dugoutComments DugoutComment[]
-  dugoutLikes  DugoutPostLike[]
-  dugoutNotificationCursor DugoutNotificationCursor?
-  dugoutNotificationReads DugoutNotificationRead[]
-  allStarVoteDrafts AllStarVoteDraft[]
-  allStarVoteSubmissions AllStarVoteSubmission[]
-  allStarHeadCoachAssignments AllStarHeadCoachAssignment[] @relation("AllStarHeadCoachRegisteredUser")
-  allStarInvites AllStarInvite[] @relation("AllStarInviteRegisteredUser")
-  allStarVaultAccess AllStarVaultAccess[]
-  teamCoachAssignments TeamCoachAssignment[]
-  teamGameNotes TeamGameNote[] @relation("TeamGameNoteAuthor")
-  duplicateAsNewer     RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsNewer")
-  duplicateAsCandidate RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsCandidate")
-  communicationsCreated CommunicationCampaign[] @relation("CommunicationCampaignCreatedByRegisteredUser")
-  communicationRecipientSnapshots CommunicationRecipientSnapshot[] @relation("CommunicationRecipientRegisteredUser")
-  communicationDeliveries CommunicationDelivery[] @relation("CommunicationDeliveryRegisteredUser")
-  emailSuppressions EmailSuppression[]
-  smsConsents SmsConsent[]
+  id                              String                             @id @default(cuid())
+  organizationId                  String                             @default("gonzales")
+  email                           String
+  name                            String?
+  firstName                       String?
+  lastName                        String?
+  isCoach                         Boolean                            @default(false)
+  isBlocked                       Boolean                            @default(false)
+  contactPhone                    String?
+  ageGroup                        String?
+  assignedTeam                    String?
+  googleSub                       String?                            @unique
+  passwordHash                    String?
+  avatarUrl                       String?
+  /**
+   * True when name-based duplicate detection flagged this account for admin review.
+   */
+  duplicateReviewPending          Boolean                            @default(false)
+  createdAt                       DateTime                           @default(now())
+  updatedAt                       DateTime                           @updatedAt
+  auditLogs                       AdminAuditLog[]
+  sessions                        CoachSession[]
+  dugoutPosts                     DugoutPost[]
+  dugoutComments                  DugoutComment[]
+  dugoutLikes                     DugoutPostLike[]
+  dugoutNotificationCursor        DugoutNotificationCursor?
+  dugoutNotificationReads         DugoutNotificationRead[]
+  allStarVoteDrafts               AllStarVoteDraft[]
+  allStarVoteSubmissions          AllStarVoteSubmission[]
+  allStarHeadCoachAssignments     AllStarHeadCoachAssignment[]       @relation("AllStarHeadCoachRegisteredUser")
+  allStarInvites                  AllStarInvite[]                    @relation("AllStarInviteRegisteredUser")
+  allStarVaultAccess              AllStarVaultAccess[]
+  teamCoachAssignments            TeamCoachAssignment[]
+  teamGameNotes                   TeamGameNote[]                     @relation("TeamGameNoteAuthor")
+  duplicateAsNewer                RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsNewer")
+  duplicateAsCandidate            RegisteredUserDuplicateCandidate[] @relation("RegisteredUserDuplicateAsCandidate")
+  communicationsCreated           CommunicationCampaign[]            @relation("CommunicationCampaignCreatedByRegisteredUser")
+  communicationRecipientSnapshots CommunicationRecipientSnapshot[]   @relation("CommunicationRecipientRegisteredUser")
+  communicationDeliveries         CommunicationDelivery[]            @relation("CommunicationDeliveryRegisteredUser")
+  emailSuppressions               EmailSuppression[]
+  smsConsents                     SmsConsent[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -506,23 +506,23 @@ model RegisteredUser {
 }
 
 model CoachingInterestSubmission {
-  id                  String                         @id @default(cuid())
-  organizationId      String                         @default("fallball")
-  firstName           String
-  lastName            String
-  email               String
-  cellPhone           String
-  interestedDivision  String
-  rolePreference      CoachingInterestRolePreference @default(EITHER)
-  hasCoachedBefore    Boolean                        @default(false)
-  priorDivision       String?
-  notes               String?
-  status              CoachingInterestStatus         @default(NEW)
-  adminNotes          String?
-  contactedAt         DateTime?
-  convertedAt         DateTime?
-  createdAt           DateTime                       @default(now())
-  updatedAt           DateTime                       @updatedAt
+  id                 String                         @id @default(cuid())
+  organizationId     String                         @default("fallball")
+  firstName          String
+  lastName           String
+  email              String
+  cellPhone          String
+  interestedDivision String
+  rolePreference     CoachingInterestRolePreference @default(EITHER)
+  hasCoachedBefore   Boolean                        @default(false)
+  priorDivision      String?
+  notes              String?
+  status             CoachingInterestStatus         @default(NEW)
+  adminNotes         String?
+  contactedAt        DateTime?
+  convertedAt        DateTime?
+  createdAt          DateTime                       @default(now())
+  updatedAt          DateTime                       @updatedAt
 
   @@unique([organizationId, email])
   @@index([organizationId, status])
@@ -532,13 +532,13 @@ model CoachingInterestSubmission {
 }
 
 model RegisteredUserDuplicateCandidate {
-  id              String   @id @default(cuid())
+  id              String                             @id @default(cuid())
   organizationId  String
   newerUserId     String
   candidateUserId String
   matchReason     RegisteredUserDuplicateMatchReason @default(NAME_NORMALIZED)
   status          RegisteredUserDuplicateStatus      @default(PENDING)
-  createdAt       DateTime @default(now())
+  createdAt       DateTime                           @default(now())
   resolvedAt      DateTime?
 
   newerUser     RegisteredUser @relation("RegisteredUserDuplicateAsNewer", fields: [newerUserId], references: [id], onDelete: Cascade)
@@ -550,10 +550,10 @@ model RegisteredUserDuplicateCandidate {
 }
 
 model CoachSession {
-  id        String   @id @default(cuid())
-  tokenHash String   @unique
+  id        String         @id @default(cuid())
+  tokenHash String         @unique
   expiresAt DateTime
-  createdAt DateTime @default(now())
+  createdAt DateTime       @default(now())
   userId    String
   user      RegisteredUser @relation(fields: [userId], references: [id], onDelete: Cascade)
 
@@ -562,22 +562,22 @@ model CoachSession {
 }
 
 model DugoutPost {
-  id             String          @id @default(cuid())
-  organizationId String          @default("gonzales")
+  id             String           @id @default(cuid())
+  organizationId String           @default("gonzales")
   content        String
   mediaUrl       String?
   mediaType      DugoutMediaType?
   threadId       String?
   threadOrder    Int?
-  isPinned       Boolean         @default(false)
+  isPinned       Boolean          @default(false)
   pinnedAt       DateTime?
   authorId       String
-  createdAt      DateTime        @default(now())
-  updatedAt      DateTime        @updatedAt
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
 
-  author RegisteredUser   @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  author   RegisteredUser   @relation(fields: [authorId], references: [id], onDelete: Cascade)
   comments DugoutComment[]
-  likes  DugoutPostLike[]
+  likes    DugoutPostLike[]
 
   @@index([organizationId, createdAt])
   @@index([authorId])
@@ -586,20 +586,20 @@ model DugoutPost {
 }
 
 model DugoutComment {
-  id        String   @id @default(cuid())
+  id        String           @id @default(cuid())
   content   String
   mediaUrl  String?
   mediaType DugoutMediaType?
   postId    String
   authorId  String
   parentId  String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
 
-  post    DugoutPost       @relation(fields: [postId], references: [id], onDelete: Cascade)
-  author  RegisteredUser   @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  parent  DugoutComment?   @relation("DugoutCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
-  replies DugoutComment[]  @relation("DugoutCommentReplies")
+  post              DugoutPost               @relation(fields: [postId], references: [id], onDelete: Cascade)
+  author            RegisteredUser           @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  parent            DugoutComment?           @relation("DugoutCommentReplies", fields: [parentId], references: [id], onDelete: Cascade)
+  replies           DugoutComment[]          @relation("DugoutCommentReplies")
   notificationReads DugoutNotificationRead[] @relation("NotificationReadComment")
 
   @@index([postId, createdAt])
@@ -608,14 +608,14 @@ model DugoutComment {
 }
 
 model DugoutPostLike {
-  id        String         @id @default(cuid())
+  id        String   @id @default(cuid())
   postId    String
   userId    String
-  reaction  String         @default("👍")
-  createdAt DateTime       @default(now())
+  reaction  String   @default("👍")
+  createdAt DateTime @default(now())
 
-  post DugoutPost      @relation(fields: [postId], references: [id], onDelete: Cascade)
-  user RegisteredUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  post              DugoutPost               @relation(fields: [postId], references: [id], onDelete: Cascade)
+  user              RegisteredUser           @relation(fields: [userId], references: [id], onDelete: Cascade)
   notificationReads DugoutNotificationRead[] @relation("NotificationReadLike")
 
   @@unique([postId, userId])
@@ -635,14 +635,14 @@ model DugoutNotificationCursor {
 }
 
 model DugoutNotificationRead {
-  id         String                        @id @default(cuid())
+  id         String                       @id @default(cuid())
   userId     String
   entityType DugoutNotificationEntityType
   postLikeId String?
   commentId  String?
-  readAt     DateTime                      @default(now())
+  readAt     DateTime                     @default(now())
 
-  user     RegisteredUser @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user     RegisteredUser  @relation(fields: [userId], references: [id], onDelete: Cascade)
   postLike DugoutPostLike? @relation("NotificationReadLike", fields: [postLikeId], references: [id], onDelete: Cascade)
   comment  DugoutComment?  @relation("NotificationReadComment", fields: [commentId], references: [id], onDelete: Cascade)
 
@@ -665,7 +665,7 @@ model AdminSession {
 }
 
 model AdminAuditLog {
-  id                     String            @id @default(cuid())
+  id                     String           @id @default(cuid())
   action                 AdminAuditAction
   actorAdminId           String?
   actorEmail             String
@@ -675,9 +675,9 @@ model AdminAuditLog {
   targetName             String?
   sourcePath             String?
   requestIp              String?
-  createdAt              DateTime          @default(now())
+  createdAt              DateTime         @default(now())
 
-  actorAdmin            AdminUser?       @relation("AdminActorLogs", fields: [actorAdminId], references: [id], onDelete: SetNull)
+  actorAdmin           AdminUser?      @relation("AdminActorLogs", fields: [actorAdminId], references: [id], onDelete: SetNull)
   targetRegisteredUser RegisteredUser? @relation(fields: [targetRegisteredUserId], references: [id], onDelete: SetNull)
 
   @@index([createdAt])
@@ -685,46 +685,46 @@ model AdminAuditLog {
 }
 
 model CommunicationCampaign {
-  id               String                       @id @default(cuid())
-  organizationId   String?
-  logicalMode      CommunicationAudienceLogicalMode @default(AND)
-  channels         CommunicationChannel[]
-  status           CommunicationCampaignStatus  @default(DRAFT)
-  title            String
-  messageSubject   String?
-  messageBody      String
-  createdByAdminId String?
+  id                        String                           @id @default(cuid())
+  organizationId            String?
+  logicalMode               CommunicationAudienceLogicalMode @default(AND)
+  channels                  CommunicationChannel[]
+  status                    CommunicationCampaignStatus      @default(DRAFT)
+  title                     String
+  messageSubject            String?
+  messageBody               String
+  createdByAdminId          String?
   createdByRegisteredUserId String?
-  sendAt           DateTime?
-  timezone         String?
-  quietHoursStart  Int?
-  quietHoursEnd    Int?
-  approvedAt       DateTime?
-  sentAt           DateTime?
-  createdAt        DateTime                     @default(now())
-  updatedAt        DateTime                     @updatedAt
+  sendAt                    DateTime?
+  timezone                  String?
+  quietHoursStart           Int?
+  quietHoursEnd             Int?
+  approvedAt                DateTime?
+  sentAt                    DateTime?
+  createdAt                 DateTime                         @default(now())
+  updatedAt                 DateTime                         @updatedAt
 
-  createdByAdmin         AdminUser?            @relation("CommunicationCampaignCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  createdByRegisteredUser RegisteredUser?      @relation("CommunicationCampaignCreatedByRegisteredUser", fields: [createdByRegisteredUserId], references: [id], onDelete: SetNull)
-  audienceRules          CommunicationAudienceRule[]
-  approvals              CommunicationApproval[]
-  recipientSnapshots     CommunicationRecipientSnapshot[]
-  deliveries             CommunicationDelivery[]
+  createdByAdmin          AdminUser?                       @relation("CommunicationCampaignCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdByRegisteredUser RegisteredUser?                  @relation("CommunicationCampaignCreatedByRegisteredUser", fields: [createdByRegisteredUserId], references: [id], onDelete: SetNull)
+  audienceRules           CommunicationAudienceRule[]
+  approvals               CommunicationApproval[]
+  recipientSnapshots      CommunicationRecipientSnapshot[]
+  deliveries              CommunicationDelivery[]
 
   @@index([status, sendAt])
   @@index([organizationId, createdAt])
 }
 
 model CommunicationAudienceRule {
-  id           String                     @id @default(cuid())
-  campaignId   String
-  ruleType     CommunicationAudienceRuleType
-  organizationId String?
-  adminRole    AdminRole?
+  id                     String                        @id @default(cuid())
+  campaignId             String
+  ruleType               CommunicationAudienceRuleType
+  organizationId         String?
+  adminRole              AdminRole?
   coachingInterestStatus CoachingInterestStatus?
-  createdAt    DateTime                   @default(now())
+  createdAt              DateTime                      @default(now())
 
-  campaign     CommunicationCampaign      @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaign CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
   @@index([campaignId])
   @@index([ruleType, organizationId, adminRole])
@@ -732,23 +732,23 @@ model CommunicationAudienceRule {
 }
 
 model CommunicationApproval {
-  id            String                      @id @default(cuid())
-  campaignId    String
+  id              String                      @id @default(cuid())
+  campaignId      String
   approverAdminId String?
-  status        CommunicationApprovalStatus
-  note          String?
-  actedAt       DateTime                    @default(now())
-  createdAt     DateTime                    @default(now())
+  status          CommunicationApprovalStatus
+  note            String?
+  actedAt         DateTime                    @default(now())
+  createdAt       DateTime                    @default(now())
 
-  campaign      CommunicationCampaign       @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  approverAdmin AdminUser?                  @relation("CommunicationApprovedBy", fields: [approverAdminId], references: [id], onDelete: SetNull)
+  campaign      CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  approverAdmin AdminUser?            @relation("CommunicationApprovedBy", fields: [approverAdminId], references: [id], onDelete: SetNull)
 
   @@index([campaignId, status])
   @@index([approverAdminId, actedAt])
 }
 
 model CommunicationRecipientSnapshot {
-  id               String                   @id @default(cuid())
+  id               String                     @id @default(cuid())
   campaignId       String
   recipientType    CommunicationRecipientType
   registeredUserId String?
@@ -756,11 +756,11 @@ model CommunicationRecipientSnapshot {
   email            String?
   phone            String?
   matchReasons     String[]
-  createdAt        DateTime                 @default(now())
+  createdAt        DateTime                   @default(now())
 
-  campaign         CommunicationCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  registeredUser   RegisteredUser?          @relation("CommunicationRecipientRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
-  adminUser        AdminUser?               @relation("CommunicationRecipientAdminUser", fields: [adminUserId], references: [id], onDelete: SetNull)
+  campaign       CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  registeredUser RegisteredUser?       @relation("CommunicationRecipientRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
+  adminUser      AdminUser?            @relation("CommunicationRecipientAdminUser", fields: [adminUserId], references: [id], onDelete: SetNull)
 
   @@index([campaignId])
   @@index([registeredUserId])
@@ -768,26 +768,26 @@ model CommunicationRecipientSnapshot {
 }
 
 model CommunicationDelivery {
-  id               String                   @id @default(cuid())
-  campaignId       String
-  channel          CommunicationChannel
-  recipientType    CommunicationRecipientType
-  registeredUserId String?
-  adminUserId      String?
-  toEmail          String?
-  toPhone          String?
-  provider         String?
+  id                String                      @id @default(cuid())
+  campaignId        String
+  channel           CommunicationChannel
+  recipientType     CommunicationRecipientType
+  registeredUserId  String?
+  adminUserId       String?
+  toEmail           String?
+  toPhone           String?
+  provider          String?
   providerMessageId String?
-  status           CommunicationDeliveryStatus @default(PENDING)
-  errorMessage     String?
-  attemptedAt      DateTime?
-  sentAt           DateTime?
-  createdAt        DateTime                 @default(now())
-  updatedAt        DateTime                 @updatedAt
+  status            CommunicationDeliveryStatus @default(PENDING)
+  errorMessage      String?
+  attemptedAt       DateTime?
+  sentAt            DateTime?
+  createdAt         DateTime                    @default(now())
+  updatedAt         DateTime                    @updatedAt
 
-  campaign         CommunicationCampaign    @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  registeredUser   RegisteredUser?          @relation("CommunicationDeliveryRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
-  adminUser        AdminUser?               @relation("CommunicationDeliveryAdminUser", fields: [adminUserId], references: [id], onDelete: SetNull)
+  campaign       CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  registeredUser RegisteredUser?       @relation("CommunicationDeliveryRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
+  adminUser      AdminUser?            @relation("CommunicationDeliveryAdminUser", fields: [adminUserId], references: [id], onDelete: SetNull)
 
   @@index([campaignId, status, channel])
   @@index([registeredUserId])
@@ -795,31 +795,31 @@ model CommunicationDelivery {
 }
 
 model EmailSuppression {
-  id               String     @id @default(cuid())
+  id               String   @id @default(cuid())
   organizationId   String?
   registeredUserId String?
   email            String
   reason           String
-  createdAt        DateTime   @default(now())
+  createdAt        DateTime @default(now())
 
-  registeredUser   RegisteredUser? @relation(fields: [registeredUserId], references: [id], onDelete: SetNull)
+  registeredUser RegisteredUser? @relation(fields: [registeredUserId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, email])
   @@index([email, createdAt])
 }
 
 model SmsConsent {
-  id               String     @id @default(cuid())
+  id               String    @id @default(cuid())
   organizationId   String?
   registeredUserId String?
   phone            String
   consentedAt      DateTime?
   revokedAt        DateTime?
   source           String?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
-  registeredUser   RegisteredUser? @relation(fields: [registeredUserId], references: [id], onDelete: SetNull)
+  registeredUser RegisteredUser? @relation(fields: [registeredUserId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, phone])
   @@index([registeredUserId, consentedAt, revokedAt])
@@ -831,18 +831,18 @@ enum GameChangerScoreboardSourceType {
 }
 
 model GameScore {
-  id             String    @id @default(cuid())
-  organizationId String    @default("gonzales")
-  gameExternalId String
-  ageGroup       String?
-  homeTeam       String
-  awayTeam       String
-  gameDate       DateTime?
-  homeScore      Int
-  awayScore      Int
+  id               String    @id @default(cuid())
+  organizationId   String    @default("gonzales")
+  gameExternalId   String
+  ageGroup         String?
+  homeTeam         String
+  awayTeam         String
+  gameDate         DateTime?
+  homeScore        Int
+  awayScore        Int
   enteredByAdminId String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   enteredByAdmin AdminUser? @relation(fields: [enteredByAdminId], references: [id], onDelete: SetNull)
 
@@ -852,20 +852,20 @@ model GameScore {
 }
 
 model GameChangerScoreboardConnection {
-  id                         String                          @id @default(cuid())
-  organizationId             String
-  seasonYear                 Int
-  sourceType                 GameChangerScoreboardSourceType
-  sourceKey                  String
-  sourceLabel                String?
-  widgetId                   String
-  maxVerticalGamesVisible    Int?
-  autoImportFinalScores      Boolean                         @default(true)
-  importedFinalEventIds      Json                            @default("[]")
-  matchEventPins             Json                            @default("{}")
-  createdByAdminId           String?
-  createdAt                  DateTime                        @default(now())
-  updatedAt                  DateTime                        @updatedAt
+  id                      String                          @id @default(cuid())
+  organizationId          String
+  seasonYear              Int
+  sourceType              GameChangerScoreboardSourceType
+  sourceKey               String
+  sourceLabel             String?
+  widgetId                String
+  maxVerticalGamesVisible Int?
+  autoImportFinalScores   Boolean                         @default(true)
+  importedFinalEventIds   Json                            @default("[]")
+  matchEventPins          Json                            @default("{}")
+  createdByAdminId        String?
+  createdAt               DateTime                        @default(now())
+  updatedAt               DateTime                        @updatedAt
 
   createdByAdmin AdminUser? @relation("GameChangerScoreboardConnectionCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
@@ -876,18 +876,18 @@ model GameChangerScoreboardConnection {
 }
 
 model CoachImportBatch {
-  id             String   @id @default(cuid())
-  organizationId String
+  id               String    @id @default(cuid())
+  organizationId   String
   createdByAdminId String?
-  createdByEmail String?
-  createdCount   Int      @default(0)
-  updatedCount   Int      @default(0)
-  processedCount Int      @default(0)
-  skippedCount   Int      @default(0)
-  undoPayload    Json
-  undoneAt       DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  createdByEmail   String?
+  createdCount     Int       @default(0)
+  updatedCount     Int       @default(0)
+  processedCount   Int       @default(0)
+  skippedCount     Int       @default(0)
+  undoPayload      Json
+  undoneAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   createdByAdmin AdminUser? @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
@@ -896,48 +896,48 @@ model CoachImportBatch {
 }
 
 model AllStarBallotCycle {
-  id            String            @id @default(cuid())
-  organizationId String
-  seasonYear    Int
-  ageGroup      String
-  allStarAgeGroupId    String?
-  allStarAgeGroupLabel String?
-  title         String?
-  hasShowcase   Boolean           @default(true)
-  requiredRatingsPerCoach Int     @default(12)
-  status        AllStarCycleStatus @default(DRAFT)
-  accessMode    AllStarAccessMode  @default(AGE_GROUP_COACHES)
-  activePhase   AllStarBallotPhase @default(FIRST_TEAM)
-  secondPhaseGeneratedAt DateTime?
-  publishedAt   DateTime?
-  closedAt      DateTime?
+  id                      String              @id @default(cuid())
+  organizationId          String
+  seasonYear              Int
+  ageGroup                String
+  allStarAgeGroupId       String?
+  allStarAgeGroupLabel    String?
+  title                   String?
+  hasShowcase             Boolean             @default(true)
+  requiredRatingsPerCoach Int                 @default(12)
+  status                  AllStarCycleStatus  @default(DRAFT)
+  accessMode              AllStarAccessMode   @default(AGE_GROUP_COACHES)
+  activePhase             AllStarBallotPhase  @default(FIRST_TEAM)
+  secondPhaseGeneratedAt  DateTime?
+  publishedAt             DateTime?
+  closedAt                DateTime?
   /// One shared voting link per ballot; coaches authenticate with an email on the invite roster.
-  ballotLinkToken     String?  @unique
-  ballotLinkTokenHash String?  @unique
+  ballotLinkToken         String?             @unique
+  ballotLinkTokenHash     String?             @unique
   /// When this cycle was generated as a runoff from another ballot, links to the parent cycle.
-  parentBallotCycleId String?
+  parentBallotCycleId     String?
   /// Declared runoff pool size (may exceed requested N when ties expand the pool at cutoff).
-  runoffPoolSize      Int?
+  runoffPoolSize          Int?
   /// Standings ranks 1..this size are "first team"; remainder are "second team" for exports and vault.
-  runoffFirstTeamSize Int?
+  runoffFirstTeamSize     Int?
   /// Admin-marked final vote metadata for configurable runoff / team-fill ballots.
-  runoffIsFinalVote   Boolean @default(false)
-  runoffTeamTarget    AllStarBallotPhase?
-  runoffPlayersNeeded Int?
-  createdByAdminId String?
-  createdAt     DateTime          @default(now())
-  updatedAt     DateTime          @updatedAt
+  runoffIsFinalVote       Boolean             @default(false)
+  runoffTeamTarget        AllStarBallotPhase?
+  runoffPlayersNeeded     Int?
+  createdByAdminId        String?
+  createdAt               DateTime            @default(now())
+  updatedAt               DateTime            @updatedAt
 
-  createdByAdmin      AdminUser?                  @relation("AllStarCycleCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  parentBallotCycle   AllStarBallotCycle?         @relation("AllStarBallotRunoffParent", fields: [parentBallotCycleId], references: [id], onDelete: SetNull)
-  runoffChildCycles   AllStarBallotCycle[]        @relation("AllStarBallotRunoffParent")
-  candidates          AllStarCandidate[]
+  createdByAdmin       AdminUser?                   @relation("AllStarCycleCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  parentBallotCycle    AllStarBallotCycle?          @relation("AllStarBallotRunoffParent", fields: [parentBallotCycleId], references: [id], onDelete: SetNull)
+  runoffChildCycles    AllStarBallotCycle[]         @relation("AllStarBallotRunoffParent")
+  candidates           AllStarCandidate[]
   headCoachAssignments AllStarHeadCoachAssignment[]
-  voteDrafts          AllStarVoteDraft[]
-  voteSubmissions     AllStarVoteSubmission[]
-  invites             AllStarInvite[]
-  auditLogs           AllStarAuditLog[]
-  payments            AllStarPayment[]
+  voteDrafts           AllStarVoteDraft[]
+  voteSubmissions      AllStarVoteSubmission[]
+  invites              AllStarInvite[]
+  auditLogs            AllStarAuditLog[]
+  payments             AllStarPayment[]
 
   @@index([organizationId, seasonYear, ageGroup])
   @@index([organizationId, status, ageGroup])
@@ -946,31 +946,31 @@ model AllStarBallotCycle {
 }
 
 model AllStarCandidate {
-  id                String   @id @default(cuid())
-  ballotCycleId     String
-  organizationId    String
-  ageGroup          String
-  playerFullName    String
-  team              String
-  jerseyNumber      String
-  showcaseBibNumber String?
-  isActive          Boolean  @default(true)
-  excludedFromSecondPhase Boolean @default(false)
-  secondPhaseOverrideReason String?
-  secondPhaseOverrideAt DateTime?
+  id                           String                      @id @default(cuid())
+  ballotCycleId                String
+  organizationId               String
+  ageGroup                     String
+  playerFullName               String
+  team                         String
+  jerseyNumber                 String
+  showcaseBibNumber            String?
+  isActive                     Boolean                     @default(true)
+  excludedFromSecondPhase      Boolean                     @default(false)
+  secondPhaseOverrideReason    String?
+  secondPhaseOverrideAt        DateTime?
   secondPhaseOverrideByAdminId String?
-  finalRosterOverride AllStarFinalRosterOverride?
-  finalRosterOverrideReason String?
-  finalRosterOverrideAt DateTime?
+  finalRosterOverride          AllStarFinalRosterOverride?
+  finalRosterOverrideReason    String?
+  finalRosterOverrideAt        DateTime?
   finalRosterOverrideByAdminId String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt                    DateTime                    @default(now())
+  updatedAt                    DateTime                    @updatedAt
 
-  ballotCycle AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
-  secondPhaseOverrideByAdmin AdminUser? @relation("AllStarSecondPhaseOverrideByAdmin", fields: [secondPhaseOverrideByAdminId], references: [id], onDelete: SetNull)
-  finalRosterOverrideByAdmin AdminUser? @relation("AllStarFinalRosterOverrideByAdmin", fields: [finalRosterOverrideByAdminId], references: [id], onDelete: SetNull)
-  voteItems   AllStarVoteItem[]
-  payments    AllStarPayment[]
+  ballotCycle                AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
+  secondPhaseOverrideByAdmin AdminUser?         @relation("AllStarSecondPhaseOverrideByAdmin", fields: [secondPhaseOverrideByAdminId], references: [id], onDelete: SetNull)
+  finalRosterOverrideByAdmin AdminUser?         @relation("AllStarFinalRosterOverrideByAdmin", fields: [finalRosterOverrideByAdminId], references: [id], onDelete: SetNull)
+  voteItems                  AllStarVoteItem[]
+  payments                   AllStarPayment[]
 
   @@index([ballotCycleId, team])
   @@index([organizationId, ageGroup, playerFullName])
@@ -978,16 +978,16 @@ model AllStarCandidate {
 }
 
 model AllStarHeadCoachAssignment {
-  id                String   @id @default(cuid())
-  ballotCycleId     String
-  organizationId    String
-  ageGroup          String
-  registeredUserId  String?
-  adminUserId       String?
-  coachName         String?
-  coachEmail        String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(cuid())
+  ballotCycleId    String
+  organizationId   String
+  ageGroup         String
+  registeredUserId String?
+  adminUserId      String?
+  coachName        String?
+  coachEmail       String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   ballotCycle    AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
   registeredUser RegisteredUser?    @relation("AllStarHeadCoachRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
@@ -998,35 +998,35 @@ model AllStarHeadCoachAssignment {
 }
 
 model AllStarVoteDraft {
-  id               String   @id @default(cuid())
-  ballotCycleId    String
-  coachUserId      String
-  phase            AllStarBallotPhase @default(FIRST_TEAM)
-  organizationId   String
-  ageGroup         String
-  ratingsPayload   Json
-  updatedAt        DateTime @updatedAt
-  createdAt        DateTime @default(now())
+  id             String             @id @default(cuid())
+  ballotCycleId  String
+  coachUserId    String
+  phase          AllStarBallotPhase @default(FIRST_TEAM)
+  organizationId String
+  ageGroup       String
+  ratingsPayload Json
+  updatedAt      DateTime           @updatedAt
+  createdAt      DateTime           @default(now())
 
   ballotCycle AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
-  coachUser   RegisteredUser      @relation(fields: [coachUserId], references: [id], onDelete: Cascade)
+  coachUser   RegisteredUser     @relation(fields: [coachUserId], references: [id], onDelete: Cascade)
 
   @@unique([ballotCycleId, coachUserId, phase])
   @@index([organizationId, ageGroup, phase])
 }
 
 model AllStarVoteSubmission {
-  id               String   @id @default(cuid())
-  ballotCycleId    String
-  coachUserId      String
-  phase            AllStarBallotPhase @default(FIRST_TEAM)
-  organizationId   String
-  ageGroup         String
-  submittedAt      DateTime @default(now())
-  createdAt        DateTime @default(now())
+  id             String             @id @default(cuid())
+  ballotCycleId  String
+  coachUserId    String
+  phase          AllStarBallotPhase @default(FIRST_TEAM)
+  organizationId String
+  ageGroup       String
+  submittedAt    DateTime           @default(now())
+  createdAt      DateTime           @default(now())
 
   ballotCycle AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
-  coachUser   RegisteredUser      @relation(fields: [coachUserId], references: [id], onDelete: Cascade)
+  coachUser   RegisteredUser     @relation(fields: [coachUserId], references: [id], onDelete: Cascade)
   voteItems   AllStarVoteItem[]
 
   @@unique([ballotCycleId, coachUserId, phase])
@@ -1034,11 +1034,11 @@ model AllStarVoteSubmission {
 }
 
 model AllStarVoteItem {
-  id                String   @id @default(cuid())
-  voteSubmissionId  String
-  candidateId       String
-  rating            Int
-  createdAt         DateTime @default(now())
+  id               String   @id @default(cuid())
+  voteSubmissionId String
+  candidateId      String
+  rating           Int
+  createdAt        DateTime @default(now())
 
   voteSubmission AllStarVoteSubmission @relation(fields: [voteSubmissionId], references: [id], onDelete: Cascade)
   candidate      AllStarCandidate      @relation(fields: [candidateId], references: [id], onDelete: Cascade)
@@ -1048,12 +1048,12 @@ model AllStarVoteItem {
 }
 
 model AllStarInvite {
-  id               String   @id @default(cuid())
+  id               String             @id @default(cuid())
   ballotCycleId    String
   phase            AllStarBallotPhase @default(FIRST_TEAM)
   /// Legacy per-coach links; null when using shared `AllStarBallotCycle.ballotLinkToken` only.
-  tokenHash        String?  @unique
-  inviteToken      String?  @unique
+  tokenHash        String?            @unique
+  inviteToken      String?            @unique
   organizationId   String
   ageGroup         String
   invitedEmail     String
@@ -1062,24 +1062,24 @@ model AllStarInvite {
   revokedAt        DateTime?
   openedAt         DateTime?
   expiresAt        DateTime?
-  createdAt        DateTime @default(now())
+  createdAt        DateTime           @default(now())
 
-  ballotCycle  AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
-  invitedUser  RegisteredUser?    @relation("AllStarInviteRegisteredUser", fields: [invitedUserId], references: [id], onDelete: SetNull)
-  createdByAdmin AdminUser?       @relation("AllStarInviteCreatedByAdmin", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  ballotCycle    AllStarBallotCycle @relation(fields: [ballotCycleId], references: [id], onDelete: Cascade)
+  invitedUser    RegisteredUser?    @relation("AllStarInviteRegisteredUser", fields: [invitedUserId], references: [id], onDelete: SetNull)
+  createdByAdmin AdminUser?         @relation("AllStarInviteCreatedByAdmin", fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
   @@index([ballotCycleId, phase, invitedEmail])
   @@index([organizationId, ageGroup, phase])
 }
 
 model AllStarVaultAccess {
-  id               String   @id @default(cuid())
+  id               String           @id @default(cuid())
   registeredUserId String
   organizationId   String
   role             AllStarVaultRole
   grantedByAdminId String?
-  createdAt        DateTime @default(now())
-  updatedAt        DateTime @updatedAt
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
 
   registeredUser RegisteredUser @relation(fields: [registeredUserId], references: [id], onDelete: Cascade)
   grantedByAdmin AdminUser?     @relation("AllStarVaultAccessGrantedByAdmin", fields: [grantedByAdminId], references: [id], onDelete: SetNull)
@@ -1116,23 +1116,23 @@ model AllStarAuditLog {
 }
 
 model Team {
-  id                String   @id @default(cuid())
-  organizationId    String
-  seasonYear        Int
-  ageGroup          String
-  teamName          String
-  contactNotes      String?
-  practicePlan      String?
-  createdByAdminId  String?
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  id               String   @id @default(cuid())
+  organizationId   String
+  seasonYear       Int
+  ageGroup         String
+  teamName         String
+  contactNotes     String?
+  practicePlan     String?
+  createdByAdminId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
-  createdByAdmin    AdminUser?             @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  coachAssignments  TeamCoachAssignment[]
-  players           TeamPlayer[]
-  gameNotes         TeamGameNote[]
-  homeDraftGames    ScheduleDraftGame[] @relation("ScheduleDraftGameHomeTeam")
-  awayDraftGames    ScheduleDraftGame[] @relation("ScheduleDraftGameAwayTeam")
+  createdByAdmin   AdminUser?            @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  coachAssignments TeamCoachAssignment[]
+  players          TeamPlayer[]
+  gameNotes        TeamGameNote[]
+  homeDraftGames   ScheduleDraftGame[]   @relation("ScheduleDraftGameHomeTeam")
+  awayDraftGames   ScheduleDraftGame[]   @relation("ScheduleDraftGameAwayTeam")
 
   @@unique([organizationId, seasonYear, ageGroup, teamName])
   @@index([organizationId, seasonYear, ageGroup])
@@ -1154,41 +1154,41 @@ model TeamCoachAssignment {
 }
 
 model TeamPlayer {
-  id            String   @id @default(cuid())
-  teamId         String
-  firstName      String?
-  lastName       String?
-  fullName       String
-  contactPhone   String?
-  gender         String?
-  birthDate      DateTime?
-  guardianFirstName String?
-  guardianLastName  String?
-  guardianEmail     String?
-  guardianPhone     String?
-  paymentStatus     String?
-  birthCertificateStatus String?
-  registrationOrderNo    String?
-  registrationOrderDate  DateTime?
-  jerseySize            String?
-  medicalConditionsSummary String?
-  medicalConditionsDetails String?
+  id                         String    @id @default(cuid())
+  teamId                     String
+  firstName                  String?
+  lastName                   String?
+  fullName                   String
+  contactPhone               String?
+  gender                     String?
+  birthDate                  DateTime?
+  guardianFirstName          String?
+  guardianLastName           String?
+  guardianEmail              String?
+  guardianPhone              String?
+  paymentStatus              String?
+  birthCertificateStatus     String?
+  registrationOrderNo        String?
+  registrationOrderDate      DateTime?
+  jerseySize                 String?
+  medicalConditionsSummary   String?
+  medicalConditionsDetails   String?
   medicalTreatmentAuthorized Boolean?
-  liabilityWaiverAccepted     Boolean?
-  codeOfConductAccepted       Boolean?
-  refundPolicyAccepted        Boolean?
-  playedPriorSeason           Boolean?
-  priorSeasonTeamInfo         String?
-  streetAddress               String?
-  unit                        String?
-  city                        String?
-  state                       String?
-  postalCode                  String?
-  rosterStatus   String?
-  jerseyNumber   String?
-  allStarAgeBand String?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  liabilityWaiverAccepted    Boolean?
+  codeOfConductAccepted      Boolean?
+  refundPolicyAccepted       Boolean?
+  playedPriorSeason          Boolean?
+  priorSeasonTeamInfo        String?
+  streetAddress              String?
+  unit                       String?
+  city                       String?
+  state                      String?
+  postalCode                 String?
+  rosterStatus               String?
+  jerseyNumber               String?
+  allStarAgeBand             String?
+  createdAt                  DateTime  @default(now())
+  updatedAt                  DateTime  @updatedAt
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
@@ -1225,21 +1225,21 @@ model TeamGameNote {
 }
 
 model TeamPlayerImportBatch {
-  id             String   @id @default(cuid())
-  organizationId String
+  id               String    @id @default(cuid())
+  organizationId   String
   createdByAdminId String?
-  status         String   @default("RUNNING")
-  totalRows      Int      @default(0)
-  processedRows  Int      @default(0)
-  createdTeams   Int      @default(0)
-  createdPlayers Int      @default(0)
-  updatedPlayers Int      @default(0)
-  skippedRows    Int      @default(0)
-  undoPayload    Json
-  completedAt    DateTime?
-  undoneAt       DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  status           String    @default("RUNNING")
+  totalRows        Int       @default(0)
+  processedRows    Int       @default(0)
+  createdTeams     Int       @default(0)
+  createdPlayers   Int       @default(0)
+  updatedPlayers   Int       @default(0)
+  skippedRows      Int       @default(0)
+  undoPayload      Json
+  completedAt      DateTime?
+  undoneAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 
   createdByAdmin AdminUser? @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
@@ -1248,21 +1248,21 @@ model TeamPlayerImportBatch {
 }
 
 model Sponsor {
-  id             String   @id @default(cuid())
-  businessName   String
-  contactName    String?
-  contactEmail   String?
-  contactPhone   String?
-  websiteUrl     String?
-  logoUrl        String?
-  logoMimeType   String?
-  logoAlt        String?
-  notes          String?
-  isActive       Boolean  @default(true)
-  startAt        DateTime?
-  endAt          DateTime?
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
+  id           String    @id @default(cuid())
+  businessName String
+  contactName  String?
+  contactEmail String?
+  contactPhone String?
+  websiteUrl   String?
+  logoUrl      String?
+  logoMimeType String?
+  logoAlt      String?
+  notes        String?
+  isActive     Boolean   @default(true)
+  startAt      DateTime?
+  endAt        DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
   packageEnrollment SponsorPackageEnrollment?
   placements        SponsorPlacement[]
@@ -1272,43 +1272,41 @@ model Sponsor {
 }
 
 model SponsorPackageEnrollment {
-  id                             String            @id @default(cuid())
-  sponsorId                      String            @unique
-  packageType                    SponsorPackageType
-  packageLabel                   String
-  minimumCommitmentCents         Int?
-  amountCents                    Int?
-  additionalTeamAmountCents      Int?
-  twoYearCommitmentAmountCents   Int?
-  includesWebsiteLogo            Boolean           @default(true)
-  includesSocialRecognition      Boolean           @default(false)
-  includesUniformName            Boolean           @default(false)
-  includesFieldSignage           Boolean           @default(false)
-  includesSeasonScheduleName     Boolean           @default(false)
-  includesAllStarMention         Boolean           @default(false)
-  notes                          String?
-  createdAt                      DateTime          @default(now())
-  updatedAt                      DateTime          @updatedAt
+  id                           String             @id @default(cuid())
+  sponsorId                    String             @unique
+  packageType                  SponsorPackageType
+  packageLabel                 String
+  minimumCommitmentCents       Int?
+  amountCents                  Int?
+  additionalTeamAmountCents    Int?
+  twoYearCommitmentAmountCents Int?
+  includesWebsiteLogo          Boolean            @default(true)
+  includesSocialRecognition    Boolean            @default(false)
+  includesUniformName          Boolean            @default(false)
+  includesFieldSignage         Boolean            @default(false)
+  includesSeasonScheduleName   Boolean            @default(false)
+  includesAllStarMention       Boolean            @default(false)
+  notes                        String?
+  createdAt                    DateTime           @default(now())
+  updatedAt                    DateTime           @updatedAt
 
   sponsor Sponsor @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
 }
 
 model SponsorPlacement {
-  id                  String   @id @default(cuid())
-  sponsorId           String
-  organizationId      String
-  showInFooterScroller Boolean @default(true)
-  sortOrder           Int      @default(100)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                   String   @id @default(cuid())
+  sponsorId            String
+  organizationId       String
+  showInFooterScroller Boolean  @default(true)
+  sortOrder            Int      @default(100)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 
   sponsor Sponsor @relation(fields: [sponsorId], references: [id], onDelete: Cascade)
 
   @@unique([sponsorId, organizationId])
   @@index([organizationId, showInFooterScroller, sortOrder])
 }
-
-
 
 model ScheduleSeason {
   id               String               @id @default(cuid())
@@ -1459,10 +1457,10 @@ model ScheduleDraftGame {
   updatedAt        DateTime                @updatedAt
 
   season   ScheduleSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
-  park     SchedulePark?   @relation(fields: [parkId], references: [id], onDelete: SetNull)
-  field    ScheduleField?  @relation(fields: [fieldId], references: [id], onDelete: SetNull)
-  homeTeam Team?           @relation("ScheduleDraftGameHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
-  awayTeam Team?           @relation("ScheduleDraftGameAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  park     SchedulePark?  @relation(fields: [parkId], references: [id], onDelete: SetNull)
+  field    ScheduleField? @relation(fields: [fieldId], references: [id], onDelete: SetNull)
+  homeTeam Team?          @relation("ScheduleDraftGameHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeam Team?          @relation("ScheduleDraftGameAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
 
   @@index([organizationId, seasonId, status, gameDate], map: "SchedDraftGame_org_season_status_date_idx")
   @@index([seasonId, division, gameDate])
@@ -1550,7 +1548,6 @@ model AssignrAuditLog {
   @@index([syncJobId])
 }
 
-
 enum ScheduleManagerJobStatus {
   PENDING
   RUNNING
@@ -1626,11 +1623,94 @@ model ScheduleManagerAction {
   @@index([bracketProjectId])
 }
 
+enum TournamentMonitorRunStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum TournamentMonitorEventType {
+  SITE_DOWN
+  SITE_RECOVERED
+  LIVE_HEARTBEAT
+  GAME_LIVE
+  GAME_FINAL
+  GC_GAME_CREATED
+  GC_GAME_CREATE_WARNING
+  GC_GAME_CREATE_FAILED
+}
+
+model TournamentMonitorSubscription {
+  id        String                 @id @default(cuid())
+  name      String
+  email     String?
+  phone     String?
+  channels  CommunicationChannel[]
+  active    Boolean                @default(true)
+  createdAt DateTime               @default(now())
+  updatedAt DateTime               @updatedAt
+
+  @@index([active])
+  @@index([email])
+  @@index([phone])
+}
+
+model TournamentMonitorRun {
+  id           String                     @id @default(cuid())
+  status       TournamentMonitorRunStatus @default(PENDING)
+  checkedCount Int                        @default(0)
+  eventCount   Int                        @default(0)
+  sentCount    Int                        @default(0)
+  failedCount  Int                        @default(0)
+  errorMessage String?
+  results      Json?
+  createdAt    DateTime                   @default(now())
+  updatedAt    DateTime                   @updatedAt
+  completedAt  DateTime?
+
+  events TournamentMonitorEvent[]
+
+  @@index([status, createdAt])
+}
+
+model TournamentMonitorEvent {
+  id               String                     @id @default(cuid())
+  runId            String?
+  type             TournamentMonitorEventType
+  organizationId   String
+  bracketProjectId String?
+  matchId          String?
+  eventKey         String
+  statusHash       String
+  title            String
+  message          String
+  payload          Json?
+  emailSentCount   Int                        @default(0)
+  smsSentCount     Int                        @default(0)
+  failedCount      Int                        @default(0)
+  sentAt           DateTime?
+  createdAt        DateTime                   @default(now())
+  updatedAt        DateTime                   @updatedAt
+
+  run            TournamentMonitorRun? @relation(fields: [runId], references: [id], onDelete: SetNull)
+  bracketProject BracketProject?       @relation(fields: [bracketProjectId], references: [id], onDelete: Cascade)
+
+  @@unique([eventKey])
+  @@index([type, createdAt])
+  @@index([organizationId, type, createdAt])
+  @@index([bracketProjectId, matchId, type])
+  @@index([runId])
+}
+
 model OrgAlert {
   id             String   @id @default(cuid())
   organizationId String
   allParksOut    Boolean  @default(true)
-  /** JSON string array — stored as Json because Prisma PPG adapter mishandles Postgres text[]. */
+  /**
+   * JSON string array — stored as Json because Prisma PPG adapter mishandles Postgres text[].
+   */
   venues         Json     @default("[]")
   expiresAt      DateTime
   createdAt      DateTime @default(now())
@@ -1639,22 +1719,26 @@ model OrgAlert {
 }
 
 model SocialPost {
-  id                   String           @id @default(cuid())
-  /** Always `ap-baseball`: shared AP Baseball Facebook Page, not per league site. */
+  id                 String           @id @default(cuid())
+  /**
+   * Always `ap-baseball`: shared AP Baseball Facebook Page, not per league site.
+   */
   organizationId     String           @default("ap-baseball")
-  status               SocialPostStatus @default(DRAFT)
-  body                 String
-  linkUrl              String?
-  imageUrl             String?
-  facebookPostId       String?
-  publishError         String?
-  publishedAt          DateTime?
-  scheduledFor         DateTime?
-  createdByAdminId     String?
-  /** True when this row was first created from a Facebook Page feed sync (not composed in admin). */
-  syncedFromFacebook   Boolean          @default(false)
-  createdAt            DateTime         @default(now())
-  updatedAt            DateTime         @updatedAt
+  status             SocialPostStatus @default(DRAFT)
+  body               String
+  linkUrl            String?
+  imageUrl           String?
+  facebookPostId     String?
+  publishError       String?
+  publishedAt        DateTime?
+  scheduledFor       DateTime?
+  createdByAdminId   String?
+  /**
+   * True when this row was first created from a Facebook Page feed sync (not composed in admin).
+   */
+  syncedFromFacebook Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
 
   createdByAdmin AdminUser? @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
@@ -1673,7 +1757,7 @@ model AllStarPageConfig {
   /// Plain-text announcement / info paragraph shown at the top of the page
   infoText        String?
   /// Additional purchasable items: JSON array of { label: string, url: string }
-  links           Json    @default("[]")
+  links           Json     @default("[]")
   createdAt       DateTime @default(now())
   updatedAt       DateTime @updatedAt
 }
@@ -1724,7 +1808,7 @@ model AllStarPayment {
 model CapOrderRecord {
   id          String   @id @default(cuid())
   txId        String   @unique
-  org         String   // "gonzales" | "ascension" | "unknown"
+  org         String // "gonzales" | "ascension" | "unknown"
   payerName   String?
   payerEmail  String?
   amountCents Int

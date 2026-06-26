@@ -7,6 +7,7 @@ import { assignrHubHref, resolveAdminAssignrScope } from "@/lib/admin/assignrOrg
 import { listUnifiedScoreGames } from "@/lib/admin/unifiedScoreSources";
 import AdminGamesImportManager from "@/components/admin/AdminGamesImportManager";
 import AdminScoresManager from "@/components/admin/AdminScoresManager";
+import TournamentAlertsPanel from "@/components/admin/TournamentAlertsPanel";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
@@ -38,6 +39,7 @@ export default async function AdminScoresPage({ searchParams }: { searchParams: 
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
       <section className="mx-auto max-w-7xl px-4 sm:px-6">
         <ScoresPageHeader currentOrg={currentOrg} allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")} allowViewByUser={adminUser.isMaster} moduleHubHref={canAccessAssignr ? assignrHubHref(currentOrg ?? getDefaultContentOrg()) : undefined} />
+        {masterMode ? <TournamentAlertsPanel /> : null}
         {scoresLoadError ? <div className="mb-5 rounded-xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">{scoresLoadError}</div> : null}
         <AdminScoresManager games={payload.games} connections={payload.connections} scope={scope} seasonYear={safeSeasonYear} />
         <AdminGamesImportManager scope={scope} />

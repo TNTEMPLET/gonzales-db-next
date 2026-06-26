@@ -251,8 +251,8 @@ export function resolveDugoutApiOrg(requestedOrg?: string | null): string {
   return resolveAdminTargetOrg(requestedOrg);
 }
 
-export function getSiteConfigForOrg(org: ContentOrgId): SiteConfig {
-  return configs[org];
+export function getSiteConfigForOrg(org: OrgId): SiteConfig {
+  return configs[org] ?? configs.gonzales;
 }
 
 export function getTournamentBracketBrandingForOrg(org: BracketOrgId): {

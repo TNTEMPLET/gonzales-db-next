@@ -44,4 +44,5 @@ export type GameChangerCreateGameResult = {
   dryRun: boolean;
   requestSummary: Record<string, unknown>;
   responseSummary: Record<string, unknown>;
+  warnings?: string[];
 };
