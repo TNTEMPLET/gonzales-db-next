@@ -2,6 +2,21 @@ import prisma from "@/lib/prisma";
 import { recordDuplicateCandidatesForNewUser } from "@/lib/registeredUserDuplicates";
 import { getDefaultContentOrg, getOrgId } from "@/lib/siteConfig";
 
+const registeredUserLoginSelect = {
+  id: true,
+  organizationId: true,
+  email: true,
+  googleSub: true,
+  name: true,
+  firstName: true,
+  lastName: true,
+  contactPhone: true,
+  ageGroup: true,
+  assignedTeam: true,
+  isCoach: true,
+  isBlocked: true,
+} as const;
+
 function getRegisteredUserOrgId() {
   const siteOrg = getOrgId();
   // Master deployment promotes users from content-org user pools.
@@ -22,6 +37,7 @@ export async function upsertRegisteredUserFromGoogle(
   const orgId = getRegisteredUserOrgId();
   const existingBySub = await prisma.registeredUser.findUnique({
     where: { googleSub: input.sub },
+    select: registeredUserLoginSelect,
   });
 
   if (existingBySub && existingBySub.email !== input.email) {
@@ -36,6 +52,7 @@ export async function upsertRegisteredUserFromGoogle(
     if (existingBySub.organizationId !== orgId) {
       const existingByEmailInOrg = await prisma.registeredUser.findFirst({
         where: { organizationId: orgId, email: input.email },
+        select: registeredUserLoginSelect,
       });
 
       if (existingByEmailInOrg) {
@@ -45,6 +62,7 @@ export async function upsertRegisteredUserFromGoogle(
           await tx.registeredUser.update({
             where: { id: existingBySub.id },
             data: { googleSub: null },
+            select: { id: true },
           });
           return tx.registeredUser.update({
             where: { id: existingByEmailInOrg.id },
@@ -54,6 +72,7 @@ export async function upsertRegisteredUserFromGoogle(
               firstName: input.firstName,
               lastName: input.lastName,
             },
+            select: registeredUserLoginSelect,
           });
         });
       }
@@ -69,11 +88,13 @@ export async function upsertRegisteredUserFromGoogle(
         firstName: input.firstName,
         lastName: input.lastName,
       },
+      select: registeredUserLoginSelect,
     });
   }
 
   const existingByEmail = await prisma.registeredUser.findFirst({
     where: { organizationId: orgId, email: input.email },
+    select: registeredUserLoginSelect,
   });
 
   if (existingByEmail) {
@@ -91,6 +112,7 @@ export async function upsertRegisteredUserFromGoogle(
         firstName: input.firstName,
         lastName: input.lastName,
       },
+      select: registeredUserLoginSelect,
     });
   }
 
@@ -103,6 +125,7 @@ export async function upsertRegisteredUserFromGoogle(
       firstName: input.firstName,
       lastName: input.lastName,
     },
+    select: registeredUserLoginSelect,
   });
   await recordDuplicateCandidatesForNewUser(prisma, created);
   return created;
