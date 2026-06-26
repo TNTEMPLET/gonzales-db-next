@@ -5,6 +5,19 @@ import prisma from "@/lib/prisma";
 
 export const dynamic = "force-dynamic";
 
+const coachProfileSelect = {
+  id: true,
+  email: true,
+  firstName: true,
+  lastName: true,
+  name: true,
+  contactPhone: true,
+  abuseAwarenessTrainingCertificateUrl: true,
+  abuseAwarenessTrainingCertificateFileName: true,
+  abuseAwarenessTrainingCertificateMimeType: true,
+  abuseAwarenessTrainingCertificateUploadedAt: true,
+} as const;
+
 export async function GET(request: NextRequest) {
   const actor = await resolveCoachCornerActor(request);
   if (!actor) {
@@ -14,6 +27,16 @@ export async function GET(request: NextRequest) {
   const seasonYearParam = request.nextUrl.searchParams.get("seasonYear");
   const parsedSeasonYear = seasonYearParam ? Number(seasonYearParam) : Number.NaN;
   const seasonFilter = Number.isFinite(parsedSeasonYear) ? parsedSeasonYear : undefined;
+
+  const actorCoach = await prisma.registeredUser.findFirst({
+    where: {
+      id: actor.registeredUserId,
+      organizationId: actor.targetOrg,
+      isCoach: true,
+      isBlocked: false,
+    },
+    select: coachProfileSelect,
+  });
 
   const teams = actor.isAdmin
     ? await prisma.team.findMany({
@@ -26,18 +49,7 @@ export async function GET(request: NextRequest) {
           coachAssignments: {
             include: {
               registeredUser: {
-                select: {
-                  id: true,
-                  email: true,
-                  firstName: true,
-                  lastName: true,
-                  name: true,
-                  contactPhone: true,
-                  abuseAwarenessTrainingCertificateUrl: true,
-                  abuseAwarenessTrainingCertificateFileName: true,
-                  abuseAwarenessTrainingCertificateMimeType: true,
-                  abuseAwarenessTrainingCertificateUploadedAt: true,
-                },
+                select: coachProfileSelect,
               },
             },
           },
@@ -60,18 +72,7 @@ export async function GET(request: NextRequest) {
           coachAssignments: {
             include: {
               registeredUser: {
-                select: {
-                  id: true,
-                  email: true,
-                  firstName: true,
-                  lastName: true,
-                  name: true,
-                  contactPhone: true,
-                  abuseAwarenessTrainingCertificateUrl: true,
-                  abuseAwarenessTrainingCertificateFileName: true,
-                  abuseAwarenessTrainingCertificateMimeType: true,
-                  abuseAwarenessTrainingCertificateUploadedAt: true,
-                },
+                select: coachProfileSelect,
               },
             },
           },
@@ -85,7 +86,12 @@ export async function GET(request: NextRequest) {
       });
 
   return NextResponse.json({
-    actor: { isAdmin: actor.isAdmin, registeredUserId: actor.registeredUserId, targetOrg: actor.targetOrg },
+    actor: {
+      isAdmin: actor.isAdmin,
+      registeredUserId: actor.registeredUserId,
+      targetOrg: actor.targetOrg,
+      coach: actorCoach,
+    },
     data: teams,
   });
 }

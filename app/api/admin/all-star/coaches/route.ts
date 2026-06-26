@@ -3,6 +3,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAllStarVaultAccess } from "@/lib/allStar/auth";
 import prisma from "@/lib/prisma";
 
+const coachSelect = {
+  id: true,
+  email: true,
+  name: true,
+  firstName: true,
+  lastName: true,
+  assignedTeam: true,
+  abuseAwarenessTrainingCertificateUrl: true,
+  abuseAwarenessTrainingCertificateFileName: true,
+  abuseAwarenessTrainingCertificateMimeType: true,
+  abuseAwarenessTrainingCertificateUploadedAt: true,
+} as const;
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
@@ -18,47 +30,47 @@ export async function GET(request: NextRequest) {
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
   /**
-   * Coaches are sourced from team assignments for this org/season/age group—not from
-   * `RegisteredUser.ageGroup`, which only stores a single profile value and misses coaches
-   * who are assigned to multiple divisions.
+   * Prefer team assignments for role accuracy, then merge in active coach profiles
+   * for the cycle age group so coaches can be managed before teams are built.
    */
-  const assignmentRows = await prisma.teamCoachAssignment.findMany({
-    where: {
-      registeredUser: {
+  const [assignmentRows, profileRows] = await Promise.all([
+    prisma.teamCoachAssignment.findMany({
+      where: {
+        registeredUser: {
+          organizationId: cycle.organizationId,
+          isCoach: true,
+          isBlocked: false,
+        },
+        team: {
+          organizationId: cycle.organizationId,
+          seasonYear: cycle.seasonYear,
+          ageGroup: { equals: cycle.ageGroup, mode: "insensitive" },
+        },
+      },
+      include: {
+        registeredUser: {
+          select: coachSelect,
+        },
+      },
+      orderBy: [{ createdAt: "desc" }],
+    }),
+    prisma.registeredUser.findMany({
+      where: {
         organizationId: cycle.organizationId,
         isCoach: true,
         isBlocked: false,
-      },
-      team: {
-        organizationId: cycle.organizationId,
-        seasonYear: cycle.seasonYear,
         ageGroup: { equals: cycle.ageGroup, mode: "insensitive" },
       },
-    },
-    include: {
-      registeredUser: {
-        select: {
-          id: true,
-          email: true,
-          name: true,
-          firstName: true,
-          lastName: true,
-          assignedTeam: true,
-          abuseAwarenessTrainingCertificateUrl: true,
-          abuseAwarenessTrainingCertificateFileName: true,
-          abuseAwarenessTrainingCertificateMimeType: true,
-          abuseAwarenessTrainingCertificateUploadedAt: true,
-        },
-      },
-    },
-    orderBy: [{ createdAt: "desc" }],
-  });
+      select: coachSelect,
+      orderBy: [{ firstName: "asc" }, { lastName: "asc" }, { email: "asc" }],
+    }),
+  ]);
 
   const mergedByCoachId = new Map<
     string,
     {
-      coach: (typeof assignmentRows)[0]["registeredUser"];
-      coachRole: "HEAD_COACH" | "ASSISTANT_COACH";
+      coach: (typeof profileRows)[number];
+      coachRole: "HEAD_COACH" | "ASSISTANT_COACH" | null;
     }
   >();
 
@@ -73,6 +85,12 @@ export async function GET(request: NextRequest) {
       mergedByCoachId.set(id, { coach: row.registeredUser, coachRole });
     } else {
       mergedByCoachId.set(id, { coach: prev.coach, coachRole });
+    }
+  }
+
+  for (const coach of profileRows) {
+    if (!mergedByCoachId.has(coach.id)) {
+      mergedByCoachId.set(coach.id, { coach, coachRole: null });
     }
   }
 
