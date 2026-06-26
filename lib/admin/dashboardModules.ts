@@ -73,6 +73,7 @@ const moduleCatalog: Record<
   ORG_DOCUMENTS: { category: "integrations", sortOrder: 10 },
   ASSIGNR: { category: "integrations", sortOrder: 20 },
   TOURNAMENT_BRACKETS: { category: "program", sortOrder: 25 },
+  TOURNAMENT_ALERTS: { category: "operations", sortOrder: 12 },
   USERS: { category: "operations", sortOrder: 10 },
   REPORTS: { category: "operations", sortOrder: 20 },
   PARK_ALERTS: { category: "operations", sortOrder: 15 },

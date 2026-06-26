@@ -27,6 +27,7 @@ export const ADMIN_MODULES = [
   "ORG_DOCUMENTS",
   "ASSIGNR",
   "TOURNAMENT_BRACKETS",
+  "TOURNAMENT_ALERTS",
   "PARK_ALERTS",
   "PARK_INFO",
 ] as const;
@@ -56,6 +57,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   ORG_DOCUMENTS: "BOARD_MEMBER",
   ASSIGNR: "ADMIN",
   TOURNAMENT_BRACKETS: "MASTER_ADMIN",
+  TOURNAMENT_ALERTS: "MASTER_ADMIN",
   PARK_ALERTS: "ADMIN",
   PARK_INFO: "ADMIN",
 };
@@ -66,6 +68,7 @@ const MASTER_ONLY_MODULES = new Set<AdminModule>([
   "SOCIAL_MEDIA",
   "ORG_DOCUMENTS",
   "TOURNAMENT_BRACKETS",
+  "TOURNAMENT_ALERTS",
   "PARK_INFO",
 ]);
 

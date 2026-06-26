@@ -40,6 +40,7 @@ const previewModuleMinimumRole: Record<
   ASSIGNR: "ADMIN",
   PARK_ALERTS: "ADMIN",
   TOURNAMENT_BRACKETS: "MASTER_ADMIN",
+  TOURNAMENT_ALERTS: "MASTER_ADMIN",
   PARK_INFO: "ADMIN",
 };
 
@@ -56,6 +57,7 @@ const masterOnlyModules = new Set<AdminModule>([
   "SOCIAL_MEDIA",
   "ORG_DOCUMENTS",
   "TOURNAMENT_BRACKETS",
+  "TOURNAMENT_ALERTS",
 ]);
 
 const previewRoleLabel: Record<AdminViewPreviewRole, string> = {
