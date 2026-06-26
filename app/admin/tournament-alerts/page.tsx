@@ -37,6 +37,15 @@ type SiteEventPayload = {
   };
 };
 
+type MonitorSnapshot = {
+  latestRun: Awaited<ReturnType<typeof loadMonitorSnapshot>>["latestRun"];
+  recentRuns: Awaited<ReturnType<typeof loadMonitorSnapshot>>["recentRuns"];
+  recentEvents: Awaited<ReturnType<typeof loadMonitorSnapshot>>["recentEvents"];
+  subscriptions: Awaited<ReturnType<typeof loadMonitorSnapshot>>["subscriptions"];
+  storageReady: boolean;
+  errorMessage: string | null;
+};
+
 const statusToneClasses: Record<StatusTone, string> = {
   good: "border-emerald-500/30 bg-emerald-500/10 text-emerald-100",
   warn: "border-amber-500/30 bg-amber-500/10 text-amber-100",
@@ -101,34 +110,8 @@ function siteEventLabel(type: string | undefined, payload: unknown) {
   return "No site incident";
 }
 
-export default async function AdminTournamentAlertsPage() {
-  if (!isMasterDeployment()) {
-    redirect("/admin?denied=tournament-alerts");
-  }
-
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-  const adminUser = await getAdminUserFromCookieToken(token);
-
-  if (!adminUser) {
-    redirect(`/admin/login?next=${encodeURIComponent("/admin/tournament-alerts")}`);
-  }
-
-  if (!adminUser.isMaster) {
-    redirect("/admin?denied=tournament-alerts-master");
-  }
-
-  const effectiveRole = await getEffectiveAdminRoleForOrg(
-    adminUser.id,
-    adminUser.isMaster,
-    "gonzales",
-  );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
-  if (!canAccessAdminModule(role, "TOURNAMENT_ALERTS")) {
-    redirect("/admin?denied=tournament-alerts");
-  }
-
-  const [latestRun, recentRuns, recentEvents, subscriptions, bracketRows] = await Promise.all([
+async function loadMonitorSnapshot() {
+  return Promise.all([
     prisma.tournamentMonitorRun.findFirst({
       orderBy: { createdAt: "desc" },
       select: {
@@ -194,6 +177,63 @@ export default async function AdminTournamentAlertsPage() {
         active: true,
       },
     }),
+  ]).then(([latestRun, recentRuns, recentEvents, subscriptions]) => ({
+    latestRun,
+    recentRuns,
+    recentEvents,
+    subscriptions,
+  }));
+}
+
+async function loadSafeMonitorSnapshot(): Promise<MonitorSnapshot> {
+  try {
+    return {
+      ...(await loadMonitorSnapshot()),
+      storageReady: true,
+      errorMessage: null,
+    };
+  } catch (error: unknown) {
+    console.error("[admin-tournament-alerts] Failed to load monitor tables", error);
+    return {
+      latestRun: null,
+      recentRuns: [],
+      recentEvents: [],
+      subscriptions: [],
+      storageReady: false,
+      errorMessage: error instanceof Error ? error.message : "Tournament monitor storage is unavailable.",
+    };
+  }
+}
+
+export default async function AdminTournamentAlertsPage() {
+  if (!isMasterDeployment()) {
+    redirect("/admin?denied=tournament-alerts");
+  }
+
+  const cookieStore = await cookies();
+  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
+  const adminUser = await getAdminUserFromCookieToken(token);
+
+  if (!adminUser) {
+    redirect(`/admin/login?next=${encodeURIComponent("/admin/tournament-alerts")}`);
+  }
+
+  if (!adminUser.isMaster) {
+    redirect("/admin?denied=tournament-alerts-master");
+  }
+
+  const effectiveRole = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    "gonzales",
+  );
+  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  if (!canAccessAdminModule(role, "TOURNAMENT_ALERTS")) {
+    redirect("/admin?denied=tournament-alerts");
+  }
+
+  const [monitorSnapshot, bracketRows] = await Promise.all([
+    loadSafeMonitorSnapshot(),
     prisma.bracketProject.findMany({
       where: {
         organizationId: { in: [...BRACKET_ORGS] },
@@ -211,6 +251,14 @@ export default async function AdminTournamentAlertsPage() {
       },
     }),
   ]);
+  const {
+    latestRun,
+    recentRuns,
+    recentEvents,
+    subscriptions,
+    storageReady: monitorStorageReady,
+    errorMessage: monitorStorageError,
+  } = monitorSnapshot;
 
   const providerStatus = getTournamentAlertProviderStatus();
   const activeRecipients = subscriptions.filter((subscription) => subscription.active);
@@ -366,6 +414,22 @@ export default async function AdminTournamentAlertsPage() {
           </section>
         ) : null}
 
+        {!monitorStorageReady ? (
+          <section className="mb-5 rounded-2xl border border-red-500/30 bg-red-500/10 p-4 text-red-50 sm:p-5">
+            <h2 className="text-lg font-semibold">Monitor storage needs setup</h2>
+            <p className="mt-1 text-sm text-red-100/85">
+              The Tournament Monitor tables are not available yet, so this page is running in status-only mode.
+              Apply the `20260627021500_tournament_monitor_alerts` Prisma migration, then reload this page to manage
+              recipients and test alerts.
+            </p>
+            {monitorStorageError ? (
+              <p className="mt-3 rounded-xl border border-red-400/30 bg-red-950/30 p-3 text-xs text-red-100/80">
+                {monitorStorageError}
+              </p>
+            ) : null}
+          </section>
+        ) : null}
+
         <section className="mb-5 grid gap-3 md:grid-cols-2">
           {providerCards.map((card) => (
             <StatusCard
@@ -490,7 +554,7 @@ export default async function AdminTournamentAlertsPage() {
           </div>
         </section>
 
-        <TournamentAlertsPanel />
+        {monitorStorageReady ? <TournamentAlertsPanel /> : null}
 
         <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
           <h2 className="text-xl font-semibold">Run History</h2>
