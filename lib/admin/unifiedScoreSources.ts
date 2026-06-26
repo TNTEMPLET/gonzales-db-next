@@ -59,7 +59,8 @@ function connectionToPayload(row: RawConnection): UnifiedGameChangerConnection |
 function isMissingOptionalScoresTableError(error: unknown) {
   const code = typeof error === "object" && error && "code" in error ? String((error as { code?: unknown }).code) : "";
   const message = error instanceof Error ? error.message : String(error);
-  return code === "P2021" || code === "P2022" || /does not exist|relation .* does not exist|table .* does not exist/i.test(message);
+  const details = typeof error === "object" && error ? JSON.stringify(error) : "";
+  return code === "P2021" || code === "P2022" || /does not exist|relation .* does not exist|table .* does not exist|TableDoesNotExist|GameChangerScoreboardConnection/i.test(message + " " + details);
 }
 
 
