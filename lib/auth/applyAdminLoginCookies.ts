@@ -12,6 +12,39 @@ import prisma from "@/lib/prisma";
 import { withTransientDbRetry } from "@/lib/prismaRetry";
 import { getDugoutRegisteredUserOrgId } from "@/lib/siteConfig";
 
+async function safeCreateCoachSessionForAdmin(
+  response: NextResponse,
+  adminUser: { email: string },
+) {
+  try {
+    const registeredUser = await withTransientDbRetry(() =>
+      prisma.registeredUser.findFirst({
+        where: {
+          organizationId: getDugoutRegisteredUserOrgId(),
+          email: adminUser.email,
+        },
+        select: { id: true },
+      }),
+    );
+
+    if (!registeredUser) return;
+
+    const coachSession = await createCoachSession(registeredUser.id);
+    response.cookies.set({
+      name: COACH_SESSION_COOKIE,
+      value: coachSession.token,
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: "lax",
+      path: "/",
+      maxAge: 60 * 60 * 24 * 7,
+      expires: coachSession.expiresAt,
+    });
+  } catch (error) {
+    console.error("Optional coach session setup failed during admin login:", error);
+  }
+}
+
 export async function applyAdminLoginCookies(
   response: NextResponse,
   adminUser: { id: string; email: string },
@@ -31,28 +64,7 @@ export async function applyAdminLoginCookies(
     expires: session.expiresAt,
   });
 
-  const registeredUser = await withTransientDbRetry(() =>
-    prisma.registeredUser.findFirst({
-      where: {
-        organizationId: getDugoutRegisteredUserOrgId(),
-        email: adminUser.email,
-      },
-    }),
-  );
-
-  if (registeredUser) {
-    const coachSession = await createCoachSession(registeredUser.id);
-    response.cookies.set({
-      name: COACH_SESSION_COOKIE,
-      value: coachSession.token,
-      httpOnly: true,
-      secure: process.env.NODE_ENV === "production",
-      sameSite: "lax",
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-      expires: coachSession.expiresAt,
-    });
-  }
+  await safeCreateCoachSessionForAdmin(response, adminUser);
 
   return response;
 }

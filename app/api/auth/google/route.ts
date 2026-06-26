@@ -18,6 +18,14 @@ const googleClientId =
   "";
 const client = googleClientId ? new OAuth2Client(googleClientId) : null;
 
+async function safeUpsertRegisteredUserFromGoogle(input: Parameters<typeof upsertRegisteredUserFromGoogle>[0]) {
+  try {
+    await upsertRegisteredUserFromGoogle(input);
+  } catch (error) {
+    console.error("Optional registered user Google sync failed during admin login:", error);
+  }
+}
+
 export async function POST(request: NextRequest) {
   if (!googleClientId || !client) {
     return NextResponse.json(
@@ -71,15 +79,25 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await upsertRegisteredUserFromGoogle({
-      email,
-      sub,
-      name,
-      firstName,
-      lastName,
-    });
-
     const admin = await prisma.adminUser.findUnique({ where: { email } });
+
+    if (!admin) {
+      await upsertRegisteredUserFromGoogle({
+        email,
+        sub,
+        name,
+        firstName,
+        lastName,
+      });
+    } else {
+      await safeUpsertRegisteredUserFromGoogle({
+        email,
+        sub,
+        name,
+        firstName,
+        lastName,
+      });
+    }
 
     const response = NextResponse.json({
       success: true,
