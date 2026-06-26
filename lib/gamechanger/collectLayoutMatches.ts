@@ -14,6 +14,8 @@ export function collectLayoutMatchesForGc(layout: BracketLayout): GcBracketMatch
       officialGameNumber: g.gameNumber,
       dateLabel: g.dateLabel,
       time: g.time,
+        venue: g.venue,
+        field: g.field,
     }));
   }
 
@@ -30,6 +32,8 @@ export function collectLayoutMatchesForGc(layout: BracketLayout): GcBracketMatch
             officialGameNumber: m.officialGameNumber,
             dateLabel: m.dateLabel,
             time: m.time,
+            venue: m.venue,
+            field: m.field,
           });
         }
       }
@@ -43,6 +47,8 @@ export function collectLayoutMatchesForGc(layout: BracketLayout): GcBracketMatch
           officialGameNumber: m.officialGameNumber,
           dateLabel: m.dateLabel,
           time: m.time,
+          venue: m.venue,
+          field: m.field,
         });
       }
     }
@@ -59,6 +65,8 @@ export function collectLayoutMatchesForGc(layout: BracketLayout): GcBracketMatch
         officialGameNumber: m.officialGameNumber,
         dateLabel: m.dateLabel,
         time: m.time,
+        venue: m.venue,
+        field: m.field,
       });
     }
   }
@@ -72,6 +80,8 @@ export function collectLayoutMatchesForGc(layout: BracketLayout): GcBracketMatch
       officialGameNumber: tp.thirdPlaceGameInfo?.officialGameNumber,
       dateLabel: tp.thirdPlaceGameInfo?.dateLabel,
       time: tp.thirdPlaceGameInfo?.time,
+      venue: tp.thirdPlaceGameInfo?.venue,
+      field: tp.thirdPlaceGameInfo?.field,
     });
   }
 

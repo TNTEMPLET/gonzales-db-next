@@ -286,6 +286,7 @@ model AdminUser {
   assignrAuditLogs        AssignrAuditLog[]       @relation("AssignrAuditActor")
   bracketProjectsCreated       BracketProject[]        @relation("BracketProjectCreatedBy")
   governingBodyTemplatesCreated GoverningBodyTemplate[] @relation("GoverningBodyTemplateCreatedBy")
+  scheduleManagerJobsCreated ScheduleManagerJob[] @relation("ScheduleManagerJobCreatedBy")
   allStarAuditLogsActed        AllStarAuditLog[]       @relation("AllStarAuditActor")
   allStarAuditLogsReverted     AllStarAuditLog[]       @relation("AllStarAuditReverter")
   allStarPaymentsMarkedPaid    AllStarPayment[]        @relation("AllStarPaymentMarkedPaidBy")
@@ -340,7 +341,8 @@ model BracketProject {
 
   governingBodyTemplate GoverningBodyTemplate? @relation(fields: [governingBodyTemplateId], references: [id], onDelete: SetNull)
   createdByAdmin        AdminUser?             @relation("BracketProjectCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  incomeTransactions   TournamentIncomeTransaction[]
+  incomeTransactions      TournamentIncomeTransaction[]
+  scheduleManagerActions ScheduleManagerAction[]
 
   @@index([organizationId, status, updatedAt])
   @@index([organizationId, priority])
@@ -1546,6 +1548,82 @@ model AssignrAuditLog {
 
   @@index([organizationId, createdAt])
   @@index([syncJobId])
+}
+
+
+enum ScheduleManagerJobStatus {
+  PENDING
+  RUNNING
+  COMPLETED
+  FAILED
+  PARTIAL
+}
+
+enum ScheduleManagerJobMode {
+  DRY_RUN
+  LIVE
+  CRON
+}
+
+enum ScheduleManagerActionStatus {
+  PLANNED
+  DRY_RUN
+  CREATED
+  SKIPPED
+  FAILED
+}
+
+model ScheduleManagerJob {
+  id               String                   @id @default(cuid())
+  organizationId   String
+  mode             ScheduleManagerJobMode
+  status           ScheduleManagerJobStatus @default(PENDING)
+  totalCount       Int                      @default(0)
+  createdCount     Int                      @default(0)
+  skippedCount     Int                      @default(0)
+  failedCount      Int                      @default(0)
+  payload          Json?
+  results          Json?
+  errorMessage     String?
+  createdByAdminId String?
+  createdAt        DateTime                 @default(now())
+  updatedAt        DateTime                 @updatedAt
+  completedAt      DateTime?
+
+  createdByAdmin AdminUser?              @relation("ScheduleManagerJobCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  actions        ScheduleManagerAction[]
+
+  @@index([organizationId, status, createdAt])
+  @@index([createdByAdminId])
+}
+
+model ScheduleManagerAction {
+  id                 String                      @id @default(cuid())
+  jobId              String?
+  organizationId     String
+  bracketProjectId   String
+  matchId            String
+  divisionLabel      String?
+  gameNumber         String?
+  scheduledFor       DateTime?
+  field              String?
+  homeTeam           String
+  awayTeam           String
+  status             ScheduleManagerActionStatus @default(PLANNED)
+  gameChangerEventId String?
+  requestSummary     Json?
+  responseSummary    Json?
+  errorMessage       String?
+  createdAt          DateTime                    @default(now())
+  updatedAt          DateTime                    @updatedAt
+
+  job            ScheduleManagerJob? @relation(fields: [jobId], references: [id], onDelete: SetNull)
+  bracketProject BracketProject      @relation(fields: [bracketProjectId], references: [id], onDelete: Cascade)
+
+  @@unique([bracketProjectId, matchId])
+  @@index([organizationId, status, createdAt])
+  @@index([jobId])
+  @@index([bracketProjectId])
 }
 
 model OrgAlert {

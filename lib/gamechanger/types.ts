@@ -10,6 +10,8 @@ export const bracketGameChangerSchema = z.object({
   importedFinalEventIds: z.array(z.string().uuid()).optional(),
   /** Bracket match id → GameChanger event UUID. Overrides team-name matching when set. */
   matchEventPins: z.record(z.string().min(1), z.string().uuid()).optional(),
+  /** Explicit admin opt-in for Schedule Manager game creation. Off by default. */
+  scheduleManagerEnabled: z.boolean().optional(),
 });
 
 export type BracketGameChanger = z.infer<typeof bracketGameChangerSchema>;
@@ -66,6 +68,8 @@ export type GcBracketMatchRef = {
   officialGameNumber?: string;
   dateLabel?: string;
   time?: string;
+  venue?: string;
+  field?: string;
 };
 
 export type GcLiveGameStatus = {

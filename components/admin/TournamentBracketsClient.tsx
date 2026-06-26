@@ -111,6 +111,16 @@ type PreviewSettingsSnapshot = {
   visualTuning?: BracketSpec["visualTuning"];
 };
 
+type ScheduleManagerRunResult = {
+  jobId: string;
+  status: string;
+  totalCount: number;
+  createdCount: number;
+  skippedCount: number;
+  failedCount: number;
+  errors?: string[];
+};
+
 type VisualTuningRow = {
   key: string;
   label: string;
@@ -733,6 +743,8 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
   const [gcWidgetIdDraft, setGcWidgetIdDraft] = useState("");
   const [gcEmbedSnippetDraft, setGcEmbedSnippetDraft] = useState("");
   const [gcMaxVerticalDraft, setGcMaxVerticalDraft] = useState("4");
+  const [scheduleManagerResult, setScheduleManagerResult] = useState<ScheduleManagerRunResult | null>(null);
+  const [scheduleManagerBusy, setScheduleManagerBusy] = useState(false);
   const [adminGcModalMatchId, setAdminGcModalMatchId] = useState<string | null>(null);
   const championPlaqueDraftSource = championAgeGroupDraft.trim() || spec?.divisionLabel?.trim() || "Tournament";
   const championPlaquePreview = championPlaqueHeading(championPlaqueDraftSource);
@@ -833,6 +845,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       setGcWidgetIdDraft(spec.gameChanger?.widgetId ?? "");
       setGcMaxVerticalDraft(String(spec.gameChanger?.maxVerticalGamesVisible ?? 4));
       setGcEmbedSnippetDraft("");
+      setScheduleManagerResult(null);
       setVisualTuningDraft(visualTuningDraftFromSpec(spec, visualTuningRows));
     }, 0);
     return () => window.clearTimeout(id);
@@ -958,6 +971,49 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
       setError(e instanceof Error ? e.message : String(e));
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function setScheduleManagerEnabled(enabled: boolean) {
+    if (!projectId) return;
+    setScheduleManagerBusy(true);
+    setError("");
+    try {
+      const res = await fetch(`/api/admin/schedule-manager/brackets/${projectId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ enabled }),
+      });
+      const json = await readApiJson<{ error?: string; hint?: string }>(res);
+      if (!res.ok) throw new Error(apiErrorMessage(json, "Could not update Schedule Manager"));
+      setNotice(enabled ? "Schedule Manager enabled for this bracket." : "Schedule Manager disabled for this bracket.");
+      await loadProject(projectId);
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setScheduleManagerBusy(false);
+    }
+  }
+
+  async function runScheduleManager(action: "dry-run" | "run-once") {
+    if (!projectId) return;
+    setScheduleManagerBusy(true);
+    setError("");
+    try {
+      const res = await fetch("/api/admin/schedule-manager", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action, bracketProjectId: projectId }),
+      });
+      const json = await readApiJson<{ data?: ScheduleManagerRunResult; error?: string; hint?: string }>(res);
+      if (!res.ok || !json.data) throw new Error(apiErrorMessage(json, "Schedule Manager run failed"));
+      setScheduleManagerResult(json.data);
+      setNotice(action === "dry-run" ? "Schedule Manager dry-run complete." : "Schedule Manager run complete.");
+      await loadProject(projectId, { silent: true });
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setScheduleManagerBusy(false);
     }
   }
 
@@ -2987,6 +3043,65 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
                           </button>
                         ) : null}
                       </div>
+                      {gcConfig ? (
+                        <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3">
+                          <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                            <div>
+                              <h4 className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                                Schedule Manager
+                              </h4>
+                              <p className="mt-1 text-[11px] leading-relaxed text-zinc-500">
+                                Watches completed GameChanger games, advances this bracket, and plans newly unlocked
+                                next games. Auto creation is off unless you explicitly enable this bracket.
+                              </p>
+                              <p className="mt-2 text-[11px] text-zinc-400">
+                                Status:{" "}
+                                <span className={gcConfig.scheduleManagerEnabled ? "text-emerald-300" : "text-amber-300"}>
+                                  {gcConfig.scheduleManagerEnabled ? "Enabled" : "Disabled"}
+                                </span>
+                              </p>
+                            </div>
+                            <div className="grid gap-2 sm:flex sm:flex-wrap lg:justify-end">
+                              <button
+                                type="button"
+                                disabled={scheduleManagerBusy}
+                                onClick={() => void setScheduleManagerEnabled(!gcConfig.scheduleManagerEnabled)}
+                                className="min-h-10 rounded-lg border border-zinc-600 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800 disabled:opacity-40"
+                              >
+                                {gcConfig.scheduleManagerEnabled ? "Disable" : "Enable"}
+                              </button>
+                              <button
+                                type="button"
+                                disabled={scheduleManagerBusy || !gcConfig.scheduleManagerEnabled}
+                                onClick={() => void runScheduleManager("dry-run")}
+                                className="min-h-10 rounded-lg border border-violet-700/70 px-3 py-1.5 text-xs font-semibold text-violet-200 hover:bg-violet-950/40 disabled:opacity-40"
+                              >
+                                Dry-run preview
+                              </button>
+                              <button
+                                type="button"
+                                disabled={scheduleManagerBusy || !gcConfig.scheduleManagerEnabled}
+                                onClick={() => void runScheduleManager("run-once")}
+                                className="min-h-10 rounded-lg bg-violet-700 px-3 py-1.5 text-xs font-semibold text-white hover:bg-violet-600 disabled:opacity-40"
+                              >
+                                Run once
+                              </button>
+                            </div>
+                          </div>
+                          {scheduleManagerResult ? (
+                            <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/70 p-3 text-[11px] text-zinc-400">
+                              <p className="font-semibold text-zinc-200">
+                                Job {scheduleManagerResult.status}: {scheduleManagerResult.totalCount} planned,{" "}
+                                {scheduleManagerResult.createdCount} created, {scheduleManagerResult.skippedCount} skipped,{" "}
+                                {scheduleManagerResult.failedCount} failed.
+                              </p>
+                              {scheduleManagerResult.errors?.length ? (
+                                <p className="mt-1 text-amber-200">{scheduleManagerResult.errors[0]}</p>
+                              ) : null}
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : null}
                       </div>
                     </details>
                     {spec.bracketFormat === "single_elimination" ? (
