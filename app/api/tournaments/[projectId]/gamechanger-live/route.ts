@@ -5,7 +5,7 @@ import { fetchGameChangerScoreboardSyncWindow } from "@/lib/gamechanger/fetchSco
 import { buildLivePayloadFromEvents } from "@/lib/gamechanger/matchEventsToBracket";
 import { bracketGameChangerSchema, type GcLiveMatchPayload } from "@/lib/gamechanger/types";
 import prisma from "@/lib/prisma";
-import { getDefaultContentOrg } from "@/lib/siteConfig";
+import { getBracketOrgForDeployment } from "@/lib/siteConfig";
 import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 
@@ -15,7 +15,7 @@ type RouteContext = { params: Promise<{ projectId: string }> };
 
 export async function GET(_request: Request, context: RouteContext) {
   const { projectId } = await context.params;
-  const org = getDefaultContentOrg();
+  const org = getBracketOrgForDeployment();
 
   const project = await prisma.bracketProject.findFirst({
     where: {
