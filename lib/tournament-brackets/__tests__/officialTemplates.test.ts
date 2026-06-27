@@ -12,6 +12,22 @@ import {
 } from "@/lib/tournament-brackets/officialTemplates";
 import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 
+function withResolvedFeeders(
+  rounds: ReturnType<typeof buildRoundsFromOfficialTemplate>,
+  resolvedByGame: Record<string, [string, string]>,
+): ReturnType<typeof buildRoundsFromOfficialTemplate> {
+  return rounds.map((round) => ({
+    ...round,
+    matches: round.matches.map((match) => {
+      const game = match.officialGameNumber?.trim();
+      const resolved = game ? resolvedByGame[game] : undefined;
+      if (!resolved) return match;
+      const [home, away] = resolved;
+      return { ...match, home, away };
+    }),
+  }));
+}
+
 test("defaultBracketSpec uses official 6-team LL template", () => {
   const spec = defaultBracketSpec();
   assert.equal(spec.officialTemplateId, "little_league_6_team_de");
@@ -118,22 +134,26 @@ test("6-team modified builds classic unified diagram without if-necessary", () =
   assert.equal(includesIfNecessaryChampionshipGame(spec), false);
 });
 
-test("official 6-team layout stays classic after feeder slots resolve to team names", () => {
-  const teams = ["Ascension LL", "Bogalusa", "St. Charles", "Westbank", "Eastbank", "NORD"];
-  const rounds = buildRoundsFromOfficialTemplate("little_league_6_team_de", teams, {
-    championshipSeriesStyle: "winner_take_all",
-  }).map((round) => ({
-    ...round,
-    matches: round.matches.map((match) => {
-      if (match.officialGameNumber === "3") return { ...match, home: teams[0]! };
-      if (match.officialGameNumber === "4") return { ...match, home: teams[3]! };
-      if (match.officialGameNumber === "5") return { ...match, home: teams[1]! };
-      if (match.officialGameNumber === "6") return { ...match, home: teams[2]! };
-      return match;
+test("10U official 6-team modified layout stays classic after feeder names resolve", () => {
+  const teams = ["Ponchatoula", "Loranger", "Kentwood", "Franklinton", "Gonzales", "Ascension"];
+  const rounds = withResolvedFeeders(
+    buildRoundsFromOfficialTemplate("little_league_6_team_de", teams, {
+      championshipSeriesStyle: "winner_take_all",
     }),
-  }));
+    {
+      "3": ["Ponchatoula", "Gonzales"],
+      "4": ["Kentwood", "Ascension"],
+      "5": ["Loranger", "Ascension"],
+      "6": ["Franklinton", "Ponchatoula"],
+      "7": ["Gonzales", "Ascension"],
+      "8": ["Ascension", "Ponchatoula"],
+      "9": ["Gonzales", "Ponchatoula"],
+      "10": ["Gonzales", "Ponchatoula"],
+    },
+  );
   const spec = {
     ...specDefaultsFromOfficialTemplate("little_league_6_team_de", "winner_take_all"),
+    divisionLabel: "10U",
     teams,
     rounds,
     setupWizardCompleted: true,
@@ -143,6 +163,43 @@ test("official 6-team layout stays classic after feeder slots resolve to team na
   if (layout.mode !== "double_elimination") return;
   assert.equal(layout.diagramStyle, "classic_unified");
   assert.equal(layout.classicVariant, "six_team_modified_de");
+  assert.equal(layout.classicChampionshipPodium?.showIfNecessaryDropLine, false);
+  assert.equal(layout.classicChampionshipPodium?.ifNecessaryMatch, null);
+  assert.equal(layout.championship?.matches[0]?.officialGameNumber, "10");
+});
+
+test("12U official 6-team standard layout stays classic after feeder names resolve", () => {
+  const teams = ["A", "B", "C", "D", "E", "F"];
+  const rounds = withResolvedFeeders(
+    buildRoundsFromOfficialTemplate("little_league_6_team_de", teams, {
+      championshipSeriesStyle: "always_scheduled_reset",
+    }),
+    {
+      "3": ["A", "E"],
+      "4": ["C", "F"],
+      "5": ["B", "F"],
+      "6": ["D", "A"],
+      "7": ["A", "C"],
+      "8": ["F", "D"],
+      "9": ["C", "F"],
+      "10": ["A", "F"],
+      "11": ["F", "A"],
+    },
+  );
+  const spec = {
+    ...specDefaultsFromOfficialTemplate("little_league_6_team_de", "always_scheduled_reset"),
+    divisionLabel: "12U",
+    teams,
+    rounds,
+    setupWizardCompleted: true,
+  };
+  const layout = buildBracketLayout(spec);
+  assert.equal(layout.mode, "double_elimination");
+  if (layout.mode !== "double_elimination") return;
+  assert.equal(layout.diagramStyle, "classic_unified");
+  assert.equal(layout.classicVariant, "six_team_modified_de");
+  assert.equal(layout.classicChampionshipPodium?.showIfNecessaryDropLine, true);
+  assert.equal(layout.classicChampionshipPodium?.ifNecessaryMatch?.officialGameNumber, "11");
 });
 
 test("championshipSeriesStyle overrides format for if-necessary", () => {

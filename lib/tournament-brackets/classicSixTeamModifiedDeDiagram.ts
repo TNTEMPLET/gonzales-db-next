@@ -18,7 +18,6 @@ export type ClassicSixTeamModifiedDeSlots = {
  */
 export function resolveClassicSixTeamModifiedDeSlots(
   matchesByGame: Map<string, LayoutMatch>,
-  opts?: { allowResolvedFeederSlots?: boolean },
 ): ClassicSixTeamModifiedDeSlots | null {
   const g1 = matchesByGame.get("1");
   const g2 = matchesByGame.get("2");
@@ -44,17 +43,23 @@ export function resolveClassicSixTeamModifiedDeSlots(
     if (isFeederSlotLabel(opener.home) || isFeederSlotLabel(opener.away)) return null;
   }
 
-  if (!opts?.allowResolvedFeederSlots) {
-    // G3/G4 are bye semis (feeder vs team), not a third opener.
-    for (const semi of [g3, g4]) {
-      const homeFeeder = isFeederSlotLabel(semi.home);
-      const awayFeeder = isFeederSlotLabel(semi.away);
-      if (homeFeeder === awayFeeder) return null;
-    }
+  const hasRenderableSlots = (match: LayoutMatch): boolean =>
+    match.home.trim().length > 0 &&
+    match.away.trim().length > 0 &&
+    match.home.trim() !== "BYE" &&
+    match.away.trim() !== "BYE";
+
+  // G3/G4 start as bye semis (feeder vs team), but saved/live brackets may
+  // replace the feeder with the real winner after scores are resolved.
+  for (const semi of [g3, g4]) {
+    const homeFeeder = isFeederSlotLabel(semi.home);
+    const awayFeeder = isFeederSlotLabel(semi.away);
+    if (homeFeeder && awayFeeder) return null;
+    if (!hasRenderableSlots(semi)) return null;
   }
 
-  if (!isFeederSlotLabel(g7.home) || !isFeederSlotLabel(g7.away)) return null;
-  if (!isFeederSlotLabel(g10.home) || !isFeederSlotLabel(g10.away)) return null;
+  if (!hasRenderableSlots(g7)) return null;
+  if (!hasRenderableSlots(g10)) return null;
 
   const ifNecessary =
     g11?.championshipRole === "if_necessary" && g11.officialGameNumber?.trim() === "11" ? g11 : undefined;
