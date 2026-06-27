@@ -609,11 +609,7 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
     championshipSection?.matches,
   );
   const classicThree = resolveClassicThreeTeamDoubleElimSlots(allByGame);
-  const classicSix = classicThree
-    ? null
-    : resolveClassicSixTeamModifiedDeSlots(allByGame, {
-        allowResolvedFeederSlots: spec.officialTemplateId === "little_league_6_team_de",
-      });
+  const classicSix = classicThree ? null : resolveClassicSixTeamModifiedDeSlots(allByGame);
   const classicFive = classicThree || classicSix ? null : resolveClassicDoubleElimSlots(allByGame);
   const preferOfficialLayout = spec.layoutPreference !== "connected_columns";
   const useClassic =
