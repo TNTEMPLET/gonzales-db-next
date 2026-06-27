@@ -118,6 +118,33 @@ test("6-team modified builds classic unified diagram without if-necessary", () =
   assert.equal(includesIfNecessaryChampionshipGame(spec), false);
 });
 
+test("official 6-team layout stays classic after feeder slots resolve to team names", () => {
+  const teams = ["Ascension LL", "Bogalusa", "St. Charles", "Westbank", "Eastbank", "NORD"];
+  const rounds = buildRoundsFromOfficialTemplate("little_league_6_team_de", teams, {
+    championshipSeriesStyle: "winner_take_all",
+  }).map((round) => ({
+    ...round,
+    matches: round.matches.map((match) => {
+      if (match.officialGameNumber === "3") return { ...match, home: teams[0]! };
+      if (match.officialGameNumber === "4") return { ...match, home: teams[3]! };
+      if (match.officialGameNumber === "5") return { ...match, home: teams[1]! };
+      if (match.officialGameNumber === "6") return { ...match, home: teams[2]! };
+      return match;
+    }),
+  }));
+  const spec = {
+    ...specDefaultsFromOfficialTemplate("little_league_6_team_de", "winner_take_all"),
+    teams,
+    rounds,
+    setupWizardCompleted: true,
+  };
+  const layout = buildBracketLayout(spec);
+  assert.equal(layout.mode, "double_elimination");
+  if (layout.mode !== "double_elimination") return;
+  assert.equal(layout.diagramStyle, "classic_unified");
+  assert.equal(layout.classicVariant, "six_team_modified_de");
+});
+
 test("championshipSeriesStyle overrides format for if-necessary", () => {
   assert.equal(
     includesIfNecessaryChampionshipGame({
