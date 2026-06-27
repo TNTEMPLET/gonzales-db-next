@@ -1,5 +1,4 @@
 import { createServer, type IncomingMessage } from "node:http";
-import { Readable } from "node:stream";
 
 import { loadGameChangerCredentials } from "./credentials.js";
 import { createGameChangerGame } from "./createGame.js";
@@ -70,14 +69,22 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 }
 
+async function readRequestBody(incoming: IncomingMessage): Promise<string> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of incoming) {
+    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
 const server = createServer(async (incoming: IncomingMessage, outgoing) => {
+  const method = incoming.method ?? "GET";
+  const hasBody = method === "POST" || method === "PUT";
+  const bodyText = hasBody ? await readRequestBody(incoming) : undefined;
   const request = new Request(`http://127.0.0.1${incoming.url ?? "/"}`, {
-    method: incoming.method,
+    method,
     headers: incoming.headers as HeadersInit,
-    body:
-      incoming.method === "POST" || incoming.method === "PUT"
-        ? (Readable.toWeb(incoming) as ReadableStream<Uint8Array>)
-        : undefined,
+    body: bodyText,
   });
   const response = await handleRequest(request);
   outgoing.statusCode = response.status;
