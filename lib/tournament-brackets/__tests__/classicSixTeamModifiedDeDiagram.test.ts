@@ -63,6 +63,30 @@ test("resolveClassicSixTeamModifiedDeSlots maps modified G1–G10 without if-nec
   assert.equal(slots!.ifNecessary, undefined);
 });
 
+test("resolveClassicSixTeamModifiedDeSlots allows resolved feeder-derived games", () => {
+  const map = slotsFromRounds(buildLittleLeagueSixTeamModifiedDeRounds(["A", "B", "C", "D", "E", "F"]));
+  const resolved: Record<string, [string, string]> = {
+    "3": ["A", "E"],
+    "4": ["C", "F"],
+    "7": ["A", "C"],
+    "8": ["D", "E"],
+    "9": ["C", "E"],
+    "10": ["A", "E"],
+  };
+  for (const [game, [home, away]] of Object.entries(resolved)) {
+    const current = map.get(game);
+    assert.ok(current);
+    map.set(game, { ...current!, home, away, slotHome: home, slotAway: away });
+  }
+
+  const slots = resolveClassicSixTeamModifiedDeSlots(map);
+  assert.ok(slots);
+  assert.equal(slots!.winnersSemis[0]!.home, "A");
+  assert.equal(slots!.winnersFinal.home, "A");
+  assert.equal(slots!.losersRound2.home, "D");
+  assert.equal(slots!.grandFinal.home, "A");
+});
+
 test("resolveClassicSixTeamModifiedDeSlots rejects 5-team classic trees", () => {
   const map = new Map<string, LayoutMatch>([
     ["1", match("1", "A", "B")],
