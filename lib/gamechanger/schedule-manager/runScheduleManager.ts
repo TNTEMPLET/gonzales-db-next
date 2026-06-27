@@ -91,11 +91,6 @@ function actionRequestSummary(action: ScheduleManagerActionSummary): Record<stri
     field: action.field,
     homeTeam: action.homeTeam,
     awayTeam: action.awayTeam,
-    widgetId: action.widgetId,
-    gcOrganizationId: action.gcOrganizationId,
-    gcFormDate: action.gcFormDate,
-    gcFormTime: action.gcFormTime,
-    durationLabel: action.durationLabel,
   };
 }
 
