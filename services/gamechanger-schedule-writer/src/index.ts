@@ -43,11 +43,11 @@ function isAuthorized(request: Request): boolean {
 }
 
 async function handleRequest(request: Request): Promise<Response> {
-  if (!isAuthorized(request)) return unauthorized();
-
   if (request.method === "GET" && new URL(request.url).pathname === "/health") {
     return ok({ status: "ok" });
   }
+
+  if (!isAuthorized(request)) return unauthorized();
 
   if (request.method !== "POST") {
     return badRequest("Only POST is supported.");
