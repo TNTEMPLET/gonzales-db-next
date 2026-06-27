@@ -1495,10 +1495,7 @@
 
 @media (min-width: 641px) {
   .rootFluidWidth .fullBracketDiagramBody {
-    overflow-x: auto;
-    overflow-y: visible;
-    padding-bottom: 0.35rem;
-    scrollbar-gutter: stable;
+    overflow-x: hidden;
   }
 
   .rootFluidWidth:has(.classicDoubleElimWithChampionColumn) {
@@ -1506,7 +1503,15 @@
   }
 
   .rootFluidWidth .fullBracketDiagramBody:has(.classicDoubleElimWithChampionColumn) {
-    padding-inline-end: 0;
+    padding-inline-end: 0.5rem;
+  }
+
+  .rootFluidWidth .classicDoubleElimWithChampionColumn .bracketGridScroll,
+  .rootFluidWidth .doubleElimUnified.classicDoubleElimUnified .bracketGridScroll,
+  .rootFluidWidth .doubleElimUnified .bracketGridScroll {
+    min-width: 0;
+    width: 100%;
+    padding-inline-end: 0.75rem;
   }
 }
 
@@ -1629,7 +1634,7 @@
   gap: 0.7rem;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 640px), ((hover: none) and (pointer: coarse) and (max-height: 520px)) {
   .root {
     border-radius: 0.45rem;
     padding: 0.75rem 0.75rem 3rem;
