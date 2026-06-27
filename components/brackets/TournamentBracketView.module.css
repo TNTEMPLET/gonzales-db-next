@@ -1634,7 +1634,7 @@
   gap: 0.7rem;
 }
 
-@media (max-width: 640px), ((hover: none) and (pointer: coarse) and (max-height: 520px)) {
+@media (max-width: 640px) {
   .root {
     border-radius: 0.45rem;
     padding: 0.75rem 0.75rem 3rem;
@@ -1874,7 +1874,7 @@
   }
 }
 
-@media (orientation: landscape) and (max-height: 520px) and (hover: hover) and (pointer: fine) {
+@media (orientation: landscape) and (max-height: 520px) {
   .desktopBracketDiagram {
     display: block;
     border-radius: 0.75rem;
