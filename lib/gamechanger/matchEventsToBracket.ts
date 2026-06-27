@@ -13,6 +13,9 @@ export function normalizeTeamNameForMatch(name: string): string {
     .replace(/\s+/g, " ")
     .replace(/[''`]/g, "")
     .replace(/[^\w\s-]/g, "")
+    .trim()
+    .replace(/^(?:\d{1,2}u|coach pitch|tee ball|t-ball|majors?|minors?)\s+/i, "")
+    .replace(/\s+(?:ll|llb)$/i, "")
     .trim();
 }
 

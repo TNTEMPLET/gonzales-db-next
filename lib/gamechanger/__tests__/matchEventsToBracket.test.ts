@@ -152,4 +152,38 @@ describe("buildLivePayloadFromEvents", () => {
     );
     assert.equal(pinnedPayload.matchEventIds.g2, olderRematch.id);
   });
+  it("matches GameChanger events with age-prefixed team names", () => {
+    const event = resolveGcEventForBracketMatch(
+      { id: "G1", home: "Westbank", away: "St. Charles" },
+      [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          start_ts: "2026-06-27T00:30:00.000Z",
+          game_status: "live",
+          home_team: { id: "home", name: "10U Westbank", score: 0 },
+          away_team: { id: "away", name: "10U St. Charles", score: 0 },
+        },
+      ],
+    );
+
+    assert.equal(event?.id, "11111111-1111-4111-8111-111111111111");
+  });
+
+  it("matches Ascension LL suffixes to Ascension bracket slots", () => {
+    const event = resolveGcEventForBracketMatch(
+      { id: "G2", home: "Bogalusa", away: "Ascension" },
+      [
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          start_ts: "2026-06-27T00:30:00.000Z",
+          game_status: "live",
+          home_team: { id: "home", name: "10U Bogalusa", score: 0 },
+          away_team: { id: "away", name: "10U Ascension LL", score: 10 },
+        },
+      ],
+    );
+
+    assert.equal(event?.id, "22222222-2222-4222-8222-222222222222");
+  });
+
 });
