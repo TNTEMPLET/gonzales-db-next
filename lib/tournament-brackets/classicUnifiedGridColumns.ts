@@ -3,8 +3,8 @@ export function classicUnifiedGridTemplateColumns(options: {
   withChampionColumn: boolean;
   fluidWidth?: boolean;
 }): string {
-  const matchCol = options.fluidWidth ? "minmax(0, 1fr)" : "minmax(11rem, 1fr)";
-  const connCol = options.fluidWidth ? "minmax(0.5rem, 0.28fr)" : "minmax(1.25rem, 0.28fr)";
+  const matchCol = options.fluidWidth ? "minmax(9rem, 1fr)" : "minmax(11rem, 1fr)";
+  const connCol = options.fluidWidth ? "minmax(0.75rem, 0.28fr)" : "minmax(1.25rem, 0.28fr)";
   const parts = [
     matchCol,
     connCol,
