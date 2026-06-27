@@ -5,12 +5,20 @@ import {
   findUnlockedScheduleManagerGames,
   isBracketEligibleForScheduleManager,
 } from "@/lib/gamechanger/schedule-manager/decisionEngine";
+import {
+  gcWebFormScheduleFromBracketLabels,
+  gcWebFormScheduleFromInstant,
+} from "@/lib/gamechanger/schedule-manager/gcWebFormTime";
 import { createGameChangerScheduleWriter } from "@/lib/gamechanger/schedule-manager/writer";
-import type { ScheduleManagerActionSummary, ScheduleManagerRunMode } from "@/lib/gamechanger/schedule-manager/types";
+import type {
+  GameChangerCreateGameInput,
+  ScheduleManagerActionSummary,
+  ScheduleManagerRunMode,
+} from "@/lib/gamechanger/schedule-manager/types";
+import { fetchGameChangerScoreboard, scoreboardDayStartIso } from "@/lib/gamechanger/fetchScoreboard";
 import { syncGameChangerToProject } from "@/lib/gamechanger/syncGameChangerToProject";
 import prisma from "@/lib/prisma";
 import { mergeBracketSpec, safeParseBracketSpec, type BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
-import { hashMonitorStatus, publishTournamentMonitorEvent } from "@/lib/tournament-monitor/events";
 
 export type RunScheduleManagerOptions = {
   mode: ScheduleManagerRunMode;
@@ -83,7 +91,57 @@ function actionRequestSummary(action: ScheduleManagerActionSummary): Record<stri
     field: action.field,
     homeTeam: action.homeTeam,
     awayTeam: action.awayTeam,
+    widgetId: action.widgetId,
+    gcOrganizationId: action.gcOrganizationId,
+    gcFormDate: action.gcFormDate,
+    gcFormTime: action.gcFormTime,
+    durationLabel: action.durationLabel,
   };
+}
+
+function buildWriterInput(
+  row: BracketProjectRow,
+  action: ScheduleManagerActionSummary,
+  widgetId: string,
+  gcOrganizationId: string,
+): GameChangerCreateGameInput {
+  let gcFormDate: string | undefined;
+  let gcFormTime: string | undefined;
+  if (action.scheduledFor) {
+    const form = gcWebFormScheduleFromInstant(action.scheduledFor);
+    gcFormDate = form.gcFormDate;
+    gcFormTime = form.gcFormTime;
+  } else if (action.dateLabel) {
+    const form = gcWebFormScheduleFromBracketLabels(action.dateLabel, action.time, row.seasonYear);
+    if (form) {
+      gcFormDate = form.gcFormDate;
+      gcFormTime = form.gcFormTime;
+    }
+  }
+
+  return {
+    bracketProjectId: row.id,
+    matchId: action.matchId,
+    date: action.dateLabel,
+    time: action.time,
+    scheduledFor: action.scheduledFor,
+    field: action.field,
+    venue: action.venue,
+    homeTeam: action.homeTeam,
+    awayTeam: action.awayTeam,
+    division: action.divisionLabel,
+    gameNumber: action.gameNumber,
+    widgetId,
+    gcOrganizationId,
+    gcFormDate,
+    gcFormTime,
+    durationLabel: "2 hr",
+  };
+}
+
+async function resolveGcOrganizationId(widgetId: string): Promise<string> {
+  const scoreboard = await fetchGameChangerScoreboard(widgetId, scoreboardDayStartIso());
+  return scoreboard.data.organization.id;
 }
 
 function pinCreatedEvent(spec: BracketSpec, matchId: string, eventId: string): BracketSpec {
@@ -96,28 +154,6 @@ function pinCreatedEvent(spec: BracketSpec, matchId: string, eventId: string): B
         [matchId]: eventId,
       },
     },
-  });
-}
-
-async function publishScheduleManagerAlert(options: {
-  type: "GC_GAME_CREATED" | "GC_GAME_CREATE_WARNING" | "GC_GAME_CREATE_FAILED";
-  organizationId: string;
-  bracketProjectId: string;
-  projectName: string;
-  matchId: string;
-  title: string;
-  message: string;
-  payload: Record<string, unknown>;
-}) {
-  await publishTournamentMonitorEvent({
-    type: options.type,
-    organizationId: options.organizationId,
-    bracketProjectId: options.bracketProjectId,
-    matchId: options.matchId,
-    eventKey: `${options.type}:${options.bracketProjectId}:${options.matchId}:${hashMonitorStatus(options.payload)}`,
-    title: options.title,
-    message: options.message,
-    payload: toPrismaJson(options.payload),
   });
 }
 
@@ -154,6 +190,18 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
       if (!parsed.ok || !isBracketEligibleForScheduleManager("READY", parsed.spec)) continue;
 
       let spec = parsed.spec;
+      const gcConfig = bracketGameChangerSchema.parse(spec.gameChanger);
+      const widgetId = gcConfig.widgetId;
+      let gcOrganizationId: string | undefined;
+      try {
+        gcOrganizationId = await resolveGcOrganizationId(widgetId);
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        result.errors.push(`${row.name}: ${message}`);
+        result.failedCount += 1;
+        continue;
+      }
+
       try {
         const syncResult = await syncGameChangerToProject(spec, { autoImport: true });
         spec = syncResult.spec;
@@ -217,19 +265,7 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
         });
 
         try {
-          const writeResult = await writer.createGame({
-            bracketProjectId: row.id,
-            matchId: action.matchId,
-            date: action.dateLabel,
-            time: action.time,
-            scheduledFor: action.scheduledFor,
-            field: action.field,
-            venue: action.venue,
-            homeTeam: action.homeTeam,
-            awayTeam: action.awayTeam,
-            division: action.divisionLabel,
-            gameNumber: action.gameNumber,
-          });
+          const writeResult = await writer.createGame(buildWriterInput(row, action, widgetId, gcOrganizationId));
           await prisma.scheduleManagerAction.update({
             where: { bracketProjectId_matchId: { bracketProjectId: row.id, matchId: action.matchId } },
             data: {
@@ -246,35 +282,6 @@ export async function runScheduleManager(options: RunScheduleManagerOptions): Pr
               data: { spec: JSON.parse(JSON.stringify(spec)) },
             });
             result.createdCount += 1;
-            if (!writeResult.dryRun) {
-              const payload = { action, eventId: writeResult.eventId, warnings: writeResult.warnings ?? [] };
-              await publishScheduleManagerAlert({
-                type: "GC_GAME_CREATED",
-                organizationId: row.organizationId,
-                bracketProjectId: row.id,
-                projectName: row.name,
-                matchId: action.matchId,
-                title: `GameChanger game created: ${row.name}`,
-                message: `${row.name} ${action.gameNumber ? `Game ${action.gameNumber}` : action.matchId} was created in GameChanger.
-${action.homeTeam} vs ${action.awayTeam}
-${action.dateLabel ?? "Date TBD"}${action.time ? ` at ${action.time}` : ""}
-Event ID: ${writeResult.eventId}`,
-                payload,
-              });
-              if (writeResult.warnings?.length) {
-                await publishScheduleManagerAlert({
-                  type: "GC_GAME_CREATE_WARNING",
-                  organizationId: row.organizationId,
-                  bracketProjectId: row.id,
-                  projectName: row.name,
-                  matchId: action.matchId,
-                  title: `GameChanger game needs location review: ${row.name}`,
-                  message: `${row.name} ${action.gameNumber ? `Game ${action.gameNumber}` : action.matchId} was created, but GameChanger reported location/field details need review.
-${writeResult.warnings.join("\n")}`,
-                  payload,
-                });
-              }
-            }
           }
         } catch (error: unknown) {
           const message = error instanceof Error ? error.message : String(error);
@@ -288,20 +295,6 @@ ${writeResult.warnings.join("\n")}`,
           });
           result.failedCount += 1;
           result.errors.push(`${row.name} ${action.matchId}: ${message}`);
-          if (options.mode === "LIVE") {
-            await publishScheduleManagerAlert({
-              type: "GC_GAME_CREATE_FAILED",
-              organizationId: row.organizationId,
-              bracketProjectId: row.id,
-              projectName: row.name,
-              matchId: action.matchId,
-              title: `GameChanger game creation failed: ${row.name}`,
-              message: `${row.name} ${action.gameNumber ? `Game ${action.gameNumber}` : action.matchId} could not be created in GameChanger.
-${action.homeTeam} vs ${action.awayTeam}
-Error: ${message}`,
-              payload: { action, error: message },
-            });
-          }
         }
       }
     }

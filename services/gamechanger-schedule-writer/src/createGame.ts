@@ -45,21 +45,85 @@ async function fileExists(filePath: string): Promise<boolean> {
   }
 }
 
+async function isSignedOut(page: Page): Promise<boolean> {
+  const signInButton = page.locator("button").filter({ hasText: /^sign in$/i }).first();
+  return await signInButton.isVisible().catch(() => false);
+}
+
+async function clickSignIn(page: Page): Promise<void> {
+  const link = page.getByRole("link", { name: /sign in/i });
+  if (await link.isVisible().catch(() => false)) {
+    await link.click();
+    return;
+  }
+  const button = page.locator("button").filter({ hasText: /^sign in$/i }).first();
+  if (await button.isVisible().catch(() => false)) {
+    await button.click();
+  }
+}
+
 async function ensureLoggedIn(page: Page, credentials: GameChangerCredentials): Promise<void> {
   await page.goto(GC_BASE, { waitUntil: "domcontentloaded" });
-  const signIn = page.getByRole("link", { name: /sign in/i });
-  if (await signIn.isVisible().catch(() => false)) {
-    await signIn.click();
-    await page.getByLabel(/email/i).fill(credentials.username);
-    await page.getByLabel(/password/i).fill(credentials.password);
-    await page.getByRole("button", { name: /sign in|log in/i }).click();
+  if (!(await isSignedOut(page))) return;
+
+  await clickSignIn(page);
+  await page.waitForTimeout(1_000);
+
+  const email = page.locator("input[type=email], input[name*=email i]").first();
+  if (await email.isVisible().catch(() => false)) {
+    await email.fill(credentials.username);
+    const continueButton = page.locator("button").filter({ hasText: /^continue$/i }).first();
+    if (await continueButton.isVisible().catch(() => false)) {
+      await continueButton.click();
+      await page.waitForTimeout(2_000);
+    }
+  }
+
+  const emailCode = process.env.GC_WRITER_EMAIL_CODE?.trim();
+  const codeField = page.locator("input[name=code], input[autocomplete=one-time-code]").first();
+  if (emailCode && (await codeField.isVisible().catch(() => false))) {
+    await codeField.fill(emailCode);
+  }
+
+  const password = page.locator("input[type=password]").first();
+  if (await password.isVisible().catch(() => false)) {
+    await password.fill(credentials.password);
+    await page.locator("button").filter({ hasText: /^sign in$/i }).last().click();
     await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
+  }
+
+  if (page.url().includes("/login") || (await isSignedOut(page))) {
+    const needsEmailCode = await page.getByText(/sent a code/i).isVisible().catch(() => false);
+    if (needsEmailCode) {
+      throw new Error(
+        "GameChanger login requires a fresh email verification code. Set GC_WRITER_EMAIL_CODE on the writer host and retry within a few minutes.",
+      );
+    }
+    throw new Error("GameChanger login failed with stored credentials.");
   }
 }
 
 async function openAddGameModal(page: Page, gcOrganizationId: string): Promise<void> {
   await page.goto(`${GC_BASE}/organizations/${gcOrganizationId}/schedule`, { waitUntil: "domcontentloaded" });
-  await page.getByRole("button", { name: /add games/i }).click();
+  await page.waitForTimeout(3_000);
+
+  const addGames = page.getByRole("button", { name: /add games/i });
+  if (!(await addGames.isVisible().catch(() => false))) {
+    if (await isSignedOut(page)) {
+      throw new Error("GameChanger login failed with stored credentials.");
+    }
+    const needsEmailCode = await page.getByText(/sent a code/i).isVisible().catch(() => false);
+    if (needsEmailCode) {
+      throw new Error(
+        "GameChanger login requires an email verification code. Refresh the writer browser session manually or configure automated OTP retrieval.",
+      );
+    }
+    throw new Error(
+      "GameChanger account cannot access the staff schedule editor (Add games control not visible).",
+    );
+  }
+
+  await addGames.click();
   await page.getByText(/add individual h2h game/i).click();
 }
 
@@ -73,38 +137,61 @@ async function fillIfPresent(page: Page, label: RegExp, value: string): Promise<
 
 async function selectDuration(page: Page, durationLabel: string): Promise<void> {
   const duration = page.getByLabel(/duration/i);
-  if (await duration.isVisible().catch(() => false)) {
-    await duration.click();
-    await duration.fill(durationLabel);
-    await page.keyboard.press("Enter");
+  if (!(await duration.isVisible().catch(() => false))) return;
+
+  const tagName = await duration.evaluate((el) => el.tagName.toLowerCase());
+  if (tagName === "select") {
+    await duration.selectOption({ label: durationLabel });
+    return;
   }
+
+  await duration.click();
+  await duration.fill(durationLabel);
+  await page.keyboard.press("Enter");
 }
 
 async function readDropdownOptions(page: Page): Promise<string[]> {
-  const options = page.locator("[role='option']");
-  await options.first().waitFor({ state: "visible", timeout: 5_000 });
-  const count = await options.count();
-  const labels: string[] = [];
-  for (let index = 0; index < count; index += 1) {
-    const text = (await options.nth(index).innerText()).trim();
-    if (text) labels.push(text);
+  const optionLocators = [
+    page.locator(".TypeaheadSelect__option"),
+    page.locator("[role='option']"),
+    page.locator("[role='combobox'].TypeaheadSelect__option"),
+  ];
+  for (const options of optionLocators) {
+    if ((await options.count()) === 0) continue;
+    await options.first().waitFor({ state: "visible", timeout: 5_000 }).catch(() => undefined);
+    const count = await options.count();
+    const labels: string[] = [];
+    for (let index = 0; index < count; index += 1) {
+      const text = (await options.nth(index).innerText()).trim();
+      if (text) labels.push(text);
+    }
+    if (labels.length > 0) return labels;
   }
-  return labels;
+  return [];
 }
 
 async function selectTeam(page: Page, label: RegExp, teamName: string): Promise<void> {
   const field = page.getByLabel(label);
   await field.click();
-  const options = await readDropdownOptions(page);
+  await field.fill(teamName);
+  await page.waitForTimeout(500);
+
   const normalizedTarget = teamName.trim().toLowerCase();
-  const index = options.findIndex((option) => option.trim().toLowerCase() === normalizedTarget);
-  if (index < 0) {
-    throw new Error(`Team "${teamName}" was not found in the GameChanger dropdown.`);
+  const typeaheadOption = page.locator(".TypeaheadSelect__option").filter({ hasText: teamName });
+  if (await typeaheadOption.first().isVisible().catch(() => false)) {
+    await typeaheadOption.first().click();
+  } else {
+    const options = await readDropdownOptions(page);
+    const index = options.findIndex((option) => option.trim().toLowerCase() === normalizedTarget);
+    if (index < 0) {
+      throw new Error(`Team "${teamName}" was not found in the GameChanger dropdown.`);
+    }
+    for (let step = 0; step <= index; step += 1) {
+      await page.keyboard.press("ArrowDown");
+    }
+    await page.keyboard.press("Enter");
   }
-  for (let step = 0; step <= index; step += 1) {
-    await page.keyboard.press("ArrowDown");
-  }
-  await page.keyboard.press("Enter");
+
   const committed = (await field.inputValue().catch(() => "")).trim();
   if (!committed) {
     throw new Error(`Team "${teamName}" was not committed in the GameChanger form.`);
