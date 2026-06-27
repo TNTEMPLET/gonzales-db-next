@@ -36,7 +36,7 @@ POST body from gonzales-db-next:
     "widgetId": "...",
     "gcOrganizationId": "nyKveVgqszKT",
     "gcFormDate": "06/27/26",
-    "gcFormTime": "10:00 PM",
+    "gcFormTime": "5:00 PM",
     "scheduledFor": "2026-06-27T22:00:00.000Z",
     "homeTeam": "10U Eastbank",
     "awayTeam": "10U Ascension LL",
@@ -50,9 +50,9 @@ Response: `{ "eventId": "<uuid>" }`
 
 ## Timezone
 
-The writer types **UTC** date/time into the GC web form. gonzales-db-next computes `gcFormDate` / `gcFormTime` from bracket schedule (America/Chicago) via `gcWebFormTime.ts`.
+The writer types **local America/Chicago** date/time into the GC web form — the same values shown on the bracket PDF. gonzales-db-next computes `gcFormDate` / `gcFormTime` via `gcWebFormTime.ts`. The UTC `scheduledFor` instant is still used for scoreboard event matching.
 
-Example: **5:00 PM CDT** → form entry **10:00 PM** on `06/27/26`.
+Example: **5:00 PM CDT on 6/27** → form entry **5:00 PM** on `06/27/26`.
 
 ## Deploy
 

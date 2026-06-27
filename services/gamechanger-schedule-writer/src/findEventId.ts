@@ -43,13 +43,17 @@ export async function findCreatedEventId(
   const matches = events.filter((event) => {
     const eventHome = normalizeTeamName(event.home_team.name);
     const eventAway = normalizeTeamName(event.away_team.name);
-    const teamsMatch =
-      (eventHome === home && eventAway === away) || (eventHome === away && eventAway === home);
-    if (!teamsMatch) return false;
-    if (!targetStart) return true;
-    return new Date(event.start_ts).toISOString() === targetStart;
+    return (
+      (eventHome === home && eventAway === away) || (eventHome === away && eventAway === home)
+    );
   });
 
   if (matches.length === 0) return undefined;
+
+  if (targetStart) {
+    const exact = matches.filter((event) => new Date(event.start_ts).toISOString() === targetStart);
+    if (exact.length > 0) return exact[exact.length - 1]!.id;
+  }
+
   return matches[matches.length - 1]!.id;
 }

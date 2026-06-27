@@ -1,4 +1,5 @@
 import { collectLayoutMatchesForGc } from "@/lib/gamechanger/collectLayoutMatches";
+import { bracketScheduleToUtcInstant } from "@/lib/gamechanger/schedule-manager/gcWebFormTime";
 import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
 import { isBracketFeederPlaceholder } from "@/lib/tournament-brackets/bracketScoring";
 import { buildBracketLayout, type BracketLayout, type LayoutMatch } from "@/lib/tournament-brackets/bracketLayout";
@@ -65,15 +66,8 @@ function gameNumberFor(match: LayoutMatch | BracketGameRow): string | undefined 
 }
 
 function parseScheduledFor(dateLabel: string | undefined, time: string | undefined, seasonYear: number): Date | undefined {
-  const date = dateLabel?.trim();
-  const clock = time?.trim();
-  if (!date || !clock) return undefined;
-  const candidates = [`${date} ${seasonYear} ${clock}`, `${date} ${clock}`, `${date}, ${seasonYear} ${clock}`];
-  for (const candidate of candidates) {
-    const value = Date.parse(candidate);
-    if (Number.isFinite(value)) return new Date(value);
-  }
-  return undefined;
+  if (!dateLabel?.trim() || !time?.trim()) return undefined;
+  return bracketScheduleToUtcInstant(dateLabel, time, seasonYear);
 }
 
 export function findUnlockedScheduleManagerGames(options: FindUnlockedGamesOptions): FindUnlockedGamesResult {

@@ -37,6 +37,11 @@ export type GameChangerCreateGameInput = {
   awayTeam: string;
   division?: string;
   gameNumber?: string;
+  widgetId?: string;
+  gcOrganizationId?: string;
+  gcFormDate?: string;
+  gcFormTime?: string;
+  durationLabel?: string;
 };
 
 export type GameChangerCreateGameResult = {
@@ -44,5 +49,4 @@ export type GameChangerCreateGameResult = {
   dryRun: boolean;
   requestSummary: Record<string, unknown>;
   responseSummary: Record<string, unknown>;
-  warnings?: string[];
 };

@@ -20,15 +20,51 @@ function parseBwLoginFields(stdout: string): GameChangerCredentials {
   return { username, password };
 }
 
+function pickGameChangerItem(items: Array<{
+  name?: string;
+  login?: { username?: string; password?: string; uris?: Array<{ uri?: string }> };
+}>): {
+  name?: string;
+  login?: { username?: string; password?: string; uris?: Array<{ uri?: string }> };
+} {
+  const withGcUri = items.find((item) =>
+    item.login?.uris?.some((entry) => entry.uri?.includes("web.gc.com")),
+  );
+  if (withGcUri?.login?.username && withGcUri.login.password) return withGcUri;
+
+  const withPassword = items.find((item) => item.login?.username?.trim() && item.login?.password);
+  if (withPassword) return withPassword;
+
+  throw new Error(
+    "Multiple Gringotts items match the vault label but none have GameChanger web.gc.com credentials.",
+  );
+}
+
 export async function loadGameChangerCredentials(): Promise<GameChangerCredentials> {
+  const fromEnvUsername = process.env.GC_WRITER_GC_USERNAME?.trim();
+  const fromEnvPassword = process.env.GC_WRITER_GC_PASSWORD;
+  if (fromEnvUsername && fromEnvPassword) {
+    return { username: fromEnvUsername, password: fromEnvPassword };
+  }
+
   const itemName = process.env.GRINGOTTS_GC_VAULT_ITEM?.trim() || "SRF - Trent";
   const bwBin = process.env.BW_BIN?.trim() || "bw";
   const session = process.env.BW_SESSION?.trim();
-  const args = session ? ["--session", session, "get", "item", itemName, "--fields", "login"] : ["get", "item", itemName, "--fields", "login"];
+  const sessionArgs = session ? ["--session", session] : [];
 
-  const { stdout } = await execFileAsync(bwBin, args, {
+  const { stdout } = await execFileAsync(bwBin, [...sessionArgs, "get", "item", itemName], {
     env: process.env,
     maxBuffer: 1024 * 1024,
   });
+
+  const trimmed = stdout.trim();
+  if (trimmed.startsWith("[")) {
+    const items = JSON.parse(trimmed) as Array<{
+      name?: string;
+      login?: { username?: string; password?: string; uris?: Array<{ uri?: string }> };
+    }>;
+    return parseBwLoginFields(JSON.stringify(pickGameChangerItem(items)));
+  }
+
   return parseBwLoginFields(stdout);
 }
