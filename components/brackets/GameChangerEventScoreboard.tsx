@@ -1,7 +1,7 @@
 "use client";
 
 import type { BracketLiveGameStatus } from "@/components/brackets/TournamentBracketView";
-import { normalizeTeamNameForMatch } from "@/lib/gamechanger/matchEventsToBracket";
+import { bracketEventOrientation } from "@/lib/gamechanger/matchEventsToBracket";
 import type { GcBracketMatchRef, GcScoreboardEvent } from "@/lib/gamechanger/types";
 
 import styles from "@/components/brackets/GameChangerEventScoreboard.module.css";
@@ -18,8 +18,7 @@ function displayScores(
 ): { homeScore: string; awayScore: string } {
   const gcHome = event.home_team.score;
   const gcAway = event.away_team.score;
-  const flipped =
-    normalizeTeamNameForMatch(bracketMatch.home) !== normalizeTeamNameForMatch(event.home_team.name);
+  const flipped = bracketEventOrientation(bracketMatch, event) === "swapped";
   const homeScore = flipped ? gcAway : gcHome;
   const awayScore = flipped ? gcHome : gcAway;
   return {

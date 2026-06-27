@@ -119,6 +119,52 @@ describe("buildLivePayloadFromEvents", () => {
     assert.ok(payload.nextPollMs >= 15_000);
   });
 
+  it("keeps Eastbank/Bogalusa scores in bracket order with 12U GC prefixes", () => {
+    const ref: GcBracketMatchRef = {
+      id: "pdf-winners-g1-b19c8c4f",
+      home: "Eastbank",
+      away: "Bogalusa",
+      officialGameNumber: "1",
+      dateLabel: "6/26",
+      time: "7:30pm",
+    };
+    const event: GcScoreboardEvent = {
+      id: "107cf61a-886b-493e-805e-a2772fc010f8",
+      start_ts: "2026-06-27T00:30:00.000Z",
+      game_status: "completed",
+      home_team: { id: "eastbank", name: "12U Eastbank", score: 23 },
+      away_team: { id: "bogalusa", name: "12U Bogalusa", score: 0 },
+      sport_specific: {
+        bats: { inning_details: { inning: 3, half: "bottom" } },
+      },
+    };
+
+    const payload = buildLivePayloadFromEvents([ref], [event]);
+
+    assert.equal(payload.matchEventIds[ref.id], event.id);
+    assert.equal(payload.liveGameStatuses[ref.id]?.scoreLabel, "23–0");
+    assert.equal(payload.liveGameStatuses[ref.id]?.statusLabel, "Final");
+  });
+
+  it("flips scores when GC home/away is opposite the bracket slots", () => {
+    const ref: GcBracketMatchRef = {
+      id: "m-swapped",
+      home: "Bogalusa",
+      away: "Eastbank",
+    };
+    const event: GcScoreboardEvent = {
+      id: "107cf61a-886b-493e-805e-a2772fc010f8",
+      start_ts: "2026-06-27T00:30:00.000Z",
+      game_status: "completed",
+      home_team: { id: "eastbank", name: "12U Eastbank", score: 23 },
+      away_team: { id: "bogalusa", name: "12U Bogalusa", score: 0 },
+    };
+
+    const payload = buildLivePayloadFromEvents([ref], [event]);
+
+    assert.equal(payload.liveGameStatuses[ref.id]?.scoreLabel, "0–23");
+  });
+
   it("respects matchEventPins over auto-match", () => {
     const ref: GcBracketMatchRef = {
       id: "g2",

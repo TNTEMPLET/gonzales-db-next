@@ -1,4 +1,4 @@
-import { resolveGcEventForBracketMatch, normalizeTeamNameForMatch } from "@/lib/gamechanger/matchEventsToBracket";
+import { bracketEventOrientation, resolveGcEventForBracketMatch } from "@/lib/gamechanger/matchEventsToBracket";
 import type { GcBracketMatchRef, GcScoreboardEvent } from "@/lib/gamechanger/types";
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import {
@@ -28,8 +28,7 @@ export function gcEventToBracketMatchScores(
   const gcAway = event.away_team.score;
   if (gcHome == null || gcAway == null) return null;
 
-  const flipped =
-    normalizeTeamNameForMatch(ref.home) !== normalizeTeamNameForMatch(event.home_team.name);
+  const flipped = bracketEventOrientation(ref, event) === "swapped";
 
   const homeScore = flipped ? gcAway : gcHome;
   const awayScore = flipped ? gcHome : gcAway;

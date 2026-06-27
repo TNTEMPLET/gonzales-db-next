@@ -33,6 +33,25 @@ function teamsMatchPair(
   return (bh === eh && ba === ea) || (bh === ea && ba === eh);
 }
 
+export function bracketEventOrientation(
+  ref: GcBracketMatchRef,
+  event: GcScoreboardEvent,
+): "same" | "swapped" {
+  const bh = normalizeTeamNameForMatch(ref.home);
+  const ba = normalizeTeamNameForMatch(ref.away);
+  const eh = normalizeTeamNameForMatch(event.home_team.name);
+  const ea = normalizeTeamNameForMatch(event.away_team.name);
+
+  if (bh && ba && eh && ea) {
+    if (bh === eh && ba === ea) return "same";
+    if (bh === ea && ba === eh) return "swapped";
+  }
+
+  if (bh && eh && bh === eh) return "same";
+  if (bh && ea && bh === ea) return "swapped";
+  return "same";
+}
+
 function isBracketByeMatch(ref: GcBracketMatchRef): boolean {
   const h = ref.home.trim().toUpperCase();
   const a = ref.away.trim().toUpperCase();
@@ -67,9 +86,7 @@ function scoreLabelForEvent(event: GcScoreboardEvent, ref: GcBracketMatchRef): s
   const awayScore = event.away_team.score;
   if (homeScore == null && awayScore == null) return "—";
 
-  const bh = normalizeTeamNameForMatch(ref.home);
-  const eh = normalizeTeamNameForMatch(event.home_team.name);
-  const flipped = bh !== eh;
+  const flipped = bracketEventOrientation(ref, event) === "swapped";
 
   const left = flipped ? awayScore : homeScore;
   const right = flipped ? homeScore : awayScore;
