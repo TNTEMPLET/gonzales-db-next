@@ -2,12 +2,7 @@ import { collectLayoutMatchesForGc } from "@/lib/gamechanger/collectLayoutMatche
 import { fetchGameChangerScoreboardSyncWindow } from "@/lib/gamechanger/fetchScoreboard";
 import { importGcScoresIntoBracket } from "@/lib/gamechanger/importScoresIntoBracket";
 import { buildLivePayloadFromEvents } from "@/lib/gamechanger/matchEventsToBracket";
-import {
-  bracketGameChangerSchema,
-  type GcAdminLiveResponse,
-  type GcLiveMatchPayload,
-  type GcScoreboardEvent,
-} from "@/lib/gamechanger/types";
+import { bracketGameChangerSchema, type GcAdminLiveResponse, type GcScoreboardEvent } from "@/lib/gamechanger/types";
 import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { mergeBracketSpec, type BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 
@@ -31,113 +26,6 @@ function newlyFinalEvents(
   return events.filter((e) => e.game_status === "completed" && !importedIds.has(e.id));
 }
 
-type CompletedGcImportProgressionResult = {
-  live: GcLiveMatchPayload;
-  spec: BracketSpec;
-  specUpdated: boolean;
-  importedMatchIds: string[];
-};
-
-function livePayloadForSpec(
-  spec: BracketSpec,
-  events: GcScoreboardEvent[],
-  nextUpdate: string | undefined,
-): GcLiveMatchPayload {
-  const gc = bracketGameChangerSchema.parse(spec.gameChanger);
-  const layout = buildBracketLayout(spec);
-  const bracketMatches = collectLayoutMatchesForGc(layout);
-  return buildLivePayloadFromEvents(
-    bracketMatches,
-    events,
-    nextUpdate,
-    gc.matchEventPins,
-  );
-}
-
-/**
- * Import completed GameChanger events, rebuilding bracket match refs after each
- * advancement so games that started as W/L placeholders can match in one sync.
- */
-export function importCompletedGcScoresWithProgression(
-  spec: BracketSpec,
-  events: GcScoreboardEvent[],
-  nextUpdate: string | undefined,
-  options: SyncGameChangerOptions = {},
-): CompletedGcImportProgressionResult {
-  const gc = bracketGameChangerSchema.parse(spec.gameChanger);
-  const importedIds = new Set(gc.importedFinalEventIds ?? []);
-  let nextSpec = spec;
-  let specUpdated = false;
-  const importedMatchIds: string[] = [];
-  let live = livePayloadForSpec(nextSpec, events, nextUpdate);
-
-  if (!options.forceImportCompleted && newlyFinalEvents(events, importedIds).length === 0) {
-    return { live, spec: nextSpec, specUpdated, importedMatchIds };
-  }
-
-  const maxPasses = Math.min(32, Math.max(4, events.length + 2));
-  for (let pass = 0; pass < maxPasses; pass++) {
-    const layout = buildBracketLayout(nextSpec);
-    const bracketMatches = collectLayoutMatchesForGc(layout);
-    live = buildLivePayloadFromEvents(
-      bracketMatches,
-      events,
-      nextUpdate,
-      gc.matchEventPins,
-    );
-
-    const refsToTry = bracketMatches.filter((ref) => {
-      const event = live.eventsByMatchId[ref.id];
-      if (event?.game_status !== "completed") return false;
-      return options.forceImportCompleted || !importedIds.has(event.id);
-    });
-    if (refsToTry.length === 0) break;
-
-    const importResult = importGcScoresIntoBracket(nextSpec, bracketMatches, events, {
-      onlyCompleted: true,
-      matchIds: refsToTry.map((ref) => ref.id),
-      skipUnchanged: true,
-      matchEventPins: gc.matchEventPins,
-    });
-
-    const changedMatchIds = new Set(importResult.importedMatchIds);
-    const unchangedMatchIds = new Set(
-      importResult.skipped
-        .filter((skip) => skip.reason === "unchanged")
-        .map((skip) => skip.matchId),
-    );
-    let importedEventIdsChanged = false;
-    for (const ref of refsToTry) {
-      if (!changedMatchIds.has(ref.id) && !unchangedMatchIds.has(ref.id)) continue;
-      const event = live.eventsByMatchId[ref.id];
-      if (event?.game_status !== "completed" || importedIds.has(event.id)) continue;
-      importedIds.add(event.id);
-      importedEventIdsChanged = true;
-    }
-
-    if (importResult.importedMatchIds.length > 0) {
-      nextSpec = importResult.spec;
-      importedMatchIds.push(...importResult.importedMatchIds);
-      specUpdated = true;
-    }
-
-    if (importedEventIdsChanged) {
-      nextSpec = mergeBracketSpec(nextSpec, {
-        gameChanger: {
-          ...gc,
-          importedFinalEventIds: [...importedIds],
-        },
-      });
-      specUpdated = true;
-    }
-
-    if (importResult.importedMatchIds.length === 0) break;
-  }
-
-  live = livePayloadForSpec(nextSpec, events, nextUpdate);
-  return { live, spec: nextSpec, specUpdated, importedMatchIds };
-}
-
 export async function syncGameChangerToProject(
   spec: BracketSpec,
   options: SyncGameChangerOptions = {},
@@ -148,28 +36,78 @@ export async function syncGameChangerToProject(
   }
 
   const gc = gcParsed.data;
+  const layout = buildBracketLayout(spec);
+  const bracketMatches = collectLayoutMatchesForGc(layout);
+
   const { response, events } = await fetchGameChangerScoreboardSyncWindow(gc.widgetId);
+  const live = buildLivePayloadFromEvents(
+    bracketMatches,
+    events,
+    response.next_update,
+    gc.matchEventPins,
+  );
+
+  let nextSpec = spec;
+  let specUpdated = false;
+  let importedMatchIds: string[] = [];
 
   const autoImport =
     options.autoImport ?? (gc.autoImportFinalScores !== false);
-  const importResult = options.forceImportCompleted || autoImport
-    ? importCompletedGcScoresWithProgression(spec, events, response.next_update, options)
-    : {
-        live: livePayloadForSpec(spec, events, response.next_update),
-        spec,
-        specUpdated: false,
-        importedMatchIds: [],
-      };
+  const importedIds = new Set(gc.importedFinalEventIds ?? []);
+
+  const shouldImport =
+    options.forceImportCompleted ||
+    (autoImport && newlyFinalEvents(events, importedIds).length > 0);
+
+  if (shouldImport) {
+    const matchIdsToTry = options.forceImportCompleted
+      ? bracketMatches
+          .filter((ref) => live.eventsByMatchId[ref.id]?.game_status === "completed")
+          .map((ref) => ref.id)
+      : bracketMatches
+          .filter((ref) => {
+            const event = live.eventsByMatchId[ref.id];
+            return event?.game_status === "completed" && !importedIds.has(event.id);
+          })
+          .map((ref) => ref.id);
+
+    const importResult = importGcScoresIntoBracket(nextSpec, bracketMatches, events, {
+      onlyCompleted: true,
+      matchIds: matchIdsToTry,
+      skipUnchanged: !options.forceImportCompleted,
+      matchEventPins: gc.matchEventPins,
+    });
+
+    if (importResult.importedMatchIds.length > 0) {
+      nextSpec = importResult.spec;
+      importedMatchIds = importResult.importedMatchIds;
+      specUpdated = true;
+
+      for (const ref of bracketMatches) {
+        const event = live.eventsByMatchId[ref.id];
+        if (event?.game_status === "completed" && importResult.importedMatchIds.includes(ref.id)) {
+          importedIds.add(event.id);
+        }
+      }
+
+      nextSpec = mergeBracketSpec(nextSpec, {
+        gameChanger: {
+          ...gc,
+          importedFinalEventIds: [...importedIds],
+        },
+      });
+    }
+  }
 
   return {
     live: {
-      ...importResult.live,
+      ...live,
       organizationName: response.data.organization.name,
       polledAt: new Date().toISOString(),
-      importedMatchIds: importResult.importedMatchIds,
-      specUpdated: importResult.specUpdated,
+      importedMatchIds,
+      specUpdated,
     },
-    spec: importResult.spec,
-    specUpdated: importResult.specUpdated,
+    spec: nextSpec,
+    specUpdated,
   };
 }
