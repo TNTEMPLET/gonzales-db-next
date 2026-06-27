@@ -18,6 +18,7 @@ export type ClassicSixTeamModifiedDeSlots = {
  */
 export function resolveClassicSixTeamModifiedDeSlots(
   matchesByGame: Map<string, LayoutMatch>,
+  opts?: { allowResolvedFeederSlots?: boolean },
 ): ClassicSixTeamModifiedDeSlots | null {
   const g1 = matchesByGame.get("1");
   const g2 = matchesByGame.get("2");
@@ -43,11 +44,13 @@ export function resolveClassicSixTeamModifiedDeSlots(
     if (isFeederSlotLabel(opener.home) || isFeederSlotLabel(opener.away)) return null;
   }
 
-  // G3/G4 are bye semis (feeder vs team), not a third opener.
-  for (const semi of [g3, g4]) {
-    const homeFeeder = isFeederSlotLabel(semi.home);
-    const awayFeeder = isFeederSlotLabel(semi.away);
-    if (homeFeeder === awayFeeder) return null;
+  if (!opts?.allowResolvedFeederSlots) {
+    // G3/G4 are bye semis (feeder vs team), not a third opener.
+    for (const semi of [g3, g4]) {
+      const homeFeeder = isFeederSlotLabel(semi.home);
+      const awayFeeder = isFeederSlotLabel(semi.away);
+      if (homeFeeder === awayFeeder) return null;
+    }
   }
 
   if (!isFeederSlotLabel(g7.home) || !isFeederSlotLabel(g7.away)) return null;
