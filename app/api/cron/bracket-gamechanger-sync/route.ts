@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { runScheduleManager } from "@/lib/gamechanger/schedule-manager/runScheduleManager";
+import { runScheduleManagerLiveAfterFinals } from "@/lib/gamechanger/schedule-manager/runLiveAfterFinals";
 import { syncGameChangerToProject } from "@/lib/gamechanger/syncGameChangerToProject";
 import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
 import prisma from "@/lib/prisma";
@@ -28,6 +28,7 @@ export async function GET(request: NextRequest) {
     id: string;
     name: string;
     importedMatchIds: string[];
+    newlyFinalizedMatchIds: string[];
     scheduleManager?: { createdCount: number; skippedCount: number; failedCount: number };
   }> = [];
 
@@ -47,26 +48,22 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const newlyFinalizedMatchIds = syncResult.live.newlyFinalizedMatchIds ?? [];
+
     let scheduleManagerSummary: { createdCount: number; skippedCount: number; failedCount: number } | undefined;
-    if (gc.data.scheduleManagerEnabled && importedMatchIds.length > 0) {
-      const liveWriterEnabled =
-        process.env.GAMECHANGER_SCHEDULE_WRITER_ENABLED === "true" &&
-        Boolean(process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim());
-      if (liveWriterEnabled) {
-        try {
-          const sm = await runScheduleManager({
-            mode: "LIVE",
-            bracketProjectId: project.id,
-          });
+    if (gc.data.scheduleManagerEnabled && newlyFinalizedMatchIds.length > 0) {
+      try {
+        const liveRun = await runScheduleManagerLiveAfterFinals(project.id);
+        if (liveRun.ran && liveRun.result) {
           scheduleManagerSummary = {
-            createdCount: sm.createdCount,
-            skippedCount: sm.skippedCount,
-            failedCount: sm.failedCount,
+            createdCount: liveRun.result.createdCount,
+            skippedCount: liveRun.result.skippedCount,
+            failedCount: liveRun.result.failedCount,
           };
-        } catch (error: unknown) {
-          const message = error instanceof Error ? error.message : String(error);
-          return NextResponse.json({ error: message, partial: synced }, { status: 500 });
         }
+      } catch (error: unknown) {
+        const message = error instanceof Error ? error.message : String(error);
+        return NextResponse.json({ error: message, partial: synced }, { status: 500 });
       }
     }
 
@@ -74,6 +71,7 @@ export async function GET(request: NextRequest) {
       id: project.id,
       name: project.name,
       importedMatchIds,
+      newlyFinalizedMatchIds,
       ...(scheduleManagerSummary ? { scheduleManager: scheduleManagerSummary } : {}),
     });
   }

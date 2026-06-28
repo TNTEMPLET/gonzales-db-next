@@ -25,6 +25,10 @@ SCHEDULE_MANAGER_CRON_LIVE=true
 
 Per bracket in admin: enable **Schedule Manager**.
 
+Schedule Manager creates **every unlocked game where both teams are known** (no feeder placeholders like `W3` / `L4`). Later-round games stay skipped until bracket results fill in those slots.
+
+When a GameChanger game goes **final**, the bracket GC sync cron (`/api/cron/bracket-gamechanger-sync`, every 10 minutes) imports the score if needed and then runs Schedule Manager **LIVE** to create all ready next-round games for that bracket. The same LIVE run happens when an admin polls GameChanger live sync in the bracket editor.
+
 ## Request contract
 
 POST body from gonzales-db-next:
@@ -50,9 +54,13 @@ Response: `{ "eventId": "<uuid>" }`
 
 ## Timezone
 
-The writer types **local America/Chicago** date/time into the GC web form — the same values shown on the bracket PDF. gonzales-db-next computes `gcFormDate` / `gcFormTime` via `gcWebFormTime.ts`. The UTC `scheduledFor` instant is still used for scoreboard event matching.
+GameChanger’s web schedule form interprets date/time in the **browser’s timezone**, not as abstract labels. The homelab writer runs Playwright with `timezoneId: America/Chicago` and `TZ=America/Chicago` in the container so typed values match bracket PDF times (e.g. **10:00 AM on 6/28** stays local, not UTC).
 
-Example: **5:00 PM CDT on 6/27** → form entry **5:00 PM** on `06/27/26`.
+gonzales-db-next computes `gcFormDate` / `gcFormTime` via `gcWebFormTime.ts`. The UTC `scheduledFor` instant is used for scoreboard event matching after save.
+
+If games were created before this fix, times on web.gc.com may look like UTC offsets (e.g. 5:00 PM stored when you expected 10:00 AM) — correct those games manually in GC or recreate after redeploying the writer.
+
+Example: **5:00 PM CDT on 6/27** → form entry **5:00 PM** on `06/27/26` → API `start_ts` `2026-06-27T22:00:00.000Z`.
 
 ## Deploy
 
