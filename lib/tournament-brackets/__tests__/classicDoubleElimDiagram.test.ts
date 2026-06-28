@@ -60,6 +60,30 @@ describe("classicDoubleElimDiagram", () => {
     assert.equal(slots!.ifNecessary?.officialGameNumber, "9");
   });
 
+  it("keeps classic five-team slots when G3 has resolved team names", () => {
+    const map = new Map<string, LayoutMatch>([
+      ["1", match("1", "9U Westbank", "9U NORD")],
+      ["2", match("2", "9U St. Charles", "9U Eastbank")],
+      ["3", match("3", "9U Westbank", "9U Ascension")],
+      ["4", match("4", "9U NORD", "9U St. Charles")],
+      ["5", match("5", "W3", "9U Eastbank")],
+      ["6", match("6", "W4", "L3")],
+      ["7", match("7", "L5", "W6")],
+      [
+        "8",
+        {
+          ...match("8", "W5", "W7"),
+          championshipRole: "grand_final" as const,
+        },
+      ],
+    ]);
+    const slots = resolveClassicDoubleElimSlots(map);
+    assert.ok(slots);
+    assert.equal(slots!.winnersSemi.home, "9U Westbank");
+    assert.equal(slots!.winnersSemi.away, "9U Ascension");
+    assert.equal(slots!.losersRound1.home, "9U NORD");
+  });
+
   it("resolves without G9 when if-necessary game is absent", () => {
     const map = new Map<string, LayoutMatch>([
       ["1", match("1", "A", "B")],

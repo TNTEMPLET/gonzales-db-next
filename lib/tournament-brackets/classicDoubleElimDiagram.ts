@@ -95,11 +95,14 @@ export function resolveClassicDoubleElimSlots(
 
   const isOfficialFiveTeam = options?.officialTemplateId === "little_league_5_team_de";
 
-  // Classic 5-team: G3 is a semi (feeder vs team). 6-team: G3 is a third opener (E vs F).
+  // Classic 5-team: G3 is a semi (feeder vs team). After G1/G2 finish it becomes two team names.
+  // 6-team DE championship is on G10/G11 — reject only when grand final is not on G8.
   if (
     !isOfficialFiveTeam &&
     !isFeederSlotLabel(g3.home) &&
-    !isFeederSlotLabel(g3.away)
+    !isFeederSlotLabel(g3.away) &&
+    grandFinalGame &&
+    grandFinalGame !== "8"
   ) {
     return null;
   }
