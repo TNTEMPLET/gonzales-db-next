@@ -1,4 +1,5 @@
 import type { BracketTournamentInfo } from "@/lib/tournament-brackets/bracketSpec";
+import { formatDivisionDisplayLabel } from "@/lib/tournament-brackets/bracketDisplayLabels";
 
 export const TOURNAMENT_INFO_FIELD_LABELS = {
   division: "Division",
@@ -153,7 +154,8 @@ export function normalizeBracketTournamentInfo(
   const next: BracketTournamentInfo = {};
   for (const key of Object.keys(TOURNAMENT_INFO_FIELD_LABELS) as (keyof BracketTournamentInfo)[]) {
     const value = raw[key]?.trim();
-    if (value) next[key] = value;
+    if (!value) continue;
+    next[key] = key === "division" ? formatDivisionDisplayLabel(value) ?? value : value;
   }
   return Object.keys(next).length > 0 ? next : undefined;
 }

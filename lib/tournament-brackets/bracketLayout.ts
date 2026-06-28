@@ -1,4 +1,8 @@
-import { formatSemiLoserSlotLabel, formatWinnerFeederSlotLabel } from "@/lib/tournament-brackets/bracketDisplayLabels";
+import {
+  formatDivisionDisplayLabel,
+  formatSemiLoserSlotLabel,
+  formatWinnerFeederSlotLabel,
+} from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { isBracketFeederPlaceholder } from "@/lib/tournament-brackets/bracketScoring";
 import type { BracketGameRow, BracketMatch, BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { BYE_SLOT_LABEL, generateSingleEliminationRoundsFromTeams } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
@@ -314,10 +318,7 @@ export function computePodiumForSingleElimTree(
   const finalMatch = finalRound.matches[0]!;
   const sm0 = semiRound.matches[0]!;
   const sm1 = semiRound.matches[1]!;
-  const age =
-    spec.championAgeGroupLabel?.trim() ||
-    spec.divisionLabel?.trim() ||
-    "Tournament";
+  const age = championPlaqueSource(spec);
   const thirdHome =
     spec.thirdPlaceGame?.home?.trim() && !isBracketFeederPlaceholder(spec.thirdPlaceGame.home)
       ? spec.thirdPlaceGame.home.trim()
@@ -352,10 +353,25 @@ export function computePodiumForSingleElimTree(
 }
 
 export function championPlaqueHeading(label: string): string {
-  const trimmed = label.trim() || "Tournament";
+  const trimmed = formatDivisionDisplayLabel(label)?.trim() || "Tournament";
   const withoutLittleLeague = trimmed.replace(/^Little\s+League\s+/i, "").trim() || trimmed;
   const normalizedDivision = withoutLittleLeague.replace(/\bCoach(?:es)?\s+Pitch\b/i, "Coaches Pitch");
   return `${normalizedDivision} Champion`;
+}
+
+function layoutDivisionLabel(spec: BracketSpec): string | undefined {
+  return (
+    formatDivisionDisplayLabel(spec.divisionLabel) ??
+    formatDivisionDisplayLabel(spec.tournamentInfo?.division)
+  );
+}
+
+function championPlaqueSource(spec: BracketSpec): string {
+  return (
+    formatDivisionDisplayLabel(spec.championAgeGroupLabel) ??
+    layoutDivisionLabel(spec) ??
+    "Tournament"
+  );
 }
 
 function withTreePodium(
@@ -383,7 +399,7 @@ function layoutFromSpecRounds(spec: BracketSpec): BracketLayout {
   if (rounds.length === 0) {
     return {
       mode: "empty",
-      title: spec.divisionLabel,
+      title: layoutDivisionLabel(spec),
       message: "No bracket rounds defined yet.",
     };
   }
@@ -393,7 +409,7 @@ function layoutFromSpecRounds(spec: BracketSpec): BracketLayout {
     return withTreePodium(
       {
         mode: "tree",
-        divisionLabel: spec.divisionLabel,
+        divisionLabel: layoutDivisionLabel(spec),
         rounds: out,
         treeLayout: "connected",
         connectedLaneRowCount,
@@ -404,7 +420,7 @@ function layoutFromSpecRounds(spec: BracketSpec): BracketLayout {
   return withTreePodium(
     {
       mode: "tree",
-      divisionLabel: spec.divisionLabel,
+      divisionLabel: layoutDivisionLabel(spec),
       rounds: filterByeMatchesFromRounds(rounds),
       treeLayout: "flat",
     },
@@ -438,7 +454,7 @@ function layoutFromSeededSingleElim(spec: BracketSpec): BracketLayout | null {
   return withTreePodium(
     {
       mode: "tree",
-      divisionLabel: spec.divisionLabel,
+      divisionLabel: layoutDivisionLabel(spec),
       rounds,
       treeLayout: "connected",
       connectedLaneRowCount,
@@ -450,7 +466,7 @@ function layoutFromSeededSingleElim(spec: BracketSpec): BracketLayout | null {
 function layoutMatchGrid(spec: BracketSpec): BracketLayout {
   return {
     mode: "match_grid",
-    divisionLabel: spec.divisionLabel,
+    divisionLabel: layoutDivisionLabel(spec),
     games: spec.games,
   };
 }
@@ -458,7 +474,7 @@ function layoutMatchGrid(spec: BracketSpec): BracketLayout {
 function layoutEmpty(spec: BracketSpec): BracketLayout {
   return {
     mode: "empty",
-    title: spec.divisionLabel,
+    title: layoutDivisionLabel(spec),
     message:
       "Import games from an XLSX schedule, or use Bracket structure to define rounds for the column preview and exports.",
   };
@@ -652,10 +668,7 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
           ? "five_team"
           : undefined;
 
-  const age =
-    spec.championAgeGroupLabel?.trim() ||
-    spec.divisionLabel?.trim() ||
-    "Tournament";
+  const age = championPlaqueSource(spec);
   const classicChampionshipPodium =
     useClassic && isDoubleEliminationFormat(spec.bracketFormat)
       ? {
@@ -676,7 +689,7 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
     ...(classicVariant === "five_team" && classicFive
       ? { classicFiveTeamSlots: classicFive }
       : {}),
-    divisionLabel: spec.divisionLabel,
+    divisionLabel: layoutDivisionLabel(spec),
     winnersBracket: winnersBracket ?? buildLinearConnectedSection("Winners Bracket", [], laneRows),
     losersBracket,
     championship: championshipSection,
