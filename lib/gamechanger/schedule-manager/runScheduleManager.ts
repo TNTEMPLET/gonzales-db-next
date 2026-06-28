@@ -102,13 +102,16 @@ function buildWriterInput(
 ): GameChangerCreateGameInput {
   let gcFormDate: string | undefined;
   let gcFormTime: string | undefined;
-  if (action.scheduledFor) {
-    const form = gcWebFormScheduleFromInstant(action.scheduledFor);
-    gcFormDate = form.gcFormDate;
-    gcFormTime = form.gcFormTime;
-  } else if (action.dateLabel) {
+  if (action.dateLabel) {
     const form = gcWebFormScheduleFromBracketLabels(action.dateLabel, action.time, row.seasonYear);
     if (form) {
+      gcFormDate = form.gcFormDate;
+      gcFormTime = form.gcFormTime;
+    }
+  }
+  if (!gcFormDate || !gcFormTime) {
+    if (action.scheduledFor) {
+      const form = gcWebFormScheduleFromInstant(action.scheduledFor);
       gcFormDate = form.gcFormDate;
       gcFormTime = form.gcFormTime;
     }

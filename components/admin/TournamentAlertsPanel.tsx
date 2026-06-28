@@ -2,6 +2,8 @@
 
 import { useEffect, useState } from "react";
 
+import { formatTournamentDateTime } from "@/lib/tournament-monitor/formatDateTime";
+
 type Subscription = { id: string; name: string; email: string | null; phone: string | null; channels: Array<"EMAIL" | "SMS">; active: boolean };
 type MonitorEvent = { id: string; type: string; title: string; message: string; emailSentCount: number; smsSentCount: number; failedCount: number; createdAt: string };
 type MonitorRun = { id: string; status: string; checkedCount: number; eventCount: number; sentCount: number; failedCount: number; createdAt: string; completedAt: string | null } | null;
@@ -73,7 +75,7 @@ export default function TournamentAlertsPanel() {
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-sm"><div className="text-zinc-500">Email provider</div><div className={payload?.providerStatus.emailConfigured ? "text-emerald-300" : "text-amber-300"}>{payload?.providerStatus.emailConfigured ? "Configured" : "Needs setup"}</div></div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-sm"><div className="text-zinc-500">SMS provider</div><div className={payload?.providerStatus.smsConfigured ? "text-emerald-300" : "text-amber-300"}>{payload?.providerStatus.smsConfigured ? "Configured" : "Needs Twilio setup"}</div></div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-sm"><div className="text-zinc-500">Last monitor run</div><div className="text-zinc-100">{payload?.lastRun ? `${payload.lastRun.status} · ${payload.lastRun.eventCount} alerts` : "Not run yet"}</div></div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-sm"><div className="text-zinc-500">Last monitor run</div><div className="text-zinc-100">{payload?.lastRun ? `${payload.lastRun.status} · ${payload.lastRun.eventCount} alerts · ${formatTournamentDateTime(payload.lastRun.completedAt ?? payload.lastRun.createdAt)}` : "Not run yet"}</div></div>
       </div>
       <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto_auto_auto]">
         <input value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} placeholder="Recipient name" className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
@@ -90,7 +92,7 @@ export default function TournamentAlertsPanel() {
         </div>
         <div className="rounded-xl border border-zinc-800 overflow-hidden">
           <div className="border-b border-zinc-800 bg-zinc-950 px-3 py-2 text-xs font-semibold uppercase tracking-wide text-zinc-400">Recent alerts</div>
-          {(payload?.events.length ?? 0) === 0 ? <p className="p-3 text-sm text-zinc-500">No alerts sent yet.</p> : payload?.events.slice(0, 8).map((event) => <div key={event.id} className="border-b border-zinc-800 p-3 text-sm last:border-b-0"><div className="font-semibold">{event.title}</div><div className="text-xs text-zinc-500">{event.type} · email {event.emailSentCount} · text {event.smsSentCount} · failed {event.failedCount}</div></div>)}
+          {(payload?.events.length ?? 0) === 0 ? <p className="p-3 text-sm text-zinc-500">No alerts sent yet.</p> : payload?.events.slice(0, 8).map((event) => <div key={event.id} className="border-b border-zinc-800 p-3 text-sm last:border-b-0"><div className="font-semibold">{event.title}</div><div className="text-xs text-zinc-500">{formatTournamentDateTime(event.createdAt)} · {event.type} · email {event.emailSentCount} · text {event.smsSentCount} · failed {event.failedCount}</div></div>)}
         </div>
       </div>
     </section>

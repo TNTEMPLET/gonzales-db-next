@@ -52,15 +52,26 @@ POST body from gonzales-db-next:
 
 Response: `{ "eventId": "<uuid>" }`
 
-## Timezone
+## Timezone hardening
 
 GameChanger’s web schedule form interprets date/time in the **browser’s timezone**, not as abstract labels. The homelab writer runs Playwright with `timezoneId: America/Chicago` and `TZ=America/Chicago` in the container so typed values match bracket PDF times (e.g. **10:00 AM on 6/28** stays local, not UTC).
 
-gonzales-db-next computes `gcFormDate` / `gcFormTime` via `gcWebFormTime.ts`. The UTC `scheduledFor` instant is used for scoreboard event matching after save.
+gonzales-db-next computes `gcFormDate` / `gcFormTime` via `gcWebFormTime.ts` (bracket Central labels, no offset). The UTC `scheduledFor` instant is used for scoreboard event matching after save.
 
-If games were created before this fix, times on web.gc.com may look like UTC offsets (e.g. 5:00 PM stored when you expected 10:00 AM) — correct those games manually in GC or recreate after redeploying the writer.
+**Writer guards (fail the request instead of saving a bad game):**
 
-Example: **5:00 PM CDT on 6/27** → form entry **5:00 PM** on `06/27/26` → API `start_ts` `2026-06-27T22:00:00.000Z`.
+- Assert Playwright browser timezone is `America/Chicago` and container `TZ` matches.
+- Reject requests when `scheduledFor` does not match `gcFormDate` + `gcFormTime` (catches +5h offset mistakes upstream).
+- After save, re-fetch the scoreboard event and assert `start_ts` equals `scheduledFor`.
+- Assert `location.name` matches `field` / `venue` when provided.
+
+Example: **12:00 PM CDT on 6/28** → form entry **12:00 PM** on `06/28/26` → API `start_ts` `2026-06-28T17:00:00.000Z`.
+
+## Location / field
+
+The schedule form uses `#location-field` (Google Places typeahead), not a plain text fill. For tournament field labels like `F3`, the writer types the label and selects the **Add "F3"** typeahead row (custom location, no address). Existing org locations (e.g. `TBD`) can be picked from the dropdown.
+
+After save, the writer verifies `location.name` on the scoreboard event matches the requested `field` or `venue`.
 
 ## Deploy
 
