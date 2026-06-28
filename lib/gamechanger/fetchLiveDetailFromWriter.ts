@@ -32,7 +32,6 @@ export async function fetchLiveDetailsFromWriter(
     body: JSON.stringify({ action: "liveDetails", events }),
     signal: AbortSignal.timeout(55_000),
     cache: "no-store",
-    redirect: "manual",
   });
 
   const responseText = await response.text();
