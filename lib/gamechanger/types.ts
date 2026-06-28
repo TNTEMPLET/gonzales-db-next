@@ -21,6 +21,7 @@ const gcTeamSchema = z.object({
   name: z.string(),
   score: z.number().optional(),
   is_video_live: z.boolean().optional(),
+  has_archived_video: z.boolean().optional(),
 });
 
 const gcInningSchema = z.object({
@@ -40,7 +41,13 @@ const gcEventSchema = z.object({
       bats: z
         .object({
           inning_details: gcInningSchema.optional(),
+          /** Cumulative outs in the game; outs in current half = total_outs % 3. */
+          total_outs: z.number().int().nonnegative().optional(),
+          /** Not currently returned by the public widget API; reserved for future payloads. */
+          balls: z.number().int().nonnegative().optional(),
+          strikes: z.number().int().nonnegative().optional(),
         })
+        .passthrough()
         .optional(),
     })
     .optional(),
@@ -78,11 +85,23 @@ export type GcLiveGameStatus = {
   statusLabel?: string;
 };
 
+export type GcLiveSituation = {
+  inningLabel?: string;
+  battingSide?: "home" | "away";
+  balls?: number;
+  strikes?: number;
+  outsInHalf?: number;
+};
+
 export type GcLiveMatchPayload = {
   liveGameStatuses: Record<string, GcLiveGameStatus>;
   matchEventIds: Record<string, string>;
   /** Full GC event per bracket match id (for single-game scoreboard modal). */
   eventsByMatchId: Record<string, GcScoreboardEvent>;
+  /** Enriched live count data from homelab reader (live games only). */
+  liveSituationsByMatchId?: Record<string, GcLiveSituation>;
+  /** GameChanger organization id for fan URLs. */
+  organizationId?: string;
   /** True when any bracket-matched GameChanger game is in progress. */
   hasLiveGames: boolean;
   nextPollMs: number;

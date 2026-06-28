@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { BracketLiveGameStatus } from "@/components/brackets/TournamentBracketView";
 import { scheduleNextGcPoll } from "@/hooks/gameChangerPollLoop";
-import type { GcLiveMatchPayload, GcScoreboardEvent } from "@/lib/gamechanger/types";
+import type { GcLiveMatchPayload, GcScoreboardEvent, GcLiveSituation } from "@/lib/gamechanger/types";
 
 type LiveApiResponse = GcLiveMatchPayload & {
   organizationName?: string;
@@ -18,6 +18,8 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
   );
   const [matchEventIds, setMatchEventIds] = useState<Record<string, string>>({});
   const [eventsByMatchId, setEventsByMatchId] = useState<Record<string, GcScoreboardEvent>>({});
+  const [liveSituationsByMatchId, setLiveSituationsByMatchId] = useState<Record<string, GcLiveSituation>>({});
+  const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const pollStateRef = useRef({
@@ -41,6 +43,8 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
       setLiveGameStatuses(json.liveGameStatuses ?? {});
       setMatchEventIds(json.matchEventIds ?? {});
       setEventsByMatchId(json.eventsByMatchId ?? {});
+      setLiveSituationsByMatchId(json.liveSituationsByMatchId ?? {});
+      setOrganizationId(json.organizationId);
       const schedule = scheduleNextGcPoll({
         hasLiveGames: json.hasLiveGames ?? false,
         nextPollMs: json.nextPollMs ?? 30_000,
@@ -68,6 +72,8 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
       setLiveGameStatuses(null);
       setMatchEventIds({});
       setEventsByMatchId({});
+      setLiveSituationsByMatchId({});
+      setOrganizationId(undefined);
       setError(null);
     }
   }, [projectId, enabled]);
@@ -122,6 +128,8 @@ export function useGameChangerLive(projectId: string | null | undefined, enabled
     liveGameStatuses,
     matchEventIds,
     eventsByMatchId,
+    liveSituationsByMatchId,
+    organizationId,
     loading,
     error,
     refresh: () => fetchLiveRef.current(),

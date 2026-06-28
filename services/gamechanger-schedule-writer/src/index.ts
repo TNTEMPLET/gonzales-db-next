@@ -2,10 +2,16 @@ import { createServer, type IncomingMessage } from "node:http";
 
 import { loadGameChangerCredentials } from "./credentials.js";
 import { createGameChangerGame } from "./createGame.js";
+import { fetchGameChangerLiveDetails } from "./liveDetail.js";
 import type { CreateGameRequest } from "./types.js";
 
 const PORT = Number(process.env.GC_WRITER_PORT ?? "8105");
 const WRITER_SECRET = process.env.GAMECHANGER_SCHEDULE_WRITER_SECRET?.trim();
+
+type LiveDetailBody = {
+  eventId?: string;
+  orgId?: string;
+};
 
 function unauthorized(): Response {
   return new Response(JSON.stringify({ error: "Unauthorized" }), {
@@ -41,6 +47,17 @@ function isAuthorized(request: Request): boolean {
   return header === `Bearer ${WRITER_SECRET}`;
 }
 
+function parseLiveDetailRequests(events: LiveDetailBody[] | undefined): Array<{ eventId: string; orgId: string }> {
+  if (!events?.length) return [];
+  const out: Array<{ eventId: string; orgId: string }> = [];
+  for (const entry of events) {
+    const eventId = entry.eventId?.trim();
+    const orgId = entry.orgId?.trim();
+    if (eventId && orgId) out.push({ eventId, orgId });
+  }
+  return out;
+}
+
 async function handleRequest(request: Request): Promise<Response> {
   if (request.method === "GET" && new URL(request.url).pathname === "/health") {
     return ok({ status: "ok" });
@@ -53,16 +70,33 @@ async function handleRequest(request: Request): Promise<Response> {
   }
 
   const payload = (await request.json().catch(() => null)) as
-    | { action?: string; game?: CreateGameRequest }
+    | { action?: string; game?: CreateGameRequest; events?: LiveDetailBody[] }
     | null;
-  if (!payload || payload.action !== "createGame" || !payload.game) {
-    return badRequest("Expected { action: 'createGame', game: ... }.");
+  if (!payload?.action) {
+    return badRequest("Expected action in JSON body.");
   }
 
   try {
     const credentials = await loadGameChangerCredentials();
-    const eventId = await createGameChangerGame(credentials, payload.game);
-    return ok({ eventId });
+
+    if (payload.action === "createGame") {
+      if (!payload.game) {
+        return badRequest("Expected { action: 'createGame', game: ... }.");
+      }
+      const eventId = await createGameChangerGame(credentials, payload.game);
+      return ok({ eventId });
+    }
+
+    if (payload.action === "liveDetails") {
+      const requests = parseLiveDetailRequests(payload.events);
+      if (requests.length === 0) {
+        return badRequest("Expected { action: 'liveDetails', events: [{ eventId, orgId }] }.");
+      }
+      const details = await fetchGameChangerLiveDetails(credentials, requests);
+      return ok({ details });
+    }
+
+    return badRequest(`Unsupported action: ${payload.action}`);
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : String(error);
     return serverError(message);

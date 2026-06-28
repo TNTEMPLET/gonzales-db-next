@@ -10,7 +10,7 @@ Homelab service that creates H2H games on `web.gc.com` for the Schedule Manager 
 
 ## Credentials
 
-Gringotts item defaults to `SRF - Trent` (AP Baseball folder). Set `GRINGOTTS_GC_VAULT_ITEM` if the vault label differs.
+Gringotts item defaults to vault id `2b27eaf4-924f-469c-b469-cda4ab99bc40` (`trent@apbaseball.com`). Set `GRINGOTTS_GC_VAULT_ITEM` if the vault label differs.
 
 The container needs a valid `BW_SESSION` (or host unlock workflow) and `BW_SERVER_URL`.
 
@@ -51,6 +51,19 @@ POST body from gonzales-db-next:
 ```
 
 Response: `{ "eventId": "<uuid>" }`
+
+### Live detail (balls / strikes / outs)
+
+```json
+{
+  "action": "liveDetails",
+  "events": [{ "eventId": "<uuid>", "orgId": "nyKveVgqszKT" }]
+}
+```
+
+Response: `{ "details": { "<eventId>": { "balls": 2, "strikes": 1, "outsInHalf": 0, "inning": 4, "half": "bottom" } } }`
+
+Uses the SRF-Trent browser session to call `GET /game-streams/gamestream-viewer-payload-lite/:eventID` on `api.team-manager.gc.com`. gonzales-db-next merges this into `/api/tournaments/[projectId]/gamechanger-live` while games are live.
 
 ## Timezone hardening
 

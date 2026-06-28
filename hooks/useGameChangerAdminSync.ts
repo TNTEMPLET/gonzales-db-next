@@ -4,7 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 
 import type { BracketLiveGameStatus } from "@/components/brackets/TournamentBracketView";
 import { scheduleNextGcPoll } from "@/hooks/gameChangerPollLoop";
-import type { GcAdminLiveResponse, GcScoreboardEvent } from "@/lib/gamechanger/types";
+import type { GcAdminLiveResponse, GcScoreboardEvent, GcLiveSituation } from "@/lib/gamechanger/types";
 
 type AdminSyncResponse = GcAdminLiveResponse & { error?: string };
 
@@ -18,6 +18,8 @@ export function useGameChangerAdminSync(
   );
   const [matchEventIds, setMatchEventIds] = useState<Record<string, string>>({});
   const [eventsByMatchId, setEventsByMatchId] = useState<Record<string, GcScoreboardEvent>>({});
+  const [liveSituationsByMatchId, setLiveSituationsByMatchId] = useState<Record<string, GcLiveSituation>>({});
+  const [organizationId, setOrganizationId] = useState<string | undefined>(undefined);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [lastImportedMatchIds, setLastImportedMatchIds] = useState<string[]>([]);
@@ -34,6 +36,8 @@ export function useGameChangerAdminSync(
     setLiveGameStatuses(json.liveGameStatuses ?? {});
     setMatchEventIds(json.matchEventIds ?? {});
     setEventsByMatchId(json.eventsByMatchId ?? {});
+    setLiveSituationsByMatchId(json.liveSituationsByMatchId ?? {});
+    setOrganizationId(json.organizationId);
     if (json.importedMatchIds?.length) {
       setLastImportedMatchIds(json.importedMatchIds);
       if (json.specUpdated) onSpecUpdatedRef.current?.();
@@ -95,6 +99,8 @@ export function useGameChangerAdminSync(
       setLiveGameStatuses(null);
       setMatchEventIds({});
       setEventsByMatchId({});
+      setLiveSituationsByMatchId({});
+      setOrganizationId(undefined);
       setError(null);
     }
   }, [projectId, enabled]);
@@ -149,6 +155,8 @@ export function useGameChangerAdminSync(
     liveGameStatuses,
     matchEventIds,
     eventsByMatchId,
+    liveSituationsByMatchId,
+    organizationId,
     loading,
     error,
     lastImportedMatchIds,

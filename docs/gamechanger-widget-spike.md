@@ -16,8 +16,10 @@ GET https://api.team-manager.gc.com/public/widgets/scoreboard/{widgetId}?start={
   - `id` (UUID)
   - `start_ts`, `timezone`
   - `game_status`: `"live"` | `"completed"` | omitted / other (scheduled)
-  - `home_team` / `away_team`: `name`, `score?`, `is_video_live?`
+  - `home_team` / `away_team`: `name`, `score?`, `is_video_live?`, `has_archived_video?`
   - `sport_specific.bats.inning_details` (baseball): `{ inning, half }`
+  - `sport_specific.bats.total_outs` (optional): cumulative outs; outs in current half = `total_outs % 3`
+  - `sport_specific.bats.balls` / `strikes` (optional): not currently returned on the public endpoint; schema accepts them if GC adds them later
 
 ## Embed SDK (`widgets.gc.com/static/js/sdk.v1.js`)
 

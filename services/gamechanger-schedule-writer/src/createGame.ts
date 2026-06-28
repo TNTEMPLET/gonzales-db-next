@@ -1,118 +1,16 @@
-import { mkdir } from "node:fs/promises";
-import path from "node:path";
+import type { Page } from "playwright";
 
-import { chromium, type BrowserContext, type Page } from "playwright";
-
+import { openBrowserSession, persistBrowserSession } from "./browserSession.js";
 import type { GameChangerCredentials } from "./credentials.js";
 import { findCreatedScoreboardEvent } from "./findEventId.js";
 import {
   assertScheduledForMatchesGcForm,
   assertStartTsMatchesExpected,
-  assertWriterBrowserTimezone,
   expectedUtcFromGcForm,
-  GC_WRITER_TIMEZONE,
 } from "./gcScheduleTime.js";
 import { selectLocationField } from "./locationField.js";
 import type { CreateGameRequest } from "./types.js";
-
-const GC_BASE = "https://web.gc.com";
-const STORAGE_DIR = process.env.GC_WRITER_STORAGE_DIR?.trim() || "/data/gamechanger-writer";
-const STORAGE_STATE_PATH = path.join(STORAGE_DIR, "storage-state.json");
-
-async function ensureStorageDir(): Promise<void> {
-  await mkdir(STORAGE_DIR, { recursive: true });
-}
-
-async function openContext(credentials: GameChangerCredentials): Promise<{
-  browser: Awaited<ReturnType<typeof chromium.launch>>;
-  context: BrowserContext;
-  page: Page;
-}> {
-  await ensureStorageDir();
-  const browser = await chromium.launch({
-    headless: process.env.GC_WRITER_HEADLESS !== "false",
-  });
-
-  const context = await browser.newContext({
-    storageState: (await fileExists(STORAGE_STATE_PATH)) ? STORAGE_STATE_PATH : undefined,
-    locale: "en-US",
-    timezoneId: GC_WRITER_TIMEZONE,
-  });
-  const page = await context.newPage();
-  await assertWriterBrowserTimezone(page);
-  await ensureLoggedIn(page, credentials);
-  await context.storageState({ path: STORAGE_STATE_PATH });
-  return { browser, context, page };
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await mkdir(path.dirname(filePath), { recursive: true });
-    const { access } = await import("node:fs/promises");
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-async function isSignedOut(page: Page): Promise<boolean> {
-  const signInButton = page.locator("button").filter({ hasText: /^sign in$/i }).first();
-  return await signInButton.isVisible().catch(() => false);
-}
-
-async function clickSignIn(page: Page): Promise<void> {
-  const link = page.getByRole("link", { name: /sign in/i });
-  if (await link.isVisible().catch(() => false)) {
-    await link.click();
-    return;
-  }
-  const button = page.locator("button").filter({ hasText: /^sign in$/i }).first();
-  if (await button.isVisible().catch(() => false)) {
-    await button.click();
-  }
-}
-
-async function ensureLoggedIn(page: Page, credentials: GameChangerCredentials): Promise<void> {
-  await page.goto(GC_BASE, { waitUntil: "domcontentloaded" });
-  if (!(await isSignedOut(page))) return;
-
-  await clickSignIn(page);
-  await page.waitForTimeout(1_000);
-
-  const email = page.locator("input[type=email], input[name*=email i]").first();
-  if (await email.isVisible().catch(() => false)) {
-    await email.fill(credentials.username);
-    const continueButton = page.locator("button").filter({ hasText: /^continue$/i }).first();
-    if (await continueButton.isVisible().catch(() => false)) {
-      await continueButton.click();
-      await page.waitForTimeout(2_000);
-    }
-  }
-
-  const emailCode = process.env.GC_WRITER_EMAIL_CODE?.trim();
-  const codeField = page.locator("input[name=code], input[autocomplete=one-time-code]").first();
-  if (emailCode && (await codeField.isVisible().catch(() => false))) {
-    await codeField.fill(emailCode);
-  }
-
-  const password = page.locator("input[type=password]").first();
-  if (await password.isVisible().catch(() => false)) {
-    await password.fill(credentials.password);
-    await page.locator("button").filter({ hasText: /^sign in$/i }).last().click();
-    await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
-  }
-
-  if (page.url().includes("/login") || (await isSignedOut(page))) {
-    const needsEmailCode = await page.getByText(/sent a code/i).isVisible().catch(() => false);
-    if (needsEmailCode) {
-      throw new Error(
-        "GameChanger login requires a fresh email verification code. Set GC_WRITER_EMAIL_CODE on the writer host and retry within a few minutes.",
-      );
-    }
-    throw new Error("GameChanger login failed with stored credentials.");
-  }
-}
+import { GC_BASE, isSignedOut } from "./browserSession.js";
 
 async function openAddGameModal(page: Page, gcOrganizationId: string): Promise<void> {
   await page.goto(`${GC_BASE}/organizations/${gcOrganizationId}/schedule`, {
@@ -299,7 +197,7 @@ export async function createGameChangerGame(
   const expectedStartIso = validateCreateRequest(request);
   const locationLabel = resolveLocationLabel(request);
 
-  const { browser, context, page } = await openContext(credentials);
+  const { browser, context, page } = await openBrowserSession(credentials);
   try {
     await openAddGameModal(page, request.gcOrganizationId);
     await fillScheduleDateTime(page, request.gcFormDate!, request.gcFormTime!);
@@ -324,7 +222,7 @@ export async function createGameChangerGame(
     assertStartTsMatchesExpected(expectedStartIso, savedEvent.start_ts);
     assertSavedLocation(locationLabel, savedEvent.location?.name);
 
-    await context.storageState({ path: STORAGE_STATE_PATH });
+    await persistBrowserSession(context);
     return savedEvent.id;
   } finally {
     await context.close();
