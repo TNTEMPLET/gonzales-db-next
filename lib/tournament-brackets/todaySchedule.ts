@@ -91,7 +91,7 @@ export async function buildTodayScheduleForOrg(organizationId: BracketOrgId): Pr
       : null;
     let livePayload: ReturnType<typeof buildLivePayloadFromEvents> | null = null;
 
-    if (gcParsed?.success?.widgetId) {
+    if (gcParsed?.success && gcParsed.data.widgetId) {
       try {
         if (!scoreboardCache.has(gcParsed.data.widgetId)) {
           scoreboardCache.set(
