@@ -123,6 +123,14 @@ export default function Footer({ brand }: FooterProps) {
                   </Link>
                 </li>
                 <li>
+                  <Link
+                    href="/today"
+                    className="text-zinc-100 hover:text-brand-gold transition"
+                  >
+                    Today&apos;s Schedule
+                  </Link>
+                </li>
+                <li>
                   <a
                     href="/tournaments"
                     className="text-zinc-100 hover:text-brand-gold transition"

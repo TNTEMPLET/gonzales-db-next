@@ -333,6 +333,7 @@ export default function Header({ brand }: HeaderProps) {
   const publicNavLinks = (isTournamentOnly
     ? [
         { href: "/", label: "Home" },
+        { href: "/today", label: "Today", key: "today" },
         { href: "/tournaments", label: "Brackets", key: "tournaments" },
         { href: "/rosters", label: "Rosters" },
         ...(showParkInfoLink ? [{ href: "/park-info", label: "Park Info" }] : []),
