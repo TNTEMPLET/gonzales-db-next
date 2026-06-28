@@ -9,9 +9,8 @@ export type WriterLiveDetail = {
 export async function fetchLiveDetailsFromWriter(
   events: Array<{ eventId: string; orgId: string }>,
 ): Promise<Record<string, WriterLiveDetail>> {
-  const enabled = process.env.GAMECHANGER_SCHEDULE_WRITER_ENABLED === "true";
   const endpoint = process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim();
-  if (!enabled || !endpoint || events.length === 0) {
+  if (!endpoint || events.length === 0) {
     return {};
   }
 

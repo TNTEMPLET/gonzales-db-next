@@ -32,7 +32,13 @@ export async function enrichLivePayloadWithWriterDetails(
       const event = payload.eventsByMatchId[ref.id];
       if (!event) continue;
       const base = liveBaseballSituationFromEvent(event, ref);
-      liveSituationsByMatchId[ref.id] = mergeWriterLiveDetail(base, writerDetails[eventId], ref, event);
+      const writer = writerDetails[eventId];
+      liveSituationsByMatchId[ref.id] = mergeWriterLiveDetail(base, writer, ref, event);
+      if (writer?.balls == null && writer?.strikes == null) {
+        console.warn(
+          `GameChanger live detail writer returned no count for ${eventId}; check GAMECHANGER_SCHEDULE_WRITER_ENDPOINT on Vercel.`,
+        );
+      }
     }
     return { ...payload, organizationId, liveSituationsByMatchId };
   } catch (writerError: unknown) {
