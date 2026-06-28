@@ -610,7 +610,10 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
   );
   const classicThree = resolveClassicThreeTeamDoubleElimSlots(allByGame);
   const classicSix = classicThree ? null : resolveClassicSixTeamModifiedDeSlots(allByGame);
-  const classicFive = classicThree || classicSix ? null : resolveClassicDoubleElimSlots(allByGame);
+  const classicFive =
+    classicThree || classicSix
+      ? null
+      : resolveClassicDoubleElimSlots(allByGame, { officialTemplateId: spec.officialTemplateId });
   const preferOfficialLayout = spec.layoutPreference !== "connected_columns";
   const useClassic =
     preferOfficialLayout &&

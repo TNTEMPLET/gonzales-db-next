@@ -31,6 +31,11 @@ export function isFeederSlotLabel(label: string): boolean {
   return /^[WL]\d+$/.test(t) || t === BYE_SLOT_LABEL || t === "TBD";
 }
 
+export type ResolveClassicDoubleElimSlotsOptions = {
+  /** When set, keep classic 5-team layout after bracket advancement fills real team names. */
+  officialTemplateId?: string;
+};
+
 /**
  * Maps live game numbers from a sparse 8-slot DE bracket into classic diagram slots.
  * Expected: G1/G2 openers, G3 semi, G4 losers opener, G5 winners final,
@@ -41,6 +46,7 @@ export function isFeederSlotLabel(label: string): boolean {
  */
 export function resolveClassicDoubleElimSlots(
   matchesByGame: Map<string, LayoutMatch>,
+  options?: ResolveClassicDoubleElimSlotsOptions,
 ): ClassicDoubleElimSlots | null {
   const g1 = matchesByGame.get("1");
   const g2 = matchesByGame.get("2");
@@ -87,8 +93,16 @@ export function resolveClassicDoubleElimSlots(
   }
   if (matchesByGame.has("11")) return null;
 
+  const isOfficialFiveTeam = options?.officialTemplateId === "little_league_5_team_de";
+
   // Classic 5-team: G3 is a semi (feeder vs team). 6-team: G3 is a third opener (E vs F).
-  if (!isFeederSlotLabel(g3.home) && !isFeederSlotLabel(g3.away)) return null;
+  if (
+    !isOfficialFiveTeam &&
+    !isFeederSlotLabel(g3.home) &&
+    !isFeederSlotLabel(g3.away)
+  ) {
+    return null;
+  }
 
   return {
     openers: [g1, g2],

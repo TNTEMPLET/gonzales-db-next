@@ -32,6 +32,11 @@ import {
   generateDoubleEliminationRoundsForFormat,
   generateDoubleEliminationRoundsFromTeams,
 } from "@/lib/tournament-brackets/generateDoubleElimFromTeams";
+import {
+  buildRoundsFromOfficialTemplate,
+  specDefaultsFromOfficialTemplate,
+} from "@/lib/tournament-brackets/officialTemplates";
+import { mergeMatchScoresIntoSpec } from "@/lib/tournament-brackets/bracketScoring";
 
 function baseSpec(over: Partial<BracketSpec> = {}): BracketSpec {
   return {
@@ -406,6 +411,47 @@ describe("buildBracketLayout", () => {
     assert.equal(layout.diagramStyle, "classic_unified");
     assert.equal(layout.classicVariant, "five_team");
     assert.equal(layout.championship?.matches.length, 3);
+  });
+
+  it("keeps classic unified five-team layout after advancement fills real team names", () => {
+    const teams = [
+      "9U Westbank",
+      "9U NORD",
+      "9U St. Charles",
+      "9U Eastbank",
+      "9U Ascension",
+    ];
+    const rounds = buildRoundsFromOfficialTemplate("little_league_5_team_de", teams, {
+      championshipSeriesStyle: "winner_take_all",
+    });
+    let spec = baseSpec({
+      ...specDefaultsFromOfficialTemplate("little_league_5_team_de", "winner_take_all"),
+      teams,
+      rounds,
+      divisionLabel: "9U",
+    });
+    const matchIdForGame = (gameNumber: string): string => {
+      for (const round of spec.rounds) {
+        for (const match of round.matches) {
+          if (match.officialGameNumber === gameNumber) return match.id;
+        }
+      }
+      throw new Error(`missing game ${gameNumber}`);
+    };
+    spec = mergeMatchScoresIntoSpec(spec, {
+      [matchIdForGame("1")]: { homeScore: 7, awayScore: 1, winnerSide: "home" },
+      [matchIdForGame("2")]: { homeScore: 3, awayScore: 4, winnerSide: "away" },
+    });
+    const layout = buildBracketLayout(spec);
+    assert.equal(layout.mode, "double_elimination");
+    if (layout.mode !== "double_elimination") return;
+    assert.equal(layout.diagramStyle, "classic_unified");
+    assert.equal(layout.classicVariant, "five_team");
+    const g3 = spec.rounds
+      .flatMap((round) => round.matches)
+      .find((match) => match.officialGameNumber === "3");
+    assert.equal(g3?.home, "9U Westbank");
+    assert.equal(g3?.away, "9U Ascension");
   });
 
   it("includes classic championship podium for modified double elimination", () => {
