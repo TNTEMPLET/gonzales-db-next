@@ -146,12 +146,18 @@ function TournamentLandingPage() {
             </div>
           </div>
 
-          <div className="mt-8 grid gap-3 sm:grid-cols-2">
+          <div className="mt-8 grid gap-3 sm:grid-cols-3">
             <Link
               href="/tournaments"
               className="rounded-2xl bg-brand-purple px-5 py-4 text-center font-semibold text-white transition hover:bg-brand-purple-dark"
             >
               View Brackets
+            </Link>
+            <Link
+              href="/today"
+              className="rounded-2xl border border-brand-gold/40 bg-brand-gold/10 px-5 py-4 text-center font-semibold text-brand-gold transition hover:border-brand-gold hover:bg-brand-gold/15"
+            >
+              Today&apos;s Schedule
             </Link>
             <Link
               href="/rosters"
