@@ -6,10 +6,12 @@ export type WriterLiveDetail = {
   half?: "top" | "bottom";
 };
 
-const DEFAULT_GAMECHANGER_WRITER_ENDPOINT = "https://gc-writer.duckroostdigital.com";
+const DEFAULT_GAMECHANGER_WRITER_ENDPOINT = "https://gc-writer.duckroostdigital.com/";
 
 export function resolveGameChangerWriterEndpoint(): string {
-  return process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim() || DEFAULT_GAMECHANGER_WRITER_ENDPOINT;
+  const configured = process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim();
+  if (!configured) return DEFAULT_GAMECHANGER_WRITER_ENDPOINT;
+  return configured.endsWith("/") ? configured : `${configured}/`;
 }
 
 export async function fetchLiveDetailsFromWriter(
@@ -21,7 +23,11 @@ export async function fetchLiveDetailsFromWriter(
   }
 
   const writerSecret = process.env.GAMECHANGER_SCHEDULE_WRITER_SECRET?.trim();
-  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    "User-Agent": "APBaseballDistrict2/1.0 (GameChanger live enrichment)",
+  };
   if (writerSecret) {
     headers.Authorization = `Bearer ${writerSecret}`;
   }
