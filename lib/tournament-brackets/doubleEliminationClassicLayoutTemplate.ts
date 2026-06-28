@@ -134,3 +134,55 @@ export function officialTemplateLayoutLockPatch(
   if (!template?.lockLayout) return {};
   return { classicDoubleElimLayoutLocked: true };
 }
+
+/** Classic diagram variant for a locked official Little League template. */
+export function resolveOfficialClassicVariant(
+  officialTemplateId: string | undefined,
+  bracketFormat: BracketSpec["bracketFormat"],
+): "five_team" | "three_team" | "six_team_modified_de" | null {
+  switch (officialTemplateId) {
+    case "little_league_5_team_de":
+      return "five_team";
+    case "little_league_3_team_de":
+      return "three_team";
+    case "little_league_6_team_de":
+      return bracketFormat === "modified_double_elimination" ? "six_team_modified_de" : null;
+    default:
+      return null;
+  }
+}
+
+/** Locked bracket variant from official template id or live G1–G8 / G1–G10 structure. */
+export function inferLockedClassicVariant(spec: BracketSpec): "five_team" | "three_team" | "six_team_modified_de" | null {
+  const fromOfficial = resolveOfficialClassicVariant(spec.officialTemplateId, spec.bracketFormat);
+  if (fromOfficial) return fromOfficial;
+  if (!isClassicDoubleElimLayoutLocked(spec)) return null;
+
+  const gameNumbers = new Set<string>();
+  for (const round of spec.rounds) {
+    for (const match of round.matches) {
+      const key = match.officialGameNumber?.trim();
+      if (key) gameNumbers.add(key);
+    }
+  }
+  const fiveTeam = ["1", "2", "3", "4", "5", "6", "7", "8"].every((g) => gameNumbers.has(g));
+  if (fiveTeam) return "five_team";
+  const sixTeam = ["1", "2", "3", "4", "5", "6", "7", "8", "9", "10"].every((g) => gameNumbers.has(g));
+  if (sixTeam && spec.bracketFormat === "modified_double_elimination") return "six_team_modified_de";
+  const threeTeam = ["1", "2", "3", "4"].every((g) => gameNumbers.has(g));
+  if (threeTeam) return "three_team";
+  return null;
+}
+
+/** Patch official template brackets so layout mode cannot drift after scores advance. */
+export function lockedOfficialClassicLayoutPatch(
+  spec: Pick<BracketSpec, "officialTemplateId" | "bracketFormat" | "layoutPreference">,
+): Pick<BracketSpec, "classicDoubleElimLayoutLocked" | "layoutPreference"> {
+  if (!spec.officialTemplateId) return {};
+  const template = getOfficialTemplate(spec.officialTemplateId);
+  if (!template?.lockLayout) return {};
+  return {
+    classicDoubleElimLayoutLocked: true,
+    layoutPreference: "official",
+  };
+}

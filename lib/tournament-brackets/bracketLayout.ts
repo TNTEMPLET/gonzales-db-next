@@ -7,12 +7,15 @@ import { includesIfNecessaryChampionshipGame, isDoubleEliminationFormat } from "
 import { resolveDoubleElimChampionTeamName } from "@/lib/tournament-brackets/bracketScoring";
 import {
   canUseClassicUnifiedDoubleElimDiagram,
+  type ClassicDoubleElimSlots,
   resolveClassicDoubleElimSlots,
   resolveClassicThreeTeamDoubleElimSlots,
 } from "@/lib/tournament-brackets/classicDoubleElimDiagram";
 import {
-  resolveClassicSixTeamModifiedDeSlots,
-} from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
+  inferLockedClassicVariant,
+  isClassicDoubleElimLayoutLocked,
+} from "@/lib/tournament-brackets/doubleEliminationClassicLayoutTemplate";
+import { resolveClassicSixTeamModifiedDeSlots } from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
 
 /** One row in a classic column bracket (home/away are stored labels; slots are what we render). */
 export type LayoutMatch = {
@@ -98,6 +101,8 @@ export type BracketLayout =
       diagramStyle: "classic_unified" | "connected_columns";
       /** Which classic template geometry to render (when `diagramStyle` is `classic_unified`). */
       classicVariant?: "three_team" | "five_team" | "six_team_modified_de";
+      /** Pre-resolved five-team classic slots (locked official brackets). */
+      classicFiveTeamSlots?: ClassicDoubleElimSlots | null;
       winnersBracket: DoubleElimConnectedSection;
       losersBracket: DoubleElimConnectedSection | null;
       championship: DoubleElimChampionshipSection | null;
@@ -610,25 +615,42 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
     losersBracket?.rounds,
     championshipSection?.matches,
   );
+  const layoutLocked = isClassicDoubleElimLayoutLocked(spec);
+  const lockedOfficialVariant = layoutLocked ? inferLockedClassicVariant(spec) : null;
+  const classicResolveOptions = {
+    officialTemplateId: spec.officialTemplateId,
+    locked: layoutLocked && lockedOfficialVariant === "five_team",
+  };
   const classicThree = resolveClassicThreeTeamDoubleElimSlots(allByGame);
   const classicSix = classicThree ? null : resolveClassicSixTeamModifiedDeSlots(allByGame);
   const classicFive =
     classicThree || classicSix
       ? null
-      : resolveClassicDoubleElimSlots(allByGame, { officialTemplateId: spec.officialTemplateId });
+      : resolveClassicDoubleElimSlots(allByGame, classicResolveOptions);
   const preferOfficialLayout = spec.layoutPreference !== "connected_columns";
+  const forceLockedClassic =
+    layoutLocked &&
+    lockedOfficialVariant !== null &&
+    (lockedOfficialVariant === "five_team"
+      ? classicFive !== null
+      : lockedOfficialVariant === "three_team"
+        ? classicThree !== null
+        : classicSix !== null);
   const useClassic =
-    preferOfficialLayout &&
-    (classicThree !== null ||
-      classicSix !== null ||
-      (canUseClassicUnifiedDoubleElimDiagram(allByGame) && classicFive !== null));
-  const classicVariant = classicThree
-    ? "three_team"
-    : classicSix
-      ? "six_team_modified_de"
-      : classicFive
-        ? "five_team"
-        : undefined;
+    (preferOfficialLayout &&
+      (classicThree !== null ||
+        classicSix !== null ||
+        (canUseClassicUnifiedDoubleElimDiagram(allByGame) && classicFive !== null))) ||
+    forceLockedClassic;
+  const classicVariant = forceLockedClassic
+    ? lockedOfficialVariant
+    : classicThree
+      ? "three_team"
+      : classicSix
+        ? "six_team_modified_de"
+        : classicFive
+          ? "five_team"
+          : undefined;
 
   const age =
     spec.championAgeGroupLabel?.trim() ||
@@ -651,6 +673,9 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
     diagramStyle: useClassic ? "classic_unified" : "connected_columns",
     ...(spec.officialTemplateId ? { officialTemplateId: spec.officialTemplateId } : {}),
     ...(classicVariant ? { classicVariant } : {}),
+    ...(classicVariant === "five_team" && classicFive
+      ? { classicFiveTeamSlots: classicFive }
+      : {}),
     divisionLabel: spec.divisionLabel,
     winnersBracket: winnersBracket ?? buildLinearConnectedSection("Winners Bracket", [], laneRows),
     losersBracket,

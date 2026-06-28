@@ -34,6 +34,8 @@ export function isFeederSlotLabel(label: string): boolean {
 export type ResolveClassicDoubleElimSlotsOptions = {
   /** When set, keep classic 5-team layout after bracket advancement fills real team names. */
   officialTemplateId?: string;
+  /** Locked official bracket: map G1–G8 structurally without feeder-label heuristics. */
+  locked?: boolean;
 };
 
 /**
@@ -94,6 +96,11 @@ export function resolveClassicDoubleElimSlots(
   if (matchesByGame.has("11")) return null;
 
   const isOfficialFiveTeam = options?.officialTemplateId === "little_league_5_team_de";
+  const layoutLocked = options?.locked === true;
+
+  if (layoutLocked) {
+    return mapStandardFiveTeamClassicSlots(matchesByGame, g9);
+  }
 
   // Classic 5-team: G3 is a semi (feeder vs team). After G1/G2 finish it becomes two team names.
   // 6-team DE championship is on G10/G11 — reject only when grand final is not on G8.
@@ -107,6 +114,31 @@ export function resolveClassicDoubleElimSlots(
     return null;
   }
 
+  return {
+    openers: [g1, g2],
+    winnersSemi: g3,
+    winnersFinal: g5,
+    losersRound1: g4,
+    losersCrossover: g6,
+    losersFinal: g7,
+    grandFinal: g8,
+    ifNecessary: g9 ?? null,
+  };
+}
+
+function mapStandardFiveTeamClassicSlots(
+  matchesByGame: Map<string, LayoutMatch>,
+  g9: LayoutMatch | undefined,
+): ClassicDoubleElimSlots | null {
+  const g1 = matchesByGame.get("1");
+  const g2 = matchesByGame.get("2");
+  const g3 = matchesByGame.get("3");
+  const g4 = matchesByGame.get("4");
+  const g5 = matchesByGame.get("5");
+  const g6 = matchesByGame.get("6");
+  const g7 = matchesByGame.get("7");
+  const g8 = matchesByGame.get("8");
+  if (!g1 || !g2 || !g3 || !g4 || !g5 || !g6 || !g7 || !g8) return null;
   return {
     openers: [g1, g2],
     winnersSemi: g3,
