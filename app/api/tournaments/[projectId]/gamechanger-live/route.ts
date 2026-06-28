@@ -14,8 +14,9 @@ export const dynamic = "force-dynamic";
 
 type RouteContext = { params: Promise<{ projectId: string }> };
 
-export async function GET(_request: Request, context: RouteContext) {
+export async function GET(request: Request, context: RouteContext) {
   const { projectId } = await context.params;
+  const debugWriter = new URL(request.url).searchParams.get("debugWriter") === "1";
   const org = getBracketOrgForDeployment();
 
   const project = await prisma.bracketProject.findFirst({
@@ -66,6 +67,7 @@ export async function GET(_request: Request, context: RouteContext) {
       organizationId,
       organizationName: response.data.organization.name,
       polledAt: new Date().toISOString(),
+      ...(debugWriter ? { writerDiagnostics: enriched.writerDiagnostics } : {}),
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "GameChanger fetch failed.";
