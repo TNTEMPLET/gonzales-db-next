@@ -1,3 +1,5 @@
+import { replayViewerEventStream } from "./replayViewerEventStream.js";
+
 export type ParsedLiveDetail = {
   balls?: number;
   strikes?: number;
@@ -95,8 +97,25 @@ function walkForCounts(value: unknown, depth = 0): Partial<ParsedLiveDetail> {
   return merged;
 }
 
+function isViewerLitePayload(json: unknown): json is { latest_events: unknown[] } {
+  return (
+    json != null &&
+    typeof json === "object" &&
+    Array.isArray((json as { latest_events?: unknown }).latest_events)
+  );
+}
+
 export function parseViewerPayloadLite(json: unknown): ParsedLiveDetail {
   const detail: ParsedLiveDetail = {};
+
+  if (isViewerLitePayload(json)) {
+    const replayed = replayViewerEventStream(json as { latest_events?: Array<{ event_data?: unknown }> });
+    if (replayed) {
+      mergeDetail(detail, replayed);
+      return detail;
+    }
+  }
+
   mergeDetail(detail, walkForCounts(json));
   return detail;
 }
