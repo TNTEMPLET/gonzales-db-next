@@ -8,6 +8,7 @@ import { findCreatedEventId } from "./findEventId.js";
 import type { CreateGameRequest } from "./types.js";
 
 const GC_BASE = "https://web.gc.com";
+const BRACKET_TIME_ZONE = "America/Chicago";
 const STORAGE_DIR = process.env.GC_WRITER_STORAGE_DIR?.trim() || "/data/gamechanger-writer";
 const STORAGE_STATE_PATH = path.join(STORAGE_DIR, "storage-state.json");
 
@@ -27,6 +28,8 @@ async function openContext(credentials: GameChangerCredentials): Promise<{
 
   const context = await browser.newContext({
     storageState: (await fileExists(STORAGE_STATE_PATH)) ? STORAGE_STATE_PATH : undefined,
+    locale: "en-US",
+    timezoneId: BRACKET_TIME_ZONE,
   });
   const page = await context.newPage();
   await ensureLoggedIn(page, credentials);
@@ -104,11 +107,16 @@ async function ensureLoggedIn(page: Page, credentials: GameChangerCredentials): 
 }
 
 async function openAddGameModal(page: Page, gcOrganizationId: string): Promise<void> {
-  await page.goto(`${GC_BASE}/organizations/${gcOrganizationId}/schedule`, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(3_000);
+  await page.goto(`${GC_BASE}/organizations/${gcOrganizationId}/schedule`, {
+    waitUntil: "domcontentloaded",
+    timeout: 60_000,
+  });
+  await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
 
   const addGames = page.getByRole("button", { name: /add games/i });
-  if (!(await addGames.isVisible().catch(() => false))) {
+  try {
+    await addGames.waitFor({ state: "visible", timeout: 30_000 });
+  } catch {
     if (await isSignedOut(page)) {
       throw new Error("GameChanger login failed with stored credentials.");
     }
@@ -127,11 +135,35 @@ async function openAddGameModal(page: Page, gcOrganizationId: string): Promise<v
   await page.getByText(/add individual h2h game/i).click();
 }
 
-async function fillIfPresent(page: Page, label: RegExp, value: string): Promise<void> {
-  const field = page.getByLabel(label);
-  if (await field.isVisible().catch(() => false)) {
-    await field.click();
-    await field.fill(value);
+async function fillScheduleDateTime(page: Page, gcFormDate: string, gcFormTime: string): Promise<void> {
+  const dateField = page.locator("#start-time-field-date");
+  const timeField = page.locator("#start-time-field-time");
+
+  await dateField.waitFor({ state: "visible", timeout: 15_000 });
+  await timeField.waitFor({ state: "visible", timeout: 15_000 });
+
+  await page.evaluate(
+    ({ date, time }) => {
+      const dateEl = document.querySelector("#start-time-field-date") as HTMLInputElement | null;
+      const timeEl = document.querySelector("#start-time-field-time") as HTMLInputElement | null;
+      if (!dateEl || !timeEl) throw new Error("schedule fields missing");
+      dateEl.value = date;
+      dateEl.dispatchEvent(new Event("input", { bubbles: true }));
+      dateEl.dispatchEvent(new Event("change", { bubbles: true }));
+      timeEl.value = time;
+      timeEl.dispatchEvent(new Event("input", { bubbles: true }));
+      timeEl.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    { date: gcFormDate, time: gcFormTime },
+  );
+
+  const dateValue = (await dateField.inputValue().catch(() => "")).trim();
+  if (!dateValue) {
+    throw new Error(`Could not fill GameChanger schedule date (${gcFormDate}).`);
+  }
+  const timeValue = (await timeField.inputValue().catch(() => "")).trim();
+  if (!timeValue) {
+    throw new Error(`Could not fill GameChanger schedule time (${gcFormTime}).`);
   }
 }
 
@@ -215,13 +247,16 @@ export async function createGameChangerGame(
   const { browser, context, page } = await openContext(credentials);
   try {
     await openAddGameModal(page, request.gcOrganizationId);
-    await fillIfPresent(page, /date/i, request.gcFormDate);
-    await fillIfPresent(page, /^time$/i, request.gcFormTime);
+    await fillScheduleDateTime(page, request.gcFormDate, request.gcFormTime);
     await selectDuration(page, request.durationLabel?.trim() || "2 hr");
     await selectTeam(page, /home team/i, request.homeTeam);
     await selectTeam(page, /away team/i, request.awayTeam);
     if (request.field?.trim()) {
-      await fillIfPresent(page, /location/i, request.field.trim());
+      const location = page.getByLabel(/location/i);
+      if (await location.isVisible().catch(() => false)) {
+        await location.click();
+        await location.fill(request.field.trim());
+      }
     }
     await page.getByRole("button", { name: /save & close/i }).click();
     await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);

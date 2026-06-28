@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { runScheduleManagerLiveAfterFinals } from "@/lib/gamechanger/schedule-manager/runLiveAfterFinals";
 import { syncGameChangerToProject } from "@/lib/gamechanger/syncGameChangerToProject";
 import { ensureTournamentBracketsMaster } from "@/lib/tournament-brackets/auth";
 import { safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
@@ -44,6 +45,11 @@ async function handleSync(
         where: { id },
         data: { spec: JSON.parse(JSON.stringify(result.spec)) },
       });
+    }
+
+    const newlyFinalizedMatchIds = result.live.newlyFinalizedMatchIds ?? [];
+    if (newlyFinalizedMatchIds.length > 0) {
+      await runScheduleManagerLiveAfterFinals(id);
     }
 
     return NextResponse.json(result.live);

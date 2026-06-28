@@ -92,5 +92,7 @@ export type GcAdminLiveResponse = GcLiveMatchPayload & {
   organizationName?: string;
   polledAt?: string;
   importedMatchIds?: string[];
+  /** Bracket matches whose GC game newly reached final on this sync. */
+  newlyFinalizedMatchIds?: string[];
   specUpdated?: boolean;
 };

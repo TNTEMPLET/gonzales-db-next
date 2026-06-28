@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { runScheduleManager } from "@/lib/gamechanger/schedule-manager/runScheduleManager";
-import type { ScheduleManagerRunMode } from "@/lib/gamechanger/schedule-manager/types";
 import prisma from "@/lib/prisma";
 
 function cronAuthorized(request: NextRequest): boolean {
@@ -24,11 +23,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ data: { skipped: true, reason: "job_already_running", jobId: running.id } });
   }
 
-  const mode: ScheduleManagerRunMode =
-    process.env.SCHEDULE_MANAGER_CRON_LIVE === "true" &&
-    process.env.GAMECHANGER_SCHEDULE_WRITER_ENABLED === "true"
-      ? "LIVE"
-      : "CRON";
-  const result = await runScheduleManager({ mode });
-  return NextResponse.json({ data: result, mode });
+  const result = await runScheduleManager({ mode: "DRY_RUN" });
+  return NextResponse.json({
+    data: result,
+    mode: "DRY_RUN",
+    note: "LIVE game creation runs automatically when GC games go final via bracket-gamechanger-sync.",
+  });
 }

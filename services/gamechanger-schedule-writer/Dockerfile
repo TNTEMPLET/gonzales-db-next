@@ -6,11 +6,13 @@ COPY package.json tsconfig.json ./
 RUN npm install
 
 COPY src ./src
+COPY scripts ./scripts
 RUN npm run build && npm prune --omit=dev
 
 ENV GC_WRITER_PORT=8105
 ENV GC_WRITER_STORAGE_DIR=/data/gamechanger-writer
 ENV GC_WRITER_HEADLESS=true
+ENV TZ=America/Chicago
 
 EXPOSE 8105
 
