@@ -4,6 +4,7 @@ import {
   markFinalizedEventIds,
   newlyCompletedUnimportedEvents,
 } from "@/lib/gamechanger/findNewlyFinalizedBracketMatches";
+import { enrichLivePayloadWithWriterDetails } from "@/lib/gamechanger/enrichLivePayloadWithWriter";
 import { fetchGameChangerScoreboardSyncWindow } from "@/lib/gamechanger/fetchScoreboard";
 import { importGcScoresIntoBracket } from "@/lib/gamechanger/importScoresIntoBracket";
 import { buildLivePayloadFromEvents } from "@/lib/gamechanger/matchEventsToBracket";
@@ -38,12 +39,14 @@ export async function syncGameChangerToProject(
   const bracketMatches = collectLayoutMatchesForGc(layout);
 
   const { response, events } = await fetchGameChangerScoreboardSyncWindow(gc.widgetId);
-  const live = buildLivePayloadFromEvents(
+  const liveBase = buildLivePayloadFromEvents(
     bracketMatches,
     events,
     response.next_update,
     gc.matchEventPins,
   );
+  const organizationId = response.data.organization.id;
+  const live = await enrichLivePayloadWithWriterDetails(liveBase, bracketMatches, organizationId);
 
   let nextSpec = spec;
   let specUpdated = false;

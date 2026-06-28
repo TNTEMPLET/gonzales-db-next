@@ -68,7 +68,7 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
   const gameChanger = selectedBracket?.gameChanger ?? null;
   const gcEnabled = Boolean(gameChanger?.widgetId);
 
-  const { liveGameStatuses, eventsByMatchId, loading: liveLoading, error: liveError } =
+  const { liveGameStatuses, eventsByMatchId, liveSituationsByMatchId, organizationId, loading: liveLoading, error: liveError } =
     useGameChangerLive(selectedBracket?.id, gcEnabled);
 
   const handleMatchClick = useCallback(
@@ -226,6 +226,8 @@ export default function PublishedTournamentTabs({ brackets, branding, initialSel
           bracketMatch={bracketMatchRefForId(selectedBracket.layout, modalMatchId)}
           gcEvent={eventsByMatchId[modalMatchId]}
           liveStatus={liveGameStatuses?.[modalMatchId] ?? null}
+          organizationId={organizationId}
+          writerSituation={liveSituationsByMatchId[modalMatchId] ?? null}
           onClose={() => setModalMatchId(null)}
         />
       ) : null}

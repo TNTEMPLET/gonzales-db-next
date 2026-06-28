@@ -1,11 +1,12 @@
 import { NextResponse } from "next/server";
 
 import { collectLayoutMatchesForGc } from "@/lib/gamechanger/collectLayoutMatches";
+import { enrichLivePayloadWithWriterDetails } from "@/lib/gamechanger/enrichLivePayloadWithWriter";
 import { fetchGameChangerScoreboardSyncWindow } from "@/lib/gamechanger/fetchScoreboard";
 import { buildLivePayloadFromEvents } from "@/lib/gamechanger/matchEventsToBracket";
 import { bracketGameChangerSchema, type GcLiveMatchPayload } from "@/lib/gamechanger/types";
 import prisma from "@/lib/prisma";
-import { getBracketOrgForDeployment } from "@/lib/siteConfig";
+import { getDefaultContentOrg } from "@/lib/siteConfig";
 import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 
@@ -15,7 +16,7 @@ type RouteContext = { params: Promise<{ projectId: string }> };
 
 export async function GET(_request: Request, context: RouteContext) {
   const { projectId } = await context.params;
-  const org = getBracketOrgForDeployment();
+  const org = getDefaultContentOrg();
 
   const project = await prisma.bracketProject.findFirst({
     where: {
@@ -53,8 +54,15 @@ export async function GET(_request: Request, context: RouteContext) {
       gc.matchEventPins,
     );
 
+    const organizationId = response.data.organization.id;
+    const enriched = await enrichLivePayloadWithWriterDetails(
+      payload,
+      bracketMatches,
+      organizationId,
+    );
+
     return NextResponse.json({
-      ...payload,
+      ...enriched,
       organizationName: response.data.organization.name,
       polledAt: new Date().toISOString(),
     });

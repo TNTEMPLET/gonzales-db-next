@@ -9,7 +9,7 @@ import {
   loadGcScoreboardSdk,
   type GcScoreboardInitOptions,
 } from "@/lib/gamechanger/loadGcScoreboardSdk";
-import type { BracketGameChanger, GcBracketMatchRef, GcScoreboardEvent } from "@/lib/gamechanger/types";
+import type { BracketGameChanger, GcBracketMatchRef, GcLiveSituation, GcScoreboardEvent } from "@/lib/gamechanger/types";
 
 import styles from "@/components/brackets/GameChangerScoreboardModal.module.css";
 
@@ -23,6 +23,8 @@ type Props = {
   bracketMatch?: GcBracketMatchRef;
   gcEvent?: GcScoreboardEvent;
   liveStatus?: BracketLiveGameStatus | null;
+  organizationId?: string;
+  writerSituation?: GcLiveSituation | null;
 };
 
 export default function GameChangerScoreboardModal({
@@ -33,6 +35,8 @@ export default function GameChangerScoreboardModal({
   bracketMatch,
   gcEvent,
   liveStatus,
+  organizationId,
+  writerSituation,
 }: Props) {
   const reactId = useId();
   const hostId = `gc-scoreboard-host-${reactId.replace(/:/g, "")}`;
@@ -129,6 +133,8 @@ export default function GameChangerScoreboardModal({
               bracketMatch={bracketMatch}
               event={gcEvent}
               liveStatus={liveStatus}
+              organizationId={organizationId}
+              writerSituation={writerSituation}
             />
           ) : (
             <div id={hostId} className={styles.widgetTarget} />

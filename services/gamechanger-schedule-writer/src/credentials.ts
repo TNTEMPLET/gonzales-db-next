@@ -47,7 +47,7 @@ export async function loadGameChangerCredentials(): Promise<GameChangerCredentia
     return { username: fromEnvUsername, password: fromEnvPassword };
   }
 
-  const itemName = process.env.GRINGOTTS_GC_VAULT_ITEM?.trim() || "SRF - Trent";
+  const itemName = process.env.GRINGOTTS_GC_VAULT_ITEM?.trim() || "2b27eaf4-924f-469c-b469-cda4ab99bc40";
   const bwBin = process.env.BW_BIN?.trim() || "bw";
   const session = process.env.BW_SESSION?.trim();
   const sessionArgs = session ? ["--session", session] : [];
