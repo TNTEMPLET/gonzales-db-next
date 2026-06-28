@@ -6,11 +6,22 @@
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
 
 const DIVISION_DISPLAY_ALIASES: Record<string, string> = {
-  littleleaguecoachpitch: "Little League Coach Pitch",
-  litleleaguecoachpitch: "Little League Coach Pitch",
-  littleleagueteeball: "Little League Tee Ball",
-  litleleagueteeball: "Little League Tee Ball",
+  littleleaguecoachpitch: "Coaches Pitch",
+  litleleaguecoachpitch: "Coaches Pitch",
+  littleleagueteeball: "Tee Ball",
+  litleleagueteeball: "Tee Ball",
 };
+
+function finalizeDivisionDisplayLabel(label: string): string {
+  const withoutLittleLeague = label.replace(/^Little\s+League\s+/i, "").trim();
+  if (
+    /\bcoach(?:es)?\s+pitch\b/i.test(withoutLittleLeague) ||
+    /\btee\s+ball\b/i.test(withoutLittleLeague)
+  ) {
+    return withoutLittleLeague.replace(/\bCoach\s+Pitch\b/i, "Coaches Pitch");
+  }
+  return label;
+}
 
 /** Restore readable spacing for PDF/OCR division labels like `LittleLeagueCoachPitch`. */
 export function formatDivisionDisplayLabel(label: string | undefined | null): string | undefined {
@@ -22,14 +33,16 @@ export function formatDivisionDisplayLabel(label: string | undefined | null): st
   if (alias) return alias;
 
   if (/\s/.test(trimmed)) {
-    return trimmed.replace(/^Litle\b/i, "Little");
+    return finalizeDivisionDisplayLabel(trimmed.replace(/^Litle\b/i, "Little"));
   }
 
-  return trimmed
-    .replace(/([a-z])([A-Z])/g, "$1 $2")
-    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
-    .replace(/^Litle\b/i, "Little")
-    .trim();
+  return finalizeDivisionDisplayLabel(
+    trimmed
+      .replace(/([a-z])([A-Z])/g, "$1 $2")
+      .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+      .replace(/^Litle\b/i, "Little")
+      .trim(),
+  );
 }
 
 /** Row header when `officialGameNumber` is set (e.g. `G12`, `G2`). */
