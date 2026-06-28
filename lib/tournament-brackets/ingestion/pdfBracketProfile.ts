@@ -1,4 +1,5 @@
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
+import { formatDivisionDisplayLabel } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { bracketFormatForChampionshipSeriesStyle, type ChampionshipSeriesStyle } from "@/lib/tournament-brackets/bracketFormat";
 import { extractPdfTextForIngest } from "@/lib/tournament-brackets/ingestion/extractPdfTextForIngest";
 import { buildRoundsFromPdfIngest } from "@/lib/tournament-brackets/ingestion/buildRoundsFromPdfIngest";
@@ -57,8 +58,9 @@ export function buildPdfWizardSpecPatch(
     patch.classicDoubleElimLayoutLocked = true;
   }
   if (match.divisionLabel) {
-    patch.divisionLabel = match.divisionLabel;
-    patch.championAgeGroupLabel = match.divisionLabel;
+    const divisionLabel = formatDivisionDisplayLabel(match.divisionLabel) ?? match.divisionLabel;
+    patch.divisionLabel = divisionLabel;
+    patch.championAgeGroupLabel = divisionLabel;
   }
   if (resolvedStyle) {
     patch.championshipSeriesStyle = resolvedStyle;

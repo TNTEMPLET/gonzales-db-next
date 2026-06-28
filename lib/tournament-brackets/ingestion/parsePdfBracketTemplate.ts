@@ -1,4 +1,5 @@
 import type { BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
+import { formatDivisionDisplayLabel } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { isDoubleEliminationFormat } from "@/lib/tournament-brackets/bracketFormat";
 
 export type PdfBracketTemplateMatch = {
@@ -92,12 +93,13 @@ export function parsePdfBracketTemplate(text: string): PdfBracketTemplateMatch |
 
   const divisionFromLine = DIVISION_LINE_RE.exec(trimmed)?.[1]?.trim();
   const siteFromLine = SITE_LINE_RE.exec(trimmed)?.[1]?.trim();
-  const divisionLabel =
+  const divisionLabel = formatDivisionDisplayLabel(
     divisionFromLine && divisionFromLine.length > 0
       ? divisionFromLine
       : siteFromLine && siteFromLine.length > 0
         ? siteFromLine
-        : undefined;
+        : undefined,
+  );
 
   return {
     templateId: `little_league_${teamCount}_team_${isDoubleEliminationFormat(bracketFormat) ? "de" : "se"}`,

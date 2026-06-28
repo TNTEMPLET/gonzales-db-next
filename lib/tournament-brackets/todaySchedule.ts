@@ -2,7 +2,7 @@ import { collectLayoutMatchesForGc } from "@/lib/gamechanger/collectLayoutMatche
 import { buildLivePayloadFromEvents } from "@/lib/gamechanger/matchEventsToBracket";
 import { fetchGameChangerScoreboardSyncWindow } from "@/lib/gamechanger/fetchScoreboard";
 import { bracketGameChangerSchema } from "@/lib/gamechanger/types";
-import { formatBracketGameBadge } from "@/lib/tournament-brackets/bracketDisplayLabels";
+import { formatBracketGameBadge, formatDivisionDisplayLabel } from "@/lib/tournament-brackets/bracketDisplayLabels";
 import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { isByeBracketMatch } from "@/lib/tournament-brackets/bracketScoring";
 import { safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
@@ -115,7 +115,9 @@ export async function buildTodayScheduleForOrg(organizationId: BracketOrgId): Pr
     }
 
     const divisionLabel =
-      parsed.spec.divisionLabel?.trim() || parsed.spec.tournamentInfo?.division?.trim() || project.name;
+      formatDivisionDisplayLabel(parsed.spec.divisionLabel) ??
+      formatDivisionDisplayLabel(parsed.spec.tournamentInfo?.division) ??
+      project.name;
 
     for (const match of todaysMatches) {
       const liveStatus = livePayload?.liveGameStatuses[match.id];

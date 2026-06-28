@@ -5,6 +5,33 @@
 
 import { BYE_SLOT_LABEL } from "@/lib/tournament-brackets/generateSingleElimFromTeams";
 
+const DIVISION_DISPLAY_ALIASES: Record<string, string> = {
+  littleleaguecoachpitch: "Little League Coach Pitch",
+  litleleaguecoachpitch: "Little League Coach Pitch",
+  littleleagueteeball: "Little League Tee Ball",
+  litleleagueteeball: "Little League Tee Ball",
+};
+
+/** Restore readable spacing for PDF/OCR division labels like `LittleLeagueCoachPitch`. */
+export function formatDivisionDisplayLabel(label: string | undefined | null): string | undefined {
+  const trimmed = label?.trim();
+  if (!trimmed) return undefined;
+
+  const aliasKey = trimmed.toLowerCase().replace(/\s+/g, "");
+  const alias = DIVISION_DISPLAY_ALIASES[aliasKey];
+  if (alias) return alias;
+
+  if (/\s/.test(trimmed)) {
+    return trimmed.replace(/^Litle\b/i, "Little");
+  }
+
+  return trimmed
+    .replace(/([a-z])([A-Z])/g, "$1 $2")
+    .replace(/([A-Z]+)([A-Z][a-z])/g, "$1 $2")
+    .replace(/^Litle\b/i, "Little")
+    .trim();
+}
+
 /** Row header when `officialGameNumber` is set (e.g. `G12`, `G2`). */
 export function formatBracketGameBadge(officialGameNumber: string | undefined): string | undefined {
   const t = officialGameNumber?.trim();
@@ -43,7 +70,7 @@ export function formatSemiLoserSlotLabel(m: {
 
 /** Bracket surface heading: label only (trailing period trimmed). With `suffix`, uses `Label — suffix` or `suffix` alone if no label. */
 export function bracketSurfaceTitle(divisionLabel?: string, suffix?: string): string {
-  const raw = divisionLabel?.trim();
+  const raw = formatDivisionDisplayLabel(divisionLabel);
   const label = raw?.replace(/\.\s*$/, "") ?? "";
   const suf = suffix?.trim();
   if (suf) {
