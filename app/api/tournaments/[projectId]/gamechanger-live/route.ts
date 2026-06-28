@@ -66,6 +66,7 @@ export async function GET(_request: Request, context: RouteContext) {
       organizationId,
       organizationName: response.data.organization.name,
       polledAt: new Date().toISOString(),
+      writerDiagnostics: enriched.writerDiagnostics,
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "GameChanger fetch failed.";
