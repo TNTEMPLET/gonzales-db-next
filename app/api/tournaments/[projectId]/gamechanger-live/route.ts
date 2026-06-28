@@ -63,6 +63,7 @@ export async function GET(_request: Request, context: RouteContext) {
 
     return NextResponse.json({
       ...enriched,
+      organizationId,
       organizationName: response.data.organization.name,
       polledAt: new Date().toISOString(),
     });
