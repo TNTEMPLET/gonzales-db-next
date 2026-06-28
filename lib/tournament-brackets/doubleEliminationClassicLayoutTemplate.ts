@@ -177,7 +177,7 @@ export function inferLockedClassicVariant(spec: BracketSpec): "five_team" | "thr
 /** Patch official template brackets so layout mode cannot drift after scores advance. */
 export function lockedOfficialClassicLayoutPatch(
   spec: Pick<BracketSpec, "officialTemplateId" | "bracketFormat" | "layoutPreference">,
-): Pick<BracketSpec, "classicDoubleElimLayoutLocked" | "layoutPreference"> {
+): Partial<Pick<BracketSpec, "classicDoubleElimLayoutLocked" | "layoutPreference">> {
   if (!spec.officialTemplateId) return {};
   const template = getOfficialTemplate(spec.officialTemplateId);
   if (!template?.lockLayout) return {};
