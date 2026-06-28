@@ -8,11 +8,14 @@ export type WriterLiveDetail = {
 
 const DEFAULT_GAMECHANGER_WRITER_ENDPOINT = "https://gc-writer.duckroostdigital.com";
 
+export function resolveGameChangerWriterEndpoint(): string {
+  return process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim() || DEFAULT_GAMECHANGER_WRITER_ENDPOINT;
+}
+
 export async function fetchLiveDetailsFromWriter(
   events: Array<{ eventId: string; orgId: string }>,
 ): Promise<Record<string, WriterLiveDetail>> {
-  const endpoint =
-    process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim() || DEFAULT_GAMECHANGER_WRITER_ENDPOINT;
+  const endpoint = resolveGameChangerWriterEndpoint();
   if (events.length === 0) {
     return {};
   }
@@ -29,21 +32,32 @@ export async function fetchLiveDetailsFromWriter(
     body: JSON.stringify({ action: "liveDetails", events }),
     signal: AbortSignal.timeout(55_000),
     cache: "no-store",
+    redirect: "manual",
   });
 
-  const body = (await response.json().catch(() => ({}))) as {
-    details?: Record<string, WriterLiveDetail>;
-    error?: string;
-  };
+  const responseText = await response.text();
+  let body: { details?: Record<string, WriterLiveDetail>; error?: string } = {};
+  if (responseText) {
+    try {
+      body = JSON.parse(responseText) as { details?: Record<string, WriterLiveDetail>; error?: string };
+    } catch {
+      throw new Error(
+        `GameChanger live detail writer returned non-JSON (${response.status}): ${responseText.slice(0, 240)}`,
+      );
+    }
+  }
 
   if (!response.ok) {
-    throw new Error(body.error ?? `GameChanger live detail writer failed (${response.status})`);
+    throw new Error(
+      body.error ??
+        `GameChanger live detail writer failed (${response.status}): ${responseText.slice(0, 240)}`,
+    );
   }
 
   const details = body.details ?? {};
   if (events.length > 0 && Object.keys(details).length === 0) {
     throw new Error(
-      `GameChanger live detail writer returned no details (${response.status}): ${JSON.stringify(body).slice(0, 240)}`,
+      `GameChanger live detail writer returned no details (${response.status}): ${responseText.slice(0, 240)}`,
     );
   }
 
