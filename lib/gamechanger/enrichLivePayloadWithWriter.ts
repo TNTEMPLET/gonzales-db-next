@@ -9,7 +9,7 @@ export async function enrichLivePayloadWithWriterDetails(
   bracketMatches: GcBracketMatchRef[],
   organizationId: string,
 ): Promise<GcLiveMatchPayload> {
-  if (!payload.hasLiveGames) return payload;
+  if (!payload.hasLiveGames) return { ...payload, organizationId };
 
   const liveWriterRequests = bracketMatches
     .map((ref) => {
