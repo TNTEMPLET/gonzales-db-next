@@ -1,4 +1,4 @@
-import { fetchLiveDetailsFromWriter } from "@/lib/gamechanger/fetchLiveDetailFromWriter";
+import { fetchLiveDetailsFromWriter, resolveGameChangerWriterEndpoint } from "@/lib/gamechanger/fetchLiveDetailFromWriter";
 import { liveBaseballSituationFromEvent } from "@/lib/gamechanger/liveBaseballSituation";
 import { isLiveGcEvent } from "@/lib/gamechanger/matchEventsToBracket";
 import { mergeWriterLiveDetail } from "@/lib/gamechanger/mergeWriterLiveDetail";
@@ -7,6 +7,7 @@ import type { GcBracketMatchRef, GcLiveMatchPayload, GcLiveSituation } from "@/l
 export type WriterEnrichmentDiagnostics = {
   secretConfigured: boolean;
   endpointConfigured: boolean;
+  writerEndpoint?: string;
   writerMergedCounts: boolean;
   writerDetailKeys?: string[];
   writerError?: string;
@@ -41,6 +42,7 @@ export async function enrichLivePayloadWithWriterDetails(
   const writerDiagnostics: WriterEnrichmentDiagnostics = {
     secretConfigured: Boolean(process.env.GAMECHANGER_SCHEDULE_WRITER_SECRET?.trim()),
     endpointConfigured: Boolean(process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim()),
+    writerEndpoint: resolveGameChangerWriterEndpoint(),
     writerMergedCounts: false,
   };
 
