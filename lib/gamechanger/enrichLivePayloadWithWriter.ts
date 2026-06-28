@@ -8,6 +8,7 @@ export type WriterEnrichmentDiagnostics = {
   secretConfigured: boolean;
   endpointConfigured: boolean;
   writerMergedCounts: boolean;
+  writerDetailKeys?: string[];
   writerError?: string;
 };
 
@@ -47,6 +48,7 @@ export async function enrichLivePayloadWithWriterDetails(
     const writerDetails = await fetchLiveDetailsFromWriter(
       liveWriterRequests.map(({ eventId, orgId }) => ({ eventId, orgId })),
     );
+    writerDiagnostics.writerDetailKeys = Object.keys(writerDetails);
 
     for (const { eventId, ref } of liveWriterRequests) {
       const event = payload.eventsByMatchId[ref.id];
