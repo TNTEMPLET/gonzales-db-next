@@ -9,7 +9,6 @@ import {
   liveBaseballSituationFromEvent,
   type BracketSide,
 } from "@/lib/gamechanger/liveBaseballSituation";
-import { mergeWriterLiveDetail } from "@/lib/gamechanger/mergeWriterLiveDetail";
 import { isLiveGcEvent, normalizeTeamNameForMatch } from "@/lib/gamechanger/matchEventsToBracket";
 import type { GcBracketMatchRef, GcLiveSituation, GcScoreboardEvent } from "@/lib/gamechanger/types";
 
@@ -90,9 +89,7 @@ export default function GameChangerEventScoreboard({
     isLiveGcEvent(event);
 
   const baseSituation = liveBaseballSituationFromEvent(event, bracketMatch);
-  const situation = writerSituation
-    ? mergeWriterLiveDetail(baseSituation, writerSituation, bracketMatch, event)
-    : baseSituation;
+  const situation = writerSituation ?? baseSituation;
 
   const inning = liveStatus?.inningLabel ?? situation.inningLabel;
   const homeLabel = bracketMatch.home.trim();

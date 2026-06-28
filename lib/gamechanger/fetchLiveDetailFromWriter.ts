@@ -6,11 +6,14 @@ export type WriterLiveDetail = {
   half?: "top" | "bottom";
 };
 
+const DEFAULT_GAMECHANGER_WRITER_ENDPOINT = "https://gc-writer.duckroostdigital.com";
+
 export async function fetchLiveDetailsFromWriter(
   events: Array<{ eventId: string; orgId: string }>,
 ): Promise<Record<string, WriterLiveDetail>> {
-  const endpoint = process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim();
-  if (!endpoint || events.length === 0) {
+  const endpoint =
+    process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim() || DEFAULT_GAMECHANGER_WRITER_ENDPOINT;
+  if (events.length === 0) {
     return {};
   }
 
