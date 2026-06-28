@@ -40,5 +40,12 @@ export async function fetchLiveDetailsFromWriter(
     throw new Error(body.error ?? `GameChanger live detail writer failed (${response.status})`);
   }
 
-  return body.details ?? {};
+  const details = body.details ?? {};
+  if (events.length > 0 && Object.keys(details).length === 0) {
+    throw new Error(
+      `GameChanger live detail writer returned no details (${response.status}): ${JSON.stringify(body).slice(0, 240)}`,
+    );
+  }
+
+  return details;
 }
