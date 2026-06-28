@@ -4,11 +4,18 @@ import { isLiveGcEvent } from "@/lib/gamechanger/matchEventsToBracket";
 import { mergeWriterLiveDetail } from "@/lib/gamechanger/mergeWriterLiveDetail";
 import type { GcBracketMatchRef, GcLiveMatchPayload, GcLiveSituation } from "@/lib/gamechanger/types";
 
+export type WriterEnrichmentDiagnostics = {
+  secretConfigured: boolean;
+  endpointConfigured: boolean;
+  writerMergedCounts: boolean;
+  writerError?: string;
+};
+
 export async function enrichLivePayloadWithWriterDetails(
   payload: GcLiveMatchPayload,
   bracketMatches: GcBracketMatchRef[],
   organizationId: string,
-): Promise<GcLiveMatchPayload> {
+): Promise<GcLiveMatchPayload & { writerDiagnostics?: WriterEnrichmentDiagnostics }> {
   if (!payload.hasLiveGames) return { ...payload, organizationId };
 
   const liveWriterRequests = bracketMatches
@@ -23,29 +30,44 @@ export async function enrichLivePayloadWithWriterDetails(
 
   if (liveWriterRequests.length === 0) return payload;
 
+  const liveSituationsByMatchId: Record<string, GcLiveSituation> = {};
+  for (const { ref } of liveWriterRequests) {
+    const event = payload.eventsByMatchId[ref.id];
+    if (!event) continue;
+    liveSituationsByMatchId[ref.id] = liveBaseballSituationFromEvent(event, ref);
+  }
+
+  const writerDiagnostics: WriterEnrichmentDiagnostics = {
+    secretConfigured: Boolean(process.env.GAMECHANGER_SCHEDULE_WRITER_SECRET?.trim()),
+    endpointConfigured: Boolean(process.env.GAMECHANGER_SCHEDULE_WRITER_ENDPOINT?.trim()),
+    writerMergedCounts: false,
+  };
+
   try {
     const writerDetails = await fetchLiveDetailsFromWriter(
       liveWriterRequests.map(({ eventId, orgId }) => ({ eventId, orgId })),
     );
-    const liveSituationsByMatchId: Record<string, GcLiveSituation> = {};
+
     for (const { eventId, ref } of liveWriterRequests) {
       const event = payload.eventsByMatchId[ref.id];
       if (!event) continue;
-      const base = liveBaseballSituationFromEvent(event, ref);
       const writer = writerDetails[eventId];
-      liveSituationsByMatchId[ref.id] = mergeWriterLiveDetail(base, writer, ref, event);
-      if (writer?.balls == null && writer?.strikes == null) {
-        console.warn(
-          `GameChanger live detail writer returned no count for ${eventId}; check GAMECHANGER_SCHEDULE_WRITER_ENDPOINT on Vercel.`,
-        );
+      if (!writer) continue;
+      liveSituationsByMatchId[ref.id] = mergeWriterLiveDetail(
+        liveSituationsByMatchId[ref.id],
+        writer,
+        ref,
+        event,
+      );
+      if (writer.balls != null || writer.strikes != null) {
+        writerDiagnostics.writerMergedCounts = true;
       }
     }
-    return { ...payload, organizationId, liveSituationsByMatchId };
   } catch (writerError: unknown) {
-    console.warn(
-      "GameChanger live detail writer failed:",
-      writerError instanceof Error ? writerError.message : String(writerError),
-    );
-    return { ...payload, organizationId };
+    writerDiagnostics.writerError =
+      writerError instanceof Error ? writerError.message : String(writerError);
+    console.warn("GameChanger live detail writer failed:", writerDiagnostics.writerError);
   }
+
+  return { ...payload, organizationId, liveSituationsByMatchId, writerDiagnostics };
 }
