@@ -1364,13 +1364,14 @@ function DoubleEliminationBracketView({
     layout.diagramStyle === "classic_unified" && layout.classicVariant === "three_team"
       ? resolveClassicThreeTeamDoubleElimSlots(allMatchesByGame)
       : null;
-  const classicFiveResolveOptions = layout.officialTemplateId
-    ? { officialTemplateId: layout.officialTemplateId }
-    : undefined;
   const classicFiveSlots =
-    layout.diagramStyle === "classic_unified" && layout.classicVariant === "five_team"
-      ? resolveClassicDoubleElimSlots(allMatchesByGame, classicFiveResolveOptions)
-      : null;
+    layout.classicFiveTeamSlots ??
+    (layout.diagramStyle === "classic_unified" && layout.classicVariant === "five_team"
+      ? resolveClassicDoubleElimSlots(allMatchesByGame, {
+          officialTemplateId: layout.officialTemplateId,
+          locked: true,
+        })
+      : null);
 
   const renderMatch = (props: {
     match: LayoutMatch;

@@ -452,6 +452,47 @@ describe("buildBracketLayout", () => {
       .find((match) => match.officialGameNumber === "3");
     assert.equal(g3?.home, "9U Westbank");
     assert.equal(g3?.away, "9U Ascension");
+    assert.ok(layout.classicFiveTeamSlots);
+  });
+
+  it("forces locked official five-team layout when layoutPreference is connected_columns", () => {
+    const teams = [
+      "9U Westbank",
+      "9U NORD",
+      "9U St. Charles",
+      "9U Eastbank",
+      "9U Ascension",
+    ];
+    const rounds = buildRoundsFromOfficialTemplate("little_league_5_team_de", teams, {
+      championshipSeriesStyle: "winner_take_all",
+    });
+    let spec = baseSpec({
+      ...specDefaultsFromOfficialTemplate("little_league_5_team_de", "winner_take_all"),
+      teams,
+      rounds,
+      divisionLabel: "9U",
+      layoutPreference: "connected_columns",
+      classicDoubleElimLayoutLocked: true,
+      setupWizardCompleted: true,
+    });
+    const matchIdForGame = (gameNumber: string): string => {
+      for (const round of spec.rounds) {
+        for (const match of round.matches) {
+          if (match.officialGameNumber === gameNumber) return match.id;
+        }
+      }
+      throw new Error(`missing game ${gameNumber}`);
+    };
+    spec = mergeMatchScoresIntoSpec(spec, {
+      [matchIdForGame("1")]: { homeScore: 7, awayScore: 1, winnerSide: "home" },
+      [matchIdForGame("2")]: { homeScore: 3, awayScore: 4, winnerSide: "away" },
+    });
+    const layout = buildBracketLayout(spec);
+    assert.equal(layout.mode, "double_elimination");
+    if (layout.mode !== "double_elimination") return;
+    assert.equal(layout.diagramStyle, "classic_unified");
+    assert.equal(layout.classicVariant, "five_team");
+    assert.ok(layout.classicFiveTeamSlots);
   });
 
   it("includes classic championship podium for modified double elimination", () => {
