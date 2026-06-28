@@ -29,7 +29,7 @@ async function main(): Promise<void> {
       continue;
     }
     const spec = parsed.spec;
-    const variant = resolveOfficialClassicVariant(spec.officialTemplateId, spec.bracketFormat);
+    const variant = inferLockedClassicVariant(spec);
     if (!variant) {
       console.log(`skip ${row.name}: not a lockable official classic template`);
       continue;
