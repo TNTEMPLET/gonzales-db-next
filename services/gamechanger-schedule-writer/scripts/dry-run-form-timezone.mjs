@@ -95,20 +95,12 @@ async function main() {
   const defaultDate = (await dateField.inputValue().catch(() => "")).trim();
   const defaultTime = (await timeField.inputValue().catch(() => "")).trim();
 
-  await page.evaluate(
-    ({ date, time }) => {
-      const dateEl = document.querySelector("#start-time-field-date");
-      const timeEl = document.querySelector("#start-time-field-time");
-      if (!dateEl || !timeEl) throw new Error("schedule fields missing");
-      dateEl.value = date;
-      dateEl.dispatchEvent(new Event("input", { bubbles: true }));
-      dateEl.dispatchEvent(new Event("change", { bubbles: true }));
-      timeEl.value = time;
-      timeEl.dispatchEvent(new Event("input", { bubbles: true }));
-      timeEl.dispatchEvent(new Event("change", { bubbles: true }));
-    },
-    { date: TEST_DATE, time: TEST_TIME },
-  );
+  await dateField.click();
+  await dateField.fill(TEST_DATE);
+  await page.keyboard.press("Tab");
+  await timeField.click();
+  await timeField.fill(TEST_TIME);
+  await page.keyboard.press("Tab");
 
   const dateValue = (await dateField.inputValue().catch(() => "")).trim();
   const timeValue = (await timeField.inputValue().catch(() => "")).trim();

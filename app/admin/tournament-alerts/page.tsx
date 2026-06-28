@@ -25,6 +25,7 @@ import {
 } from "@/lib/siteConfig";
 import { safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { getTournamentAlertProviderStatus } from "@/lib/tournament-monitor/alertSender";
+import { formatTournamentDateTime } from "@/lib/tournament-monitor/formatDateTime";
 
 type StatusTone = "good" | "warn" | "bad" | "neutral";
 
@@ -60,16 +61,6 @@ export function generateMetadata() {
     description:
       "Mobile-friendly tournament communications status for monitor runs, recent alerts, and provider readiness.",
   };
-}
-
-function formatDateTime(value: Date | null | undefined) {
-  if (!value) return "Not yet";
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(value);
 }
 
 function relativeAge(value: Date | null | undefined) {
@@ -489,7 +480,7 @@ export default async function AdminTournamentAlertsPage() {
                     <div>
                       <p className="font-semibold text-zinc-100">{project.name}</p>
                       <p className="mt-1 text-xs text-zinc-500">
-                        {formatOrganizationIdDisplay(project.organizationId)} / {project.status} / updated {formatDateTime(project.updatedAt)}
+                        {formatOrganizationIdDisplay(project.organizationId)} / {project.status} / updated {formatTournamentDateTime(project.updatedAt)}
                       </p>
                     </div>
                     <span
@@ -538,7 +529,7 @@ export default async function AdminTournamentAlertsPage() {
                     </span>
                   </div>
                   <p className="mt-2 text-xs text-zinc-500">
-                    {formatOrganizationIdDisplay(event.organizationId)} / {event.bracketProject?.name ?? "Monitor"} / {formatDateTime(event.createdAt)}
+                    {formatOrganizationIdDisplay(event.organizationId)} / {event.bracketProject?.name ?? "Monitor"} / {formatTournamentDateTime(event.createdAt)}
                     {event.matchId ? ` / ${event.matchId}` : ""}
                   </p>
                   <p className="mt-1 text-xs text-zinc-500">
@@ -567,7 +558,7 @@ export default async function AdminTournamentAlertsPage() {
                 <div>
                   <p className="text-sm font-semibold text-zinc-100">{run.status}</p>
                   <p className="mt-1 text-xs text-zinc-500">
-                    {formatDateTime(run.completedAt ?? run.createdAt)}
+                    {formatTournamentDateTime(run.completedAt ?? run.createdAt)}
                   </p>
                 </div>
                 <p className="text-right text-xs text-zinc-400">

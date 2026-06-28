@@ -4,11 +4,18 @@ import path from "node:path";
 import { chromium, type BrowserContext, type Page } from "playwright";
 
 import type { GameChangerCredentials } from "./credentials.js";
-import { findCreatedEventId } from "./findEventId.js";
+import { findCreatedScoreboardEvent } from "./findEventId.js";
+import {
+  assertScheduledForMatchesGcForm,
+  assertStartTsMatchesExpected,
+  assertWriterBrowserTimezone,
+  expectedUtcFromGcForm,
+  GC_WRITER_TIMEZONE,
+} from "./gcScheduleTime.js";
+import { selectLocationField } from "./locationField.js";
 import type { CreateGameRequest } from "./types.js";
 
 const GC_BASE = "https://web.gc.com";
-const BRACKET_TIME_ZONE = "America/Chicago";
 const STORAGE_DIR = process.env.GC_WRITER_STORAGE_DIR?.trim() || "/data/gamechanger-writer";
 const STORAGE_STATE_PATH = path.join(STORAGE_DIR, "storage-state.json");
 
@@ -29,9 +36,10 @@ async function openContext(credentials: GameChangerCredentials): Promise<{
   const context = await browser.newContext({
     storageState: (await fileExists(STORAGE_STATE_PATH)) ? STORAGE_STATE_PATH : undefined,
     locale: "en-US",
-    timezoneId: BRACKET_TIME_ZONE,
+    timezoneId: GC_WRITER_TIMEZONE,
   });
   const page = await context.newPage();
+  await assertWriterBrowserTimezone(page);
   await ensureLoggedIn(page, credentials);
   await context.storageState({ path: STORAGE_STATE_PATH });
   return { browser, context, page };
@@ -135,6 +143,15 @@ async function openAddGameModal(page: Page, gcOrganizationId: string): Promise<v
   await page.getByText(/add individual h2h game/i).click();
 }
 
+function normalizeGcFormTimeForCompare(value: string): string {
+  const match = value.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  if (!match) return value.trim().toUpperCase();
+  const hours = Number(match[1]);
+  const minutes = match[2]!;
+  const meridiem = match[3]!.toUpperCase();
+  return `${hours}:${minutes} ${meridiem}`;
+}
+
 async function fillScheduleDateTime(page: Page, gcFormDate: string, gcFormTime: string): Promise<void> {
   const dateField = page.locator("#start-time-field-date");
   const timeField = page.locator("#start-time-field-time");
@@ -142,20 +159,15 @@ async function fillScheduleDateTime(page: Page, gcFormDate: string, gcFormTime: 
   await dateField.waitFor({ state: "visible", timeout: 15_000 });
   await timeField.waitFor({ state: "visible", timeout: 15_000 });
 
-  await page.evaluate(
-    ({ date, time }) => {
-      const dateEl = document.querySelector("#start-time-field-date") as HTMLInputElement | null;
-      const timeEl = document.querySelector("#start-time-field-time") as HTMLInputElement | null;
-      if (!dateEl || !timeEl) throw new Error("schedule fields missing");
-      dateEl.value = date;
-      dateEl.dispatchEvent(new Event("input", { bubbles: true }));
-      dateEl.dispatchEvent(new Event("change", { bubbles: true }));
-      timeEl.value = time;
-      timeEl.dispatchEvent(new Event("input", { bubbles: true }));
-      timeEl.dispatchEvent(new Event("change", { bubbles: true }));
-    },
-    { date: gcFormDate, time: gcFormTime },
-  );
+  // GameChanger's React form ignores direct DOM value assignment. Use real focus/fill
+  // so the controlled inputs commit before Save (otherwise games default to ~2:00 AM).
+  await dateField.click();
+  await dateField.fill(gcFormDate);
+  await page.keyboard.press("Tab");
+
+  await timeField.click();
+  await timeField.fill(gcFormTime);
+  await page.keyboard.press("Tab");
 
   const dateValue = (await dateField.inputValue().catch(() => "")).trim();
   if (!dateValue) {
@@ -164,6 +176,14 @@ async function fillScheduleDateTime(page: Page, gcFormDate: string, gcFormTime: 
   const timeValue = (await timeField.inputValue().catch(() => "")).trim();
   if (!timeValue) {
     throw new Error(`Could not fill GameChanger schedule time (${gcFormTime}).`);
+  }
+
+  const expectedTime = normalizeGcFormTimeForCompare(gcFormTime);
+  const actualTime = normalizeGcFormTimeForCompare(timeValue);
+  if (actualTime !== expectedTime) {
+    throw new Error(
+      `GameChanger schedule time did not stick (expected ${expectedTime}, read ${actualTime}).`,
+    );
   }
 }
 
@@ -230,6 +250,41 @@ async function selectTeam(page: Page, label: RegExp, teamName: string): Promise<
   }
 }
 
+function resolveLocationLabel(request: CreateGameRequest): string | undefined {
+  const field = request.field?.trim();
+  if (field) return field;
+  return request.venue?.trim() || undefined;
+}
+
+function validateCreateRequest(request: CreateGameRequest): string {
+  if (!request.gcFormDate || !request.gcFormTime) {
+    throw new Error("gcFormDate and gcFormTime are required.");
+  }
+
+  const expectedFromForm = expectedUtcFromGcForm(request.gcFormDate, request.gcFormTime);
+  if (!expectedFromForm) {
+    throw new Error(`Invalid gcFormDate/gcFormTime (${request.gcFormDate} ${request.gcFormTime}).`);
+  }
+
+  if (request.scheduledFor) {
+    assertScheduledForMatchesGcForm(request.scheduledFor, request.gcFormDate, request.gcFormTime);
+    return request.scheduledFor;
+  }
+
+  return expectedFromForm;
+}
+
+function assertSavedLocation(expected: string | undefined, actual: string | undefined): void {
+  if (!expected) return;
+  const normalizedExpected = expected.trim();
+  const normalizedActual = actual?.trim() ?? "";
+  if (normalizedActual !== normalizedExpected) {
+    throw new Error(
+      `GameChanger saved the wrong location (expected ${normalizedExpected}, got ${normalizedActual || "empty"}).`,
+    );
+  }
+}
+
 export async function createGameChangerGame(
   credentials: GameChangerCredentials,
   request: CreateGameRequest,
@@ -240,33 +295,37 @@ export async function createGameChangerGame(
   if (!request.widgetId) {
     throw new Error("widgetId is required.");
   }
-  if (!request.gcFormDate || !request.gcFormTime) {
-    throw new Error("gcFormDate and gcFormTime are required.");
-  }
+
+  const expectedStartIso = validateCreateRequest(request);
+  const locationLabel = resolveLocationLabel(request);
 
   const { browser, context, page } = await openContext(credentials);
   try {
     await openAddGameModal(page, request.gcOrganizationId);
-    await fillScheduleDateTime(page, request.gcFormDate, request.gcFormTime);
+    await fillScheduleDateTime(page, request.gcFormDate!, request.gcFormTime!);
     await selectDuration(page, request.durationLabel?.trim() || "2 hr");
     await selectTeam(page, /home team/i, request.homeTeam);
     await selectTeam(page, /away team/i, request.awayTeam);
-    if (request.field?.trim()) {
-      const location = page.getByLabel(/location/i);
-      if (await location.isVisible().catch(() => false)) {
-        await location.click();
-        await location.fill(request.field.trim());
-      }
+    if (locationLabel) {
+      await selectLocationField(page, locationLabel);
     }
     await page.getByRole("button", { name: /save & close/i }).click();
     await page.waitForLoadState("networkidle", { timeout: 30_000 }).catch(() => undefined);
 
-    const eventId = await findCreatedEventId(request.widgetId, request, request.scheduledFor);
-    if (!eventId) {
-      throw new Error("GameChanger game was saved but no matching eventId was found on the scoreboard.");
+    const savedEvent = await findCreatedScoreboardEvent(
+      request.widgetId,
+      request,
+      expectedStartIso,
+    );
+    if (!savedEvent) {
+      throw new Error("GameChanger game was saved but no matching event was found on the scoreboard.");
     }
+
+    assertStartTsMatchesExpected(expectedStartIso, savedEvent.start_ts);
+    assertSavedLocation(locationLabel, savedEvent.location?.name);
+
     await context.storageState({ path: STORAGE_STATE_PATH });
-    return eventId;
+    return savedEvent.id;
   } finally {
     await context.close();
     await browser.close();
