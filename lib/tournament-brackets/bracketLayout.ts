@@ -92,6 +92,8 @@ export type BracketLayout =
   | {
       mode: "double_elimination";
       divisionLabel?: string;
+      /** Official Little League template id when bracket was built from a locked PDF template. */
+      officialTemplateId?: string;
       /** `classic_unified`: single scrollable winners/losers/championship diagram (5–7 team DE). */
       diagramStyle: "classic_unified" | "connected_columns";
       /** Which classic template geometry to render (when `diagramStyle` is `classic_unified`). */
@@ -647,6 +649,7 @@ function layoutDoubleElimination(spec: BracketSpec): BracketLayout | null {
   return {
     mode: "double_elimination",
     diagramStyle: useClassic ? "classic_unified" : "connected_columns",
+    ...(spec.officialTemplateId ? { officialTemplateId: spec.officialTemplateId } : {}),
     ...(classicVariant ? { classicVariant } : {}),
     divisionLabel: spec.divisionLabel,
     winnersBracket: winnersBracket ?? buildLinearConnectedSection("Winners Bracket", [], laneRows),
