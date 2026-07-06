@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# Background sync to dev-box after each local commit.
+set -euo pipefail
+
+ROOT="$(git rev-parse --show-toplevel)"
+cd "$ROOT"
+
+if [[ "${SKIP_DEV_BOX_SYNC:-}" == "1" ]]; then
+  exit 0
+fi
+
+if [[ "${CI:-}" == "true" || -n "${GITHUB_ACTIONS:-}" || -n "${VERCEL:-}" ]]; then
+  exit 0
+fi
+
+RESTART=false
+if git diff-tree --no-commit-id --name-only -r HEAD | grep -qx 'next.config.ts'; then
+  RESTART=true
+fi
+
+ARGS=()
+if [[ "$RESTART" == true ]]; then
+  ARGS+=(--restart)
+fi
+
+LOG="${TMPDIR:-/tmp}/gonzales-dev-box-sync.log"
+echo "[$(date -Iseconds)] post-commit sync starting (restart=${RESTART})" >>"$LOG"
+nohup bash "$ROOT/scripts/sync-dev-box.sh" "${ARGS[@]}" >>"$LOG" 2>&1 &
