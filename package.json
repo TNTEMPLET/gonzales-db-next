@@ -33,7 +33,8 @@
     "seed:ladistrict6-tournament": "tsx --env-file=.env.local --env-file=.env.development.local scripts/seed-ladistrict6-tournament-2026.ts",
     "seed:ladistrict2-tournament": "tsx --env-file=.env.local --env-file=.env.development.local scripts/seed-ladistrict2-tournament-2026.ts",
     "sync:dev-box": "bash scripts/sync-dev-box.sh",
-    "sync:dev-box:restart": "bash scripts/sync-dev-box.sh --restart"
+    "sync:dev-box:restart": "bash scripts/sync-dev-box.sh --restart",
+    "install:git-hooks": "bash scripts/install-git-hooks.sh"
   },
   "dependencies": {
     "@napi-rs/canvas": "^0.1.100",
