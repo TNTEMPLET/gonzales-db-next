@@ -10,7 +10,7 @@ export const DEFAULT_COMMUNICATIONS_FROM =
 export const BUILTIN_FROM_ADDRESSES: readonly string[] = [
   DEFAULT_COMMUNICATIONS_FROM,
   "AP Baseball <communications@apbaseball.com>",
-  "AP Baseball Board <board@apbaseball.com>",
+  "AP Baseball Board <apboard@apbaseball.com>",
   "AP Baseball Support <support@apbaseball.com>",
 ] as const;
 
