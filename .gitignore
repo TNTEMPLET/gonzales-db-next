@@ -74,3 +74,6 @@ scripts/get-cycle-ids.ts
 
 # Claude Code project memory (local AI session data)
 .claude/
+
+.next-fallball/
+.next-public/

@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getOrgCapabilities } from "@/lib/org/capabilities";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import { getSiteConfig } from "@/lib/siteConfig";
 
@@ -15,8 +16,10 @@ export default function RegistrationPage() {
   const regOpen = isRegistrationOpen();
   const site = getSiteConfig();
   const isFallBall = site.orgId === "fallball";
+  const caps = isFallBall ? getOrgCapabilities("fallball") : null;
+  const isSportsConnect = caps?.registration === "sportsconnect";
 
-  if (!regOpen && !isFallBall) {
+  if (!regOpen && !isSportsConnect) {
     return (
       <main className="min-h-screen bg-black text-white flex items-center justify-center">
         <div className="text-center px-6 max-w-2xl">
@@ -39,12 +42,12 @@ export default function RegistrationPage() {
     );
   }
 
-  if (isFallBall) {
+  if (isFallBall && isSportsConnect) {
     return (
       <main className="min-h-screen bg-black text-white">
         <section className="bg-zinc-900 border-b border-zinc-800 py-14 px-6 text-center">
           <div className="inline-block bg-brand-purple text-xs tracking-[3px] px-6 py-2 rounded-full mb-6">
-            FALL BALL 2026
+            {CURRENT_SEASON_LABEL.toUpperCase()}
           </div>
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
             AP Baseball Fall Ball Registration

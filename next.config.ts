@@ -13,6 +13,7 @@ const ALLOWED_DEV_ORIGIN_HOSTS = [
   "master-dev.duckroostdigital.com",
   "ladistrict2-dev.duckroostdigital.com",
   "ladistrict6-dev.duckroostdigital.com",
+  "fallball-dev.duckroostdigital.com",
   "192.168.100.156",
   "localhost",
   "127.0.0.1",

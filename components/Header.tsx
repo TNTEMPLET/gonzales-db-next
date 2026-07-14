@@ -20,7 +20,9 @@ import {
   isAdminModuleEnabledForOrg,
   isContentOrgId,
   isPublicNavEnabledForOrg,
+  type OrgId,
 } from "@/lib/siteConfig";
+import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 
 type DugoutMeResponse = {
   user: {
@@ -39,6 +41,7 @@ type AdminMeResponse = {
 
 type HeaderProps = {
   brand: {
+    orgId: OrgId;
     name: string;
     displayNameLine1: string;
     displayNameLine2: string;
@@ -66,10 +69,9 @@ export default function Header({ brand }: HeaderProps) {
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   const currentOrgParam = searchParams.get("org");
   const [regOpen] = useState(() => isRegistrationOpen());
-  const isMasterHeader =
-    brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
+  const isMasterHeader = brand.orgId === "master";
   const isTournamentOnly = brand.tournamentOnly ?? false;
-  const isFallBallHeader = brand.displayNameLine2.toUpperCase() === "FALL BALL";
+  const isFallBallHeader = brand.orgId === "fallball";
 
   const headerClassName = isMasterHeader
     ? "sticky top-0 z-50 border-b border-red-900/60 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 shadow-[0_6px_24px_rgba(0,0,0,0.3)]"
@@ -278,7 +280,7 @@ export default function Header({ brand }: HeaderProps) {
           label: "Program",
           items: [
             { href: `/admin/teams${masterOrgSuffix}`, label: "Teams" },
-            ...(allowModule("TEAMS") && currentMasterOrg === "fallball"
+            ...(allowModule("TEAMS") && isCoachingInterestEnabled(currentMasterOrg)
               ? [{ href: `/admin/coaching-interest${masterOrgSuffix}`, label: "Coaching Interest" }]
               : []),
             ...(allowModule("SPONSORS")
@@ -351,9 +353,18 @@ export default function Header({ brand }: HeaderProps) {
         isPublicNavEnabledForOrg(isFallBallHeader ? "fallball" : null, link.key ?? link.label.toLowerCase()),
       );
 
+  const contentOrgForCaps = isFallBallHeader
+    ? "fallball"
+    : isContentOrgId(brand.orgId)
+      ? brand.orgId
+      : null;
+  const coachingInterestPublic =
+    Boolean(contentOrgForCaps) &&
+    isCoachingInterestEnabled(contentOrgForCaps) &&
+    isPublicNavEnabledForOrg(contentOrgForCaps, "coaching-interest");
   const fallBallCoachCornerLinks = isFallBallHeader
     ? [
-        ...(isPublicNavEnabledForOrg("fallball", "coaching-interest")
+        ...(coachingInterestPublic
           ? [{ href: "/coaching-interest", label: "Coaching Interest" }]
           : []),
         ...(canSeeDugout && isPublicNavEnabledForOrg("fallball", "coaches")
@@ -378,7 +389,15 @@ export default function Header({ brand }: HeaderProps) {
               src={logoSrc}
               alt={`${brand.name} Logo`}
               fill
-              sizes="64px"
+              sizes={
+                isFallBallHeader
+                  ? "(max-width: 768px) 128px, 160px"
+                  : isMasterHeader
+                    ? "56px"
+                    : isTournamentOnly
+                      ? "96px"
+                      : "56px"
+              }
               className={logoImageClassName}
               priority
               onError={() => {
