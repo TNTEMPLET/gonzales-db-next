@@ -63,9 +63,6 @@ function toCsv(rows: Awaited<ReturnType<typeof listSubmissions>>) {
 
 async function listSubmissions(request: NextRequest) {
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
-  if (!isCoachingInterestEnabled(targetOrg)) {
-    return NextResponse.json({ error: "Coaching interest is not enabled for this organization." }, { status: 404 });
-  }
   const status = enumValue<CoachingInterestStatus>(
     request.nextUrl.searchParams.get("status"),
     STATUSES,
@@ -110,6 +107,14 @@ export async function GET(request: NextRequest) {
     );
   }
 
+  const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
+  if (!isCoachingInterestEnabled(targetOrg)) {
+    return NextResponse.json(
+      { error: "Coaching interest is not enabled for this organization." },
+      { status: 404 },
+    );
+  }
+
   const rows = await listSubmissions(request);
   if (request.nextUrl.searchParams.get("format") === "csv") {
     return new NextResponse(toCsv(rows), {
@@ -134,7 +139,10 @@ export async function PATCH(request: NextRequest) {
 
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   if (!isCoachingInterestEnabled(targetOrg)) {
-    return NextResponse.json({ error: "Coaching interest is not enabled for this organization." }, { status: 404 });
+    return NextResponse.json(
+      { error: "Coaching interest is not enabled for this organization." },
+      { status: 404 },
+    );
   }
   const body = (await request.json()) as {
     id?: string;
