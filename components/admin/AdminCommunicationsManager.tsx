@@ -2,7 +2,10 @@
 
 import { useEffect, useMemo, useState } from "react";
 
-import { getClientFromAddressOptions, DEFAULT_COMMUNICATIONS_FROM } from "@/lib/communications/fromAddresses";
+import {
+  DEFAULT_COMMUNICATIONS_FROM,
+  getClientFromAddressOptions,
+} from "@/lib/communications/fromAddressConstants";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";

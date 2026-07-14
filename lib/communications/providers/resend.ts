@@ -1,4 +1,4 @@
-import { DEFAULT_COMMUNICATIONS_FROM } from "@/lib/communications/fromAddresses";
+import { DEFAULT_COMMUNICATIONS_FROM } from "@/lib/communications/fromAddressConstants";
 
 export async function sendEmailViaResend(input: {
   to: string;
