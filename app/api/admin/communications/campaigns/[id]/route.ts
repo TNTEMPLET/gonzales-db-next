@@ -85,7 +85,7 @@ export async function PATCH(
   let fromEmail = existing.fromEmail;
   if (body.fromEmail !== undefined) {
     try {
-      fromEmail = resolveFromAddress(body.fromEmail);
+      fromEmail = await resolveFromAddress(body.fromEmail);
     } catch (err: unknown) {
       return NextResponse.json(
         { error: err instanceof Error ? err.message : "Invalid from address" },

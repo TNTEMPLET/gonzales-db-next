@@ -281,6 +281,7 @@ model AdminUser {
   communicationsApproved           CommunicationApproval[]           @relation("CommunicationApprovedBy")
   communicationRecipientSnapshots  CommunicationRecipientSnapshot[]  @relation("CommunicationRecipientAdminUser")
   communicationDeliveries          CommunicationDelivery[]           @relation("CommunicationDeliveryAdminUser")
+  communicationFromAddressesCreated CommunicationFromAddress[]       @relation("CommunicationFromAddressCreatedBy")
   assignrSyncJobsCreated           AssignrSyncJob[]                  @relation("AssignrSyncJobCreatedBy")
   assignrAuditLogs                 AssignrAuditLog[]                 @relation("AssignrAuditActor")
   bracketProjectsCreated           BracketProject[]                  @relation("BracketProjectCreatedBy")
@@ -720,6 +721,25 @@ model CommunicationCampaign {
 
   @@index([status, sendAt])
   @@index([organizationId, createdAt])
+}
+
+/// Master-admin managed From identities for Communications (Resend). No redeploy needed to change options.
+model CommunicationFromAddress {
+  id              String   @id @default(cuid())
+  /// Full Resend From header, e.g. "AP Baseball <noreply@apbaseball.com>"
+  fromHeader      String   @unique
+  label           String?
+  isDefault       Boolean  @default(false)
+  isActive        Boolean  @default(true)
+  sortOrder       Int      @default(0)
+  createdByAdminId String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  createdByAdmin AdminUser? @relation("CommunicationFromAddressCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([isActive, sortOrder])
+  @@index([isDefault])
 }
 
 model CommunicationAudienceRule {

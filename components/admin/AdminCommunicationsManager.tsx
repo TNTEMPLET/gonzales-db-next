@@ -69,9 +69,28 @@ export default function AdminCommunicationsManager({
   const [body, setBody] = useState("");
   const [fromOptions, setFromOptions] = useState<string[]>(() => getClientFromAddressOptions());
   const [fromEmail, setFromEmail] = useState(DEFAULT_COMMUNICATIONS_FROM);
+  const [defaultFrom, setDefaultFrom] = useState(DEFAULT_COMMUNICATIONS_FROM);
   const [scope, setScope] = useState<"ORG" | "GLOBAL">("ORG");
   const [quietStart, setQuietStart] = useState("");
   const [quietEnd, setQuietEnd] = useState("");
+
+  type FromAddressAdminRow = {
+    id: string;
+    fromHeader: string;
+    label: string | null;
+    isDefault: boolean;
+    isActive: boolean;
+    sortOrder: number;
+  };
+  const [fromAdminRows, setFromAdminRows] = useState<FromAddressAdminRow[]>([]);
+  const [fromSettingsOpen, setFromSettingsOpen] = useState(false);
+  const [fromEditId, setFromEditId] = useState<string | null>(null);
+  const [fromFormHeader, setFromFormHeader] = useState("");
+  const [fromFormLabel, setFromFormLabel] = useState("");
+  const [fromFormDefault, setFromFormDefault] = useState(false);
+  const [fromFormActive, setFromFormActive] = useState(true);
+  const [fromFormSort, setFromFormSort] = useState("0");
+  const [fromSettingsBusy, setFromSettingsBusy] = useState(false);
 
   const [ruleAllUsers, setRuleAllUsers] = useState(true);
   const [ruleOrgUsers, setRuleOrgUsers] = useState(false);
@@ -134,9 +153,11 @@ export default function AdminCommunicationsManager({
         setFromOptions(json.fromOptions);
       }
       if (json.defaultFrom?.trim()) {
+        setDefaultFrom(json.defaultFrom);
         setFromEmail((prev) => {
-          // Keep user selection if they already changed it; only seed default once from empty/default.
-          if (!prev || prev === DEFAULT_COMMUNICATIONS_FROM) return json.defaultFrom!;
+          if (!prev || prev === DEFAULT_COMMUNICATIONS_FROM || prev === defaultFrom) {
+            return json.defaultFrom!;
+          }
           return prev;
         });
       }
@@ -144,6 +165,103 @@ export default function AdminCommunicationsManager({
       setError(err instanceof Error ? err.message : "Failed to load campaigns");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadFromAddressSettings() {
+    if (!isMaster) return;
+    setFromSettingsBusy(true);
+    try {
+      const response = await fetch(
+        `/api/admin/communications/from-addresses?${orgQuery}&includeInactive=1`,
+        { cache: "no-store" },
+      );
+      const json = (await response.json()) as {
+        data?: FromAddressAdminRow[];
+        defaultFrom?: string | null;
+        error?: string;
+      };
+      if (!response.ok) throw new Error(json.error || "Failed to load From addresses");
+      setFromAdminRows(Array.isArray(json.data) ? json.data : []);
+      if (json.defaultFrom) setDefaultFrom(json.defaultFrom);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load From addresses");
+    } finally {
+      setFromSettingsBusy(false);
+    }
+  }
+
+  function resetFromForm() {
+    setFromEditId(null);
+    setFromFormHeader("");
+    setFromFormLabel("");
+    setFromFormDefault(false);
+    setFromFormActive(true);
+    setFromFormSort(String((fromAdminRows.reduce((m, r) => Math.max(m, r.sortOrder), 0) || 0) + 10));
+  }
+
+  function startEditFrom(row: FromAddressAdminRow) {
+    setFromEditId(row.id);
+    setFromFormHeader(row.fromHeader);
+    setFromFormLabel(row.label || "");
+    setFromFormDefault(row.isDefault);
+    setFromFormActive(row.isActive);
+    setFromFormSort(String(row.sortOrder));
+  }
+
+  async function saveFromAddress() {
+    if (!isMaster) return;
+    setFromSettingsBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = {
+        fromHeader: fromFormHeader,
+        label: fromFormLabel.trim() || null,
+        isDefault: fromFormDefault,
+        isActive: fromFormActive,
+        sortOrder: Number(fromFormSort) || 0,
+      };
+      const url = fromEditId
+        ? `/api/admin/communications/from-addresses/${fromEditId}?${orgQuery}`
+        : `/api/admin/communications/from-addresses?${orgQuery}`;
+      const response = await fetch(url, {
+        method: fromEditId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const json = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(json.error || "Save failed");
+      setNotice(fromEditId ? "From address updated." : "From address created.");
+      resetFromForm();
+      await loadFromAddressSettings();
+      await loadCampaigns();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save From address");
+    } finally {
+      setFromSettingsBusy(false);
+    }
+  }
+
+  async function deleteFromAddress(id: string) {
+    if (!isMaster) return;
+    if (!window.confirm("Delete this From address? Campaigns already sent are not affected.")) return;
+    setFromSettingsBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/communications/from-addresses/${id}?${orgQuery}`, {
+        method: "DELETE",
+      });
+      const json = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(json.error || "Delete failed");
+      setNotice("From address deleted.");
+      if (fromEditId === id) resetFromForm();
+      await loadFromAddressSettings();
+      await loadCampaigns();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete From address");
+    } finally {
+      setFromSettingsBusy(false);
     }
   }
 
@@ -220,7 +338,7 @@ export default function AdminCommunicationsManager({
       setTitle("");
       setSubject("");
       setBody("");
-      setFromEmail(fromOptions[0] || DEFAULT_COMMUNICATIONS_FROM);
+      setFromEmail(defaultFrom || fromOptions[0] || DEFAULT_COMMUNICATIONS_FROM);
       setRuleCoachingInterest(false);
       setCoachingInterestStatus("");
       await loadCampaigns();
@@ -298,6 +416,167 @@ export default function AdminCommunicationsManager({
       {error ? <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">{error}</div> : null}
       {notice ? <div className="rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-300">{notice}</div> : null}
 
+      {isMaster ? (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">From address settings</h2>
+              <p className="text-sm text-zinc-400 mt-1">
+                Master Admin only. Add, edit, or remove senders stored in the database.
+                Changes apply immediately on the next campaign create — no deploy.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="rounded-lg border border-zinc-600 px-3 py-1.5 text-sm hover:bg-zinc-800"
+              onClick={() => {
+                const next = !fromSettingsOpen;
+                setFromSettingsOpen(next);
+                if (next) {
+                  resetFromForm();
+                  void loadFromAddressSettings();
+                }
+              }}
+            >
+              {fromSettingsOpen ? "Hide settings" : "Manage From addresses"}
+            </button>
+          </div>
+
+          {fromSettingsOpen ? (
+            <div className="space-y-4">
+              <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-zinc-950/80 text-xs uppercase tracking-wide text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-2">From</th>
+                      <th className="px-3 py-2">Label</th>
+                      <th className="px-3 py-2">Flags</th>
+                      <th className="px-3 py-2">Order</th>
+                      <th className="px-3 py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {fromAdminRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-3 text-zinc-500">
+                          {fromSettingsBusy ? "Loading…" : "No rows yet."}
+                        </td>
+                      </tr>
+                    ) : (
+                      fromAdminRows.map((row) => (
+                        <tr key={row.id} className="border-t border-zinc-800">
+                          <td className="px-3 py-2 font-mono text-xs text-zinc-200">{row.fromHeader}</td>
+                          <td className="px-3 py-2 text-zinc-400">{row.label || "—"}</td>
+                          <td className="px-3 py-2 text-xs">
+                            {row.isDefault ? (
+                              <span className="mr-1 rounded border border-emerald-700 px-1.5 py-0.5 text-emerald-300">
+                                default
+                              </span>
+                            ) : null}
+                            {!row.isActive ? (
+                              <span className="rounded border border-zinc-600 px-1.5 py-0.5 text-zinc-400">
+                                inactive
+                              </span>
+                            ) : (
+                              <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-zinc-300">
+                                active
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-zinc-400">{row.sortOrder}</td>
+                          <td className="px-3 py-2 space-x-2">
+                            <button
+                              type="button"
+                              className="rounded border border-zinc-600 px-2 py-0.5 text-xs hover:bg-zinc-800"
+                              onClick={() => startEditFrom(row)}
+                              disabled={fromSettingsBusy}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-red-800 px-2 py-0.5 text-xs text-red-300 hover:bg-red-950/40"
+                              onClick={() => void deleteFromAddress(row.id)}
+                              disabled={fromSettingsBusy}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 space-y-3">
+                <p className="text-sm font-medium">
+                  {fromEditId ? "Edit From address" : "Add From address"}
+                </p>
+                <input
+                  value={fromFormHeader}
+                  onChange={(e) => setFromFormHeader(e.target.value)}
+                  placeholder='AP Baseball <noreply@apbaseball.com>'
+                  className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm font-mono"
+                />
+                <input
+                  value={fromFormLabel}
+                  onChange={(e) => setFromFormLabel(e.target.value)}
+                  placeholder="Short label (optional)"
+                  className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                />
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={fromFormDefault}
+                      onChange={(e) => setFromFormDefault(e.target.checked)}
+                    />
+                    Default sender
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={fromFormActive}
+                      onChange={(e) => setFromFormActive(e.target.checked)}
+                    />
+                    Active (shown in campaign dropdown)
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    Sort
+                    <input
+                      value={fromFormSort}
+                      onChange={(e) => setFromFormSort(e.target.value)}
+                      className="w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={fromSettingsBusy || !fromFormHeader.trim()}
+                    onClick={() => void saveFromAddress()}
+                    className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  >
+                    {fromSettingsBusy ? "Saving…" : fromEditId ? "Update" : "Create"}
+                  </button>
+                  {fromEditId ? (
+                    <button
+                      type="button"
+                      disabled={fromSettingsBusy}
+                      onClick={() => resetFromForm()}
+                      className="rounded-lg border border-zinc-600 px-4 py-2 text-sm"
+                    >
+                      Cancel edit
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Create campaign</h2>
         <p className="text-sm text-zinc-400">
@@ -326,17 +605,13 @@ export default function AdminCommunicationsManager({
             {fromOptions.map((option) => (
               <option key={option} value={option}>
                 {option}
-                {option === DEFAULT_COMMUNICATIONS_FROM || option === fromOptions[0]
-                  ? option === DEFAULT_COMMUNICATIONS_FROM
-                    ? " (default)"
-                    : ""
-                  : ""}
+                {option === defaultFrom ? " (default)" : ""}
               </option>
             ))}
           </select>
           <p className="mt-1 text-xs text-zinc-500">
-            Recipients see this sender. Default is AP Baseball &lt;noreply@apbaseball.com&gt;.
-            Extra addresses can be added via COMMUNICATIONS_EMAIL_FROM_OPTIONS.
+            Recipients see this sender. Master Admins manage the list under From address settings
+            (no redeploy required). Domain must stay verified in Resend.
           </p>
         </div>
         <textarea
@@ -483,7 +758,7 @@ export default function AdminCommunicationsManager({
                 </div>
                 <p className="text-xs text-zinc-400">
                   Scope: {formatOrganizationIdDisplay(campaign.organizationId)} · From:{" "}
-                  {campaign.fromEmail || DEFAULT_COMMUNICATIONS_FROM} · Audience: all rules (AND) · Channels:{" "}
+                  {campaign.fromEmail || defaultFrom} · Audience: all rules (AND) · Channels:{" "}
                   {campaign.channels.join(", ")}
                 </p>
                 <p className="text-xs text-zinc-500">

@@ -55,10 +55,14 @@ export async function GET(request: NextRequest) {
     },
     orderBy: { createdAt: "desc" },
   });
+  const [fromOptions, defaultFrom] = await Promise.all([
+    getAllowedFromAddresses(),
+    getDefaultFromAddress(),
+  ]);
   return NextResponse.json({
     data: campaigns,
-    fromOptions: getAllowedFromAddresses(),
-    defaultFrom: getDefaultFromAddress(),
+    fromOptions,
+    defaultFrom,
   });
 }
 
@@ -74,7 +78,7 @@ export async function POST(request: NextRequest) {
   }
   let fromEmail: string;
   try {
-    fromEmail = resolveFromAddress(body.fromEmail);
+    fromEmail = await resolveFromAddress(body.fromEmail);
   } catch (err: unknown) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Invalid from address" },
