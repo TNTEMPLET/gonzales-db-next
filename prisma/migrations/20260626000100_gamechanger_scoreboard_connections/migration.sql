@@ -1,4 +1,4 @@
-CREATE TYPE "GameChangerScoreboardSourceType" AS ENUM (LEAGUE, TOURNAMENT);
+CREATE TYPE "GameChangerScoreboardSourceType" AS ENUM ('LEAGUE', 'TOURNAMENT');
 
 CREATE TABLE "GameChangerScoreboardConnection" (
     "id" TEXT NOT NULL,
