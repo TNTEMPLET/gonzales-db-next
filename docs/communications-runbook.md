@@ -11,10 +11,15 @@
 
 ### Email (live now)
 
-- `RESEND_API_KEY` (required) — Vaultwarden: **`Resend API Key - apbaseball`**
-- `COMMUNICATIONS_EMAIL_FROM` (required; fallback: `RESEND_FROM_EMAIL`) — e.g. `AP Baseball <noreply@apbaseball.com>` (domain must be verified in Resend)
+- `RESEND_API_KEY` (required) — Vaultwarden: **`Resend API Key - apbaseball`** (item may be named `…apbasebaall`)
+- `COMMUNICATIONS_EMAIL_FROM` (optional default From) — default in code is **`AP Baseball <noreply@apbaseball.com>`** if unset
+- `COMMUNICATIONS_EMAIL_FROM_OPTIONS` (optional) — comma-separated extra From identities for the Communications dropdown (must use a Resend-verified domain)
 - `COMMUNICATIONS_UNSUBSCRIBE_SECRET` (required for signed unsubscribe tokens)
 - `NEXT_PUBLIC_APP_URL` (recommended for unsubscribe link absolute URL) — on admin: `https://admin.apbaseball.com`
+
+### From address (campaign picker)
+
+Campaigns store optional `fromEmail`. The Communications UI shows a **From** select (default **AP Baseball &lt;noreply@apbaseball.com&gt;**). Built-in options also include communications@, board@, and support@ on `apbaseball.com`. The server allowlists these plus env values; free-form From strings are rejected.
 
 Primary production surface: **Vercel project `apbaseball-admin`** (`SITE_ORG=master`).
 

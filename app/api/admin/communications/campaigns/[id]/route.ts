@@ -2,6 +2,7 @@ import type { CommunicationChannel } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCommunicationActor } from "@/lib/communications/authz";
+import { resolveFromAddress } from "@/lib/communications/fromAddresses";
 import { canSendForOrg } from "@/lib/communications/policy";
 import prisma from "@/lib/prisma";
 
@@ -9,6 +10,7 @@ type UpdateCampaignBody = {
   title?: string;
   messageSubject?: string | null;
   messageBody?: string;
+  fromEmail?: string | null;
   channels?: CommunicationChannel[];
   organizationId?: string | null;
   quietHoursStart?: number | null;
@@ -80,6 +82,18 @@ export async function PATCH(
     return NextResponse.json({ error: "Forbidden for selected audience scope" }, { status: 403 });
   }
 
+  let fromEmail = existing.fromEmail;
+  if (body.fromEmail !== undefined) {
+    try {
+      fromEmail = resolveFromAddress(body.fromEmail);
+    } catch (err: unknown) {
+      return NextResponse.json(
+        { error: err instanceof Error ? err.message : "Invalid from address" },
+        { status: 400 },
+      );
+    }
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
     const campaign = await tx.communicationCampaign.update({
       where: { id },
@@ -87,6 +101,7 @@ export async function PATCH(
         title: body.title?.trim() || existing.title,
         messageSubject: body.messageSubject === undefined ? existing.messageSubject : body.messageSubject?.trim() || null,
         messageBody: body.messageBody?.trim() || existing.messageBody,
+        fromEmail,
         channels: body.channels && body.channels.length > 0 ? body.channels : existing.channels,
         logicalMode: "AND",
         organizationId: requestedOrg,

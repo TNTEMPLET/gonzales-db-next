@@ -698,6 +698,8 @@ model CommunicationCampaign {
   title                     String
   messageSubject            String?
   messageBody               String
+  /// Resend From header, e.g. "AP Baseball <noreply@apbaseball.com>". Null = env/default.
+  fromEmail                 String?
   createdByAdminId          String?
   createdByRegisteredUserId String?
   sendAt                    DateTime?
