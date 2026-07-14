@@ -22,7 +22,11 @@ export function getAssignrSiteId(org?: ContentOrgId) {
 }
 
 export function getAssignrLeagueIdForOrg(org: ContentOrgId) {
-  return getSiteConfigForOrg(org).assignrLeagueId || process.env.ASSIGNR_LEAGUE_ID || "";
+  const fromOrg = (getSiteConfigForOrg(org).assignrLeagueId ?? "").trim();
+  if (fromOrg) return fromOrg;
+  // Fall Ball must not inherit a shared ASSIGNR_LEAGUE_ID from spring deploys.
+  if (org === "fallball") return "";
+  return (process.env.ASSIGNR_LEAGUE_ID ?? "").trim();
 }
 
 export function getAssignrSiteIdForCurrentDeployment() {

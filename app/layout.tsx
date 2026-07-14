@@ -29,6 +29,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   const brand = {
+    orgId: site.orgId,
     tournamentOnly: isTournamentOnlyDeployment(),
     name: site.name,
     shortName: site.shortName,
