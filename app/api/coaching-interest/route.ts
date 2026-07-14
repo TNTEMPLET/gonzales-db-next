@@ -78,40 +78,67 @@ export async function POST(request: NextRequest) {
   }
   if (errors.length) return NextResponse.json({ errors }, { status: 400 });
 
-  const submission = await prisma.coachingInterestSubmission.upsert({
-    where: {
-      organizationId_email: {
-        organizationId,
-        email,
+  if (!process.env.DATABASE_URL?.trim()) {
+    console.error("coaching-interest: DATABASE_URL is not set");
+    return NextResponse.json(
+      {
+        error:
+          "Database is not configured for this site. Please contact the league administrator.",
       },
-    },
-    create: {
-      organizationId,
-      firstName,
-      lastName,
-      email,
-      cellPhone,
-      interestedDivision,
-      rolePreference: rolePreference(body.rolePreference),
-      hasCoachedBefore,
-      priorDivision,
-      notes,
-    },
-    update: {
-      firstName,
-      lastName,
-      cellPhone,
-      interestedDivision,
-      rolePreference: rolePreference(body.rolePreference),
-      hasCoachedBefore,
-      priorDivision,
-      notes,
-    },
-    select: {
-      id: true,
-      status: true,
-    },
-  });
+      { status: 503 },
+    );
+  }
 
-  return NextResponse.json({ data: submission });
+  try {
+    const submission = await prisma.coachingInterestSubmission.upsert({
+      where: {
+        organizationId_email: {
+          organizationId,
+          email,
+        },
+      },
+      create: {
+        organizationId,
+        firstName,
+        lastName,
+        email,
+        cellPhone,
+        interestedDivision,
+        rolePreference: rolePreference(body.rolePreference),
+        hasCoachedBefore,
+        priorDivision,
+        notes,
+      },
+      update: {
+        firstName,
+        lastName,
+        cellPhone,
+        interestedDivision,
+        rolePreference: rolePreference(body.rolePreference),
+        hasCoachedBefore,
+        priorDivision,
+        notes,
+      },
+      select: {
+        id: true,
+        status: true,
+      },
+    });
+
+    return NextResponse.json({ data: submission });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("coaching-interest upsert failed", message);
+    const looksLikeDb = /database|prisma|can.?t reach|P1001|P1013|P2021|connect|server at/i.test(
+      message,
+    );
+    return NextResponse.json(
+      {
+        error: looksLikeDb
+          ? "We could not save your interest right now (database unavailable). Please try again in a few minutes or email the league."
+          : "Unable to save coaching interest. Please try again.",
+      },
+      { status: 500 },
+    );
+  }
 }
