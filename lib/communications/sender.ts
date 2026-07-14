@@ -2,6 +2,7 @@ import type { CommunicationCampaign, CommunicationDeliveryStatus } from "@prisma
 
 import prisma from "@/lib/prisma";
 
+import { resolveFromAddress } from "./fromAddresses";
 import { sendEmailViaResend } from "./providers/resend";
 import { createUnsubscribeToken } from "./unsubscribeToken";
 
@@ -17,6 +18,8 @@ export async function sendCampaignEmails(campaign: CommunicationCampaign) {
     where: { campaignId: campaign.id },
     orderBy: { createdAt: "asc" },
   });
+
+  const fromAddress = resolveFromAddress(campaign.fromEmail);
 
   let sent = 0;
   let failed = 0;
@@ -85,6 +88,7 @@ export async function sendCampaignEmails(campaign: CommunicationCampaign) {
         subject: campaign.messageSubject || campaign.title,
         html,
         text: campaign.messageBody,
+        from: fromAddress,
       });
       sent += 1;
       await prisma.communicationDelivery.create({

@@ -1,8 +1,13 @@
 import type { CommunicationChannel } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
-import { canSendForOrg } from "@/lib/communications/policy";
 import { resolveCommunicationActor } from "@/lib/communications/authz";
+import {
+  getAllowedFromAddresses,
+  getDefaultFromAddress,
+  resolveFromAddress,
+} from "@/lib/communications/fromAddresses";
+import { canSendForOrg } from "@/lib/communications/policy";
 import { EXPLICIT_USERS_MAX } from "@/lib/communications/types";
 import prisma from "@/lib/prisma";
 
@@ -10,6 +15,8 @@ type CreateCampaignBody = {
   title?: string;
   messageSubject?: string | null;
   messageBody?: string;
+  /** Full From header; defaults to AP Baseball noreply. */
+  fromEmail?: string | null;
   channels?: CommunicationChannel[];
   organizationId?: string | null;
   quietHoursStart?: number | null;
@@ -48,7 +55,11 @@ export async function GET(request: NextRequest) {
     },
     orderBy: { createdAt: "desc" },
   });
-  return NextResponse.json({ data: campaigns });
+  return NextResponse.json({
+    data: campaigns,
+    fromOptions: getAllowedFromAddresses(),
+    defaultFrom: getDefaultFromAddress(),
+  });
 }
 
 export async function POST(request: NextRequest) {
@@ -60,6 +71,15 @@ export async function POST(request: NextRequest) {
   const messageBody = body.messageBody?.trim() || "";
   if (!title || !messageBody) {
     return NextResponse.json({ error: "title and messageBody are required" }, { status: 400 });
+  }
+  let fromEmail: string;
+  try {
+    fromEmail = resolveFromAddress(body.fromEmail);
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Invalid from address" },
+      { status: 400 },
+    );
   }
   const channels: CommunicationChannel[] =
     Array.isArray(body.channels) && body.channels.length > 0 ? body.channels : ["EMAIL"];
@@ -112,6 +132,7 @@ export async function POST(request: NextRequest) {
       title,
       messageSubject: body.messageSubject?.trim() || null,
       messageBody,
+      fromEmail,
       quietHoursStart:
         typeof body.quietHoursStart === "number" ? Math.max(0, Math.min(23, body.quietHoursStart)) : null,
       quietHoursEnd:

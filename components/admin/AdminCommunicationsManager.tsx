@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { getClientFromAddressOptions, DEFAULT_COMMUNICATIONS_FROM } from "@/lib/communications/fromAddresses";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
@@ -24,6 +25,7 @@ type Campaign = {
   title: string;
   messageSubject: string | null;
   messageBody: string;
+  fromEmail?: string | null;
   sendAt: string | null;
   quietHoursStart: number | null;
   quietHoursEnd: number | null;
@@ -65,6 +67,8 @@ export default function AdminCommunicationsManager({
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
   const [body, setBody] = useState("");
+  const [fromOptions, setFromOptions] = useState<string[]>(() => getClientFromAddressOptions());
+  const [fromEmail, setFromEmail] = useState(DEFAULT_COMMUNICATIONS_FROM);
   const [scope, setScope] = useState<"ORG" | "GLOBAL">("ORG");
   const [quietStart, setQuietStart] = useState("");
   const [quietEnd, setQuietEnd] = useState("");
@@ -118,9 +122,24 @@ export default function AdminCommunicationsManager({
       const response = await fetch(`/api/admin/communications/campaigns?${orgQuery}&includeGlobal=1`, {
         cache: "no-store",
       });
-      const json = (await response.json()) as { data?: Campaign[]; error?: string };
+      const json = (await response.json()) as {
+        data?: Campaign[];
+        error?: string;
+        fromOptions?: string[];
+        defaultFrom?: string;
+      };
       if (!response.ok) throw new Error(json.error || "Failed to load campaigns");
       setCampaigns(Array.isArray(json.data) ? json.data : []);
+      if (Array.isArray(json.fromOptions) && json.fromOptions.length > 0) {
+        setFromOptions(json.fromOptions);
+      }
+      if (json.defaultFrom?.trim()) {
+        setFromEmail((prev) => {
+          // Keep user selection if they already changed it; only seed default once from empty/default.
+          if (!prev || prev === DEFAULT_COMMUNICATIONS_FROM) return json.defaultFrom!;
+          return prev;
+        });
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to load campaigns");
     } finally {
@@ -187,6 +206,7 @@ export default function AdminCommunicationsManager({
           title,
           messageSubject: subject || null,
           messageBody: body,
+          fromEmail,
           channels: ["EMAIL"],
           organizationId: scope === "GLOBAL" ? null : targetOrg,
           quietHoursStart: quietStart ? Number(quietStart) : null,
@@ -200,6 +220,7 @@ export default function AdminCommunicationsManager({
       setTitle("");
       setSubject("");
       setBody("");
+      setFromEmail(fromOptions[0] || DEFAULT_COMMUNICATIONS_FROM);
       setRuleCoachingInterest(false);
       setCoachingInterestStatus("");
       await loadCampaigns();
@@ -295,6 +316,29 @@ export default function AdminCommunicationsManager({
           placeholder="Email subject (optional)"
           className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
         />
+        <div>
+          <label className="text-xs text-zinc-500">From address</label>
+          <select
+            value={fromEmail}
+            onChange={(e) => setFromEmail(e.target.value)}
+            className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+          >
+            {fromOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+                {option === DEFAULT_COMMUNICATIONS_FROM || option === fromOptions[0]
+                  ? option === DEFAULT_COMMUNICATIONS_FROM
+                    ? " (default)"
+                    : ""
+                  : ""}
+              </option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-zinc-500">
+            Recipients see this sender. Default is AP Baseball &lt;noreply@apbaseball.com&gt;.
+            Extra addresses can be added via COMMUNICATIONS_EMAIL_FROM_OPTIONS.
+          </p>
+        </div>
         <textarea
           value={body}
           onChange={(e) => setBody(e.target.value)}
@@ -438,7 +482,9 @@ export default function AdminCommunicationsManager({
                   </span>
                 </div>
                 <p className="text-xs text-zinc-400">
-                  Scope: {formatOrganizationIdDisplay(campaign.organizationId)} · Audience: all rules (AND) · Channels: {campaign.channels.join(", ")}
+                  Scope: {formatOrganizationIdDisplay(campaign.organizationId)} · From:{" "}
+                  {campaign.fromEmail || DEFAULT_COMMUNICATIONS_FROM} · Audience: all rules (AND) · Channels:{" "}
+                  {campaign.channels.join(", ")}
                 </p>
                 <p className="text-xs text-zinc-500">
                   Snapshots: {campaign._count?.recipientSnapshots ?? 0} · Deliveries: {campaign._count?.deliveries ?? 0}
