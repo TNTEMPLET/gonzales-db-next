@@ -1,4 +1,4 @@
-import { getDefaultFromAddress } from "@/lib/communications/fromAddresses";
+import { DEFAULT_COMMUNICATIONS_FROM } from "@/lib/communications/fromAddresses";
 
 export async function sendEmailViaResend(input: {
   to: string;
@@ -9,7 +9,12 @@ export async function sendEmailViaResend(input: {
   from?: string | null;
 }) {
   const apiKey = process.env.RESEND_API_KEY;
-  const from = (input.from?.trim() || getDefaultFromAddress()).trim();
+  const from = (
+    input.from?.trim() ||
+    process.env.COMMUNICATIONS_EMAIL_FROM?.trim() ||
+    process.env.RESEND_FROM_EMAIL?.trim() ||
+    DEFAULT_COMMUNICATIONS_FROM
+  ).trim();
   if (!apiKey || !from) {
     throw new Error("Missing RESEND_API_KEY or COMMUNICATIONS_EMAIL_FROM");
   }

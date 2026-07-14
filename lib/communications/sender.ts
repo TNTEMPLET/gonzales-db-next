@@ -19,7 +19,7 @@ export async function sendCampaignEmails(campaign: CommunicationCampaign) {
     orderBy: { createdAt: "asc" },
   });
 
-  const fromAddress = resolveFromAddress(campaign.fromEmail);
+  const fromAddress = await resolveFromAddress(campaign.fromEmail);
 
   let sent = 0;
   let failed = 0;
