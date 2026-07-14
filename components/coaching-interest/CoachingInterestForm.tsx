@@ -67,9 +67,31 @@ export default function CoachingInterestForm() {
           notes: form.notes,
         }),
       });
-      const json = (await response.json()) as { error?: string; errors?: string[] };
+      const raw = await response.text();
+      let json: { error?: string; errors?: string[] } = {};
+      if (raw) {
+        try {
+          json = JSON.parse(raw) as { error?: string; errors?: string[] };
+        } catch {
+          setErrors([
+            `Server returned a non-JSON response (${response.status}). Please try again or contact the league.`,
+          ]);
+          return;
+        }
+      } else if (!response.ok) {
+        setErrors([
+          response.status >= 500
+            ? "Server error while saving. The site database may be misconfigured — please email the league or try again shortly."
+            : `Unable to submit coaching interest (HTTP ${response.status}).`,
+        ]);
+        return;
+      }
       if (!response.ok) {
-        setErrors(json.errors?.length ? json.errors : [json.error || "Unable to submit coaching interest."]);
+        setErrors(
+          json.errors?.length
+            ? json.errors
+            : [json.error || "Unable to submit coaching interest."],
+        );
         return;
       }
       setSubmitted(true);
