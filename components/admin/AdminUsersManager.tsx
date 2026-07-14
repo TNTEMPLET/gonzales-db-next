@@ -298,11 +298,25 @@ export default function AdminUsersManager({
     DuplicateCandidateRow[]
   >([]);
   const [duplicatePendingFilter, setDuplicatePendingFilter] = useState(false);
+  /** Multi-select for bulk email (Communications EXPLICIT_USERS). */
+  const [selectedUserIds, setSelectedUserIds] = useState<Set<string>>(
+    () => new Set(),
+  );
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
+  const [emailTitle, setEmailTitle] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailBody, setEmailBody] = useState("");
+  const [emailBusy, setEmailBusy] = useState(false);
 
   useEffect(() => {
     void loadData();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetOrg, logPage, logPageSize, logQuery, logFromDate, logToDate]);
+
+  useEffect(() => {
+    setSelectedUserIds(new Set());
+    setEmailModalOpen(false);
+  }, [targetOrg]);
 
   const registeredOnlyUsers = useMemo(
     () => registeredUsers.filter((user) => !user.isAdmin && !user.isCoach),
@@ -908,6 +922,91 @@ export default function AdminUsersManager({
     }
   }
 
+  async function sendEmailToSelectedUsers() {
+    const ids = Array.from(selectedUserIds);
+    if (ids.length === 0) return;
+    if (ids.length > 500) {
+      setError("Too many recipients (max 500). Clear selection and try fewer users.");
+      return;
+    }
+    const title =
+      emailTitle.trim() || `Users email ${new Date().toISOString().slice(0, 10)}`;
+    const body = emailBody.trim();
+    if (!body) {
+      setError("Message body is required.");
+      return;
+    }
+    if (currentAdminIsMaster) {
+      const ok = window.confirm(
+        `Send email to ${ids.length} selected user(s) in ${targetOrg} now?\n\nSubject: ${emailSubject.trim() || title}\n\nThis cannot be undone.`,
+      );
+      if (!ok) return;
+    }
+
+    setEmailBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const createRes = await fetch(`/api/admin/communications/campaigns?${orgQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          title,
+          messageSubject: emailSubject.trim() || null,
+          messageBody: body,
+          channels: ["EMAIL"],
+          organizationId: targetOrg,
+          registeredUserIds: ids,
+        }),
+      });
+      const createJson = (await createRes.json()) as {
+        error?: string;
+        data?: { id: string };
+      };
+      if (!createRes.ok || !createJson.data?.id) {
+        throw new Error(createJson.error || "Failed to create campaign");
+      }
+      const campaignId = createJson.data.id;
+
+      if (currentAdminIsMaster) {
+        const sendRes = await fetch(
+          `/api/admin/communications/campaigns/${campaignId}/send-now?${orgQuery}`,
+          { method: "POST" },
+        );
+        const sendJson = (await sendRes.json()) as {
+          error?: string;
+          result?: { sent: number; failed: number };
+        };
+        if (!sendRes.ok) throw new Error(sendJson.error || "Send failed");
+        setNotice(
+          `Email sent. Delivered ${sendJson.result?.sent ?? 0}; failed ${sendJson.result?.failed ?? 0}.`,
+        );
+      } else {
+        const subRes = await fetch(
+          `/api/admin/communications/campaigns/${campaignId}/submit-approval?${orgQuery}`,
+          { method: "POST" },
+        );
+        const subJson = (await subRes.json()) as {
+          error?: string;
+          recipients?: number;
+        };
+        if (!subRes.ok) throw new Error(subJson.error || "Submit for approval failed");
+        setNotice(
+          `Campaign created and submitted for approval (${subJson.recipients ?? ids.length} recipients). Open Communications to track it.`,
+        );
+      }
+      setEmailModalOpen(false);
+      setSelectedUserIds(new Set());
+      setEmailTitle("");
+      setEmailSubject("");
+      setEmailBody("");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to email selected users");
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
   async function confirmAndRunAction() {
     if (!confirmAction) return;
 
@@ -1122,6 +1221,49 @@ export default function AdminUsersManager({
             className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
           />
 
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              disabled={busy || paginatedRegisteredUsers.length === 0}
+              onClick={() => {
+                setSelectedUserIds((prev) => {
+                  const next = new Set(prev);
+                  for (const u of paginatedRegisteredUsers) {
+                    if (!u.isBlocked) next.add(u.id);
+                  }
+                  return next;
+                });
+              }}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800 disabled:opacity-60"
+            >
+              Select page
+            </button>
+            <button
+              type="button"
+              disabled={busy || selectedUserIds.size === 0}
+              onClick={() => setSelectedUserIds(new Set())}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs hover:bg-zinc-800 disabled:opacity-60"
+            >
+              Clear selection
+            </button>
+            <button
+              type="button"
+              disabled={busy || selectedUserIds.size === 0}
+              onClick={() => {
+                setEmailTitle("");
+                setEmailSubject("");
+                setEmailBody("");
+                setEmailModalOpen(true);
+              }}
+              className="rounded-lg border border-brand-purple bg-brand-purple/20 text-brand-purple-light px-3 py-1.5 text-xs font-semibold hover:bg-brand-purple/30 disabled:opacity-60"
+            >
+              Email selected ({selectedUserIds.size})
+            </button>
+            <span className="text-xs text-zinc-500">
+              Max 500 recipients per send. Uses Communications (Resend).
+            </span>
+          </div>
+
           <div className="max-h-80 overflow-auto rounded-lg border border-zinc-800">
             {filteredRegisteredUsers.length === 0 ? (
               <p className="text-zinc-500 text-sm p-3">
@@ -1133,7 +1275,22 @@ export default function AdminUsersManager({
                   key={user.id}
                   className="flex items-center justify-between gap-3 px-3 py-3 border-b border-zinc-800 last:border-b-0"
                 >
-                  <div className="flex-1 min-w-0">
+                  <label className="flex items-start gap-2 flex-1 min-w-0 cursor-pointer">
+                    <input
+                      type="checkbox"
+                      className="mt-1 rounded border-zinc-600"
+                      disabled={user.isBlocked}
+                      checked={selectedUserIds.has(user.id)}
+                      onChange={(event) => {
+                        setSelectedUserIds((prev) => {
+                          const next = new Set(prev);
+                          if (event.target.checked) next.add(user.id);
+                          else next.delete(user.id);
+                          return next;
+                        });
+                      }}
+                    />
+                    <div className="flex-1 min-w-0">
                     <p className="text-sm font-medium">
                       {user.firstName || user.lastName
                         ? [user.firstName, user.lastName]
@@ -1153,7 +1310,8 @@ export default function AdminUsersManager({
                     {user.isBlocked && (
                       <p className="text-xs text-red-400 mt-1">🚫 Blocked</p>
                     )}
-                  </div>
+                    </div>
+                  </label>
                   <div className="flex items-center gap-1.5 flex-wrap justify-end">
                     <button
                       type="button"
@@ -2190,6 +2348,66 @@ export default function AdminUsersManager({
                 className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
               >
                 {assignmentBusy ? "Saving…" : "Save"}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {emailModalOpen ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 shadow-xl">
+            <div>
+              <h3 className="text-lg font-semibold">Email selected users</h3>
+              <p className="text-sm text-zinc-400 mt-1">
+                {selectedUserIds.size} recipient(s) in {targetOrg}. Creates a
+                Communications campaign with an explicit audience.
+                {currentAdminIsMaster
+                  ? " As Master Admin you can send immediately after create."
+                  : " You will submit for Board Member+ approval before send."}
+              </p>
+            </div>
+            <input
+              value={emailTitle}
+              onChange={(e) => setEmailTitle(e.target.value)}
+              placeholder="Campaign title (internal)"
+              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+            />
+            <input
+              value={emailSubject}
+              onChange={(e) => setEmailSubject(e.target.value)}
+              placeholder="Email subject"
+              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+            />
+            <textarea
+              value={emailBody}
+              onChange={(e) => setEmailBody(e.target.value)}
+              rows={8}
+              placeholder="Message body"
+              className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+            />
+            <div className="flex flex-wrap justify-end gap-2">
+              <button
+                type="button"
+                disabled={emailBusy}
+                onClick={() => setEmailModalOpen(false)}
+                className="rounded-lg border border-zinc-700 px-4 py-2 text-sm disabled:opacity-60"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={
+                  emailBusy || !emailBody.trim() || selectedUserIds.size === 0
+                }
+                onClick={() => void sendEmailToSelectedUsers()}
+                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+              >
+                {emailBusy
+                  ? "Working…"
+                  : currentAdminIsMaster
+                    ? `Create & send now (${selectedUserIds.size})`
+                    : `Create & submit for approval (${selectedUserIds.size})`}
               </button>
             </div>
           </div>

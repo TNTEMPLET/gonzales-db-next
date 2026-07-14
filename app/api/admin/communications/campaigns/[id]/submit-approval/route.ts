@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCommunicationActor } from "@/lib/communications/authz";
 import { canSendForOrg } from "@/lib/communications/policy";
-import { resolveAudienceRecipients } from "@/lib/communications/resolver";
+import { snapshotCampaignAudience } from "@/lib/communications/snapshotAudience";
 import prisma from "@/lib/prisma";
 
 export async function POST(
@@ -15,39 +15,15 @@ export async function POST(
 
   const campaign = await prisma.communicationCampaign.findUnique({
     where: { id },
-    include: { audienceRules: true },
   });
   if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   if (!canSendForOrg(actor.role, campaign.organizationId, actor.targetOrg)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const resolved = await resolveAudienceRecipients({
-    rules: campaign.audienceRules.map((rule) => ({
-      ruleType: rule.ruleType,
-      organizationId: rule.organizationId,
-      adminRole: rule.adminRole,
-      coachingInterestStatus: rule.coachingInterestStatus,
-    })),
-    logicalMode: campaign.logicalMode,
-  });
+  const snap = await snapshotCampaignAudience(campaign.id);
 
   await prisma.$transaction(async (tx) => {
-    await tx.communicationRecipientSnapshot.deleteMany({ where: { campaignId: campaign.id } });
-    if (resolved.recipients.length > 0) {
-      await tx.communicationRecipientSnapshot.createMany({
-        data: resolved.recipients.map((row) => ({
-          campaignId: campaign.id,
-          recipientType: row.recipientType,
-          registeredUserId: row.registeredUserId,
-          adminUserId: row.adminUserId,
-          email: row.email,
-          phone: row.phone,
-          matchReasons: row.matchReasons,
-        })),
-      });
-    }
-
     await tx.communicationApproval.create({
       data: {
         campaignId: campaign.id,
@@ -61,5 +37,5 @@ export async function POST(
     });
   });
 
-  return NextResponse.json({ success: true, recipients: resolved.total });
+  return NextResponse.json({ success: true, recipients: snap.total });
 }

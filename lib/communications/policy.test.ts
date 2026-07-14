@@ -1,4 +1,10 @@
-import { canApproveCampaign, canSendForOrg, isWithinQuietHours } from "@/lib/communications/policy";
+import {
+  canApproveCampaign,
+  canMasterBypassApproval,
+  canSendForOrg,
+  canSendNowWithoutApproval,
+  isWithinQuietHours,
+} from "@/lib/communications/policy";
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
@@ -8,6 +14,14 @@ export function runCommunicationsPolicySmokeTests() {
   assert(canSendForOrg("ADMIN", "ascension", "ascension"), "admin should send for own org");
   assert(!canSendForOrg("ADMIN", "gonzales", "ascension"), "org admin cannot send cross-org");
   assert(canSendForOrg("MASTER_ADMIN", null, "ascension"), "master should send globally");
+
+  assert(canMasterBypassApproval("MASTER_ADMIN"), "master may bypass approval");
+  assert(!canMasterBypassApproval("ADMIN"), "org admin may not bypass approval");
+  assert(canSendNowWithoutApproval("MASTER_ADMIN", "DRAFT"), "master can send draft");
+  assert(canSendNowWithoutApproval("MASTER_ADMIN", "PENDING_APPROVAL"), "master can send pending");
+  assert(!canSendNowWithoutApproval("ADMIN", "DRAFT"), "admin cannot send draft");
+  assert(canSendNowWithoutApproval("ADMIN", "APPROVED"), "admin can send approved");
+  assert(!canSendNowWithoutApproval("MASTER_ADMIN", "SENT"), "cannot re-send sent campaign");
 
   assert(
     canApproveCampaign({

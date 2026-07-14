@@ -11,10 +11,12 @@
 
 ### Email (live now)
 
-- `RESEND_API_KEY` (required)
-- `COMMUNICATIONS_EMAIL_FROM` (required; fallback: `RESEND_FROM_EMAIL`)
+- `RESEND_API_KEY` (required) — Vaultwarden: **`Resend API Key - apbaseball`**
+- `COMMUNICATIONS_EMAIL_FROM` (required; fallback: `RESEND_FROM_EMAIL`) — e.g. `AP Baseball <noreply@apbaseball.com>` (domain must be verified in Resend)
 - `COMMUNICATIONS_UNSUBSCRIBE_SECRET` (required for signed unsubscribe tokens)
-- `NEXT_PUBLIC_APP_URL` (recommended for unsubscribe link absolute URL)
+- `NEXT_PUBLIC_APP_URL` (recommended for unsubscribe link absolute URL) — on admin: `https://admin.apbaseball.com`
+
+Primary production surface: **Vercel project `apbaseball-admin`** (`SITE_ORG=master`).
 
 ### SMS (foundation only in MVP)
 
@@ -24,12 +26,12 @@
 
 ## Operational workflow
 
-1. Create campaign draft in `/admin/communications`.
+1. Create campaign draft in `/admin/communications` **or** multi-select users on `/admin/users` → **Email selected**.
 2. Set audience rules (always combined with **`AND`**) and preview recipients.
-3. Submit campaign for approval.
-4. Board Member+ (not campaign creator) approves/rejects.
-5. Send immediately or schedule for dispatch.
-6. Cron or manual trigger can call `POST /api/admin/communications/dispatch-due`.
+   - Rule types: `ALL_USERS`, `ORGANIZATION`, `ALL_COACHES`, `ORGANIZATION_COACHES`, `COACHING_INTEREST`, `ADMIN_ROLE`, **`EXPLICIT_USERS`** (Users-page selection; max 500).
+3. **Master Admin:** Preview → **Send now** (no second approver; confirm dialog shows count).
+4. **Other admins:** Submit for approval → Board Member+ (not campaign creator) approves/rejects → Send now or schedule.
+5. Cron or manual trigger can call `POST /api/admin/communications/dispatch-due` for scheduled campaigns.
 
 ## Quiet hours behavior
 

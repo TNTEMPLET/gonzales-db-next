@@ -153,6 +153,7 @@ enum CommunicationAudienceRuleType {
   ORGANIZATION_COACHES
   COACHING_INTEREST
   ADMIN_ROLE
+  EXPLICIT_USERS
 }
 
 enum CommunicationRecipientType {
@@ -720,13 +721,15 @@ model CommunicationCampaign {
 }
 
 model CommunicationAudienceRule {
-  id                     String                        @id @default(cuid())
-  campaignId             String
-  ruleType               CommunicationAudienceRuleType
-  organizationId         String?
-  adminRole              AdminRole?
-  coachingInterestStatus CoachingInterestStatus?
-  createdAt              DateTime                      @default(now())
+  id                        String                        @id @default(cuid())
+  campaignId                String
+  ruleType                  CommunicationAudienceRuleType
+  organizationId            String?
+  adminRole                 AdminRole?
+  coachingInterestStatus    CoachingInterestStatus?
+  /// RegisteredUser ids when ruleType is EXPLICIT_USERS (Users-page multi-select).
+  explicitRegisteredUserIds String[]                      @default([])
+  createdAt                 DateTime                      @default(now())
 
   campaign CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
 
