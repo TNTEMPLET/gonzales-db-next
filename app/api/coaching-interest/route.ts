@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
+import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import { getDefaultContentOrg } from "@/lib/siteConfig";
 
 type CoachingInterestBody = {
@@ -43,9 +44,9 @@ function rolePreference(value: unknown): "HEAD_COACH" | "ASSISTANT_COACH" | "EIT
 
 export async function POST(request: NextRequest) {
   const organizationId = getDefaultContentOrg();
-  if (organizationId !== "fallball") {
+  if (!isCoachingInterestEnabled(organizationId)) {
     return NextResponse.json(
-      { error: "Coaching interest is only available for Fall Ball right now." },
+      { error: "Coaching interest is not enabled for this site." },
       { status: 404 },
     );
   }

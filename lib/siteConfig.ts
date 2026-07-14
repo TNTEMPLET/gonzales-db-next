@@ -1,3 +1,8 @@
+import {
+  isAdminModuleEnabledInCapabilities,
+  isPublicNavEnabledInCapabilities,
+} from "@/lib/org/capabilities";
+
 export type OrgId =
   | "gonzales"
   | "ascension"
@@ -88,7 +93,8 @@ const configs: Record<OrgId, SiteConfig> = {
     description:
       "Fall Ball registration, teams, schedules, and league operations managed by AP Baseball.",
     siteUrl: "https://fallball.apbaseball.com",
-    logoPath: "/images/fallball-ap-baseball-logo.png",
+    // Web-optimized (640w); Header falls back to .png if webp fails.
+    logoPath: "/images/fallball-ap-baseball-logo.webp",
     faviconPath: "/images/ap-logo.png",
     colorPrimary: "#cc0000",
     colorPrimaryDark: "#9b0000",
@@ -303,11 +309,24 @@ export function formatOrganizationIdDisplay(org: string | null | undefined): str
   return org.trim().toUpperCase();
 }
 
+/**
+ * Assignr league id for an org or this deployment.
+ * Never invents a Gonzales/default league for Fall Ball (empty stays empty).
+ */
 export function getAssignrLeagueId(org?: ContentOrgId): string {
-  if (org) {
-    return getSiteConfigForOrg(org).assignrLeagueId || "515712";
-  }
-  return getSiteConfig().assignrLeagueId || "515712";
+  const cfg = org ? getSiteConfigForOrg(org) : getSiteConfig();
+  const id = (cfg.assignrLeagueId ?? "").trim();
+  if (id) return id;
+  // Fall Ball has no Assignr yet — do not fall back to DYB league 515712.
+  if (cfg.orgId === "fallball" || org === "fallball") return "";
+  // Legacy spring defaults when config/env left blank.
+  if (cfg.orgId === "ascension" || org === "ascension") return "430676";
+  return "515712";
+}
+
+/** True when this org/deployment has a non-empty Assignr league id. */
+export function hasAssignrLeagueId(org?: ContentOrgId): boolean {
+  return getAssignrLeagueId(org).length > 0;
 }
 
 /** Full league orgs — used by master admin for all-star, news, registration, scores, etc. */
@@ -342,33 +361,18 @@ export function getCanonicalBallotOriginForOrganizationId(organizationId: string
   return stripTrailingSlash(configs.master.siteUrl);
 }
 
-const FALLBALL_DISABLED_ADMIN_MODULES = new Set([
-  "ALL_STAR_VAULT",
-  "ALL_STAR_PAYMENTS",
-  "SPONSORS",
-  "TOURNAMENT_BRACKETS",
-]);
-
-const FALLBALL_DISABLED_PUBLIC_NAV = new Set(["all-stars", "tournaments"]);
-
 export function isAdminModuleEnabledForOrg(
   org: ContentOrgId | null | undefined,
   module: string,
 ): boolean {
-  if (org === "fallball" && FALLBALL_DISABLED_ADMIN_MODULES.has(module)) {
-    return false;
-  }
-  return true;
+  return isAdminModuleEnabledInCapabilities(org, module);
 }
 
 export function isPublicNavEnabledForOrg(
   org: OrgId | string | null | undefined,
   navKey: string,
 ): boolean {
-  if (org === "fallball" && FALLBALL_DISABLED_PUBLIC_NAV.has(navKey)) {
-    return false;
-  }
-  return true;
+  return isPublicNavEnabledInCapabilities(org, navKey);
 }
 
 /** Skip cross-domain ballot redirect (local dev / Vercel preview). */

@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import CoachingInterestForm from "@/components/coaching-interest/CoachingInterestForm";
+import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import { getDefaultContentOrg, getSiteConfig } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -16,7 +17,7 @@ export default function CoachingInterestPage() {
   const site = getSiteConfig();
   const org = getDefaultContentOrg();
 
-  if (org !== "fallball") redirect("/");
+  if (!isCoachingInterestEnabled(org)) redirect("/");
 
   return (
     <main className="min-h-screen bg-gradient-to-b from-zinc-50 via-white to-zinc-100 text-zinc-950">

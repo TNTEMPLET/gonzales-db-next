@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
+import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 const STATUSES = new Set(["NEW", "CONTACTED", "NOT_INTERESTED", "CONVERTED", "ARCHIVED"]);
@@ -62,6 +63,9 @@ function toCsv(rows: Awaited<ReturnType<typeof listSubmissions>>) {
 
 async function listSubmissions(request: NextRequest) {
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
+  if (!isCoachingInterestEnabled(targetOrg)) {
+    return NextResponse.json({ error: "Coaching interest is not enabled for this organization." }, { status: 404 });
+  }
   const status = enumValue<CoachingInterestStatus>(
     request.nextUrl.searchParams.get("status"),
     STATUSES,
@@ -129,6 +133,9 @@ export async function PATCH(request: NextRequest) {
   }
 
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
+  if (!isCoachingInterestEnabled(targetOrg)) {
+    return NextResponse.json({ error: "Coaching interest is not enabled for this organization." }, { status: 404 });
+  }
   const body = (await request.json()) as {
     id?: string;
     status?: CoachingInterestStatus;

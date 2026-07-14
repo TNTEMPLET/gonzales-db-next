@@ -6,6 +6,7 @@ import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -38,6 +39,9 @@ export default async function AdminCoachingInterestPage({
   );
   const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
   if (!canAccessAdminModule(role, "TEAMS")) {
+    redirect("/admin?denied=coaching-interest");
+  }
+  if (!isCoachingInterestEnabled(currentOrg)) {
     redirect("/admin?denied=coaching-interest");
   }
 
