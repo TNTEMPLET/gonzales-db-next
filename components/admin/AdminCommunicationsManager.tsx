@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
+import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 
 type Campaign = {
   id: string;
@@ -78,7 +79,7 @@ export default function AdminCommunicationsManager({
   >("");
   const [roleRule, setRoleRule] = useState<"" | "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR">("");
   const [scheduleAtById, setScheduleAtById] = useState<Record<string, string>>({});
-  const isFallBall = targetOrg === "fallball";
+  const coachingInterestEnabled = isCoachingInterestEnabled(targetOrg);
 
   const campaignStats = useMemo(() => {
     const byStatus = campaigns.reduce<Record<Campaign["status"], number>>(
@@ -152,7 +153,7 @@ export default function AdminCommunicationsManager({
     if (ruleOrgUsers) rules.push({ ruleType: "ORGANIZATION", organizationId: targetOrg });
     if (ruleAllCoaches) rules.push({ ruleType: "ALL_COACHES" });
     if (ruleOrgCoaches) rules.push({ ruleType: "ORGANIZATION_COACHES", organizationId: targetOrg });
-    if (isFallBall && ruleCoachingInterest) {
+    if (coachingInterestEnabled && ruleCoachingInterest) {
       rules.push({
         ruleType: "COACHING_INTEREST",
         organizationId: targetOrg,
@@ -163,7 +164,7 @@ export default function AdminCommunicationsManager({
     return rules;
   }, [
     coachingInterestStatus,
-    isFallBall,
+    coachingInterestEnabled,
     roleRule,
     ruleAllCoaches,
     ruleAllUsers,
@@ -347,7 +348,7 @@ export default function AdminCommunicationsManager({
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgUsers} onChange={(e) => setRuleOrgUsers(e.target.checked)} />Users in {targetOrgLabel}</label>
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllCoaches} onChange={(e) => setRuleAllCoaches(e.target.checked)} />All coaches</label>
             <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgCoaches} onChange={(e) => setRuleOrgCoaches(e.target.checked)} />Coaches in {targetOrgLabel}</label>
-            {isFallBall ? (
+            {coachingInterestEnabled ? (
               <label className="inline-flex items-center gap-2">
                 <input
                   type="checkbox"
@@ -368,7 +369,7 @@ export default function AdminCommunicationsManager({
               </label>
             ) : null}
           </div>
-          {isFallBall && ruleCoachingInterest ? (
+          {coachingInterestEnabled && ruleCoachingInterest ? (
             <div>
               <label className="text-xs text-zinc-500">Coaching interest status</label>
               <select

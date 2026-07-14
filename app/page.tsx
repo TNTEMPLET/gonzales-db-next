@@ -14,14 +14,18 @@ import {
   getAssignrLeagueId,
   getDefaultContentOrg,
   getSiteConfig,
+  hasAssignrLeagueId,
   isMasterDeployment,
   isTournamentOnlyDeployment,
+  type ContentOrgId,
 } from "@/lib/siteConfig";
+import { getOrgCapabilities } from "@/lib/org/capabilities";
 import { getActiveOrgAlert } from "@/lib/orgAlerts";
 import {
   SEASON_END_DATE,
   SEASON_START_DATE,
   CURRENT_SEASON_LABEL,
+  getSeasonConfigForOrg,
 } from "@/lib/seasonConfig";
 
 type ViewMode = "thisWeek" | "nextWeek" | "fullSeason";
@@ -43,19 +47,28 @@ type HomepageFeaturedPost = {
   publishedAt: Date | null;
 };
 
-function getHomepageCopy(orgId: string) {
+function getHomepageCopy(orgId: ContentOrgId) {
+  const season = getSeasonConfigForOrg(orgId);
+  const caps = getOrgCapabilities(orgId);
+
   if (orgId === "fallball") {
     return {
-      seasonBadge: "FALL BALL 2026",
+      seasonBadge: season.label.toUpperCase(),
       tagline:
         "Independent AP Baseball Fall Ball league operations, teams, schedules, and updates.",
-      registrationLabel: "SportsConnect Registration",
-      liveScoresText: "Schedules and scores will appear once Fall Ball games are published.",
+      registrationLabel:
+        caps.registration === "sportsconnect"
+          ? "SportsConnect Registration"
+          : "Registration",
+      liveScoresText:
+        caps.schedule === "none"
+          ? "Schedules and scores will appear once Fall Ball games are published."
+          : "Live scores appear when games are published.",
     };
   }
 
   return {
-    seasonBadge: "SPRING 2026 SEASON",
+    seasonBadge: `${season.label.toUpperCase()} SEASON`,
     tagline: "Fun, development, and competition for kids ages 9–17 in Ascension Parish",
     registrationLabel: "Registration",
     liveScoresText: "Integrated with GameChanger",
@@ -258,9 +271,17 @@ export default async function Home({
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const regOpen = isRegistrationOpen();
   const site = getSiteConfig();
-  const homepageCopy = getHomepageCopy(site.orgId);
-  const isFallBall = site.orgId === "fallball";
-  const defaultLeagueId = site.orgId === "fallball" ? site.assignrLeagueId : getAssignrLeagueId();
+  const contentOrg = getDefaultContentOrg();
+  const homepageCopy = getHomepageCopy(contentOrg);
+  const orgCaps = getOrgCapabilities(contentOrg);
+  // SportsConnect hub stays reachable even when spring internal reg window is closed.
+  const showRegistrationCta =
+    regOpen || orgCaps.registration === "sportsconnect";
+  const scheduleLive =
+    orgCaps.schedule === "assignr" && hasAssignrLeagueId();
+  const compactOps = orgCaps.homepage === "compact-ops";
+  // Safe for Fall Ball: empty league id never falls back to Gonzales.
+  const defaultLeagueId = hasAssignrLeagueId() ? getAssignrLeagueId() : "";
 
   let rotatorPosts: HomepageRotatorPost[] = [];
   let featuredPosts: HomepageFeaturedPost[] = [];
@@ -390,6 +411,56 @@ export default async function Home({
     }, new Map<string, { venue: string; todayGames: number; cancelledTodayGames: number }>()),
   ).sort((a, b) => a[0].localeCompare(b[0]));
 
+  const heroCtas = (
+    <div
+      className={
+        compactOps
+          ? "flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center"
+          : "flex flex-col sm:flex-row gap-4 justify-center"
+      }
+    >
+      {/* CTA priority for compact-ops: coaching → registration → schedule (if live) */}
+      {orgCaps.coachingInterest ? (
+        <Link
+          href="/coaching-interest"
+          className={
+            compactOps
+              ? "inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-gold px-6 py-3 text-base font-semibold text-zinc-950 transition-all hover:bg-brand-gold/90 active:scale-95"
+              : "rounded-xl bg-brand-gold px-8 py-4 text-lg font-semibold text-zinc-950 transition-all hover:bg-brand-gold/90 active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
+          }
+        >
+          Coaching Interest
+        </Link>
+      ) : null}
+      {showRegistrationCta ? (
+        <a
+          href="/registration"
+          className={
+            compactOps
+              ? "inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-purple px-6 py-3 text-base font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95"
+              : "rounded-xl bg-brand-purple px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
+          }
+        >
+          {orgCaps.registration === "sportsconnect"
+            ? homepageCopy.registrationLabel
+            : "Register Now"}
+        </a>
+      ) : null}
+      {scheduleLive ? (
+        <a
+          href="#schedule"
+          className={
+            compactOps
+              ? "inline-flex min-h-12 items-center justify-center rounded-xl border-2 border-white px-6 py-3 text-base font-semibold text-white transition-all hover:bg-white hover:text-black"
+              : "rounded-xl border-2 border-white px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-white hover:text-black sm:px-12 sm:py-5 sm:text-xl"
+          }
+        >
+          View Schedules
+        </a>
+      ) : null}
+    </div>
+  );
+
   return (
     <main className="min-h-screen">
       {/* Hero Section */}
@@ -399,12 +470,15 @@ export default async function Home({
         <section className="relative flex min-h-[70svh] items-center justify-center overflow-hidden bg-black p-4 sm:min-h-[75vh]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(245,158,11,0.18),transparent_50%),radial-gradient(circle_at_80%_80%,rgba(124,58,237,0.2),transparent_55%),linear-gradient(145deg,#09090b,#18181b)]" />
           <div className="absolute inset-0 opacity-10 bg-[linear-gradient(to_right,rgba(255,255,255,0.12)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.12)_1px,transparent_1px)] bg-size-[48px_48px]" />
+          {/* Org logo as full-bleed hero background */}
           <Image
             src={site.logoPath}
-            alt={site.name}
+            alt=""
             fill
             priority
-            className="object-contain opacity-15 scale-[1.35] blur-[1px]"
+            sizes="100vw"
+            aria-hidden
+            className="object-contain object-center opacity-15 scale-[1.35] blur-[1px]"
           />
           <div className="absolute inset-0 bg-black/45" />
 
@@ -421,30 +495,7 @@ export default async function Home({
               {homepageCopy.tagline}
             </p>
 
-            <div className="flex flex-col sm:flex-row gap-4 justify-center">
-              {regOpen && (
-                <a
-                  href="/registration"
-                  className="rounded-xl bg-brand-purple px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
-                >
-                  Register Now
-                </a>
-              )}
-              {isFallBall ? (
-                <Link
-                  href="/coaching-interest"
-                  className="rounded-xl bg-brand-gold px-8 py-4 text-lg font-semibold text-zinc-950 transition-all hover:bg-brand-gold/90 active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
-                >
-                  Coaching Interest
-                </Link>
-              ) : null}
-              <a
-                href="#schedule"
-                className="rounded-xl border-2 border-white px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-white hover:text-black sm:px-12 sm:py-5 sm:text-xl"
-              >
-                View Schedules
-              </a>
-            </div>
+            <div className="flex justify-center">{heroCtas}</div>
           </div>
         </section>
       )}
@@ -508,9 +559,13 @@ export default async function Home({
               {homepageCopy.registrationLabel}
             </h3>
             <p className="text-brand-gold">
-              {regOpen ? `${CURRENT_SEASON_LABEL} Season` : "Closed"}
+              {showRegistrationCta
+                ? orgCaps.registration === "sportsconnect"
+                  ? "Via SportsConnect"
+                  : `${CURRENT_SEASON_LABEL} Season`
+                : "Closed"}
             </p>
-            {isFallBall ? (
+            {orgCaps.coachingInterest ? (
               <Link
                 href="/coaching-interest"
                 className="mt-3 inline-flex text-sm font-semibold text-white underline decoration-brand-gold underline-offset-4 hover:text-brand-gold"
@@ -521,7 +576,9 @@ export default async function Home({
           </div>
           <div>
             <div className="text-6xl mb-3">📱</div>
-            <h3 className="font-semibold text-xl mb-1 text-white">Live Scores</h3>
+            <h3 className="font-semibold text-xl mb-1 text-white">
+              {scheduleLive ? "Live Scores" : "Schedules"}
+            </h3>
             <p className="text-zinc-400">{homepageCopy.liveScoresText}</p>
           </div>
         </div>
@@ -592,15 +649,39 @@ export default async function Home({
         </section>
       ) : null}
 
-      {/* Schedule Table */}
-      <ScheduleTable
-        siteName={site.name}
-        initialGames={games}
-        initialError={error}
-        currentViewMode={viewMode}
-        standings={[]}
-        forceRainout={orgAlert ? { allParksOut: orgAlert.allParksOut, venues: orgAlert.venues } : undefined}
-      />
+      {/* Schedule Table — honest empty when no Assignr source */}
+      {scheduleLive ? (
+        <ScheduleTable
+          siteName={site.name}
+          initialGames={games}
+          initialError={error}
+          currentViewMode={viewMode}
+          standings={[]}
+          forceRainout={
+            orgAlert
+              ? { allParksOut: orgAlert.allParksOut, venues: orgAlert.venues }
+              : undefined
+          }
+        />
+      ) : (
+        <section
+          id="schedule"
+          className="border-b border-zinc-800 bg-zinc-950 py-12 sm:py-16"
+        >
+          <div className="mx-auto max-w-3xl px-4 text-center sm:px-6">
+            <div className="mb-4 inline-block rounded-full bg-zinc-800 px-4 py-1.5 text-[11px] tracking-[0.18em] text-zinc-300">
+              SCHEDULES
+            </div>
+            <h2 className="mb-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+              Schedules publish when the league is set up
+            </h2>
+            <p className="text-zinc-400">
+              {homepageCopy.liveScoresText} Check back once game days are
+              announced, or follow coaching and registration updates above.
+            </p>
+          </div>
+        </section>
+      )}
     </main>
   );
 }

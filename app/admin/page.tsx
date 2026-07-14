@@ -17,6 +17,7 @@ import {
 import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
 import AdminRolePreviewControl from "@/components/admin/AdminRolePreviewControl";
 import AdminDashboardModuleGrid from "@/components/admin/AdminDashboardModuleGrid";
+import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import {
   CONTENT_ORGS,
   getDefaultContentOrg,
@@ -140,7 +141,8 @@ export default async function AdminDashboardPage({
             },
           ]
         : []),
-      ...(currentOrg === "fallball" || (!currentOrg && masterMode)
+      ...((currentOrg && isCoachingInterestEnabled(currentOrg)) ||
+      (!currentOrg && masterMode)
         ? [
             {
               module: "TEAMS" as AdminModule,
@@ -149,7 +151,7 @@ export default async function AdminDashboardPage({
                 : "/admin/coaching-interest?org=fallball",
               title: "Coaching Interest",
               description:
-                "Review Fall Ball coach leads, track follow-up status, and export the pipeline for registration planning.",
+                "Review coach interest leads, track follow-up status, and export the pipeline for registration planning.",
               action: "Open Coach Pipeline",
             },
           ]

@@ -5,9 +5,11 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useState } from "react";
 import DesignedByBrand from "@/components/ui/DesignedByBrand";
+import type { OrgId } from "@/lib/siteConfig";
 
 type FooterProps = {
   brand: {
+    orgId: OrgId;
     name: string;
     shortName: string;
     displayNameLine2: string;
@@ -21,9 +23,9 @@ export default function Footer({ brand }: FooterProps) {
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   if (pathname.startsWith("/dugout") || pathname.startsWith("/tournament-rosters")) return null;
 
-  const isMaster = brand.displayNameLine2.toUpperCase() === "MASTER ADMIN";
+  const isMaster = brand.orgId === "master";
   const isTournamentOnly = brand.tournamentOnly ?? false;
-  const isFallBall = brand.displayNameLine2.toUpperCase() === "FALL BALL";
+  const isFallBall = brand.orgId === "fallball";
 
   return (
     <footer className="border-t border-zinc-800 bg-zinc-950 py-10 sm:py-14 md:py-16">
