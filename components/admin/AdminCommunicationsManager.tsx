@@ -280,8 +280,8 @@ export default function AdminCommunicationsManager({
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Create campaign</h2>
         <p className="text-sm text-zinc-400">
-          Start as a draft. Nothing sends until a campaign is approved and then
-          scheduled or sent now.
+          Start as a draft. Non-master admins must get Board Member+ approval before
+          send. Master Admin can Preview then Send now without a second approver.
         </p>
         <input
           value={title}
@@ -415,14 +415,21 @@ export default function AdminCommunicationsManager({
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
         <h2 className="text-lg font-semibold">Campaigns</h2>
         <p className="text-sm text-zinc-400">
-          Use Preview before approval to confirm the recipient count. Send now is
-          available only after approval or scheduling.
+          Use Preview to confirm the recipient count before send. Master Admin can
+          Send now from Draft; other admins need approval first.
         </p>
         {campaigns.length === 0 ? (
           <p className="text-sm text-zinc-500">No campaigns yet.</p>
         ) : (
           <div className="space-y-3">
-            {campaigns.map((campaign) => (
+            {campaigns.map((campaign) => {
+              const canSendNow =
+                campaign.status === "APPROVED" ||
+                campaign.status === "SCHEDULED" ||
+                (isMaster &&
+                  (campaign.status === "DRAFT" || campaign.status === "PENDING_APPROVAL"));
+              const previewCount = previewByCampaign[campaign.id];
+              return (
               <div key={campaign.id} className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <p className="font-medium">{campaign.title}</p>
@@ -435,14 +442,30 @@ export default function AdminCommunicationsManager({
                 </p>
                 <p className="text-xs text-zinc-500">
                   Snapshots: {campaign._count?.recipientSnapshots ?? 0} · Deliveries: {campaign._count?.deliveries ?? 0}
-                  {previewByCampaign[campaign.id] != null ? ` · Preview: ${previewByCampaign[campaign.id]}` : ""}
+                  {previewCount != null ? ` · Preview: ${previewCount}` : ""}
                 </p>
                 <div className="flex flex-wrap gap-2">
                   <button className="rounded border border-zinc-700 px-2 py-1 text-xs" onClick={() => void action(campaign.id, "preview")}>Preview</button>
                   <button className="rounded border border-zinc-700 px-2 py-1 text-xs" onClick={() => void action(campaign.id, "submit-approval")} disabled={busy || campaign.status !== "DRAFT" && campaign.status !== "REJECTED"}>Submit approval</button>
                   <button className="rounded border border-zinc-700 px-2 py-1 text-xs" onClick={() => void action(campaign.id, "approve")} disabled={busy || campaign.status !== "PENDING_APPROVAL"}>Approve</button>
                   <button className="rounded border border-zinc-700 px-2 py-1 text-xs" onClick={() => void action(campaign.id, "reject", "POST", { note: "Rejected from manager UI" })} disabled={busy || campaign.status !== "PENDING_APPROVAL"}>Reject</button>
-                  <button className="rounded border border-zinc-700 px-2 py-1 text-xs" onClick={() => void action(campaign.id, "send-now")} disabled={busy || (campaign.status !== "APPROVED" && campaign.status !== "SCHEDULED")}>Send now</button>
+                  <button
+                    className="rounded border border-emerald-700 text-emerald-200 px-2 py-1 text-xs disabled:opacity-50"
+                    onClick={() => {
+                      const count =
+                        previewCount ??
+                        campaign._count?.recipientSnapshots ??
+                        0;
+                      const subject = campaign.messageSubject || campaign.title;
+                      const ok = window.confirm(
+                        `Send "${subject}" now to ~${count || "all matching"} recipient(s)?\n\nThis cannot be undone.`,
+                      );
+                      if (ok) void action(campaign.id, "send-now");
+                    }}
+                    disabled={busy || !canSendNow}
+                  >
+                    Send now{isMaster && (campaign.status === "DRAFT" || campaign.status === "PENDING_APPROVAL") ? " (Master)" : ""}
+                  </button>
                 </div>
                 <div className="flex flex-wrap gap-2 items-center">
                   <input
@@ -465,7 +488,8 @@ export default function AdminCommunicationsManager({
                   </button>
                 </div>
               </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>

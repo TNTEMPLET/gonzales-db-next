@@ -63,6 +63,41 @@ async function fetchRegisteredCandidates(rule: AudienceRuleInput): Promise<Audie
   }));
 }
 
+async function fetchExplicitUserCandidates(rule: AudienceRuleInput): Promise<AudienceRecipient[]> {
+  const ids = Array.from(
+    new Set((rule.explicitRegisteredUserIds || []).map((id) => id.trim()).filter(Boolean)),
+  );
+  if (ids.length === 0) return [];
+
+  const users = await prisma.registeredUser.findMany({
+    where: {
+      id: { in: ids },
+      isBlocked: false,
+      ...(rule.organizationId ? { organizationId: rule.organizationId } : {}),
+    },
+    select: {
+      id: true,
+      organizationId: true,
+      email: true,
+      contactPhone: true,
+      isCoach: true,
+    },
+  });
+
+  return users.map((user) => ({
+    recipientType: "REGISTERED_USER" as const,
+    registeredUserId: user.id,
+    adminUserId: null,
+    coachingInterestSubmissionId: null,
+    organizationId: user.organizationId,
+    email: user.email,
+    phone: user.contactPhone ?? null,
+    isCoach: user.isCoach,
+    adminRole: null,
+    matchReasons: ["EXPLICIT_USERS"],
+  }));
+}
+
 async function fetchAdminRoleCandidates(rule: AudienceRuleInput): Promise<AudienceRecipient[]> {
   if (!rule.adminRole) return [];
 
@@ -170,6 +205,8 @@ async function resolveRuleRecipients(rule: AudienceRuleInput): Promise<AudienceR
     case "ALL_COACHES":
     case "ORGANIZATION_COACHES":
       return fetchRegisteredCandidates(rule);
+    case "EXPLICIT_USERS":
+      return fetchExplicitUserCandidates(rule);
     case "COACHING_INTEREST":
       return fetchCoachingInterestCandidates(rule);
     case "ADMIN_ROLE":

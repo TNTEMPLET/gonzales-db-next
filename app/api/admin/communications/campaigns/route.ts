@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { canSendForOrg } from "@/lib/communications/policy";
 import { resolveCommunicationActor } from "@/lib/communications/authz";
+import { EXPLICIT_USERS_MAX } from "@/lib/communications/types";
 import prisma from "@/lib/prisma";
 
 type CreateCampaignBody = {
@@ -13,6 +14,8 @@ type CreateCampaignBody = {
   organizationId?: string | null;
   quietHoursStart?: number | null;
   quietHoursEnd?: number | null;
+  /** Shortcut: create EXPLICIT_USERS rule from Users-page multi-select. */
+  registeredUserIds?: string[];
   rules?: Array<{
     ruleType:
       | "ALL_USERS"
@@ -20,10 +23,12 @@ type CreateCampaignBody = {
       | "ALL_COACHES"
       | "ORGANIZATION_COACHES"
       | "COACHING_INTEREST"
-      | "ADMIN_ROLE";
+      | "ADMIN_ROLE"
+      | "EXPLICIT_USERS";
     organizationId?: string | null;
     adminRole?: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR" | null;
     coachingInterestStatus?: "NEW" | "CONTACTED" | "NOT_INTERESTED" | "CONVERTED" | "ARCHIVED" | null;
+    explicitRegisteredUserIds?: string[] | null;
   }>;
 };
 
@@ -68,6 +73,37 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden for selected audience scope" }, { status: 403 });
   }
 
+  const explicitIdsFromBody = Array.from(
+    new Set((body.registeredUserIds || []).map((id) => id.trim()).filter(Boolean)),
+  );
+  if (explicitIdsFromBody.length > EXPLICIT_USERS_MAX) {
+    return NextResponse.json(
+      { error: `Too many recipients (max ${EXPLICIT_USERS_MAX})` },
+      { status: 400 },
+    );
+  }
+
+  let rules = body.rules ?? [];
+  if (explicitIdsFromBody.length > 0) {
+    rules = [
+      {
+        ruleType: "EXPLICIT_USERS",
+        organizationId: requestedOrg,
+        explicitRegisteredUserIds: explicitIdsFromBody,
+      },
+    ];
+  }
+
+  for (const rule of rules) {
+    const ids = rule.explicitRegisteredUserIds || [];
+    if (rule.ruleType === "EXPLICIT_USERS" && ids.length > EXPLICIT_USERS_MAX) {
+      return NextResponse.json(
+        { error: `Too many recipients (max ${EXPLICIT_USERS_MAX})` },
+        { status: 400 },
+      );
+    }
+  }
+
   const created = await prisma.communicationCampaign.create({
     data: {
       organizationId: requestedOrg,
@@ -82,13 +118,18 @@ export async function POST(request: NextRequest) {
         typeof body.quietHoursEnd === "number" ? Math.max(0, Math.min(23, body.quietHoursEnd)) : null,
       createdByAdminId: actor.admin.id,
       audienceRules: {
-        create:
-          body.rules?.map((rule) => ({
-            ruleType: rule.ruleType,
-            organizationId: rule.organizationId ?? null,
-            adminRole: rule.adminRole ?? null,
-            coachingInterestStatus: rule.coachingInterestStatus ?? null,
-          })) ?? [],
+        create: rules.map((rule) => ({
+          ruleType: rule.ruleType,
+          organizationId: rule.organizationId ?? null,
+          adminRole: rule.adminRole ?? null,
+          coachingInterestStatus: rule.coachingInterestStatus ?? null,
+          explicitRegisteredUserIds:
+            rule.ruleType === "EXPLICIT_USERS"
+              ? Array.from(
+                  new Set((rule.explicitRegisteredUserIds || []).map((id) => id.trim()).filter(Boolean)),
+                )
+              : [],
+        })),
       },
     },
     include: {

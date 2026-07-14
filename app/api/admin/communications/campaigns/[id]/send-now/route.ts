@@ -2,8 +2,13 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCommunicationActor } from "@/lib/communications/authz";
 import { isSmsSendingEnabled } from "@/lib/communications/config";
-import { canSendForOrg, isWithinQuietHours } from "@/lib/communications/policy";
+import {
+  canSendForOrg,
+  canSendNowWithoutApproval,
+  isWithinQuietHours,
+} from "@/lib/communications/policy";
 import { sendCampaignEmails } from "@/lib/communications/sender";
+import { snapshotCampaignAudience } from "@/lib/communications/snapshotAudience";
 import prisma from "@/lib/prisma";
 
 export async function POST(
@@ -14,16 +19,21 @@ export async function POST(
   if (!actor.ok) return NextResponse.json({ error: actor.message }, { status: actor.status });
   const { id } = await params;
 
-  const campaign = await prisma.communicationCampaign.findUnique({
+  let campaign = await prisma.communicationCampaign.findUnique({
     where: { id },
   });
   if (!campaign) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
   if (!canSendForOrg(actor.role, campaign.organizationId, actor.targetOrg)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
-  if (campaign.status !== "APPROVED" && campaign.status !== "SCHEDULED") {
+  if (!canSendNowWithoutApproval(actor.role, campaign.status)) {
     return NextResponse.json(
-      { error: "Campaign must be approved before send" },
+      {
+        error:
+          campaign.status === "DRAFT" || campaign.status === "PENDING_APPROVAL"
+            ? "Only Master Admin can send without approval"
+            : "Campaign must be approved before send",
+      },
       { status: 409 },
     );
   }
@@ -34,6 +44,20 @@ export async function POST(
       { status: 409 },
     );
   }
+
+  // Ensure recipient snapshots exist (Master path may skip submit-approval).
+  const snapshotCount = await prisma.communicationRecipientSnapshot.count({
+    where: { campaignId: campaign.id },
+  });
+  if (snapshotCount === 0) {
+    const snap = await snapshotCampaignAudience(campaign.id);
+    if (snap.total === 0) {
+      return NextResponse.json({ error: "No recipients match this campaign audience" }, { status: 409 });
+    }
+  }
+
+  campaign =
+    (await prisma.communicationCampaign.findUnique({ where: { id: campaign.id } })) ?? campaign;
 
   await prisma.communicationCampaign.update({
     where: { id: campaign.id },
@@ -60,6 +84,7 @@ export async function POST(
       data: {
         status: result.failed > 0 ? "FAILED" : "SENT",
         sentAt: new Date(),
+        approvedAt: campaign.approvedAt ?? new Date(),
       },
     });
 

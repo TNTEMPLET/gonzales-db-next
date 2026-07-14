@@ -10,7 +10,12 @@ export type AudienceRuleInput = {
   organizationId?: string | null;
   adminRole?: AdminRole | null;
   coachingInterestStatus?: CoachingInterestStatus | null;
+  /** When ruleType is EXPLICIT_USERS — RegisteredUser ids (max enforced at API). */
+  explicitRegisteredUserIds?: string[] | null;
 };
+
+/** Hard cap for Users-page multi-select / EXPLICIT_USERS campaigns. */
+export const EXPLICIT_USERS_MAX = 500;
 
 export type AudienceResolutionMode = CommunicationAudienceLogicalMode;
 
