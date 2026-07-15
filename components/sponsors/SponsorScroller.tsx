@@ -17,6 +17,9 @@ type SponsorScrollerProps = {
   placement?: "dock" | "after-footer";
 };
 
+/** Footer marquee stays off until enough real sponsors are ready. */
+const MIN_SPONSORS_TO_SHOW = 20;
+
 function hideScrollerPath(pathname: string | null) {
   if (!pathname) return true;
   if (pathname.startsWith("/dugout")) return true;
@@ -32,6 +35,7 @@ export default function SponsorScroller({
   const [items, setItems] = useState<SponsorScrollerItem[]>([]);
   const hidden = hideScrollerPath(pathname);
   const dock = placement === "dock";
+  const ready = items.length >= MIN_SPONSORS_TO_SHOW;
 
   useEffect(() => {
     let active = true;
@@ -61,7 +65,7 @@ export default function SponsorScroller({
   }, [pathname]);
 
   useEffect(() => {
-    if (!dock || hidden || items.length === 0) {
+    if (!dock || hidden || !ready) {
       document.body.classList.remove("has-sponsor-dock");
       return;
     }
@@ -69,10 +73,10 @@ export default function SponsorScroller({
     return () => {
       document.body.classList.remove("has-sponsor-dock");
     };
-  }, [hidden, items.length]);
+  }, [dock, hidden, ready]);
 
   if (hidden) return null;
-  if (items.length === 0) return null;
+  if (!ready) return null;
 
   if (!dock) {
     return <SponsorMarquee items={items} />;
