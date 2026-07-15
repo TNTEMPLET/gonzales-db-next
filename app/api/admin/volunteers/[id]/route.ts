@@ -1,9 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAdminModule } from "@/lib/news/auth";
+import { parseBody } from "@/lib/api/parseBody";
+import { authFailureResponse, jsonError } from "@/lib/api/respond";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { assertRoleKeyActive } from "@/lib/volunteers/roles";
+import { volunteerProfilePatchSchema } from "@/lib/volunteers/schemas";
 import { getVolunteerCard } from "@/lib/volunteers/service";
 
 export async function GET(
@@ -11,16 +14,12 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const auth = await ensureAdminModule(request, "VOLUNTEERS");
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
-  }
+  if (!auth.ok) return authFailureResponse(auth);
 
   const { id } = await params;
   const organizationId = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   const card = await getVolunteerCard(id, organizationId);
-  if (!card) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
+  if (!card) return jsonError("Not found", 404);
   return NextResponse.json({ data: card });
 }
 
@@ -29,9 +28,7 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const auth = await ensureAdminModule(request, "VOLUNTEERS");
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
-  }
+  if (!auth.ok) return authFailureResponse(auth);
 
   try {
     const { id } = await params;
@@ -39,15 +36,14 @@ export async function PATCH(
     const existing = await prisma.volunteerProfile.findFirst({
       where: { id, organizationId },
     });
-    if (!existing) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
+    if (!existing) return jsonError("Not found", 404);
 
-    const body = (await request.json()) as {
-      notes?: string | null;
-      status?: "ACTIVE" | "INACTIVE";
-      roles?: Array<{ role?: string; roleKey?: string; teamId?: string | null }>;
-    };
+    const rawBody: unknown = await request.json();
+    const parsed = parseBody(volunteerProfilePatchSchema, rawBody);
+    if (!parsed.ok) {
+      return jsonError(parsed.error, 400, { issues: parsed.issues });
+    }
+    const body = parsed.data;
 
     if (body.notes !== undefined || body.status !== undefined) {
       await prisma.volunteerProfile.update({
@@ -80,6 +76,7 @@ export async function PATCH(
             roleKey: r.roleKey,
             teamId: r.teamId,
           })),
+          skipDuplicates: true,
         });
       }
     }
@@ -88,9 +85,6 @@ export async function PATCH(
     return NextResponse.json({ data: card });
   } catch (err: unknown) {
     console.error("[admin/volunteers PATCH]", err);
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Update failed" },
-      { status: 500 },
-    );
+    return jsonError(err instanceof Error ? err.message : "Update failed", 500);
   }
 }

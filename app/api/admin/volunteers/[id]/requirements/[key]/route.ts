@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { parseBody } from "@/lib/api/parseBody";
+import { authFailureResponse, jsonError } from "@/lib/api/respond";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { storeCoachDocumentFromFile } from "@/lib/uploads/storeCoachDocument";
@@ -24,35 +25,30 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string; key: string }> },
 ) {
   const auth = await ensureAdminModule(request, "VOLUNTEERS");
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
-  }
+  if (!auth.ok) return authFailureResponse(auth);
 
   try {
     const { id, key: rawKey } = await params;
     const requirementKey = rawKey.trim().toUpperCase();
     if (!isVolunteerRequirementKey(requirementKey)) {
-      return NextResponse.json({ error: "Invalid requirement key" }, { status: 400 });
+      return jsonError("Invalid requirement key", 400);
     }
 
     const organizationId = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
     const rawBody: unknown = await request.json();
     const parsed = parseBody(volunteerRequirementPatchSchema, rawBody);
     if (!parsed.ok) {
-      return NextResponse.json(
-        { error: parsed.error, issues: parsed.issues },
-        { status: 400 },
-      );
+      return jsonError(parsed.error, 400, { issues: parsed.issues });
     }
 
     const body = parsed.data;
     const completedAt = parseDate(body.completedAt);
     const expiresAt = parseDate(body.expiresAt);
     if (body.completedAt !== undefined && completedAt === undefined) {
-      return NextResponse.json({ error: "Invalid completedAt" }, { status: 400 });
+      return jsonError("Invalid completedAt", 400);
     }
     if (body.expiresAt !== undefined && expiresAt === undefined) {
-      return NextResponse.json({ error: "Invalid expiresAt" }, { status: 400 });
+      return jsonError("Invalid expiresAt", 400);
     }
 
     await updateRequirementStatus({
@@ -84,44 +80,34 @@ export async function POST(
   { params }: { params: Promise<{ id: string; key: string }> },
 ) {
   const auth = await ensureAdminModule(request, "VOLUNTEERS");
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
-  }
+  if (!auth.ok) return authFailureResponse(auth);
 
   try {
     const { id, key: rawKey } = await params;
     const requirementKey = rawKey.trim().toUpperCase();
     if (!isVolunteerRequirementKey(requirementKey)) {
-      return NextResponse.json({ error: "Invalid requirement key" }, { status: 400 });
+      return jsonError("Invalid requirement key", 400);
     }
     if (requirementKey !== "ABUSE_AWARENESS") {
-      return NextResponse.json(
-        { error: "Only Abuse Awareness supports file upload in v1" },
-        { status: 400 },
-      );
+      return jsonError("Only Abuse Awareness supports file upload in v1", 400);
     }
 
     const organizationId = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
     const formData = await request.formData();
     const file = formData.get("certificate") ?? formData.get("file");
     if (!(file instanceof File)) {
-      return NextResponse.json({ error: "Certificate file is required" }, { status: 400 });
+      return jsonError("Certificate file is required", 400);
     }
 
     const card = await getVolunteerCard(id, organizationId);
-    if (!card) {
-      return NextResponse.json({ error: "Not found" }, { status: 404 });
-    }
+    if (!card) return jsonError("Not found", 404);
 
     const stored = await storeCoachDocumentFromFile(file, {
       coachUserId: card.registeredUser.id,
       target: "abuse-awareness-training",
     });
     if (!stored.ok) {
-      return NextResponse.json(
-        { error: stored.error },
-        { status: stored.blobConfigError ? 500 : 400 },
-      );
+      return jsonError(stored.error, stored.blobConfigError ? 500 : 400);
     }
 
     const now = new Date();

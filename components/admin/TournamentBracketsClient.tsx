@@ -26,8 +26,17 @@ import { buildBracketExportHtmlDocument } from "@/lib/tournament-brackets/bracke
 import { buildBracketLayout, championPlaqueHeading, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { buildBracketSvgPreview } from "@/lib/tournament-brackets/bracketSvgPreview";
 import { isBracketSetupWizardComplete, safeParseBracketSpec, type BracketSpec } from "@/lib/tournament-brackets/bracketSpec";
-import { comparePublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
 import { isClassicDoubleElimLayoutLocked } from "@/lib/tournament-brackets/doubleEliminationClassicLayoutTemplate";
+import {
+  apiErrorMessage,
+  formatClientFetchError,
+  projectStatusHelp,
+  projectStatusLabel,
+  sortProjectsForAdmin,
+  type ProjectSortDirection,
+  type ProjectSortMode,
+  type ProjectStatus,
+} from "@/lib/tournament-brackets/adminUiHelpers";
 import {
   canUseConnectedBracketScoring,
   clearBracketScoringFromSpec,
@@ -64,28 +73,7 @@ type ProjectRow = {
   updatedAt: string;
 };
 
-type ProjectStatus = "DRAFT" | "READY" | "ARCHIVED";
-type ProjectSortMode = "priority" | "recent" | "season" | "name";
-type ProjectSortDirection = "asc" | "desc";
-
-const PROJECT_STATUS_PRIORITY: Record<ProjectStatus, number> = {
-  READY: 0,
-  DRAFT: 1,
-  ARCHIVED: 2,
-};
 const PROJECT_PRIORITY_OPTION_FLOOR = 20;
-
-function projectStatusLabel(status: ProjectStatus) {
-  if (status === "READY") return "Live";
-  if (status === "ARCHIVED") return "Archived";
-  return "Draft";
-}
-
-function projectStatusHelp(status: ProjectStatus) {
-  if (status === "READY") return "Live brackets appear on the public Tournaments page.";
-  if (status === "ARCHIVED") return "Archived brackets are hidden from public pages and normal active workflows.";
-  return "Draft brackets stay hidden while schedules, teams, and scores are being checked.";
-}
 
 type ProjectDetail = ProjectRow & {
   spec: unknown;
@@ -267,57 +255,6 @@ async function readApiJson<T extends Record<string, unknown>>(res: Response): Pr
       `Invalid JSON from server (HTTP ${res.status}): ${trimmed.slice(0, 200)}${trimmed.length > 200 ? "…" : ""}`,
     );
   }
-}
-
-function apiErrorMessage(json: { error?: string; hint?: string }, fallback: string) {
-  const base = json.error || fallback;
-  return json.hint ? `${base} — ${json.hint}` : base;
-}
-
-/** Browser `fetch` and Prisma driver often surface connection loss as "fetch failed". */
-function formatClientFetchError(err: unknown, fallback: string): string {
-  if (!(err instanceof Error)) return fallback;
-  const msg = err.message.trim();
-  if (msg === "fetch failed" || msg.includes("ECONNRESET") || msg.includes("network")) {
-    return "Could not reach the server (connection lost or timed out). Wait a few seconds and use Retry, or refresh the page.";
-  }
-  if (msg.startsWith("Bracket save rejected:")) return msg;
-  return msg || fallback;
-}
-
-function compareByProjectName(left: ProjectRow, right: ProjectRow): number {
-  return left.name.localeCompare(right.name, "en-US", {
-    numeric: true,
-    sensitivity: "base",
-  });
-}
-
-function compareByUpdatedAtAsc(left: ProjectRow, right: ProjectRow): number {
-  const leftTime = Date.parse(left.updatedAt);
-  const rightTime = Date.parse(right.updatedAt);
-  return (Number.isFinite(leftTime) ? leftTime : 0) - (Number.isFinite(rightTime) ? rightTime : 0);
-}
-
-function sortProjectsForAdmin(
-  projects: ProjectRow[],
-  sortMode: ProjectSortMode,
-  sortDirection: ProjectSortDirection,
-): ProjectRow[] {
-  return [...projects].sort((left, right) => {
-    let result: number;
-    if (sortMode === "recent") {
-      result = compareByUpdatedAtAsc(left, right) || compareByProjectName(left, right);
-    } else if (sortMode === "season") {
-      result = left.seasonYear - right.seasonYear || comparePublishedBrackets(left, right);
-    } else if (sortMode === "name") {
-      result = compareByProjectName(left, right) || left.seasonYear - right.seasonYear;
-    } else {
-      const priorityCompare = (left.priority ?? 0) - (right.priority ?? 0);
-      const statusCompare = PROJECT_STATUS_PRIORITY[left.status] - PROJECT_STATUS_PRIORITY[right.status];
-      result = priorityCompare || statusCompare || comparePublishedBrackets(left, right);
-    }
-    return sortDirection === "asc" ? result : -result;
-  });
 }
 
 /** html2canvas 1.x cannot parse CSS Color 4 `color()` / `lab()` strings from computed styles; canvas normalizes to rgb/hex. */

@@ -17,6 +17,17 @@ import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 import StandingsTabs from "@/components/standings/StandingsTabs";
 import type { AgeGroupStandings } from "@/lib/standings";
 import { MAX_COMMENT_LENGTH, MAX_POST_LENGTH } from "@/lib/dugout/constants";
+import {
+  formatPostTime,
+  formatRelativeTime,
+  formatScheduleDayLabel,
+  formatScheduleTime,
+  getDisplayName,
+  getFieldLabel,
+  getGameTimeSortValue,
+  getParkLabel,
+  getScheduleDaySortValue,
+} from "@/lib/dugout/timelineFormat";
 
 type DugoutAuthor = {
   id: string;
@@ -213,14 +224,6 @@ function CharacterMeter({
   );
 }
 
-function getDisplayName(author: DugoutAuthor) {
-  if (author.firstName || author.lastName) {
-    return [author.firstName, author.lastName].filter(Boolean).join(" ");
-  }
-
-  return author.name || author.email;
-}
-
 function renderFormattedText(content: string) {
   const lines = content.split("\n");
 
@@ -260,97 +263,6 @@ function renderFormattedText(content: string) {
       </span>
     );
   });
-}
-
-function formatPostTime(value: string) {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
-function formatRelativeTime(value: string) {
-  const then = new Date(value).getTime();
-  const now = Date.now();
-  const diffSeconds = Math.max(1, Math.floor((now - then) / 1000));
-
-  if (diffSeconds < 60) return `${diffSeconds}s`;
-  const diffMinutes = Math.floor(diffSeconds / 60);
-  if (diffMinutes < 60) return `${diffMinutes}m`;
-  const diffHours = Math.floor(diffMinutes / 60);
-  if (diffHours < 24) return `${diffHours}h`;
-  const diffDays = Math.floor(diffHours / 24);
-  if (diffDays < 7) return `${diffDays}d`;
-
-  return formatPostTime(value);
-}
-
-function formatScheduleTime(game: Game) {
-  if (game.start_time) {
-    return new Date(game.start_time).toLocaleString("en-US", {
-      weekday: "short",
-      month: "short",
-      day: "numeric",
-      hour: "numeric",
-      minute: "2-digit",
-    });
-  }
-
-  const date =
-    typeof game.localized_date === "string" ? game.localized_date : "Date TBD";
-  const time =
-    typeof game.localized_time === "string" ? game.localized_time : "TBD";
-  return `${date} ${time}`.trim();
-}
-
-function formatScheduleDayLabel(game: Game) {
-  if (game.start_time) {
-    return new Date(game.start_time).toLocaleDateString("en-US", {
-      weekday: "long",
-      month: "short",
-      day: "numeric",
-    });
-  }
-
-  return typeof game.localized_date === "string"
-    ? game.localized_date
-    : "Date TBD";
-}
-
-function getScheduleDaySortValue(game: Game) {
-  if (game.start_time) {
-    return new Date(game.start_time).getTime();
-  }
-
-  if (typeof game.localized_date === "string") {
-    const parsed = new Date(game.localized_date).getTime();
-    if (!Number.isNaN(parsed)) return parsed;
-  }
-
-  return Number.MAX_SAFE_INTEGER;
-}
-
-function getParkLabel(game: Game) {
-  return typeof game._embedded?.venue?.name === "string" &&
-    game._embedded.venue.name.trim()
-    ? game._embedded.venue.name.trim()
-    : "Other Parks";
-}
-
-function getFieldLabel(game: Game) {
-  return typeof game.subvenue === "string" && game.subvenue.trim()
-    ? game.subvenue.trim()
-    : "Other Fields";
-}
-
-function getGameTimeSortValue(game: Game) {
-  if (game.start_time) {
-    return new Date(game.start_time).getTime();
-  }
-
-  return Number.MAX_SAFE_INTEGER;
 }
 
 async function uploadMedia(file: File) {

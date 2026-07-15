@@ -1,5 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { parseBody } from "@/lib/api/parseBody";
+import { jsonError } from "@/lib/api/respond";
 import { resolveCommunicationActor } from "@/lib/communications/authz";
 import {
   listFromAddressRows,
@@ -8,12 +10,17 @@ import {
 } from "@/lib/communications/fromAddresses";
 import { canMasterBypassApproval } from "@/lib/communications/policy";
 import prisma from "@/lib/prisma";
+import { communicationFromAddressCreateSchema } from "@/lib/volunteers/schemas";
 
-function requireMaster(actor: { ok: true; role: string | null; admin: { isMaster: boolean; id: string } }) {
+function requireMaster(actor: {
+  ok: true;
+  role: string | null;
+  admin: { isMaster: boolean; id: string };
+}) {
   if (actor.admin.isMaster || canMasterBypassApproval(actor.role as never)) {
     return null;
   }
-  return NextResponse.json({ error: "Master Admin required" }, { status: 403 });
+  return jsonError("Master Admin required", 403);
 }
 
 /** List From options. All COMMUNICATIONS admins can read active; Master gets all when includeInactive=1. */
@@ -40,17 +47,16 @@ export async function POST(request: NextRequest) {
   const denied = requireMaster(actor);
   if (denied) return denied;
 
-  const body = (await request.json()) as {
-    fromHeader?: string;
-    label?: string | null;
-    isDefault?: boolean;
-    isActive?: boolean;
-    sortOrder?: number;
-  };
+  const rawBody: unknown = await request.json();
+  const parsed = parseBody(communicationFromAddressCreateSchema, rawBody);
+  if (!parsed.ok) {
+    return jsonError(parsed.error, 400, { issues: parsed.issues });
+  }
+  const body = parsed.data;
 
   const validated = validateFromHeader(body.fromHeader || "");
   if (!validated.ok) {
-    return NextResponse.json({ error: validated.error }, { status: 400 });
+    return jsonError(validated.error, 400);
   }
 
   const existing = await prisma.communicationFromAddress.findUnique({

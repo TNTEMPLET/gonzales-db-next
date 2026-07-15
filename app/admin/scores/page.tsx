@@ -5,10 +5,9 @@ import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/au
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { assignrHubHref, resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
 import { listUnifiedScoreGames } from "@/lib/admin/unifiedScoreSources";
-import AdminGamesImportManager from "@/components/admin/AdminGamesImportManager";
-import AdminScoresManager from "@/components/admin/AdminScoresManager";
 import TournamentAlertsPanel from "@/components/admin/TournamentAlertsPanel";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import ScoresHub from "@/components/admin/scores/ScoresHub";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
 import { CONTENT_ORGS, getDefaultContentOrg, getSiteConfig, isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
@@ -41,8 +40,12 @@ export default async function AdminScoresPage({ searchParams }: { searchParams: 
         <ScoresPageHeader currentOrg={currentOrg} allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")} allowViewByUser={adminUser.isMaster} moduleHubHref={canAccessAssignr ? assignrHubHref(currentOrg ?? getDefaultContentOrg()) : undefined} />
         {masterMode ? <TournamentAlertsPanel /> : null}
         {scoresLoadError ? <div className="mb-5 rounded-xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">{scoresLoadError}</div> : null}
-        <AdminScoresManager games={payload.games} connections={payload.connections} scope={scope} seasonYear={safeSeasonYear} />
-        <AdminGamesImportManager scope={scope} />
+        <ScoresHub
+          games={payload.games}
+          connections={payload.connections}
+          scope={scope}
+          seasonYear={safeSeasonYear}
+        />
       </section>
     </main>
   );
@@ -51,8 +54,11 @@ function ScoresPageHeader({ currentOrg, allowRolePreview, allowViewByUser, modul
   return (
     <div className="mb-8">
       <AdminSectionHeader badge="SCORES" currentOrg={currentOrg} currentPath="/admin/scores" allowRolePreview={allowRolePreview} allowViewByUser={allowViewByUser} moduleHubHref={moduleHubHref} moduleHubLabel="Assignr Hub" />
-      <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Manage Scores</h1>
-      <p className="max-w-3xl text-zinc-400">Use one Master workflow for league games, tournament-only brackets, manual score entry, and GameChanger scoreboard imports.</p>
+      <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Scores &amp; Standings</h1>
+      <p className="max-w-3xl text-zinc-400">
+        One competition console: score queue, GameChanger connections/imports, and file imports.
+        Use Assignr Hub for schedule/officials; use Tournament Brackets for bracket layout (not score entry).
+      </p>
     </div>
   );
 }

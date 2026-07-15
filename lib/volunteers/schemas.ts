@@ -28,6 +28,28 @@ export const volunteerRoleUpdateSchema = z.object({
   sortOrder: z.number().int().optional(),
 });
 
+export const volunteerProfilePatchSchema = z.object({
+  notes: z.union([z.string().max(5000), z.null()]).optional(),
+  status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  roles: z
+    .array(
+      z.object({
+        role: z.string().optional(),
+        roleKey: z.string().optional(),
+        teamId: z.union([z.string(), z.null()]).optional(),
+      }),
+    )
+    .optional(),
+});
+
+export const communicationFromAddressCreateSchema = z.object({
+  fromHeader: z.string().min(1).max(320),
+  label: z.union([z.string().max(200), z.null()]).optional(),
+  isDefault: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  sortOrder: z.number().optional(),
+});
+
 export function isVolunteerRequirementKey(
   value: string,
 ): value is (typeof VOLUNTEER_REQUIREMENT_KEYS)[number] {

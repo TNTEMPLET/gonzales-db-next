@@ -9,6 +9,28 @@ import {
   WorkflowStepRow,
   type TeamWorkflowSectionId,
 } from "./teams/TeamsWorkflowHelpers";
+import {
+  COACH_IMPORT_STEPS,
+  PLAYER_IMPORT_DIVISION_KEYS,
+  PLAYER_IMPORT_EMAIL_KEYS,
+  PLAYER_IMPORT_NAME_KEYS,
+  PLAYER_IMPORT_STEPS,
+  PLAYER_IMPORT_TEAM_KEYS,
+  TEAM_LIST_IMPORT_STEPS,
+  buildTeamNameFromSponsor,
+  getImportHistoryActor,
+  getImportHistoryUndoText,
+  getImportHistoryWhat,
+  getImportProgressPercent,
+  getImportRowValue,
+  getTeamListSampleCsv,
+  getTeamsManagementAgeGroupDefaults,
+  mergeTeamsManagementAgeGroupOptions,
+  normalizeLooseName,
+  shouldSkipDivisionImport,
+  sortTeamsManagementAgeGroups,
+  toCsvSafeValue,
+} from "@/lib/admin/teamsImportHelpers";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type Team = {
@@ -160,205 +182,6 @@ type UndoImportStatus = {
   progress: number;
   message: string;
 };
-
-const PLAYER_IMPORT_DIVISION_KEYS = [
-  "Division Name",
-  "Division",
-  "Program Division",
-  "Program Name",
-  "Age Group",
-  "age_group",
-  "AGE_GROUP",
-];
-
-const PLAYER_IMPORT_TEAM_KEYS = [
-  "Team Name",
-  "Team",
-  "Roster Team Name",
-  "Assigned Team",
-  "assigned_team",
-  "ASSIGNED_TEAM",
-];
-
-const PLAYER_IMPORT_NAME_KEYS = [
-  "Player Full Name",
-  "Participant Name",
-  "Player Name",
-  "Child Name",
-  "Registrant Name",
-  "Full Name",
-  "full_name",
-];
-
-const PLAYER_IMPORT_EMAIL_KEYS = [
-  "User Email",
-  "Account Email",
-  "Parent Email",
-  "Guardian Email",
-  "Email",
-  "email",
-];
-
-function getImportRowValue(row: Record<string, unknown>, keys: string[]) {
-  for (const key of keys) {
-    const value = row[key];
-    if (value === undefined || value === null) continue;
-    const parsed = String(value).trim();
-    if (parsed) return parsed;
-  }
-  return "";
-}
-
-function getImportProgressPercent(status: ImportJobStatus | null) {
-  if (!status) return 0;
-  if (!status.totalRows || status.totalRows <= 0) return 0;
-  return Math.max(
-    0,
-    Math.min(100, Math.round((status.processedRows / status.totalRows) * 100)),
-  );
-}
-
-function normalizeLooseName(value: string) {
-  return value
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function shouldSkipDivisionImport(divisionName: string) {
-  const normalized = divisionName.trim().toLowerCase();
-  if (!normalized) return false;
-  if (normalized.includes("modified tee ball")) return false;
-  if (normalized.includes("umpire")) return true;
-  if (normalized.includes("little league tee ball")) return true;
-  if (normalized.includes("little league teeball")) return true;
-  if (normalized.includes("3-4 year-old")) return true;
-  if (normalized.includes("3-4 year olds")) return true;
-  if (normalized.includes("3/4 year-old")) return true;
-  if (normalized.includes("5 year-old")) return true;
-  if (normalized.includes("5 year olds")) return true;
-  return false;
-}
-
-function buildTeamNameFromSponsor(sponsor: string, headCoachLastName: string) {
-  const normalizedSponsor = sponsor.trim();
-  const normalizedLastName = headCoachLastName.trim();
-  if (!normalizedSponsor || !normalizedLastName) return "";
-  return `${normalizedSponsor} - ${normalizedLastName}`;
-}
-
-function toCsvSafeValue(value: string) {
-  if (value.includes('"') || value.includes(",") || value.includes("\n")) {
-    return `"${value.replace(/"/g, '""')}"`;
-  }
-  return value;
-}
-
-const PLAYER_IMPORT_STEPS = [
-  "Upload",
-  "Review mappings",
-  "Preview changes",
-  "Import",
-  "Review results",
-] as const;
-
-const COACH_IMPORT_STEPS = [
-  "Upload",
-  "Review age groups",
-  "Preview coach/team matches",
-  "Import",
-  "Review results",
-] as const;
-
-const TEAM_LIST_IMPORT_STEPS = ["Upload/Paste CSV", "Preview teams", "Import", "Results"] as const;
-
-const BASEBALL_AGE_DIVISIONS = ["6U", "8U", "10U", "12U", "14U", "16U", "18U"] as const;
-
-function getTeamsManagementAgeGroupDefaults(targetOrg: ContentOrgId) {
-  if (targetOrg === "fallball") {
-    return BASEBALL_AGE_DIVISIONS.map((division) => `${division} Fall`);
-  }
-  if (targetOrg === "ascension") {
-    return BASEBALL_AGE_DIVISIONS.map((division) => `${division} LLB`);
-  }
-  return BASEBALL_AGE_DIVISIONS.map((division) => {
-    const age = Number.parseInt(division, 10);
-    const program = age <= 12 ? "DYB" : age <= 14 ? "DBB" : "DPM";
-    return `${division} ${program}`;
-  });
-}
-
-function getAgeDivisionNumber(label: string) {
-  const match = label.match(/^(\d{1,2})U\b/i) || label.match(/\b(\d{1,2})U\b/i);
-  return match?.[1] ? Number.parseInt(match[1], 10) : null;
-}
-
-function sortTeamsManagementAgeGroups(a: string, b: string) {
-  const ageA = getAgeDivisionNumber(a);
-  const ageB = getAgeDivisionNumber(b);
-  if (ageA !== null && ageB !== null && ageA !== ageB) return ageA - ageB;
-  if (ageA !== null && ageB === null) return -1;
-  if (ageA === null && ageB !== null) return 1;
-  return a.localeCompare(b);
-}
-
-function mergeTeamsManagementAgeGroupOptions(
-  defaults: readonly string[],
-  existing: readonly string[],
-) {
-  const options = new Map<string, string>();
-  for (const value of [...defaults, ...existing]) {
-    const normalized = value.trim();
-    if (!normalized) continue;
-    const key = normalized.toLowerCase();
-    if (!options.has(key)) options.set(key, normalized);
-  }
-  return Array.from(options.values()).sort(sortTeamsManagementAgeGroups);
-}
-
-function getTeamListSampleCsv(targetOrg: ContentOrgId) {
-  const defaults = getTeamsManagementAgeGroupDefaults(targetOrg);
-  const sampleAgeGroups = ["8U", "10U"].map(
-    (ageDivision) =>
-      defaults.find((option) => option.toLowerCase().startsWith(ageDivision.toLowerCase())) ||
-      `${ageDivision}${targetOrg === "fallball" ? " Fall" : ""}`,
-  );
-
-  if (targetOrg === "fallball") {
-    return `Age Group,MLB Team
-${sampleAgeGroups[0]},Yankees
-${sampleAgeGroups[1]},Astros`;
-  }
-
-  return `Age Group,Team Name
-${sampleAgeGroups[0]},Acme Plumbing - Smith
-${sampleAgeGroups[1]},Main Street Dental - Garcia`;
-}
-
-function getImportHistoryActor(item: ImportHistoryItem) {
-  return (
-    item.createdByName ||
-    item.createdBy?.name ||
-    item.createdByEmail ||
-    item.createdBy?.email ||
-    "administrator not recorded"
-  );
-}
-
-function getImportHistoryWhat(item: ImportHistoryItem) {
-  const importType = item.importType || "player roster import";
-  const org = item.organizationId ? ` for ${item.organizationId}` : "";
-  return `${importType}${org}`;
-}
-
-function getImportHistoryUndoText(item: ImportHistoryItem) {
-  if (item.undoneAt) return `Already undone ${new Date(item.undoneAt).toLocaleString()}`;
-  if (item.status !== "DONE") return "Undo available after this batch finishes";
-  return "Undo can remove created rows and restore updated players";
-}
-
 
 export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrgId }) {
   const orgQuery = `org=${targetOrg}`;
