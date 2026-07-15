@@ -692,6 +692,79 @@ export async function getVolunteerCard(
   );
 }
 
+/**
+ * Self-serve card for a coach/volunteer. Ensures a profile exists when the
+ * user is a coach or already has volunteer roles; returns null if they have
+ * no relationship to volunteering for this org/season.
+ */
+export async function getMyVolunteerCard(input: {
+  organizationId: string;
+  registeredUserId: string;
+  seasonYear?: number;
+  /** When true (default), create/sync profile for coaches. */
+  ensureIfCoach?: boolean;
+}): Promise<VolunteerCardView | null> {
+  const year =
+    input.seasonYear ??
+    getSeasonConfigForOrg(input.organizationId as ContentOrgId).year;
+
+  const user = await prisma.registeredUser.findFirst({
+    where: {
+      id: input.registeredUserId,
+      organizationId: input.organizationId,
+      isBlocked: false,
+    },
+    include: {
+      teamCoachAssignments: {
+        where: {
+          team: {
+            organizationId: input.organizationId,
+            seasonYear: year,
+          },
+        },
+        select: { id: true, role: true, teamId: true },
+      },
+    },
+  });
+  if (!user) return null;
+
+  let profile = await prisma.volunteerProfile.findUnique({
+    where: {
+      organizationId_registeredUserId_seasonYear: {
+        organizationId: input.organizationId,
+        registeredUserId: input.registeredUserId,
+        seasonYear: year,
+      },
+    },
+    select: { id: true },
+  });
+
+  const isVolunteerCandidate =
+    user.isCoach || user.teamCoachAssignments.length > 0 || Boolean(profile);
+
+  if (!profile && input.ensureIfCoach !== false && isVolunteerCandidate) {
+    const roles = user.teamCoachAssignments.map((a) => ({
+      role: teamCoachRoleToVolunteerRole(a.role),
+      teamId: a.teamId,
+    }));
+    const ensured = await ensureVolunteerProfile({
+      organizationId: input.organizationId,
+      registeredUserId: input.registeredUserId,
+      seasonYear: year,
+      roles: roles.length
+        ? roles
+        : user.isCoach
+          ? [{ role: "LEAGUE_ASSISTANT_COACH" }]
+          : undefined,
+    });
+    profile = { id: ensured.id };
+  }
+
+  // Existing volunteer profiles (e.g. umpires / other AP roles) load as-is.
+  if (!profile) return null;
+  return getVolunteerCard(profile.id, input.organizationId);
+}
+
 export async function updateRequirementStatus(input: {
   volunteerProfileId: string;
   organizationId: string;

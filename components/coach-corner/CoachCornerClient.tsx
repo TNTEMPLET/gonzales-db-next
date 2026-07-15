@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { coachDisplayName, formatUploadedAt } from "@/lib/coachCorner/display";
 import type { ContentOrgId } from "@/lib/siteConfig";
@@ -418,6 +419,20 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
 
   return (
     <section className="space-y-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-zinc-800 bg-zinc-900/50 px-4 py-3">
+        <div>
+          <p className="text-sm font-semibold text-white">Your volunteer card</p>
+          <p className="text-xs text-zinc-400">
+            View JDP / Abuse Awareness status. Ready cards can later become event access badges.
+          </p>
+        </div>
+        <Link
+          href="/volunteer-card"
+          className="inline-flex min-h-10 items-center rounded-xl bg-brand-purple px-4 text-sm font-semibold text-white hover:bg-brand-purple-dark"
+        >
+          View Volunteer Card
+        </Link>
+      </div>
       {error ? (
         <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
           {error}
