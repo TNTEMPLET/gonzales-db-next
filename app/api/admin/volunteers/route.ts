@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
       organizationId,
       registeredUserId: body.registeredUserId.trim(),
       seasonYear: body.seasonYear,
-      roles: roles.length ? roles : [{ role: "OTHER", teamId: null }],
+      roles: roles.length ? roles : [{ role: "OTHER_AP_POSITIONS", teamId: null }],
     });
 
     if (body.notes !== undefined) {

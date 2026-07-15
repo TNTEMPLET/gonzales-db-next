@@ -1,13 +1,14 @@
 /**
  * Client-safe volunteer types (no Prisma runtime imports).
+ * Role labels match the Sports Connect volunteer registration sheet.
  */
 
 export const VOLUNTEER_ROLES = [
+  "LEAGUE_HEAD_COACH",
+  "LEAGUE_ASSISTANT_COACH",
   "HEAD_COACH",
-  "ASSISTANT_COACH",
-  "TEAM_PARENT",
-  "BOARD",
-  "OTHER",
+  "AP_BASEBALL_UMPIRE",
+  "OTHER_AP_POSITIONS",
 ] as const;
 
 export type VolunteerRole = (typeof VOLUNTEER_ROLES)[number];
@@ -92,12 +93,13 @@ export const REQUIREMENT_LABELS: Record<VolunteerRequirementKey, string> = {
   ABUSE_AWARENESS: "Abuse Awareness Training",
 };
 
+/** Display labels — exact wording from the volunteer registration sheet. */
 export const ROLE_LABELS: Record<VolunteerRole, string> = {
+  LEAGUE_HEAD_COACH: "League Head Coach",
+  LEAGUE_ASSISTANT_COACH: "League Assistant Coach",
   HEAD_COACH: "Head Coach",
-  ASSISTANT_COACH: "Assistant Coach",
-  TEAM_PARENT: "Team Parent",
-  BOARD: "Board",
-  OTHER: "Other",
+  AP_BASEBALL_UMPIRE: "AP Baseball Umpire",
+  OTHER_AP_POSITIONS: "Other AP Positions  (NOT COACHES)",
 };
 
 export const READINESS_LABELS: Record<VolunteerReadiness, string> = {
