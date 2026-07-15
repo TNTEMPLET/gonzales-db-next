@@ -1,10 +1,23 @@
 # SportsConnect → platform import runbook
 
 **Audience:** Master Admins and league admins loading registration data into AP Baseball sites.  
-**System of record for registration/payment:** SportsConnect (APBaseball.com).  
+**System of record for registration/payment:** SportsConnect (APBaseball.com / Stack Sports).  
 **This platform:** teams, rosters, coaches, volunteers, schedules, communications, Player Cards.
 
-There is **no live SportsConnect API** in this product. Integration is **export → file import**, with assisted detection and reusable mapping presets.
+## No SportsConnect API (confirmed)
+
+There is **no official public developer API** for SportsConnect registration/roster pulls (research 2026-07-15; Blue Sombrero legacy branding included). Leagues move data via **admin CSV/XLSX export**.
+
+| Do | Do not |
+|----|--------|
+| Export reports from SC admin UI | Call a SportsConnect REST/OAuth API (none available) |
+| Upload into Ops Desk / Teams | Scrape SC web UIs |
+| Use mapping presets + quality | Store SC admin passwords in this app |
+| Treat third-party “sports data” APIs as unrelated | Assume Stack Sports will expose a public SC API without a written partner agreement |
+
+**Integration model:** **export → file import**, with assisted detection, reusable mapping presets, Ops Desk checklist, and import-run audit.
+
+Full product plan: [`docs/sports-connect-integration-plan.md`](./sports-connect-integration-plan.md).
 
 ---
 
@@ -17,7 +30,7 @@ There is **no live SportsConnect API** in this product. Integration is **export 
 
 On **Master Admin**, set the site first (`Fall Ball`, `Gonzales`, or `Ascension`), then open **Sports Connect Ops Desk** (`/admin/sports-connect`) or **Teams**.
 
-### Ops Desk (Phase 2)
+### Ops Desk (Phase 2 — shipped)
 
 | Section | Purpose |
 |---------|---------|
@@ -39,7 +52,7 @@ Dashboard card: **Sports Connect Ops Desk** (Master + Fall Ball).
 | `PLAYER_REG` | Participants / registration report | Teams → SportsConnect Player Import |
 | `COACH_VOLUNTEER` | Volunteer/coach registration | Teams → Coach Import |
 
-The admin **detect** API scores file headers against these profiles (`lib/sportsConnect/columnProfiles.ts`).
+The admin **detect** route scores file headers against these profiles (`lib/sportsConnect/columnProfiles.ts`). Detection is local to our platform — it does not call SportsConnect.
 
 ---
 
@@ -77,7 +90,7 @@ Division → age group and team name maps can be **saved per org + season** as a
 - **Load / Apply** a saved preset, or **Save preset** after adjusting division and team maps.  
 - Opening a new import pre-fills from the most recently updated `PLAYER_REG` preset for the site + season when available.
 
-API:
+Platform routes (our app, not SportsConnect):
 
 - `GET/POST /api/admin/sports-connect/presets?org=&seasonYear=`  
 - `DELETE /api/admin/sports-connect/presets/[id]?org=`  
@@ -88,14 +101,14 @@ API:
 
 ## Quality checks
 
-After a load, review on the Teams workflow header (**SportsConnect roster quality** panel):
+After a load, review on the Teams workflow header (**SportsConnect roster quality** panel) or Ops Desk **Quality**:
 
 - Players missing **guardian email**  
 - Players **incomplete** on Player Card readiness  
 - Teams with **no coaches** or **no players**  
 - Last successful player/coach import timestamps  
 
-API: `GET /api/admin/sports-connect/quality?org=&seasonYear=`
+Route: `GET /api/admin/sports-connect/quality?org=&seasonYear=`
 
 ---
 
@@ -103,7 +116,7 @@ API: `GET /api/admin/sports-connect/quality?org=&seasonYear=`
 
 Successful player and coach imports from Teams record a `SportsConnectImportRun` (status `DONE`) with batch ids when possible. Ops Desk file-plan previews record `PREVIEW` runs.
 
-API:
+Routes:
 
 - `GET/POST /api/admin/sports-connect/runs?org=&seasonYear=`  
 - `GET/PATCH /api/admin/sports-connect/runs/[id]?org=`  
@@ -118,7 +131,8 @@ Family registration URL constant: `lib/sportsConnect/registrationUrl.ts` (used b
 - Treat exports as **PII**. Do not commit real SC files to git.  
 - Fixtures under `lib/sportsConnect/__fixtures__/` are **headers only**.  
 - Never store SportsConnect passwords in this app. Do not scrape SC UIs.  
-- On Master, always choose a **concrete site** before importing (never All Sites writes).
+- On Master, always choose a **concrete site** before importing (never All Sites writes).  
+- No SC API credentials: none exist for public use, and none should be invented via scrape.
 
 ---
 
@@ -126,6 +140,7 @@ Family registration URL constant: `lib/sportsConnect/registrationUrl.ts` (used b
 
 | Area | Path |
 |------|------|
+| Integration plan | `docs/sports-connect-integration-plan.md` |
 | Catalog | `lib/sportsConnect/reportCatalog.ts` |
 | Detector | `lib/sportsConnect/columnProfiles.ts` |
 | Quality | `lib/sportsConnect/quality.ts` |
@@ -141,6 +156,11 @@ Family registration URL constant: `lib/sportsConnect/registrationUrl.ts` (used b
 
 ---
 
-## Phase 3 (not implemented)
+## Phase 3 (optional later)
 
-Held until product chooses one path: secure export drop, official SC API, or parent-account seed. No scrape.
+| Path | Status |
+|------|--------|
+| Secure export drop (email/SFTP/S3 → ingest) | Open if operators want unattended loads |
+| Parent account seed (guardian emails → invite-only users) | Open after parent Player Cards product decision |
+| Official public SC API client | **Closed** — no public API; revisit only with vendor partner docs |
+| UI scrape | **Never** |

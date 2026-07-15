@@ -1,6 +1,8 @@
 /**
  * SportsConnect integration types (client-safe).
  * SC remains registration SoR; this platform is the ops hub after export.
+ * No official public SportsConnect API — assisted file import only
+ * (see docs/sports-connect-integration-plan.md).
  */
 
 export const SPORTS_CONNECT_REPORT_KINDS = [
