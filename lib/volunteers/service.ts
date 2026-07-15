@@ -45,7 +45,7 @@ const DEFAULT_DEFS: Array<{
 ];
 
 function teamCoachRoleToVolunteerRole(role: TeamCoachRole): VolunteerRole {
-  return role === "HEAD_COACH" ? "HEAD_COACH" : "ASSISTANT_COACH";
+  return role === "HEAD_COACH" ? "LEAGUE_HEAD_COACH" : "LEAGUE_ASSISTANT_COACH";
 }
 
 export async function ensureRequirementDefs() {
@@ -321,7 +321,7 @@ export async function syncCoachesToVolunteers(
     if (coach.teamCoachAssignments.length === 0 && coach.isCoach) {
       roleRows.push({
         volunteerProfileId: profileId,
-        role: "ASSISTANT_COACH",
+        role: "LEAGUE_ASSISTANT_COACH",
         teamId: null,
       });
     }

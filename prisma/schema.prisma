@@ -1891,12 +1891,14 @@ enum VolunteerProfileStatus {
   INACTIVE
 }
 
+/// Labels match Sports Connect / league volunteer registration sheet.
 enum VolunteerRole {
+  LEAGUE_HEAD_COACH
+  LEAGUE_ASSISTANT_COACH
+  /// Rare sheet value "Head Coach" (distinct from League Head Coach).
   HEAD_COACH
-  ASSISTANT_COACH
-  TEAM_PARENT
-  BOARD
-  OTHER
+  AP_BASEBALL_UMPIRE
+  OTHER_AP_POSITIONS
 }
 
 enum VolunteerRequirementKey {
