@@ -350,6 +350,9 @@ export default function Header({ brand }: HeaderProps) {
         { href: "/news", label: "News" },
         ...(regOpen ? [{ href: "/registration", label: "Registration" }] : []),
         ...(!isFallBallHeader && canSeeDugout ? [{ href: "/coach-corner", label: "Coaches" }] : []),
+        ...(!isFallBallHeader && canSeeDugout
+          ? [{ href: "/volunteer-card", label: "Volunteer Card" }]
+          : []),
         ...(!isFallBallHeader && canSeeDugout ? [{ href: "/dugout", label: "Dugout" }] : []),
       ]).filter((link) =>
         isPublicNavEnabledForOrg(isFallBallHeader ? "fallball" : null, link.key ?? link.label.toLowerCase()),
@@ -371,6 +374,9 @@ export default function Header({ brand }: HeaderProps) {
           : []),
         ...(canSeeDugout && isPublicNavEnabledForOrg("fallball", "coaches")
           ? [{ href: "/coach-corner", label: "Coaches" }]
+          : []),
+        ...(canSeeDugout
+          ? [{ href: "/volunteer-card", label: "Volunteer Card" }]
           : []),
         ...(canSeeDugout && isPublicNavEnabledForOrg("fallball", "dugout")
           ? [{ href: "/dugout", label: "Dugout" }]
@@ -661,6 +667,15 @@ export default function Header({ brand }: HeaderProps) {
                 className="flex items-center gap-2 text-white hover:text-brand-gold"
               >
                 Coach&apos;s Corner
+              </Link>
+            )}
+            {!isMasterHeader && !isFallBallHeader && canSeeDugout && (
+              <Link
+                href="/volunteer-card"
+                onClick={() => setIsMenuOpen(false)}
+                className="flex items-center gap-2 text-white hover:text-brand-gold"
+              >
+                Volunteer Card
               </Link>
             )}
             {!isMasterHeader && !isFallBallHeader && canSeeDugout && (
