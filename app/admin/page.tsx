@@ -127,6 +127,20 @@ export default async function AdminDashboardPage({
           : "Manage team rosters, coach assignments, and season setup.",
         action: masterMode ? "Open Teams Console" : "Open Teams",
       },
+      ...(masterMode || currentOrg === "fallball"
+        ? [
+            {
+              module: "TEAMS" as AdminModule,
+              href: currentOrg
+                ? moduleHref("/admin/sports-connect", "TEAMS")
+                : "/admin/sports-connect?org=fallball",
+              title: "Sports Connect Ops Desk",
+              description:
+                "Assisted SportsConnect loads: checklist, multi-file plan, mapping presets, roster quality, and import run history.",
+              action: "Open Sports Connect",
+            },
+          ]
+        : []),
       ...(currentOrg === "fallball" || (!currentOrg && masterMode)
         ? [
             {

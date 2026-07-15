@@ -2,6 +2,7 @@ import Link from "next/link";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
 import { getOrgCapabilities } from "@/lib/org/capabilities";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
+import { getSportsConnectRegistrationUrl } from "@/lib/sportsConnect/registrationUrl";
 import { getSiteConfig } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -43,6 +44,7 @@ export default function RegistrationPage() {
   }
 
   if (isFallBall && isSportsConnect) {
+    const scReg = getSportsConnectRegistrationUrl("fallball");
     return (
       <main className="min-h-screen bg-black text-white">
         <section className="bg-zinc-900 border-b border-zinc-800 py-14 px-6 text-center">
@@ -90,15 +92,16 @@ export default function RegistrationPage() {
             <div className="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
               <h2 className="font-semibold text-white mb-2">Admins</h2>
               <p className="text-zinc-400 text-sm">
-                Use Master Admin, select AP Fall Ball, then open Teams to import
-                SportsConnect CSV or XLSX registration exports.
+                Use Master Admin, select AP Fall Ball, then open Sports Connect
+                Ops Desk or Teams to import SportsConnect CSV or XLSX
+                registration exports.
               </p>
             </div>
           </section>
 
           <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
             <a
-              href="http://www.apbaseball.com"
+              href={scReg.href}
               target="_blank"
               rel="noopener noreferrer"
               className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-10 py-4 rounded-xl text-center transition-all active:scale-95"
