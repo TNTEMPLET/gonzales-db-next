@@ -77,3 +77,6 @@ scripts/get-cycle-ids.ts
 
 .next-fallball/
 .next-public/
+
+# Prefer pnpm — do not commit npm lockfile
+package-lock.json

@@ -141,21 +141,6 @@ export default async function AdminDashboardPage({
             },
           ]
         : []),
-      ...((currentOrg && isCoachingInterestEnabled(currentOrg)) ||
-      (!currentOrg && masterMode)
-        ? [
-            {
-              module: "TEAMS" as AdminModule,
-              href: currentOrg
-                ? moduleHref("/admin/coaching-interest", "TEAMS")
-                : "/admin/coaching-interest?org=fallball",
-              title: "Coaching Interest",
-              description:
-                "Review coach interest leads, track follow-up status, and export the pipeline for registration planning.",
-              action: "Open Coach Pipeline",
-            },
-          ]
-        : []),
       {
         module: "SCORES" as AdminModule,
         href: currentOrg ? moduleHref("/admin/scores", "SCORES") : "/admin/scores",
@@ -278,22 +263,31 @@ export default async function AdminDashboardPage({
         action: "Open Assignr",
       },
       {
+        // ACL: show when USERS, VOLUNTEERS, or coaching-interest (TEAMS+capability) is allowed.
+        // Category uses USERS; filter overridden below for people hub access.
         module: "USERS" as AdminModule,
-        href: moduleHref("/admin/users", "USERS"),
-        title: "User Management",
+        href: (() => {
+          const peopleOrg =
+            currentOrg ??
+            CONTENT_ORGS.find(
+              (orgId) =>
+                hasModuleAccess(orgId, "USERS") ||
+                hasModuleAccess(orgId, "VOLUNTEERS") ||
+                (isCoachingInterestEnabled(orgId) && hasModuleAccess(orgId, "TEAMS")),
+            ) ??
+            preferredOrgForModule("USERS");
+          const section = hasModuleAccess(peopleOrg, "USERS")
+            ? "directory"
+            : hasModuleAccess(peopleOrg, "VOLUNTEERS")
+              ? "volunteers"
+              : "coaching-interest";
+          return `/admin/people?org=${peopleOrg}&section=${section}`;
+        })(),
+        title: "People",
         description: masterMode
-          ? "Manage who can help run the selected site and what admin tools they can use."
-          : "Manage admin users and access roles.",
-        action: masterMode ? "Open Access" : "Open Users",
-      },
-      {
-        module: "VOLUNTEERS" as AdminModule,
-        href: moduleHref("/admin/volunteers", "VOLUNTEERS"),
-        title: "Volunteer Cards",
-        description: masterMode
-          ? "Track JDP background checks and Abuse Awareness for coaches and volunteers on the selected site."
-          : "Track JDP background checks and Abuse Awareness certificates for coaches and volunteers.",
-        action: masterMode ? "Open Volunteers Desk" : "Open Volunteers",
+          ? "Directory, volunteer compliance cards (JDP / Abuse Awareness), and coaching interest for the selected site."
+          : "Accounts, admin access, volunteer compliance cards, and coaching interest in one place.",
+        action: masterMode ? "Open People Desk" : "Open People",
       },
       {
         module: "REPORTS" as AdminModule,
@@ -328,15 +322,26 @@ export default async function AdminDashboardPage({
         category: getAdminDashboardCategory(card.module)!,
       }))
       .filter((card) => (card.module === "COMMUNICATIONS" ? communicationsEnabled : true))
-      .filter((card) =>
-        card.module === "ASSIGNR"
-          ? currentOrg
+      .filter((card) => {
+        // People hub: any of directory / volunteers / coaching interest
+        if (card.title === "People") {
+          const orgCanPeople = (orgId: ContentOrgId) =>
+            hasModuleAccess(orgId, "USERS") ||
+            hasModuleAccess(orgId, "VOLUNTEERS") ||
+            (isCoachingInterestEnabled(orgId) && hasModuleAccess(orgId, "TEAMS"));
+          return currentOrg
+            ? orgCanPeople(currentOrg)
+            : CONTENT_ORGS.some((orgId) => orgCanPeople(orgId));
+        }
+        if (card.module === "ASSIGNR") {
+          return currentOrg
             ? hasModuleAccess(currentOrg, "ASSIGNR")
-            : hasModuleAnyOrg("ASSIGNR")
-          : currentOrg
-            ? hasModuleAccess(currentOrg, card.module)
-            : hasModuleAnyOrg(card.module),
-      ),
+            : hasModuleAnyOrg("ASSIGNR");
+        }
+        return currentOrg
+          ? hasModuleAccess(currentOrg, card.module)
+          : hasModuleAnyOrg(card.module);
+      }),
   );
 
   const visibleModuleCount = new Set(cards.map((card) => card.module)).size;

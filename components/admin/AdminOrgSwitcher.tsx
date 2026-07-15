@@ -46,10 +46,18 @@ export default function AdminOrgSwitcher({
         ) : null}
         {orgs.map((org) => {
           const selected = org === currentOrg;
+          // Preserve existing query (e.g. People hub `section=`) when switching org.
+          const href = (() => {
+            const [pathOnly, existingQuery = ""] = currentPath.split("?");
+            const params = new URLSearchParams(existingQuery);
+            params.set("org", org);
+            const q = params.toString();
+            return q ? `${pathOnly}?${q}` : pathOnly;
+          })();
           return (
             <Link
               key={org}
-              href={`${currentPath}?org=${org}`}
+              href={href}
               className={`inline-flex min-h-10 items-center justify-center rounded-xl border px-3 py-2 text-center text-xs font-semibold transition ${
                 selected
                   ? "border-red-500/60 bg-red-500/10 text-red-100 shadow-[inset_0_0_0_1px_rgba(239,68,68,0.24)]"

@@ -280,9 +280,6 @@ export default function Header({ brand }: HeaderProps) {
           label: "Program",
           items: [
             { href: `/admin/teams${masterOrgSuffix}`, label: "Teams" },
-            ...(allowModule("TEAMS") && isCoachingInterestEnabled(currentMasterOrg)
-              ? [{ href: `/admin/coaching-interest${masterOrgSuffix}`, label: "Coaching Interest" }]
-              : []),
             ...(allowModule("SPONSORS")
               ? [{ href: `/admin/sponsors${masterOrgSuffix}`, label: "Sponsors" }]
               : []),
@@ -312,11 +309,13 @@ export default function Header({ brand }: HeaderProps) {
           id: "operations",
           label: "Operations",
           items: [
-            ...(allowModule("USERS")
-              ? [{ href: "/admin/users", label: "Users" }]
-              : []),
-            ...(allowModule("VOLUNTEERS")
-              ? [{ href: `/admin/volunteers${masterOrgSuffix}`, label: "Volunteers" }]
+            ...(allowModule("USERS") || allowModule("VOLUNTEERS")
+              ? [
+                  {
+                    href: `/admin/people${masterOrgSuffix || "?org=gonzales"}`,
+                    label: "People",
+                  },
+                ]
               : []),
             ...(allowModule("REPORTS")
               ? [{ href: "/admin/reports", label: "Reports" }]

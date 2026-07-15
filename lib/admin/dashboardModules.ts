@@ -74,8 +74,9 @@ const moduleCatalog: Record<
   ASSIGNR: { category: "integrations", sortOrder: 20 },
   TOURNAMENT_BRACKETS: { category: "program", sortOrder: 25 },
   TOURNAMENT_ALERTS: { category: "operations", sortOrder: 12 },
+  // People hub consolidates directory + volunteer cards (+ coaching interest UI).
   USERS: { category: "operations", sortOrder: 10 },
-  VOLUNTEERS: { category: "operations", sortOrder: 12 },
+  VOLUNTEERS: { category: "operations", sortOrder: 11 },
   REPORTS: { category: "operations", sortOrder: 20 },
   PARK_ALERTS: { category: "operations", sortOrder: 15 },
   PARK_INFO: { category: "program", sortOrder: 26 },

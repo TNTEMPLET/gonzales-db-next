@@ -10,11 +10,8 @@ import {
   parseVoteExportTopCount,
   selectVoteSummaryTopVoteGetterPool,
 } from "@/lib/allStar/voteSummary";
+import { csvEscape } from "@/lib/export/csv";
 import prisma from "@/lib/prisma";
-
-function csvEscape(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
-}
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAllStarVaultAccess(request, { needsManage: false });
