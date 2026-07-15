@@ -293,6 +293,7 @@ model AdminUser {
   parkInfoPagesUpdated             ParkInfoPage[]                    @relation("ParkInfoUpdatedBy")
   scheduleSeasonsCreated           ScheduleSeason[]                  @relation("ScheduleSeasonCreatedBy")
   scheduleExportBatchesCreated     ScheduleExportBatch[]             @relation("ScheduleExportBatchCreatedBy")
+  volunteerRequirementsReviewed    VolunteerRequirementStatus[]      @relation("VolunteerRequirementReviewedBy")
 }
 
 enum BracketProjectStatus {
@@ -505,6 +506,7 @@ model RegisteredUser {
   communicationDeliveries         CommunicationDelivery[]            @relation("CommunicationDeliveryRegisteredUser")
   emailSuppressions               EmailSuppression[]
   smsConsents                     SmsConsent[]
+  volunteerProfiles               VolunteerProfile[]
 
   @@unique([organizationId, email])
   @@index([organizationId])
@@ -1880,4 +1882,107 @@ model ParkInfoPage {
   updatedByAdmin      AdminUser? @relation("ParkInfoUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
 
   @@index([organizationId])
+}
+
+// --- Volunteer Card / compliance tracking ---------------------------------
+
+enum VolunteerProfileStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum VolunteerRole {
+  HEAD_COACH
+  ASSISTANT_COACH
+  TEAM_PARENT
+  BOARD
+  OTHER
+}
+
+enum VolunteerRequirementKey {
+  JDP
+  ABUSE_AWARENESS
+}
+
+enum VolunteerRequirementStatusValue {
+  NOT_STARTED
+  PENDING
+  CLEAR
+  EXPIRED
+  FAILED
+  WAIVED
+}
+
+/// One compliance card per registered user per org per season.
+model VolunteerProfile {
+  id               String                 @id @default(cuid())
+  organizationId   String
+  registeredUserId String
+  seasonYear       Int
+  status           VolunteerProfileStatus @default(ACTIVE)
+  notes            String?
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  registeredUser RegisteredUser              @relation(fields: [registeredUserId], references: [id], onDelete: Cascade)
+  roles          VolunteerRoleAssignment[]
+  requirements   VolunteerRequirementStatus[]
+
+  @@unique([organizationId, registeredUserId, seasonYear])
+  @@index([organizationId, seasonYear, status])
+  @@index([registeredUserId])
+}
+
+model VolunteerRoleAssignment {
+  id                 String        @id @default(cuid())
+  volunteerProfileId String
+  role               VolunteerRole
+  /// Optional team scope when the role is team-specific.
+  teamId             String?
+  createdAt          DateTime      @default(now())
+
+  volunteerProfile VolunteerProfile @relation(fields: [volunteerProfileId], references: [id], onDelete: Cascade)
+
+  @@unique([volunteerProfileId, role, teamId])
+  @@index([volunteerProfileId])
+  @@index([role])
+}
+
+/// Global requirement catalog (seeded). Org overrides can come later.
+model VolunteerRequirementDef {
+  key                   VolunteerRequirementKey @id
+  label                 String
+  description           String?
+  requiredByDefault     Boolean                 @default(true)
+  allowsVolunteerUpload Boolean                 @default(false)
+  expiresAfterDays      Int?
+  sortOrder             Int                     @default(0)
+  createdAt             DateTime                @default(now())
+  updatedAt             DateTime                @updatedAt
+}
+
+model VolunteerRequirementStatus {
+  id                 String                           @id @default(cuid())
+  volunteerProfileId String
+  requirementKey     VolunteerRequirementKey
+  status             VolunteerRequirementStatusValue  @default(NOT_STARTED)
+  completedAt        DateTime?
+  expiresAt          DateTime?
+  externalRef        String?
+  documentUrl        String?
+  fileName           String?
+  mimeType           String?
+  uploadedAt         DateTime?
+  reviewedByAdminId  String?
+  reviewedAt         DateTime?
+  notes              String?
+  createdAt          DateTime                         @default(now())
+  updatedAt          DateTime                         @updatedAt
+
+  volunteerProfile VolunteerProfile @relation(fields: [volunteerProfileId], references: [id], onDelete: Cascade)
+  reviewedByAdmin  AdminUser?       @relation("VolunteerRequirementReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([volunteerProfileId, requirementKey])
+  @@index([requirementKey, status])
+  @@index([volunteerProfileId, status])
 }
