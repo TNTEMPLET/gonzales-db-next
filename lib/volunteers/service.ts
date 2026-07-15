@@ -433,12 +433,25 @@ type ProfileWithRelations = Prisma.VolunteerProfileGetPayload<{
   include: typeof profileInclude;
 }>;
 
+type TeamAssignmentRow = {
+  id: string;
+  role: string;
+  registeredUserId: string;
+  team: {
+    id: string;
+    teamName: string;
+    ageGroup: string;
+    seasonYear: number;
+  };
+};
+
 export async function loadTeamAssignmentsForUsers(
   organizationId: string,
   registeredUserIds: string[],
   seasonYear: number,
-) {
-  if (registeredUserIds.length === 0) return new Map();
+): Promise<Map<string, TeamAssignmentRow[]>> {
+  const map = new Map<string, TeamAssignmentRow[]>();
+  if (registeredUserIds.length === 0) return map;
   const rows = await prisma.teamCoachAssignment.findMany({
     where: {
       registeredUserId: { in: registeredUserIds },
@@ -455,10 +468,14 @@ export async function loadTeamAssignmentsForUsers(
       },
     },
   });
-  const map = new Map<string, typeof rows>();
   for (const row of rows) {
     const list = map.get(row.registeredUserId) || [];
-    list.push(row);
+    list.push({
+      id: row.id,
+      role: row.role,
+      registeredUserId: row.registeredUserId,
+      team: row.team,
+    });
     map.set(row.registeredUserId, list);
   }
   return map;
