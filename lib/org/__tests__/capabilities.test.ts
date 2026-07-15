@@ -17,7 +17,7 @@ describe("fallball capabilities (Phase 3 smoke)", () => {
     const caps = getOrgCapabilities("fallball");
     assert.equal(caps.homepage, "compact-ops");
     assert.equal(caps.registration, "sportsconnect");
-    assert.equal(caps.schedule, "none");
+    assert.equal(caps.schedule, "assignr");
     assert.equal(caps.allStar, false);
     assert.equal(caps.tournaments, false);
     assert.equal(caps.coachingInterest, true);

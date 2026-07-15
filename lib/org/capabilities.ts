@@ -54,8 +54,8 @@ const CAPABILITIES: Record<ContentOrgId, OrgCapabilities> = {
   ascension: { ...SPRING_LEAGUE_DEFAULTS },
   fallball: {
     registration: "sportsconnect",
-    // Product: Assignr undecided — treat as none until IDs are configured.
-    schedule: "none",
+    // Assignr site 18601 / league 515713 (AP Fall Ball) — see siteConfig.
+    schedule: "assignr",
     liveScores: "none",
     dugout: true,
     coachCorner: true,
