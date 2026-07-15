@@ -2,6 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCoachCornerActor } from "@/lib/coachCorner/auth";
 import prisma from "@/lib/prisma";
+import {
+  EMPTY_AAT_SNAPSHOT,
+  getAatSnapshotsByUserIds,
+  type AatCertificateSnapshot,
+} from "@/lib/volunteers/service";
 
 export const dynamic = "force-dynamic";
 
@@ -12,11 +17,25 @@ const coachProfileSelect = {
   lastName: true,
   name: true,
   contactPhone: true,
-  abuseAwarenessTrainingCertificateUrl: true,
-  abuseAwarenessTrainingCertificateFileName: true,
-  abuseAwarenessTrainingCertificateMimeType: true,
-  abuseAwarenessTrainingCertificateUploadedAt: true,
 } as const;
+
+type CoachRow = {
+  id: string;
+  email: string;
+  firstName: string | null;
+  lastName: string | null;
+  name: string | null;
+  contactPhone: string | null;
+};
+
+function withAat(
+  coach: CoachRow | null,
+  aatByUser: Map<string, AatCertificateSnapshot>,
+) {
+  if (!coach) return null;
+  const aat = aatByUser.get(coach.id) ?? EMPTY_AAT_SNAPSHOT;
+  return { ...coach, ...aat };
+}
 
 export async function GET(request: NextRequest) {
   const actor = await resolveCoachCornerActor(request);
@@ -85,13 +104,35 @@ export async function GET(request: NextRequest) {
         },
       });
 
+  const coachIds = new Set<string>();
+  if (actorCoach) coachIds.add(actorCoach.id);
+  for (const team of teams) {
+    for (const assignment of team.coachAssignments) {
+      coachIds.add(assignment.registeredUser.id);
+    }
+  }
+
+  const aatByUser = await getAatSnapshotsByUserIds({
+    organizationId: actor.targetOrg,
+    registeredUserIds: [...coachIds],
+    seasonYear: seasonFilter,
+  });
+
+  const data = teams.map((team) => ({
+    ...team,
+    coachAssignments: team.coachAssignments.map((assignment) => ({
+      ...assignment,
+      registeredUser: withAat(assignment.registeredUser, aatByUser)!,
+    })),
+  }));
+
   return NextResponse.json({
     actor: {
       isAdmin: actor.isAdmin,
       registeredUserId: actor.registeredUserId,
       targetOrg: actor.targetOrg,
-      coach: actorCoach,
+      coach: withAat(actorCoach, aatByUser),
     },
-    data: teams,
+    data,
   });
 }

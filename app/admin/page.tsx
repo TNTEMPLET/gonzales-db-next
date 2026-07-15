@@ -159,29 +159,11 @@ export default async function AdminDashboardPage({
       {
         module: "ALL_STAR_VAULT" as AdminModule,
         href: moduleHref("/admin/all-star", "ALL_STAR_VAULT"),
-        title: "All-Star Vault",
+        title: "All-Star Program",
         description: masterMode
-          ? "Manage All-Star voting cycles, invitations, and exports for both organizations."
-          : "Manage All-Star voting cycles and ballot administration.",
-        action: masterMode ? "Open All-Star Vault" : "Open All-Star",
-      },
-      {
-        module: "ALL_STAR_PAYMENTS" as AdminModule,
-        href: moduleHref("/admin/payments", "ALL_STAR_PAYMENTS"),
-        title: "All-Star Payments",
-        description: masterMode
-          ? "Track All-Star fee collection across all organizations, grouped by roster."
-          : "Track All-Star fee payments per player for each finalized roster.",
-        action: "Open Payments",
-      },
-      {
-        module: "ALL_STAR_PAYMENTS" as AdminModule,
-        href: moduleHref("/admin/cap-orders", "ALL_STAR_PAYMENTS"),
-        title: "Parent Cap Orders",
-        description: masterMode
-          ? "View and export All-Star cap orders submitted by parents via PayPal, grouped by organization."
-          : "View and export All-Star cap orders submitted by parents via PayPal.",
-        action: "View Cap Orders",
+          ? "Vault, payments, and cap orders for All-Star season work across organizations."
+          : "Vault (cycles & ballots), payments, and parent cap orders in one program.",
+        action: masterMode ? "Open All-Star Program" : "Open All-Star",
       },
       {
         module: "TOURNAMENT_BRACKETS" as AdminModule,
@@ -332,6 +314,16 @@ export default async function AdminDashboardPage({
           return currentOrg
             ? orgCanPeople(currentOrg)
             : CONTENT_ORGS.some((orgId) => orgCanPeople(orgId));
+        }
+        // All-Star Program: vault view or payments module
+        if (card.title === "All-Star Program") {
+          const orgCanAllStar = (orgId: ContentOrgId) =>
+            hasModuleAccess(orgId, "ALL_STAR_VAULT") ||
+            hasModuleAccess(orgId, "ALL_STAR_PAYMENTS") ||
+            allStarVaultViewByOrg[orgId];
+          return currentOrg
+            ? orgCanAllStar(currentOrg)
+            : CONTENT_ORGS.some((orgId) => orgCanAllStar(orgId));
         }
         if (card.module === "ASSIGNR") {
           return currentOrg

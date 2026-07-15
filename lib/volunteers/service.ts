@@ -750,34 +750,148 @@ export async function updateRequirementStatus(input: {
     data,
   });
 
-  // Dual-write AAT back to RegisteredUser legacy columns
-  if (input.requirementKey === "ABUSE_AWARENESS") {
-    const clear =
-      (input.status ?? updated.status) === "CLEAR" ||
-      Boolean(input.documentUrl ?? updated.documentUrl);
-    if (clear || input.documentUrl !== undefined) {
-      await prisma.registeredUser.update({
-        where: { id: profile.registeredUserId },
-        data: {
-          abuseAwarenessTrainingCertificateUrl:
-            input.documentUrl !== undefined
-              ? input.documentUrl
-              : updated.documentUrl,
-          abuseAwarenessTrainingCertificateFileName:
-            input.fileName !== undefined ? input.fileName : updated.fileName,
-          abuseAwarenessTrainingCertificateMimeType:
-            input.mimeType !== undefined ? input.mimeType : updated.mimeType,
-          abuseAwarenessTrainingCertificateUploadedAt:
-            input.uploadedAt !== undefined
-              ? input.uploadedAt
-              : updated.uploadedAt ??
-                (clear ? updated.completedAt ?? new Date() : null),
+  // Source of truth is VolunteerRequirementStatus. Do not dual-write RegisteredUser
+  // legacy AAT columns (see hydrateAatFromLegacyUser for dual-read during migration).
+
+  return updated;
+}
+
+/** AAT fields shaped like legacy RegisteredUser columns for Coach Corner UI. */
+export type AatCertificateSnapshot = {
+  abuseAwarenessTrainingCertificateUrl: string | null;
+  abuseAwarenessTrainingCertificateFileName: string | null;
+  abuseAwarenessTrainingCertificateMimeType: string | null;
+  abuseAwarenessTrainingCertificateUploadedAt: Date | null;
+};
+
+export const EMPTY_AAT_SNAPSHOT: AatCertificateSnapshot = {
+  abuseAwarenessTrainingCertificateUrl: null,
+  abuseAwarenessTrainingCertificateFileName: null,
+  abuseAwarenessTrainingCertificateMimeType: null,
+  abuseAwarenessTrainingCertificateUploadedAt: null,
+};
+
+/**
+ * Load Abuse Awareness certificate snapshots from Volunteer Cards (canonical).
+ * Falls back to legacy RegisteredUser columns when the volunteer row has no document yet.
+ */
+export async function getAatSnapshotsByUserIds(input: {
+  organizationId: string;
+  registeredUserIds: string[];
+  seasonYear?: number;
+}): Promise<Map<string, AatCertificateSnapshot>> {
+  const result = new Map<string, AatCertificateSnapshot>();
+  const ids = [...new Set(input.registeredUserIds.filter(Boolean))];
+  if (ids.length === 0) return result;
+
+  const year =
+    input.seasonYear ??
+    getSeasonConfigForOrg(input.organizationId as ContentOrgId).year;
+
+  const profiles = await prisma.volunteerProfile.findMany({
+    where: {
+      organizationId: input.organizationId,
+      seasonYear: year,
+      registeredUserId: { in: ids },
+    },
+    select: {
+      registeredUserId: true,
+      requirements: {
+        where: { requirementKey: "ABUSE_AWARENESS" },
+        select: {
+          documentUrl: true,
+          fileName: true,
+          mimeType: true,
+          uploadedAt: true,
+          completedAt: true,
+          status: true,
         },
+      },
+    },
+  });
+
+  for (const profile of profiles) {
+    const req = profile.requirements[0];
+    if (req?.documentUrl) {
+      result.set(profile.registeredUserId, {
+        abuseAwarenessTrainingCertificateUrl: req.documentUrl,
+        abuseAwarenessTrainingCertificateFileName: req.fileName,
+        abuseAwarenessTrainingCertificateMimeType: req.mimeType,
+        abuseAwarenessTrainingCertificateUploadedAt:
+          req.uploadedAt ?? req.completedAt,
       });
     }
   }
 
-  return updated;
+  const missing = ids.filter((id) => !result.has(id));
+  if (missing.length) {
+    const users = await prisma.registeredUser.findMany({
+      where: {
+        organizationId: input.organizationId,
+        id: { in: missing },
+      },
+      select: {
+        id: true,
+        abuseAwarenessTrainingCertificateUrl: true,
+        abuseAwarenessTrainingCertificateFileName: true,
+        abuseAwarenessTrainingCertificateMimeType: true,
+        abuseAwarenessTrainingCertificateUploadedAt: true,
+      },
+    });
+    for (const user of users) {
+      if (!user.abuseAwarenessTrainingCertificateUrl) continue;
+      result.set(user.id, {
+        abuseAwarenessTrainingCertificateUrl:
+          user.abuseAwarenessTrainingCertificateUrl,
+        abuseAwarenessTrainingCertificateFileName:
+          user.abuseAwarenessTrainingCertificateFileName,
+        abuseAwarenessTrainingCertificateMimeType:
+          user.abuseAwarenessTrainingCertificateMimeType,
+        abuseAwarenessTrainingCertificateUploadedAt:
+          user.abuseAwarenessTrainingCertificateUploadedAt,
+      });
+    }
+  }
+
+  return result;
+}
+
+/** Record coach/admin AAT certificate upload onto the volunteer card (canonical write). */
+export async function recordAbuseAwarenessUpload(input: {
+  organizationId: string;
+  registeredUserId: string;
+  documentUrl: string;
+  fileName: string | null;
+  mimeType: string | null;
+  uploadedAt?: Date;
+  reviewedByAdminId?: string | null;
+}) {
+  const now = input.uploadedAt ?? new Date();
+  const profile = await ensureVolunteerProfile({
+    organizationId: input.organizationId,
+    registeredUserId: input.registeredUserId,
+  });
+  await updateRequirementStatus({
+    volunteerProfileId: profile.id,
+    organizationId: input.organizationId,
+    requirementKey: "ABUSE_AWARENESS",
+    status: "CLEAR",
+    documentUrl: input.documentUrl,
+    fileName: input.fileName,
+    mimeType: input.mimeType,
+    uploadedAt: now,
+    completedAt: now,
+    reviewedByAdminId: input.reviewedByAdminId ?? null,
+  });
+  return {
+    profileId: profile.id,
+    snapshot: {
+      abuseAwarenessTrainingCertificateUrl: input.documentUrl,
+      abuseAwarenessTrainingCertificateFileName: input.fileName,
+      abuseAwarenessTrainingCertificateMimeType: input.mimeType,
+      abuseAwarenessTrainingCertificateUploadedAt: now,
+    } satisfies AatCertificateSnapshot,
+  };
 }
 
 export function volunteerCardsToCsv(cards: VolunteerCardView[]): string {

@@ -10,9 +10,13 @@ import {
   type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { ensureAdminModule } from "@/lib/news/auth";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import prisma from "@/lib/prisma";
 import { isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  EMPTY_AAT_SNAPSHOT,
+  getAatSnapshotsByUserIds,
+} from "@/lib/volunteers/service";
 
 type PromotePayload = {
   userId?: string;
@@ -260,6 +264,11 @@ export async function GET(request: NextRequest) {
       : null;
     const totalPages = Math.max(1, Math.ceil(totalAuditLogs / logPageSize));
 
+    const aatByUser = await getAatSnapshotsByUserIds({
+      organizationId: targetOrg,
+      registeredUserIds: userIds,
+    });
+
     return NextResponse.json({
       admins,
       auditLogs,
@@ -282,12 +291,28 @@ export async function GET(request: NextRequest) {
       isMasterDeployment: isMasterDeployment(),
       targetOrg,
       latestImportBatch,
-      data: users.map((user: { id: string; email: string }) => ({
-        ...user,
-        isAdmin: adminEmailSet.has(user.email.trim().toLowerCase()),
-        coachRole: coachRoleByUserId.get(user.id) || null,
-        coachTeamAssignments: coachTeamAssignmentsByUserId.get(user.id) ?? [],
-      })),
+      data: users.map((user) => {
+        const aat = aatByUser.get(user.id) ?? EMPTY_AAT_SNAPSHOT;
+        return {
+          ...user,
+          // Prefer volunteer-card AAT when present; fall back to legacy user columns.
+          abuseAwarenessTrainingCertificateUrl:
+            aat.abuseAwarenessTrainingCertificateUrl ??
+            user.abuseAwarenessTrainingCertificateUrl,
+          abuseAwarenessTrainingCertificateFileName:
+            aat.abuseAwarenessTrainingCertificateFileName ??
+            user.abuseAwarenessTrainingCertificateFileName,
+          abuseAwarenessTrainingCertificateMimeType:
+            aat.abuseAwarenessTrainingCertificateMimeType ??
+            user.abuseAwarenessTrainingCertificateMimeType,
+          abuseAwarenessTrainingCertificateUploadedAt:
+            aat.abuseAwarenessTrainingCertificateUploadedAt ??
+            user.abuseAwarenessTrainingCertificateUploadedAt,
+          isAdmin: adminEmailSet.has(user.email.trim().toLowerCase()),
+          coachRole: coachRoleByUserId.get(user.id) || null,
+          coachTeamAssignments: coachTeamAssignmentsByUserId.get(user.id) ?? [],
+        };
+      }),
     });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";

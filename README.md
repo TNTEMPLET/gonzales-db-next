@@ -60,7 +60,7 @@ npx prisma migrate dev    # schema changes — DEV only
 | People hub | `/admin/people` (directory, volunteers, coaching interest) — also `/admin/users`, `/admin/volunteers` redirect here |
 | Teams | `/admin/teams` |
 | Scores | `/admin/scores` |
-| All-Star | `/admin/all-star`, payments, cap-orders |
+| All-Star Program | `/admin/all-star` (Vault) + stage nav to payments & cap-orders |
 | Tournaments | `/admin/tournament-brackets`, alerts |
 | Publishing | News, social, communications, documents |
 | Ops | Reports, park alerts/info, Assignr, scheduler |
@@ -70,6 +70,12 @@ Workflow UI standard: `docs/admin-module-workflow-pattern.md`.
 ## Domain libraries
 
 Business logic lives under `lib/` (e.g. `volunteers`, `tournament-brackets`, `gamechanger`, `assignr`, `communications`, `allStar`). Prefer thin `app/api/**/route.ts` handlers.
+
+### Volunteer compliance (AAT / JDP)
+
+- **Canonical store:** `VolunteerRequirementStatus` on a `VolunteerProfile` (per org + season).
+- **Coach Corner / admin uploads** write the volunteer card only (`recordAbuseAwarenessUpload` / `updateRequirementStatus`).
+- **Legacy** `RegisteredUser.abuseAwarenessTrainingCertificate*` columns are dual-read only until backfill soak; do not write them from new code. Backfill: `scripts/backfill-volunteer-aat-from-users.ts`.
 
 ## Agent / git
 

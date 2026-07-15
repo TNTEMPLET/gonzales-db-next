@@ -6,6 +6,7 @@ import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import AllStarProgramNav from "@/components/admin/allStar/AllStarProgramNav";
 import ParentCapOrdersPanel from "@/components/admin/capOrders/ParentCapOrdersPanel";
 import {
   getSiteConfig,
@@ -76,6 +77,8 @@ export default async function AdminCapOrdersPage({
             Cap orders are the last step after roster and payment setup. Recheck payer notes before fulfillment because size details come from parent-entered checkout text.
           </div>
         </div>
+
+        <AllStarProgramNav stage="cap-orders" org={currentOrg} />
 
         <ParentCapOrdersPanel />
       </section>
