@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1600" height="900" viewBox="0 0 1600 900">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#3a0150"/>
+      <stop offset="55%" stop-color="#590275"/>
+      <stop offset="100%" stop-color="#1a0024"/>
+    </linearGradient>
+    <linearGradient id="gold" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#ffcb29"/>
+      <stop offset="100%" stop-color="#f5b700"/>
+    </linearGradient>
+  </defs>
+  <rect width="1600" height="900" fill="url(#bg)"/>
+  <circle cx="1400" cy="120" r="220" fill="#ffcb29" opacity="0.08"/>
+  <circle cx="180" cy="780" r="260" fill="#ffcb29" opacity="0.06"/>
+  <rect x="64" y="64" width="1472" height="772" rx="28" fill="none" stroke="#ffcb29" stroke-opacity="0.45" stroke-width="3"/>
+  <text x="100" y="150" fill="#ffcb29" font-family="Arial, Helvetica, sans-serif" font-size="34" font-weight="700" letter-spacing="6">GONZALES DIAMOND BASEBALL</text>
+  <text x="100" y="250" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="72" font-weight="800">11U Pool Play Schedule</text>
+  <text x="100" y="320" fill="#e8d5ff" font-family="Arial, Helvetica, sans-serif" font-size="34">State / Regional Tournament</text>
+  <rect x="100" y="370" width="420" height="8" rx="4" fill="url(#gold)"/>
+  <text x="100" y="450" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="700">July 15–19, 2026</text>
+  <text x="100" y="520" fill="#f3e8ff" font-family="Arial, Helvetica, sans-serif" font-size="32">Lagoon Park · Montgomery, AL</text>
+  <text x="100" y="580" fill="#d4b8f0" font-family="Arial, Helvetica, sans-serif" font-size="26">2855 Lagoon Park Drive</text>
+  <text x="100" y="680" fill="#ffcb29" font-family="Arial, Helvetica, sans-serif" font-size="30" font-weight="700">4 pool games · Bracket play Saturday morning</text>
+  <text x="100" y="760" fill="#ffffff" font-family="Arial, Helvetica, sans-serif" font-size="24">Tap to view full schedule &amp; GameChanger link</text>
+</svg>
