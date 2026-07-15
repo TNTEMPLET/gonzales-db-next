@@ -26,6 +26,7 @@ const previewModuleMinimumRole: Record<
 > = {
   DASHBOARD: "PARK_DIRECTOR",
   USERS: "ADMIN",
+  VOLUNTEERS: "ADMIN",
   TEAMS: "ADMIN",
   SPONSORS: "ADMIN",
   REPORTS: "PARK_DIRECTOR",
