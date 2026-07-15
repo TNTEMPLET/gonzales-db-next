@@ -3,8 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { assertRoleKeyActive } from "@/lib/volunteers/roles";
 import { getVolunteerCard } from "@/lib/volunteers/service";
-import { type VolunteerRole, VOLUNTEER_ROLES } from "@/lib/volunteers/types";
 
 export async function GET(
   request: NextRequest,
@@ -46,7 +46,7 @@ export async function PATCH(
     const body = (await request.json()) as {
       notes?: string | null;
       status?: "ACTIVE" | "INACTIVE";
-      roles?: Array<{ role: string; teamId?: string | null }>;
+      roles?: Array<{ role?: string; roleKey?: string; teamId?: string | null }>;
     };
 
     if (body.notes !== undefined || body.status !== undefined) {
@@ -62,13 +62,13 @@ export async function PATCH(
     }
 
     if (body.roles) {
-      const roles = body.roles
-        .map((r) => {
-          const role = r.role.trim().toUpperCase();
-          if (!(VOLUNTEER_ROLES as readonly string[]).includes(role)) return null;
-          return { role: role as VolunteerRole, teamId: r.teamId ?? null };
-        })
-        .filter(Boolean) as Array<{ role: VolunteerRole; teamId: string | null }>;
+      const roles: Array<{ roleKey: string; teamId: string | null }> = [];
+      for (const r of body.roles) {
+        const key = (r.roleKey || r.role || "").trim().toUpperCase();
+        if (!key) continue;
+        await assertRoleKeyActive(key);
+        roles.push({ roleKey: key, teamId: r.teamId ?? null });
+      }
 
       await prisma.volunteerRoleAssignment.deleteMany({
         where: { volunteerProfileId: id },
@@ -77,7 +77,7 @@ export async function PATCH(
         await prisma.volunteerRoleAssignment.createMany({
           data: roles.map((r) => ({
             volunteerProfileId: id,
-            role: r.role,
+            roleKey: r.roleKey,
             teamId: r.teamId,
           })),
         });

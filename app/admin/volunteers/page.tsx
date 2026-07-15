@@ -64,7 +64,11 @@ export default async function AdminVolunteersPage({
           </p>
         </div>
 
-        <AdminVolunteersManager targetOrg={currentOrg} focusUserId={userId || null} />
+        <AdminVolunteersManager
+          targetOrg={currentOrg}
+          focusUserId={userId || null}
+          isMaster={adminUser.isMaster || role === "MASTER_ADMIN"}
+        />
       </section>
     </main>
   );

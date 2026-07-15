@@ -5,13 +5,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
 import {
+  FALLBACK_VOLUNTEER_ROLES,
   READINESS_LABELS,
   REQUIREMENT_LABELS,
-  ROLE_LABELS,
   VOLUNTEER_REQUIREMENT_STATUSES,
-  VOLUNTEER_ROLES,
   type VolunteerCardView,
   type VolunteerReadiness,
+  type VolunteerRoleDefView,
 } from "@/lib/volunteers/types";
 
 type Stats = {
@@ -45,9 +45,11 @@ function statusLabel(status: string) {
 export default function AdminVolunteersManager({
   targetOrg,
   focusUserId,
+  isMaster = false,
 }: {
   targetOrg: ContentOrgId;
   focusUserId?: string | null;
+  isMaster?: boolean;
 }) {
   const orgQuery = `org=${targetOrg}`;
   const [cards, setCards] = useState<VolunteerCardView[]>([]);
@@ -61,9 +63,22 @@ export default function AdminVolunteersManager({
   const [readiness, setReadiness] = useState("");
   const [missing, setMissing] = useState("");
   const [roleFilter, setRoleFilter] = useState("");
+  const [roleCatalog, setRoleCatalog] = useState<VolunteerRoleDefView[]>(
+    () => FALLBACK_VOLUNTEER_ROLES.map((r) => ({ ...r })),
+  );
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reqBusy, setReqBusy] = useState(false);
+
+  // Master role catalog CRUD
+  const [rolesOpen, setRolesOpen] = useState(false);
+  const [roleAdminRows, setRoleAdminRows] = useState<VolunteerRoleDefView[]>([]);
+  const [roleEditId, setRoleEditId] = useState<string | null>(null);
+  const [roleFormKey, setRoleFormKey] = useState("");
+  const [roleFormLabel, setRoleFormLabel] = useState("");
+  const [roleFormActive, setRoleFormActive] = useState(true);
+  const [roleFormSort, setRoleFormSort] = useState("0");
+  const [roleBusy, setRoleBusy] = useState(false);
 
   const selected = useMemo(
     () => cards.find((c) => c.id === selectedId) || null,
@@ -88,6 +103,7 @@ export default function AdminVolunteersManager({
         data?: VolunteerCardView[];
         stats?: Stats;
         seasonYear?: number;
+        roles?: VolunteerRoleDefView[];
         error?: string;
       };
       if (!response.ok) throw new Error(json.error || "Failed to load volunteers");
@@ -95,6 +111,9 @@ export default function AdminVolunteersManager({
       setCards(data);
       setStats(json.stats || null);
       setSeasonYear(json.seasonYear ?? null);
+      if (Array.isArray(json.roles) && json.roles.length) {
+        setRoleCatalog(json.roles);
+      }
 
       if (focusUserId) {
         const match = data.find((c) => c.registeredUser.id === focusUserId);
@@ -237,6 +256,116 @@ export default function AdminVolunteersManager({
     return `/api/admin/volunteers?${params.toString()}`;
   }, [targetOrg, search, readiness, missing, roleFilter]);
 
+  async function loadRoleAdminRows() {
+    if (!isMaster) return;
+    setRoleBusy(true);
+    try {
+      const response = await fetch(
+        `/api/admin/volunteers/roles?includeInactive=1`,
+        { cache: "no-store" },
+      );
+      const json = (await response.json()) as {
+        data?: VolunteerRoleDefView[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(json.error || "Failed to load roles");
+      const rows = Array.isArray(json.data) ? json.data : [];
+      setRoleAdminRows(rows);
+      setRoleCatalog(rows.filter((r) => r.isActive));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load roles");
+    } finally {
+      setRoleBusy(false);
+    }
+  }
+
+  function resetRoleForm() {
+    setRoleEditId(null);
+    setRoleFormKey("");
+    setRoleFormLabel("");
+    setRoleFormActive(true);
+    setRoleFormSort(
+      String((roleAdminRows.reduce((m, r) => Math.max(m, r.sortOrder), 0) || 0) + 10),
+    );
+  }
+
+  function startEditRole(row: VolunteerRoleDefView) {
+    setRoleEditId(row.id || null);
+    setRoleFormKey(row.key);
+    setRoleFormLabel(row.label);
+    setRoleFormActive(row.isActive);
+    setRoleFormSort(String(row.sortOrder));
+  }
+
+  async function saveRole() {
+    if (!isMaster) return;
+    setRoleBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const payload = {
+        key: roleFormKey,
+        label: roleFormLabel,
+        isActive: roleFormActive,
+        sortOrder: Number(roleFormSort) || 0,
+      };
+      const url = roleEditId
+        ? `/api/admin/volunteers/roles/${roleEditId}`
+        : `/api/admin/volunteers/roles`;
+      const response = await fetch(url, {
+        method: roleEditId ? "PATCH" : "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(
+          roleEditId
+            ? {
+                label: payload.label,
+                isActive: payload.isActive,
+                sortOrder: payload.sortOrder,
+              }
+            : payload,
+        ),
+      });
+      const json = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(json.error || "Save failed");
+      setNotice(roleEditId ? "Role updated." : "Role created.");
+      resetRoleForm();
+      await loadRoleAdminRows();
+      await load();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save role");
+    } finally {
+      setRoleBusy(false);
+    }
+  }
+
+  async function deleteRole(id: string) {
+    if (!isMaster) return;
+    if (
+      !window.confirm(
+        "Delete this role? If volunteers still use it, it will be deactivated instead.",
+      )
+    ) {
+      return;
+    }
+    setRoleBusy(true);
+    setError("");
+    try {
+      const response = await fetch(`/api/admin/volunteers/roles/${id}`, {
+        method: "DELETE",
+      });
+      const json = (await response.json()) as { error?: string };
+      if (!response.ok) throw new Error(json.error || "Delete failed");
+      setNotice("Role removed or deactivated.");
+      if (roleEditId === id) resetRoleForm();
+      await loadRoleAdminRows();
+      await load();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete role");
+    } finally {
+      setRoleBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-5">
       {error ? (
@@ -257,6 +386,160 @@ export default function AdminVolunteersManager({
         <StatCard label="Missing AAT" value={stats?.missingAat ?? "—"} tone="amber" />
       </div>
 
+      {isMaster ? (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold">Volunteer roles</h2>
+              <p className="text-sm text-zinc-400 mt-1">
+                Master Admin only. These options power the role dropdown across all
+                leagues. Changes apply immediately — no redeploy.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="rounded-lg border border-zinc-600 px-3 py-1.5 text-sm hover:bg-zinc-800"
+              onClick={() => {
+                const next = !rolesOpen;
+                setRolesOpen(next);
+                if (next) {
+                  resetRoleForm();
+                  void loadRoleAdminRows();
+                }
+              }}
+            >
+              {rolesOpen ? "Hide roles" : "Manage roles"}
+            </button>
+          </div>
+
+          {rolesOpen ? (
+            <div className="space-y-4">
+              <div className="overflow-x-auto rounded-lg border border-zinc-800">
+                <table className="w-full text-left text-sm">
+                  <thead className="bg-zinc-950/80 text-xs uppercase tracking-wide text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-2">Label</th>
+                      <th className="px-3 py-2">Key</th>
+                      <th className="px-3 py-2">Flags</th>
+                      <th className="px-3 py-2">Order</th>
+                      <th className="px-3 py-2">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {roleAdminRows.length === 0 ? (
+                      <tr>
+                        <td colSpan={5} className="px-3 py-3 text-zinc-500">
+                          {roleBusy ? "Loading…" : "No roles yet."}
+                        </td>
+                      </tr>
+                    ) : (
+                      roleAdminRows.map((row) => (
+                        <tr key={row.id || row.key} className="border-t border-zinc-800">
+                          <td className="px-3 py-2 text-zinc-200">{row.label}</td>
+                          <td className="px-3 py-2 font-mono text-xs text-zinc-400">
+                            {row.key}
+                          </td>
+                          <td className="px-3 py-2 text-xs">
+                            {row.isActive ? (
+                              <span className="rounded border border-zinc-700 px-1.5 py-0.5 text-zinc-300">
+                                active
+                              </span>
+                            ) : (
+                              <span className="rounded border border-zinc-600 px-1.5 py-0.5 text-zinc-500">
+                                inactive
+                              </span>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-zinc-400">{row.sortOrder}</td>
+                          <td className="px-3 py-2 space-x-2">
+                            <button
+                              type="button"
+                              className="rounded border border-zinc-600 px-2 py-0.5 text-xs hover:bg-zinc-800"
+                              onClick={() => startEditRole(row)}
+                              disabled={roleBusy}
+                            >
+                              Edit
+                            </button>
+                            <button
+                              type="button"
+                              className="rounded border border-red-800 px-2 py-0.5 text-xs text-red-300 hover:bg-red-950/40"
+                              onClick={() => row.id && void deleteRole(row.id)}
+                              disabled={roleBusy || !row.id}
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-4 space-y-3">
+                <p className="text-sm font-medium">
+                  {roleEditId ? "Edit role" : "Add role"}
+                </p>
+                {!roleEditId ? (
+                  <input
+                    value={roleFormKey}
+                    onChange={(e) => setRoleFormKey(e.target.value)}
+                    placeholder="KEY (optional — auto from label)"
+                    className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm font-mono"
+                  />
+                ) : (
+                  <p className="text-xs font-mono text-zinc-500">Key: {roleFormKey}</p>
+                )}
+                <input
+                  value={roleFormLabel}
+                  onChange={(e) => setRoleFormLabel(e.target.value)}
+                  placeholder="Display label (e.g. League Head Coach)"
+                  className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
+                />
+                <div className="flex flex-wrap gap-4 text-sm">
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={roleFormActive}
+                      onChange={(e) => setRoleFormActive(e.target.checked)}
+                    />
+                    Active (shown in dropdowns)
+                  </label>
+                  <label className="inline-flex items-center gap-2">
+                    Sort
+                    <input
+                      value={roleFormSort}
+                      onChange={(e) => setRoleFormSort(e.target.value)}
+                      className="w-20 rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-sm"
+                    />
+                  </label>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    disabled={roleBusy || !roleFormLabel.trim()}
+                    onClick={() => void saveRole()}
+                    className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+                  >
+                    {roleBusy ? "Saving…" : roleEditId ? "Update" : "Create"}
+                  </button>
+                  {roleEditId ? (
+                    <button
+                      type="button"
+                      disabled={roleBusy}
+                      onClick={() => resetRoleForm()}
+                      className="rounded-lg border border-zinc-600 px-4 py-2 text-sm"
+                    >
+                      Cancel edit
+                    </button>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          ) : null}
+        </div>
+      ) : null}
+
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 space-y-3">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -265,7 +548,7 @@ export default function AdminVolunteersManager({
               {seasonYear ? ` · ${seasonYear}` : ""}
             </p>
             <p className="text-xs text-zinc-500">
-              Coaches auto-sync on load. Use Sync to refresh team roles.
+              Use Sync coaches to refresh coach profiles. Roles come from the Master catalog.
             </p>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -328,9 +611,9 @@ export default function AdminVolunteersManager({
             className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm"
           >
             <option value="">All roles</option>
-            {VOLUNTEER_ROLES.map((r) => (
-              <option key={r} value={r}>
-                {ROLE_LABELS[r]}
+            {roleCatalog.map((r) => (
+              <option key={r.key} value={r.key}>
+                {r.label}
               </option>
             ))}
           </select>
@@ -376,7 +659,7 @@ export default function AdminVolunteersManager({
                       </td>
                       <td className="px-3 py-2 text-xs text-zinc-400">
                         {card.roles.length
-                          ? card.roles.map((r) => ROLE_LABELS[r.role] || r.role).join(", ")
+                          ? card.roles.map((r) => r.label || r.roleKey).join(", ")
                           : "—"}
                       </td>
                       <td className="px-3 py-2 text-xs">{statusLabel(jdp?.status || "—")}</td>
@@ -496,7 +779,7 @@ function VolunteerCardPanel({
         <p className="mt-2 text-xs text-zinc-500">
           Roles:{" "}
           {card.roles.length
-            ? card.roles.map((r) => ROLE_LABELS[r.role] || r.role).join(", ")
+            ? card.roles.map((r) => r.label || r.roleKey).join(", ")
             : "—"}
         </p>
         {card.teamAssignments.length > 0 ? (

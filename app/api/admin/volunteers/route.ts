@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAdminModule } from "@/lib/news/auth";
 import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
 import { resolveAdminTargetOrg, type ContentOrgId } from "@/lib/siteConfig";
+import { assertRoleKeyActive, listRoleDefs } from "@/lib/volunteers/roles";
 import {
   ensureVolunteerProfile,
   listVolunteerCards,
@@ -10,9 +11,7 @@ import {
 } from "@/lib/volunteers/service";
 import {
   type VolunteerRequirementKey,
-  type VolunteerRole,
   VOLUNTEER_REQUIREMENT_KEYS,
-  VOLUNTEER_ROLES,
 } from "@/lib/volunteers/types";
 
 function parseRequirementKey(value: string | null): VolunteerRequirementKey | null {
@@ -20,14 +19,6 @@ function parseRequirementKey(value: string | null): VolunteerRequirementKey | nu
   const key = value.trim().toUpperCase();
   return (VOLUNTEER_REQUIREMENT_KEYS as readonly string[]).includes(key)
     ? (key as VolunteerRequirementKey)
-    : null;
-}
-
-function parseRole(value: string | null): VolunteerRole | null {
-  if (!value) return null;
-  const role = value.trim().toUpperCase();
-  return (VOLUNTEER_ROLES as readonly string[]).includes(role)
-    ? (role as VolunteerRole)
     : null;
 }
 
@@ -46,7 +37,7 @@ export async function GET(request: NextRequest) {
       : getSeasonConfigForOrg(organizationId as ContentOrgId).year;
     const readiness = query.get("readiness")?.trim() || null;
     const missing = parseRequirementKey(query.get("missing"));
-    const role = parseRole(query.get("role"));
+    const role = query.get("role")?.trim().toUpperCase() || null;
     const search = query.get("search")?.trim() || null;
     const statusParam = query.get("status")?.toUpperCase();
     const status =
@@ -76,6 +67,8 @@ export async function GET(request: NextRequest) {
       });
     }
 
+    const roleCatalog = await listRoleDefs(false);
+
     const stats = {
       total: cards.length,
       ready: cards.filter((c) => c.readiness === "READY").length,
@@ -95,6 +88,13 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       data: cards,
       stats,
+      roles: roleCatalog.map((r) => ({
+        id: r.id,
+        key: r.key,
+        label: r.label,
+        isActive: r.isActive,
+        sortOrder: r.sortOrder,
+      })),
       seasonYear: Number.isFinite(seasonYear)
         ? seasonYear
         : getSeasonConfigForOrg(organizationId as ContentOrgId).year,
@@ -120,7 +120,7 @@ export async function POST(request: NextRequest) {
     const body = (await request.json()) as {
       registeredUserId?: string;
       seasonYear?: number;
-      roles?: Array<{ role: string; teamId?: string | null }>;
+      roles?: Array<{ role?: string; roleKey?: string; teamId?: string | null }>;
       notes?: string | null;
     };
 
@@ -128,13 +128,13 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "registeredUserId is required" }, { status: 400 });
     }
 
-    const roles = (body.roles || [])
-      .map((r) => {
-        const role = parseRole(r.role);
-        if (!role) return null;
-        return { role, teamId: r.teamId ?? null };
-      })
-      .filter(Boolean) as Array<{ role: VolunteerRole; teamId: string | null }>;
+    const roles: Array<{ role: string; teamId: string | null }> = [];
+    for (const r of body.roles || []) {
+      const key = (r.roleKey || r.role || "").trim().toUpperCase();
+      if (!key) continue;
+      await assertRoleKeyActive(key);
+      roles.push({ role: key, teamId: r.teamId ?? null });
+    }
 
     const profile = await ensureVolunteerProfile({
       organizationId,

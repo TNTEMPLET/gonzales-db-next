@@ -5,8 +5,10 @@ import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 import { computeVolunteerReadiness } from "./readiness";
+import { ensureDefaultRoleDefs } from "./roles";
 import {
   REQUIREMENT_LABELS,
+  ROLE_LABELS,
   type VolunteerCardView,
   type VolunteerRequirementKey,
   type VolunteerRequirementStatusValue,
@@ -188,13 +190,14 @@ export async function ensureVolunteerProfile(input: {
   await hydrateAatFromLegacyUser(profile.id, user);
 
   if (input.roles?.length) {
+    await ensureDefaultRoleDefs();
     for (const r of input.roles) {
       const teamId = r.teamId ?? null;
-      // Compound unique with nullable teamId: find-then-create (Postgres treats NULLs as distinct).
+      const roleKey = r.role;
       const existingRole = await prisma.volunteerRoleAssignment.findFirst({
         where: {
           volunteerProfileId: profile.id,
-          role: r.role,
+          roleKey,
           teamId,
         },
       });
@@ -202,7 +205,7 @@ export async function ensureVolunteerProfile(input: {
         await prisma.volunteerRoleAssignment.create({
           data: {
             volunteerProfileId: profile.id,
-            role: r.role,
+            roleKey,
             teamId,
           },
         });
@@ -309,10 +312,11 @@ export async function syncCoachesToVolunteers(
     });
   }
 
-  // Roles from team assignments + default ASSISTANT for bare isCoach
+  // Roles from team assignments + default assistant for bare isCoach
+  await ensureDefaultRoleDefs();
   const roleRows: Array<{
     volunteerProfileId: string;
-    role: VolunteerRole;
+    roleKey: string;
     teamId: string | null;
   }> = [];
   for (const coach of coaches) {
@@ -321,14 +325,14 @@ export async function syncCoachesToVolunteers(
     if (coach.teamCoachAssignments.length === 0 && coach.isCoach) {
       roleRows.push({
         volunteerProfileId: profileId,
-        role: "LEAGUE_ASSISTANT_COACH",
+        roleKey: "LEAGUE_ASSISTANT_COACH",
         teamId: null,
       });
     }
     for (const a of coach.teamCoachAssignments) {
       roleRows.push({
         volunteerProfileId: profileId,
-        role: teamCoachRoleToVolunteerRole(a.role),
+        roleKey: teamCoachRoleToVolunteerRole(a.role),
         teamId: a.teamId,
       });
     }
@@ -338,16 +342,16 @@ export async function syncCoachesToVolunteers(
   const existingRoles = profileIds.length
     ? await prisma.volunteerRoleAssignment.findMany({
         where: { volunteerProfileId: { in: profileIds } },
-        select: { volunteerProfileId: true, role: true, teamId: true },
+        select: { volunteerProfileId: true, roleKey: true, teamId: true },
       })
     : [];
-  const roleKey = (r: {
+  const roleRowKey = (r: {
     volunteerProfileId: string;
-    role: string;
+    roleKey: string;
     teamId: string | null;
-  }) => `${r.volunteerProfileId}|${r.role}|${r.teamId ?? ""}`;
-  const existingRoleKeys = new Set(existingRoles.map(roleKey));
-  const newRoles = roleRows.filter((r) => !existingRoleKeys.has(roleKey(r)));
+  }) => `${r.volunteerProfileId}|${r.roleKey}|${r.teamId ?? ""}`;
+  const existingRoleKeys = new Set(existingRoles.map(roleRowKey));
+  const newRoles = roleRows.filter((r) => !existingRoleKeys.has(roleRowKey(r)));
   if (newRoles.length) {
     await prisma.volunteerRoleAssignment.createMany({
       data: newRoles,
@@ -425,7 +429,7 @@ export async function syncCoachesToVolunteers(
 
 const profileInclude = {
   registeredUser: true,
-  roles: true,
+  roles: { include: { roleDef: true } },
   requirements: true,
 } satisfies Prisma.VolunteerProfileInclude;
 
@@ -539,7 +543,8 @@ export function toVolunteerCardView(
     readiness,
     roles: profile.roles.map((r) => ({
       id: r.id,
-      role: r.role,
+      roleKey: r.roleKey,
+      label: r.roleDef?.label || ROLE_LABELS[r.roleKey] || r.roleKey,
       teamId: r.teamId,
     })),
     requirements: reqViews,
@@ -586,7 +591,7 @@ export async function listVolunteerCards(input: {
       seasonYear: year,
       status: input.status ?? "ACTIVE",
       ...(input.role
-        ? { roles: { some: { role: input.role } } }
+        ? { roles: { some: { roleKey: input.role } } }
         : {}),
       ...(input.search
         ? {
@@ -802,7 +807,7 @@ export function volunteerCardsToCsv(cards: VolunteerCardView[]): string {
   const lines = cards.map((c) => {
     const jdp = c.requirements.find((r) => r.key === "JDP");
     const aat = c.requirements.find((r) => r.key === "ABUSE_AWARENESS");
-    const roles = c.roles.map((r) => r.role).join("; ");
+    const roles = c.roles.map((r) => r.label || r.roleKey).join("; ");
     const teams = c.teamAssignments
       .map((t) => `${t.team.ageGroup} ${t.team.teamName} (${t.role})`)
       .join("; ");

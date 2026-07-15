@@ -294,6 +294,7 @@ model AdminUser {
   scheduleSeasonsCreated           ScheduleSeason[]                  @relation("ScheduleSeasonCreatedBy")
   scheduleExportBatchesCreated     ScheduleExportBatch[]             @relation("ScheduleExportBatchCreatedBy")
   volunteerRequirementsReviewed    VolunteerRequirementStatus[]      @relation("VolunteerRequirementReviewedBy")
+  volunteerRoleDefsCreated         VolunteerRoleDef[]                @relation("VolunteerRoleDefCreatedBy")
 }
 
 enum BracketProjectStatus {
@@ -1891,16 +1892,6 @@ enum VolunteerProfileStatus {
   INACTIVE
 }
 
-/// Labels match Sports Connect / league volunteer registration sheet.
-enum VolunteerRole {
-  LEAGUE_HEAD_COACH
-  LEAGUE_ASSISTANT_COACH
-  /// Rare sheet value "Head Coach" (distinct from League Head Coach).
-  HEAD_COACH
-  AP_BASEBALL_UMPIRE
-  OTHER_AP_POSITIONS
-}
-
 enum VolunteerRequirementKey {
   JDP
   ABUSE_AWARENESS
@@ -1913,6 +1904,25 @@ enum VolunteerRequirementStatusValue {
   EXPIRED
   FAILED
   WAIVED
+}
+
+/// Master Admin–managed catalog of volunteer roles (dropdown source of truth).
+model VolunteerRoleDef {
+  id               String   @id @default(cuid())
+  /// Stable machine key, e.g. LEAGUE_HEAD_COACH (unique, uppercase slug).
+  key              String   @unique
+  label            String
+  description      String?
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
+  createdByAdminId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  createdByAdmin AdminUser?               @relation("VolunteerRoleDefCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  assignments    VolunteerRoleAssignment[]
+
+  @@index([isActive, sortOrder])
 }
 
 /// One compliance card per registered user per org per season.
@@ -1936,18 +1946,20 @@ model VolunteerProfile {
 }
 
 model VolunteerRoleAssignment {
-  id                 String        @id @default(cuid())
+  id                 String  @id @default(cuid())
   volunteerProfileId String
-  role               VolunteerRole
+  /// FK to VolunteerRoleDef.key (catalog managed by Master Admin).
+  roleKey            String
   /// Optional team scope when the role is team-specific.
   teamId             String?
-  createdAt          DateTime      @default(now())
+  createdAt          DateTime @default(now())
 
   volunteerProfile VolunteerProfile @relation(fields: [volunteerProfileId], references: [id], onDelete: Cascade)
+  roleDef          VolunteerRoleDef @relation(fields: [roleKey], references: [key], onDelete: Restrict)
 
-  @@unique([volunteerProfileId, role, teamId])
+  @@unique([volunteerProfileId, roleKey, teamId])
   @@index([volunteerProfileId])
-  @@index([role])
+  @@index([roleKey])
 }
 
 /// Global requirement catalog (seeded). Org overrides can come later.
