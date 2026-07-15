@@ -15,7 +15,19 @@ There is **no live SportsConnect API** in this product. Integration is **export 
 3. **Coach / volunteer sheet** — coach accounts and assignments.  
 4. **Review quality** — missing guardian emails, incomplete Player Cards, teams without coaches.
 
-On **Master Admin**, set the site first (`Fall Ball`, `Gonzales`, or `Ascension`), then open **Teams**.
+On **Master Admin**, set the site first (`Fall Ball`, `Gonzales`, or `Ascension`), then open **Sports Connect Ops Desk** (`/admin/sports-connect`) or **Teams**.
+
+### Ops Desk (Phase 2)
+
+| Section | Purpose |
+|---------|---------|
+| **Setup** | Season, family registration URL, preset summary, deep links |
+| **Checklist** | Team list → players → coaches → quality with status |
+| **File plan** | Multi-file upload → detect → assign to load-order steps |
+| **Quality** | Guardian email / Player Card readiness / empty teams |
+| **History** | `SportsConnectImportRun` audit (batch links when recorded) |
+
+Dashboard card: **Sports Connect Ops Desk** (Master + Fall Ball).
 
 ---
 
@@ -87,6 +99,20 @@ API: `GET /api/admin/sports-connect/quality?org=&seasonYear=`
 
 ---
 
+## Import run audit
+
+Successful player and coach imports from Teams record a `SportsConnectImportRun` (status `DONE`) with batch ids when possible. Ops Desk file-plan previews record `PREVIEW` runs.
+
+API:
+
+- `GET/POST /api/admin/sports-connect/runs?org=&seasonYear=`  
+- `GET/PATCH /api/admin/sports-connect/runs/[id]?org=`  
+- `POST /api/admin/sports-connect/preview` — multi-file detect + load plan  
+
+Family registration URL constant: `lib/sportsConnect/registrationUrl.ts` (used by Fall Ball `/registration` and the Ops Desk).
+
+---
+
 ## Security
 
 - Treat exports as **PII**. Do not commit real SC files to git.  
@@ -104,6 +130,17 @@ API: `GET /api/admin/sports-connect/quality?org=&seasonYear=`
 | Detector | `lib/sportsConnect/columnProfiles.ts` |
 | Quality | `lib/sportsConnect/quality.ts` |
 | Presets | `lib/sportsConnect/mappingPresets.ts` |
+| Preview / multi-file | `lib/sportsConnect/preview.ts` |
+| Import runs | `lib/sportsConnect/importRuns.ts` |
+| Registration URL | `lib/sportsConnect/registrationUrl.ts` |
+| Ops Desk UI | `components/admin/AdminSportsConnectDesk.tsx` |
+| Ops Desk page | `app/admin/sports-connect/page.tsx` |
 | Player import engine | `app/api/admin/teams/import/route.ts` |
 | Coach import engine | `app/api/admin/users/import/route.ts` |
 | Public Fall Ball copy | `app/registration/page.tsx` |
+
+---
+
+## Phase 3 (not implemented)
+
+Held until product chooses one path: secure export drop, official SC API, or parent-account seed. No scrape.

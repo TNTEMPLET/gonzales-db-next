@@ -1122,6 +1122,31 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
         setNotice(
           `Players import complete: ${finalStatus?.createdTeams || 0} teams created, ${finalStatus?.createdPlayers || 0} players created, ${finalStatus?.updatedPlayers || 0} updated, ${finalStatus?.skippedRows || 0} skipped (${skippedByScopeTotal} mismatched age group/team, ${skippedMissingExistingTotal} not found in existing roster).${skippedSummary}`,
         );
+        // Best-effort SportsConnect audit spine (does not block import success).
+        try {
+          await fetch(`/api/admin/sports-connect/runs?${orgQuery}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              seasonYear,
+              reportKind: "PLAYER_REG",
+              status: "DONE",
+              sourceFileName: importFile?.name ?? null,
+              presetId: scSelectedPresetId || null,
+              teamPlayerBatchId: batchId,
+              summary: {
+                createdTeams: finalStatus?.createdTeams || 0,
+                createdPlayers: finalStatus?.createdPlayers || 0,
+                updatedPlayers: finalStatus?.updatedPlayers || 0,
+                skippedRows: finalStatus?.skippedRows || 0,
+                skippedByScope: skippedByScopeTotal,
+                skippedMissingExisting: skippedMissingExistingTotal,
+              },
+            }),
+          });
+        } catch {
+          // audit only
+        }
         setImportFile(null);
         await loadImportHistory();
         await loadTeams();
@@ -1290,6 +1315,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
         setCoachImportBatchId(json.importBatchId as string);
       }
       setCoachImportProcessedCount(totalRows);
+      const coachSourceName = coachImportFile?.name ?? null;
       setCoachImportFile(null);
       const diagnostics =
         json.autoAssignDiagnostics && typeof json.autoAssignDiagnostics === "object"
@@ -1304,6 +1330,29 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
             .filter((value): value is string => typeof value === "string" && value.trim().length > 0)
             .slice(0, 5)
         : [];
+      try {
+        await fetch(`/api/admin/sports-connect/runs?${orgQuery}`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            seasonYear,
+            reportKind: "COACH_VOLUNTEER",
+            status: "DONE",
+            sourceFileName: coachSourceName,
+            coachBatchId:
+              typeof json.importBatchId === "string" ? json.importBatchId : null,
+            summary: {
+              autoAssigned: Number(json.autoAssigned || 0),
+              autoRoleUpdated: Number(json.autoRoleUpdated || 0),
+              unmatchedCount: Number(diagnostics?.unmatchedCount || 0),
+              totalRows,
+            },
+          }),
+        });
+      } catch {
+        // audit only
+      }
+      void loadSportsConnectQuality();
       setCoachImportNotice(
         `Coach import complete. ${Number(json.autoAssigned || 0)} assignment(s) auto-assigned and ${Number(json.autoRoleUpdated || 0)} role update(s).${
           Number(diagnostics?.unmatchedCount || 0) > 0
@@ -1985,6 +2034,12 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
           onRefresh={() => void loadSportsConnectQuality()}
         />
         <div className="flex flex-wrap items-center gap-2">
+          <a
+            href={`/admin/sports-connect?${orgQuery}`}
+            className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
+          >
+            Sports Connect Ops Desk
+          </a>
           <button
             type="button"
             disabled={!selectedTeamId}
