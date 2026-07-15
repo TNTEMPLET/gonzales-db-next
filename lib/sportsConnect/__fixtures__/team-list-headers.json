@@ -1,0 +1,4 @@
+{
+  "description": "Synthetic team list export headers (Fall Ball MLB-style).",
+  "headers": ["Age Group", "MLB Team"]
+}

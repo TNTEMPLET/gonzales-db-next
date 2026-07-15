@@ -1,0 +1,12 @@
+{
+  "description": "Synthetic SportsConnect volunteer/coach sheet headers (no PII).",
+  "headers": [
+    "email",
+    "first_name",
+    "last_name",
+    "Volunteer Role",
+    "contact_phone",
+    "age_group",
+    "assigned_team"
+  ]
+}
