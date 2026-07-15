@@ -20,7 +20,7 @@ This version has breaking changes — APIs, conventions, and file structure may 
      - `apbaseball-fallball` → fallball.apbaseball.com  
      - `apbaseball-admin` → admin.apbaseball.com  
      (Plus district projects when the change affects them.)
-   - When **READY** for a **`preview`** push, merge **`preview`** into **`main`**, push **`main`**, then **poll production** for that SHA across the org projects above.
+   - When **READY** for a **`preview`** push, **always** merge **`preview`** into **`main`**, push **`main`**, then **poll production** for that SHA across the org projects above (operator standing rule: Ready preview ⇒ promote; do not wait for a separate “promote” ask).
    - Report commit SHA, per-project Ready/Error, production URLs, and whether **`main`** was promoted.
    - **`feature/*`:** push and poll preview; merge to **`main`** only if the user clearly wants production promotion (then poll production).
    - **No Vercel token available:** say so explicitly, fall back to HTTP smoke of production URLs for the change, and do not pretend deploy status was verified via Vercel API.
