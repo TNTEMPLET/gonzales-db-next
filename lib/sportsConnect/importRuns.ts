@@ -1,6 +1,6 @@
 import "server-only";
 
-import type { Prisma } from "@prisma/client";
+import { Prisma } from "@prisma/client";
 
 import prisma from "@/lib/prisma";
 
@@ -112,7 +112,10 @@ export async function createImportRun(input: {
       status: input.status ?? "PREVIEW",
       sourceFileName: input.sourceFileName ?? undefined,
       presetId: input.presetId ?? undefined,
-      summary: input.summary ?? undefined,
+      summary:
+        input.summary === undefined || input.summary === null
+          ? undefined
+          : (input.summary as Prisma.InputJsonValue),
       errorMessage: input.errorMessage ?? undefined,
       teamPlayerBatchId: input.teamPlayerBatchId ?? undefined,
       coachBatchId: input.coachBatchId ?? undefined,
@@ -159,7 +162,12 @@ export async function updateImportRun(input: {
       sourceFileName:
         input.sourceFileName === undefined ? undefined : input.sourceFileName,
       presetId: input.presetId === undefined ? undefined : input.presetId,
-      summary: input.summary === undefined ? undefined : input.summary,
+      summary:
+        input.summary === undefined
+          ? undefined
+          : input.summary === null
+            ? Prisma.JsonNull
+            : (input.summary as Prisma.InputJsonValue),
       errorMessage:
         input.errorMessage === undefined ? undefined : input.errorMessage,
       teamPlayerBatchId:
