@@ -71,6 +71,15 @@ Workflow UI standard: `docs/admin-module-workflow-pattern.md`.
 
 Business logic lives under `lib/` (e.g. `volunteers`, `tournament-brackets`, `gamechanger`, `assignr`, `communications`, `allStar`). Prefer thin `app/api/**/route.ts` handlers.
 
+### Scores vs schedule vs brackets
+
+See `docs/scores-and-schedule.md` for which admin console to use (Scores hub, Assignr, scheduler, brackets).
+
+### Spreadsheet libraries
+
+- Prefer **`xlsx`** for read/write.
+- Use **`xlsx-js-style`** only where cell styling is required (e.g. styled All-Star payment exports).
+
 ### Volunteer compliance (AAT / JDP)
 
 - **Canonical store:** `VolunteerRequirementStatus` on a `VolunteerProfile` (per org + season).

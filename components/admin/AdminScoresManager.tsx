@@ -1,13 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 
 import { assignrScopeLabel, type AdminAssignrScope } from "@/lib/admin/assignrScopeShared";
 import { parseGameChangerEmbedSnippet } from "@/lib/gamechanger/parseEmbedSnippet";
 import type { UnifiedGameChangerConnection, UnifiedScoreGame, UnifiedScoreSourceType } from "@/lib/admin/unifiedScoreSources";
 
-type Props = { games: UnifiedScoreGame[]; connections: UnifiedGameChangerConnection[]; scope: AdminAssignrScope; seasonYear: number };
+type Props = {
+  games: UnifiedScoreGame[];
+  connections: UnifiedGameChangerConnection[];
+  scope: AdminAssignrScope;
+  seasonYear: number;
+  /** When true (Scores hub GameChanger section), open the GC service panel by default. */
+  preferGameChangerExpanded?: boolean;
+};
 type ScoreDraft = Record<string, { homeScore: string; awayScore: string }>;
 type SourceTarget = { sourceType: UnifiedScoreSourceType; organizationId: string; organizationLabel: string; seasonYear: number; sourceKey: string; sourceLabel: string; ageDivisionLabel: string; projectId?: string };
 type PreviewRow = { matchId: string; homeTeam: string; awayTeam: string; gameLabel: string; eventStatus?: string; homeScore?: number | null; awayScore?: number | null; outcome: string };
@@ -31,7 +38,13 @@ function dateOptionLabel(key: string, fallback?: string) {
   return key === today ? `Today (${fallback || key})` : fallback || key;
 }
 
-export default function AdminScoresManager({ games, connections, scope, seasonYear }: Props) {
+export default function AdminScoresManager({
+  games,
+  connections,
+  scope,
+  seasonYear,
+  preferGameChangerExpanded = false,
+}: Props) {
   const router = useRouter();
   const initialDraft = useMemo(() => Object.fromEntries(games.map((g) => [g.id, { homeScore: g.homeScore == null ? "" : String(g.homeScore), awayScore: g.awayScore == null ? "" : String(g.awayScore) }])) as ScoreDraft, [games]);
   const [drafts, setDrafts] = useState<ScoreDraft>(initialDraft);
@@ -39,7 +52,10 @@ export default function AdminScoresManager({ games, connections, scope, seasonYe
   const [orgFilter, setOrgFilter] = useState("ALL");
   const [ageFilter, setAgeFilter] = useState("ALL");
   const [dateFilter, setDateFilter] = useState(() => todayDateKey());
-  const [gameChangerExpanded, setGameChangerExpanded] = useState(false);
+  const [gameChangerExpanded, setGameChangerExpanded] = useState(preferGameChangerExpanded);
+  useEffect(() => {
+    setGameChangerExpanded(preferGameChangerExpanded);
+  }, [preferGameChangerExpanded]);
   const [busyKey, setBusyKey] = useState("");
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");

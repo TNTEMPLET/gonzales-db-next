@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { coachDisplayName, formatUploadedAt } from "@/lib/coachCorner/display";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type TeamPlayer = {
@@ -410,14 +411,10 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
       selectedTeam?.players.find((player) => player.id === activeProfileSummaryPlayerId) || null,
     [selectedTeam, activeProfileSummaryPlayerId],
   );
-  const actorCoachLabel = actorCoach
-    ? (actorCoach.firstName || actorCoach.lastName
-        ? [actorCoach.firstName, actorCoach.lastName].filter(Boolean).join(" ")
-        : actorCoach.name) || actorCoach.email
-    : "";
-  const actorAatUploadedAt = actorCoach?.abuseAwarenessTrainingCertificateUploadedAt
-    ? new Date(actorCoach.abuseAwarenessTrainingCertificateUploadedAt).toLocaleDateString()
-    : null;
+  const actorCoachLabel = actorCoach ? coachDisplayName(actorCoach) : "";
+  const actorAatUploadedAt = formatUploadedAt(
+    actorCoach?.abuseAwarenessTrainingCertificateUploadedAt,
+  );
 
   return (
     <section className="space-y-6">
@@ -612,15 +609,12 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                 ) : (
                   selectedTeam.coachAssignments.map((assignment) => {
                     const coach = assignment.registeredUser;
-                    const label =
-                      (coach.firstName || coach.lastName
-                        ? [coach.firstName, coach.lastName].filter(Boolean).join(" ")
-                        : coach.name) || coach.email;
+                    const label = coachDisplayName(coach);
                     const canAdminTeam = assignment.role === "HEAD_COACH";
                     const canUploadAat = coach.id === actorRegisteredUserId;
-                    const aatUploadedAt = coach.abuseAwarenessTrainingCertificateUploadedAt
-                      ? new Date(coach.abuseAwarenessTrainingCertificateUploadedAt).toLocaleDateString()
-                      : null;
+                    const aatUploadedAt = formatUploadedAt(
+                      coach.abuseAwarenessTrainingCertificateUploadedAt,
+                    );
                     return (
                       <div
                         key={assignment.id}

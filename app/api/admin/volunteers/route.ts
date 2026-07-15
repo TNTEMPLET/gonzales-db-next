@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAdminModule } from "@/lib/news/auth";
+import { authFailureResponse } from "@/lib/api/respond";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
 import { resolveAdminTargetOrg, type ContentOrgId } from "@/lib/siteConfig";
 import { assertRoleKeyActive, listRoleDefs } from "@/lib/volunteers/roles";
@@ -24,9 +25,7 @@ function parseRequirementKey(value: string | null): VolunteerRequirementKey | nu
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAdminModule(request, "VOLUNTEERS");
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
-  }
+  if (!auth.ok) return authFailureResponse(auth);
 
   try {
     const query = request.nextUrl.searchParams;
@@ -111,9 +110,7 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   const auth = await ensureAdminModule(request, "VOLUNTEERS");
-  if (!auth.ok) {
-    return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
-  }
+  if (!auth.ok) return authFailureResponse(auth);
 
   try {
     const organizationId = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
