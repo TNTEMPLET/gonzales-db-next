@@ -12,7 +12,11 @@ import {
   COACH_SESSION_COOKIE,
   getCoachUserFromCookieToken,
 } from "@/lib/auth/coachSession";
-import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  getSiteConfig,
+  isMasterDeployment,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -42,9 +46,13 @@ export default async function CoachCornerPage({
     redirect("/");
   }
 
-  const canSwitchTargetOrg = admin
-    ? hasAdminRoleAtLeast(toAdminRole(admin.role, admin.isMaster), "ADMIN")
-    : false;
+  // Target Site is a master control-plane control only. League sites
+  // (fallball, gonzales, …) are already locked to that org — even for
+  // Master Admin accounts who also hold an admin session cookie.
+  const canSwitchTargetOrg =
+    isMasterDeployment() &&
+    !!admin &&
+    hasAdminRoleAtLeast(toAdminRole(admin.role, admin.isMaster), "ADMIN");
 
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
