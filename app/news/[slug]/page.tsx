@@ -77,9 +77,10 @@ export default async function NewsDetailPage({ params }: PageProps) {
           </div>
         ) : null}
 
-        <div className="prose prose-invert max-w-none prose-p:text-zinc-200 prose-headings:text-white">
-          <p className="whitespace-pre-line leading-8">{post.content}</p>
-        </div>
+        <div
+          className="prose prose-invert max-w-none prose-p:text-zinc-200 prose-headings:text-white prose-a:text-brand-gold prose-strong:text-white prose-table:text-sm prose-th:text-brand-gold prose-td:border-zinc-700 prose-th:border-zinc-700"
+          dangerouslySetInnerHTML={{ __html: post.content }}
+        />
       </article>
     </main>
   );
