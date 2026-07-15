@@ -15,7 +15,7 @@ const SLUG = "11u-pool-play-montgomery-july-2026";
 const TITLE = "11U Pool Play Schedule — Lagoon Park, Montgomery";
 const EXCERPT =
   "July 15–19 at Lagoon Park (Montgomery, AL). Four pool games Thursday–Friday; bracket play Saturday morning. GameChanger link inside.";
-const AUTHOR = "Gonzales DYB";
+const AUTHOR = "Trent Templet";
 const IMAGE_URL = "/images/news/11u-pool-play-montgomery-july-2026.png";
 
 /** Game 4 source said "Friday July 14" — corrected to Friday July 17 (tournament window July 15–19). */
