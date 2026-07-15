@@ -9,6 +9,11 @@ import {
   WorkflowStepRow,
   type TeamWorkflowSectionId,
 } from "./teams/TeamsWorkflowHelpers";
+import {
+  SportsConnectDetectionBanner,
+  SportsConnectPresetBar,
+  SportsConnectQualityPanel,
+} from "./teams/SportsConnectAssistPanels";
 import PlayerCardDemoPreview from "@/components/players/PlayerCardDemoPreview";
 import PlayerCardPanel, {
   playerCardFromFields,
@@ -41,6 +46,11 @@ import {
   toCsvSafeValue,
 } from "@/lib/admin/teamsImportHelpers";
 import type { ContentOrgId } from "@/lib/siteConfig";
+import type {
+  ColumnDetectResult,
+  RosterQualitySummary,
+  SportsConnectMappingPresetView,
+} from "@/lib/sportsConnect/types";
 
 type Team = {
   id: string;
@@ -280,6 +290,17 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   const [editingCoachRoleId, setEditingCoachRoleId] = useState<string | null>(null);
   const [showCoachAssignmentsModal, setShowCoachAssignmentsModal] = useState(false);
 
+  const [scQuality, setScQuality] = useState<RosterQualitySummary | null>(null);
+  const [scQualityLoading, setScQualityLoading] = useState(false);
+  const [scQualityError, setScQualityError] = useState("");
+  const [scPresets, setScPresets] = useState<SportsConnectMappingPresetView[]>([]);
+  const [scSelectedPresetId, setScSelectedPresetId] = useState("");
+  const [scPresetName, setScPresetName] = useState("Default");
+  const [scPresetBusy, setScPresetBusy] = useState(false);
+  const [scPresetNotice, setScPresetNotice] = useState("");
+  const [scPresetError, setScPresetError] = useState("");
+  const [scDetection, setScDetection] = useState<ColumnDetectResult | null>(null);
+
   const baseAgeGroupOptions = useMemo(
     () => getTeamsManagementAgeGroupDefaults(targetOrg),
     [targetOrg],
@@ -514,6 +535,12 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   }, [targetOrg, selectedTeamId]);
 
   useEffect(() => {
+    void loadSportsConnectQuality();
+    void loadSportsConnectPresets();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [targetOrg, seasonYear]);
+
+  useEffect(() => {
     const timer = window.setTimeout(() => {
       setSetupAgeGroupOptions(teamManagementAgeGroupOptions);
       setAgeGroup((current) =>
@@ -585,6 +612,153 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     const text = await response.text();
     if (!text.trim()) return {};
     return JSON.parse(text) as Record<string, unknown>;
+  }
+
+  async function loadSportsConnectQuality() {
+    setScQualityLoading(true);
+    setScQualityError("");
+    try {
+      const response = await fetch(
+        `/api/admin/sports-connect/quality?${orgQuery}&seasonYear=${seasonYear}`,
+        { cache: "no-store" },
+      );
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to load roster quality"));
+      }
+      setScQuality(
+        json.data && typeof json.data === "object"
+          ? (json.data as RosterQualitySummary)
+          : null,
+      );
+    } catch (err: unknown) {
+      setScQuality(null);
+      setScQualityError(
+        err instanceof Error ? err.message : "Failed to load roster quality",
+      );
+    } finally {
+      setScQualityLoading(false);
+    }
+  }
+
+  async function loadSportsConnectPresets() {
+    try {
+      const response = await fetch(
+        `/api/admin/sports-connect/presets?${orgQuery}&seasonYear=${seasonYear}&reportKind=PLAYER_REG`,
+        { cache: "no-store" },
+      );
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to load mapping presets"));
+      }
+      const data = Array.isArray(json.data)
+        ? (json.data as SportsConnectMappingPresetView[])
+        : [];
+      setScPresets(data);
+    } catch {
+      setScPresets([]);
+    }
+  }
+
+  function applySportsConnectPreset() {
+    const preset = scPresets.find((item) => item.id === scSelectedPresetId);
+    if (!preset) {
+      setScPresetError("Select a preset to apply.");
+      return;
+    }
+    setDivisionMapping((current) => {
+      const next = { ...current };
+      for (const division of importedDivisions) {
+        if (preset.divisionMapping[division]) {
+          next[division] = preset.divisionMapping[division];
+        }
+      }
+      // Also apply any preset keys that match imported divisions case-insensitively.
+      const lowerLookup = new Map(
+        Object.entries(preset.divisionMapping).map(([k, v]) => [k.toLowerCase(), v]),
+      );
+      for (const division of importedDivisions) {
+        if (!next[division]) {
+          const mapped = lowerLookup.get(division.toLowerCase());
+          if (mapped) next[division] = mapped;
+        }
+      }
+      return next;
+    });
+    setTeamMapping((current) => ({ ...current, ...preset.teamMapping }));
+    setScPresetName(preset.name);
+    setScPresetNotice(`Applied preset “${preset.name}”. Review mappings before importing.`);
+    setScPresetError("");
+  }
+
+  async function saveSportsConnectPreset() {
+    setScPresetBusy(true);
+    setScPresetError("");
+    setScPresetNotice("");
+    try {
+      const response = await fetch(
+        `/api/admin/sports-connect/presets?${orgQuery}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            seasonYear,
+            name: scPresetName.trim() || "Default",
+            reportKind: "PLAYER_REG",
+            divisionMapping,
+            teamMapping,
+          }),
+        },
+      );
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to save mapping preset"));
+      }
+      const saved =
+        json.data && typeof json.data === "object"
+          ? (json.data as SportsConnectMappingPresetView)
+          : null;
+      if (saved) {
+        setScSelectedPresetId(saved.id);
+        setScPresetName(saved.name);
+      }
+      setScPresetNotice(
+        `Saved preset “${saved?.name || scPresetName || "Default"}” for ${seasonYear}.`,
+      );
+      await loadSportsConnectPresets();
+    } catch (err: unknown) {
+      setScPresetError(
+        err instanceof Error ? err.message : "Failed to save mapping preset",
+      );
+    } finally {
+      setScPresetBusy(false);
+    }
+  }
+
+  async function detectSportsConnectHeaders(headers: string[]) {
+    if (headers.length === 0) {
+      setScDetection(null);
+      return;
+    }
+    try {
+      const response = await fetch(`/api/admin/sports-connect/detect`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ headers }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) {
+        setScDetection(null);
+        return;
+      }
+      setScDetection(
+        json.data && typeof json.data === "object"
+          ? (json.data as ColumnDetectResult)
+          : null,
+      );
+    } catch {
+      setScDetection(null);
+    }
   }
 
   async function loadTeams() {
@@ -951,6 +1125,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
         setImportFile(null);
         await loadImportHistory();
         await loadTeams();
+        await loadSportsConnectQuality();
         if (selectedTeamId) {
           await loadTeamDetails(selectedTeamId);
         }
@@ -1277,25 +1452,90 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     setError("");
     setNotice("");
     setMappingError("");
+    setScDetection(null);
+    setScPresetNotice("");
+    setScPresetError("");
     try {
-      const [scheduleOptions, extracted] = await Promise.all([
+      const [scheduleOptions, extracted, presets] = await Promise.all([
         loadScheduleAgeGroupOptions(),
         extractImportPreview(importFile),
+        (async () => {
+          try {
+            const response = await fetch(
+              `/api/admin/sports-connect/presets?${orgQuery}&seasonYear=${seasonYear}&reportKind=PLAYER_REG`,
+              { cache: "no-store" },
+            );
+            const json = await safeJson(response);
+            if (!response.ok) return [] as SportsConnectMappingPresetView[];
+            return Array.isArray(json.data)
+              ? (json.data as SportsConnectMappingPresetView[])
+              : [];
+          } catch {
+            return [] as SportsConnectMappingPresetView[];
+          }
+        })(),
       ]);
+      setScPresets(presets);
       const lookup = new Map(scheduleOptions.map((item) => [item.toLowerCase(), item]));
       const initialMapping: DivisionMapping = {};
       for (const division of extracted.divisions) {
         initialMapping[division] = lookup.get(division.toLowerCase()) || "";
+      }
+      // Prefer the most recently updated PLAYER_REG preset for this season when names match.
+      const latestPreset = presets[0];
+      if (latestPreset) {
+        const lowerLookup = new Map(
+          Object.entries(latestPreset.divisionMapping).map(([k, v]) => [
+            k.toLowerCase(),
+            v,
+          ]),
+        );
+        for (const division of extracted.divisions) {
+          const fromPreset =
+            latestPreset.divisionMapping[division] ||
+            lowerLookup.get(division.toLowerCase());
+          if (fromPreset) initialMapping[division] = fromPreset;
+        }
+        setScSelectedPresetId(latestPreset.id);
+        setScPresetName(latestPreset.name);
+        setTeamMapping({ ...latestPreset.teamMapping });
+        setScPresetNotice(
+          `Pre-filled from preset “${latestPreset.name}”. Adjust before importing if needed.`,
+        );
+      } else {
+        setScSelectedPresetId("");
+        setScPresetName("Default");
+        setTeamMapping({});
       }
       setImportedDivisions(extracted.divisions);
       setImportPreviewRows(extracted.preview);
       setImportRows(extracted.rows);
       setImportPreviewSkippedDivisionDetails(extracted.skippedDivisionDetails);
       setDivisionMapping(initialMapping);
-      setTeamMapping({});
       setConfirmedImportAgeGroup("");
       setConfirmedImportTeamName("");
       setImportUpdateExistingOnly(false);
+      const headerRow = extracted.rows[0];
+      if (headerRow) {
+        await detectSportsConnectHeaders(Object.keys(headerRow));
+      } else if (importFile) {
+        // Fall back: detect from raw first sheet headers even if all rows were skipped.
+        try {
+          const XLSX = await import("xlsx");
+          const buffer = await importFile.arrayBuffer();
+          const workbook = XLSX.read(buffer, { type: "array" });
+          const firstSheet = workbook.Sheets[workbook.SheetNames[0] || ""];
+          if (firstSheet) {
+            const rows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
+              defval: "",
+              raw: false,
+            });
+            if (rows[0]) await detectSportsConnectHeaders(Object.keys(rows[0]));
+          }
+        } catch {
+          // Detection is assistive only.
+        }
+      }
       await loadAllStarCutoffForSeason();
       setShowImportMappingModal(true);
     } catch (err: unknown) {
@@ -1738,6 +1978,12 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
           />
         </div>
         <TeamHealthSummaryGrid summary={teamHealthSummary} />
+        <SportsConnectQualityPanel
+          quality={scQuality}
+          loading={scQualityLoading}
+          error={scQualityError}
+          onRefresh={() => void loadSportsConnectQuality()}
+        />
         <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
@@ -3297,6 +3543,19 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               steps={PLAYER_IMPORT_STEPS}
               currentIndex={2}
               description="Review division mappings, confirmed scope, skipped divisions, and the first preview rows before starting the import."
+            />
+            <SportsConnectDetectionBanner detection={scDetection} />
+            <SportsConnectPresetBar
+              presets={scPresets}
+              selectedPresetId={scSelectedPresetId}
+              presetName={scPresetName}
+              busy={scPresetBusy}
+              notice={scPresetNotice}
+              error={scPresetError}
+              onSelectPresetId={setScSelectedPresetId}
+              onPresetNameChange={setScPresetName}
+              onApplyPreset={applySportsConnectPreset}
+              onSavePreset={() => void saveSportsConnectPreset()}
             />
             {mappingError ? (
               <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">

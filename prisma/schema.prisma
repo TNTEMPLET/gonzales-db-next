@@ -295,6 +295,8 @@ model AdminUser {
   scheduleExportBatchesCreated     ScheduleExportBatch[]             @relation("ScheduleExportBatchCreatedBy")
   volunteerRequirementsReviewed    VolunteerRequirementStatus[]      @relation("VolunteerRequirementReviewedBy")
   volunteerRoleDefsCreated         VolunteerRoleDef[]                @relation("VolunteerRoleDefCreatedBy")
+  sportsConnectMappingPresets      SportsConnectMappingPreset[]      @relation("SportsConnectMappingPresetCreatedBy")
+  sportsConnectImportRuns          SportsConnectImportRun[]          @relation("SportsConnectImportRunCreatedBy")
 }
 
 enum BracketProjectStatus {
@@ -2005,4 +2007,48 @@ model VolunteerRequirementStatus {
   @@unique([volunteerProfileId, requirementKey])
   @@index([requirementKey, status])
   @@index([volunteerProfileId, status])
+}
+
+/// Saved SportsConnect division/team maps for an org+season (assisted import).
+model SportsConnectMappingPreset {
+  id               String   @id @default(cuid())
+  organizationId   String
+  seasonYear       Int
+  name             String
+  /// PLAYER_REG | COACH_VOLUNTEER | TEAM_LIST
+  reportKind       String
+  divisionMapping  Json
+  teamMapping      Json
+  columnOverrides  Json?
+  createdByAdminId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  createdByAdmin AdminUser? @relation("SportsConnectMappingPresetCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, seasonYear, name, reportKind])
+  @@index([organizationId, seasonYear])
+}
+
+/// Audit spine for SportsConnect-assisted import runs (links to existing batch tables).
+model SportsConnectImportRun {
+  id                String    @id @default(cuid())
+  organizationId    String
+  seasonYear        Int
+  reportKind        String
+  status            String    @default("PREVIEW")
+  sourceFileName    String?
+  presetId          String?
+  summary           Json?
+  errorMessage      String?
+  teamPlayerBatchId String?
+  coachBatchId      String?
+  createdByAdminId  String?
+  createdAt         DateTime  @default(now())
+  completedAt       DateTime?
+
+  createdByAdmin AdminUser? @relation("SportsConnectImportRunCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, seasonYear, createdAt])
+  @@index([organizationId, status, createdAt])
 }
