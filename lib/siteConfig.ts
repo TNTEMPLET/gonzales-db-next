@@ -99,8 +99,9 @@ const configs: Record<OrgId, SiteConfig> = {
     colorPrimary: "#cc0000",
     colorPrimaryDark: "#9b0000",
     colorAccent: "#f5f5f5",
-    assignrSiteId: "",
-    assignrLeagueId: "",
+    // Same Assignr site as DYB/LLB; league is "AP Fall Ball" (do not inherit spring leagues).
+    assignrSiteId: process.env.ASSIGNR_SITE_ID ?? "18601",
+    assignrLeagueId: process.env.ASSIGNR_LEAGUE_ID ?? "515713",
   },
   master: {
     orgId: "master",
@@ -317,7 +318,7 @@ export function getAssignrLeagueId(org?: ContentOrgId): string {
   const cfg = org ? getSiteConfigForOrg(org) : getSiteConfig();
   const id = (cfg.assignrLeagueId ?? "").trim();
   if (id) return id;
-  // Fall Ball has no Assignr yet — do not fall back to DYB league 515712.
+  // Fall Ball uses its own league (515713) via siteConfig; never inherit DYB 515712.
   if (cfg.orgId === "fallball" || org === "fallball") return "";
   // Legacy spring defaults when config/env left blank.
   if (cfg.orgId === "ascension" || org === "ascension") return "430676";
