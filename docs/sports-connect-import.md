@@ -157,11 +157,19 @@ Family registration URL constant: `lib/sportsConnect/registrationUrl.ts` (used b
 
 ---
 
-## Phase 3 (optional later)
+## Automation ladder (optional later)
 
-| Path | Status |
-|------|--------|
-| Secure export drop (email/SFTP/S3 → ingest) | Open if operators want unattended loads |
-| Parent account seed (guardian emails → invite-only users) | Open after parent Player Cards product decision |
-| Official public SC API client | **Closed** — no public API; revisit only with vendor partner docs |
-| UI scrape | **Never** |
+No public SC API does **not** mean “no automation.” Preferred order:
+
+| Path | Status | Notes |
+|------|--------|-------|
+| **Ops Desk + Teams** (shipped) | **Live** | Human export → upload → map → import |
+| **n8n (potions) file-drop** | Design ready | Watch email/Drive/S3/LAN → detect/preview → notify Master → deep link to Ops Desk; **no auto roster write in v1** |
+| **Holocrons droid co-pilot** | Design ready | Checklist, quality brief, preset reminders via our APIs; **no SC password** |
+| **Secure export drop ingest** | Open | Same as n8n path with optional later approve-to-import |
+| **Parent account seed** | Open | After parent Player Cards product decision |
+| **Official public SC API client** | **Closed** | Revisit only with vendor **private** partner docs |
+| **Credentialed UI pull (scrape/login bot)** | **Not default** | Only with explicit operator approval (ToS, vaulted SC secret, brittle UI); feed files into n8n drop path |
+
+**n8n plane:** https://potions.duckroostdigital.com (ADR-002).  
+**Details:** short designs for Options D (n8n) and E (droid) in [`sports-connect-integration-plan.md`](./sports-connect-integration-plan.md).
