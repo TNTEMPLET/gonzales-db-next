@@ -3,6 +3,8 @@ import type { ContentOrgId } from "@/lib/siteConfig";
 /**
  * Canonical public registration entry points for SportsConnect-backed programs.
  * Families register on SportsConnect / APBaseball.com — not on this platform.
+ * There is no official public SC developer API; admins still export CSV/XLSX
+ * for import into this app (see docs/sports-connect-integration-plan.md).
  *
  * Operator can override later if SC deep-links become available per program.
  */
