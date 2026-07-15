@@ -1,13 +1,26 @@
 ---
-description: Meter Git pushes to preview; each push can trigger multiple Vercel preview deployments.
+description: After every push, poll Vercel until Ready across org projects; meter preview push volume.
 alwaysApply: true
 ---
 
-# Vercel preview push metering
+# Vercel push metering + mandatory deploy poll
 
-- Each push to **`preview`** can start **about three** Vercel preview deployments.
+- Each push to **`preview`** or **`main`** can start **multiple** Vercel deployments (one per org project).
 - Batch changes into **fewer commits**; avoid push-per-commit loops.
-- **Do not push** until the work is ready for preview verification, or the user explicitly asks.
+- **Do not push** until the work is ready for verification, or the user explicitly asks.
 - Prefer local commits and state what is ready to push; confirm before pushing when unclear.
-- **Commit/push and push** on a Vercel-linked repo include the full post-push workflow in the same task: find the deployment for that commit, poll until **Ready**, then merge **`preview`** into **`main`** and push **`main`** when applicable. Do not stop after `git push` alone. On **Error** or **Canceled**, inspect logs, fix, and re-push **`preview`**; do not merge.
-- Follow branch rules in `AGENTS.md` (`preview` / named `feature/*`; not `main` unless the workflow or user directs).
+
+## Mandatory after every git push
+
+1. **Always poll Vercel** in the same task — do not end after `git push` alone.
+2. Use token `/config/.secrets/vercel_token` (or `VERCEL_TOKEN`) and:
+
+   `bash scripts/poll-vercel-deploys.sh [--target preview|production] <commit-sha>`
+
+3. Wait until each relevant project is **READY**. On **ERROR** / **CANCELED**, inspect logs, fix, re-push; do not claim success.
+4. **Production** (`main` / prod aliases): poll at least  
+   `gonzales-db-next`, `apbaseball-llb`, `apbaseball-fallball`, `apbaseball-admin`  
+   (add district projects when the change affects them).
+5. **Preview** branch: poll preview deployments for the SHA; when Ready, merge to **`main`**, push **`main`**, then poll **production**.
+6. Report per-project Ready/Error + URLs in the user reply.
+7. Follow branch rules in `AGENTS.md`.
