@@ -127,13 +127,36 @@ Family registration URL constant: `lib/sportsConnect/registrationUrl.ts` (used b
 
 ---
 
+## n8n ingest (Option D — v1)
+
+Machine automation can drop an export without a browser session:
+
+| Item | Value |
+|------|--------|
+| Route | `POST /api/admin/sports-connect/ingest` (Master Admin) |
+| Auth | `Authorization: Bearer <SPORTS_CONNECT_INGEST_SECRET>` |
+| Body | multipart `file` + `org` [+ `seasonYear`] **or** JSON `{ org, fileName, contentBase64 }` |
+| Effect | Parse → detect → preview → optional `PREVIEW` import run + Ops Desk deep link |
+| Does **not** | Write rosters / run Teams import engines |
+
+**Env (Vercel apbaseball-admin):** `SPORTS_CONNECT_INGEST_SECRET` (required for n8n). Optional: `SPORTS_CONNECT_ADMIN_BASE_URL` for desk links.
+
+**potions workflow:** `infra/range/stacks/n8n/exports/sc-export-landed.workflow.json`  
+Webhook: `POST https://potions.duckroostdigital.com/webhook/sc-export-landed`  
+Runbook: `infra/range/runbooks/n8n-potions.md` § Phase 3.
+
+`GET /api/admin/sports-connect/ingest` (same auth) returns whether the secret is configured and documents accepted body shapes.
+
+---
+
 ## Security
 
 - Treat exports as **PII**. Do not commit real SC files to git.  
 - Fixtures under `lib/sportsConnect/__fixtures__/` are **headers only**.  
 - Never store SportsConnect passwords in this app. Do not scrape SC UIs.  
 - On Master, always choose a **concrete site** before importing (never All Sites writes).  
-- No SC API credentials: none exist for public use, and none should be invented via scrape.
+- No SC API credentials: none exist for public use, and none should be invented via scrape.  
+- n8n machine token (`SPORTS_CONNECT_INGEST_SECRET`) is **not** an SC password — scope it to admin ingest only; rotate if leaked.
 
 ---
 
@@ -147,6 +170,8 @@ Family registration URL constant: `lib/sportsConnect/registrationUrl.ts` (used b
 | Quality | `lib/sportsConnect/quality.ts` |
 | Presets | `lib/sportsConnect/mappingPresets.ts` |
 | Preview / multi-file | `lib/sportsConnect/preview.ts` |
+| Ingest (n8n) | `lib/sportsConnect/ingest.ts`, `ingestAuth.ts`, `parseExportBuffer.ts` |
+| Ingest route | `app/api/admin/sports-connect/ingest/route.ts` |
 | Import runs | `lib/sportsConnect/importRuns.ts` |
 | Registration URL | `lib/sportsConnect/registrationUrl.ts` |
 | Ops Desk UI | `components/admin/AdminSportsConnectDesk.tsx` |
@@ -154,6 +179,7 @@ Family registration URL constant: `lib/sportsConnect/registrationUrl.ts` (used b
 | Player import engine | `app/api/admin/teams/import/route.ts` |
 | Coach import engine | `app/api/admin/users/import/route.ts` |
 | Public Fall Ball copy | `app/registration/page.tsx` |
+| n8n workflow | `infra/range/stacks/n8n/exports/sc-export-landed.workflow.json` |
 
 ---
 
@@ -164,7 +190,7 @@ No public SC API does **not** mean “no automation.” Preferred order:
 | Path | Status | Notes |
 |------|--------|-------|
 | **Ops Desk + Teams** (shipped) | **Live** | Human export → upload → map → import |
-| **n8n (potions) file-drop** | Design ready | Watch email/Drive/S3/LAN → detect/preview → notify Master → deep link to Ops Desk; **no auto roster write in v1** |
+| **n8n (potions) file-drop** | **Implemented (v1)** | Webhook → `POST …/ingest` → PREVIEW + desk link; import/activate on potions when secret set; **no auto roster write** |
 | **Holocrons droid co-pilot** | Design ready | Checklist, quality brief, preset reminders via our APIs; **no SC password** |
 | **Secure export drop ingest** | Open | Same as n8n path with optional later approve-to-import |
 | **Parent account seed** | Open | After parent Player Cards product decision |
