@@ -63,7 +63,7 @@ SportsConnect (export or drop)
 | **0** Catalog + column detect + runbook | **Done** | `lib/sportsConnect/*`, fixtures, tests, import runbook |
 | **1** Mapping presets + quality | **Done** | Prisma presets/runs, Teams preset UI, quality panel |
 | **2** Ops Desk + audit runs | **Done** | `/admin/sports-connect`, multi-file plan, history, dashboard card |
-| **3** Deeper automation | **Open** | Options A / C / D / E below (B closed) |
+| **3** Deeper automation | **Partial** | **D (n8n) v1 shipped**; A / C / E open; B closed |
 
 ### Phase 3 options (revised)
 
@@ -72,11 +72,11 @@ SportsConnect (export or drop)
 | **A. Secure export drop** | **Preferred unattended path** | CSV lands in email / Drive / S3 / LAN folder | Ingest + detect + notify; optional staged import; still no SC API |
 | **B. Official SC API** | **Closed (no public API)** | Only if vendor grants a **private** partner API in writing | Client modeled on Assignr; **not planned** without written access |
 | **C. Parent account seed** | **Viable later** | Parent Player Cards portal product decision | Invite-only `RegisteredUser` from guardian emails |
-| **D. n8n orchestration** | **Viable now (design below)** | Want glue without new app services | potions workflows: watch drop → call platform routes → alert Master |
+| **D. n8n orchestration** | **Implemented (v1)** | Want glue without new app services | potions `sc-export-landed` → `POST …/ingest` → PREVIEW + notify stub |
 | **E. Holocrons droid assist** | **Viable now (design below)** | Want operator co-pilot or (later) approved pull | Desk co-pilot default; credentialed SC pull only with explicit approval |
 | **F. Credentialed UI pull (scrape/login bot)** | **Not default** | Operator accepts ToS + fragility + vaulted SC secrets | Browser automation via n8n/Playwright or droid; isolated secrets; audit |
 
-**Default next step after Phase 2:** keep assisted Ops Desk; add **D (n8n file-drop)** and/or **E (droid co-pilot)** before any login bot. **Do not block on B.**
+**Default next step after Phase 2:** **D (n8n file-drop)** is implemented on the platform + workflow export (import/activate on potions when secret is set). Prefer **E (droid co-pilot)** next before any login bot. **Do not block on B.**
 
 ### Non-goals (standing)
 
@@ -106,13 +106,13 @@ Reduce Master Admin busywork when exports already exist as files: detect report 
   human download  OR  SC email  OR  Drive/S3/LAN drop folder
         │
         ▼
-  n8n workflow: sc-export-landed
-        │  1. Read file (binary)
-        │  2. Parse first row headers (CSV/XLSX via Code or Convert)
-        │  3. POST /api/admin/sports-connect/preview
-        │     (or /detect) with service/admin auth
-        │  4. Optional: POST /api/admin/sports-connect/runs  status=PREVIEW
-        │  5. Notify Master (email / Slack / droid.event.v1)
+  n8n workflow: sc-export-landed  (potions webhook)
+        │  1. Accept file (JSON contentBase64 or binary)
+        │  2. POST /api/admin/sports-connect/ingest
+        │     Authorization: Bearer SPORTS_CONNECT_INGEST_SECRET
+        │  3. Platform: parse → detect → preview → PREVIEW run
+        │  4. Summarize (no full PII rows in n8n logs)
+        │  5. Notify Master (email stub → wire SMTP)
         │  6. Deep link: admin.apbaseball.com/admin/sports-connect?org=…
         ▼
   Master confirms maps in Ops Desk / Teams → existing import engines write DB
@@ -121,37 +121,60 @@ Reduce Master Admin busywork when exports already exist as files: detect report 
 **v1 rule:** n8n **does not auto-commit** roster writes. Preview + notify only.  
 **v2 (optional):** after explicit Master toggle / webhook “approve”, n8n calls Teams import start/chunk/complete with saved presets — still human-gated.
 
-### Workflow sketch (`sc-export-landed`)
+### Shipped pieces (2026-07-15)
+
+| Piece | Location |
+|-------|----------|
+| Machine auth | `lib/sportsConnect/ingestAuth.ts` — env `SPORTS_CONNECT_INGEST_SECRET` |
+| Parse buffer | `lib/sportsConnect/parseExportBuffer.ts` (CSV/XLSX, 15MB cap, sample rows) |
+| Ingest core | `lib/sportsConnect/ingest.ts` — preview + `recordImportRunSafe(PREVIEW)` |
+| HTTP route | `POST/GET /api/admin/sports-connect/ingest` |
+| n8n workflow | `infra/range/stacks/n8n/exports/sc-export-landed.workflow.json` |
+| potions runbook | `infra/range/runbooks/n8n-potions.md` § Phase 3 |
+
+### Workflow (`sc-export-landed`)
 
 | Node | Responsibility |
 |------|----------------|
-| Trigger | IMAP “CSV from SC”, Google Drive watch, S3/Webhook, or LAN folder poll |
-| Extract headers | First sheet / first row only; never log full PII rows to n8n execution UI longer than needed |
-| Call platform | `POST …/sports-connect/preview` with `{ files: [{ fileName, headers, rows?: sample }] }` |
-| Branch | Known `PLAYER_REG` / `COACH_VOLUNTEER` / `TEAM_LIST` vs unassigned |
-| Audit | `POST …/sports-connect/runs` `PREVIEW` + source file name + confidence |
-| Notify | Subject: `[SC] Fall Ball player export ready — N missing guardian emails (est.)` + Ops Desk URL |
-| Store | Optional: copy file to private staging bucket/folder with retention policy (not git) |
+| Trigger | Webhook `POST /webhook/sc-export-landed` (IMAP/Drive/LAN can call this later) |
+| Normalize | Require concrete `org` + `contentBase64` or binary; strip unsafe file names |
+| Call platform | `POST …/sports-connect/ingest` with Bearer machine secret |
+| Summarize | reportKind, confidence, missing guardian estimate, desk URL, run id — **no row dump** |
+| Notify | Subject stub: `[SC] {org} {kind} export ready…` + Ops Desk URL; wire Send Email in potions |
 
 ### Auth & secrets
 
 | Secret | Where | Notes |
 |--------|-------|-------|
-| Platform admin session or machine token | potions credentials (not in git) | Prefer **scoped Master service user** + concrete `org=` always |
+| `SPORTS_CONNECT_INGEST_SECRET` | Vercel **apbaseball-admin** + potions env | Bearer token for n8n; constant-time compare |
+| Optional `SPORTS_CONNECT_ADMIN_BASE_URL` | Vercel admin | Ops Desk deep-link host (default `https://admin.apbaseball.com`) |
 | Drop-folder / Drive / IMAP | potions credentials | PII — restrict who can open n8n |
 | SC admin password | **Not required for Option D** | Only if Option F is later approved |
 
-### Platform gaps to implement when building D
+### Request contract
 
-1. **Ingest auth** suitable for n8n (session cookie is awkward; prefer signed machine token or existing admin API pattern).  
-2. Optional **`POST /api/admin/sports-connect/ingest`** — accept multipart file, run detect/preview, create PREVIEW run, return Ops Desk deep link (thin wrapper over existing lib).  
-3. Document `org` + `seasonYear` required query/body fields (never All Sites writes).
+**Auth:** `Authorization: Bearer <SPORTS_CONNECT_INGEST_SECRET>` (or Master admin session with TEAMS for manual test).
+
+**Multipart:** fields `file`, `org` (required), `seasonYear` (optional).
+
+**JSON:** `{ org, seasonYear?, fileName, contentBase64, recordPreviewRun? }`.
+
+`org` must be `fallball` | `gonzales` | `ascension` (never All Sites). Response includes `preview`, optional `run`, `deskUrl`, `message`. `writesRosters` is always false.
+
+### Operator activate checklist
+
+1. Generate secret: `openssl rand -hex 32`.  
+2. Set on Vercel **apbaseball-admin** → redeploy/admin env pick-up.  
+3. Set same secret on potions (`/srv/stack/.env` or n8n env) → restart n8n if needed.  
+4. Import `sc-export-landed.workflow.json` (see n8n exports README).  
+5. Smoke webhook with header-only fixture; confirm PREVIEW run in Ops Desk History.  
+6. Wire Send Email after Notify stub; then activate workflow.
 
 ### Verification (D)
 
-1. Drop synthetic header-only fixture into watch path → n8n fires.  
-2. Preview response assigns correct `reportKind`.  
-3. Master gets notify with working Ops Desk link.  
+1. `GET …/ingest` with Bearer → `configured: true`.  
+2. Webhook or direct ingest with synthetic fixture → correct `reportKind`.  
+3. Master gets notify (once SMTP wired) with working Ops Desk link.  
 4. No roster rows created until Master imports in Teams.  
 5. Execution logs redacted / short retention for PII.
 
