@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { PROTECTED_MASTER_ADMIN_EMAIL } from "@/lib/auth/adminRoles";
+import { csvEscape } from "@/lib/export/csv";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type AdminRole = "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR";
@@ -174,10 +175,6 @@ function toIsoFromDateInput(value: string, endOfDay = false) {
   if (!value) return "";
   const suffix = endOfDay ? "T23:59:59.999Z" : "T00:00:00.000Z";
   return `${value}${suffix}`;
-}
-
-function csvEscape(value: string) {
-  return `"${value.replaceAll('"', '""')}"`;
 }
 
 function ageGroupSortRank(label: string) {
@@ -1706,7 +1703,7 @@ export default function AdminUsersManager({
                           <p className="mt-1 text-xs text-amber-300">AAT certificate not uploaded</p>
                         )}
                         <a
-                          href={`/admin/volunteers?${orgQuery}&userId=${encodeURIComponent(user.id)}`}
+                          href={`/admin/people?section=volunteers&${orgQuery}&userId=${encodeURIComponent(user.id)}`}
                           className="mt-1 ml-1 inline-flex rounded-full border border-zinc-600 bg-zinc-900/50 px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-zinc-800"
                         >
                           Volunteer card

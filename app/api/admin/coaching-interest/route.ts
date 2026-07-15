@@ -1,7 +1,8 @@
 import type { CoachingInterestRolePreference, CoachingInterestStatus } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAdminModule } from "@/lib/news/auth";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import { toCsvDocument } from "@/lib/export/csv";
 import prisma from "@/lib/prisma";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
@@ -20,29 +21,24 @@ function clean(value: unknown, maxLength = 1000) {
   return normalized ? normalized.slice(0, maxLength) : "";
 }
 
-function csvCell(value: unknown) {
-  const text = String(value ?? "");
-  return `"${text.replaceAll('"', '""')}"`;
-}
-
 function toCsv(rows: Awaited<ReturnType<typeof listSubmissions>>) {
-  const headers = [
-    "Status",
-    "First Name",
-    "Last Name",
-    "Email",
-    "Cell Phone",
-    "Interested Division",
-    "Role Preference",
-    "Coached Before",
-    "Prior Division",
-    "Notes",
-    "Admin Notes",
-    "Submitted At",
-    "Updated At",
-  ];
-  const lines = rows.map((row) =>
+  return toCsvDocument(
     [
+      "Status",
+      "First Name",
+      "Last Name",
+      "Email",
+      "Cell Phone",
+      "Interested Division",
+      "Role Preference",
+      "Coached Before",
+      "Prior Division",
+      "Notes",
+      "Admin Notes",
+      "Submitted At",
+      "Updated At",
+    ],
+    rows.map((row) => [
       row.status,
       row.firstName,
       row.lastName,
@@ -56,9 +52,8 @@ function toCsv(rows: Awaited<ReturnType<typeof listSubmissions>>) {
       row.adminNotes,
       row.createdAt.toISOString(),
       row.updatedAt.toISOString(),
-    ].map(csvCell).join(","),
-  );
-  return [headers.map(csvCell).join(","), ...lines].join("\n");
+    ]),
+  ).trimEnd();
 }
 
 async function listSubmissions(request: NextRequest) {

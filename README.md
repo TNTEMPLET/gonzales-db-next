@@ -1,36 +1,83 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# gonzales-db-next (AP Baseball)
 
-## Getting Started
+Multi-organization Next.js app for Gonzales DYB, Ascension Little League, AP Fall Ball, Master Admin, and tournament-only district sites.
 
-First, run the development server:
+## Stack
+
+| Layer | Choice |
+|-------|--------|
+| Framework | Next.js 16 (App Router), React 19, TypeScript |
+| DB | PostgreSQL + Prisma 7 (`lib/prisma.ts`) |
+| Styling | Tailwind CSS 4 |
+| Validation | Zod (`lib/api/parseBody.ts` at trust boundaries) |
+| Email | Resend via Communications module |
+| Deploy | Multiple Vercel projects, one codebase, selected by `SITE_ORG` |
+
+## Organizations (`SITE_ORG`)
+
+| `SITE_ORG` | Role |
+|------------|------|
+| `gonzales` | Gonzales Diamond Baseball public site |
+| `ascension` | Ascension Little League public site |
+| `fallball` | AP Fall Ball |
+| `master` | Cross-org admin (`admin.apbaseball.com`) |
+| `ladistrict2` / `ladistrict6` | Tournament-only bracket sites |
+
+Identity and branding: `lib/siteConfig.ts`. Per-org product flags: `lib/org/capabilities.ts`.
+
+## Auth (three systems)
+
+1. **Admin** — email/password, cookie `gdb_admin_session` (`lib/auth/adminSession.ts`). Module ACL: `lib/auth/adminRoles.ts` + `ensureAdminModule` in `lib/auth/ensureAdminModule.ts`.
+2. **Coach Corner** — `gdb_coach_session` (`lib/auth/coachSession.ts`).
+3. **Dugout / families** — Google OAuth on `RegisteredUser` (`lib/auth/registeredUserAuth.ts`).
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+pnpm install
+pnpm dev:gonzales    # :3000 default org
+pnpm dev:ascension
+pnpm dev:master
+pnpm dev:fallball
+pnpm dev:all         # all orgs on separate ports / .next-* dirs
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Prisma CLI and dev servers use the **DEV** database (`.env.development.local` overrides `.env.local` via `prisma.config.ts`). See `docs/local-dev-database.md` and `CLAUDE.md`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm test
+pnpm lint
+pnpm exec tsc --noEmit
+npx prisma migrate dev    # schema changes — DEV only
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+**Package manager:** **pnpm** only (`pnpm-lock.yaml`). Do not commit `package-lock.json`.
 
-## Learn More
+## Admin module map (high level)
 
-To learn more about Next.js, take a look at the following resources:
+| Area | Paths |
+|------|--------|
+| People hub | `/admin/people` (directory, volunteers, coaching interest) — also `/admin/users`, `/admin/volunteers` redirect here |
+| Teams | `/admin/teams` |
+| Scores | `/admin/scores` |
+| All-Star | `/admin/all-star`, payments, cap-orders |
+| Tournaments | `/admin/tournament-brackets`, alerts |
+| Publishing | News, social, communications, documents |
+| Ops | Reports, park alerts/info, Assignr, scheduler |
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Workflow UI standard: `docs/admin-module-workflow-pattern.md`.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Domain libraries
 
-## Deploy on Vercel
+Business logic lives under `lib/` (e.g. `volunteers`, `tournament-brackets`, `gamechanger`, `assignr`, `communications`, `allStar`). Prefer thin `app/api/**/route.ts` handlers.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## Agent / git
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Canonical agent rules: **`AGENTS.md`**. Extra detail: **`CLAUDE.md`**. Default ship branch: **`preview`** (see AGENTS for preview → main promotion).
+
+## Docs
+
+- `docs/communications-runbook.md`
+- `docs/local-dev-database.md`
+- `docs/deployment-ladistrict6.md`
+- `docs/admin-module-workflow-pattern.md`
