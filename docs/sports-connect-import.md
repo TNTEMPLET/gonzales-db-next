@@ -11,13 +11,14 @@ There is **no official public developer API** for SportsConnect registration/ros
 | Do | Do not |
 |----|--------|
 | Export reports from SC admin UI | Call a SportsConnect REST/OAuth API (none available) |
-| Upload into Ops Desk / Teams | Scrape SC web UIs |
-| Use mapping presets + quality | Store SC admin passwords in this app |
-| Treat third-party “sports data” APIs as unrelated | Assume Stack Sports will expose a public SC API without a written partner agreement |
+| Upload into Ops Desk / Teams | Rely on a public SC developer portal that does not exist |
+| Use mapping presets + quality | Store SC admin passwords in this app by default |
+| Use **n8n / droid** for file-drop assist and co-pilot | Treat third-party sports-stats APIs as SportsConnect |
+| Prefer export drop + notify over UI bots | Ship unattended SC login scrape without operator approval |
 
-**Integration model:** **export → file import**, with assisted detection, reusable mapping presets, Ops Desk checklist, and import-run audit.
+**Integration model:** **export → file import**, with assisted detection, reusable mapping presets, Ops Desk checklist, and import-run audit. **Automation ladder** (n8n, droid, optional credentialed pull) is in the product plan — no public API required.
 
-Full product plan: [`docs/sports-connect-integration-plan.md`](./sports-connect-integration-plan.md).
+Full product plan (includes short designs for n8n + droid): [`docs/sports-connect-integration-plan.md`](./sports-connect-integration-plan.md).
 
 ---
 
