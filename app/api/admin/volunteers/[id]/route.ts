@@ -2,12 +2,15 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { parseBody } from "@/lib/api/parseBody";
 import { authFailureResponse, jsonError } from "@/lib/api/respond";
-import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import {
+  ensureAdminModule,
+  isMasterAdminActor,
+} from "@/lib/auth/ensureAdminModule";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { assertRoleKeyActive } from "@/lib/volunteers/roles";
 import { volunteerProfilePatchSchema } from "@/lib/volunteers/schemas";
-import { getVolunteerCard } from "@/lib/volunteers/service";
+import { getVolunteerCard, setVolunteerAMark } from "@/lib/volunteers/service";
 
 export async function GET(
   request: NextRequest,
@@ -54,6 +57,17 @@ export async function PATCH(
             ? { status: body.status }
             : {}),
         },
+      });
+    }
+
+    if (body.aMark !== undefined) {
+      if (!isMasterAdminActor(auth)) {
+        return jsonError("Forbidden", 403);
+      }
+      await setVolunteerAMark({
+        volunteerProfileId: id,
+        organizationId,
+        aMark: body.aMark,
       });
     }
 

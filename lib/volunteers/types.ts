@@ -94,6 +94,8 @@ export type VolunteerCardView = {
   seasonYear: number;
   status: VolunteerProfileStatus;
   notes: string | null;
+  /** Opaque badge mark; no public meaning. */
+  aMark: boolean;
   readiness: VolunteerReadiness;
   roles: Array<{
     id: string;

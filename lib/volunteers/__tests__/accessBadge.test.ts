@@ -13,6 +13,7 @@ function baseCard(
     seasonYear: 2026,
     status: "ACTIVE",
     notes: null,
+    aMark: false,
     readiness,
     roles: [],
     requirements: [],

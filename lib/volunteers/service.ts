@@ -540,6 +540,7 @@ export function toVolunteerCardView(
     seasonYear: profile.seasonYear,
     status: profile.status,
     notes: profile.notes,
+    aMark: Boolean(profile.aMark),
     readiness,
     roles: profile.roles.map((r) => ({
       id: r.id,
@@ -563,6 +564,29 @@ export function toVolunteerCardView(
     createdAt: profile.createdAt.toISOString(),
     updatedAt: profile.updatedAt.toISOString(),
   };
+}
+
+/** Master Admin only — flip the opaque A mark on a volunteer profile. */
+export async function setVolunteerAMark(input: {
+  volunteerProfileId: string;
+  organizationId: string;
+  aMark: boolean;
+}): Promise<VolunteerCardView | null> {
+  const existing = await prisma.volunteerProfile.findFirst({
+    where: {
+      id: input.volunteerProfileId,
+      organizationId: input.organizationId,
+    },
+    select: { id: true },
+  });
+  if (!existing) return null;
+
+  await prisma.volunteerProfile.update({
+    where: { id: existing.id },
+    data: { aMark: input.aMark },
+  });
+
+  return getVolunteerCard(existing.id, input.organizationId);
 }
 
 export async function listVolunteerCards(input: {
