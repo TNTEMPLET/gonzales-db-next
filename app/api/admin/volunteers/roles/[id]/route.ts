@@ -1,23 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { canMasterBypassApproval } from "@/lib/communications/policy";
-import { ensureAdminModule } from "@/lib/news/auth";
+import { parseBody } from "@/lib/api/parseBody";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import { requireMasterFromAuth } from "@/lib/auth/requireMasterAdmin";
 import { deleteRoleDef, updateRoleDef } from "@/lib/volunteers/roles";
-
-async function requireMaster(request: NextRequest) {
-  const admin = await getAdminUserFromRequest(request);
-  if (!admin) {
-    return { ok: false as const, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
-  }
-  if (admin.isMaster || canMasterBypassApproval(admin.role as never)) {
-    return { ok: true as const, admin };
-  }
-  return {
-    ok: false as const,
-    response: NextResponse.json({ error: "Master Admin required" }, { status: 403 }),
-  };
-}
+import { volunteerRoleUpdateSchema } from "@/lib/volunteers/schemas";
 
 export async function PATCH(
   request: NextRequest,
@@ -27,18 +14,20 @@ export async function PATCH(
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
   }
-  const master = await requireMaster(request);
+  const master = requireMasterFromAuth(auth);
   if (!master.ok) return master.response;
 
   try {
     const { id } = await params;
-    const body = (await request.json()) as {
-      label?: string;
-      description?: string | null;
-      isActive?: boolean;
-      sortOrder?: number;
-    };
-    const updated = await updateRoleDef(id, body);
+    const rawBody: unknown = await request.json();
+    const parsed = parseBody(volunteerRoleUpdateSchema, rawBody);
+    if (!parsed.ok) {
+      return NextResponse.json(
+        { error: parsed.error, issues: parsed.issues },
+        { status: 400 },
+      );
+    }
+    const updated = await updateRoleDef(id, parsed.data);
     return NextResponse.json({ success: true, data: updated });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Update failed";
@@ -55,7 +44,7 @@ export async function DELETE(
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
   }
-  const master = await requireMaster(request);
+  const master = requireMasterFromAuth(auth);
   if (!master.ok) return master.response;
 
   try {

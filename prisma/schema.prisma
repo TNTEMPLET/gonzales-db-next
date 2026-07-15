@@ -476,9 +476,13 @@ model RegisteredUser {
   googleSub                       String?                            @unique
   passwordHash                    String?
   avatarUrl                       String?
+  /// @deprecated Prefer VolunteerRequirementStatus (ABUSE_AWARENESS). Kept for dual-read migration; do not write from new code.
   abuseAwarenessTrainingCertificateUrl String?
+  /// @deprecated Prefer VolunteerRequirementStatus document fields.
   abuseAwarenessTrainingCertificateFileName String?
+  /// @deprecated Prefer VolunteerRequirementStatus document fields.
   abuseAwarenessTrainingCertificateMimeType String?
+  /// @deprecated Prefer VolunteerRequirementStatus uploadedAt/completedAt.
   abuseAwarenessTrainingCertificateUploadedAt DateTime?
   /**
    * True when name-based duplicate detection flagged this account for admin review.

@@ -8,6 +8,7 @@ import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import AllStarProgramNav from "@/components/admin/allStar/AllStarProgramNav";
 import AllStarRosterPayments from "@/components/admin/allStar/AllStarRosterPayments";
 import AllStarCrossOrgPaymentSummary from "@/components/admin/allStar/AllStarCrossOrgPaymentSummary";
 import AllStarPageConfigPanel from "@/components/admin/allStar/AllStarPageConfigPanel";
@@ -86,6 +87,12 @@ export default async function AdminPaymentsPage({
             Payments follow the roster decisions made in the All-Star Vault. If a player is missing here, confirm the cycle roster is finalized before editing payment rows by hand.
           </div>
         </div>
+
+        <AllStarProgramNav
+          stage="payments"
+          org={allSitesMode ? null : currentOrg}
+          allSites={allSitesMode}
+        />
 
         {/* ── Settings ──────────────────────────────────────────────────────── */}
         <div className="mb-2">

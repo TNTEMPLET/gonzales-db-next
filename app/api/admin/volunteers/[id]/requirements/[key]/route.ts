@@ -1,31 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import { ensureAdminModule } from "@/lib/news/auth";
+import { parseBody } from "@/lib/api/parseBody";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { storeCoachDocumentFromFile } from "@/lib/uploads/storeCoachDocument";
-import { getVolunteerCard, updateRequirementStatus } from "@/lib/volunteers/service";
 import {
-  type VolunteerRequirementKey,
-  type VolunteerRequirementStatusValue,
-  VOLUNTEER_REQUIREMENT_KEYS,
-  VOLUNTEER_REQUIREMENT_STATUSES,
-} from "@/lib/volunteers/types";
-
-function parseKey(raw: string): VolunteerRequirementKey | null {
-  const key = raw.trim().toUpperCase();
-  return (VOLUNTEER_REQUIREMENT_KEYS as readonly string[]).includes(key)
-    ? (key as VolunteerRequirementKey)
-    : null;
-}
-
-function parseStatus(raw: unknown): VolunteerRequirementStatusValue | undefined {
-  if (typeof raw !== "string") return undefined;
-  const status = raw.trim().toUpperCase();
-  return (VOLUNTEER_REQUIREMENT_STATUSES as readonly string[]).includes(status)
-    ? (status as VolunteerRequirementStatusValue)
-    : undefined;
-}
+  isVolunteerRequirementKey,
+  volunteerRequirementPatchSchema,
+} from "@/lib/volunteers/schemas";
+import { getVolunteerCard, updateRequirementStatus } from "@/lib/volunteers/service";
+import type { VolunteerRequirementStatusValue } from "@/lib/volunteers/types";
 
 function parseDate(raw: unknown): Date | null | undefined {
   if (raw === undefined) return undefined;
@@ -46,37 +30,42 @@ export async function PATCH(
 
   try {
     const { id, key: rawKey } = await params;
-    const requirementKey = parseKey(rawKey);
-    if (!requirementKey) {
+    const requirementKey = rawKey.trim().toUpperCase();
+    if (!isVolunteerRequirementKey(requirementKey)) {
       return NextResponse.json({ error: "Invalid requirement key" }, { status: 400 });
     }
 
     const organizationId = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
-    const admin = await getAdminUserFromRequest(request);
-    const body = (await request.json()) as {
-      status?: string;
-      completedAt?: string | null;
-      expiresAt?: string | null;
-      externalRef?: string | null;
-      notes?: string | null;
-    };
+    const rawBody: unknown = await request.json();
+    const parsed = parseBody(volunteerRequirementPatchSchema, rawBody);
+    if (!parsed.ok) {
+      return NextResponse.json(
+        { error: parsed.error, issues: parsed.issues },
+        { status: 400 },
+      );
+    }
 
-    const status = parseStatus(body.status);
-    if (body.status !== undefined && !status) {
-      return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+    const body = parsed.data;
+    const completedAt = parseDate(body.completedAt);
+    const expiresAt = parseDate(body.expiresAt);
+    if (body.completedAt !== undefined && completedAt === undefined) {
+      return NextResponse.json({ error: "Invalid completedAt" }, { status: 400 });
+    }
+    if (body.expiresAt !== undefined && expiresAt === undefined) {
+      return NextResponse.json({ error: "Invalid expiresAt" }, { status: 400 });
     }
 
     await updateRequirementStatus({
       volunteerProfileId: id,
       organizationId,
       requirementKey,
-      status,
-      completedAt: parseDate(body.completedAt),
-      expiresAt: parseDate(body.expiresAt),
+      status: body.status as VolunteerRequirementStatusValue | undefined,
+      completedAt,
+      expiresAt,
       externalRef:
         body.externalRef === undefined ? undefined : body.externalRef?.trim() || null,
       notes: body.notes === undefined ? undefined : body.notes?.trim() || null,
-      reviewedByAdminId: admin?.id ?? null,
+      reviewedByAdminId: auth.admin.id,
     });
 
     const card = await getVolunteerCard(id, organizationId);
@@ -101,8 +90,8 @@ export async function POST(
 
   try {
     const { id, key: rawKey } = await params;
-    const requirementKey = parseKey(rawKey);
-    if (!requirementKey) {
+    const requirementKey = rawKey.trim().toUpperCase();
+    if (!isVolunteerRequirementKey(requirementKey)) {
       return NextResponse.json({ error: "Invalid requirement key" }, { status: 400 });
     }
     if (requirementKey !== "ABUSE_AWARENESS") {
@@ -113,7 +102,6 @@ export async function POST(
     }
 
     const organizationId = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
-    const admin = await getAdminUserFromRequest(request);
     const formData = await request.formData();
     const file = formData.get("certificate") ?? formData.get("file");
     if (!(file instanceof File)) {
@@ -147,7 +135,7 @@ export async function POST(
       mimeType: stored.mimeType,
       uploadedAt: now,
       completedAt: now,
-      reviewedByAdminId: admin?.id ?? null,
+      reviewedByAdminId: auth.admin.id,
     });
 
     const updated = await getVolunteerCard(id, organizationId);
