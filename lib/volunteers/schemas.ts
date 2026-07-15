@@ -31,6 +31,8 @@ export const volunteerRoleUpdateSchema = z.object({
 export const volunteerProfilePatchSchema = z.object({
   notes: z.union([z.string().max(5000), z.null()]).optional(),
   status: z.enum(["ACTIVE", "INACTIVE"]).optional(),
+  /** Opaque mark — only honored for Master Admin in the route. */
+  aMark: z.boolean().optional(),
   roles: z
     .array(
       z.object({

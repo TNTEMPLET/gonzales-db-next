@@ -43,6 +43,7 @@ function statusLabel(status: string) {
 type ApiResponse = {
   data: VolunteerCardView | null;
   accessBadge: AccessBadgeEligibility | null;
+  canToggleA?: boolean;
   message?: string;
   error?: string;
 };
@@ -56,9 +57,11 @@ export default function MyVolunteerCardClient({
   const [accessBadge, setAccessBadge] = useState<AccessBadgeEligibility | null>(
     null,
   );
+  const [canToggleA, setCanToggleA] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(true);
+  const [aBusy, setABusy] = useState(false);
 
   const load = useCallback(async () => {
     setBusy(true);
@@ -73,6 +76,7 @@ export default function MyVolunteerCardClient({
         setError("Sign in with your coach/volunteer account to view your card.");
         setCard(null);
         setAccessBadge(null);
+        setCanToggleA(false);
         return;
       }
       if (!response.ok) {
@@ -80,11 +84,13 @@ export default function MyVolunteerCardClient({
       }
       setCard(json.data);
       setAccessBadge(json.accessBadge);
+      setCanToggleA(Boolean(json.canToggleA));
       setMessage(json.message || "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load");
       setCard(null);
       setAccessBadge(null);
+      setCanToggleA(false);
     } finally {
       setBusy(false);
     }
@@ -93,6 +99,33 @@ export default function MyVolunteerCardClient({
   useEffect(() => {
     void load();
   }, [load]);
+
+  async function toggleAMark() {
+    if (!card || !canToggleA || aBusy) return;
+    setABusy(true);
+    try {
+      const response = await fetch(
+        `/api/volunteer-card?org=${encodeURIComponent(targetOrg)}`,
+        {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ aMark: !card.aMark }),
+        },
+      );
+      const json = (await response.json()) as ApiResponse;
+      if (!response.ok) {
+        throw new Error(json.error || "Update failed");
+      }
+      if (json.data) {
+        setCard(json.data);
+        setAccessBadge(json.accessBadge);
+      }
+    } catch {
+      // Silent — no user-facing clue about the control.
+    } finally {
+      setABusy(false);
+    }
+  }
 
   if (busy) {
     return (
@@ -138,13 +171,15 @@ export default function MyVolunteerCardClient({
     );
   }
 
+  const aActive = Boolean(card.aMark);
+
   return (
     <div className="space-y-6">
-      {/* Badge-style card — designed so event access badges can reuse this shell later */}
       <article
-        className="overflow-hidden rounded-3xl border border-zinc-700 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
+        className="relative overflow-hidden rounded-3xl border border-zinc-700 bg-gradient-to-br from-zinc-900 via-zinc-950 to-black shadow-[0_24px_80px_rgba(0,0,0,0.45)]"
         data-badge-subject={accessBadge?.publicBadgeSubject}
         data-access-eligible={accessBadge?.eligibleForEventAccess ? "1" : "0"}
+        data-a={aActive ? "1" : "0"}
       >
         <div className="border-b border-zinc-800 bg-brand-purple/20 px-5 py-4 sm:px-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -168,7 +203,7 @@ export default function MyVolunteerCardClient({
           </div>
         </div>
 
-        <div className="space-y-5 px-5 py-5 sm:px-6 sm:py-6">
+        <div className="space-y-5 px-5 py-5 pb-10 sm:px-6 sm:py-6 sm:pb-11">
           <div className="grid gap-4 sm:grid-cols-2">
             <div>
               <p className="text-[11px] uppercase tracking-wide text-zinc-500">
@@ -258,6 +293,30 @@ export default function MyVolunteerCardClient({
             </p>
           </div>
         </div>
+
+        {/* Bottom-right opaque mark: hole with "A". Toggle only for Master Admin. */}
+        {canToggleA ? (
+          <button
+            type="button"
+            onClick={() => void toggleAMark()}
+            disabled={aBusy}
+            aria-pressed={aActive}
+            className={`absolute bottom-3 right-3 flex h-7 w-7 items-center justify-center rounded-full border text-[11px] font-semibold leading-none transition focus:outline-none focus-visible:ring-1 focus-visible:ring-zinc-500 disabled:opacity-60 ${
+              aActive
+                ? "border-zinc-500/80 bg-zinc-950 text-zinc-200 shadow-[inset_0_1px_3px_rgba(0,0,0,0.85)]"
+                : "border-zinc-700/70 bg-zinc-900/90 text-zinc-500 shadow-[inset_0_1px_2px_rgba(0,0,0,0.7)] hover:border-zinc-600 hover:text-zinc-400"
+            }`}
+          >
+            A
+          </button>
+        ) : aActive ? (
+          <span
+            aria-hidden
+            className="pointer-events-none absolute bottom-3 right-3 flex h-7 w-7 items-center justify-center rounded-full border border-zinc-600/80 bg-zinc-950 text-[11px] font-semibold leading-none text-zinc-200 shadow-[inset_0_1px_3px_rgba(0,0,0,0.85)]"
+          >
+            A
+          </span>
+        ) : null}
       </article>
 
       <div className="flex flex-wrap gap-3 text-sm">

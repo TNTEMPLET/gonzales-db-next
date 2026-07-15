@@ -1937,6 +1937,8 @@ model VolunteerProfile {
   seasonYear       Int
   status           VolunteerProfileStatus @default(ACTIVE)
   notes            String?
+  /// Opaque badge mark (letter A). Master Admin toggle only — no public meaning.
+  aMark            Boolean                @default(false)
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
