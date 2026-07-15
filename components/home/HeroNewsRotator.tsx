@@ -35,11 +35,14 @@ export default function HeroNewsRotator({ items }: HeroNewsRotatorProps) {
   if (!activeItem) return null;
 
   return (
-    <section className="relative min-h-[70svh] overflow-hidden bg-black px-3 py-3 sm:px-4 sm:py-4 md:min-h-[75vh] md:px-6 md:py-6 lg:px-8">
-      <div className="relative mx-auto h-full w-full max-w-420">
+    // min-h alone does not give children a definite height, so Image fill
+    // collapsed to ~0px. Give the frame an explicit min-height and pin the
+    // link with absolute inset so the hero always fills the viewport band.
+    <section className="relative overflow-hidden bg-black px-3 py-3 sm:px-4 sm:py-4 md:px-6 md:py-6 lg:px-8">
+      <div className="relative mx-auto min-h-[calc(70svh-1.5rem)] w-full max-w-420 md:min-h-[calc(75vh-3rem)]">
         <Link
           href={`/news/${activeItem.slug}`}
-          className="relative block h-full w-full rounded-2xl overflow-hidden border border-zinc-800"
+          className="absolute inset-0 block overflow-hidden rounded-2xl border border-zinc-800"
           aria-label={`Read news article: ${activeItem.title}`}
         >
           <Image
