@@ -9,6 +9,15 @@ import {
   WorkflowStepRow,
   type TeamWorkflowSectionId,
 } from "./teams/TeamsWorkflowHelpers";
+import PlayerCardDemoPreview from "@/components/players/PlayerCardDemoPreview";
+import PlayerCardPanel, {
+  playerCardFromFields,
+} from "@/components/players/PlayerCardPanel";
+import {
+  getPlayerProfileCompleteness,
+  isMissingGuardianEmail,
+} from "@/lib/players/completeness";
+import { buildPlayerChecks } from "@/lib/players/readiness";
 import {
   COACH_IMPORT_STEPS,
   PLAYER_IMPORT_DIVISION_KEYS,
@@ -402,10 +411,16 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   const importConfirmedTeamNameOptions = existingImportTeamsForAgeGroup;
   const importConfirmationCounts = useMemo(() => {
     if (!confirmedImportAgeGroup || !confirmedImportTeamName) {
-      return { total: importRows.length, matching: 0, outOfScope: importRows.length };
+      return {
+        total: importRows.length,
+        matching: 0,
+        outOfScope: importRows.length,
+        matchingMissingGuardianEmail: 0,
+      };
     }
     let matching = 0;
     let outOfScope = 0;
+    let matchingMissingGuardianEmail = 0;
     for (const row of importRows) {
       const rawDivision = getImportRowValue(row, PLAYER_IMPORT_DIVISION_KEYS);
       const mappedAgeGroup = divisionMapping[rawDivision] || rawDivision;
@@ -422,11 +437,20 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
           mappedTeamName.trim().toLowerCase() === confirmedImportTeamName.trim().toLowerCase());
       if (isMatch) {
         matching += 1;
+        const userEmail = getImportRowValue(row, PLAYER_IMPORT_EMAIL_KEYS);
+        if (isMissingGuardianEmail({ guardianEmail: userEmail || null })) {
+          matchingMissingGuardianEmail += 1;
+        }
       } else {
         outOfScope += 1;
       }
     }
-    return { total: importRows.length, matching, outOfScope };
+    return {
+      total: importRows.length,
+      matching,
+      outOfScope,
+      matchingMissingGuardianEmail,
+    };
   }, [
     confirmedImportAgeGroup,
     confirmedImportTeamName,
@@ -1596,29 +1620,6 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
     );
   }
 
-  function getPlayerProfileCompleteness(player: TeamPlayer) {
-    const checks = [
-      {
-        label: "Guardian contact",
-        ok: Boolean(player.guardianEmail || player.guardianPhone || player.contactPhone),
-      },
-      { label: "Payment status", ok: Boolean(player.paymentStatus) },
-      { label: "Birth certificate status", ok: Boolean(player.birthCertificateStatus) },
-      { label: "Liability waiver", ok: player.liabilityWaiverAccepted === true },
-      { label: "Code of conduct", ok: player.codeOfConductAccepted === true },
-      { label: "Refund policy", ok: player.refundPolicyAccepted === true },
-      { label: "Medical authorization", ok: player.medicalTreatmentAuthorized === true },
-    ];
-    const completeCount = checks.filter((check) => check.ok).length;
-    const total = checks.length;
-    return {
-      completeCount,
-      total,
-      isComplete: completeCount === total,
-      missingLabels: checks.filter((check) => !check.ok).map((check) => check.label),
-    };
-  }
-
   function toJerseySizeCode(value: string | null) {
     const normalized = (value || "").trim().toLowerCase();
     if (!normalized) return "";
@@ -1759,6 +1760,10 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
           >
             Start Player Import
           </button>
+          <PlayerCardDemoPreview
+            organizationId={targetOrg}
+            seasonYear={seasonYear}
+          />
         </div>
       </div>
 
@@ -2036,9 +2041,13 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
       {selectedTeam ? (
         <>
           <div id="teams-review-rosters" className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4 scroll-mt-24">
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center justify-between gap-3">
               <h2 className="text-lg font-semibold">Roster</h2>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <PlayerCardDemoPreview
+                  organizationId={targetOrg}
+                  seasonYear={seasonYear}
+                />
                 <button
                   type="button"
                   disabled={!selectedTeamId}
@@ -2523,6 +2532,26 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 Close
               </button>
             </div>
+            {(() => {
+              const profile = getPlayerProfileCompleteness(activeProfilePlayer);
+              const checks = buildPlayerChecks(activeProfilePlayer);
+              const selected = teams.find((t) => t.id === selectedTeamId);
+              const card = playerCardFromFields(
+                activeProfilePlayer,
+                {
+                  id: selectedTeamId || activeProfilePlayer.teamId,
+                  teamName: selected?.teamName || "Team",
+                  ageGroup: selected?.ageGroup || "",
+                  seasonYear: selected?.seasonYear ?? seasonYear,
+                  organizationId: targetOrg,
+                },
+                checks,
+                profile.readiness,
+                profile.completeCount,
+                profile.total,
+              );
+              return <PlayerCardPanel card={card} />;
+            })()}
             <div className="grid md:grid-cols-3 gap-2">
               <p className="md:col-span-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Guardian</p>
               <label className="space-y-1"><span className="block text-[11px] text-zinc-400">Guardian First Name</span><input disabled={!isEditingRoster} value={activeProfilePlayer.guardianFirstName || ""} onChange={(event) => updatePlayerField(activeProfilePlayer.id, "guardianFirstName", event.target.value || null)} className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm" /></label>
@@ -2645,18 +2674,23 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
             </div>
             {(() => {
               const profile = getPlayerProfileCompleteness(activeProfileSummaryPlayer);
-              return (
-                <>
-                  <p className="text-sm text-zinc-300">
-                    Score: {profile.completeCount}/{profile.total}
-                  </p>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-300">
-                    {profile.missingLabels.length === 0
-                      ? "All profile checks are complete."
-                      : `Missing: ${profile.missingLabels.join(", ")}`}
-                  </div>
-                </>
+              const checks = buildPlayerChecks(activeProfileSummaryPlayer);
+              const selected = teams.find((t) => t.id === selectedTeamId);
+              const card = playerCardFromFields(
+                activeProfileSummaryPlayer,
+                {
+                  id: selectedTeamId || activeProfileSummaryPlayer.teamId,
+                  teamName: selected?.teamName || "Team",
+                  ageGroup: selected?.ageGroup || "",
+                  seasonYear: selected?.seasonYear ?? seasonYear,
+                  organizationId: targetOrg,
+                },
+                checks,
+                profile.readiness,
+                profile.completeCount,
+                profile.total,
               );
+              return <PlayerCardPanel card={card} compact />;
             })()}
           </div>
         </div>
@@ -3476,6 +3510,21 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 <p>
                   Rows that will be skipped as out-of-scope:{" "}
                   <span className="font-semibold text-amber-300">{importConfirmationCounts.outOfScope}</span>
+                </p>
+                <p>
+                  Matching rows missing guardian email:{" "}
+                  <span
+                    className={`font-semibold ${
+                      importConfirmationCounts.matchingMissingGuardianEmail > 0
+                        ? "text-amber-300"
+                        : "text-emerald-300"
+                    }`}
+                  >
+                    {importConfirmationCounts.matchingMissingGuardianEmail}
+                  </span>
+                  <span className="ml-1 text-zinc-500">
+                    (needed later for parent Player Cards)
+                  </span>
                 </p>
               </div>
             </div>

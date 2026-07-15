@@ -2,7 +2,12 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
+import PlayerCardPanel, {
+  playerCardFromFields,
+} from "@/components/players/PlayerCardPanel";
 import { coachDisplayName, formatUploadedAt } from "@/lib/coachCorner/display";
+import { getPlayerProfileCompleteness } from "@/lib/players/completeness";
+import { buildPlayerChecks } from "@/lib/players/readiness";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type TeamPlayer = {
@@ -21,6 +26,9 @@ type TeamPlayer = {
   medicalConditionsSummary: string | null;
   medicalConditionsDetails: string | null;
   medicalTreatmentAuthorized: boolean | null;
+  liabilityWaiverAccepted?: boolean | null;
+  codeOfConductAccepted?: boolean | null;
+  refundPolicyAccepted?: boolean | null;
   rosterStatus: string | null;
   jerseyNumber: string | null;
 };
@@ -119,26 +127,6 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
     if (!teamFilterAgeGroup) return teamsForSelectedSeason;
     return teamsForSelectedSeason.filter((team) => team.ageGroup === teamFilterAgeGroup);
   }, [teamsForSelectedSeason, teamFilterAgeGroup]);
-
-  function getPlayerProfileCompleteness(player: TeamPlayer) {
-    const checks = [
-      {
-        label: "Guardian contact",
-        ok: Boolean(player.guardianEmail || player.guardianPhone || player.contactPhone),
-      },
-      { label: "Payment status", ok: Boolean(player.paymentStatus) },
-      { label: "Birth certificate status", ok: Boolean(player.birthCertificateStatus) },
-      { label: "Medical authorization", ok: player.medicalTreatmentAuthorized === true },
-    ];
-    const completeCount = checks.filter((check) => check.ok).length;
-    const total = checks.length;
-    return {
-      completeCount,
-      total,
-      isComplete: completeCount === total,
-      missingLabels: checks.filter((check) => !check.ok).map((check) => check.label),
-    };
-  }
 
   function toJerseySizeCode(value: string | null) {
     const normalized = String(value || "").trim();
@@ -966,6 +954,25 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
                 Close
               </button>
             </div>
+            {(() => {
+              const profile = getPlayerProfileCompleteness(activeProfilePlayer);
+              const checks = buildPlayerChecks(activeProfilePlayer);
+              const card = playerCardFromFields(
+                activeProfilePlayer,
+                {
+                  id: selectedTeam?.id || "",
+                  teamName: selectedTeam?.teamName || "Team",
+                  ageGroup: selectedTeam?.ageGroup || "",
+                  seasonYear: selectedTeam?.seasonYear ?? new Date().getFullYear(),
+                  organizationId: targetOrg,
+                },
+                checks,
+                profile.readiness,
+                profile.completeCount,
+                profile.total,
+              );
+              return <PlayerCardPanel card={card} />;
+            })()}
             <div className="grid md:grid-cols-3 gap-2 text-sm">
               <p className="md:col-span-3 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">Guardian</p>
               <p className="rounded border border-zinc-800 bg-zinc-900/40 p-2">First Name: {activeProfilePlayer.guardianFirstName || "-"}</p>
@@ -1004,18 +1011,22 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
             </div>
             {(() => {
               const profile = getPlayerProfileCompleteness(activeProfileSummaryPlayer);
-              return (
-                <>
-                  <p className="text-sm text-zinc-300">
-                    Score: {profile.completeCount}/{profile.total}
-                  </p>
-                  <div className="rounded-lg border border-zinc-800 bg-zinc-900/50 p-3 text-sm text-zinc-300">
-                    {profile.missingLabels.length === 0
-                      ? "All profile checks are complete."
-                      : `Missing: ${profile.missingLabels.join(", ")}`}
-                  </div>
-                </>
+              const checks = buildPlayerChecks(activeProfileSummaryPlayer);
+              const card = playerCardFromFields(
+                activeProfileSummaryPlayer,
+                {
+                  id: selectedTeam?.id || "",
+                  teamName: selectedTeam?.teamName || "Team",
+                  ageGroup: selectedTeam?.ageGroup || "",
+                  seasonYear: selectedTeam?.seasonYear ?? new Date().getFullYear(),
+                  organizationId: targetOrg,
+                },
+                checks,
+                profile.readiness,
+                profile.completeCount,
+                profile.total,
               );
+              return <PlayerCardPanel card={card} compact />;
             })()}
           </div>
         </div>
