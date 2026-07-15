@@ -287,6 +287,15 @@ export default async function AdminDashboardPage({
         action: masterMode ? "Open Access" : "Open Users",
       },
       {
+        module: "VOLUNTEERS" as AdminModule,
+        href: moduleHref("/admin/volunteers", "VOLUNTEERS"),
+        title: "Volunteer Cards",
+        description: masterMode
+          ? "Track JDP background checks and Abuse Awareness for coaches and volunteers on the selected site."
+          : "Track JDP background checks and Abuse Awareness certificates for coaches and volunteers.",
+        action: masterMode ? "Open Volunteers Desk" : "Open Volunteers",
+      },
+      {
         module: "REPORTS" as AdminModule,
         href: moduleHref("/admin/reports", "REPORTS"),
         title: "Reporting",

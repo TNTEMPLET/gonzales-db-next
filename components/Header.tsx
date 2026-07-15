@@ -315,6 +315,9 @@ export default function Header({ brand }: HeaderProps) {
             ...(allowModule("USERS")
               ? [{ href: "/admin/users", label: "Users" }]
               : []),
+            ...(allowModule("VOLUNTEERS")
+              ? [{ href: `/admin/volunteers${masterOrgSuffix}`, label: "Volunteers" }]
+              : []),
             ...(allowModule("REPORTS")
               ? [{ href: "/admin/reports", label: "Reports" }]
               : []),

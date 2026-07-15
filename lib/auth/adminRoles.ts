@@ -14,6 +14,7 @@ export type AdminRole = (typeof ADMIN_ROLES)[number];
 export const ADMIN_MODULES = [
   "DASHBOARD",
   "USERS",
+  "VOLUNTEERS",
   "TEAMS",
   "SPONSORS",
   "REPORTS",
@@ -44,6 +45,7 @@ const roleRank: Record<AdminRole, number> = {
 const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   DASHBOARD: "PARK_DIRECTOR",
   USERS: "ADMIN",
+  VOLUNTEERS: "ADMIN",
   TEAMS: "ADMIN",
   SPONSORS: "ADMIN",
   REPORTS: "PARK_DIRECTOR",
