@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { newsPostMediaInclude } from "@/lib/news/media";
 import { getOrgId } from "@/lib/siteConfig";
 
 export async function getPublishedNewsPosts() {
@@ -6,6 +7,7 @@ export async function getPublishedNewsPosts() {
     return await prisma.newsPost.findMany({
       where: { organizationId: getOrgId(), status: "PUBLISHED" },
       orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+      include: newsPostMediaInclude,
     });
   } catch (err: unknown) {
     const message =
@@ -23,6 +25,7 @@ export async function getPublishedNewsPostBySlug(slug: string) {
         slug,
         status: "PUBLISHED",
       },
+      include: newsPostMediaInclude,
     });
   } catch (err: unknown) {
     const message =

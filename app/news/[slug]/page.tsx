@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import Link from "next/link";
 
+import NewsArticleGallery from "@/components/news/NewsArticleGallery";
 import { getPublishedNewsPostBySlug } from "@/lib/news/queries";
 import { getSiteConfig } from "@/lib/siteConfig";
 
@@ -43,6 +44,13 @@ export default async function NewsDetailPage({ params }: PageProps) {
 
   if (!post) notFound();
 
+  const gallery = (post.media || []).map((item) => ({
+    id: item.id,
+    url: item.url,
+    alt: item.alt,
+    caption: item.caption,
+  }));
+
   return (
     <main className="min-h-screen bg-zinc-950 text-white py-14">
       <article className="max-w-4xl mx-auto px-6">
@@ -76,6 +84,8 @@ export default async function NewsDetailPage({ params }: PageProps) {
             />
           </div>
         ) : null}
+
+        <NewsArticleGallery images={gallery} title={post.title} />
 
         <div
           className="prose prose-invert max-w-none prose-p:text-zinc-200 prose-headings:text-white prose-a:text-brand-gold prose-strong:text-white prose-table:text-sm prose-th:text-brand-gold prose-td:border-zinc-700 prose-th:border-zinc-700"

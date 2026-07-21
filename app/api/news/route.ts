@@ -2,6 +2,11 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { isNewsAdmin, ensureNewsAdmin } from "@/lib/news/auth";
+import {
+  newsPostMediaInclude,
+  parseNewsMediaList,
+  replacePostMedia,
+} from "@/lib/news/media";
 import prisma from "@/lib/prisma";
 import {
   CONTENT_ORGS,
@@ -25,6 +30,7 @@ type CreateNewsPayload = {
   status?: NewsStatus;
   publishedAt?: string;
   targetOrgs?: ContentOrgId[];
+  media?: unknown;
 };
 
 const MAX_PAGE_SIZE = 50;
@@ -89,6 +95,7 @@ export async function GET(request: NextRequest) {
         skip: (page - 1) * limit,
         take: limit,
         orderBy: [{ publishedAt: "desc" }, { createdAt: "desc" }],
+        include: newsPostMediaInclude,
       }),
       prisma.newsPost.count({ where }),
     ]);
@@ -158,6 +165,11 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: parsedImage.error }, { status: 400 });
     }
 
+    const parsedMedia = parseNewsMediaList(body.media);
+    if (!parsedMedia.ok) {
+      return NextResponse.json({ error: parsedMedia.error }, { status: 400 });
+    }
+
     const createdPosts = [];
     for (const orgId of targetOrgs) {
       const slug = await ensureUniqueSlug(orgId, requestedSlug);
@@ -182,7 +194,16 @@ export async function POST(request: NextRequest) {
         },
       });
 
-      createdPosts.push(post);
+      if (parsedMedia.value.length > 0) {
+        await replacePostMedia(prisma, post.id, parsedMedia.value);
+      }
+
+      const withMedia = await prisma.newsPost.findUnique({
+        where: { id: post.id },
+        include: newsPostMediaInclude,
+      });
+
+      createdPosts.push(withMedia || post);
       revalidatePath("/");
       revalidatePath("/news");
       revalidatePath(`/news/${post.slug}`);

@@ -14,8 +14,21 @@ import {
   type ContentOrgId,
 } from "@/lib/siteConfig";
 import { parseOptionalNewsImageUrl } from "@/lib/uploads/validateNewsImageUrl";
+import NewsMediaEditor, {
+  mediaFromDto,
+  mediaToPayload,
+  type EditableNewsMedia,
+} from "@/components/news/NewsMediaEditor";
 
 type NewsStatus = "DRAFT" | "PUBLISHED";
+
+type NewsMediaItem = {
+  id: string;
+  url: string;
+  alt: string | null;
+  caption: string | null;
+  sortOrder: number;
+};
 
 type NewsPost = {
   id: string;
@@ -31,6 +44,7 @@ type NewsPost = {
   publishedAt: string | null;
   createdAt: string;
   updatedAt: string;
+  media?: NewsMediaItem[];
 };
 
 type RegisteredUser = {
@@ -144,6 +158,8 @@ export default function NewsAdminPanel({
   const [busy, setBusy] = useState(false);
   const [createImageBusy, setCreateImageBusy] = useState(false);
   const [editImageBusy, setEditImageBusy] = useState(false);
+  const [createGallery, setCreateGallery] = useState<EditableNewsMedia[]>([]);
+  const [editGallery, setEditGallery] = useState<EditableNewsMedia[]>([]);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
 
@@ -317,12 +333,14 @@ export default function NewsAdminPanel({
             ? {
                 ...createPayload,
                 imageUrl: heroForApi,
+                media: mediaToPayload(createGallery),
                 publishedAt: fromLocalDateTimeInput(createPayload.publishedAt),
                 targetOrgs: effectiveTargets,
               }
             : {
                 ...createPayload,
                 imageUrl: heroForApi,
+                media: mediaToPayload(createGallery),
                 targetOrgs: effectiveTargets,
               },
         ),
@@ -334,6 +352,7 @@ export default function NewsAdminPanel({
       }
 
       setCreatePayload(createEmptyPayload(defaultAuthor));
+      setCreateGallery([]);
       setCreateTargets([targetOrg]);
       await loadPosts();
       setNotice(
@@ -455,6 +474,7 @@ export default function NewsAdminPanel({
     if (!post) return;
 
     setSelectedSlug(slug);
+    setEditGallery(mediaFromDto(post.media || []));
     setEditPayload({
       title: post.title,
       slug: post.slug,
@@ -491,17 +511,16 @@ export default function NewsAdminPanel({
     const heroForApi = normalizedHero.value ?? "";
 
     try {
-      const patchBody = editPayload.publishedAt
-        ? {
-            ...editPayload,
-            imageUrl: heroForApi,
-            publishedAt: fromLocalDateTimeInput(editPayload.publishedAt),
-          }
-        : {
-            ...editPayload,
-            imageUrl: heroForApi,
-            publishedAt: editPayload.status === "DRAFT" ? null : undefined,
-          };
+      const patchBody = {
+        ...editPayload,
+        imageUrl: heroForApi,
+        media: mediaToPayload(editGallery),
+        publishedAt: editPayload.publishedAt
+          ? fromLocalDateTimeInput(editPayload.publishedAt)
+          : editPayload.status === "DRAFT"
+            ? null
+            : undefined,
+      };
 
       if (isMasterMode) {
         const orgsToSave = editSyncTargets;
@@ -563,6 +582,7 @@ export default function NewsAdminPanel({
         const primaryUpdated = syncResults.find((r) => r.org === targetOrg);
         if (!orgsToSave.includes(targetOrg) || closeAfterSave) {
           setSelectedSlug("");
+          setEditGallery([]);
           setEditPayload(createEmptyPayload(""));
           setEditSyncTargets([]);
           setEditOrgPresence([]);
@@ -598,9 +618,11 @@ export default function NewsAdminPanel({
         await loadPosts();
         if (closeAfterSave) {
           setSelectedSlug("");
+          setEditGallery([]);
           setEditPayload(createEmptyPayload(""));
         } else {
           setSelectedSlug(json.data.slug);
+          setEditGallery(mediaFromDto(json.data.media || []));
         }
         setNotice("Post updated");
       }
@@ -837,7 +859,14 @@ export default function NewsAdminPanel({
               ) : null}
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+                    <NewsMediaEditor
+            items={createGallery}
+            onChange={setCreateGallery}
+            disabled={busy || createImageBusy}
+            onError={setError}
+            onNotice={setNotice}
+          />
+<div className="grid grid-cols-2 gap-3">
             <select
               value={createPayload.status}
               onChange={(event) =>
@@ -1078,7 +1107,14 @@ export default function NewsAdminPanel({
                   ) : null}
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-3">
+                              <NewsMediaEditor
+                  items={editGallery}
+                  onChange={setEditGallery}
+                  disabled={busy || editImageBusy}
+                  onError={setError}
+                  onNotice={setNotice}
+                />
+<div className="grid grid-cols-2 gap-3">
                 <select
                   value={editPayload.status}
                   onChange={(event) =>
