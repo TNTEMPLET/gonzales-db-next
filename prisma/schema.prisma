@@ -234,6 +234,7 @@ model NewsPost {
   slug           String
   excerpt        String?
   content        String
+  /// Hero / rotator / OG cover image (single).
   imageUrl       String?
   author         String?
   featured       Boolean    @default(false)
@@ -242,10 +243,25 @@ model NewsPost {
   publishedAt    DateTime?
   createdAt      DateTime   @default(now())
   updatedAt      DateTime   @updatedAt
+  media          NewsPostMedia[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, status, publishedAt])
   @@index([organizationId, slug])
+}
+
+/// Extra article gallery images (lightbox). Hero remains NewsPost.imageUrl.
+model NewsPostMedia {
+  id        String   @id @default(cuid())
+  postId    String
+  post      NewsPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  url       String
+  alt       String?
+  caption   String?
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([postId, sortOrder])
 }
 
 model AdminUser {

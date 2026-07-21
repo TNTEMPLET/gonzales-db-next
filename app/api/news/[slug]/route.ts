@@ -2,6 +2,12 @@ import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureNewsAdmin, isNewsAdmin } from "@/lib/news/auth";
+import {
+  copyPostMedia,
+  newsPostMediaInclude,
+  parseNewsMediaList,
+  replacePostMedia,
+} from "@/lib/news/media";
 import prisma from "@/lib/prisma";
 import {
   CONTENT_ORGS,
@@ -30,6 +36,7 @@ type UpdateNewsPayload = {
   publishedAt?: string | null;
   syncToOrgs?: ContentOrgId[];
   createMissing?: boolean;
+  media?: unknown;
 };
 
 function slugify(input: string): string {
@@ -68,6 +75,7 @@ export async function GET(request: NextRequest, context: RouteContext) {
 
     const post = await prisma.newsPost.findFirst({
       where: { organizationId: orgId, slug },
+      include: newsPostMediaInclude,
     });
     if (!post) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -134,6 +142,20 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
       imageUrlForDb = parsed.value;
     }
 
+    let mediaForReplace:
+      | { ok: true; value: import("@/lib/news/media").NewsMediaInput[] }
+      | { ok: false; error: string }
+      | null = null;
+    if (body.media !== undefined) {
+      mediaForReplace = parseNewsMediaList(body.media);
+      if (!mediaForReplace.ok) {
+        return NextResponse.json(
+          { error: mediaForReplace.error },
+          { status: 400 },
+        );
+      }
+    }
+
     const updated = await prisma.newsPost.update({
       where: { id: existing.id },
       data: {
@@ -158,6 +180,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
               : null,
       },
     });
+
+    if (mediaForReplace && mediaForReplace.ok) {
+      await replacePostMedia(prisma, updated.id, mediaForReplace.value);
+    }
 
     const syncRequestedTargets = Array.isArray(body.syncToOrgs)
       ? body.syncToOrgs.filter((org): org is ContentOrgId =>
@@ -212,6 +238,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
             },
           });
 
+          await copyPostMedia(prisma, updated.id, synced.id);
           syncResults.push({ org, action: "updated", slug: synced.slug });
           continue;
         }
@@ -233,6 +260,7 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
           },
         });
 
+        await copyPostMedia(prisma, updated.id, created.id);
         syncResults.push({ org, action: "created", slug: created.slug });
       }
     }
@@ -242,7 +270,12 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
     revalidatePath(`/news/${slug}`);
     revalidatePath(`/news/${updated.slug}`);
 
-    return NextResponse.json({ data: updated, syncResults });
+    const withMedia = await prisma.newsPost.findUnique({
+      where: { id: updated.id },
+      include: newsPostMediaInclude,
+    });
+
+    return NextResponse.json({ data: withMedia || updated, syncResults });
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : "Unknown error";
     return NextResponse.json(
