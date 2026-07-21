@@ -8,7 +8,13 @@ import AdminUsersManager from "@/components/admin/AdminUsersManager";
 import AdminVolunteersManager from "@/components/admin/AdminVolunteersManager";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
-export type PeopleSection = "directory" | "volunteers" | "coaching-interest";
+import {
+  parsePeopleSection,
+  type PeopleSection,
+} from "@/lib/admin/people/sections";
+
+export type { PeopleSection };
+export { parsePeopleSection };
 
 const SECTION_META: Record<
   PeopleSection,
@@ -30,19 +36,6 @@ const SECTION_META: Record<
       "Fall Ball coach leads, follow-up status, and export for registration planning.",
   },
 };
-
-export function parsePeopleSection(
-  value: string | null | undefined,
-): PeopleSection {
-  if (value === "volunteers" || value === "volunteer") return "volunteers";
-  if (value === "coaching-interest" || value === "coaching") {
-    return "coaching-interest";
-  }
-  if (value === "directory" || value === "users" || value === "access") {
-    return "directory";
-  }
-  return "directory";
-}
 
 export default function PeopleHub({
   targetOrg,
