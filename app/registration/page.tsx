@@ -55,59 +55,117 @@ export default function RegistrationPage() {
             AP Baseball Fall Ball Registration
           </h1>
           <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
-            Fall Ball is an independent AP Baseball league program. It is not
-            affiliated with Gonzales Diamond Baseball or Ascension Little League.
+            Fall Ball registration opens <strong className="text-white">August 1</strong>.
+            New families should create an AP Baseball account now so you&apos;re
+            ready when registration goes live.
           </p>
         </section>
 
         <div className="max-w-3xl mx-auto px-6 py-12 space-y-8">
-          <section className="space-y-4 text-zinc-300 leading-relaxed">
-            <p>
-              Player registration is handled through SportsConnect at
-              APBaseball.com. After registration reports are exported from
-              SportsConnect, AP Baseball staff can import the CSV directly into
-              the Fall Ball Teams module from the master admin site.
+          <section className="border border-brand-gold/40 bg-brand-gold/5 rounded-xl p-6 sm:p-8">
+            <h2 className="text-2xl font-bold text-brand-gold tracking-tight mb-2">
+              Next steps for new players
+            </h2>
+            <p className="text-zinc-300 mb-6">
+              Player registration runs through{" "}
+              <a
+                href={scReg.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-white font-semibold underline underline-offset-2 hover:text-brand-gold"
+              >
+                APBaseball.com
+              </a>{" "}
+              (SportsConnect). Do this before August 1 so you can register as
+              soon as the window opens.
             </p>
-            <div className="border border-brand-gold/40 bg-brand-gold/5 rounded-xl p-5">
-              <p className="font-bold text-brand-gold tracking-wide">
-                IMPORTANT: Registration records are managed in SportsConnect.
-              </p>
-              <p className="mt-2 text-sm text-zinc-300">
-                The Fall Ball site is the league operations hub for teams,
-                rosters, schedules, communications, sponsors, and reporting
-                after players are registered.
-              </p>
+            <ol className="space-y-4 text-zinc-200">
+              <li className="flex gap-4">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-sm font-bold text-white">
+                  1
+                </span>
+                <div>
+                  <p className="font-semibold text-white">
+                    Create an account at APBaseball.com
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    New to the league? Sign up on APBaseball.com and complete
+                    your family profile. Returning families can sign in with
+                    their existing account.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-4">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-sm font-bold text-white">
+                  2
+                </span>
+                <div>
+                  <p className="font-semibold text-white">
+                    Add your player(s)
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    Enter each player&apos;s information in your account so
+                    they&apos;re ready to select when registration opens.
+                  </p>
+                </div>
+              </li>
+              <li className="flex gap-4">
+                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-sm font-bold text-white">
+                  3
+                </span>
+                <div>
+                  <p className="font-semibold text-white">
+                    Register when Fall Ball opens August 1
+                  </p>
+                  <p className="mt-1 text-sm text-zinc-400">
+                    On or after August 1, sign in at APBaseball.com and complete
+                    Fall Ball registration and payment for each player.
+                  </p>
+                </div>
+              </li>
+            </ol>
+            <div className="mt-8 flex flex-col sm:flex-row gap-3">
+              <a
+                href={scReg.href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-8 py-4 rounded-xl text-center transition-all active:scale-95"
+              >
+                Create account / sign in at APBaseball.com
+              </a>
+              <Link
+                href="/news/fall-ball-2026-registration-age-cutoff"
+                className="border border-zinc-600 hover:border-brand-gold hover:text-brand-gold font-semibold text-lg px-8 py-4 rounded-xl text-center transition-all"
+              >
+                Age cut-off details
+              </Link>
             </div>
           </section>
 
-          <section className="grid gap-4 sm:grid-cols-2">
-            <div className="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
-              <h2 className="font-semibold text-white mb-2">Families</h2>
-              <p className="text-zinc-400 text-sm">
-                Register players on APBaseball.com using your SportsConnect
-                account. Registration availability and payment details are
-                controlled there.
+          <section className="space-y-4 text-zinc-300 leading-relaxed">
+            <div className="border border-zinc-800 bg-zinc-900/60 rounded-xl p-5">
+              <p className="font-semibold text-white">
+                Independent AP Baseball program
+              </p>
+              <p className="mt-2 text-sm text-zinc-400">
+                Fall Ball is not affiliated with Gonzales Diamond Baseball or
+                Ascension Little League. Registration, payment, and player
+                accounts are managed on APBaseball.com.
               </p>
             </div>
-            <div className="bg-zinc-900 rounded-xl p-5 border border-zinc-800">
-              <h2 className="font-semibold text-white mb-2">Admins</h2>
-              <p className="text-zinc-400 text-sm">
-                Use Master Admin, select AP Fall Ball, then open Sports Connect
-                Ops Desk or Teams to import SportsConnect CSV or XLSX
-                registration exports.
-              </p>
-            </div>
+            <p className="text-sm text-zinc-500">
+              This Fall Ball site is the league hub for news, schedules, and
+              team info after players are registered. Questions?{" "}
+              <a
+                href="mailto:info@apbaseball.com"
+                className="text-zinc-300 underline underline-offset-2 hover:text-white"
+              >
+                info@apbaseball.com
+              </a>
+            </p>
           </section>
 
-          <div className="flex flex-col sm:flex-row gap-4 justify-center pt-4">
-            <a
-              href={scReg.href}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-10 py-4 rounded-xl text-center transition-all active:scale-95"
-            >
-              Register at APBaseball.com
-            </a>
+          <div className="flex justify-center pt-2">
             <Link
               href="/"
               className="border-2 border-white hover:bg-white hover:text-black font-semibold text-lg px-10 py-4 rounded-xl text-center transition-all"
