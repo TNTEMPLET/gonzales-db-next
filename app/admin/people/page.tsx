@@ -3,10 +3,11 @@ import { redirect } from "next/navigation";
 import { Suspense } from "react";
 
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import PeopleHub, {
+import PeopleHub from "@/components/admin/people/PeopleHub";
+import {
   parsePeopleSection,
   type PeopleSection,
-} from "@/components/admin/people/PeopleHub";
+} from "@/lib/admin/people/sections";
 import {
   canAccessAdminModule,
   hasAdminRoleAtLeast,
