@@ -7,38 +7,37 @@ import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarProgramNav from "@/components/admin/allStar/AllStarProgramNav";
-import AllStarVaultManager from "@/components/admin/AllStarVaultManager";
+import ParentShirtOrdersPanel from "@/components/admin/shirtOrders/ParentShirtOrdersPanel";
 import {
   getSiteConfig,
   isAdminModuleEnabledForOrg,
-  isMasterDeployment,
   resolveAdminTargetOrg,
 } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
   return {
-    title: `All-Star Vault | ${site.name}`,
-    description: "Manage AP Baseball All-Star voting cycles and ballots.",
+    title: `Championship Shirt Orders | ${site.name}`,
+    description: "View and export championship shirt orders by organization.",
   };
 }
 
-export default async function AdminAllStarPage({
+export default async function AdminShirtOrdersPage({
   searchParams,
 }: {
   searchParams: Promise<{ org?: string }>;
 }) {
   const { org } = await searchParams;
-  const currentOrg = resolveAdminTargetOrg(org);
-  if (!isAdminModuleEnabledForOrg(currentOrg, "ALL_STAR_VAULT")) {
-    redirect("/admin?org=fallball&denied=all-star");
+  const currentOrg = resolveAdminTargetOrg(org ?? undefined);
+  if (!isAdminModuleEnabledForOrg(currentOrg, "ALL_STAR_PAYMENTS")) {
+    redirect(`/admin?org=${currentOrg}&denied=shirt-orders`);
   }
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
   if (!adminUser) {
-    redirect("/admin/login?next=/admin/all-star");
+    redirect("/admin/login?next=/admin/shirt-orders");
   }
 
   const effectiveRole = await getEffectiveAdminRoleForOrg(
@@ -47,50 +46,45 @@ export default async function AdminAllStarPage({
     currentOrg,
   );
   const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
-  const { vaultView, canManageAllStarVaultUi, isLimitedVaultAccess } =
-    await resolveAllStarVaultAccessForAdmin({
-      isMaster: adminUser.isMaster,
-      email: adminUser.email,
-      organizationId: currentOrg,
-    });
+  const { vaultView } = await resolveAllStarVaultAccessForAdmin({
+    isMaster: adminUser.isMaster,
+    email: adminUser.email,
+    organizationId: currentOrg,
+  });
 
-  if (!vaultView) {
-    redirect("/admin?denied=all-star");
+  if (!vaultView && !adminUser.isMaster && !hasAdminRoleAtLeast(role, "BOARD_MEMBER")) {
+    redirect("/admin?denied=shirt-orders");
   }
-
-  const masterMode = isMasterDeployment();
 
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
-      <section className="mx-auto max-w-6xl px-4 sm:px-6">
+      <section className="mx-auto max-w-5xl px-4 sm:px-6">
         <div className="mb-8">
           <AdminSectionHeader
-            badge="ALL-STAR VAULT"
+            badge="SHIRT ORDERS"
             currentOrg={currentOrg}
-            currentPath="/admin/all-star"
+            currentPath="/admin/shirt-orders"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
           />
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
-            All-Star Program
+            Championship Shirt Orders
           </h1>
           <p className="text-zinc-400 max-w-3xl">
-            Seasonal workspace: set up cycles and ballots in the Vault, then track fees, parent
-            cap orders, and championship shirt orders. All edits apply to the selected organization.
+            Track championship shirt orders from PayPal checkout (e.g. Gonzales 11U DYB State Champs
+            at $15). Sync orders, review player name + size notes, mark each shirt fulfilled, and
+            export a vendor-ready CSV with size tally.
           </p>
+          <div className="mt-4 rounded-xl border border-sky-800/50 bg-sky-950/20 p-3 text-sm text-sky-100">
+            Checkout collects two required notes: player name and size(s). They are stored joined as
+            <span className="font-mono text-sky-50"> name | sizes</span>. Recheck before the vendor
+            export — the size tally uses the size side of that note.
+          </div>
         </div>
 
-        <AllStarProgramNav stage="vault" org={currentOrg} />
+        <AllStarProgramNav stage="shirt-orders" org={currentOrg} />
 
-        <AllStarVaultManager
-          key={currentOrg}
-          initialOrg={currentOrg}
-          isMasterMode={masterMode}
-          isMasterAuditAdmin={adminUser.isMaster}
-          canManageAllStarVault={canManageAllStarVaultUi}
-          canViewAllStarVault={vaultView}
-          isLimitedVaultAccess={isLimitedVaultAccess}
-        />
+        <ParentShirtOrdersPanel />
       </section>
     </main>
   );

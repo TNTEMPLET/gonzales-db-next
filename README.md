@@ -60,10 +60,48 @@ npx prisma migrate dev    # schema changes — DEV only
 | People hub | `/admin/people` (directory, volunteers, coaching interest) — also `/admin/users`, `/admin/volunteers` redirect here |
 | Teams | `/admin/teams` |
 | Scores | `/admin/scores` |
-| All-Star Program | `/admin/all-star` (Vault) + stage nav to payments & cap-orders |
+| All-Star Program | `/admin/all-star` (Vault) + stage nav to payments, cap-orders & shirt-orders |
 | Tournaments | `/admin/tournament-brackets`, alerts |
 | Publishing | News, social, communications, documents |
 | Ops | Reports, park alerts/info, Assignr, scheduler |
+
+### Public merch shop (catalog + PayPal)
+
+| Path | Purpose |
+|------|---------|
+| `/shop` | Public catalog — product cards link out to PayPal NCP checkout |
+| `/admin/shop` | Admin view of catalog + shortcuts to order desks |
+| Catalog source | `lib/merch/catalog.ts` (v1 code-configured; no cart) |
+
+Add a product: create a PayPal payment link, append a `MerchProduct` in `catalog.ts` with matching `priceCents` / org, set `fulfillment` to `shirt-orders` or `cap-orders`. Families buy on PayPal; board fulfills from the order desk.
+
+### Cap & shirt PayPal orders
+
+| Path | Purpose |
+|------|---------|
+| `/admin/cap-orders` | Parent All-Star cap orders (sync, fulfill, CSV) |
+| `/admin/shirt-orders` | Championship / merchandise shirt orders (sync, fulfill, CSV + size tally) |
+| `POST /api/webhooks/paypal-caps` | Live ingest for caps |
+| `POST /api/webhooks/paypal-shirts` | Live ingest for shirts |
+
+Env (master / admin + org sites that run the webhook):
+
+| Variable | Caps default | Shirts default |
+|----------|--------------|----------------|
+| Item keyword Gonzales | `PAYPAL_CAP_ITEM_GONZALES` | `PAYPAL_SHIRT_ITEM_GONZALES` |
+| Item keyword Ascension | `PAYPAL_CAP_ITEM_ASCENSION` | `PAYPAL_SHIRT_ITEM_ASCENSION` |
+| Unit price (cents) | `PAYPAL_CAP_PRICE_CENTS` (`2000`) | `PAYPAL_SHIRT_PRICE_CENTS` (`1500` = $15) |
+| Webhook id | `PAYPAL_WEBHOOK_ID_CAPS` → `PAYPAL_WEBHOOK_ID` | `PAYPAL_WEBHOOK_ID_SHIRTS` → caps id → `PAYPAL_WEBHOOK_ID` |
+
+**Active shirt button (Gonzales 11U):**  
+https://www.paypal.com/ncp/payment/Z5HW3TUQFBYWE — item name `Gonzales 11U DYB - State Champs Shirt`, **$15.00**, qty up to 10, required memos: player name + size(s).
+
+When shirt keywords are empty, sync/webhook match item names containing `shirt` or `state champ` (covers this button). Recommended env:
+
+```
+PAYPAL_SHIRT_ITEM_GONZALES=state champs shirt
+PAYPAL_SHIRT_PRICE_CENTS=1500
+```
 
 Workflow UI standard: `docs/admin-module-workflow-pattern.md`.
 

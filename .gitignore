@@ -80,3 +80,4 @@ scripts/get-cycle-ids.ts
 
 # Prefer pnpm — do not commit npm lockfile
 package-lock.json
+.env*.local
