@@ -230,6 +230,7 @@ function OrgCard({
   onToggleItem,
   togglingItemId,
   onExport,
+  onEmail,
   exporting,
 }: {
   org: OrgId;
@@ -237,6 +238,7 @@ function OrgCard({
   onToggleItem: (item: ShirtOrderItem, order: ShirtOrder) => void;
   togglingItemId: string | null;
   onExport: (org: OrgId) => void;
+  onEmail: (org: OrgId) => void;
   exporting: boolean;
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -279,7 +281,16 @@ function OrgCard({
 
       {expanded && (
         <div className="border-t border-zinc-800">
-          <div className="flex justify-end px-4 py-2.5 border-b border-zinc-800/60">
+          <div className="flex justify-end gap-2 px-4 py-2.5 border-b border-zinc-800/60">
+            <button
+              type="button"
+              onClick={() => onEmail(org)}
+              disabled={orders.length === 0}
+              className="flex items-center gap-1.5 rounded-lg border border-violet-800/50 bg-violet-950/20 px-3 py-1.5 text-xs font-medium text-violet-200 hover:bg-violet-900/30 disabled:opacity-50 transition-colors"
+            >
+              <MailIcon />
+              Email report
+            </button>
             <button
               type="button"
               onClick={() => onExport(org)}
@@ -320,6 +331,8 @@ function OrgCard({
 
 // ─── Main panel ───────────────────────────────────────────────────────────────
 
+type EmailFormOrg = OrgId | "all";
+
 export default function ParentShirtOrdersPanel() {
   const [data, setData] = useState<ShirtOrdersResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -328,6 +341,17 @@ export default function ParentShirtOrdersPanel() {
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
   const [exportingOrg, setExportingOrg] = useState<OrgId | "all" | null>(null);
+  const [emailOpen, setEmailOpen] = useState(false);
+  const [emailOrg, setEmailOrg] = useState<EmailFormOrg>("all");
+  const [emailTo, setEmailTo] = useState("");
+  const [emailSubject, setEmailSubject] = useState("");
+  const [emailMessage, setEmailMessage] = useState("");
+  const [emailFrom, setEmailFrom] = useState("");
+  const [emailOpenOnly, setEmailOpenOnly] = useState(true);
+  const [emailFromOptions, setEmailFromOptions] = useState<string[]>([]);
+  const [emailConfigured, setEmailConfigured] = useState(true);
+  const [emailBusy, setEmailBusy] = useState(false);
+  const [emailNotice, setEmailNotice] = useState<string | null>(null);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const fetchOrders = useCallback(async (silent = false) => {
@@ -434,6 +458,74 @@ export default function ParentShirtOrdersPanel() {
     }
   }
 
+  async function openEmailModal(org: EmailFormOrg = "all") {
+    setEmailOrg(org);
+    setEmailNotice(null);
+    setError(null);
+    setEmailOpen(true);
+    try {
+      const res = await fetch("/api/admin/shirt-orders/email");
+      const json = (await res.json()) as {
+        fromOptions?: string[];
+        defaultFrom?: string | null;
+        emailConfigured?: boolean;
+        error?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Failed to load email options");
+      setEmailFromOptions(json.fromOptions ?? []);
+      setEmailFrom(json.defaultFrom ?? json.fromOptions?.[0] ?? "");
+      setEmailConfigured(json.emailConfigured !== false);
+      const orgLabel =
+        org === "gonzales" ? "Gonzales DYB" : org === "ascension" ? "Ascension LLB" : "All orgs";
+      setEmailSubject((prev) =>
+        prev.trim()
+          ? prev
+          : `Shirt orders – ${orgLabel} – ${new Date().toLocaleDateString("en-US")}`,
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to open email form");
+      setEmailOpen(false);
+    }
+  }
+
+  async function sendEmailReport() {
+    setEmailBusy(true);
+    setEmailNotice(null);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/shirt-orders/email", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          to: emailTo,
+          subject: emailSubject.trim() || undefined,
+          message: emailMessage.trim() || undefined,
+          org: emailOrg,
+          openOnly: emailOpenOnly,
+          fromEmail: emailFrom || undefined,
+        }),
+      });
+      const json = (await res.json()) as {
+        error?: string;
+        to?: string[];
+        filename?: string;
+        orderCount?: number;
+        from?: string;
+      };
+      if (!res.ok) throw new Error(json.error ?? "Send failed");
+      setEmailNotice(
+        `Sent ${json.filename ?? "report"} (${json.orderCount ?? 0} orders) to ${(json.to ?? []).join(", ")} from ${json.from ?? "Communications"}.`,
+      );
+      setEmailOpen(false);
+      setEmailTo("");
+      setEmailMessage("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setEmailBusy(false);
+    }
+  }
+
   const allOrders = data ? [...data.gonzales, ...data.ascension, ...data.unknown] : [];
   const totalQty = countTotal(allOrders);
   const fulfilledQty = countFulfilled(allOrders);
@@ -456,7 +548,16 @@ export default function ParentShirtOrdersPanel() {
               </span>
             ) : null}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void openEmailModal("all")}
+              disabled={allOrders.length === 0 || emailBusy}
+              className="flex items-center gap-1.5 rounded-lg border border-violet-700/50 bg-violet-950/20 px-3 py-2 text-sm text-violet-200 hover:bg-violet-900/30 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <MailIcon />
+              Email report
+            </button>
             <button
               type="button"
               onClick={() => void handleExport("all")}
@@ -489,10 +590,141 @@ export default function ParentShirtOrdersPanel() {
         {syncMsg && (
           <p className="text-sm text-zinc-300 rounded-lg bg-zinc-800 px-3 py-2">{syncMsg}</p>
         )}
+        {emailNotice && (
+          <p className="text-sm text-emerald-300 rounded-lg bg-emerald-950/30 border border-emerald-800/40 px-3 py-2">
+            {emailNotice}
+          </p>
+        )}
         {error && (
           <p className="text-sm text-red-400 rounded-lg bg-red-950/30 border border-red-800/40 px-3 py-2">{error}</p>
         )}
       </div>
+
+      {/* In-module email form — uses Communications From + Resend, no Communications UI */}
+      {emailOpen && (
+        <div className="rounded-xl border border-violet-800/40 bg-zinc-900/90 px-5 py-4 space-y-4">
+          <div className="flex items-start justify-between gap-3">
+            <div>
+              <h2 className="text-base font-semibold text-zinc-100">Email shirt order report</h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                Sends the vendor CSV via league Communications email (Resend). You stay on this page.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setEmailOpen(false)}
+              className="rounded-lg border border-zinc-700 px-2.5 py-1 text-xs text-zinc-400 hover:text-zinc-200"
+            >
+              Close
+            </button>
+          </div>
+
+          {!emailConfigured && (
+            <p className="text-sm text-amber-300 rounded-lg border border-amber-800/40 bg-amber-950/20 px-3 py-2">
+              Email is not configured (missing Resend / From address). Fix this in Communications settings
+              first.
+            </p>
+          )}
+
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block space-y-1.5 sm:col-span-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">To</span>
+              <input
+                type="text"
+                value={emailTo}
+                onChange={(e) => setEmailTo(e.target.value)}
+                placeholder="vendor@example.com, board@apbaseball.com"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-600 focus:outline-none"
+              />
+              <span className="text-[11px] text-zinc-600">Comma-separated, up to 10 addresses.</span>
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Org</span>
+              <select
+                value={emailOrg}
+                onChange={(e) => setEmailOrg(e.target.value as EmailFormOrg)}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-violet-600 focus:outline-none"
+              >
+                <option value="all">All orgs</option>
+                <option value="gonzales">Gonzales DYB</option>
+                <option value="ascension">Ascension LLB</option>
+              </select>
+            </label>
+
+            <label className="block space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">From</span>
+              <select
+                value={emailFrom}
+                onChange={(e) => setEmailFrom(e.target.value)}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-violet-600 focus:outline-none"
+              >
+                {emailFromOptions.length === 0 ? (
+                  <option value="">Default Communications From</option>
+                ) : (
+                  emailFromOptions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))
+                )}
+              </select>
+            </label>
+
+            <label className="block space-y-1.5 sm:col-span-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Subject</span>
+              <input
+                type="text"
+                value={emailSubject}
+                onChange={(e) => setEmailSubject(e.target.value)}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-violet-600 focus:outline-none"
+              />
+            </label>
+
+            <label className="block space-y-1.5 sm:col-span-2">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                Message (optional)
+              </span>
+              <textarea
+                value={emailMessage}
+                onChange={(e) => setEmailMessage(e.target.value)}
+                rows={3}
+                placeholder="Hi — attached is the current shirt order list for the vendor…"
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-violet-600 focus:outline-none"
+              />
+            </label>
+
+            <label className="flex items-center gap-2 text-sm text-zinc-300 sm:col-span-2">
+              <input
+                type="checkbox"
+                checked={emailOpenOnly}
+                onChange={(e) => setEmailOpenOnly(e.target.checked)}
+                className="rounded border-zinc-600 bg-zinc-950 text-violet-500 focus:ring-violet-600"
+              />
+              Open shirts only (exclude fully fulfilled orders)
+            </label>
+          </div>
+
+          <div className="flex flex-wrap justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setEmailOpen(false)}
+              className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-400 hover:text-zinc-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={() => void sendEmailReport()}
+              disabled={emailBusy || !emailTo.trim() || !emailConfigured}
+              className="flex items-center gap-1.5 rounded-lg border border-violet-600 bg-violet-950/40 px-4 py-2 text-sm font-medium text-violet-100 hover:bg-violet-900/50 disabled:opacity-50"
+            >
+              <MailIcon />
+              {emailBusy ? "Sending…" : "Send with CSV attached"}
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Summary bar */}
       {data && (
@@ -520,6 +752,7 @@ export default function ParentShirtOrdersPanel() {
             onToggleItem={toggleItem}
             togglingItemId={togglingItemId}
             onExport={(o) => void handleExport(o)}
+            onEmail={(o) => void openEmailModal(o)}
             exporting={exportingOrg === "gonzales"}
           />
           <OrgCard
@@ -528,6 +761,7 @@ export default function ParentShirtOrdersPanel() {
             onToggleItem={toggleItem}
             togglingItemId={togglingItemId}
             onExport={(o) => void handleExport(o)}
+            onEmail={(o) => void openEmailModal(o)}
             exporting={exportingOrg === "ascension"}
           />
         </div>
@@ -568,6 +802,15 @@ function CsvIcon() {
     <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden>
       <rect x="2" y="1" width="12" height="14" rx="1.5" />
       <path d="M5 6h6M5 9h6M5 12h4" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+function MailIcon() {
+  return (
+    <svg viewBox="0 0 16 16" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth={1.5} aria-hidden>
+      <rect x="1.5" y="3" width="13" height="10" rx="1.5" />
+      <path d="M2 4.5 8 9l6-4.5" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
