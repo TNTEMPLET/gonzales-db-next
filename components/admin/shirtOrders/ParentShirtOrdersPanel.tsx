@@ -2,6 +2,11 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ShirtOrder, ShirtOrderItem, ShirtOrdersResponse } from "@/app/api/admin/shirt-orders/route";
+import {
+  sizeLabelForItem,
+  sizeLabelsForOrder,
+  splitShirtNote,
+} from "@/lib/merch/shirtSizes";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
@@ -23,6 +28,16 @@ function countFulfilled(orders: ShirtOrder[]) {
 
 function countTotal(orders: ShirtOrder[]) {
   return orders.reduce((s, o) => s + o.quantity, 0);
+}
+
+/** Compact size summary for the order row (e.g. "YS, YM, AL"). */
+function orderSizeSummary(order: ShirtOrder): string {
+  const labels = sizeLabelsForOrder(order.note, order.quantity).filter((l) => l.trim());
+  if (labels.length === 0) {
+    const { sizes, raw } = splitShirtNote(order.note);
+    return (sizes || raw || "").trim();
+  }
+  return labels.join(", ");
 }
 
 // ─── Org meta ─────────────────────────────────────────────────────────────────
@@ -50,10 +65,12 @@ const ORG_META: Record<OrgId, { label: string; abbr: string; color: string; bord
 
 function ShirtItemRow({
   item,
+  sizeLabel,
   onToggle,
   toggling,
 }: {
   item: ShirtOrderItem;
+  sizeLabel: string;
   onToggle: (item: ShirtOrderItem) => void;
   toggling: boolean;
 }) {
@@ -61,7 +78,9 @@ function ShirtItemRow({
   return (
     <div className={`flex items-center justify-between px-3 py-1.5 rounded-lg text-xs ${fulfilled ? "bg-emerald-950/20" : "bg-zinc-800/40"}`}>
       <span className={`font-medium ${fulfilled ? "text-emerald-300 line-through decoration-emerald-700/50" : "text-zinc-300"}`}>
-        Shirt #{item.seq}
+        <span className="inline-flex min-w-[2.5rem] items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-950/60 px-2 py-0.5 font-semibold tabular-nums text-zinc-100">
+          {sizeLabel}
+        </span>
       </span>
       <button
         type="button"
@@ -94,6 +113,12 @@ function OrderRow({
   const fulfilledCount = order.items.filter((i) => i.status === "fulfilled").length;
   const allFulfilled = fulfilledCount === order.quantity;
   const partialFulfilled = fulfilledCount > 0 && !allFulfilled;
+  const { player } = splitShirtNote(order.note);
+  const sizeSummary = orderSizeSummary(order);
+  const singleSize =
+    order.quantity === 1
+      ? sizeLabelForItem(order.note, order.items[0]?.seq ?? 1, order.quantity)
+      : "";
 
   return (
     <div className={`border-b border-zinc-800/60 last:border-0 ${allFulfilled ? "bg-emerald-950/5" : ""}`}>
@@ -114,15 +139,30 @@ function OrderRow({
         <div className="flex-1 min-w-0 grid grid-cols-[1fr_auto] sm:grid-cols-[1fr_7rem_7rem_auto] gap-x-4 gap-y-0.5 items-center">
           <div className="min-w-0">
             <p className="text-sm font-medium text-zinc-200 truncate">{order.payerName ?? <span className="text-zinc-500 italic">Unknown</span>}</p>
-            <p className="text-xs text-zinc-500">{fmtDate(order.txDate)}</p>
+            <p className="text-xs text-zinc-500">
+              {fmtDate(order.txDate)}
+              {player ? <span className="text-zinc-400"> · {player}</span> : null}
+            </p>
           </div>
-          <div className="hidden sm:block text-xs text-zinc-400 truncate max-w-[7rem]" title={order.note ?? ""}>
-            {order.note ? order.note : <span className="text-zinc-600 italic">No note</span>}
+          <div
+            className="hidden sm:block text-xs font-semibold text-zinc-200 truncate max-w-[7rem]"
+            title={order.note ?? sizeSummary}
+          >
+            {sizeSummary ? (
+              sizeSummary
+            ) : (
+              <span className="font-normal text-zinc-600 italic">No size</span>
+            )}
           </div>
           <div className="hidden sm:block text-xs text-zinc-400 tabular-nums">
             {fmtMoney(order.amountCents)}
           </div>
           <div className="flex items-center gap-2 justify-end">
+            {order.quantity === 1 && singleSize && !singleSize.startsWith("Shirt #") ? (
+              <span className="rounded-md border border-zinc-700 bg-zinc-950/60 px-2 py-0.5 text-[11px] font-semibold text-zinc-100">
+                {singleSize}
+              </span>
+            ) : null}
             {order.quantity > 1 && (
               <span className="text-xs text-zinc-500 tabular-nums">{fulfilledCount}/{order.quantity}</span>
             )}
@@ -155,16 +195,23 @@ function OrderRow({
         )}
       </div>
 
-      {/* Expanded multi-shirt items */}
+      {/* Expanded multi-shirt items — labeled by size from checkout note */}
       {expanded && order.quantity > 1 && (
         <div className="px-4 pb-3 space-y-1.5">
-          {order.note && (
-            <p className="text-xs text-zinc-500 mb-2">Note: <span className="text-zinc-300">{order.note}</span></p>
-          )}
+          {player ? (
+            <p className="text-xs text-zinc-500 mb-2">
+              Player: <span className="text-zinc-300">{player}</span>
+            </p>
+          ) : order.note ? (
+            <p className="text-xs text-zinc-500 mb-2">
+              Note: <span className="text-zinc-300">{order.note}</span>
+            </p>
+          ) : null}
           {order.items.map((item) => (
             <ShirtItemRow
               key={item.id}
               item={item}
+              sizeLabel={sizeLabelForItem(order.note, item.seq, order.quantity)}
               onToggle={(i) => onToggleItem(i, order)}
               toggling={togglingItemId === item.id}
             />
@@ -251,7 +298,7 @@ function OrgCard({
               <div className="grid grid-cols-[2rem_1fr_auto] sm:grid-cols-[2rem_1fr_7rem_7rem_auto] gap-x-4 px-4 py-2 border-b border-zinc-800/40">
                 <div />
                 <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Payer</p>
-                <p className="hidden sm:block text-xs font-semibold uppercase tracking-wide text-zinc-500">Note</p>
+                <p className="hidden sm:block text-xs font-semibold uppercase tracking-wide text-zinc-500">Size(s)</p>
                 <p className="hidden sm:block text-xs font-semibold uppercase tracking-wide text-zinc-500">Amount</p>
                 <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 text-right">Status</p>
               </div>
