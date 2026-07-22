@@ -69,9 +69,29 @@ export type PayPalTransaction = {
   itemName: string | null;
   itemCode: string | null;
   itemQuantity: number | null;
+  /** Joined checkout option values (e.g. player name + sizes on NCP buttons). */
   checkoutNote: string | null;
   status: string;
 };
+
+type PayPalCartItem = {
+  item_name?: string;
+  item_code?: string;
+  item_quantity?: string;
+  checkout_options?: { checkout_option_name?: string; checkout_option_value?: string }[];
+};
+
+/** Join all NCP/cart checkout option values (player name, sizes, etc.). */
+export function joinCheckoutOptions(
+  options: PayPalCartItem["checkout_options"] | undefined,
+): string | null {
+  if (!options?.length) return null;
+  const parts = options
+    .map((o) => (o.checkout_option_value ?? "").trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts.join(" | ");
+}
 
 /**
  * Fetch PayPal transactions for the last `daysBack` days.
@@ -123,19 +143,14 @@ export async function fetchRecentPayPalTransactions(
       const payer = tx.payer_info ?? {};
       const amountStr: string = info.transaction_amount?.value ?? "0";
       const amountCents = Math.round(parseFloat(amountStr) * 100);
-      const cartItems: {
-        item_name?: string;
-        item_code?: string;
-        item_quantity?: string;
-        checkout_options?: { checkout_option_name?: string; checkout_option_value?: string }[];
-      }[] =
-        (tx.cart_info as { item_details?: typeof cartItems } | undefined)
-          ?.item_details ?? [];
+      const cartItems: PayPalCartItem[] =
+        (tx.cart_info as { item_details?: PayPalCartItem[] } | undefined)?.item_details ?? [];
       const itemName = cartItems[0]?.item_name ?? null;
       const itemCode = cartItems[0]?.item_code ?? null;
-      const itemQuantity = cartItems[0]?.item_quantity ? parseInt(cartItems[0].item_quantity, 10) || null : null;
-      const checkoutNote =
-        cartItems[0]?.checkout_options?.[0]?.checkout_option_value ?? null;
+      const itemQuantity = cartItems[0]?.item_quantity
+        ? parseInt(cartItems[0].item_quantity, 10) || null
+        : null;
+      const checkoutNote = joinCheckoutOptions(cartItems[0]?.checkout_options);
       allTransactions.push({
         txId: info.transaction_id ?? "",
         txDate: new Date(info.transaction_initiation_date ?? Date.now()),
@@ -283,12 +298,8 @@ export async function fetchTransactionById(txId: string): Promise<PayPalTransact
   const info = tx.transaction_info ?? {};
   const payer = tx.payer_info ?? {};
   const amountStr: string = info.transaction_amount?.value ?? "0";
-  const cartItems: {
-    item_name?: string;
-    item_code?: string;
-    item_quantity?: string;
-    checkout_options?: { checkout_option_name?: string; checkout_option_value?: string }[];
-  }[] = (tx.cart_info as { item_details?: typeof cartItems } | undefined)?.item_details ?? [];
+  const cartItems: PayPalCartItem[] =
+    (tx.cart_info as { item_details?: PayPalCartItem[] } | undefined)?.item_details ?? [];
 
   return {
     txId: info.transaction_id ?? txId,
@@ -301,8 +312,10 @@ export async function fetchTransactionById(txId: string): Promise<PayPalTransact
     note: info.transaction_note ?? info.transaction_subject ?? null,
     itemName: cartItems[0]?.item_name ?? null,
     itemCode: cartItems[0]?.item_code ?? null,
-    itemQuantity: cartItems[0]?.item_quantity ? parseInt(cartItems[0].item_quantity, 10) || null : null,
-    checkoutNote: cartItems[0]?.checkout_options?.[0]?.checkout_option_value ?? null,
+    itemQuantity: cartItems[0]?.item_quantity
+      ? parseInt(cartItems[0].item_quantity, 10) || null
+      : null,
+    checkoutNote: joinCheckoutOptions(cartItems[0]?.checkout_options),
     status: info.transaction_status ?? "",
   };
 }

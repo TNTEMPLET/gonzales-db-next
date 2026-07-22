@@ -303,6 +303,9 @@ export default function Header({ brand }: HeaderProps) {
             ...(allowModule("ALL_STAR_VAULT")
               ? [{ href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" }]
               : []),
+            ...(allowModule("ALL_STAR_PAYMENTS")
+              ? [{ href: `/admin/shop${masterOrgSuffix}`, label: "Shop" }]
+              : []),
           ],
         },
         {
@@ -334,6 +337,15 @@ export default function Header({ brand }: HeaderProps) {
       ].filter((g) => g.items.length > 0)
     : [];
 
+  const shopNavOrg = isFallBallHeader
+    ? "fallball"
+    : isContentOrgId(brand.orgId)
+      ? brand.orgId
+      : null;
+  // Avoid importing merch catalog into the client bundle graph via a heavy path —
+  // shop link is always offered for content orgs; empty catalog still shows "coming soon".
+  const showShopLink = Boolean(shopNavOrg) && !isTournamentOnly;
+
   const publicNavLinks = (isTournamentOnly
     ? [
         { href: "/", label: "Home" },
@@ -348,6 +360,7 @@ export default function Header({ brand }: HeaderProps) {
         ...(showAllStarLink ? [{ href: "/all-star", label: "All-Stars", key: "all-stars" }] : []),
         ...(showParkInfoLink ? [{ href: "/park-info", label: "Park Info" }] : []),
         { href: "/news", label: "News" },
+        ...(showShopLink ? [{ href: "/shop", label: "Shop", key: "shop" }] : []),
         ...(regOpen ? [{ href: "/registration", label: "Registration" }] : []),
         ...(!isFallBallHeader && canSeeDugout ? [{ href: "/coach-corner", label: "Coaches" }] : []),
         ...(!isFallBallHeader && canSeeDugout
@@ -355,7 +368,7 @@ export default function Header({ brand }: HeaderProps) {
           : []),
         ...(!isFallBallHeader && canSeeDugout ? [{ href: "/dugout", label: "Dugout" }] : []),
       ]).filter((link) =>
-        isPublicNavEnabledForOrg(isFallBallHeader ? "fallball" : null, link.key ?? link.label.toLowerCase()),
+        isPublicNavEnabledForOrg(isFallBallHeader ? "fallball" : shopNavOrg, link.key ?? link.label.toLowerCase()),
       );
 
   const contentOrgForCaps = isFallBallHeader

@@ -71,6 +71,7 @@ const CAPABILITIES: Record<ContentOrgId, OrgCapabilities> = {
       "SPONSORS",
       "TOURNAMENT_BRACKETS",
     ],
+    // Shop stays available when catalog has Fall Ball SKUs; hide if you prefer later.
     disabledPublicNav: ["all-stars", "tournaments"],
   },
 };

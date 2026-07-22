@@ -175,9 +175,18 @@ export default async function AdminDashboardPage({
         href: moduleHref("/admin/all-star", "ALL_STAR_VAULT"),
         title: "All-Star Program",
         description: masterMode
-          ? "Vault, payments, and cap orders for All-Star season work across organizations."
-          : "Vault (cycles & ballots), payments, and parent cap orders in one program.",
+          ? "Vault, payments, cap orders, and shirt orders for All-Star season work across organizations."
+          : "Vault (cycles & ballots), payments, cap orders, and championship shirt orders in one program.",
         action: masterMode ? "Open All-Star Program" : "Open All-Star",
+      },
+      {
+        module: "ALL_STAR_PAYMENTS" as AdminModule,
+        href: moduleHref("/admin/shop", "ALL_STAR_PAYMENTS"),
+        title: "Merch Shop",
+        description: masterMode
+          ? "PayPal catalog links by site, plus shortcuts to shirt and cap order desks."
+          : "Public merch catalog (PayPal checkout links) and order-desk shortcuts.",
+        action: "Open Merch Shop",
       },
       {
         module: "TOURNAMENT_BRACKETS" as AdminModule,

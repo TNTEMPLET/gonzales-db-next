@@ -1894,6 +1894,43 @@ model CapOrderItem {
   @@index([status])
 }
 
+// ─── Championship / merchandise shirt orders ────────────────────────────────
+
+model ShirtOrderRecord {
+  id          String   @id @default(cuid())
+  txId        String   @unique
+  org         String // "gonzales" | "ascension" | "unknown"
+  payerName   String?
+  payerEmail  String?
+  amountCents Int
+  quantity    Int      @default(1)
+  note        String?
+  itemName    String?
+  txDate      DateTime
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items ShirtOrderItem[]
+
+  @@index([org, txDate])
+  @@index([txDate])
+}
+
+model ShirtOrderItem {
+  id          String           @id @default(cuid())
+  orderId     String
+  order       ShirtOrderRecord @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  seq         Int
+  status      String           @default("open")
+  fulfilledAt DateTime?
+  createdAt   DateTime         @default(now())
+  updatedAt   DateTime         @updatedAt
+
+  @@unique([orderId, seq])
+  @@index([orderId])
+  @@index([status])
+}
+
 model ParkInfoPage {
   id                  String     @id @default(cuid())
   organizationId      String     @unique
