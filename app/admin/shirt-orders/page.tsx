@@ -72,8 +72,9 @@ export default async function AdminShirtOrdersPage({
           </h1>
           <p className="text-zinc-400 max-w-3xl">
             Track championship shirt orders from PayPal checkout (e.g. Gonzales 11U DYB State Champs
-            at $15). Sync orders, review player name + size notes, mark each shirt fulfilled, and
-            export a vendor-ready CSV with size tally.
+            at $15). Sync orders, review player name + size notes, mark each shirt fulfilled, export
+            CSV, or email the vendor report from this page using league Communications email — no
+            need to open the Communications module.
           </p>
           <div className="mt-4 rounded-xl border border-sky-800/50 bg-sky-950/20 p-3 text-sm text-sky-100">
             Checkout collects two required notes: player name and size(s). They are stored joined as
