@@ -80,15 +80,25 @@ export function normalizeSizeLabel(raw: string): string {
 
 /**
  * Expand a sizes string into one label per shirt unit.
- * Handles: "M, L, XL" | "M M L" | "2xM" | "2 M, 1 L" | "YS YM AL"
+ * Handles:
+ *   "M, L, XL" | "M M L" | "2xM" | "2 M, 1 L" | "YS YM AL"
+ *   "Adult XL\nAdult Small\nYouth Medium"  (real newlines)
+ *   "Adult XL\\nAdult Small\\nYouth Medium" (literal \n from some PayPal exports)
  */
 export function expandSizeLabels(sizesText: string, quantity: number): string[] {
-  const text = sizesText.trim();
+  // Normalize escaped newlines / CRLF before splitting into shirt units.
+  const text = sizesText
+    .replace(/\r\n/g, "\n")
+    .replace(/\r/g, "\n")
+    .replace(/\\n/g, "\n")
+    .replace(/\\r/g, "\n")
+    .trim();
   if (!text) return Array.from({ length: quantity }, () => "");
 
   const labels: string[] = [];
 
-  // Split on comma / slash / semicolon / newline first
+  // One shirt per line / comma / slash / semicolon.
+  // Example: "Adult XL\nAdult Small\nYouth Medium" → AXL, AS, YM
   const chunks = text
     .split(/[,/;\n]+/)
     .map((c) => c.trim())
