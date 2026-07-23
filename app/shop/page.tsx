@@ -2,11 +2,13 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import ShopCatalog from "@/components/merch/ShopCatalog";
+import ShopLoginGate from "@/components/merch/ShopLoginGate";
 import {
   getMerchShopIntro,
   listMerchProductsForOrg,
   orgHasMerchShop,
 } from "@/lib/merch/catalog";
+import { getShopAccess } from "@/lib/merch/shopAccess";
 import {
   getSiteConfig,
   isContentOrgId,
@@ -19,11 +21,15 @@ export function generateMetadata() {
   const site = getSiteConfig();
   return {
     title: `Shop | ${site.name}`,
-    description: `Official merchandise for ${site.name}. Secure checkout with PayPal.`,
+    description: `Members-only merchandise for ${site.name}. Sign in required. Secure checkout with PayPal.`,
+    robots: {
+      index: false,
+      follow: false,
+    },
   };
 }
 
-export default function ShopPage() {
+export default async function ShopPage() {
   if (isMasterDeployment()) {
     redirect("/admin/shop");
   }
@@ -33,8 +39,32 @@ export default function ShopPage() {
     redirect("/");
   }
 
-  const products = listMerchProductsForOrg(site.orgId);
+  const access = await getShopAccess();
   const hasShop = orgHasMerchShop(site.orgId);
+
+  // Never render product cards or PayPal NCP URLs until the visitor is signed in.
+  if (!access.allowed) {
+    return (
+      <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
+        <section className="mx-auto max-w-6xl px-4 sm:px-6">
+          <div className="mb-8 sm:mb-10">
+            <div className="inline-block rounded-full bg-brand-purple px-4 py-2 text-[11px] tracking-[2px] sm:px-6 sm:text-xs sm:tracking-[3px]">
+              SHOP
+            </div>
+            <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-5xl">
+              {site.shortName} Merch
+            </h1>
+            <p className="mt-3 max-w-2xl text-sm text-zinc-400 sm:text-base">
+              Championship gear for registered players and families. Sign in to continue.
+            </p>
+          </div>
+          <ShopLoginGate leagueName={site.name} />
+        </section>
+      </main>
+    );
+  }
+
+  const products = listMerchProductsForOrg(site.orgId);
 
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
@@ -48,6 +78,13 @@ export default function ShopPage() {
           </h1>
           <p className="mt-3 max-w-2xl text-sm text-zinc-400 sm:text-base">
             {getMerchShopIntro(site.orgId)}
+          </p>
+          <p className="mt-2 text-xs text-amber-200/80">
+            Members only — signed in as{" "}
+            <span className="font-medium text-amber-100">
+              {access.coach?.email ?? access.admin?.email ?? "league member"}
+            </span>
+            .
           </p>
         </div>
 
