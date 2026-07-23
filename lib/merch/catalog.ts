@@ -46,7 +46,7 @@ export const MERCH_PRODUCTS: MerchProduct[] = [
       "Fixed-price PayPal checkout. Enter the player name and shirt size(s) on the PayPal form. Quantity up to 10 per order.",
     priceCents: 1500,
     paypalUrl: "https://www.paypal.com/ncp/payment/Z5HW3TUQFBYWE",
-    imageUrl: "/images/merch-gonzales-11u-shirt.png",
+    imageUrl: "/images/merch-gonzales-11u-shirt.jpg",
     badge: "State Champs",
     checkoutHints: [
       "Required on PayPal: player name",
