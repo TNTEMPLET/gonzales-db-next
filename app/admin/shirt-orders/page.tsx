@@ -77,9 +77,11 @@ export default async function AdminShirtOrdersPage({
             need to open the Communications module.
           </p>
           <div className="mt-4 rounded-xl border border-sky-800/50 bg-sky-950/20 p-3 text-sm text-sky-100">
-            Checkout collects two required notes: player name and size(s). They are stored joined as
-            <span className="font-mono text-sky-50"> name | sizes</span>. Recheck before the vendor
-            export — the size tally uses the size side of that note.
+            Shop drafts save structured sizes first, then parents pay on PayPal with a note like{" "}
+            <span className="font-mono text-sky-50">MO-XXXX | name | sizes</span>. Sync/webhook
+            matches the <span className="font-mono">MO-</span> code so the desk uses the saved sizes
+            instead of free-typed PayPal text. Legacy notes without a code still parse as{" "}
+            <span className="font-mono text-sky-50">name | sizes</span>.
           </div>
         </div>
 

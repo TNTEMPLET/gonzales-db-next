@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { resolveShirtOrderFromDraft } from "@/lib/merch/orderDrafts";
 import { fetchRecentPayPalTransactions } from "@/lib/paypal/client";
 import prisma from "@/lib/prisma";
 
@@ -148,22 +149,32 @@ export async function POST(request: NextRequest) {
       continue;
     }
 
-    const org = resolveOrg(tx.itemName, gonzalesKw, ascensionKw);
-    const quantity = tx.itemQuantity ?? Math.max(1, Math.round(tx.amountCents / shirtPriceCents));
+    const fallbackOrg = resolveOrg(tx.itemName, gonzalesKw, ascensionKw);
+    const fallbackQuantity =
+      tx.itemQuantity ?? Math.max(1, Math.round(tx.amountCents / shirtPriceCents));
+    const rawNote = tx.checkoutNote ?? tx.note;
+    const resolved = await resolveShirtOrderFromDraft({
+      note: rawNote,
+      txId: tx.txId,
+      amountCents: tx.amountCents,
+      payerEmail: tx.payerEmail,
+      fallbackQuantity,
+      fallbackOrg,
+    });
 
     await prisma.shirtOrderRecord.create({
       data: {
         txId: tx.txId,
-        org,
+        org: resolved.org,
         payerName: tx.payerName,
         payerEmail: tx.payerEmail,
         amountCents: tx.amountCents,
-        quantity,
-        note: tx.checkoutNote ?? tx.note,
+        quantity: resolved.quantity,
+        note: resolved.note,
         itemName: tx.itemName,
         txDate: tx.txDate,
         items: {
-          create: Array.from({ length: quantity }, (_, i) => ({ seq: i + 1 })),
+          create: Array.from({ length: resolved.quantity }, (_, i) => ({ seq: i + 1 })),
         },
       },
     });

@@ -145,20 +145,49 @@ function looksLikeSizeToken(tok: string): boolean {
   return SIZE_TOKEN.test(tok.replace(/[\s\-_]/g, ""));
 }
 
-/** Split NCP-style "player | sizes" note. */
+/** Draft order codes embedded in PayPal notes (e.g. MO-AB12CD). */
+const DRAFT_CODE_RE = /^MO-[A-Z0-9]{4,10}$/i;
+
+/** Split NCP-style "player | sizes" note (optional leading draft code). */
 export function splitShirtNote(note: string | null | undefined): {
   player: string;
   sizes: string;
   raw: string;
+  /** Present when note starts with or contains a merch draft code. */
+  draftCode: string | null;
 } {
   const raw = (note ?? "").trim();
-  if (!raw) return { player: "", sizes: "", raw: "" };
+  if (!raw) return { player: "", sizes: "", raw: "", draftCode: null };
+
   const parts = raw.split(/\s*\|\s*/).map((p) => p.trim()).filter(Boolean);
-  if (parts.length >= 2) {
-    return { player: parts[0] ?? "", sizes: parts.slice(1).join(" | "), raw };
+  let draftCode: string | null = null;
+  let rest = parts;
+
+  // "MO-XXXX | Player | YS, AL" or "MO-XXXX | Player Name only"
+  if (rest[0] && DRAFT_CODE_RE.test(rest[0])) {
+    draftCode = rest[0]!.toUpperCase();
+    rest = rest.slice(1);
+  } else {
+    const embedded = raw.toUpperCase().match(/\bMO-[A-Z0-9]{4,10}\b/);
+    if (embedded) draftCode = embedded[0];
   }
-  // Entire note may be sizes only
-  return { player: "", sizes: raw, raw };
+
+  if (rest.length >= 2) {
+    return {
+      player: rest[0] ?? "",
+      sizes: rest.slice(1).join(" | "),
+      raw,
+      draftCode,
+    };
+  }
+  if (rest.length === 1) {
+    // Could be player-only or sizes-only; treat as player when draft code present
+    if (draftCode) {
+      return { player: rest[0] ?? "", sizes: "", raw, draftCode };
+    }
+    return { player: "", sizes: rest[0] ?? "", raw, draftCode };
+  }
+  return { player: "", sizes: "", raw, draftCode };
 }
 
 /**
@@ -168,8 +197,20 @@ export function sizeLabelsForOrder(
   note: string | null | undefined,
   quantity: number,
 ): string[] {
-  const { sizes, raw } = splitShirtNote(note);
-  const source = sizes || raw;
+  const { sizes, raw, draftCode, player } = splitShirtNote(note);
+  // Prefer the sizes segment. If missing, strip draft code / player from raw
+  // so we don't treat "MO-XXXX | Jordan" as a size token.
+  let source = sizes;
+  if (!source) {
+    let fallback = raw;
+    if (draftCode) {
+      fallback = fallback.replace(new RegExp(draftCode.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i"), "");
+    }
+    if (player) {
+      fallback = fallback.replace(player, "");
+    }
+    source = fallback.replace(/\|/g, " ").trim();
+  }
   return expandSizeLabels(source, Math.max(1, quantity));
 }
 
