@@ -8,13 +8,15 @@ import { ShopAdminProductTable } from "@/components/merch/ShopCatalog";
 import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import { listMerchProductsForOrg } from "@/lib/merch/catalog";
+import { listMerchProductsForOrgAsync } from "@/lib/merch/catalog";
 import {
   getSiteConfig,
   isContentOrgId,
   resolveAdminTargetOrg,
   type ContentOrgId,
 } from "@/lib/siteConfig";
+
+export const dynamic = "force-dynamic";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -52,7 +54,7 @@ export default async function AdminShopPage({
 
   const catalogOrg: ContentOrgId | null = isContentOrgId(currentOrg) ? currentOrg : null;
   const products = catalogOrg
-    ? listMerchProductsForOrg(catalogOrg, { includeInactive: true })
+    ? await listMerchProductsForOrgAsync(catalogOrg, { includeClosed: true })
     : [];
   const orgQuery = catalogOrg ? `?org=${catalogOrg}` : "";
 
@@ -107,12 +109,14 @@ export default async function AdminShopPage({
         </div>
 
         <div className="mb-4 rounded-xl border border-sky-800/40 bg-sky-950/20 p-4 text-sm text-sky-100">
-          <p className="font-medium">v1 catalog is code-configured</p>
+          <p className="font-medium">Catalog SKUs + open/closed status</p>
           <p className="mt-1 text-sky-100/80">
-            Add or edit products in{" "}
+            Product definitions live in{" "}
             <code className="rounded bg-sky-950/50 px-1.5 py-0.5 text-xs">lib/merch/catalog.ts</code>
-            . Match <code className="text-xs">priceCents</code> and item title keywords to the PayPal
-            button so shirt/cap order desks pick up payments correctly.
+            . Use the <span className="font-medium text-emerald-200">Open</span> /{" "}
+            <span className="font-medium text-zinc-200">Closed</span> toggle (same idea as All-Star
+            hat links) to stop taking orders on a shirt without a code deploy. Closed items leave
+            the members shop immediately; paid orders stay in Shirt Orders.
           </p>
         </div>
 
@@ -122,7 +126,7 @@ export default async function AdminShopPage({
             catalog.
           </p>
         ) : (
-          <ShopAdminProductTable products={products} orgQuery={orgQuery} />
+          <ShopAdminProductTable products={products} orgQuery={orgQuery} org={catalogOrg} />
         )}
       </section>
     </main>

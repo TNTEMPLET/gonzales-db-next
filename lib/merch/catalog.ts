@@ -1,6 +1,11 @@
 import type { ContentOrgId, OrgId } from "@/lib/siteConfig";
 import { isContentOrgId } from "@/lib/siteConfig";
 import { isSafePayPalUrl } from "@/lib/merch/paypal";
+import {
+  applyMerchStatusOverride,
+  isMerchProductOpenNow,
+  loadMerchStatusOverrides,
+} from "@/lib/merch/productStatus";
 import type { MerchCatalogMeta, MerchProduct } from "@/lib/merch/types";
 
 /**
@@ -8,6 +13,9 @@ import type { MerchCatalogMeta, MerchProduct } from "@/lib/merch/types";
  *
  * Orders land in admin shirt-orders / cap-orders via PayPal sync + webhooks.
  * Add products here; no cart or inventory in v1.
+ *
+ * Runtime open/closed is stored in MerchProductStatus (admin toggle), same idea
+ * as All-Star hat/link `enabled` — closed SKUs leave the public shop without a deploy.
  */
 export const MERCH_CATALOG_META: MerchCatalogMeta = {
   introByOrg: {
@@ -144,6 +152,14 @@ export function resolveMerchOrg(
   return null;
 }
 
+export function getMerchProductById(productId: string): MerchProduct | null {
+  return MERCH_PRODUCTS.find((p) => p.id === productId) ?? null;
+}
+
+/**
+ * Sync filter against the static catalog only (no DB). Prefer
+ * `listMerchProductsForOrgAsync` for shop/admin so open/closed status applies.
+ */
 export function listMerchProductsForOrg(
   org: OrgId | ContentOrgId | string | null | undefined,
   opts?: { includeInactive?: boolean },
@@ -159,10 +175,43 @@ export function listMerchProductsForOrg(
   }).sort((a, b) => a.sortOrder - b.sortOrder || a.name.localeCompare(b.name));
 }
 
+/**
+ * Catalog for org with DB open/closed overrides applied.
+ * - Public shop: omit closed / out-of-window products (default).
+ * - Admin: pass `includeClosed: true` to list everything with status fields.
+ */
+export async function listMerchProductsForOrgAsync(
+  org: OrgId | ContentOrgId | string | null | undefined,
+  opts?: { includeInactive?: boolean; includeClosed?: boolean },
+): Promise<MerchProduct[]> {
+  const base = listMerchProductsForOrg(org, {
+    includeInactive: opts?.includeInactive ?? opts?.includeClosed,
+  });
+  if (base.length === 0) return [];
+
+  const overrides = await loadMerchStatusOverrides(base.map((p) => p.id));
+  const now = new Date();
+
+  return base
+    .map((p) => applyMerchStatusOverride(p, overrides.get(p.id)))
+    .filter((p) => {
+      if (opts?.includeClosed || opts?.includeInactive) return true;
+      return isMerchProductOpenNow(p, now);
+    });
+}
+
 export function orgHasMerchShop(
   org: OrgId | ContentOrgId | string | null | undefined,
 ): boolean {
   return listMerchProductsForOrg(org).length > 0;
+}
+
+/** True when the org has at least one product currently open for orders. */
+export async function orgHasOpenMerchShop(
+  org: OrgId | ContentOrgId | string | null | undefined,
+): Promise<boolean> {
+  const products = await listMerchProductsForOrgAsync(org);
+  return products.length > 0;
 }
 
 export function getMerchShopIntro(org: ContentOrgId): string {

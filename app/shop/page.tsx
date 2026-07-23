@@ -5,7 +5,7 @@ import ShopCatalog from "@/components/merch/ShopCatalog";
 import ShopLoginGate from "@/components/merch/ShopLoginGate";
 import {
   getMerchShopIntro,
-  listMerchProductsForOrg,
+  listMerchProductsForOrgAsync,
   orgHasMerchShop,
 } from "@/lib/merch/catalog";
 import { getShopAccess } from "@/lib/merch/shopAccess";
@@ -40,7 +40,8 @@ export default async function ShopPage() {
   }
 
   const access = await getShopAccess();
-  const hasShop = orgHasMerchShop(site.orgId);
+  // Catalog exists for this org (even if every SKU is currently closed).
+  const hasCatalog = orgHasMerchShop(site.orgId);
 
   // Never render product cards or PayPal NCP URLs until the visitor is signed in.
   if (!access.allowed) {
@@ -64,7 +65,8 @@ export default async function ShopPage() {
     );
   }
 
-  const products = listMerchProductsForOrg(site.orgId);
+  // Only products that are Open (and in window) — closed shirts leave the storefront.
+  const products = await listMerchProductsForOrgAsync(site.orgId);
 
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
@@ -88,11 +90,25 @@ export default async function ShopPage() {
           </p>
         </div>
 
-        {!hasShop ? (
+        {!hasCatalog ? (
           <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8 text-center">
             <h2 className="text-xl font-semibold text-zinc-100">Shop coming soon</h2>
             <p className="mt-2 text-sm text-zinc-400">
               We do not have active merchandise listings for this site yet.
+            </p>
+            <Link
+              href="/"
+              className="mt-6 inline-flex rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:text-white"
+            >
+              Back to home
+            </Link>
+          </div>
+        ) : products.length === 0 ? (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-8 text-center">
+            <h2 className="text-xl font-semibold text-zinc-100">Orders closed</h2>
+            <p className="mt-2 text-sm text-zinc-400">
+              We are not taking merch orders right now. Check back later or contact your league
+              board.
             </p>
             <Link
               href="/"
