@@ -35,6 +35,7 @@ export const MERCH_CATALOG_META: MerchCatalogMeta = {
  * - Ascension 10U State Champs — PayPal NCP CFQP6QBDF7C7N @ $15
  * - Ascension 11U State Champs — PayPal NCP 4XAXPZ9YN4FDA @ $15
  * - Ascension 12U State Champs — PayPal NCP EGP9BSTMFNYCW @ $15
+ * - Ascension 12U AP / Team LA Shirt for Waco — PayPal NCP 8RMYRVPQSJMX2 @ $15
  */
 export const MERCH_PRODUCTS: MerchProduct[] = [
   {
@@ -141,6 +142,28 @@ export const MERCH_PRODUCTS: MerchProduct[] = [
     fulfillment: "shirt-orders",
     active: true,
     sortOrder: 40,
+  },
+  {
+    id: "ascension-12u-waco-team-la-shirt-2026",
+    orgs: ["ascension"],
+    name: "12U AP LL — AP / Team LA Shirt for Waco",
+    summary:
+      "12U AP / Team LA shirt for the Waco trip. Official Ascension Little League checkout via PayPal.",
+    description:
+      "Fixed-price PayPal checkout. Enter the player name and shirt size(s) on the PayPal form. Quantity up to 10 per order.",
+    priceCents: 1500,
+    paypalUrl: "https://www.paypal.com/ncp/payment/8RMYRVPQSJMX2",
+    imageUrl: "/images/merch-ascension-12u-waco-shirt.jpg",
+    badge: "Waco",
+    checkoutHints: [
+      "Required on PayPal: player name",
+      "Required on PayPal: size(s) for each shirt",
+      "Up to 10 shirts per checkout",
+    ],
+    maxQuantity: 10,
+    fulfillment: "shirt-orders",
+    active: true,
+    sortOrder: 50,
   },
 ];
 

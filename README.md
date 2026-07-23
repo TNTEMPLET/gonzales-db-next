@@ -102,6 +102,7 @@ Env (master / admin + org sites that run the webhook):
 | Ascension LLB | `10U, AP LL - State Champs Shirt` | https://www.paypal.com/ncp/payment/CFQP6QBDF7C7N | $15 |
 | Ascension LLB | `11U, AP LL - State Champs Shirt` | https://www.paypal.com/ncp/payment/4XAXPZ9YN4FDA | $15 |
 | Ascension LLB | `12U, AP LL - State Champs Shirt` | https://www.paypal.com/ncp/payment/EGP9BSTMFNYCW | $15 |
+| Ascension LLB | `12U, AP LL - AP / Team LA Shirt for Waco` | https://www.paypal.com/ncp/payment/8RMYRVPQSJMX2 | $15 |
 
 All: qty up to 10, required memos player name + size(s). Org is inferred from item title (`DYB` / `AP LL`).
 
