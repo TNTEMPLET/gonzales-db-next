@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { resolveShirtOrderFromDraft } from "@/lib/merch/orderDrafts";
 import prisma from "@/lib/prisma";
 import { verifyPayPalWebhookSignature } from "@/lib/paypal/webhook";
 import { fetchTransactionById } from "@/lib/paypal/client";
@@ -93,25 +94,41 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ skipped: true, reason: "not_a_shirt_order", itemName: fullTx.itemName });
   }
 
-  const org = resolveOrg(fullTx.itemName, gonzalesKw, ascensionKw);
-  const quantity = fullTx.itemQuantity ?? Math.max(1, Math.round(fullTx.amountCents / shirtPriceCents));
+  const fallbackOrg = resolveOrg(fullTx.itemName, gonzalesKw, ascensionKw);
+  const fallbackQuantity =
+    fullTx.itemQuantity ?? Math.max(1, Math.round(fullTx.amountCents / shirtPriceCents));
+  const rawNote = fullTx.checkoutNote ?? fullTx.note;
+  const resolved = await resolveShirtOrderFromDraft({
+    note: rawNote,
+    txId,
+    amountCents: fullTx.amountCents,
+    payerEmail: fullTx.payerEmail,
+    fallbackQuantity,
+    fallbackOrg,
+  });
 
   await prisma.shirtOrderRecord.create({
     data: {
       txId,
-      org,
+      org: resolved.org,
       payerName: fullTx.payerName,
       payerEmail: fullTx.payerEmail,
       amountCents: fullTx.amountCents,
-      quantity,
-      note: fullTx.checkoutNote ?? fullTx.note,
+      quantity: resolved.quantity,
+      note: resolved.note,
       itemName: fullTx.itemName,
       txDate: fullTx.txDate,
       items: {
-        create: Array.from({ length: quantity }, (_, i) => ({ seq: i + 1 })),
+        create: Array.from({ length: resolved.quantity }, (_, i) => ({ seq: i + 1 })),
       },
     },
   });
 
-  return NextResponse.json({ stored: true, org, quantity, txId });
+  return NextResponse.json({
+    stored: true,
+    org: resolved.org,
+    quantity: resolved.quantity,
+    txId,
+    draftCode: resolved.draftCode,
+  });
 }

@@ -35,6 +35,22 @@ export function buildShirtCheckoutNote(playerName: string, sizes: string[]): str
   return sizePart;
 }
 
+/**
+ * Full note for PayPal when a draft exists:
+ * `MO-XXXXXX | Player Name | YS, YM, AL`
+ */
+export function buildDraftAwareCheckoutNote(
+  code: string | null | undefined,
+  playerName: string,
+  sizes: string[],
+): string {
+  const base = buildShirtCheckoutNote(playerName, sizes);
+  const c = (code ?? "").trim().toUpperCase();
+  if (!c) return base;
+  if (!base) return c;
+  return `${c} | ${base}`;
+}
+
 /** One line per shirt — alternate PayPal note style some parents use. */
 export function buildShirtCheckoutNoteMultiline(playerName: string, sizes: string[]): string {
   const player = playerName.trim().replace(/\s+/g, " ");

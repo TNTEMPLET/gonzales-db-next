@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 
 import { fmtMerchPrice } from "@/lib/merch/paypal";
 import {
+  buildDraftAwareCheckoutNote,
   buildShirtCheckoutNote,
   buildShirtCheckoutNoteMultiline,
   SHIRT_SIZE_OPTIONS,
@@ -17,9 +18,21 @@ import type { MerchProduct } from "@/lib/merch/types";
 const MAX_QTY = 10;
 
 type LineItem = {
-  /** Local row id */
   key: string;
   size: string;
+};
+
+type SavedDraft = {
+  id: string;
+  code: string;
+  checkoutNote: string;
+  paypalUrl: string;
+  productName: string;
+  playerName: string;
+  sizes: string[];
+  quantity: number;
+  amountCents: number;
+  status: string;
 };
 
 function newLine(size = ""): LineItem {
@@ -29,9 +42,11 @@ function newLine(size = ""): LineItem {
 export default function MerchTestOrderForm({
   products,
   orgLabel,
+  org,
 }: {
   products: MerchProduct[];
   orgLabel: string;
+  org: string;
 }) {
   const openProducts = products.filter((p) => p.active !== false && p.enabled !== false);
   const [productId, setProductId] = useState(openProducts[0]?.id ?? products[0]?.id ?? "");
@@ -40,7 +55,9 @@ export default function MerchTestOrderForm({
   const [lines, setLines] = useState<LineItem[]>([newLine()]);
   const [noteStyle, setNoteStyle] = useState<"joined" | "multiline">("joined");
   const [copied, setCopied] = useState<"note" | "json" | null>(null);
-  const [submittedPreview, setSubmittedPreview] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [draft, setDraft] = useState<SavedDraft | null>(null);
 
   const product = products.find((p) => p.id === productId) ?? products[0] ?? null;
   const maxQty = Math.min(MAX_QTY, product?.maxQuantity ?? MAX_QTY);
@@ -50,14 +67,15 @@ export default function MerchTestOrderForm({
 
   const sizes = lines.map((l) => l.size);
   const allSized = sizes.every((s) => s.trim().length > 0);
-  const canPreview = Boolean(product && playerName.trim() && allSized && quantity >= 1);
+  const canSubmit = Boolean(product && playerName.trim() && allSized && quantity >= 1 && !saving);
 
   const composedNote = useMemo(() => {
+    if (draft?.checkoutNote) return draft.checkoutNote;
     if (noteStyle === "multiline") {
       return buildShirtCheckoutNoteMultiline(playerName, sizes);
     }
     return buildShirtCheckoutNote(playerName, sizes);
-  }, [noteStyle, playerName, sizes]);
+  }, [draft, noteStyle, playerName, sizes]);
 
   const parsed = useMemo(() => {
     const split = splitShirtNote(composedNote);
@@ -68,24 +86,24 @@ export default function MerchTestOrderForm({
   const deskRow = useMemo(() => {
     if (!product) return null;
     return {
+      draftCode: draft?.code ?? null,
+      draftStatus: draft?.status ?? null,
       org: product.orgs[0] ?? "unknown",
       itemName: product.name,
-      paypalItemHint: product.name,
       quantity,
       amountCents: totalCents,
-      payerName: "(from PayPal account)",
-      payerEmail: payerEmail.trim() || "(from PayPal account)",
+      payerEmail: payerEmail.trim() || null,
       playerName: parsed.split.player,
-      sizes: parsed.split.sizes || parsed.expanded.join(", "),
       sizesExpanded: parsed.expanded,
       note: composedNote,
       paypalUrl: product.paypalUrl,
       productId: product.id,
     };
-  }, [product, quantity, totalCents, payerEmail, parsed, composedNote]);
+  }, [product, quantity, totalCents, payerEmail, parsed, composedNote, draft]);
 
   function setQty(n: number) {
     const next = Math.max(1, Math.min(maxQty, n));
+    setDraft(null);
     setLines((prev) => {
       if (next === prev.length) return prev;
       if (next > prev.length) {
@@ -96,6 +114,7 @@ export default function MerchTestOrderForm({
   }
 
   function updateSize(key: string, size: string) {
+    setDraft(null);
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, size } : l)));
   }
 
@@ -109,11 +128,35 @@ export default function MerchTestOrderForm({
     }
   }
 
-  function handleContinueToPayPal() {
-    if (!product || !canPreview) return;
-    setSubmittedPreview(true);
-    void copyText(composedNote, "note");
-    window.open(product.paypalUrl, "_blank", "noopener,noreferrer");
+  async function saveDraftAndPay() {
+    if (!product || !canSubmit) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/merch/drafts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          org,
+          productId: product.id,
+          playerName,
+          sizes,
+          contactEmail: payerEmail.trim() || null,
+        }),
+      });
+      const data = (await res.json()) as { draft?: SavedDraft; error?: string };
+      if (!res.ok || !data.draft) {
+        setError(data.error ?? "Failed to save draft");
+        return;
+      }
+      setDraft(data.draft);
+      await copyText(data.draft.checkoutNote, "note");
+      window.open(data.draft.paypalUrl, "_blank", "noopener,noreferrer");
+    } catch {
+      setError("Network error — please try again");
+    } finally {
+      setSaving(false);
+    }
   }
 
   if (products.length === 0) {
@@ -126,14 +169,13 @@ export default function MerchTestOrderForm({
 
   return (
     <div className="grid gap-6 lg:grid-cols-5">
-      {/* ── Form ─────────────────────────────────────────────── */}
       <div className="space-y-5 lg:col-span-3">
-        <div className="rounded-2xl border border-amber-700/40 bg-amber-950/20 px-4 py-3 text-sm text-amber-100">
-          <p className="font-semibold">Prototype — does not charge or create a real order</p>
-          <p className="mt-1 text-amber-100/80">
-            Mirrors what parents enter on PayPal NCP today (product, qty ≤ {MAX_QTY}, player name,
-            size per shirt). Use this to pressure-test a streamlined on-site flow before we replace
-            the raw PayPal form.
+        <div className="rounded-2xl border border-emerald-700/40 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-100">
+          <p className="font-semibold">Saves a real draft order on submit</p>
+          <p className="mt-1 text-emerald-100/80">
+            Creates a <span className="font-mono">MO-XXXXXX</span> draft in the database with
+            structured sizes, then opens PayPal. When payment syncs, the note code links the payment
+            back to this draft — parents should not retype sizes.
           </p>
         </div>
 
@@ -148,7 +190,7 @@ export default function MerchTestOrderForm({
               onChange={(e) => {
                 setProductId(e.target.value);
                 setLines([newLine()]);
-                setSubmittedPreview(false);
+                setDraft(null);
               }}
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 focus:border-sky-600 focus:outline-none"
             >
@@ -160,21 +202,6 @@ export default function MerchTestOrderForm({
               ))}
             </select>
           </label>
-          {product ? (
-            <p className="text-xs text-zinc-500">
-              PayPal button:{" "}
-              <a
-                href={product.paypalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sky-400 hover:underline"
-              >
-                {product.paypalUrl.replace("https://www.paypal.com", "")}
-              </a>
-              {" · "}
-              fixed {fmtMerchPrice(product.priceCents)} each · max {maxQty} per checkout
-            </p>
-          ) : null}
         </fieldset>
 
         <fieldset className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
@@ -187,36 +214,24 @@ export default function MerchTestOrderForm({
             </span>
             <input
               type="text"
-              autoComplete="name"
-              placeholder="e.g. Jordan Smith"
               value={playerName}
               onChange={(e) => {
                 setPlayerName(e.target.value);
-                setSubmittedPreview(false);
+                setDraft(null);
               }}
+              placeholder="e.g. Jordan Smith"
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-sky-600 focus:outline-none"
             />
-            <span className="text-xs text-zinc-500">
-              Same required field parents type on the PayPal page — lands on the vendor CSV as Player
-              Name.
-            </span>
           </label>
           <label className="block space-y-1.5">
-            <span className="text-sm text-zinc-300">
-              Contact email <span className="text-zinc-600">(optional on this prototype)</span>
-            </span>
+            <span className="text-sm text-zinc-300">Contact email (optional)</span>
             <input
               type="email"
-              autoComplete="email"
-              placeholder="parent@email.com"
               value={payerEmail}
               onChange={(e) => setPayerEmail(e.target.value)}
+              placeholder="parent@email.com"
               className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-sky-600 focus:outline-none"
             />
-            <span className="text-xs text-zinc-500">
-              Today PayPal supplies payer email after payment. Collecting it here would let us
-              confirm orders without waiting on sync.
-            </span>
           </label>
         </fieldset>
 
@@ -229,7 +244,6 @@ export default function MerchTestOrderForm({
             <div className="inline-flex items-center rounded-lg border border-zinc-700 bg-zinc-950">
               <button
                 type="button"
-                aria-label="Decrease quantity"
                 disabled={quantity <= 1}
                 onClick={() => setQty(quantity - 1)}
                 className="px-3 py-2 text-zinc-300 hover:text-white disabled:opacity-40"
@@ -241,7 +255,6 @@ export default function MerchTestOrderForm({
               </span>
               <button
                 type="button"
-                aria-label="Increase quantity"
                 disabled={quantity >= maxQty}
                 onClick={() => setQty(quantity + 1)}
                 className="px-3 py-2 text-zinc-300 hover:text-white disabled:opacity-40"
@@ -249,7 +262,6 @@ export default function MerchTestOrderForm({
                 +
               </button>
             </div>
-            <span className="text-xs text-zinc-500">max {maxQty} (PayPal NCP quantity_option)</span>
           </div>
 
           <ul className="space-y-3">
@@ -263,10 +275,7 @@ export default function MerchTestOrderForm({
                 </span>
                 <select
                   value={line.size}
-                  onChange={(e) => {
-                    updateSize(line.key, e.target.value);
-                    setSubmittedPreview(false);
-                  }}
+                  onChange={(e) => updateSize(line.key, e.target.value)}
                   className="min-w-[12rem] flex-1 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-zinc-100 focus:border-sky-600 focus:outline-none"
                 >
                   <option value="">Select size…</option>
@@ -288,28 +297,22 @@ export default function MerchTestOrderForm({
               </li>
             ))}
           </ul>
-          <p className="text-xs text-zinc-500">
-            Today parents free-type sizes on PayPal (&quot;Youth Medium&quot;, &quot;AL&quot;,
-            newlines…). Structured picks here avoid bad notes on the fulfillment desk.
-          </p>
         </fieldset>
+
+        {error ? (
+          <p className="rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+            {error}
+          </p>
+        ) : null}
 
         <div className="flex flex-wrap items-center gap-3">
           <button
             type="button"
-            disabled={!canPreview}
-            onClick={() => setSubmittedPreview(true)}
-            className="rounded-xl bg-brand-purple px-5 py-3 text-sm font-semibold text-white transition hover:bg-brand-purple-dark disabled:cursor-not-allowed disabled:opacity-40"
+            disabled={!canSubmit}
+            onClick={() => void saveDraftAndPay()}
+            className="rounded-xl bg-[#0070ba] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-40"
           >
-            Preview desk order
-          </button>
-          <button
-            type="button"
-            disabled={!canPreview || !product}
-            onClick={handleContinueToPayPal}
-            className="rounded-xl border border-[#0070ba]/60 bg-[#0070ba]/15 px-5 py-3 text-sm font-semibold text-sky-100 transition hover:bg-[#0070ba]/30 disabled:cursor-not-allowed disabled:opacity-40"
-          >
-            Copy note & open PayPal
+            {saving ? "Saving draft…" : "Save draft & open PayPal"}
           </button>
           <p className="text-lg font-bold tabular-nums text-white">
             {fmtMerchPrice(totalCents)}
@@ -320,43 +323,34 @@ export default function MerchTestOrderForm({
         </div>
       </div>
 
-      {/* ── Preview / streamlining panel ─────────────────────── */}
       <aside className="space-y-4 lg:col-span-2">
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
           <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
-            PayPal note (what sync stores)
+            Checkout note
           </h2>
           <p className="mt-1 text-xs text-zinc-500">
-            NCP joins custom fields roughly as{" "}
-            <code className="text-zinc-400">player | sizes</code>. Shirt Orders parses that string.
+            After save:{" "}
+            <code className="text-zinc-400">
+              {buildDraftAwareCheckoutNote("MO-XXXXXX", "Player", ["YM", "AL"])}
+            </code>
           </p>
 
-          <div className="mt-3 flex gap-2">
-            <button
-              type="button"
-              onClick={() => setNoteStyle("joined")}
-              className={
-                "rounded-full px-2.5 py-1 text-xs font-medium border " +
-                (noteStyle === "joined"
-                  ? "border-emerald-700/50 bg-emerald-950/40 text-emerald-200"
-                  : "border-zinc-700 text-zinc-400 hover:border-zinc-500")
-              }
-            >
-              Comma sizes
-            </button>
-            <button
-              type="button"
-              onClick={() => setNoteStyle("multiline")}
-              className={
-                "rounded-full px-2.5 py-1 text-xs font-medium border " +
-                (noteStyle === "multiline"
-                  ? "border-emerald-700/50 bg-emerald-950/40 text-emerald-200"
-                  : "border-zinc-700 text-zinc-400 hover:border-zinc-500")
-              }
-            >
-              One size / line
-            </button>
-          </div>
+          {!draft ? (
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => setNoteStyle("joined")}
+                className={
+                  "rounded-full px-2.5 py-1 text-xs font-medium border " +
+                  (noteStyle === "joined"
+                    ? "border-emerald-700/50 bg-emerald-950/40 text-emerald-200"
+                    : "border-zinc-700 text-zinc-400")
+                }
+              >
+                Preview without code
+              </button>
+            </div>
+          ) : null}
 
           <pre className="mt-3 max-h-40 overflow-auto whitespace-pre-wrap break-words rounded-xl border border-zinc-800 bg-zinc-950 px-3 py-3 font-mono text-xs text-sky-100">
             {composedNote || (
@@ -379,74 +373,47 @@ export default function MerchTestOrderForm({
           </h2>
           <dl className="mt-3 space-y-2 text-sm">
             <div className="flex justify-between gap-3">
+              <dt className="text-zinc-500">Draft code</dt>
+              <dd className="font-mono text-right font-medium text-amber-200">
+                {draft?.code ?? parsed.split.draftCode ?? "—"}
+              </dd>
+            </div>
+            <div className="flex justify-between gap-3">
               <dt className="text-zinc-500">Player</dt>
               <dd className="text-right font-medium text-zinc-100">
                 {parsed.split.player || "—"}
               </dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-zinc-500">Sizes expanded</dt>
+              <dt className="text-zinc-500">Sizes</dt>
               <dd className="text-right font-medium text-zinc-100">
                 {parsed.expanded.filter(Boolean).join(", ") || "—"}
               </dd>
             </div>
             <div className="flex justify-between gap-3">
-              <dt className="text-zinc-500">Qty vs labels</dt>
-              <dd
-                className={
-                  "text-right font-medium " +
-                  (parsed.expanded.filter(Boolean).length === quantity
-                    ? "text-emerald-300"
-                    : "text-amber-300")
-                }
-              >
-                {parsed.expanded.filter(Boolean).length} / {quantity}
+              <dt className="text-zinc-500">Status</dt>
+              <dd className="text-right font-medium text-emerald-300">
+                {draft?.status ?? "not saved"}
               </dd>
             </div>
           </dl>
-          {submittedPreview && canPreview ? (
+          {draft ? (
             <p className="mt-3 rounded-lg border border-emerald-800/40 bg-emerald-950/30 px-3 py-2 text-xs text-emerald-100">
-              Ready for desk: {quantity} shirt{quantity === 1 ? "" : "s"} ·{" "}
-              {fmtMerchPrice(totalCents)} · player &quot;{parsed.split.player}&quot;
+              Draft {draft.code} saved. Complete PayPal payment, then Sync on Shirt Orders — the
+              payment will mark this draft paid and use these sizes.
             </p>
           ) : null}
-        </div>
-
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
-          <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
-            Streamline comparison
-          </h2>
-          <ul className="mt-3 space-y-3 text-xs leading-relaxed text-zinc-400">
-            <li className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2">
-              <span className="font-semibold text-zinc-200">Today (PayPal NCP)</span>
-              <br />
-              Shop → Buy → PayPal form (free-text name + sizes + qty) → pay → webhook/sync → Shirt
-              Orders. Typos and odd size text break the vendor tally.
-            </li>
-            <li className="rounded-lg border border-emerald-900/40 bg-emerald-950/20 px-3 py-2">
-              <span className="font-semibold text-emerald-200">This prototype</span>
-              <br />
-              Structured picks on our site → validated note → optional hand-off to PayPal for money
-              only. Same note format the desk already understands.
-            </li>
-            <li className="rounded-lg border border-sky-900/40 bg-sky-950/20 px-3 py-2">
-              <span className="font-semibold text-sky-200">Next step (if we ship it)</span>
-              <br />
-              Save draft order in DB, open PayPal, match payment by amount + time + note (or PayPal
-              order id), auto-open Shirt Orders rows without parents retyping sizes.
-            </li>
-          </ul>
         </div>
 
         {deskRow ? (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-400">
-                Simulated order JSON
+                Order payload
               </h2>
               <button
                 type="button"
-                disabled={!canPreview}
+                disabled={!canSubmit && !draft}
                 onClick={() => void copyText(JSON.stringify(deskRow, null, 2), "json")}
                 className="text-xs text-sky-400 hover:underline disabled:opacity-40"
               >

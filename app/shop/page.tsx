@@ -1,8 +1,8 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 
-import ShopCatalog from "@/components/merch/ShopCatalog";
 import ShopLoginGate from "@/components/merch/ShopLoginGate";
+import ShopOrderForm from "@/components/merch/ShopOrderForm";
 import {
   getMerchShopIntro,
   listMerchProductsForOrgAsync,
@@ -129,7 +129,15 @@ export default async function ShopPage() {
           </div>
         ) : (
           <>
-            <ShopCatalog products={products} />
+            <p className="mb-6 max-w-2xl text-sm text-zinc-400">
+              Pick your shirt and sizes here — we save the order, then you pay on PayPal. You should
+              not need to retype sizes on the PayPal page (paste the order note if PayPal asks).
+            </p>
+            <ShopOrderForm
+              products={products}
+              org={site.orgId}
+              defaultEmail={access.coach?.email ?? access.admin?.email ?? ""}
+            />
             <p className="mt-8 text-center text-xs text-zinc-600">
               Questions about an order? Contact your league board. Fulfillment is tracked in the
               league admin order desk after PayPal payment clears.

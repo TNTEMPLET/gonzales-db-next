@@ -101,8 +101,8 @@ export default async function AdminShopPage({
             href={`/admin/shop/test-order${orgQuery}`}
             className="rounded-xl border border-amber-800/40 bg-amber-950/20 px-4 py-3 text-sm text-zinc-200 hover:border-amber-600/50"
           >
-            <p className="font-semibold text-amber-100">Test order form</p>
-            <p className="mt-1 text-xs text-amber-100/70">Prototype structured checkout</p>
+            <p className="font-semibold text-amber-100">Test order / drafts</p>
+            <p className="mt-1 text-xs text-amber-100/70">Save draft → PayPal → match</p>
           </Link>
           <a
             href="https://www.paypal.com/buttons/"

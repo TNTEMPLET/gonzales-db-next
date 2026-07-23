@@ -1952,6 +1952,40 @@ model MerchProductStatus {
   @@index([enabled])
 }
 
+/// Parent-submitted merch checkout draft (structured sizes) before PayPal payment.
+/// Matched on sync/webhook when the PayPal note contains `code` (e.g. MO-AB12CD).
+model MerchOrderDraft {
+  id              String    @id @default(cuid())
+  /// Short public code parents paste / we embed in the PayPal note (unique).
+  code            String    @unique
+  org             String // gonzales | ascension | fallball
+  productId       String
+  productName     String
+  paypalUrl       String
+  playerName      String
+  /// Canonical size labels, one per shirt unit (JSON string array).
+  sizesJson       String
+  quantity        Int
+  unitPriceCents  Int
+  amountCents     Int
+  contactEmail    String?
+  /// Full note to put on PayPal: "MO-XXXX | Player | YS, AL"
+  checkoutNote    String
+  /// awaiting_payment | paid | expired | cancelled
+  status          String    @default("awaiting_payment")
+  paypalTxId      String?   @unique
+  paidAt          DateTime?
+  createdByUserId String?
+  createdByEmail  String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  expiresAt       DateTime?
+
+  @@index([org, status, createdAt])
+  @@index([status, createdAt])
+  @@index([productId])
+}
+
 model ParkInfoPage {
   id                  String     @id @default(cuid())
   organizationId      String     @unique
