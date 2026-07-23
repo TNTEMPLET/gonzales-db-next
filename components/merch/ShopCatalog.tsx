@@ -1,11 +1,30 @@
+"use client";
+
 import Image from "next/image";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useEffect, useState } from "react";
 
 import { fmtMerchPrice } from "@/lib/merch/paypal";
 import type { MerchProduct } from "@/lib/merch/types";
 
 function isLocalImage(src: string): boolean {
   return src.startsWith("/");
+}
+
+/** Public/runtime open check (client-safe; mirrors lib/merch/productStatus). */
+export function isProductOpenNow(product: MerchProduct, now: Date = new Date()): boolean {
+  if (!product.active) return false;
+  if (product.enabled === false) return false;
+  if (product.activeFrom) {
+    const from = new Date(product.activeFrom);
+    if (!Number.isNaN(from.getTime()) && from > now) return false;
+  }
+  if (product.activeTo) {
+    const to = new Date(product.activeTo);
+    if (!Number.isNaN(to.getTime()) && to < now) return false;
+  }
+  return true;
 }
 
 export default function ShopCatalog({
@@ -115,12 +134,83 @@ export default function ShopCatalog({
 }
 
 export function ShopAdminProductTable({
-  products,
+  products: initialProducts,
   orgQuery = "",
+  org,
 }: {
   products: MerchProduct[];
   orgQuery?: string;
+  /** Content org for status PATCH (e.g. gonzales). */
+  org: string;
 }) {
+  const router = useRouter();
+  const [products, setProducts] = useState(initialProducts);
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (busyId !== null) return;
+    setProducts(initialProducts);
+  }, [initialProducts, busyId]);
+
+  async function toggleEnabled(product: MerchProduct) {
+    const nextEnabled = product.enabled === false;
+    setBusyId(product.id);
+    setError(null);
+    // Optimistic
+    setProducts((prev) =>
+      prev.map((p) => (p.id === product.id ? { ...p, enabled: nextEnabled } : p)),
+    );
+    try {
+      const res = await fetch(`/api/admin/merch/products?org=${encodeURIComponent(org)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          productId: product.id,
+          enabled: nextEnabled,
+          org,
+        }),
+      });
+      const data = (await res.json()) as {
+        product?: MerchProduct & { openNow?: boolean };
+        error?: string;
+      };
+      if (!res.ok) {
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === product.id ? { ...p, enabled: product.enabled !== false } : p,
+          ),
+        );
+        setError(data.error ?? "Failed to update status");
+        return;
+      }
+      if (data.product) {
+        setProducts((prev) =>
+          prev.map((p) =>
+            p.id === product.id
+              ? {
+                  ...p,
+                  enabled: data.product!.enabled !== false,
+                  activeFrom: data.product!.activeFrom ?? null,
+                  activeTo: data.product!.activeTo ?? null,
+                }
+              : p,
+          ),
+        );
+      }
+      router.refresh();
+    } catch {
+      setProducts((prev) =>
+        prev.map((p) =>
+          p.id === product.id ? { ...p, enabled: product.enabled !== false } : p,
+        ),
+      );
+      setError("Network error — please try again");
+    } finally {
+      setBusyId(null);
+    }
+  }
+
   if (products.length === 0) {
     return (
       <p className="rounded-xl border border-zinc-800 bg-zinc-900/50 px-4 py-6 text-center text-sm text-zinc-500">
@@ -131,69 +221,109 @@ export function ShopAdminProductTable({
   }
 
   return (
-    <div className="overflow-x-auto rounded-xl border border-zinc-800">
-      <table className="min-w-full text-left text-sm">
-        <thead className="border-b border-zinc-800 bg-zinc-900/80 text-xs uppercase tracking-wide text-zinc-500">
-          <tr>
-            <th className="px-4 py-3 font-semibold">Product</th>
-            <th className="px-4 py-3 font-semibold">Price</th>
-            <th className="px-4 py-3 font-semibold">Status</th>
-            <th className="px-4 py-3 font-semibold">Fulfillment</th>
-            <th className="px-4 py-3 font-semibold">Checkout</th>
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-zinc-800/80">
-          {products.map((p) => {
-            const desk =
-              p.fulfillment === "shirt-orders"
-                ? `/admin/shirt-orders${orgQuery}`
-                : p.fulfillment === "cap-orders"
-                  ? `/admin/cap-orders${orgQuery}`
-                  : null;
-            return (
-              <tr key={p.id} className="bg-zinc-950/40">
-                <td className="px-4 py-3">
-                  <p className="font-medium text-zinc-100">{p.name}</p>
-                  <p className="text-xs text-zinc-500">{p.id}</p>
-                </td>
-                <td className="px-4 py-3 tabular-nums text-zinc-300">
-                  {fmtMerchPrice(p.priceCents)}
-                </td>
-                <td className="px-4 py-3">
-                  <span
-                    className={
-                      p.active
-                        ? "rounded-full border border-emerald-700/50 bg-emerald-950/40 px-2 py-0.5 text-xs text-emerald-300"
-                        : "rounded-full border border-zinc-700 bg-zinc-900 px-2 py-0.5 text-xs text-zinc-500"
-                    }
-                  >
-                    {p.active ? "Live" : "Hidden"}
-                  </span>
-                </td>
-                <td className="px-4 py-3">
-                  {desk ? (
-                    <Link href={desk} className="text-sky-300 hover:text-sky-200 hover:underline">
-                      {p.fulfillment}
-                    </Link>
-                  ) : (
-                    <span className="text-zinc-500">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3">
-                  <a
-                    href={p.paypalUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-xs text-zinc-400 hover:text-zinc-200 hover:underline"
-                  >
-                    Open PayPal
-                  </a>
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+    <div className="space-y-3">
+      {error ? (
+        <p className="rounded-lg border border-red-800/50 bg-red-950/30 px-3 py-2 text-sm text-red-200">
+          {error}
+        </p>
+      ) : null}
+      <div className="overflow-x-auto rounded-xl border border-zinc-800">
+        <table className="min-w-full text-left text-sm">
+          <thead className="border-b border-zinc-800 bg-zinc-900/80 text-xs uppercase tracking-wide text-zinc-500">
+            <tr>
+              <th className="px-4 py-3 font-semibold">Product</th>
+              <th className="px-4 py-3 font-semibold">Price</th>
+              <th className="px-4 py-3 font-semibold">Status</th>
+              <th className="px-4 py-3 font-semibold">Fulfillment</th>
+              <th className="px-4 py-3 font-semibold">Checkout</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-zinc-800/80">
+            {products.map((p) => {
+              const desk =
+                p.fulfillment === "shirt-orders"
+                  ? `/admin/shirt-orders${orgQuery}`
+                  : p.fulfillment === "cap-orders"
+                    ? `/admin/cap-orders${orgQuery}`
+                    : null;
+              const openNow = isProductOpenNow(p);
+              const closed = !openNow;
+              return (
+                <tr key={p.id} className="bg-zinc-950/40">
+                  <td className="px-4 py-3">
+                    <p className="font-medium text-zinc-100">{p.name}</p>
+                    <p className="text-xs text-zinc-500">{p.id}</p>
+                  </td>
+                  <td className="px-4 py-3 tabular-nums text-zinc-300">
+                    {fmtMerchPrice(p.priceCents)}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={busyId === p.id || !p.active}
+                        onClick={() => void toggleEnabled(p)}
+                        title={
+                          !p.active
+                            ? "Retired in catalog code"
+                            : closed
+                              ? "Click to open — accepting orders on /shop"
+                              : "Click to close — stop taking orders on /shop"
+                        }
+                        className={
+                          "rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60 " +
+                          (!p.active
+                            ? "border-zinc-700 bg-zinc-900 text-zinc-500"
+                            : closed
+                              ? "border-zinc-700 bg-zinc-800 text-zinc-400 hover:border-emerald-700/50 hover:bg-emerald-950/40 hover:text-emerald-300"
+                              : "border-emerald-700/50 bg-emerald-950/40 text-emerald-300 hover:border-red-700/50 hover:bg-red-950/30 hover:text-red-300")
+                        }
+                      >
+                        {busyId === p.id
+                          ? "Saving…"
+                          : !p.active
+                            ? "Retired"
+                            : closed
+                              ? "Closed"
+                              : "Open"}
+                      </button>
+                      {p.active && p.enabled !== false && (p.activeFrom || p.activeTo) ? (
+                        <span className="text-[11px] text-zinc-500">
+                          {openNow ? "In window" : "Outside window"}
+                        </span>
+                      ) : null}
+                    </div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {desk ? (
+                      <Link href={desk} className="text-sky-300 hover:text-sky-200 hover:underline">
+                        {p.fulfillment}
+                      </Link>
+                    ) : (
+                      <span className="text-zinc-500">—</span>
+                    )}
+                  </td>
+                  <td className="px-4 py-3">
+                    <a
+                      href={p.paypalUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-xs text-zinc-400 hover:text-zinc-200 hover:underline"
+                    >
+                      Open PayPal
+                    </a>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <p className="text-xs text-zinc-500">
+        Status works like All-Star hat links: <span className="text-emerald-300">Open</span> shows
+        the shirt on the members shop; <span className="text-zinc-300">Closed</span> hides it when
+        you stop taking orders. Orders already paid still appear in Shirt Orders.
+      </p>
     </div>
   );
 }

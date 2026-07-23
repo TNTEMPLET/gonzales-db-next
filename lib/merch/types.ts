@@ -26,8 +26,20 @@ export type MerchProduct = {
   /** Max qty advertised (NCP quantity_option). */
   maxQuantity?: number | null;
   fulfillment: MerchFulfillmentDesk;
-  /** When false, hidden from public shop (still visible in admin). */
+  /**
+   * Catalog default: when false, SKU is retired from code and hidden everywhere
+   * except admin includeInactive. Runtime open/closed is `enabled` / schedule.
+   */
   active: boolean;
+  /**
+   * Runtime open/closed (DB override). false = not taking orders — hidden from
+   * public shop. Defaults to true when no MerchProductStatus row exists.
+   * Mirrors All-Star hat/link `enabled`.
+   */
+  enabled?: boolean;
+  /** Optional open window (ISO). Same semantics as All-Star page links. */
+  activeFrom?: string | null;
+  activeTo?: string | null;
   /** Sort ascending. */
   sortOrder: number;
 };

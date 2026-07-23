@@ -307,6 +307,7 @@ model AdminUser {
   allStarAuditLogsReverted         AllStarAuditLog[]                 @relation("AllStarAuditReverter")
   allStarPaymentsMarkedPaid        AllStarPayment[]                  @relation("AllStarPaymentMarkedPaidBy")
   parkInfoPagesUpdated             ParkInfoPage[]                    @relation("ParkInfoUpdatedBy")
+  merchProductStatusesUpdated      MerchProductStatus[]              @relation("MerchProductStatusUpdatedBy")
   scheduleSeasonsCreated           ScheduleSeason[]                  @relation("ScheduleSeasonCreatedBy")
   scheduleExportBatchesCreated     ScheduleExportBatch[]             @relation("ScheduleExportBatchCreatedBy")
   volunteerRequirementsReviewed    VolunteerRequirementStatus[]      @relation("VolunteerRequirementReviewedBy")
@@ -1929,6 +1930,26 @@ model ShirtOrderItem {
   @@unique([orderId, seq])
   @@index([orderId])
   @@index([status])
+}
+
+/// Runtime open/closed override for code-configured merch catalog SKUs (shirts, caps, etc.).
+/// When no row exists, the product is treated as open (if catalog `active` is true).
+/// Mirrors All-Star page link `enabled` / schedule controls so boards can stop taking orders
+/// without a code deploy.
+model MerchProductStatus {
+  id               String    @id @default(cuid())
+  /// Matches MerchProduct.id from lib/merch/catalog.ts
+  productId        String    @unique
+  /// false = closed / not taking orders (hidden from public shop)
+  enabled          Boolean   @default(true)
+  /// Optional window — same semantics as All-Star page links
+  activeFrom       DateTime?
+  activeTo         DateTime?
+  updatedAt        DateTime  @updatedAt
+  updatedByAdminId String?
+  updatedByAdmin   AdminUser? @relation("MerchProductStatusUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([enabled])
 }
 
 model ParkInfoPage {
