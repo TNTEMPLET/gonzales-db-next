@@ -13,15 +13,24 @@ import {
   getSiteConfig,
   isContentOrgId,
   isMasterDeployment,
+  type ContentOrgId,
 } from "@/lib/siteConfig";
 
 export const dynamic = "force-dynamic";
 
+/** Storefront H1 — league-facing labels (not shortName + "Merch"). */
+function shopPageTitle(orgId: ContentOrgId): string {
+  if (orgId === "ascension") return "Ascension Little League";
+  if (orgId === "gonzales") return "Gonzales DYB";
+  return getSiteConfig().name;
+}
+
 export function generateMetadata() {
   const site = getSiteConfig();
+  const title = isContentOrgId(site.orgId) ? shopPageTitle(site.orgId) : site.name;
   return {
-    title: `Shop | ${site.name}`,
-    description: `Members-only merchandise for ${site.name}. Sign in required. Secure checkout with PayPal.`,
+    title: `Shop | ${title}`,
+    description: `Members-only merchandise for ${title}. Sign in required. Secure checkout with PayPal.`,
     robots: {
       index: false,
       follow: false,
@@ -39,6 +48,7 @@ export default async function ShopPage() {
     redirect("/");
   }
 
+  const pageTitle = shopPageTitle(site.orgId);
   const access = await getShopAccess();
   // Catalog exists for this org (even if every SKU is currently closed).
   const hasCatalog = orgHasMerchShop(site.orgId);
@@ -53,13 +63,13 @@ export default async function ShopPage() {
               SHOP
             </div>
             <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-5xl">
-              {site.shortName} Merch
+              {pageTitle}
             </h1>
             <p className="mt-3 max-w-2xl text-sm text-zinc-400 sm:text-base">
               Championship gear for registered players and families. Sign in to continue.
             </p>
           </div>
-          <ShopLoginGate leagueName={site.name} />
+          <ShopLoginGate leagueName={pageTitle} />
         </section>
       </main>
     );
@@ -76,7 +86,7 @@ export default async function ShopPage() {
             SHOP
           </div>
           <h1 className="mt-4 text-3xl font-bold tracking-tight md:text-5xl">
-            {site.shortName} Merch
+            {pageTitle}
           </h1>
           <p className="mt-3 max-w-2xl text-sm text-zinc-400 sm:text-base">
             {getMerchShopIntro(site.orgId)}
