@@ -99,8 +99,9 @@ Env (master / admin + org sites that run the webhook):
 |-----|-----------|------------|-------|
 | Gonzales DYB | `Gonzales 11U DYB - State Champs Shirt` | https://www.paypal.com/ncp/payment/Z5HW3TUQFBYWE | $15 |
 | Ascension LLB | `7-8U, AP LL - State Champs Shirt` | https://www.paypal.com/ncp/payment/CFDJ5F97YVCF8 | $15 |
+| Ascension LLB | `10U, AP LL - State Champs Shirt` | https://www.paypal.com/ncp/payment/CFQP6QBDF7C7N | $15 |
 
-Both: qty up to 10, required memos player name + size(s). Org is inferred from item title (`DYB` / `AP LL`).
+All: qty up to 10, required memos player name + size(s). Org is inferred from item title (`DYB` / `AP LL`).
 
 When shirt keywords are empty, sync/webhook match item names containing `shirt` or `state champ`. Recommended env:
 

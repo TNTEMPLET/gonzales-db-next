@@ -24,6 +24,7 @@ export const MERCH_CATALOG_META: MerchCatalogMeta = {
  * Active and upcoming SKUs.
  * - Gonzales 11U State Champs — PayPal NCP Z5HW3TUQFBYWE @ $15
  * - Ascension 7-8U State Champs — PayPal NCP CFDJ5F97YVCF8 @ $15
+ * - Ascension 10U State Champs — PayPal NCP CFQP6QBDF7C7N @ $15
  */
 export const MERCH_PRODUCTS: MerchProduct[] = [
   {
@@ -67,6 +68,27 @@ export const MERCH_PRODUCTS: MerchProduct[] = [
     fulfillment: "shirt-orders",
     active: true,
     sortOrder: 10,
+  },
+  {
+    id: "ascension-10u-state-champs-shirt-2026",
+    orgs: ["ascension"],
+    name: "10U AP LL — State Champs Shirt",
+    summary: "Celebrate the 10U State Championship with the official Ascension Little League shirt.",
+    description:
+      "Fixed-price PayPal checkout. Enter the player name and shirt size(s) on the PayPal form. Quantity up to 10 per order.",
+    priceCents: 1500,
+    paypalUrl: "https://www.paypal.com/ncp/payment/CFQP6QBDF7C7N",
+    imageUrl: "/images/merch-ascension-10u-shirt.jpg",
+    badge: "State Champs",
+    checkoutHints: [
+      "Required on PayPal: player name",
+      "Required on PayPal: size(s) for each shirt",
+      "Up to 10 shirts per checkout",
+    ],
+    maxQuantity: 10,
+    fulfillment: "shirt-orders",
+    active: true,
+    sortOrder: 20,
   },
 ];
 
