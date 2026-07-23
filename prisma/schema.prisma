@@ -1969,10 +1969,13 @@ model MerchOrderDraft {
   unitPriceCents  Int
   amountCents     Int
   contactEmail    String?
-  /// Full note to put on PayPal: "MO-XXXX | Player | YS, AL"
+  /// Structured note for desk/export (also used if legacy NCP paste path is used).
   checkoutNote    String
   /// awaiting_payment | paid | expired | cancelled
   status          String    @default("awaiting_payment")
+  /// PayPal Orders API order id (embedded checkout) — preferred match key.
+  paypalOrderId   String?   @unique
+  /// Capture / sale transaction id after payment.
   paypalTxId      String?   @unique
   paidAt          DateTime?
   createdByUserId String?

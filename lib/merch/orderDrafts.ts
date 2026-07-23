@@ -56,6 +56,7 @@ export type MerchDraftPublic = {
   contactEmail: string | null;
   checkoutNote: string;
   status: MerchDraftStatus;
+  paypalOrderId: string | null;
   paypalTxId: string | null;
   paidAt: string | null;
   createdAt: string;
@@ -119,6 +120,7 @@ export function toMerchDraftPublic(row: {
   contactEmail: string | null;
   checkoutNote: string;
   status: string;
+  paypalOrderId?: string | null;
   paypalTxId: string | null;
   paidAt: Date | null;
   createdAt: Date;
@@ -139,11 +141,146 @@ export function toMerchDraftPublic(row: {
     contactEmail: row.contactEmail,
     checkoutNote: row.checkoutNote,
     status: row.status as MerchDraftStatus,
+    paypalOrderId: row.paypalOrderId ?? null,
     paypalTxId: row.paypalTxId,
     paidAt: row.paidAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     expiresAt: row.expiresAt?.toISOString() ?? null,
   };
+}
+
+/** Attach PayPal Orders API id after create (embedded checkout). */
+export async function attachPaypalOrderToDraft(input: {
+  draftId: string;
+  paypalOrderId: string;
+}): Promise<MerchDraftPublic> {
+  const row = await prisma.merchOrderDraft.update({
+    where: { id: input.draftId },
+    data: { paypalOrderId: input.paypalOrderId },
+  });
+  return toMerchDraftPublic(row);
+}
+
+/**
+ * After embedded capture (or Orders webhook): mark draft paid and ensure a
+ * ShirtOrderRecord exists. Idempotent on capture/tx id.
+ */
+export async function completeMerchDraftFromPayPalCapture(input: {
+  /** Draft code (custom_id) and/or PayPal order id. */
+  draftCode?: string | null;
+  paypalOrderId?: string | null;
+  captureId: string;
+  amountCents?: number | null;
+  payerName?: string | null;
+  payerEmail?: string | null;
+  txDate?: Date;
+}): Promise<{
+  ok: boolean;
+  reason?: string;
+  draft?: MerchDraftPublic;
+  shirtOrderId?: string;
+  created?: boolean;
+}> {
+  const captureId = input.captureId?.trim();
+  if (!captureId) {
+    return { ok: false, reason: "missing_capture_id" };
+  }
+
+  try {
+    // Already completed for this capture?
+    const byTx = await prisma.merchOrderDraft.findUnique({
+      where: { paypalTxId: captureId },
+    });
+    if (byTx) {
+      const existingOrder = await prisma.shirtOrderRecord.findUnique({
+        where: { txId: captureId },
+      });
+      return {
+        ok: true,
+        draft: toMerchDraftPublic(byTx),
+        shirtOrderId: existingOrder?.id,
+        created: false,
+      };
+    }
+
+    let draft =
+      (input.paypalOrderId
+        ? await prisma.merchOrderDraft.findUnique({
+            where: { paypalOrderId: input.paypalOrderId },
+          })
+        : null) ??
+      (input.draftCode
+        ? await prisma.merchOrderDraft.findUnique({
+            where: { code: input.draftCode.trim().toUpperCase() },
+          })
+        : null);
+
+    // custom_id may be the code without normalizing
+    if (!draft && input.draftCode) {
+      const code = extractMerchDraftCode(input.draftCode) ?? input.draftCode.trim().toUpperCase();
+      draft = await prisma.merchOrderDraft.findUnique({ where: { code } });
+    }
+
+    if (!draft) {
+      return { ok: false, reason: "draft_not_found" };
+    }
+
+    const updated = await prisma.merchOrderDraft.update({
+      where: { id: draft.id },
+      data: {
+        status: "paid",
+        paypalTxId: captureId,
+        paidAt: input.txDate ?? new Date(),
+        ...(input.paypalOrderId && !draft.paypalOrderId
+          ? { paypalOrderId: input.paypalOrderId }
+          : {}),
+        ...(input.payerEmail && !draft.contactEmail
+          ? { contactEmail: input.payerEmail.toLowerCase() }
+          : {}),
+      },
+    });
+
+    const existingOrder = await prisma.shirtOrderRecord.findUnique({
+      where: { txId: captureId },
+    });
+    if (existingOrder) {
+      return {
+        ok: true,
+        draft: toMerchDraftPublic(updated),
+        shirtOrderId: existingOrder.id,
+        created: false,
+      };
+    }
+
+    const order = await prisma.shirtOrderRecord.create({
+      data: {
+        txId: captureId,
+        org: updated.org,
+        payerName: input.payerName ?? null,
+        payerEmail: input.payerEmail ?? updated.contactEmail,
+        amountCents: input.amountCents ?? updated.amountCents,
+        quantity: updated.quantity,
+        note: updated.checkoutNote,
+        itemName: updated.productName,
+        txDate: input.txDate ?? new Date(),
+        items: {
+          create: Array.from({ length: updated.quantity }, (_, i) => ({
+            seq: i + 1,
+          })),
+        },
+      },
+    });
+
+    return {
+      ok: true,
+      draft: toMerchDraftPublic(updated),
+      shirtOrderId: order.id,
+      created: true,
+    };
+  } catch (err) {
+    console.error("[merch drafts] completeFromCapture failed", err);
+    return { ok: false, reason: "error" };
+  }
 }
 
 export async function createMerchOrderDraft(

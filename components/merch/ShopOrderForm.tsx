@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { useMemo, useState } from "react";
 
+import PayPalEmbeddedCheckout from "@/components/merch/PayPalEmbeddedCheckout";
 import { fmtMerchPrice } from "@/lib/merch/paypal";
 import { SHIRT_SIZE_OPTIONS } from "@/lib/merch/shirtSizeOptions";
 import type { MerchProduct } from "@/lib/merch/types";
@@ -33,8 +34,9 @@ type SavedDraft = {
 };
 
 /**
- * Members shop checkout: save structured draft, then open PayPal with the
- * composed note (code + player + sizes) so parents don't retype sizes.
+ * Members shop checkout: save structured draft, then pay with embedded PayPal.
+ * No copy/paste — draft is linked via PayPal order custom_id.
+ * Catalog NCP links elsewhere are left alone for already-distributed campaigns.
  */
 export default function ShopOrderForm({
   products,
@@ -52,7 +54,7 @@ export default function ShopOrderForm({
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<SavedDraft | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [paid, setPaid] = useState(false);
 
   const product = products.find((p) => p.id === productId) ?? products[0] ?? null;
   const maxQty = Math.min(MAX_QTY, product?.maxQuantity ?? MAX_QTY);
@@ -65,6 +67,7 @@ export default function ShopOrderForm({
   function setQty(n: number) {
     const next = Math.max(1, Math.min(maxQty, n));
     setDraft(null);
+    setPaid(false);
     setLines((prev) => {
       if (next === prev.length) return prev;
       if (next > prev.length) {
@@ -74,11 +77,12 @@ export default function ShopOrderForm({
     });
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handlePrepare(e: React.FormEvent) {
     e.preventDefault();
     if (!product || !canSubmit) return;
     setSaving(true);
     setError(null);
+    setPaid(false);
     try {
       const res = await fetch("/api/merch/drafts", {
         method: "POST",
@@ -97,14 +101,6 @@ export default function ShopOrderForm({
         return;
       }
       setDraft(data.draft);
-      try {
-        await navigator.clipboard.writeText(data.draft.checkoutNote);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 3000);
-      } catch {
-        // clipboard optional
-      }
-      window.open(data.draft.paypalUrl, "_blank", "noopener,noreferrer");
     } catch {
       setError("Network error — please try again");
     } finally {
@@ -116,12 +112,40 @@ export default function ShopOrderForm({
 
   if (products.length === 0) return null;
 
+  if (paid && draft) {
+    return (
+      <div className="mx-auto max-w-lg rounded-2xl border border-emerald-800/40 bg-emerald-950/25 p-8 text-center">
+        <p className="text-2xl font-bold text-emerald-100">Payment received</p>
+        <p className="mt-3 text-sm text-emerald-100/90">
+          Thanks! Order <span className="font-mono font-semibold">{draft.code}</span> for{" "}
+          <span className="font-medium">{draft.playerName}</span> is paid (
+          {fmtMerchPrice(draft.amountCents)}).
+        </p>
+        <p className="mt-2 text-xs text-zinc-400">
+          {draft.productName} · {draft.sizes.join(", ")}
+        </p>
+        <p className="mt-4 text-xs text-zinc-500">
+          The league will fulfill from the shirt orders desk. You can close this page.
+        </p>
+        <button
+          type="button"
+          onClick={() => {
+            setPaid(false);
+            setDraft(null);
+            setPlayerName("");
+            setLines([newLine()]);
+          }}
+          className="mt-6 rounded-lg border border-zinc-700 px-4 py-2 text-sm text-zinc-300 hover:border-zinc-500 hover:text-white"
+        >
+          Place another order
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <form
-        onSubmit={(e) => void handleSubmit(e)}
-        className="grid gap-6 lg:grid-cols-5"
-      >
+      <form onSubmit={(e) => void handlePrepare(e)} className="grid gap-6 lg:grid-cols-5">
         <div className="space-y-5 lg:col-span-3">
           <fieldset className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-5">
             <legend className="px-1 text-sm font-semibold text-zinc-300">Choose shirt</legend>
@@ -135,6 +159,7 @@ export default function ShopOrderForm({
                     onClick={() => {
                       setProductId(p.id);
                       setDraft(null);
+                      setPaid(false);
                       setLines([newLine()]);
                     }}
                     className={
@@ -147,15 +172,25 @@ export default function ShopOrderForm({
                     <div className="relative h-16 w-16 shrink-0 overflow-hidden rounded-lg bg-zinc-900">
                       {p.imageUrl ? (
                         isLocalImage(p.imageUrl) ? (
-                          <Image src={p.imageUrl} alt="" fill className="object-contain p-1" sizes="64px" />
+                          <Image
+                            src={p.imageUrl}
+                            alt=""
+                            fill
+                            className="object-contain p-1"
+                            sizes="64px"
+                          />
                         ) : (
                           // eslint-disable-next-line @next/next/no-img-element
-                          <img src={p.imageUrl} alt="" className="h-full w-full object-contain p-1" />
+                          <img
+                            src={p.imageUrl}
+                            alt=""
+                            className="h-full w-full object-contain p-1"
+                          />
                         )
                       ) : null}
                     </div>
                     <div className="min-w-0">
-                      <p className="text-sm font-semibold text-zinc-50 leading-snug">{p.name}</p>
+                      <p className="text-sm font-semibold leading-snug text-zinc-50">{p.name}</p>
                       <p className="mt-1 text-sm tabular-nums text-zinc-300">
                         {fmtMerchPrice(p.priceCents)}
                       </p>
@@ -180,6 +215,7 @@ export default function ShopOrderForm({
                 onChange={(e) => {
                   setPlayerName(e.target.value);
                   setDraft(null);
+                  setPaid(false);
                 }}
                 placeholder="Player full name"
                 className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-zinc-100 placeholder:text-zinc-600 focus:border-sky-600 focus:outline-none"
@@ -236,8 +272,11 @@ export default function ShopOrderForm({
                     value={line.size}
                     onChange={(e) => {
                       setDraft(null);
+                      setPaid(false);
                       setLines((prev) =>
-                        prev.map((l) => (l.key === line.key ? { ...l, size: e.target.value } : l)),
+                        prev.map((l) =>
+                          l.key === line.key ? { ...l, size: e.target.value } : l,
+                        ),
                       );
                     }}
                     className="min-w-[12rem] flex-1 rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-sky-600 focus:outline-none"
@@ -269,17 +308,23 @@ export default function ShopOrderForm({
             </p>
           ) : null}
 
-          <button
-            type="submit"
-            disabled={!canSubmit}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-[#0070ba] px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-[#005ea6] disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[16rem]"
-          >
-            {saving ? "Saving order…" : `Save & pay ${fmtMerchPrice(totalCents)} with PayPal`}
-          </button>
-          <p className="text-xs text-zinc-500">
-            We save your player name and sizes first, then open PayPal. Paste the order note if
-            PayPal asks for it (we also try to copy it for you).
-          </p>
+          {!draft ? (
+            <>
+              <button
+                type="submit"
+                disabled={!canSubmit}
+                className="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-brand-purple px-4 py-3.5 text-sm font-semibold text-white transition hover:bg-brand-purple-dark disabled:cursor-not-allowed disabled:opacity-40 sm:w-auto sm:min-w-[16rem]"
+              >
+                {saving
+                  ? "Preparing order…"
+                  : `Continue to payment · ${fmtMerchPrice(totalCents)}`}
+              </button>
+              <p className="text-xs text-zinc-500">
+                We save your player name and sizes, then you pay with PayPal on this page — no
+                copy/paste and no retyping on PayPal.
+              </p>
+            </>
+          ) : null}
         </div>
 
         <aside className="lg:col-span-2">
@@ -309,49 +354,35 @@ export default function ShopOrderForm({
             </dl>
 
             {draft ? (
-              <div className="space-y-3 rounded-xl border border-emerald-800/40 bg-emerald-950/25 p-4">
-                <p className="text-sm font-semibold text-emerald-100">Draft saved</p>
-                <p className="text-xs text-emerald-100/80">
-                  Order code{" "}
-                  <span className="font-mono font-semibold text-emerald-50">{draft.code}</span>
-                  {copied ? " · note copied" : ""}
+              <div className="space-y-3 border-t border-zinc-800 pt-4">
+                <p className="text-sm font-semibold text-emerald-100">Ready to pay</p>
+                <p className="text-xs text-zinc-400">
+                  Order <span className="font-mono text-amber-200">{draft.code}</span> saved with
+                  your sizes. Pay below — PayPal only handles payment.
                 </p>
-                <div>
-                  <p className="mb-1 text-[11px] uppercase tracking-wide text-zinc-500">
-                    Paste this on PayPal if asked
-                  </p>
-                  <pre className="whitespace-pre-wrap break-words rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 font-mono text-xs text-sky-100">
-                    {draft.checkoutNote}
-                  </pre>
-                  <button
-                    type="button"
-                    className="mt-2 text-xs text-sky-400 hover:underline"
-                    onClick={async () => {
-                      try {
-                        await navigator.clipboard.writeText(draft.checkoutNote);
-                        setCopied(true);
-                        setTimeout(() => setCopied(false), 2000);
-                      } catch {
-                        /* ignore */
-                      }
-                    }}
-                  >
-                    {copied ? "Copied" : "Copy note again"}
-                  </button>
-                </div>
-                <a
-                  href={draft.paypalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="inline-flex w-full items-center justify-center rounded-lg bg-[#0070ba] px-3 py-2.5 text-sm font-semibold text-white hover:bg-[#005ea6]"
+                <PayPalEmbeddedCheckout
+                  draftId={draft.id}
+                  onPaid={() => {
+                    setPaid(true);
+                    setDraft((d) => (d ? { ...d, status: "paid" } : d));
+                  }}
+                  onError={(msg) => setError(msg)}
+                />
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDraft(null);
+                    setError(null);
+                  }}
+                  className="w-full text-center text-xs text-zinc-500 hover:text-zinc-300"
                 >
-                  Open PayPal checkout
-                </a>
+                  Edit order details
+                </button>
               </div>
             ) : (
               <p className="text-xs leading-relaxed text-zinc-500">
-                After you save, payment goes through PayPal. Your sizes stay on file so the league
-                does not rely on free-typed size text alone.
+                After you continue, PayPal buttons appear here. Your sizes stay on file for the
+                league order desk automatically.
               </p>
             )}
           </div>
