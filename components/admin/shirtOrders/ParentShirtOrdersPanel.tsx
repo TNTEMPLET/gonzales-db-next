@@ -658,10 +658,30 @@ export default function ParentShirtOrdersPanel() {
     setSyncMsg(null);
     setError(null);
     try {
-      const res = await fetch("/api/admin/shirt-orders", { method: "POST" });
-      const json = (await res.json()) as { created?: number; skipped?: number; error?: string };
+      const res = await fetch("/api/admin/shirt-orders?days=90", { method: "POST" });
+      const json = (await res.json()) as {
+        created?: number;
+        skipped?: number;
+        enriched?: number;
+        total?: number;
+        scanned?: number;
+        reportingNewestAt?: string | null;
+        note?: string | null;
+        error?: string;
+      };
       if (!res.ok) throw new Error(json.error ?? "Sync failed");
-      setSyncMsg(`Synced: ${json.created ?? 0} new, ${json.skipped ?? 0} already stored.`);
+      const parts = [
+        `${json.created ?? 0} new`,
+        `${json.enriched ?? 0} updated`,
+        `${json.skipped ?? 0} already stored`,
+        `${json.total ?? 0} shirt txs in PayPal Reporting`,
+      ];
+      let msg = `Synced: ${parts.join(" · ")}.`;
+      if (json.reportingNewestAt) {
+        msg += ` Newest in Reporting: ${new Date(json.reportingNewestAt).toLocaleString()}.`;
+      }
+      if (json.note) msg += ` ${json.note}`;
+      setSyncMsg(msg);
       await fetchOrders();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");

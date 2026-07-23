@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
 import { resolveShirtOrderFromDraft } from "@/lib/merch/orderDrafts";
+import {
+  isShirtOrderItem,
+  resolveShirtOrg,
+} from "@/lib/merch/shirtOrderMatch";
 import { normalizeSizeLabel } from "@/lib/merch/shirtSizes";
 import { fetchRecentPayPalTransactions } from "@/lib/paypal/client";
+import { isPayPalOrdersConfigured } from "@/lib/paypal/orders";
 import prisma from "@/lib/prisma";
 
 export type ShirtOrderItem = {
@@ -33,37 +38,9 @@ export type ShirtOrdersResponse = {
   unknown: ShirtOrder[];
   fetchedAt: string;
   configured: boolean;
+  /** True when PAYPAL_CLIENT_ID + SECRET are present (manual Sync can call Reporting API). */
+  paypalApiConfigured: boolean;
 };
-
-function isShirtOrderItem(itemName: string | null, gKw: string, aKw: string): boolean {
-  const name = (itemName ?? "").toLowerCase();
-  if (gKw || aKw) {
-    return (!!gKw && name.includes(gKw.toLowerCase())) || (!!aKw && name.includes(aKw.toLowerCase()));
-  }
-  // Default keyword when env is not set — avoid matching unrelated PayPal activity.
-  return name.includes("shirt") || name.includes("state champ");
-}
-
-function resolveOrg(itemName: string | null, gKw: string, aKw: string): string {
-  const name = (itemName ?? "").toLowerCase();
-  if (gKw && name.includes(gKw.toLowerCase())) return "gonzales";
-  if (aKw && name.includes(aKw.toLowerCase())) return "ascension";
-  // Prefer Gonzales for DYB championship shirt campaigns when only one keyword is configured.
-  if (gKw && !aKw) return "gonzales";
-  if (aKw && !gKw) return "ascension";
-  if (name.includes("gonzales") || name.includes("dyb") || name.includes("diamond")) return "gonzales";
-  // Ascension LLB buttons often say "AP LL" (not "llb" / full "little league").
-  if (
-    name.includes("ascension") ||
-    name.includes("llb") ||
-    name.includes("little league") ||
-    name.includes("ap ll") ||
-    /\bll\b/.test(name)
-  ) {
-    return "ascension";
-  }
-  return "unknown";
-}
 
 function mapOrder(r: {
   id: string;
@@ -135,6 +112,7 @@ export async function GET(request: NextRequest) {
     unknown,
     fetchedAt: new Date().toISOString(),
     configured: !!(gonzalesKw || ascensionKw),
+    paypalApiConfigured: isPayPalOrdersConfigured(),
   } satisfies ShirtOrdersResponse);
 }
 
@@ -142,6 +120,16 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   const auth = await ensureAllStarVaultAdmin(request);
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
+
+  if (!isPayPalOrdersConfigured()) {
+    return NextResponse.json(
+      {
+        error:
+          "PayPal API credentials are not configured on this app (PAYPAL_CLIENT_ID / PAYPAL_CLIENT_SECRET). Sync cannot reach PayPal Reporting.",
+      },
+      { status: 503 },
+    );
+  }
 
   const gonzalesKw = process.env.PAYPAL_SHIRT_ITEM_GONZALES ?? "";
   const ascensionKw = process.env.PAYPAL_SHIRT_ITEM_ASCENSION ?? "";
@@ -166,15 +154,74 @@ export async function POST(request: NextRequest) {
 
   let created = 0;
   let skipped = 0;
+  let enriched = 0;
 
   for (const tx of shirtTx) {
-    const existing = await prisma.shirtOrderRecord.findUnique({ where: { txId: tx.txId } });
+    const existing = await prisma.shirtOrderRecord.findUnique({
+      where: { txId: tx.txId },
+      include: { items: { orderBy: { seq: "asc" } } },
+    });
     if (existing) {
-      skipped++;
+      // Enrich provisional / thin rows once Reporting has cart details.
+      const needsEnrich =
+        !existing.itemName ||
+        existing.itemName.includes("awaiting PayPal") ||
+        (!existing.note && (tx.checkoutNote || tx.note)) ||
+        (!existing.payerName && tx.payerName);
+
+      if (needsEnrich && (tx.itemName || tx.checkoutNote || tx.note || tx.payerName)) {
+        const fallbackOrg = resolveShirtOrg(tx.itemName ?? existing.itemName, gonzalesKw, ascensionKw);
+        const fallbackQuantity =
+          tx.itemQuantity ??
+          existing.quantity ??
+          Math.max(1, Math.round(tx.amountCents / shirtPriceCents));
+        const rawNote = tx.checkoutNote ?? tx.note ?? existing.note;
+        const resolved = await resolveShirtOrderFromDraft({
+          note: rawNote,
+          txId: tx.txId,
+          amountCents: tx.amountCents || existing.amountCents,
+          payerEmail: tx.payerEmail ?? existing.payerEmail,
+          fallbackQuantity,
+          fallbackOrg,
+        });
+
+        await prisma.shirtOrderRecord.update({
+          where: { id: existing.id },
+          data: {
+            org: resolved.org !== "unknown" ? resolved.org : existing.org,
+            payerName: tx.payerName ?? existing.payerName,
+            payerEmail: tx.payerEmail ?? existing.payerEmail,
+            amountCents: tx.amountCents || existing.amountCents,
+            quantity: resolved.quantity,
+            note: resolved.note ?? existing.note,
+            itemName: tx.itemName ?? existing.itemName,
+            txDate: tx.txDate ?? existing.txDate,
+          },
+        });
+
+        // Replace size lines when Reporting adds checkout options and we only had blanks.
+        const existingLabels = existing.items.map((i) => i.sizeLabel).filter(Boolean);
+        const newLabels = resolved.itemCreates.map((i) => i.sizeLabel).filter(Boolean);
+        if (newLabels.length > existingLabels.length && resolved.itemCreates.length > 0) {
+          await prisma.shirtOrderItem.deleteMany({ where: { orderId: existing.id } });
+          await prisma.shirtOrderItem.createMany({
+            data: resolved.itemCreates.map((row) => ({
+              orderId: existing.id,
+              seq: row.seq,
+              sizeLabel: row.sizeLabel ?? null,
+              status: "open",
+            })),
+          });
+        }
+
+        enriched++;
+      } else {
+        skipped++;
+      }
       continue;
     }
 
-    const fallbackOrg = resolveOrg(tx.itemName, gonzalesKw, ascensionKw);
+    const fallbackOrg = resolveShirtOrg(tx.itemName, gonzalesKw, ascensionKw);
     const fallbackQuantity =
       tx.itemQuantity ?? Math.max(1, Math.round(tx.amountCents / shirtPriceCents));
     const rawNote = tx.checkoutNote ?? tx.note;
@@ -206,7 +253,27 @@ export async function POST(request: NextRequest) {
     created++;
   }
 
-  return NextResponse.json({ created, skipped, total: shirtTx.length });
+  // PayPal Reporting often lags the Activity feed by several hours.
+  const newestTx = shirtTx.reduce<Date | null>((max, tx) => {
+    if (!max || tx.txDate > max) return tx.txDate;
+    return max;
+  }, null);
+
+  return NextResponse.json({
+    created,
+    skipped,
+    enriched,
+    total: shirtTx.length,
+    scanned: completed.length,
+    daysBack,
+    reportingNewestAt: newestTx?.toISOString() ?? null,
+    note:
+      created === 0 && shirtTx.length > 0
+        ? "PayPal Reporting returned these shirt sales (already in reports, or enriched). If you still see newer sales only in the PayPal website Activity feed, wait for Reporting to catch up (often 1–4+ hours) or rely on the live webhook."
+        : created === 0 && shirtTx.length === 0
+          ? "No shirt-matching transactions in PayPal Reporting for this window. New NCP sales can appear in the PayPal UI before the Reporting API lists them."
+          : null,
+  });
 }
 
 // ── PATCH — fulfill toggle and/or edit size labels ────────────────────────────
