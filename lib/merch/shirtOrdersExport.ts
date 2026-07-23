@@ -1,4 +1,4 @@
-import { sizeLabelsForOrder, splitShirtNote } from "@/lib/merch/shirtSizes";
+import { resolvedSizeLabelsForOrder, splitShirtNote } from "@/lib/merch/shirtSizes";
 import prisma from "@/lib/prisma";
 
 function escapeCsv(value: string | null | undefined): string {
@@ -97,7 +97,7 @@ export async function buildShirtOrdersCsv(
   const rows = filtered.map((r) => {
     const fulfilledCount = r.items.filter((i) => i.status === "fulfilled").length;
     const { player, sizes, raw } = splitShirtNote(r.note);
-    const expanded = sizeLabelsForOrder(r.note, r.quantity).filter(Boolean);
+    const expanded = resolvedSizeLabelsForOrder(r.note, r.quantity, r.items).filter(Boolean);
     return [
       escapeCsv(fmtDate(r.txDate)),
       escapeCsv(
@@ -120,7 +120,7 @@ export async function buildShirtOrdersCsv(
 
   const sizeTally = new Map<string, number>();
   for (const r of filtered) {
-    const labels = sizeLabelsForOrder(r.note, r.quantity);
+    const labels = resolvedSizeLabelsForOrder(r.note, r.quantity, r.items);
     const usable = labels.filter((l) => l.trim());
     if (usable.length === 0) {
       const remaining = options.openOnly

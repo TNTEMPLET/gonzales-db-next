@@ -116,14 +116,18 @@ export default async function AdminShopPage({
         </div>
 
         <div className="mb-4 rounded-xl border border-sky-800/40 bg-sky-950/20 p-4 text-sm text-sky-100">
-          <p className="font-medium">Catalog SKUs + open/closed status</p>
+          <p className="font-medium">Catalog SKUs (database) + open/closed status</p>
           <p className="mt-1 text-sky-100/80">
-            Product definitions live in{" "}
-            <code className="rounded bg-sky-950/50 px-1.5 py-0.5 text-xs">lib/merch/catalog.ts</code>
-            . Use the <span className="font-medium text-emerald-200">Open</span> /{" "}
-            <span className="font-medium text-zinc-200">Closed</span> toggle (same idea as All-Star
-            hat links) to stop taking orders on a shirt without a code deploy. Closed items leave
-            the members shop immediately; paid orders stay in Shirt Orders.
+            Product names, PayPal NCP links, and prices live in the{" "}
+            <code className="rounded bg-sky-950/50 px-1.5 py-0.5 text-xs">MerchProduct</code> table
+            (seeded from code on first load). Use the{" "}
+            <span className="font-medium text-emerald-200">Open</span> /{" "}
+            <span className="font-medium text-zinc-200">Closed</span> toggle to stop taking orders
+            without a deploy. After payments sync, correct shirt sizes on{" "}
+            <Link href={`/admin/shirt-orders${orgQuery}`} className="text-sky-200 underline">
+              Shirt orders
+            </Link>
+            .
           </p>
         </div>
 
