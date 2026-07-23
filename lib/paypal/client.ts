@@ -263,11 +263,132 @@ export async function syncPayPalTransactionsForCycle(
   return { matched, alreadyPaid, unmatched: unmatchedTx };
 }
 
+type PayPalCaptureResource = {
+  id?: string;
+  status?: string;
+  amount?: { value?: string; currency_code?: string };
+  create_time?: string;
+  supplementary_data?: { related_ids?: { order_id?: string } };
+  links?: { href?: string; rel?: string }[];
+};
+
+type PayPalCheckoutOrder = {
+  id?: string;
+  status?: string;
+  create_time?: string;
+  payer?: {
+    email_address?: string;
+    name?: { given_name?: string; surname?: string };
+  };
+  payment_source?: {
+    paypal?: {
+      email_address?: string;
+      name?: { given_name?: string; surname?: string };
+    };
+    venmo?: {
+      email_address?: string;
+      name?: { given_name?: string; surname?: string };
+    };
+  };
+  purchase_units?: Array<{
+    items?: Array<{
+      name?: string;
+      quantity?: string;
+      sku?: string;
+      item_option_selections?: Array<{ name?: string; select?: string }>;
+    }>;
+    payments?: {
+      captures?: Array<{ id?: string; create_time?: string; amount?: { value?: string } }>;
+    };
+  }>;
+};
+
 /**
- * Fetch a single transaction by ID via the reporting API.
- * Used by the webhook to look up item details after a payment event.
+ * Instant path: capture id → checkout order (NCP cart + player/size options).
+ * Works while Transaction Search / Reporting is still lagging the Activity feed.
+ */
+export async function fetchTransactionByCaptureId(
+  captureId: string,
+): Promise<PayPalTransaction | null> {
+  const token = await getAccessToken();
+  const capRes = await fetch(`${PAYPAL_API_BASE}/v2/payments/captures/${captureId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!capRes.ok) return null;
+  const cap = (await capRes.json()) as PayPalCaptureResource;
+  if (!cap.id) return null;
+
+  const orderId =
+    cap.supplementary_data?.related_ids?.order_id ||
+    cap.links?.find((l) => l.rel === "up")?.href?.split("/").pop() ||
+    null;
+
+  let order: PayPalCheckoutOrder | null = null;
+  if (orderId) {
+    const ordRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders/${orderId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (ordRes.ok) {
+      order = (await ordRes.json()) as PayPalCheckoutOrder;
+    }
+  }
+
+  const unit = order?.purchase_units?.[0];
+  const item = unit?.items?.[0];
+  const optionNote =
+    item?.item_option_selections
+      ?.map((o) => (o.select ?? "").trim())
+      .filter(Boolean)
+      .join(" | ") || null;
+
+  const payerBlock =
+    order?.payer ||
+    order?.payment_source?.paypal ||
+    order?.payment_source?.venmo ||
+    null;
+  const given = payerBlock?.name?.given_name ?? "";
+  const surname = payerBlock?.name?.surname ?? "";
+  const payerName = `${given} ${surname}`.trim() || null;
+  const payerEmail =
+    (payerBlock && "email_address" in payerBlock
+      ? (payerBlock as { email_address?: string }).email_address
+      : null) ?? null;
+
+  const amountStr = cap.amount?.value ?? unit?.payments?.captures?.[0]?.amount?.value ?? "0";
+  const status =
+    (cap.status ?? "").toUpperCase() === "COMPLETED"
+      ? "S"
+      : (cap.status ?? order?.status ?? "");
+
+  return {
+    txId: cap.id,
+    txDate: new Date(cap.create_time ?? order?.create_time ?? Date.now()),
+    payerName,
+    payerEmail,
+    amountCents: Math.round(parseFloat(amountStr) * 100),
+    note: optionNote,
+    itemName: item?.name ?? null,
+    itemCode: item?.sku ?? null,
+    itemQuantity: item?.quantity ? parseInt(item.quantity, 10) || null : null,
+    checkoutNote: optionNote,
+    status,
+  };
+}
+
+/**
+ * Fetch a single transaction by ID.
+ * Prefers capture→order (instant for NCP) and falls back to Reporting Search.
  */
 export async function fetchTransactionById(txId: string): Promise<PayPalTransaction | null> {
+  try {
+    const fromCapture = await fetchTransactionByCaptureId(txId);
+    if (fromCapture?.itemName || fromCapture?.amountCents) {
+      return fromCapture;
+    }
+  } catch {
+    // fall through to Reporting
+  }
+
   const token = await getAccessToken();
 
   const now = new Date();
@@ -318,4 +439,25 @@ export async function fetchTransactionById(txId: string): Promise<PayPalTransact
     checkoutNote: joinCheckoutOptions(cartItems[0]?.checkout_options),
     status: info.transaction_status ?? "",
   };
+}
+
+/**
+ * Import one or more capture/sale IDs into the normalized PayPalTransaction shape
+ * (capture→order first). Used by admin manual import when Reporting lags.
+ */
+export async function fetchTransactionsByCaptureIds(
+  captureIds: string[],
+): Promise<PayPalTransaction[]> {
+  const out: PayPalTransaction[] = [];
+  for (const id of captureIds) {
+    const cleaned = id.trim();
+    if (!cleaned) continue;
+    try {
+      const tx = await fetchTransactionById(cleaned);
+      if (tx) out.push(tx);
+    } catch {
+      // skip failed ids
+    }
+  }
+  return out;
 }

@@ -105,8 +105,11 @@ export function expandSizeLabels(sizesText: string, quantity: number): string[] 
     .filter(Boolean);
 
   for (const chunk of chunks) {
-    // "2x M" / "2 x Medium" / "2M"
-    const mult = chunk.match(/^(\d+)\s*[x×]\s*(.+)$/i) || chunk.match(/^(\d+)\s+(.+)$/);
+    // "2x M" / "2 x Medium" / "2M" / "1-AM" / "1-AL" (common NCP free-text)
+    const mult =
+      chunk.match(/^(\d+)\s*[x×]\s*(.+)$/i) ||
+      chunk.match(/^(\d+)\s*-\s*([A-Za-z].+)$/) ||
+      chunk.match(/^(\d+)\s+(.+)$/);
     if (mult) {
       const n = Math.min(50, parseInt(mult[1]!, 10) || 1);
       const label = normalizeSizeLabel(mult[2]!);
