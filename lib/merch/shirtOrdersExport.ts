@@ -21,6 +21,11 @@ export type ShirtOrdersExportOrg = "all" | "gonzales" | "ascension";
 
 export type ShirtOrdersExportOptions = {
   orgFilter?: ShirtOrdersExportOrg;
+  /**
+   * Filter to a single PayPal product / NCP button by exact item title
+   * (e.g. "7-8U, AP LL - State Champs Shirt"). Case-insensitive trim match.
+   */
+  itemName?: string | null;
   /** When true, only rows with remaining (unfulfilled) shirts. */
   openOnly?: boolean;
 };
@@ -32,12 +37,28 @@ export type ShirtOrdersExportResult = {
   shirtCount: number;
   openShirtCount: number;
   orgLabel: string;
+  itemLabel: string | null;
 };
+
+/** Filename-safe slug from a PayPal item title. */
+export function slugifyShirtItemName(itemName: string): string {
+  const slug = itemName
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 48);
+  return slug || "Product";
+}
+
+function normalizeItemName(value: string | null | undefined): string {
+  return (value ?? "").trim().toLowerCase();
+}
 
 export async function buildShirtOrdersCsv(
   options: ShirtOrdersExportOptions = {},
 ): Promise<ShirtOrdersExportResult> {
   const orgFilter = options.orgFilter ?? "all";
+  const itemFilter = (options.itemName ?? "").trim();
   const where = orgFilter === "all" ? {} : { org: orgFilter };
 
   const records = await prisma.shirtOrderRecord.findMany({
@@ -46,9 +67,15 @@ export async function buildShirtOrdersCsv(
     orderBy: { txDate: "asc" },
   });
 
+  let scoped = records;
+  if (itemFilter) {
+    const want = normalizeItemName(itemFilter);
+    scoped = records.filter((r) => normalizeItemName(r.itemName) === want);
+  }
+
   const filtered = options.openOnly
-    ? records.filter((r) => r.items.some((i) => i.status !== "fulfilled"))
-    : records;
+    ? scoped.filter((r) => r.items.some((i) => i.status !== "fulfilled"))
+    : scoped;
 
   const header = [
     "Date",
@@ -131,9 +158,22 @@ export async function buildShirtOrdersCsv(
         ? "Ascension LLB"
         : "All Orgs";
 
-  const scopeNote = options.openOnly ? "open only" : "all orders";
+  // Prefer the stored PayPal title from matched rows; fall back to the filter string.
+  const itemLabel =
+    itemFilter
+      ? filtered[0]?.itemName?.trim() ||
+        scoped[0]?.itemName?.trim() ||
+        itemFilter
+      : null;
+
+  const scopeNote = [
+    options.openOnly ? "open only" : "all orders",
+    itemLabel ? `product: ${itemLabel}` : null,
+  ]
+    .filter(Boolean)
+    .join("; ");
   const csv = [
-    `# Shirt Orders – ${orgLabel} (${scopeNote})`,
+    `# Shirt Orders – ${orgLabel}${itemLabel ? ` – ${itemLabel}` : ""} (${scopeNote})`,
     header,
     ...rows,
     "",
@@ -146,7 +186,8 @@ export async function buildShirtOrdersCsv(
   const orgPart =
     orgFilter === "all" ? "All" : orgFilter === "gonzales" ? "Gonzales" : "Ascension";
   const openPart = options.openOnly ? "_Open" : "";
-  const filename = `ShirtOrders_${orgPart}${openPart}_${dateStr}.csv`;
+  const itemPart = itemLabel ? `_${slugifyShirtItemName(itemLabel)}` : "";
+  const filename = `ShirtOrders_${orgPart}${itemPart}${openPart}_${dateStr}.csv`;
 
   let shirtCount = 0;
   let openShirtCount = 0;
@@ -162,5 +203,6 @@ export async function buildShirtOrdersCsv(
     shirtCount,
     openShirtCount,
     orgLabel,
+    itemLabel,
   };
 }

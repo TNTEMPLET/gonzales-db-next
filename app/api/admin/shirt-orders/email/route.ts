@@ -76,6 +76,8 @@ export async function POST(request: NextRequest) {
     subject?: string;
     message?: string;
     org?: string;
+    /** Exact PayPal item title — one NCP button / product link per email. */
+    itemName?: string | null;
     openOnly?: boolean;
     fromEmail?: string | null;
   };
@@ -101,11 +103,20 @@ export async function POST(request: NextRequest) {
   const orgFilter: ShirtOrdersExportOrg =
     body.org === "gonzales" || body.org === "ascension" ? body.org : "all";
   const openOnly = Boolean(body.openOnly);
+  const itemName = (body.itemName ?? "").trim() || null;
 
-  const exportResult = await buildShirtOrdersCsv({ orgFilter, openOnly });
+  const exportResult = await buildShirtOrdersCsv({ orgFilter, openOnly, itemName });
   if (exportResult.orderCount === 0) {
     return NextResponse.json(
-      { error: openOnly ? "No open shirt orders to email" : "No shirt orders to email" },
+      {
+        error: itemName
+          ? openOnly
+            ? "No open shirt orders for that product"
+            : "No shirt orders for that product"
+          : openOnly
+            ? "No open shirt orders to email"
+            : "No shirt orders to email",
+      },
       { status: 400 },
     );
   }
@@ -116,13 +127,15 @@ export async function POST(request: NextRequest) {
     day: "numeric",
     year: "numeric",
   });
+  const productLabel = exportResult.itemLabel ?? "All products";
   const subject =
     (body.subject ?? "").trim() ||
-    `Shirt orders – ${exportResult.orgLabel} – ${dateLabel}${openOnly ? " (open)" : ""}`;
+    `Shirt orders – ${exportResult.orgLabel} – ${productLabel} – ${dateLabel}${openOnly ? " (open)" : ""}`;
 
   const customMessage = (body.message ?? "").trim();
   const summaryLines = [
     `Shirt order report for ${exportResult.orgLabel}.`,
+    `Product: ${productLabel}`,
     `Orders: ${exportResult.orderCount}`,
     `Shirts: ${exportResult.shirtCount}` +
       (openOnly ? ` (${exportResult.openShirtCount} still open)` : ""),
@@ -149,6 +162,7 @@ export async function POST(request: NextRequest) {
     `<div style="font-family:system-ui,sans-serif;line-height:1.5;color:#18181b">`,
     `<p><strong>Shirt order report</strong> — ${escapeHtml(exportResult.orgLabel)}</p>`,
     `<ul>`,
+    `<li>Product: ${escapeHtml(productLabel)}</li>`,
     `<li>Orders: ${exportResult.orderCount}</li>`,
     `<li>Shirts: ${exportResult.shirtCount}${openOnly ? ` (${exportResult.openShirtCount} open)` : ""}</li>`,
     `<li>Scope: ${openOnly ? "open (unfulfilled) only" : "all orders"}</li>`,

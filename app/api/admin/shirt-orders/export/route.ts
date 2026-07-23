@@ -14,8 +14,10 @@ export async function GET(request: NextRequest) {
   const orgFilter: ShirtOrdersExportOrg =
     orgParam === "gonzales" || orgParam === "ascension" ? orgParam : "all";
   const openOnly = url.searchParams.get("open") === "1";
+  // Exact PayPal item title for one NCP button / product link.
+  const itemName = (url.searchParams.get("item") ?? "").trim() || null;
 
-  const result = await buildShirtOrdersCsv({ orgFilter, openOnly });
+  const result = await buildShirtOrdersCsv({ orgFilter, openOnly, itemName });
 
   return new NextResponse(result.csv, {
     headers: {
