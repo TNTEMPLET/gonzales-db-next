@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { ShirtOrder, ShirtOrderItem, ShirtOrdersResponse } from "@/app/api/admin/shirt-orders/route";
 import {
-  sizeLabelForItem,
-  sizeLabelsForOrder,
+  resolvedSizeLabelForItem,
+  resolvedSizeLabelsForOrder,
   splitShirtNote,
 } from "@/lib/merch/shirtSizes";
 
@@ -49,7 +49,9 @@ function groupOrdersByItem(orders: ShirtOrder[]): { itemName: string; orders: Sh
 
 /** Compact size summary for the order row (e.g. "YS, YM, AL"). */
 function orderSizeSummary(order: ShirtOrder): string {
-  const labels = sizeLabelsForOrder(order.note, order.quantity).filter((l) => l.trim());
+  const labels = resolvedSizeLabelsForOrder(order.note, order.quantity, order.items).filter((l) =>
+    l.trim(),
+  );
   if (labels.length === 0) {
     const { sizes, raw } = splitShirtNote(order.note);
     return (sizes || raw || "").trim();
@@ -85,20 +87,75 @@ function ShirtItemRow({
   sizeLabel,
   onToggle,
   toggling,
+  onSizeChange,
+  savingSize,
 }: {
   item: ShirtOrderItem;
   sizeLabel: string;
   onToggle: (item: ShirtOrderItem) => void;
   toggling: boolean;
+  onSizeChange: (item: ShirtOrderItem, sizeLabel: string) => void;
+  savingSize: boolean;
 }) {
   const fulfilled = item.status === "fulfilled";
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(sizeLabel.startsWith("Shirt #") ? "" : sizeLabel);
+
   return (
-    <div className={`flex items-center justify-between px-3 py-1.5 rounded-lg text-xs ${fulfilled ? "bg-emerald-950/20" : "bg-zinc-800/40"}`}>
-      <span className={`font-medium ${fulfilled ? "text-emerald-300 line-through decoration-emerald-700/50" : "text-zinc-300"}`}>
-        <span className="inline-flex min-w-[2.5rem] items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-950/60 px-2 py-0.5 font-semibold tabular-nums text-zinc-100">
-          {sizeLabel}
-        </span>
-      </span>
+    <div className={`flex flex-wrap items-center justify-between gap-2 px-3 py-1.5 rounded-lg text-xs ${fulfilled ? "bg-emerald-950/20" : "bg-zinc-800/40"}`}>
+      <div className="flex min-w-0 flex-1 items-center gap-2">
+        {editing ? (
+          <>
+            <input
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              className="w-28 rounded-md border border-zinc-600 bg-zinc-950 px-2 py-1 text-xs text-zinc-100"
+              placeholder="e.g. YS"
+              disabled={savingSize}
+            />
+            <button
+              type="button"
+              disabled={savingSize}
+              onClick={() => {
+                onSizeChange(item, draft);
+                setEditing(false);
+              }}
+              className="rounded-md border border-sky-700/50 px-2 py-1 text-[11px] font-semibold text-sky-200 hover:bg-sky-950/40 disabled:opacity-50"
+            >
+              Save
+            </button>
+            <button
+              type="button"
+              disabled={savingSize}
+              onClick={() => {
+                setDraft(sizeLabel.startsWith("Shirt #") ? "" : sizeLabel);
+                setEditing(false);
+              }}
+              className="rounded-md border border-zinc-700 px-2 py-1 text-[11px] text-zinc-400"
+            >
+              Cancel
+            </button>
+          </>
+        ) : (
+          <>
+            <span className={`font-medium ${fulfilled ? "text-emerald-300 line-through decoration-emerald-700/50" : "text-zinc-300"}`}>
+              <span className="inline-flex min-w-[2.5rem] items-center justify-center rounded-md border border-zinc-700/80 bg-zinc-950/60 px-2 py-0.5 font-semibold tabular-nums text-zinc-100">
+                {sizeLabel}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setDraft(sizeLabel.startsWith("Shirt #") ? "" : sizeLabel);
+                setEditing(true);
+              }}
+              className="text-[11px] font-medium text-sky-400 hover:text-sky-300"
+            >
+              Edit size
+            </button>
+          </>
+        )}
+      </div>
       <button
         type="button"
         onClick={() => onToggle(item)}
@@ -121,33 +178,43 @@ function OrderRow({
   order,
   onToggleItem,
   togglingItemId,
+  onSaveSizes,
+  savingSizesOrderId,
 }: {
   order: ShirtOrder;
   onToggleItem: (item: ShirtOrderItem, order: ShirtOrder) => void;
   togglingItemId: string | null;
+  onSaveSizes: (order: ShirtOrder, sizes: string[]) => Promise<void>;
+  savingSizesOrderId: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
+  const [editingSizes, setEditingSizes] = useState(false);
   const fulfilledCount = order.items.filter((i) => i.status === "fulfilled").length;
   const allFulfilled = fulfilledCount === order.quantity;
   const partialFulfilled = fulfilledCount > 0 && !allFulfilled;
   const { player } = splitShirtNote(order.note);
   const sizeSummary = orderSizeSummary(order);
+  const labels = resolvedSizeLabelsForOrder(order.note, order.quantity, order.items);
+  const [sizeDrafts, setSizeDrafts] = useState<string[]>(() =>
+    labels.map((l) => (l.startsWith("Shirt #") ? "" : l)),
+  );
   const singleSize =
-    order.quantity === 1
-      ? sizeLabelForItem(order.note, order.items[0]?.seq ?? 1, order.quantity)
+    order.quantity === 1 && order.items[0]
+      ? resolvedSizeLabelForItem(order.note, order.quantity, order.items[0], order.items)
       : "";
+  const saving = savingSizesOrderId === order.id;
 
   return (
     <div className={`border-b border-zinc-800/60 last:border-0 ${allFulfilled ? "bg-emerald-950/5" : ""}`}>
       <div className="flex items-center gap-3 px-4 py-3">
-        {/* Expand toggle (only if more than 1 shirt) */}
-        {order.quantity > 1 ? (
+        {/* Expand toggle (multi-shirt or size edit) */}
+        {order.quantity > 1 || editingSizes ? (
           <button
             type="button"
             onClick={() => setExpanded((v) => !v)}
             className="text-zinc-500 hover:text-zinc-300 shrink-0"
           >
-            <ChevronIcon expanded={expanded} />
+            <ChevronIcon expanded={expanded || editingSizes} />
           </button>
         ) : (
           <div className="w-4 shrink-0" />
@@ -183,6 +250,17 @@ function OrderRow({
             {order.quantity > 1 && (
               <span className="text-xs text-zinc-500 tabular-nums">{fulfilledCount}/{order.quantity}</span>
             )}
+            <button
+              type="button"
+              onClick={() => {
+                setSizeDrafts(labels.map((l) => (l.startsWith("Shirt #") ? "" : l)));
+                setEditingSizes(true);
+                setExpanded(true);
+              }}
+              className="rounded-md border border-zinc-700 px-2 py-0.5 text-[11px] font-medium text-sky-300 hover:border-sky-700/50 hover:bg-sky-950/20"
+            >
+              Sizes
+            </button>
             <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold border ${
               allFulfilled
                 ? "bg-emerald-950/40 text-emerald-300 border-emerald-700/50"
@@ -212,8 +290,8 @@ function OrderRow({
         )}
       </div>
 
-      {/* Expanded multi-shirt items — labeled by size from checkout note */}
-      {expanded && order.quantity > 1 && (
+      {/* Expanded items + size editor */}
+      {(expanded || editingSizes) && (
         <div className="px-4 pb-3 space-y-1.5">
           {player ? (
             <p className="text-xs text-zinc-500 mb-2">
@@ -224,15 +302,80 @@ function OrderRow({
               Note: <span className="text-zinc-300">{order.note}</span>
             </p>
           ) : null}
-          {order.items.map((item) => (
-            <ShirtItemRow
-              key={item.id}
-              item={item}
-              sizeLabel={sizeLabelForItem(order.note, item.seq, order.quantity)}
-              onToggle={(i) => onToggleItem(i, order)}
-              toggling={togglingItemId === item.id}
-            />
-          ))}
+
+          {editingSizes ? (
+            <div className="mb-2 rounded-lg border border-sky-900/40 bg-sky-950/15 p-3 space-y-2">
+              <p className="text-xs font-medium text-sky-100">
+                Correct sizes for vendor / fulfillment (does not change PayPal).
+              </p>
+              {order.items.map((item, idx) => (
+                <label key={item.id} className="flex items-center gap-2 text-xs text-zinc-300">
+                  <span className="w-14 shrink-0 text-zinc-500">Shirt {item.seq}</span>
+                  <input
+                    value={sizeDrafts[idx] ?? ""}
+                    onChange={(e) => {
+                      const next = [...sizeDrafts];
+                      next[idx] = e.target.value;
+                      setSizeDrafts(next);
+                    }}
+                    className="flex-1 rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
+                    placeholder="YS, AM, AXL…"
+                    disabled={saving}
+                  />
+                </label>
+              ))}
+              <div className="flex gap-2 pt-1">
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={async () => {
+                    await onSaveSizes(order, sizeDrafts);
+                    setEditingSizes(false);
+                  }}
+                  className="rounded-lg border border-sky-700/50 bg-sky-950/40 px-3 py-1.5 text-xs font-semibold text-sky-100 hover:bg-sky-900/40 disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Save sizes"}
+                </button>
+                <button
+                  type="button"
+                  disabled={saving}
+                  onClick={() => setEditingSizes(false)}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : null}
+
+          {order.quantity > 1
+            ? order.items.map((item) => (
+                <ShirtItemRow
+                  key={item.id}
+                  item={item}
+                  sizeLabel={resolvedSizeLabelForItem(
+                    order.note,
+                    order.quantity,
+                    item,
+                    order.items,
+                  )}
+                  onToggle={(i) => onToggleItem(i, order)}
+                  toggling={togglingItemId === item.id}
+                  savingSize={saving}
+                  onSizeChange={(i, sizeLabel) => {
+                    const next = order.items.map((it) =>
+                      it.id === i.id ? sizeLabel : (it.sizeLabel ?? ""),
+                    );
+                    // Keep seq order
+                    const ordered = order.items.map((it) =>
+                      it.id === i.id ? sizeLabel : resolvedSizeLabelForItem(order.note, order.quantity, it, order.items),
+                    );
+                    void onSaveSizes(order, ordered.map((s) => (s.startsWith("Shirt #") ? "" : s)));
+                    void next;
+                  }}
+                />
+              ))
+            : null}
         </div>
       )}
     </div>
@@ -247,6 +390,8 @@ function ProductGroup({
   orders,
   onToggleItem,
   togglingItemId,
+  onSaveSizes,
+  savingSizesOrderId,
   onExport,
   onEmail,
   exporting,
@@ -256,6 +401,8 @@ function ProductGroup({
   orders: ShirtOrder[];
   onToggleItem: (item: ShirtOrderItem, order: ShirtOrder) => void;
   togglingItemId: string | null;
+  onSaveSizes: (order: ShirtOrder, sizes: string[]) => Promise<void>;
+  savingSizesOrderId: string | null;
   onExport: (org: OrgId, itemName: string) => void;
   onEmail: (org: OrgId, itemName: string) => void;
   exporting: boolean;
@@ -322,6 +469,8 @@ function ProductGroup({
               order={order}
               onToggleItem={onToggleItem}
               togglingItemId={togglingItemId}
+              onSaveSizes={onSaveSizes}
+              savingSizesOrderId={savingSizesOrderId}
             />
           ))}
         </div>
@@ -337,6 +486,8 @@ function OrgCard({
   orders,
   onToggleItem,
   togglingItemId,
+  onSaveSizes,
+  savingSizesOrderId,
   onExport,
   onEmail,
   exportingKey,
@@ -345,6 +496,8 @@ function OrgCard({
   orders: ShirtOrder[];
   onToggleItem: (item: ShirtOrderItem, order: ShirtOrder) => void;
   togglingItemId: string | null;
+  onSaveSizes: (order: ShirtOrder, sizes: string[]) => Promise<void>;
+  savingSizesOrderId: string | null;
   onExport: (org: OrgId | "all", itemName?: string | null) => void;
   onEmail: (org: OrgId | "all", itemName?: string | null) => void;
   exportingKey: string | null;
@@ -432,6 +585,8 @@ function OrgCard({
                 orders={group.orders}
                 onToggleItem={onToggleItem}
                 togglingItemId={togglingItemId}
+                onSaveSizes={onSaveSizes}
+                savingSizesOrderId={savingSizesOrderId}
                 onExport={(o, item) => onExport(o, item)}
                 onEmail={(o, item) => onEmail(o, item)}
                 exporting={exportingKey === `${org}|${group.itemName}`}
@@ -459,6 +614,7 @@ export default function ParentShirtOrdersPanel() {
   const [error, setError] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
+  const [savingSizesOrderId, setSavingSizesOrderId] = useState<string | null>(null);
   /** `${org}|${itemName}` — empty itemName means whole org / all. */
   const [exportingKey, setExportingKey] = useState<string | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
@@ -523,7 +679,13 @@ export default function ParentShirtOrdersPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ itemId: item.id, status: newStatus }),
       });
-      const json = (await res.json()) as { id?: string; status?: string; fulfilledAt?: string | null; error?: string };
+      const json = (await res.json()) as {
+        id?: string;
+        status?: string;
+        sizeLabel?: string | null;
+        fulfilledAt?: string | null;
+        error?: string;
+      };
       if (!res.ok) throw new Error(json.error ?? "Update failed");
 
       // Optimistic update in local state
@@ -538,7 +700,12 @@ export default function ParentShirtOrdersPanel() {
                   items: o.items.map((i) =>
                     i.id !== item.id
                       ? i
-                      : { ...i, status: json.status as "open" | "fulfilled", fulfilledAt: json.fulfilledAt ?? null },
+                      : {
+                          ...i,
+                          status: json.status as "open" | "fulfilled",
+                          fulfilledAt: json.fulfilledAt ?? null,
+                          sizeLabel: json.sizeLabel !== undefined ? json.sizeLabel : i.sizeLabel,
+                        },
                   ),
                 },
           );
@@ -553,6 +720,38 @@ export default function ParentShirtOrdersPanel() {
       setError(err instanceof Error ? err.message : "Update failed");
     } finally {
       setTogglingItemId(null);
+    }
+  }
+
+  async function saveOrderSizes(order: ShirtOrder, sizes: string[]) {
+    setSavingSizesOrderId(order.id);
+    setError(null);
+    try {
+      const res = await fetch("/api/admin/shirt-orders", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ orderId: order.id, sizes }),
+      });
+      const json = (await res.json()) as { order?: ShirtOrder; error?: string };
+      if (!res.ok) throw new Error(json.error ?? "Failed to save sizes");
+      if (!json.order) throw new Error("No order returned");
+      const updated = json.order;
+      setData((prev) => {
+        if (!prev) return prev;
+        const updateOrg = (list: ShirtOrder[]) =>
+          list.map((o) => (o.id === updated.id ? updated : o));
+        return {
+          ...prev,
+          gonzales: updateOrg(prev.gonzales),
+          ascension: updateOrg(prev.ascension),
+          unknown: updateOrg(prev.unknown),
+        };
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save sizes");
+      throw err;
+    } finally {
+      setSavingSizesOrderId(null);
     }
   }
 
@@ -913,6 +1112,8 @@ export default function ParentShirtOrdersPanel() {
             orders={data.gonzales}
             onToggleItem={toggleItem}
             togglingItemId={togglingItemId}
+            onSaveSizes={saveOrderSizes}
+            savingSizesOrderId={savingSizesOrderId}
             onExport={(o, item) => void handleExport(o, item)}
             onEmail={(o, item) => void openEmailModal(o, item)}
             exportingKey={exportingKey}
@@ -922,6 +1123,8 @@ export default function ParentShirtOrdersPanel() {
             orders={data.ascension}
             onToggleItem={toggleItem}
             togglingItemId={togglingItemId}
+            onSaveSizes={saveOrderSizes}
+            savingSizesOrderId={savingSizesOrderId}
             onExport={(o, item) => void handleExport(o, item)}
             onEmail={(o, item) => void openEmailModal(o, item)}
             exportingKey={exportingKey}

@@ -1,21 +1,22 @@
+import "server-only";
+
 import type { ContentOrgId, OrgId } from "@/lib/siteConfig";
 import { isContentOrgId } from "@/lib/siteConfig";
+import { MERCH_CATALOG_SEED } from "@/lib/merch/catalogSeed";
 import { isSafePayPalUrl } from "@/lib/merch/paypal";
 import {
   applyMerchStatusOverride,
   isMerchProductOpenNow,
   loadMerchStatusOverrides,
 } from "@/lib/merch/productStatus";
-import type { MerchCatalogMeta, MerchProduct } from "@/lib/merch/types";
+import type { MerchCatalogMeta, MerchFulfillmentDesk, MerchProduct } from "@/lib/merch/types";
+import prisma from "@/lib/prisma";
 
 /**
- * League merch catalog (v1) — config-driven, PayPal NCP checkout links.
+ * League merch catalog — DB-backed (MerchProduct), seeded from catalogSeed.
  *
  * Orders land in admin shirt-orders / cap-orders via PayPal sync + webhooks.
- * Add products here; no cart or inventory in v1.
- *
- * Runtime open/closed is stored in MerchProductStatus (admin toggle), same idea
- * as All-Star hat/link `enabled` — closed SKUs leave the public shop without a deploy.
+ * Runtime open/closed lives on MerchProduct (+ legacy MerchProductStatus overlay).
  */
 export const MERCH_CATALOG_META: MerchCatalogMeta = {
   introByOrg: {
@@ -28,144 +29,121 @@ export const MERCH_CATALOG_META: MerchCatalogMeta = {
   },
 };
 
+/** @deprecated Prefer DB via listMerchProductsForOrgAsync. Seed only. */
+export const MERCH_PRODUCTS: MerchProduct[] = MERCH_CATALOG_SEED;
+
+type MerchProductRow = {
+  id: string;
+  orgsJson: string;
+  name: string;
+  summary: string;
+  description: string | null;
+  priceCents: number;
+  paypalUrl: string;
+  imageUrl: string | null;
+  badge: string | null;
+  checkoutHintsJson: string | null;
+  maxQuantity: number | null;
+  fulfillment: string;
+  active: boolean;
+  enabled: boolean;
+  activeFrom: Date | null;
+  activeTo: Date | null;
+  sortOrder: number;
+};
+
+function parseJsonStringArray(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((x): x is string => typeof x === "string");
+  } catch {
+    return [];
+  }
+}
+
+function parseOrgs(raw: string): ContentOrgId[] {
+  return parseJsonStringArray(raw).filter(isContentOrgId);
+}
+
+function parseFulfillment(raw: string): MerchFulfillmentDesk {
+  if (raw === "cap-orders" || raw === "none" || raw === "shirt-orders") return raw;
+  return "shirt-orders";
+}
+
+export function merchProductFromRow(row: MerchProductRow): MerchProduct {
+  return {
+    id: row.id,
+    orgs: parseOrgs(row.orgsJson),
+    name: row.name,
+    summary: row.summary,
+    description: row.description ?? undefined,
+    priceCents: row.priceCents,
+    paypalUrl: row.paypalUrl,
+    imageUrl: row.imageUrl,
+    badge: row.badge,
+    checkoutHints: parseJsonStringArray(row.checkoutHintsJson),
+    maxQuantity: row.maxQuantity,
+    fulfillment: parseFulfillment(row.fulfillment),
+    active: row.active,
+    enabled: row.enabled,
+    activeFrom: row.activeFrom ? row.activeFrom.toISOString() : null,
+    activeTo: row.activeTo ? row.activeTo.toISOString() : null,
+    sortOrder: row.sortOrder,
+  };
+}
+
+export function merchProductToRowData(product: MerchProduct) {
+  return {
+    id: product.id,
+    orgsJson: JSON.stringify(product.orgs),
+    name: product.name,
+    summary: product.summary,
+    description: product.description ?? null,
+    priceCents: product.priceCents,
+    paypalUrl: product.paypalUrl,
+    imageUrl: product.imageUrl ?? null,
+    badge: product.badge ?? null,
+    checkoutHintsJson: product.checkoutHints?.length
+      ? JSON.stringify(product.checkoutHints)
+      : null,
+    maxQuantity: product.maxQuantity ?? null,
+    fulfillment: product.fulfillment,
+    active: product.active,
+    enabled: product.enabled !== false,
+    activeFrom: product.activeFrom ? new Date(product.activeFrom) : null,
+    activeTo: product.activeTo ? new Date(product.activeTo) : null,
+    sortOrder: product.sortOrder,
+  };
+}
+
+let seedPromise: Promise<void> | null = null;
+
 /**
- * Active and upcoming SKUs.
- * - Gonzales 11U State Champs — PayPal NCP Z5HW3TUQFBYWE @ $15
- * - Ascension 7-8U State Champs — PayPal NCP CFDJ5F97YVCF8 @ $15
- * - Ascension 10U State Champs — PayPal NCP CFQP6QBDF7C7N @ $15
- * - Ascension 11U State Champs — PayPal NCP 4XAXPZ9YN4FDA @ $15
- * - Ascension 12U State Champs — PayPal NCP EGP9BSTMFNYCW @ $15
- * - Ascension 12U AP / Team LA Shirt for Waco — PayPal NCP 8RMYRVPQSJMX2 @ $15
+ * Ensure seed SKUs exist in MerchProduct. Safe to call often — only inserts missing ids
+ * (does not overwrite admin edits).
  */
-export const MERCH_PRODUCTS: MerchProduct[] = [
-  {
-    id: "gonzales-11u-state-champs-shirt-2026",
-    orgs: ["gonzales"],
-    name: "Gonzales 11U DYB — State Champs Shirt",
-    summary: "Celebrate the 11U State Championship with the official team shirt.",
-    description:
-      "Fixed-price PayPal checkout. Enter the player name and shirt size(s) on the PayPal form. Quantity up to 10 per order.",
-    priceCents: 1500,
-    paypalUrl: "https://www.paypal.com/ncp/payment/Z5HW3TUQFBYWE",
-    imageUrl: "/images/merch-gonzales-11u-shirt.jpg",
-    badge: "State Champs",
-    checkoutHints: [
-      "Required on PayPal: player name",
-      "Required on PayPal: size(s) for each shirt",
-      "Up to 10 shirts per checkout",
-    ],
-    maxQuantity: 10,
-    fulfillment: "shirt-orders",
-    active: true,
-    sortOrder: 10,
-  },
-  {
-    id: "ascension-7-8u-state-champs-shirt-2026",
-    orgs: ["ascension"],
-    name: "7–8U AP LL — State Champs Shirt",
-    summary: "Celebrate the 7–8U State Championship with the official Ascension Little League shirt.",
-    description:
-      "Fixed-price PayPal checkout. Enter the player name and shirt size(s) on the PayPal form. Quantity up to 10 per order.",
-    priceCents: 1500,
-    paypalUrl: "https://www.paypal.com/ncp/payment/CFDJ5F97YVCF8",
-    imageUrl: "/images/merch-ascension-7-8u-shirt.jpg",
-    badge: "State Champs",
-    checkoutHints: [
-      "Required on PayPal: player name",
-      "Required on PayPal: size(s) for each shirt",
-      "Up to 10 shirts per checkout",
-    ],
-    maxQuantity: 10,
-    fulfillment: "shirt-orders",
-    active: true,
-    sortOrder: 10,
-  },
-  {
-    id: "ascension-10u-state-champs-shirt-2026",
-    orgs: ["ascension"],
-    name: "10U AP LL — State Champs Shirt",
-    summary: "Celebrate the 10U State Championship with the official Ascension Little League shirt.",
-    description:
-      "Fixed-price PayPal checkout. Enter the player name and shirt size(s) on the PayPal form. Quantity up to 10 per order.",
-    priceCents: 1500,
-    paypalUrl: "https://www.paypal.com/ncp/payment/CFQP6QBDF7C7N",
-    imageUrl: "/images/merch-ascension-10u-shirt.jpg",
-    badge: "State Champs",
-    checkoutHints: [
-      "Required on PayPal: player name",
-      "Required on PayPal: size(s) for each shirt",
-      "Up to 10 shirts per checkout",
-    ],
-    maxQuantity: 10,
-    fulfillment: "shirt-orders",
-    active: true,
-    sortOrder: 20,
-  },
-  {
-    id: "ascension-11u-state-champs-shirt-2026",
-    orgs: ["ascension"],
-    name: "11U AP LL — State Champs Shirt",
-    summary: "Celebrate the 11U State Championship with the official Ascension Little League shirt.",
-    description:
-      "Fixed-price PayPal checkout. Enter the player name and shirt size(s) on the PayPal form. Quantity up to 10 per order.",
-    priceCents: 1500,
-    paypalUrl: "https://www.paypal.com/ncp/payment/4XAXPZ9YN4FDA",
-    imageUrl: "/images/merch-ascension-11u-shirt.jpg",
-    badge: "State Champs",
-    checkoutHints: [
-      "Required on PayPal: player name",
-      "Required on PayPal: size(s) for each shirt",
-      "Up to 10 shirts per checkout",
-    ],
-    maxQuantity: 10,
-    fulfillment: "shirt-orders",
-    active: true,
-    sortOrder: 30,
-  },
-  {
-    id: "ascension-12u-state-champs-shirt-2026",
-    orgs: ["ascension"],
-    name: "12U AP LL — State Champs Shirt",
-    summary: "Celebrate the 12U State Championship with the official Ascension Little League shirt.",
-    description:
-      "Fixed-price PayPal checkout. Enter the player name and shirt size(s) on the PayPal form. Quantity up to 10 per order.",
-    priceCents: 1500,
-    paypalUrl: "https://www.paypal.com/ncp/payment/EGP9BSTMFNYCW",
-    imageUrl: "/images/merch-ascension-12u-shirt.jpg",
-    badge: "State Champs",
-    checkoutHints: [
-      "Required on PayPal: player name",
-      "Required on PayPal: size(s) for each shirt",
-      "Up to 10 shirts per checkout",
-    ],
-    maxQuantity: 10,
-    fulfillment: "shirt-orders",
-    active: true,
-    sortOrder: 40,
-  },
-  {
-    id: "ascension-12u-waco-team-la-shirt-2026",
-    orgs: ["ascension"],
-    name: "12U AP LL — AP / Team LA Shirt for Waco",
-    summary:
-      "12U AP / Team LA shirt for the Waco trip. Official Ascension Little League checkout via PayPal.",
-    description:
-      "Fixed-price PayPal checkout. Enter the player name and shirt size(s) on the PayPal form. Quantity up to 10 per order.",
-    priceCents: 1500,
-    paypalUrl: "https://www.paypal.com/ncp/payment/8RMYRVPQSJMX2",
-    imageUrl: "/images/merch-ascension-12u-waco-shirt.jpg",
-    badge: "Waco",
-    checkoutHints: [
-      "Required on PayPal: player name",
-      "Required on PayPal: size(s) for each shirt",
-      "Up to 10 shirts per checkout",
-    ],
-    maxQuantity: 10,
-    fulfillment: "shirt-orders",
-    active: true,
-    sortOrder: 50,
-  },
-];
+export async function ensureMerchCatalogSeeded(): Promise<void> {
+  if (!seedPromise) {
+    seedPromise = (async () => {
+      try {
+        const existing = await prisma.merchProduct.findMany({ select: { id: true } });
+        const have = new Set(existing.map((r) => r.id));
+        const missing = MERCH_CATALOG_SEED.filter((p) => !have.has(p.id));
+        for (const product of missing) {
+          const data = merchProductToRowData(product);
+          await prisma.merchProduct.create({ data });
+        }
+      } catch (err) {
+        // Table may not exist mid-migrate — callers fall back to seed.
+        console.warn("[merch/catalog] seed skipped:", err instanceof Error ? err.message : err);
+        seedPromise = null;
+      }
+    })();
+  }
+  await seedPromise;
+}
 
 export function resolveMerchOrg(
   org: OrgId | ContentOrgId | string | null | undefined,
@@ -175,13 +153,28 @@ export function resolveMerchOrg(
   return null;
 }
 
+/** Sync seed lookup (no DB). Prefer getMerchProductByIdAsync. */
 export function getMerchProductById(productId: string): MerchProduct | null {
-  return MERCH_PRODUCTS.find((p) => p.id === productId) ?? null;
+  return MERCH_CATALOG_SEED.find((p) => p.id === productId) ?? null;
+}
+
+export async function getMerchProductByIdAsync(
+  productId: string,
+): Promise<MerchProduct | null> {
+  await ensureMerchCatalogSeeded();
+  try {
+    const row = await prisma.merchProduct.findUnique({ where: { id: productId } });
+    if (!row) return getMerchProductById(productId);
+    const product = merchProductFromRow(row);
+    const overrides = await loadMerchStatusOverrides([productId]);
+    return applyMerchStatusOverride(product, overrides.get(productId));
+  } catch {
+    return getMerchProductById(productId);
+  }
 }
 
 /**
- * Sync filter against the static catalog only (no DB). Prefer
- * `listMerchProductsForOrgAsync` for shop/admin so open/closed status applies.
+ * Sync filter against seed only. Prefer listMerchProductsForOrgAsync.
  */
 export function listMerchProductsForOrg(
   org: OrgId | ContentOrgId | string | null | undefined,
@@ -190,7 +183,7 @@ export function listMerchProductsForOrg(
   const contentOrg = resolveMerchOrg(org);
   if (!contentOrg) return [];
 
-  return MERCH_PRODUCTS.filter((p) => {
+  return MERCH_CATALOG_SEED.filter((p) => {
     if (!p.orgs.includes(contentOrg)) return false;
     if (!opts?.includeInactive && !p.active) return false;
     if (!isSafePayPalUrl(p.paypalUrl)) return false;
@@ -199,7 +192,7 @@ export function listMerchProductsForOrg(
 }
 
 /**
- * Catalog for org with DB open/closed overrides applied.
+ * Catalog for org from DB (+ legacy status overlay + open window).
  * - Public shop: omit closed / out-of-window products (default).
  * - Admin: pass `includeClosed: true` to list everything with status fields.
  */
@@ -207,15 +200,33 @@ export async function listMerchProductsForOrgAsync(
   org: OrgId | ContentOrgId | string | null | undefined,
   opts?: { includeInactive?: boolean; includeClosed?: boolean },
 ): Promise<MerchProduct[]> {
-  const base = listMerchProductsForOrg(org, {
-    includeInactive: opts?.includeInactive ?? opts?.includeClosed,
-  });
-  if (base.length === 0) return [];
+  const contentOrg = resolveMerchOrg(org);
+  if (!contentOrg) return [];
 
-  const overrides = await loadMerchStatusOverrides(base.map((p) => p.id));
+  await ensureMerchCatalogSeeded();
+
+  let products: MerchProduct[] = [];
+  try {
+    const rows = await prisma.merchProduct.findMany({
+      orderBy: [{ sortOrder: "asc" }, { name: "asc" }],
+    });
+    products = rows
+      .map(merchProductFromRow)
+      .filter((p) => p.orgs.includes(contentOrg))
+      .filter((p) => opts?.includeInactive || opts?.includeClosed || p.active)
+      .filter((p) => isSafePayPalUrl(p.paypalUrl));
+  } catch {
+    products = listMerchProductsForOrg(org, {
+      includeInactive: opts?.includeInactive ?? opts?.includeClosed,
+    });
+  }
+
+  if (products.length === 0) return [];
+
+  const overrides = await loadMerchStatusOverrides(products.map((p) => p.id));
   const now = new Date();
 
-  return base
+  return products
     .map((p) => applyMerchStatusOverride(p, overrides.get(p.id)))
     .filter((p) => {
       if (opts?.includeClosed || opts?.includeInactive) return true;
@@ -248,4 +259,23 @@ export function fulfillmentDeskPath(desk: MerchProduct["fulfillment"]): string |
   if (desk === "shirt-orders") return "/admin/shirt-orders";
   if (desk === "cap-orders") return "/admin/cap-orders";
   return null;
+}
+
+export async function upsertMerchProductRecord(
+  product: MerchProduct,
+  adminId?: string | null,
+): Promise<MerchProduct> {
+  const data = merchProductToRowData(product);
+  const row = await prisma.merchProduct.upsert({
+    where: { id: product.id },
+    create: {
+      ...data,
+      updatedByAdminId: adminId ?? null,
+    },
+    update: {
+      ...data,
+      updatedByAdminId: adminId ?? null,
+    },
+  });
+  return merchProductFromRow(row);
 }

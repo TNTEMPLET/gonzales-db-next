@@ -2,19 +2,35 @@ import "server-only";
 
 import { randomBytes } from "crypto";
 
-import { getMerchProductById } from "@/lib/merch/catalog";
-import {
-  applyMerchStatusOverride,
-  isMerchProductOpenNow,
-  loadMerchStatusOverrides,
-} from "@/lib/merch/productStatus";
+import { getMerchProductByIdAsync } from "@/lib/merch/catalog";
+import { isMerchProductOpenNow } from "@/lib/merch/productStatus";
 import {
   buildShirtCheckoutNote,
   SHIRT_SIZE_OPTIONS,
 } from "@/lib/merch/shirtSizeOptions";
+import { shirtOrderItemCreatesFromNote } from "@/lib/merch/shirtSizes";
 import prisma from "@/lib/prisma";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { isContentOrgId } from "@/lib/siteConfig";
+
+function shirtOrderItemCreatesFromDraftSizes(
+  sizesJson: string,
+  quantity: number,
+): { seq: number; sizeLabel: string | null }[] {
+  let sizes: string[] = [];
+  try {
+    const parsed = JSON.parse(sizesJson) as unknown;
+    if (Array.isArray(parsed)) {
+      sizes = parsed.filter((x): x is string => typeof x === "string").map((s) => s.trim());
+    }
+  } catch {
+    sizes = [];
+  }
+  return Array.from({ length: Math.max(1, quantity) }, (_, i) => ({
+    seq: i + 1,
+    sizeLabel: sizes[i]?.trim() || null,
+  }));
+}
 
 /** Public draft code prefix — kept short for PayPal note fields. */
 export const MERCH_DRAFT_CODE_PREFIX = "MO-";
@@ -264,9 +280,7 @@ export async function completeMerchDraftFromPayPalCapture(input: {
         itemName: updated.productName,
         txDate: input.txDate ?? new Date(),
         items: {
-          create: Array.from({ length: updated.quantity }, (_, i) => ({
-            seq: i + 1,
-          })),
+          create: shirtOrderItemCreatesFromDraftSizes(updated.sizesJson, updated.quantity),
         },
       },
     });
@@ -311,7 +325,7 @@ export async function createMerchOrderDraft(
     }
   }
 
-  const product = getMerchProductById(input.productId);
+  const product = await getMerchProductByIdAsync(input.productId);
   if (!product) {
     throw new DraftValidationError("Unknown product");
   }
@@ -322,9 +336,7 @@ export async function createMerchOrderDraft(
     throw new DraftValidationError("Product is not available");
   }
 
-  const overrides = await loadMerchStatusOverrides([product.id]);
-  const withStatus = applyMerchStatusOverride(product, overrides.get(product.id));
-  if (!input.allowClosedProduct && !isMerchProductOpenNow(withStatus)) {
+  if (!input.allowClosedProduct && !isMerchProductOpenNow(product)) {
     throw new DraftValidationError("This product is not currently accepting orders");
   }
 
@@ -482,6 +494,8 @@ export async function resolveShirtOrderFromDraft(input: {
   quantity: number;
   org: string;
   draftCode: string | null;
+  /** ShirtOrderItem create rows with best-effort size labels. */
+  itemCreates: { seq: number; sizeLabel: string | null }[];
 }> {
   const match = await matchAndMarkMerchDraftPaid({
     note: input.note,
@@ -491,11 +505,14 @@ export async function resolveShirtOrderFromDraft(input: {
   });
 
   if (!match.matched || !match.draft) {
+    const quantity = input.fallbackQuantity;
+    const note = input.note ?? null;
     return {
-      note: input.note ?? null,
-      quantity: input.fallbackQuantity,
+      note,
+      quantity,
       org: input.fallbackOrg,
       draftCode: null,
+      itemCreates: shirtOrderItemCreatesFromNote(note, quantity),
     };
   }
 
@@ -504,12 +521,22 @@ export async function resolveShirtOrderFromDraft(input: {
     match.quantity && match.quantity > 0 ? match.quantity : input.fallbackQuantity;
   const org =
     match.org && match.org !== "unknown" ? match.org : input.fallbackOrg;
+  const note = match.resolvedNote ?? input.note ?? null;
+  const itemCreates = match.draft
+    ? shirtOrderItemCreatesFromDraftSizes(
+        // draft public type may not expose sizesJson — re-read from match fields via note sizes
+        JSON.stringify(match.draft.sizes ?? []),
+        quantity,
+      )
+    : shirtOrderItemCreatesFromNote(note, quantity);
 
   return {
-    note: match.resolvedNote ?? input.note ?? null,
+    note,
     quantity,
     org,
     draftCode: match.draft.code,
+    itemCreates:
+      itemCreates.some((i) => i.sizeLabel) ? itemCreates : shirtOrderItemCreatesFromNote(note, quantity),
   };
 }
 

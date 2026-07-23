@@ -224,3 +224,54 @@ export function sizeLabelForItem(
   const label = labels[seq - 1]?.trim() ?? "";
   return label || `Shirt #${seq}`;
 }
+
+export type ShirtSizeItemRef = {
+  seq: number;
+  sizeLabel?: string | null;
+};
+
+/**
+ * Prefer stored per-item sizeLabel (admin-corrected); fall back to parsing the PayPal note.
+ */
+export function resolvedSizeLabelsForOrder(
+  note: string | null | undefined,
+  quantity: number,
+  items?: ShirtSizeItemRef[] | null,
+): string[] {
+  const fromNote = sizeLabelsForOrder(note, quantity);
+  const q = Math.max(1, quantity);
+  const bySeq = new Map<number, string>();
+  for (const item of items ?? []) {
+    const label = (item.sizeLabel ?? "").trim();
+    if (label) bySeq.set(item.seq, label);
+  }
+  return Array.from({ length: q }, (_, i) => {
+    const seq = i + 1;
+    return bySeq.get(seq) || fromNote[i]?.trim() || "";
+  });
+}
+
+export function resolvedSizeLabelForItem(
+  note: string | null | undefined,
+  quantity: number,
+  item: ShirtSizeItemRef,
+  items?: ShirtSizeItemRef[] | null,
+): string {
+  const stored = (item.sizeLabel ?? "").trim();
+  if (stored) return stored;
+  const all = resolvedSizeLabelsForOrder(note, quantity, items);
+  const label = all[item.seq - 1]?.trim() ?? "";
+  return label || `Shirt #${item.seq}`;
+}
+
+/** Build create payload for ShirtOrderItem rows with parsed sizes from note/draft. */
+export function shirtOrderItemCreatesFromNote(
+  note: string | null | undefined,
+  quantity: number,
+): { seq: number; sizeLabel: string | null }[] {
+  const labels = sizeLabelsForOrder(note, quantity);
+  return Array.from({ length: Math.max(1, quantity) }, (_, i) => {
+    const label = labels[i]?.trim() || null;
+    return { seq: i + 1, sizeLabel: label };
+  });
+}

@@ -82,6 +82,60 @@ export async function upsertMerchProductStatus(input: {
   activeTo?: Date | null;
   adminId?: string | null;
 }): Promise<MerchStatusOverride> {
+  // Prefer writing open/closed onto MerchProduct when the row exists.
+  try {
+    const existing = await prisma.merchProduct.findUnique({
+      where: { id: input.productId },
+      select: { id: true },
+    });
+    if (existing) {
+      const row = await prisma.merchProduct.update({
+        where: { id: input.productId },
+        data: {
+          enabled: input.enabled,
+          ...(input.activeFrom !== undefined ? { activeFrom: input.activeFrom } : {}),
+          ...(input.activeTo !== undefined ? { activeTo: input.activeTo } : {}),
+          updatedByAdminId: input.adminId ?? null,
+        },
+        select: {
+          id: true,
+          enabled: true,
+          activeFrom: true,
+          activeTo: true,
+          updatedAt: true,
+          updatedByAdminId: true,
+        },
+      });
+      // Keep legacy status row in sync for older readers.
+      await prisma.merchProductStatus.upsert({
+        where: { productId: input.productId },
+        create: {
+          productId: input.productId,
+          enabled: input.enabled,
+          activeFrom: input.activeFrom ?? null,
+          activeTo: input.activeTo ?? null,
+          updatedByAdminId: input.adminId ?? null,
+        },
+        update: {
+          enabled: input.enabled,
+          ...(input.activeFrom !== undefined ? { activeFrom: input.activeFrom } : {}),
+          ...(input.activeTo !== undefined ? { activeTo: input.activeTo } : {}),
+          updatedByAdminId: input.adminId ?? null,
+        },
+      });
+      return {
+        productId: row.id,
+        enabled: row.enabled,
+        activeFrom: row.activeFrom,
+        activeTo: row.activeTo,
+        updatedAt: row.updatedAt,
+        updatedByAdminId: row.updatedByAdminId,
+      };
+    }
+  } catch {
+    // Fall through to legacy status table only.
+  }
+
   const row = await prisma.merchProductStatus.upsert({
     where: { productId: input.productId },
     create: {

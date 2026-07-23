@@ -119,7 +119,7 @@ export async function POST(request: NextRequest) {
       itemName: fullTx.itemName,
       txDate: fullTx.txDate,
       items: {
-        create: Array.from({ length: resolved.quantity }, (_, i) => ({ seq: i + 1 })),
+        create: resolved.itemCreates,
       },
     },
   });

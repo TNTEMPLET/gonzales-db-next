@@ -308,6 +308,7 @@ model AdminUser {
   allStarPaymentsMarkedPaid        AllStarPayment[]                  @relation("AllStarPaymentMarkedPaidBy")
   parkInfoPagesUpdated             ParkInfoPage[]                    @relation("ParkInfoUpdatedBy")
   merchProductStatusesUpdated      MerchProductStatus[]              @relation("MerchProductStatusUpdatedBy")
+  merchProductsUpdated             MerchProduct[]                    @relation("MerchProductUpdatedBy")
   scheduleSeasonsCreated           ScheduleSeason[]                  @relation("ScheduleSeasonCreatedBy")
   scheduleExportBatchesCreated     ScheduleExportBatch[]             @relation("ScheduleExportBatchCreatedBy")
   volunteerRequirementsReviewed    VolunteerRequirementStatus[]      @relation("VolunteerRequirementReviewedBy")
@@ -1922,6 +1923,8 @@ model ShirtOrderItem {
   orderId     String
   order       ShirtOrderRecord @relation(fields: [orderId], references: [id], onDelete: Cascade)
   seq         Int
+  /// Canonical size for this unit (admin-editable). When null, UI falls back to parsing order.note.
+  sizeLabel   String?
   status      String           @default("open")
   fulfilledAt DateTime?
   createdAt   DateTime         @default(now())
@@ -1932,13 +1935,44 @@ model ShirtOrderItem {
   @@index([status])
 }
 
-/// Runtime open/closed override for code-configured merch catalog SKUs (shirts, caps, etc.).
-/// When no row exists, the product is treated as open (if catalog `active` is true).
-/// Mirrors All-Star page link `enabled` / schedule controls so boards can stop taking orders
-/// without a code deploy.
+/// Shop catalog SKU (PayPal NCP link, copy, image). Source of truth in DB;
+/// seed rows ship from lib/merch/catalogSeed.ts on first load / migrate.
+model MerchProduct {
+  id               String    @id
+  /// JSON string array of content org ids, e.g. ["ascension"]
+  orgsJson         String
+  name             String
+  summary          String    @default("")
+  description      String?
+  priceCents       Int
+  paypalUrl        String
+  imageUrl         String?
+  badge            String?
+  /// JSON string array of checkout hint strings
+  checkoutHintsJson String?
+  maxQuantity      Int?
+  /// shirt-orders | cap-orders | none
+  fulfillment      String    @default("shirt-orders")
+  /// Catalog retired flag (hidden everywhere except admin includeInactive)
+  active           Boolean   @default(true)
+  /// Runtime open/closed — false hides from public shop
+  enabled          Boolean   @default(true)
+  activeFrom       DateTime?
+  activeTo         DateTime?
+  sortOrder        Int       @default(100)
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  updatedByAdminId String?
+  updatedByAdmin   AdminUser? @relation("MerchProductUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([active, enabled, sortOrder])
+}
+
+/// Legacy open/closed overlay (pre-DB catalog). Still applied when present so
+/// existing toggles keep working; new writes go to MerchProduct.enabled.
 model MerchProductStatus {
   id               String    @id @default(cuid())
-  /// Matches MerchProduct.id from lib/merch/catalog.ts
+  /// Matches MerchProduct.id
   productId        String    @unique
   /// false = closed / not taking orders (hidden from public shop)
   enabled          Boolean   @default(true)
