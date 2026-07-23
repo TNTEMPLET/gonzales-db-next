@@ -22,7 +22,16 @@ function resolveOrg(itemName: string | null, gonzalesKw: string, ascensionKw: st
   if (gonzalesKw && name.includes(gonzalesKw.toLowerCase())) return "gonzales";
   if (ascensionKw && name.includes(ascensionKw.toLowerCase())) return "ascension";
   if (name.includes("gonzales") || name.includes("dyb") || name.includes("diamond")) return "gonzales";
-  if (name.includes("ascension") || name.includes("llb") || name.includes("little league")) return "ascension";
+  // Ascension LLB buttons often say "AP LL" (not "llb" / full "little league").
+  if (
+    name.includes("ascension") ||
+    name.includes("llb") ||
+    name.includes("little league") ||
+    name.includes("ap ll") ||
+    /\bll\b/.test(name)
+  ) {
+    return "ascension";
+  }
   return "unknown";
 }
 

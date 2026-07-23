@@ -93,13 +93,20 @@ Env (master / admin + org sites that run the webhook):
 | Unit price (cents) | `PAYPAL_CAP_PRICE_CENTS` (`2000`) | `PAYPAL_SHIRT_PRICE_CENTS` (`1500` = $15) |
 | Webhook id | `PAYPAL_WEBHOOK_ID_CAPS` → `PAYPAL_WEBHOOK_ID` | `PAYPAL_WEBHOOK_ID_SHIRTS` → caps id → `PAYPAL_WEBHOOK_ID` |
 
-**Active shirt button (Gonzales 11U):**  
-https://www.paypal.com/ncp/payment/Z5HW3TUQFBYWE — item name `Gonzales 11U DYB - State Champs Shirt`, **$15.00**, qty up to 10, required memos: player name + size(s).
+**Active shirt buttons:**
 
-When shirt keywords are empty, sync/webhook match item names containing `shirt` or `state champ` (covers this button). Recommended env:
+| Org | Item name | PayPal NCP | Price |
+|-----|-----------|------------|-------|
+| Gonzales DYB | `Gonzales 11U DYB - State Champs Shirt` | https://www.paypal.com/ncp/payment/Z5HW3TUQFBYWE | $15 |
+| Ascension LLB | `7-8U, AP LL - State Champs Shirt` | https://www.paypal.com/ncp/payment/CFDJ5F97YVCF8 | $15 |
+
+Both: qty up to 10, required memos player name + size(s). Org is inferred from item title (`DYB` / `AP LL`).
+
+When shirt keywords are empty, sync/webhook match item names containing `shirt` or `state champ`. Recommended env:
 
 ```
 PAYPAL_SHIRT_ITEM_GONZALES=state champs shirt
+PAYPAL_SHIRT_ITEM_ASCENSION=ap ll
 PAYPAL_SHIRT_PRICE_CENTS=1500
 ```
 
