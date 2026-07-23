@@ -82,7 +82,7 @@ export default async function AdminShopPage({
 
         <AllStarProgramNav stage="shop" org={isContentOrgId(currentOrg) ? currentOrg : null} />
 
-        <div className="mb-6 grid gap-3 sm:grid-cols-3">
+        <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <Link
             href={`/admin/shirt-orders${orgQuery}`}
             className="rounded-xl border border-zinc-800 bg-zinc-900/70 px-4 py-3 text-sm text-zinc-200 hover:border-zinc-600"
@@ -96,6 +96,13 @@ export default async function AdminShopPage({
           >
             <p className="font-semibold text-white">Cap orders</p>
             <p className="mt-1 text-xs text-zinc-500">All-Star parent caps</p>
+          </Link>
+          <Link
+            href={`/admin/shop/test-order${orgQuery}`}
+            className="rounded-xl border border-amber-800/40 bg-amber-950/20 px-4 py-3 text-sm text-zinc-200 hover:border-amber-600/50"
+          >
+            <p className="font-semibold text-amber-100">Test order form</p>
+            <p className="mt-1 text-xs text-amber-100/70">Prototype structured checkout</p>
           </Link>
           <a
             href="https://www.paypal.com/buttons/"
