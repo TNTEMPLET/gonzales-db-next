@@ -12,11 +12,11 @@ import type { MerchCatalogMeta, MerchProduct } from "@/lib/merch/types";
 export const MERCH_CATALOG_META: MerchCatalogMeta = {
   introByOrg: {
     gonzales:
-      "Official Gonzales Diamond Baseball gear. Checkout is handled securely by PayPal — pick your sizes and player name on the PayPal page.",
+      "Members-only Gonzales Diamond Baseball gear for players and families. Checkout is handled securely by PayPal — pick your sizes and player name on the PayPal page.",
     ascension:
-      "Official Ascension Little League gear. Checkout is handled securely by PayPal.",
+      "Members-only Ascension Little League gear for players and families. Checkout is handled securely by PayPal.",
     fallball:
-      "AP Fall Ball merch when available. Checkout is handled securely by PayPal.",
+      "Members-only AP Fall Ball merch when available. Checkout is handled securely by PayPal.",
   },
 };
 
