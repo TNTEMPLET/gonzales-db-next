@@ -30,6 +30,23 @@ function countTotal(orders: ShirtOrder[]) {
   return orders.reduce((s, o) => s + o.quantity, 0);
 }
 
+/** Group orders by exact PayPal item title (one NCP button / product link). */
+function groupOrdersByItem(orders: ShirtOrder[]): { itemName: string; orders: ShirtOrder[] }[] {
+  const map = new Map<string, ShirtOrder[]>();
+  for (const o of orders) {
+    const key = (o.itemName ?? "").trim() || "(unknown product)";
+    const list = map.get(key);
+    if (list) list.push(o);
+    else map.set(key, [o]);
+  }
+  return [...map.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([itemName, list]) => ({
+      itemName,
+      orders: list.sort((x, y) => y.txDate.localeCompare(x.txDate)),
+    }));
+}
+
 /** Compact size summary for the order row (e.g. "YS, YM, AL"). */
 function orderSizeSummary(order: ShirtOrder): string {
   const labels = sizeLabelsForOrder(order.note, order.quantity).filter((l) => l.trim());
@@ -222,6 +239,97 @@ function OrderRow({
   );
 }
 
+// ─── Product group (one PayPal NCP link / item title) ─────────────────────────
+
+function ProductGroup({
+  org,
+  itemName,
+  orders,
+  onToggleItem,
+  togglingItemId,
+  onExport,
+  onEmail,
+  exporting,
+}: {
+  org: OrgId;
+  itemName: string;
+  orders: ShirtOrder[];
+  onToggleItem: (item: ShirtOrderItem, order: ShirtOrder) => void;
+  togglingItemId: string | null;
+  onExport: (org: OrgId, itemName: string) => void;
+  onEmail: (org: OrgId, itemName: string) => void;
+  exporting: boolean;
+}) {
+  const [expanded, setExpanded] = useState(true);
+  const totalQty = countTotal(orders);
+  const fulfilledQty = countFulfilled(orders);
+  const openQty = totalQty - fulfilledQty;
+  const knownProduct = itemName !== "(unknown product)";
+
+  return (
+    <div className="border-b border-zinc-800/80 last:border-b-0">
+      <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-3 bg-zinc-950/40">
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-w-0 flex-1 items-center gap-2 text-left"
+        >
+          <ChevronIcon expanded={expanded} />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold text-zinc-100">{itemName}</p>
+            <p className="text-[11px] text-zinc-500">
+              {orders.length} order{orders.length !== 1 ? "s" : ""} · {fulfilledQty}/{totalQty} filled
+              {openQty > 0 ? ` · ${openQty} open` : ""}
+              {" · one PayPal link"}
+            </p>
+          </div>
+        </button>
+        <div className="flex shrink-0 gap-2">
+          <button
+            type="button"
+            onClick={() => onEmail(org, knownProduct ? itemName : "")}
+            disabled={orders.length === 0 || !knownProduct}
+            title={knownProduct ? "Email CSV for this product only" : "Missing PayPal item name"}
+            className="flex items-center gap-1.5 rounded-lg border border-violet-800/50 bg-violet-950/20 px-3 py-1.5 text-xs font-medium text-violet-200 hover:bg-violet-900/30 disabled:opacity-50 transition-colors"
+          >
+            <MailIcon />
+            Email
+          </button>
+          <button
+            type="button"
+            onClick={() => onExport(org, knownProduct ? itemName : "")}
+            disabled={exporting || orders.length === 0 || !knownProduct}
+            title={knownProduct ? "Export CSV for this product only" : "Missing PayPal item name"}
+            className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+          >
+            <CsvIcon />
+            {exporting ? "…" : "Export"}
+          </button>
+        </div>
+      </div>
+      {expanded && (
+        <div>
+          <div className="grid grid-cols-[2rem_1fr_auto] sm:grid-cols-[2rem_1fr_7rem_7rem_auto] gap-x-4 px-4 py-2 border-b border-zinc-800/40">
+            <div />
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Payer</p>
+            <p className="hidden sm:block text-xs font-semibold uppercase tracking-wide text-zinc-500">Size(s)</p>
+            <p className="hidden sm:block text-xs font-semibold uppercase tracking-wide text-zinc-500">Amount</p>
+            <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 text-right">Status</p>
+          </div>
+          {orders.map((order) => (
+            <OrderRow
+              key={order.id}
+              order={order}
+              onToggleItem={onToggleItem}
+              togglingItemId={togglingItemId}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ─── Org card ─────────────────────────────────────────────────────────────────
 
 function OrgCard({
@@ -231,21 +339,23 @@ function OrgCard({
   togglingItemId,
   onExport,
   onEmail,
-  exporting,
+  exportingKey,
 }: {
   org: OrgId;
   orders: ShirtOrder[];
   onToggleItem: (item: ShirtOrderItem, order: ShirtOrder) => void;
   togglingItemId: string | null;
-  onExport: (org: OrgId) => void;
-  onEmail: (org: OrgId) => void;
-  exporting: boolean;
+  onExport: (org: OrgId | "all", itemName?: string | null) => void;
+  onEmail: (org: OrgId | "all", itemName?: string | null) => void;
+  exportingKey: string | null;
 }) {
   const [expanded, setExpanded] = useState(false);
   const meta = ORG_META[org];
   const totalQty = countTotal(orders);
   const fulfilledQty = countFulfilled(orders);
   const openQty = totalQty - fulfilledQty;
+  const productGroups = groupOrdersByItem(orders);
+  const orgExporting = exportingKey === `${org}|`;
 
   return (
     <div className={`rounded-xl border ${meta.border} ${meta.bg} overflow-hidden`}>
@@ -258,7 +368,12 @@ function OrgCard({
           <ChevronIcon expanded={expanded} />
           <div>
             <p className={`text-sm font-semibold ${meta.color}`}>{meta.abbr}</p>
-            <p className="text-xs text-zinc-500 mt-0.5">{meta.label}</p>
+            <p className="text-xs text-zinc-500 mt-0.5">
+              {meta.label}
+              {productGroups.length > 0
+                ? ` · ${productGroups.length} product${productGroups.length !== 1 ? "s" : ""}`
+                : ""}
+            </p>
           </div>
         </div>
         <div className="flex items-center gap-6 shrink-0 ml-4">
@@ -281,47 +396,47 @@ function OrgCard({
 
       {expanded && (
         <div className="border-t border-zinc-800">
-          <div className="flex justify-end gap-2 px-4 py-2.5 border-b border-zinc-800/60">
-            <button
-              type="button"
-              onClick={() => onEmail(org)}
-              disabled={orders.length === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-violet-800/50 bg-violet-950/20 px-3 py-1.5 text-xs font-medium text-violet-200 hover:bg-violet-900/30 disabled:opacity-50 transition-colors"
-            >
-              <MailIcon />
-              Email report
-            </button>
-            <button
-              type="button"
-              onClick={() => onExport(org)}
-              disabled={exporting || orders.length === 0}
-              className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
-            >
-              <CsvIcon />
-              {exporting ? "Exporting…" : "Export CSV"}
-            </button>
+          <div className="flex flex-wrap items-center justify-between gap-2 px-4 py-2.5 border-b border-zinc-800/60">
+            <p className="text-[11px] text-zinc-500">
+              Export/email each product separately for the vendor — one PayPal link per file.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => onEmail(org)}
+                disabled={orders.length === 0}
+                className="flex items-center gap-1.5 rounded-lg border border-violet-800/50 bg-violet-950/20 px-3 py-1.5 text-xs font-medium text-violet-200 hover:bg-violet-900/30 disabled:opacity-50 transition-colors"
+              >
+                <MailIcon />
+                Email all products
+              </button>
+              <button
+                type="button"
+                onClick={() => onExport(org)}
+                disabled={orgExporting || orders.length === 0}
+                className="flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:text-zinc-100 hover:bg-zinc-800 disabled:opacity-50 transition-colors"
+              >
+                <CsvIcon />
+                {orgExporting ? "Exporting…" : "Export all products"}
+              </button>
+            </div>
           </div>
           {orders.length === 0 ? (
             <p className="px-4 py-6 text-center text-sm text-zinc-500 italic">No orders yet.</p>
           ) : (
-            <div>
-              {/* Table header */}
-              <div className="grid grid-cols-[2rem_1fr_auto] sm:grid-cols-[2rem_1fr_7rem_7rem_auto] gap-x-4 px-4 py-2 border-b border-zinc-800/40">
-                <div />
-                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Payer</p>
-                <p className="hidden sm:block text-xs font-semibold uppercase tracking-wide text-zinc-500">Size(s)</p>
-                <p className="hidden sm:block text-xs font-semibold uppercase tracking-wide text-zinc-500">Amount</p>
-                <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500 text-right">Status</p>
-              </div>
-              {orders.map((order) => (
-                <OrderRow
-                  key={order.id}
-                  order={order}
-                  onToggleItem={onToggleItem}
-                  togglingItemId={togglingItemId}
-                />
-              ))}
-            </div>
+            productGroups.map((group) => (
+              <ProductGroup
+                key={group.itemName}
+                org={org}
+                itemName={group.itemName}
+                orders={group.orders}
+                onToggleItem={onToggleItem}
+                togglingItemId={togglingItemId}
+                onExport={(o, item) => onExport(o, item)}
+                onEmail={(o, item) => onEmail(o, item)}
+                exporting={exportingKey === `${org}|${group.itemName}`}
+              />
+            ))
           )}
         </div>
       )}
@@ -333,6 +448,10 @@ function OrgCard({
 
 type EmailFormOrg = OrgId | "all";
 
+function exportKey(org: OrgId | "all", itemName?: string | null) {
+  return `${org}|${(itemName ?? "").trim()}`;
+}
+
 export default function ParentShirtOrdersPanel() {
   const [data, setData] = useState<ShirtOrdersResponse | null>(null);
   const [loading, setLoading] = useState(false);
@@ -340,9 +459,11 @@ export default function ParentShirtOrdersPanel() {
   const [error, setError] = useState<string | null>(null);
   const [syncMsg, setSyncMsg] = useState<string | null>(null);
   const [togglingItemId, setTogglingItemId] = useState<string | null>(null);
-  const [exportingOrg, setExportingOrg] = useState<OrgId | "all" | null>(null);
+  /** `${org}|${itemName}` — empty itemName means whole org / all. */
+  const [exportingKey, setExportingKey] = useState<string | null>(null);
   const [emailOpen, setEmailOpen] = useState(false);
   const [emailOrg, setEmailOrg] = useState<EmailFormOrg>("all");
+  const [emailItemName, setEmailItemName] = useState("");
   const [emailTo, setEmailTo] = useState("");
   const [emailSubject, setEmailSubject] = useState("");
   const [emailMessage, setEmailMessage] = useState("");
@@ -435,10 +556,13 @@ export default function ParentShirtOrdersPanel() {
     }
   }
 
-  async function handleExport(org: OrgId | "all") {
-    setExportingOrg(org);
+  async function handleExport(org: OrgId | "all", itemName?: string | null) {
+    const item = (itemName ?? "").trim();
+    setExportingKey(exportKey(org, item));
     try {
-      const res = await fetch(`/api/admin/shirt-orders/export?org=${org}`);
+      const params = new URLSearchParams({ org });
+      if (item) params.set("item", item);
+      const res = await fetch(`/api/admin/shirt-orders/export?${params.toString()}`);
       if (!res.ok) throw new Error("Export failed");
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
@@ -454,12 +578,14 @@ export default function ParentShirtOrdersPanel() {
     } catch (err) {
       setError(err instanceof Error ? err.message : "Export failed");
     } finally {
-      setExportingOrg(null);
+      setExportingKey(null);
     }
   }
 
-  async function openEmailModal(org: EmailFormOrg = "all") {
+  async function openEmailModal(org: EmailFormOrg = "all", itemName?: string | null) {
+    const item = (itemName ?? "").trim();
     setEmailOrg(org);
+    setEmailItemName(item);
     setEmailNotice(null);
     setError(null);
     setEmailOpen(true);
@@ -477,10 +603,9 @@ export default function ParentShirtOrdersPanel() {
       setEmailConfigured(json.emailConfigured !== false);
       const orgLabel =
         org === "gonzales" ? "Gonzales DYB" : org === "ascension" ? "Ascension LLB" : "All orgs";
-      setEmailSubject((prev) =>
-        prev.trim()
-          ? prev
-          : `Shirt orders – ${orgLabel} – ${new Date().toLocaleDateString("en-US")}`,
+      const productPart = item ? ` – ${item}` : "";
+      setEmailSubject(
+        `Shirt orders – ${orgLabel}${productPart} – ${new Date().toLocaleDateString("en-US")}`,
       );
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to open email form");
@@ -501,6 +626,7 @@ export default function ParentShirtOrdersPanel() {
           subject: emailSubject.trim() || undefined,
           message: emailMessage.trim() || undefined,
           org: emailOrg,
+          itemName: emailItemName.trim() || undefined,
           openOnly: emailOpenOnly,
           fromEmail: emailFrom || undefined,
         }),
@@ -530,6 +656,18 @@ export default function ParentShirtOrdersPanel() {
   const totalQty = countTotal(allOrders);
   const fulfilledQty = countFulfilled(allOrders);
   const openQty = totalQty - fulfilledQty;
+  const emailProductOptions = (() => {
+    if (!data) return [] as string[];
+    const pool =
+      emailOrg === "gonzales"
+        ? data.gonzales
+        : emailOrg === "ascension"
+          ? data.ascension
+          : allOrders;
+    return groupOrdersByItem(pool)
+      .map((g) => g.itemName)
+      .filter((n) => n && n !== "(unknown product)");
+  })();
 
   return (
     <div className="space-y-4">
@@ -561,11 +699,11 @@ export default function ParentShirtOrdersPanel() {
             <button
               type="button"
               onClick={() => void handleExport("all")}
-              disabled={exportingOrg !== null || allOrders.length === 0}
+              disabled={exportingKey !== null || allOrders.length === 0}
               className="flex items-center gap-1.5 rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:bg-zinc-800 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <CsvIcon />
-              {exportingOrg === "all" ? "Exporting…" : "Export All"}
+              {exportingKey === "all|" ? "Exporting…" : "Export All"}
             </button>
             <button
               type="button"
@@ -643,7 +781,10 @@ export default function ParentShirtOrdersPanel() {
               <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Org</span>
               <select
                 value={emailOrg}
-                onChange={(e) => setEmailOrg(e.target.value as EmailFormOrg)}
+                onChange={(e) => {
+                  setEmailOrg(e.target.value as EmailFormOrg);
+                  setEmailItemName("");
+                }}
                 className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-violet-600 focus:outline-none"
               >
                 <option value="all">All orgs</option>
@@ -653,6 +794,27 @@ export default function ParentShirtOrdersPanel() {
             </label>
 
             <label className="block space-y-1.5">
+              <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
+                Product (PayPal link)
+              </span>
+              <select
+                value={emailItemName}
+                onChange={(e) => setEmailItemName(e.target.value)}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm text-zinc-100 focus:border-violet-600 focus:outline-none"
+              >
+                <option value="">All products in org</option>
+                {emailProductOptions.map((name) => (
+                  <option key={name} value={name}>
+                    {name}
+                  </option>
+                ))}
+              </select>
+              <span className="text-[11px] text-zinc-600">
+                Pick one product to email a single-link vendor CSV.
+              </span>
+            </label>
+
+            <label className="block space-y-1.5 sm:col-span-2">
               <span className="text-xs font-semibold uppercase tracking-wide text-zinc-500">From</span>
               <select
                 value={emailFrom}
@@ -751,18 +913,18 @@ export default function ParentShirtOrdersPanel() {
             orders={data.gonzales}
             onToggleItem={toggleItem}
             togglingItemId={togglingItemId}
-            onExport={(o) => void handleExport(o)}
-            onEmail={(o) => void openEmailModal(o)}
-            exporting={exportingOrg === "gonzales"}
+            onExport={(o, item) => void handleExport(o, item)}
+            onEmail={(o, item) => void openEmailModal(o, item)}
+            exportingKey={exportingKey}
           />
           <OrgCard
             org="ascension"
             orders={data.ascension}
             onToggleItem={toggleItem}
             togglingItemId={togglingItemId}
-            onExport={(o) => void handleExport(o)}
-            onEmail={(o) => void openEmailModal(o)}
-            exporting={exportingOrg === "ascension"}
+            onExport={(o, item) => void handleExport(o, item)}
+            onEmail={(o, item) => void openEmailModal(o, item)}
+            exportingKey={exportingKey}
           />
         </div>
       )}
