@@ -81,10 +81,10 @@ export default async function AdminMerchTestOrderPage({
             Merch test order form
           </h1>
           <p className="max-w-3xl text-zinc-400">
-            Structured checkout mock using the same fields PayPal NCP collects today for{" "}
-            {catalogOrg ? orgDisplayName(catalogOrg) : "this org"} championship shirts ($15, qty
-            1–10, player name, sizes). No payment is taken here — use it to design a cleaner parent
-            flow.
+            Next-campaign checkout for{" "}
+            {catalogOrg ? orgDisplayName(catalogOrg) : "this org"}: save a draft (player + sizes),
+            then pay with <span className="text-zinc-200">embedded PayPal</span> (one AP Baseball
+            business account). Already-distributed NCP links are not changed.
           </p>
           <p className="mt-3 text-sm">
             <Link href={`/admin/shop${orgQuery}`} className="text-sky-300 hover:underline">

@@ -130,8 +130,8 @@ export default async function ShopPage() {
         ) : (
           <>
             <p className="mb-6 max-w-2xl text-sm text-zinc-400">
-              Pick your shirt and sizes here — we save the order, then you pay on PayPal. You should
-              not need to retype sizes on the PayPal page (paste the order note if PayPal asks).
+              Pick your shirt and sizes, then pay with PayPal on this page. No copy/paste and no
+              retyping sizes — we keep your order details for the league automatically.
             </p>
             <ShopOrderForm
               products={products}
