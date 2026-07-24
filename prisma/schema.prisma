@@ -2197,3 +2197,100 @@ model SportsConnectImportRun {
   @@index([organizationId, seasonYear, createdAt])
   @@index([organizationId, status, createdAt])
 }
+
+// ── Travel / Regional trip intake (multi-org All-Star program) ───────────────
+
+model TripFieldTemplate {
+  id          String         @id @default(cuid())
+  key         String         @unique
+  name        String
+  description String?
+  fields      TripFieldDef[]
+  events      TripEvent[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+}
+
+model TripFieldDef {
+  id          String            @id @default(cuid())
+  templateId  String
+  template    TripFieldTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  /// Stable API key for answersJson
+  key         String
+  label       String
+  /// Exact Google Sheet header for export
+  sheetColumn String
+  /// text|email|phone|date|select|checkbox|textarea|number|readonly
+  fieldType   String
+  required    Boolean           @default(false)
+  /// JSON string array for select options
+  optionsJson String?
+  sortOrder   Int               @default(0)
+  helpText    String?
+  /// Prefill from participant: playerFullName|playerFirstName|playerLastName|ageGroup|team|jerseyNumber
+  prefillFrom String?
+  /// If true, only admins see/edit (not on parent form)
+  adminOnly   Boolean           @default(false)
+
+  @@unique([templateId, key])
+  @@index([templateId, sortOrder])
+}
+
+model TripEvent {
+  id             String            @id @default(cuid())
+  organizationId String
+  templateId     String
+  template       TripFieldTemplate @relation(fields: [templateId], references: [id], onDelete: Restrict)
+  name           String
+  teamLabel      String?
+  /// draft | open | closed
+  status         String            @default("draft")
+  opensAt        DateTime?
+  closesAt       DateTime?
+  googleSheetId  String?
+  googleSheetUrl String?
+  ballotCycleId  String?
+  introMarkdown  String?
+  participants   TripParticipant[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([organizationId, status])
+  @@index([templateId])
+}
+
+model TripParticipant {
+  id             String        @id @default(cuid())
+  eventId        String
+  event          TripEvent     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  organizationId String
+  playerFullName String
+  ageGroup       String?
+  team           String?
+  jerseyNumber   String?
+  candidateId    String?
+  paymentId      String?
+  inviteToken    String        @unique
+  /// not_started | draft | submitted
+  status         String        @default("not_started")
+  response       TripResponse?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+
+  @@index([eventId, status])
+  @@index([organizationId, eventId])
+}
+
+model TripResponse {
+  id             String          @id @default(cuid())
+  participantId  String          @unique
+  participant    TripParticipant @relation(fields: [participantId], references: [id], onDelete: Cascade)
+  /// JSON object keyed by TripFieldDef.key
+  answersJson    String          @default("{}")
+  submitterName  String?
+  submitterEmail String?
+  submitterPhone String?
+  submittedAt    DateTime?
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+}

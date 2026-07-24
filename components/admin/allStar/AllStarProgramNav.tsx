@@ -2,7 +2,13 @@ import Link from "next/link";
 
 import type { ContentOrgId } from "@/lib/siteConfig";
 
-export type AllStarProgramStage = "vault" | "payments" | "cap-orders" | "shirt-orders" | "shop";
+export type AllStarProgramStage =
+  | "vault"
+  | "payments"
+  | "cap-orders"
+  | "shirt-orders"
+  | "shop"
+  | "travel";
 
 const STAGES: Array<{
   id: AllStarProgramStage;
@@ -39,6 +45,12 @@ const STAGES: Array<{
     label: "Shop",
     path: "/admin/shop",
     description: "Public merch catalog",
+  },
+  {
+    id: "travel",
+    label: "Travel",
+    path: "/admin/travel",
+    description: "Regional trip parent intake",
   },
 ];
 
