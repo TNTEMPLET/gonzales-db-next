@@ -198,7 +198,14 @@ export default function TravelEventDetailClient({
         skipped?: Array<{ playerFullName: string; reason: string }>;
         campaignId?: string | null;
       };
-      if (!res.ok) throw new Error(data.error || "Send failed");
+      if (!res.ok) {
+        // Surface partial-send info when present
+        const partial =
+          typeof data.sent === "number"
+            ? ` (reported sent: ${data.sent}${typeof data.failed === "number" ? `, failed: ${data.failed}` : ""})`
+            : "";
+        throw new Error((data.error || "Send failed") + partial);
+      }
       const skipN = data.skipped?.length ?? 0;
       setEmailNote(
         `Sent ${data.sent ?? 0}` +
@@ -211,6 +218,12 @@ export default function TravelEventDetailClient({
       await load();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Send failed");
+      // Refresh so inviteEmailCount reflects any successful sends
+      try {
+        await load();
+      } catch {
+        /* ignore */
+      }
     } finally {
       setEmailing(false);
     }
