@@ -10,6 +10,10 @@ import {
   sendTripInviteEmails,
 } from "@/lib/trip/inviteEmail";
 
+/** Bulk Resend + DB audit can exceed default serverless limit. */
+export const maxDuration = 60;
+export const runtime = "nodejs";
+
 function resolveOrg(request: NextRequest): string {
   const q =
     request.nextUrl.searchParams.get("organizationId")?.trim() ||

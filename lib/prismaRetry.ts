@@ -12,24 +12,32 @@ export function isTransientDbError(err: unknown): boolean {
 }
 
 /**
- * Best-effort reconnect for Prisma Postgres (adapter-ppg) after long external I/O.
- * Safe no-op if the client is already connected.
+ * Best-effort wake-up for Prisma Postgres (adapter-ppg) after long external I/O.
+ *
+ * IMPORTANT: Do NOT call $disconnect() on the shared serverless Prisma client —
+ * that drops the process-wide socket and causes "WebSocket is not connected"
+ * (or hung requests) on the next query. Prefer a cheap probe query instead;
+ * withTransientDbRetry will re-run the real write if the probe fails.
  */
 export async function reconnectPrisma(
   client: {
     $disconnect?: () => Promise<void>;
     $connect?: () => Promise<void>;
+    $queryRawUnsafe?: (query: string) => Promise<unknown>;
   },
 ): Promise<void> {
   try {
-    await client.$disconnect?.();
+    if (typeof client.$queryRawUnsafe === "function") {
+      await client.$queryRawUnsafe("SELECT 1");
+      return;
+    }
   } catch {
-    /* ignore */
+    /* fall through to $connect */
   }
   try {
     await client.$connect?.();
   } catch {
-    /* next query will reconnect */
+    /* next query will attempt reconnect */
   }
 }
 
