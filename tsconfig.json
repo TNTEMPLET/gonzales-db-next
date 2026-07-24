@@ -50,6 +50,8 @@
   ],
   "exclude": [
     "node_modules",
-    "services"
+    "services",
+    "scripts/smoke-*.ts",
+    "scripts/_*.ts"
   ]
 }

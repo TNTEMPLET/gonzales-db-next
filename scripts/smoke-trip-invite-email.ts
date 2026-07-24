@@ -1,3 +1,4 @@
+// @ts-nocheck
 /**
  * E2E smoke for trip invite emails.
  *
@@ -491,6 +492,7 @@ async function main() {
               headers: {
                 Cookie: cookieHeader(jar),
                 "Content-Type": "application/json",
+                Accept: "application/json",
               },
               body: JSON.stringify({
                 participantIds: [participantId],
@@ -502,15 +504,31 @@ async function main() {
               }),
             },
           );
-          const sendBody = (await sendRes.json()) as {
+          const sendText = await sendRes.text();
+          let sendBody: {
             error?: string;
             success?: boolean;
             sent?: number;
             failed?: number;
             skipped?: unknown[];
             campaignId?: string | null;
-          };
-          console.log("POST invite-emails", sendRes.status, sendBody);
+          } = {};
+          try {
+            sendBody = JSON.parse(sendText) as typeof sendBody;
+          } catch {
+            sendBody = {
+              error: `Non-JSON response (${sendRes.status}): ${sendText.slice(0, 240)}`,
+            };
+          }
+          console.log(
+            "POST invite-emails",
+            sendRes.status,
+            "ct=",
+            sendRes.headers.get("content-type"),
+            "vercel-error=",
+            sendRes.headers.get("x-vercel-error"),
+            sendBody,
+          );
 
           if (!sendRes.ok) {
             fail(
