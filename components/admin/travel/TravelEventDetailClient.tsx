@@ -10,6 +10,22 @@ type FieldDef = {
   sortOrder: number;
 };
 
+type LastDelivery = {
+  status: string;
+  toEmail: string | null;
+  errorMessage: string | null;
+  sentAt: string | null;
+  attemptedAt: string | null;
+  provider: string | null;
+};
+
+type EmailStatus =
+  | "sent"
+  | "failed"
+  | "no_email"
+  | "not_sent"
+  | "suppressed";
+
 type Participant = {
   id: string;
   playerFullName: string;
@@ -25,8 +41,20 @@ type Participant = {
   inviteEmailSentAt?: string | null;
   inviteEmailTo?: string | null;
   inviteEmailCount?: number;
+  emailStatus?: EmailStatus;
+  lastDelivery?: LastDelivery | null;
   submittedAt: string | null;
   answers: Record<string, unknown>;
+};
+
+type EmailSummary = {
+  total: number;
+  withEmail: number;
+  noEmail: number;
+  sent: number;
+  notSent: number;
+  failed: number;
+  suppressed: number;
 };
 
 type EventDetail = {
@@ -75,6 +103,10 @@ export default function TravelEventDetailClient({
   const [emailing, setEmailing] = useState(false);
   const [emailNote, setEmailNote] = useState<string | null>(null);
   const [resendAlready, setResendAlready] = useState(false);
+  const [emailSummary, setEmailSummary] = useState<EmailSummary | null>(null);
+  const [emailFilter, setEmailFilter] = useState<
+    "all" | EmailStatus | "needs_email"
+  >("all");
 
   const orgQ = `org=${encodeURIComponent(organizationId)}`;
 
@@ -89,11 +121,13 @@ export default function TravelEventDetailClient({
       const data = (await res.json()) as {
         event?: EventDetail;
         participants?: Participant[];
+        emailSummary?: EmailSummary;
         error?: string;
       };
       if (!res.ok) throw new Error(data.error || "Failed to load");
       setEvent(data.event ?? null);
       setParticipants(data.participants ?? []);
+      setEmailSummary(data.emailSummary ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load");
     } finally {
@@ -149,6 +183,45 @@ export default function TravelEventDetailClient({
       return Boolean(email && String(email).trim());
     });
   }, [participants]);
+
+  const derivedEmailSummary = useMemo((): EmailSummary => {
+    if (emailSummary) return emailSummary;
+    let withEmail = 0;
+    let noEmail = 0;
+    let sent = 0;
+    let notSent = 0;
+    let failed = 0;
+    let suppressed = 0;
+    for (const p of participants) {
+      const st = resolveEmailStatus(p);
+      if (st === "no_email") noEmail++;
+      else withEmail++;
+      if (st === "sent") sent++;
+      else if (st === "not_sent") notSent++;
+      else if (st === "failed") failed++;
+      else if (st === "suppressed") suppressed++;
+    }
+    return {
+      total: participants.length,
+      withEmail,
+      noEmail,
+      sent,
+      notSent,
+      failed,
+      suppressed,
+    };
+  }, [participants, emailSummary]);
+
+  const filteredParticipants = useMemo(() => {
+    if (emailFilter === "all") return participants;
+    if (emailFilter === "needs_email") {
+      return participants.filter((p) => {
+        const st = resolveEmailStatus(p);
+        return st === "not_sent" || st === "failed" || st === "no_email";
+      });
+    }
+    return participants.filter((p) => resolveEmailStatus(p) === emailFilter);
+  }, [participants, emailFilter]);
 
   function toggleSelected(id: string) {
     setSelectedIds((prev) => {
@@ -467,10 +540,89 @@ export default function TravelEventDetailClient({
         <p className="mb-3 text-xs text-zinc-500">
           Sends each guardian a personalized magic link via Resend (same stack as
           Communications). Uses guardian email from roster import or form draft.
-          Event must be <span className="text-zinc-300">open</span>.{" "}
-          {emailReady.length} of {participants.length} players have an email on
-          file.
+          Event must be <span className="text-zinc-300">open</span>.
         </p>
+
+        {/* Email status summary */}
+        <div className="mb-4 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-6">
+          <EmailStatChip
+            label="Sent"
+            value={derivedEmailSummary.sent}
+            tone="violet"
+            active={emailFilter === "sent"}
+            onClick={() =>
+              setEmailFilter((f) => (f === "sent" ? "all" : "sent"))
+            }
+          />
+          <EmailStatChip
+            label="Not sent"
+            value={derivedEmailSummary.notSent}
+            tone="amber"
+            active={emailFilter === "not_sent"}
+            onClick={() =>
+              setEmailFilter((f) => (f === "not_sent" ? "all" : "not_sent"))
+            }
+          />
+          <EmailStatChip
+            label="Failed"
+            value={derivedEmailSummary.failed}
+            tone="red"
+            active={emailFilter === "failed"}
+            onClick={() =>
+              setEmailFilter((f) => (f === "failed" ? "all" : "failed"))
+            }
+          />
+          <EmailStatChip
+            label="No email"
+            value={derivedEmailSummary.noEmail}
+            tone="zinc"
+            active={emailFilter === "no_email"}
+            onClick={() =>
+              setEmailFilter((f) => (f === "no_email" ? "all" : "no_email"))
+            }
+          />
+          <EmailStatChip
+            label="With address"
+            value={derivedEmailSummary.withEmail}
+            tone="zinc"
+            active={emailFilter === "all"}
+            onClick={() => setEmailFilter("all")}
+          />
+          <EmailStatChip
+            label="Needs action"
+            value={
+              derivedEmailSummary.notSent +
+              derivedEmailSummary.failed +
+              derivedEmailSummary.noEmail
+            }
+            tone="amber"
+            active={emailFilter === "needs_email"}
+            onClick={() =>
+              setEmailFilter((f) =>
+                f === "needs_email" ? "all" : "needs_email",
+              )
+            }
+          />
+        </div>
+        {emailFilter !== "all" && (
+          <p className="mb-3 text-xs text-zinc-400">
+            Filtering roster by{" "}
+            <span className="text-zinc-200">
+              {emailFilter === "needs_email"
+                ? "needs action"
+                : emailFilter.replace("_", " ")}
+            </span>
+            .{" "}
+            <button
+              type="button"
+              className="text-violet-300 hover:underline"
+              onClick={() => setEmailFilter("all")}
+            >
+              Show all
+            </button>
+          </p>
+        )}
+
         <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
           <button
             type="button"
@@ -478,6 +630,19 @@ export default function TravelEventDetailClient({
             className="text-xs text-violet-300 hover:underline"
           >
             Select all with email
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              const need = participants.filter((p) => {
+                const st = resolveEmailStatus(p);
+                return st === "not_sent" || st === "failed";
+              });
+              setSelectedIds(new Set(need.map((p) => p.id)));
+            }}
+            className="text-xs text-amber-300/90 hover:underline"
+          >
+            Select not sent / failed
           </button>
           <button
             type="button"
@@ -642,9 +807,9 @@ export default function TravelEventDetailClient({
             <tr>
               <th className="px-3 py-2 font-medium w-8" />
               <th className="px-3 py-2 font-medium">Player</th>
-              <th className="px-3 py-2 font-medium">Status</th>
+              <th className="px-3 py-2 font-medium">Form</th>
               <th className="px-3 py-2 font-medium">Guardian email</th>
-              <th className="px-3 py-2 font-medium">Emailed</th>
+              <th className="px-3 py-2 font-medium">Email status</th>
               <th className="px-3 py-2 font-medium">Invite</th>
             </tr>
           </thead>
@@ -655,8 +820,21 @@ export default function TravelEventDetailClient({
                   No players yet — import roster or paste names above.
                 </td>
               </tr>
+            ) : filteredParticipants.length === 0 ? (
+              <tr>
+                <td colSpan={6} className="px-3 py-6 text-center text-zinc-500">
+                  No players match this email filter.{" "}
+                  <button
+                    type="button"
+                    className="text-violet-300 hover:underline"
+                    onClick={() => setEmailFilter("all")}
+                  >
+                    Show all
+                  </button>
+                </td>
+              </tr>
             ) : (
-              participants.map((p) => {
+              filteredParticipants.map((p) => {
                 const gEmail =
                   p.guardianEmail ||
                   (typeof p.answers?.guardian1_email === "string"
@@ -665,6 +843,7 @@ export default function TravelEventDetailClient({
                   p.submitterEmail ||
                   null;
                 const hasEmail = Boolean(gEmail && String(gEmail).trim());
+                const emailSt = resolveEmailStatus(p);
                 return (
                   <tr key={p.id} className="hover:bg-zinc-900/50">
                     <td className="px-3 py-2.5">
@@ -711,17 +890,14 @@ export default function TravelEventDetailClient({
                         <span className="text-amber-600/80">No email</span>
                       )}
                     </td>
-                    <td className="px-3 py-2.5 text-xs text-zinc-500">
-                      {(p.inviteEmailCount ?? 0) > 0 ? (
-                        <span className="text-violet-300">
-                          {p.inviteEmailCount}×
-                          {p.inviteEmailSentAt
-                            ? ` · ${new Date(p.inviteEmailSentAt).toLocaleDateString()}`
-                            : ""}
-                        </span>
-                      ) : (
-                        "—"
-                      )}
+                    <td className="px-3 py-2.5">
+                      <EmailStatusCell
+                        status={emailSt}
+                        count={p.inviteEmailCount ?? 0}
+                        sentAt={p.inviteEmailSentAt}
+                        to={p.inviteEmailTo || gEmail}
+                        lastDelivery={p.lastDelivery}
+                      />
                     </td>
                     <td className="px-3 py-2.5">
                       <button
@@ -777,6 +953,155 @@ function StatusDot({ status }: { status: string }) {
     <span className="inline-flex items-center gap-1.5 text-xs text-zinc-300 capitalize">
       <span className={`h-1.5 w-1.5 rounded-full ${color}`} />
       {status.replace("_", " ")}
+    </span>
+  );
+}
+
+function resolveEmailStatus(p: Participant): EmailStatus {
+  if (p.emailStatus) return p.emailStatus;
+  const email =
+    p.guardianEmail ||
+    (typeof p.answers?.guardian1_email === "string"
+      ? p.answers.guardian1_email
+      : null) ||
+    p.submitterEmail;
+  if (!email || !String(email).trim()) return "no_email";
+  if ((p.inviteEmailCount ?? 0) > 0) return "sent";
+  const ld = p.lastDelivery?.status;
+  if (ld === "SENT") return "sent";
+  if (ld === "SKIPPED_SUPPRESSED" || ld === "SKIPPED_NO_CONSENT") {
+    return "suppressed";
+  }
+  if (ld === "FAILED" || (ld && ld.startsWith("SKIPPED"))) return "failed";
+  return "not_sent";
+}
+
+function formatWhen(iso: string | null | undefined): string | null {
+  if (!iso) return null;
+  try {
+    const d = new Date(iso);
+    return d.toLocaleString(undefined, {
+      month: "short",
+      day: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+    });
+  } catch {
+    return null;
+  }
+}
+
+function EmailStatChip({
+  label,
+  value,
+  tone,
+  active,
+  onClick,
+}: {
+  label: string;
+  value: number;
+  tone: "violet" | "amber" | "red" | "zinc";
+  active?: boolean;
+  onClick?: () => void;
+}) {
+  const tones: Record<string, string> = {
+    violet: "border-violet-700/50 bg-violet-950/40 text-violet-100",
+    amber: "border-amber-700/40 bg-amber-950/30 text-amber-100",
+    red: "border-red-800/40 bg-red-950/30 text-red-100",
+    zinc: "border-zinc-700/50 bg-zinc-900/50 text-zinc-200",
+  };
+  const ring = active ? "ring-1 ring-violet-400/60" : "";
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`rounded-xl border px-3 py-2 text-left transition hover:brightness-110 ${tones[tone]} ${ring}`}
+    >
+      <p className="text-[10px] uppercase tracking-wide opacity-70">{label}</p>
+      <p className="text-xl font-bold tabular-nums">{value}</p>
+    </button>
+  );
+}
+
+function EmailStatusCell({
+  status,
+  count,
+  sentAt,
+  to,
+  lastDelivery,
+}: {
+  status: EmailStatus;
+  count: number;
+  sentAt?: string | null;
+  to?: string | null;
+  lastDelivery?: LastDelivery | null;
+}) {
+  const when =
+    formatWhen(sentAt) ||
+    formatWhen(lastDelivery?.sentAt) ||
+    formatWhen(lastDelivery?.attemptedAt);
+
+  if (status === "sent") {
+    return (
+      <div className="text-xs">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-violet-700/40 bg-violet-950/40 px-2 py-0.5 font-medium text-violet-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-violet-400" />
+          Sent{count > 1 ? ` · ${count}×` : ""}
+        </span>
+        {when && <p className="mt-1 text-zinc-500">{when}</p>}
+        {to && (
+          <p className="mt-0.5 max-w-[14rem] truncate text-zinc-600" title={to}>
+            → {to}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (status === "failed") {
+    const err = lastDelivery?.errorMessage?.trim();
+    return (
+      <div className="text-xs">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-red-800/50 bg-red-950/40 px-2 py-0.5 font-medium text-red-200">
+          <span className="h-1.5 w-1.5 rounded-full bg-red-400" />
+          Failed
+        </span>
+        {when && <p className="mt-1 text-zinc-500">{when}</p>}
+        {err && (
+          <p
+            className="mt-0.5 max-w-[14rem] truncate text-red-300/80"
+            title={err}
+          >
+            {err}
+          </p>
+        )}
+      </div>
+    );
+  }
+
+  if (status === "suppressed") {
+    return (
+      <div className="text-xs">
+        <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-600 bg-zinc-900 px-2 py-0.5 font-medium text-zinc-300">
+          Suppressed
+        </span>
+        <p className="mt-1 text-zinc-500">On unsubscribe list</p>
+      </div>
+    );
+  }
+
+  if (status === "no_email") {
+    return (
+      <span className="inline-flex items-center gap-1.5 rounded-full border border-amber-800/40 bg-amber-950/30 px-2 py-0.5 text-xs font-medium text-amber-200/90">
+        No email
+      </span>
+    );
+  }
+
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/60 px-2 py-0.5 text-xs font-medium text-zinc-400">
+      <span className="h-1.5 w-1.5 rounded-full bg-zinc-500" />
+      Not sent
     </span>
   );
 }
