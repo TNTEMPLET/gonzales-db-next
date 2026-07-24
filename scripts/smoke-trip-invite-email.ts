@@ -241,10 +241,10 @@ async function main() {
     }
     console.log("\n--- Last TRIP_GUARDIAN deliveries ---");
     if (!deliveries.length) {
-      console.log("(none)");
-      fail(
+      console.log("(none) — expected if no prior successful trip invite send");
+      pass(
         "db.deliveries",
-        "Zero TRIP_GUARDIAN rows — no successful audited send yet (or all failed before write)",
+        "none yet (baseline before this smoke send)",
       );
     } else {
       for (const d of deliveries.slice(0, 12)) {
