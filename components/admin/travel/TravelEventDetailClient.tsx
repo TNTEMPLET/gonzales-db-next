@@ -409,8 +409,9 @@ export default function TravelEventDetailClient({
         <a
           href={exportUrl({ sheetOnly: true })}
           className="rounded-lg border border-sky-700/50 bg-sky-950/30 px-3 py-2 text-sm font-medium text-sky-200 hover:bg-sky-950/50"
+          title="Tournament director CSV — roster columns only, no health"
         >
-          Export Sheet CSV
+          Export director CSV
         </a>
         <a
           href={exportUrl({ sheetOnly: false, inviteUrls: true })}
@@ -418,7 +419,33 @@ export default function TravelEventDetailClient({
         >
           Export + invite links
         </a>
+        <a
+          href={`/api/admin/trip/events/${eventId}/player-sheets?${orgQ}&format=html&layout=full`}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-lg border border-rose-700/50 bg-rose-950/30 px-3 py-2 text-sm font-medium text-rose-100 hover:bg-rose-950/50"
+        >
+          Print player sheets
+        </a>
+        <a
+          href={`/api/admin/trip/events/${eventId}/player-sheets?${orgQ}&format=html&layout=cards`}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-900"
+        >
+          Compact cards
+        </a>
+        <a
+          href={`/api/admin/trip/events/${eventId}/player-sheets?${orgQ}&format=pdf`}
+          className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-900"
+        >
+          Download PDF
+        </a>
       </div>
+      <p className="text-xs text-zinc-500 -mt-4">
+        Player sheets include health for coaching staff only. Director CSV never
+        includes health fields.
+      </p>
 
       <div className="rounded-2xl border border-violet-900/40 bg-violet-950/15 p-4">
         <h3 className="mb-1 font-semibold text-zinc-100">

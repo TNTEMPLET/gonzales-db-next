@@ -4,10 +4,13 @@ import type { TripFieldDefPublic, TripFieldType, TripPrefillSource } from "@/lib
 import {
   SW_REGIONAL_TEMPLATE_KEY,
   SW_REGIONAL_V1_FIELDS,
+  tripFieldSection,
 } from "@/lib/trip/swRegionalFields";
 import prisma from "@/lib/prisma";
 
 export { SW_REGIONAL_TEMPLATE_KEY, SW_REGIONAL_V1_FIELDS };
+
+const SEED_BY_KEY = new Map(SW_REGIONAL_V1_FIELDS.map((f) => [f.key, f]));
 
 export function fieldDefToPublic(row: {
   key: string;
@@ -32,6 +35,7 @@ export function fieldDefToPublic(row: {
       options = [];
     }
   }
+  const seed = SEED_BY_KEY.get(row.key);
   return {
     key: row.key,
     label: row.label,
@@ -43,6 +47,11 @@ export function fieldDefToPublic(row: {
     helpText: row.helpText,
     prefillFrom: (row.prefillFrom as TripPrefillSource | null) ?? null,
     adminOnly: row.adminOnly,
+    section: seed?.section ?? tripFieldSection(row.key),
+    excludeFromDirectorExport:
+      seed?.excludeFromDirectorExport === true ||
+      !row.sheetColumn?.trim() ||
+      tripFieldSection(row.key) === "health",
   };
 }
 
@@ -99,7 +108,7 @@ export async function ensureSwRegionalTemplate(opts?: { forceResync?: boolean })
       key: SW_REGIONAL_TEMPLATE_KEY,
       name: "Southwest Regional travel roster (v1)",
       description:
-        "Parent intake matching the multi-league All-Star travel Google Sheet headers (name, guardians, uniform, bats/throws).",
+        "Parent intake: roster columns for tournament director CSV plus optional health section for coach binder sheets (health never exported to director CSV).",
       fields: {
         create: SW_REGIONAL_V1_FIELDS.map((f) => ({
           key: f.key,
