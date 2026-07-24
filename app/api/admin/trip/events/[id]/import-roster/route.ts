@@ -6,7 +6,7 @@ import {
   getCanonicalBallotOriginForOrganizationId,
   isContentOrgId,
 } from "@/lib/siteConfig";
-import { addParticipants } from "@/lib/trip/service";
+import { importParticipantsFromFinalRoster } from "@/lib/trip/service";
 
 function resolveOrg(request: NextRequest): string {
   const q =
@@ -16,6 +16,10 @@ function resolveOrg(request: NextRequest): string {
   return resolveAuthOrganizationId(request);
 }
 
+/**
+ * Import finalized All-Star roster players into a trip event.
+ * Prefills name, jersey, and guardian contact when TeamPlayer match is found.
+ */
 export async function POST(
   request: NextRequest,
   context: { params: Promise<{ id: string }> },
@@ -29,14 +33,9 @@ export async function POST(
   const organizationId = resolveOrg(request);
 
   let body: {
-    participants?: Array<{
-      playerFullName?: string;
-      ageGroup?: string | null;
-      team?: string | null;
-      jerseyNumber?: string | null;
-    }>;
-    /** Bulk paste: one player name per line */
-    namesText?: string;
+    cycleId?: string;
+    /** SELECTED | SECOND_TEAM | both (default) */
+    rosterTeam?: "first" | "second" | "both";
   };
   try {
     body = (await request.json()) as typeof body;
@@ -44,52 +43,35 @@ export async function POST(
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const rows: Array<{
-    playerFullName: string;
-    ageGroup?: string | null;
-    team?: string | null;
-    jerseyNumber?: string | null;
-  }> = [];
-
-  if (Array.isArray(body.participants)) {
-    for (const p of body.participants) {
-      const name = (p.playerFullName ?? "").trim();
-      if (!name) continue;
-      rows.push({
-        playerFullName: name,
-        ageGroup: p.ageGroup,
-        team: p.team,
-        jerseyNumber: p.jerseyNumber,
-      });
-    }
+  const cycleId = body.cycleId?.trim();
+  if (!cycleId) {
+    return NextResponse.json({ error: "cycleId is required" }, { status: 400 });
   }
 
-  if (typeof body.namesText === "string" && body.namesText.trim()) {
-    for (const line of body.namesText.split(/\r?\n/)) {
-      const name = line.trim();
-      if (!name || name.startsWith("#")) continue;
-      rows.push({ playerFullName: name });
-    }
-  }
-
-  if (rows.length === 0) {
-    return NextResponse.json(
-      { error: "Provide participants[] or namesText with at least one name" },
-      { status: 400 },
-    );
-  }
+  const rosterTeam = body.rosterTeam ?? "both";
+  const slots: Array<"SELECTED" | "SECOND_TEAM"> =
+    rosterTeam === "first"
+      ? ["SELECTED"]
+      : rosterTeam === "second"
+        ? ["SECOND_TEAM"]
+        : ["SELECTED", "SECOND_TEAM"];
 
   try {
-    const { created, skipped } = await addParticipants(
+    const result = await importParticipantsFromFinalRoster({
       eventId,
       organizationId,
-      rows,
-    );
+      cycleId,
+      slots,
+    });
     const baseUrl = getCanonicalBallotOriginForOrganizationId(organizationId);
     return NextResponse.json({
-      created: created.length,
-      skipped,
-      participants: created.map((p) => ({
+      success: true,
+      cycle: result.cycle,
+      sourceCount: result.sourceCount,
+      created: result.created.length,
+      skipped: result.skipped,
+      contactMatched: result.contactMatched,
+      participants: result.created.map((p) => ({
         id: p.id,
         playerFullName: p.playerFullName,
         inviteToken: p.inviteToken,
@@ -98,8 +80,9 @@ export async function POST(
       })),
     });
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "Failed to add participants";
-    const status = msg === "Event not found" ? 404 : 500;
+    const msg = e instanceof Error ? e.message : "Import failed";
+    const status =
+      msg.includes("not found") || msg.includes("Event not found") ? 404 : 400;
     return NextResponse.json({ error: msg }, { status });
   }
 }
