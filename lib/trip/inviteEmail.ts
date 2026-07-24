@@ -17,6 +17,10 @@ import {
 } from "@/lib/trip/inviteEmailTemplates";
 import { parseAnswersJson } from "@/lib/trip/validate";
 import prisma from "@/lib/prisma";
+import {
+  reconnectPrisma,
+  withTransientDbRetry,
+} from "@/lib/prismaRetry";
 
 export {
   applyTripInviteTemplate,
@@ -184,6 +188,13 @@ export type SendTripInvitesInput = {
   createdByAdminId?: string | null;
 };
 
+/**
+ * Prisma Postgres (db.prisma.io) uses a WebSocket transport that drops when left
+ * idle across long external HTTP calls (Resend). Interleaving DB writes with
+ * email sends causes "WebSocket is not connected".
+ *
+ * Pattern: load → create campaign → send all email (no DB) → batch-write results.
+ */
 export async function sendTripInviteEmails(input: SendTripInvitesInput) {
   const event = await prisma.tripEvent.findFirst({
     where: { id: input.eventId, organizationId: input.organizationId },
@@ -219,10 +230,23 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
   const fromAddress =
     (input.fromEmail ?? "").trim() || (await getDefaultFromAddress());
 
+  // Prefetch suppressions so the send loop needs no DB
+  const suppressions = await prisma.emailSuppression.findMany({
+    where: {
+      OR: [{ organizationId: input.organizationId }, { organizationId: null }],
+    },
+    select: { email: true },
+  });
+  const suppressedEmails = new Set(
+    suppressions.map((s) => s.email.trim().toLowerCase()).filter(Boolean),
+  );
+
   type Pending = {
     participantId: string;
     playerFullName: string;
     email: string;
+    /** Absolute count to stamp after a successful send (idempotent on retry). */
+    nextInviteEmailCount: number;
     vars: TripInviteMergeVars;
   };
 
@@ -257,6 +281,7 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
       participantId: p.id,
       playerFullName: p.playerFullName,
       email: resolved.email,
+      nextInviteEmailCount: p.inviteEmailCount + 1,
       vars: {
         player_name: p.playerFullName,
         player_first_name: playerFirstName(p.playerFullName, answers),
@@ -280,7 +305,7 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
     };
   }
 
-  // Campaign audit row (Communications history)
+  // Campaign + snapshots in one write (no long idle after this until batch results)
   const campaign = await prisma.communicationCampaign.create({
     data: {
       organizationId: input.organizationId,
@@ -308,48 +333,43 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
     },
   });
 
-  let sent = 0;
-  let failed = 0;
+  type DeliveryResult = {
+    participantId: string;
+    email: string;
+    nextInviteEmailCount: number;
+    status: "SENT" | "FAILED" | "SKIPPED_SUPPRESSED";
+    errorMessage?: string;
+    provider?: string;
+    providerMessageId?: string | null;
+  };
 
+  const results: DeliveryResult[] = [];
+  const appBase = process.env.NEXT_PUBLIC_APP_URL || baseUrl;
+
+  // ── External sends only (no Prisma) — keeps PPG WebSocket from going stale ──
   for (const row of pending) {
-    const subject = applyTripInviteTemplate(subjectTpl, row.vars);
-    const text = applyTripInviteTemplate(bodyTpl, row.vars);
-
-    const suppressed = await prisma.emailSuppression.findFirst({
-      where: {
+    if (suppressedEmails.has(row.email)) {
+      results.push({
+        participantId: row.participantId,
         email: row.email,
-        OR: [{ organizationId: input.organizationId }, { organizationId: null }],
-      },
-      select: { id: true },
-    });
-    if (suppressed) {
-      failed += 1;
-      await prisma.communicationDelivery.create({
-        data: {
-          campaignId: campaign.id,
-          channel: "EMAIL",
-          recipientType: "TRIP_GUARDIAN",
-          tripParticipantId: row.participantId,
-          toEmail: row.email,
-          status: "SKIPPED_SUPPRESSED",
-          errorMessage: "Email is suppressed",
-          attemptedAt: new Date(),
-        },
+        nextInviteEmailCount: row.nextInviteEmailCount,
+        status: "SKIPPED_SUPPRESSED",
+        errorMessage: "Email is suppressed",
       });
       continue;
     }
 
+    const subject = applyTripInviteTemplate(subjectTpl, row.vars);
+    const text = applyTripInviteTemplate(bodyTpl, row.vars);
     const unsubscribeToken = createUnsubscribeToken({
       email: row.email,
       organizationId: input.organizationId,
       channel: "EMAIL",
     });
-    const appBase = process.env.NEXT_PUBLIC_APP_URL || baseUrl;
     const unsubUrl =
       appBase && unsubscribeToken
         ? `${appBase.replace(/\/$/, "")}/api/admin/communications/unsubscribe?token=${encodeURIComponent(unsubscribeToken)}`
         : null;
-
     const html = `${text.replaceAll("\n", "<br/>")}${
       unsubUrl
         ? `<hr/><p style="font-size:12px;color:#666">Unsubscribe: <a href="${unsubUrl}">${unsubUrl}</a></p>`
@@ -364,54 +384,122 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
         text,
         from: fromAddress,
       });
-      sent += 1;
-      await prisma.communicationDelivery.create({
-        data: {
-          campaignId: campaign.id,
-          channel: "EMAIL",
-          recipientType: "TRIP_GUARDIAN",
-          tripParticipantId: row.participantId,
-          toEmail: row.email,
-          provider: providerResponse.provider,
-          providerMessageId: providerResponse.providerMessageId,
-          status: "SENT",
-          attemptedAt: new Date(),
-          sentAt: new Date(),
-        },
-      });
-      await prisma.tripParticipant.update({
-        where: { id: row.participantId },
-        data: {
-          inviteEmailSentAt: new Date(),
-          inviteEmailTo: row.email,
-          inviteEmailCount: { increment: 1 },
-        },
+      results.push({
+        participantId: row.participantId,
+        email: row.email,
+        nextInviteEmailCount: row.nextInviteEmailCount,
+        status: "SENT",
+        provider: providerResponse.provider,
+        providerMessageId: providerResponse.providerMessageId,
       });
     } catch (err: unknown) {
-      failed += 1;
-      const message = err instanceof Error ? err.message : "Email send failed";
-      await prisma.communicationDelivery.create({
-        data: {
-          campaignId: campaign.id,
-          channel: "EMAIL",
-          recipientType: "TRIP_GUARDIAN",
-          tripParticipantId: row.participantId,
-          toEmail: row.email,
-          status: "FAILED",
-          errorMessage: message,
-          attemptedAt: new Date(),
-        },
+      results.push({
+        participantId: row.participantId,
+        email: row.email,
+        nextInviteEmailCount: row.nextInviteEmailCount,
+        status: "FAILED",
+        errorMessage: err instanceof Error ? err.message : "Email send failed",
       });
     }
   }
 
-  await prisma.communicationCampaign.update({
-    where: { id: campaign.id },
-    data: {
-      status: failed > 0 && sent === 0 ? "FAILED" : "SENT",
-      sentAt: new Date(),
-    },
-  });
+  // ── Batch DB writes after all external I/O ─────────────────────────────────
+  // PPG WebSocket often idles out during the Resend loop — reconnect first.
+  await reconnectPrisma(prisma);
+
+  const now = new Date();
+  const sentIds = results
+    .filter((r) => r.status === "SENT")
+    .map((r) => r.participantId);
+  let sent = results.filter((r) => r.status === "SENT").length;
+  let failed = results.length - sent;
+
+  try {
+    await withTransientDbRetry(
+      async () => {
+        // Idempotent: clear partial deliveries from a previous retry of this campaign
+        await prisma.communicationDelivery.deleteMany({
+          where: { campaignId: campaign.id },
+        });
+
+        await prisma.communicationDelivery.createMany({
+          data: results.map((r) => ({
+            campaignId: campaign.id,
+            channel: "EMAIL" as const,
+            recipientType: "TRIP_GUARDIAN" as const,
+            tripParticipantId: r.participantId,
+            toEmail: r.email,
+            provider: r.provider ?? null,
+            providerMessageId: r.providerMessageId ?? null,
+            status: r.status,
+            errorMessage: r.errorMessage ?? null,
+            attemptedAt: now,
+            sentAt: r.status === "SENT" ? now : null,
+          })),
+        });
+
+        // Absolute count (not increment) so reconnect retries stay idempotent
+        for (const r of results) {
+          if (r.status !== "SENT") continue;
+          await prisma.tripParticipant.update({
+            where: { id: r.participantId },
+            data: {
+              inviteEmailSentAt: now,
+              inviteEmailTo: r.email,
+              inviteEmailCount: r.nextInviteEmailCount,
+            },
+          });
+        }
+
+        await prisma.communicationCampaign.update({
+          where: { id: campaign.id },
+          data: {
+            status: failed > 0 && sent === 0 ? "FAILED" : "SENT",
+            sentAt: now,
+          },
+        });
+      },
+      {
+        attempts: 4,
+        delayMs: 800,
+        onRetry: async () => {
+          await reconnectPrisma(prisma);
+        },
+      },
+    );
+  } catch (dbErr: unknown) {
+    // Emails may already have gone out — surface a clear message, still return counts
+    const msg =
+      dbErr instanceof Error ? dbErr.message : "Database write failed after send";
+    console.error("[trip-invite] post-send DB write failed:", msg, {
+      campaignId: campaign.id,
+      sent,
+      failed,
+      sentIds,
+    });
+    // Best-effort campaign status after reconnect
+    try {
+      await reconnectPrisma(prisma);
+      await prisma.communicationCampaign.update({
+        where: { id: campaign.id },
+        data: {
+          status: sent > 0 ? "SENT" : "FAILED",
+          sentAt: now,
+        },
+      });
+    } catch {
+      /* ignore */
+    }
+    if (/WebSocket|websocket/i.test(msg)) {
+      throw Object.assign(
+        new Error(
+          `Emails may have sent, but saving delivery status failed (database connection dropped). Sent≈${sent}. Refresh the page — do not immediately resend without checking inboxes. Detail: ${msg}`,
+        ),
+        { status: 502, sent, failed, skipped, campaignId: campaign.id },
+      );
+    }
+    throw dbErr;
+  }
 
   return {
     campaignId: campaign.id,

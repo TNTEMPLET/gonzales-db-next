@@ -92,8 +92,34 @@ export async function POST(
     });
     return NextResponse.json({ success: true, ...result });
   } catch (e) {
-    const err = e as Error & { status?: number };
-    const status = err.status ?? (err.message === "Event not found" ? 404 : 400);
-    return NextResponse.json({ error: err.message || "Send failed" }, { status });
+    const err = e as Error & {
+      status?: number;
+      sent?: number;
+      failed?: number;
+      campaignId?: string;
+    };
+    let message = err.message || "Send failed";
+    if (message.includes("WebSocket is not connected")) {
+      message =
+        "Database connection dropped while sending (Prisma Postgres WebSocket). " +
+        "Some emails may already have been delivered — check parent inboxes before resending. " +
+        "Refresh the page and try again with “Resend” only for players still marked not emailed.";
+    }
+    const status =
+      err.status ??
+      (err.message === "Event not found"
+        ? 404
+        : message.includes("WebSocket")
+          ? 502
+          : 400);
+    return NextResponse.json(
+      {
+        error: message,
+        sent: err.sent,
+        failed: err.failed,
+        campaignId: err.campaignId,
+      },
+      { status },
+    );
   }
 }
