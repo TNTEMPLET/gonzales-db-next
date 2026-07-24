@@ -36,6 +36,15 @@ type EventDetail = {
   fields: FieldDef[];
 };
 
+type RosterCycleOption = {
+  id: string;
+  label: string;
+  seasonYear: number;
+  ageGroup: string;
+  selectedCount: number;
+  secondTeamCount: number;
+};
+
 export default function TravelEventDetailClient({
   eventId,
   organizationId,
@@ -51,6 +60,13 @@ export default function TravelEventDetailClient({
   const [adding, setAdding] = useState(false);
   const [statusBusy, setStatusBusy] = useState(false);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [rosterCycles, setRosterCycles] = useState<RosterCycleOption[]>([]);
+  const [cycleId, setCycleId] = useState("");
+  const [rosterTeam, setRosterTeam] = useState<"first" | "second" | "both">(
+    "both",
+  );
+  const [importing, setImporting] = useState(false);
+  const [importNote, setImportNote] = useState<string | null>(null);
 
   const orgQ = `org=${encodeURIComponent(organizationId)}`;
 
@@ -77,9 +93,29 @@ export default function TravelEventDetailClient({
     }
   }, [eventId, orgQ]);
 
+  const loadCycles = useCallback(async () => {
+    try {
+      const res = await fetch(
+        `/api/admin/trip/roster-cycles?${orgQ}`,
+        { credentials: "include" },
+      );
+      const data = (await res.json()) as {
+        cycles?: RosterCycleOption[];
+        error?: string;
+      };
+      if (!res.ok) return;
+      const cycles = data.cycles ?? [];
+      setRosterCycles(cycles);
+      setCycleId((prev) => prev || cycles[0]?.id || "");
+    } catch {
+      // non-fatal — manual paste still works
+    }
+  }, [orgQ]);
+
   useEffect(() => {
     void load();
-  }, [load]);
+    void loadCycles();
+  }, [load, loadCycles]);
 
   const summary = useMemo(() => {
     const s = { total: 0, not_started: 0, draft: 0, submitted: 0 };
@@ -91,6 +127,48 @@ export default function TravelEventDetailClient({
     }
     return s;
   }, [participants]);
+
+  const selectedCycle = rosterCycles.find((c) => c.id === cycleId) ?? null;
+
+  async function importFromRoster(e: React.FormEvent) {
+    e.preventDefault();
+    if (!cycleId) return;
+    setImporting(true);
+    setError(null);
+    setImportNote(null);
+    try {
+      const res = await fetch(
+        `/api/admin/trip/events/${eventId}/import-roster?${orgQ}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ cycleId, rosterTeam }),
+        },
+      );
+      const data = (await res.json()) as {
+        error?: string;
+        created?: number;
+        skipped?: number;
+        sourceCount?: number;
+        contactMatched?: number;
+        cycle?: { label: string };
+      };
+      if (!res.ok) throw new Error(data.error || "Import failed");
+      setImportNote(
+        `Imported ${data.created ?? 0} of ${data.sourceCount ?? 0} from ${data.cycle?.label ?? "roster"}` +
+          (data.skipped ? ` (${data.skipped} already on trip)` : "") +
+          (typeof data.contactMatched === "number"
+            ? ` · ${data.contactMatched} with guardian contact match`
+            : ""),
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Import failed");
+    } finally {
+      setImporting(false);
+    }
+  }
 
   async function addPlayers(e: React.FormEvent) {
     e.preventDefault();
@@ -257,10 +335,88 @@ export default function TravelEventDetailClient({
       </div>
 
       <form
+        onSubmit={importFromRoster}
+        className="rounded-2xl border border-emerald-900/40 bg-emerald-950/15 p-4"
+      >
+        <h3 className="mb-1 font-semibold text-zinc-100">
+          Import from finalized All-Star roster
+        </h3>
+        <p className="mb-3 text-xs text-zinc-500">
+          Pulls SELECTED / SECOND_TEAM players from the Vault final roster. Prefills
+          first/last name, uniform #, and guardian name/email when a TeamPlayer
+          contact match is found. Positions, bats, and throws still need parent
+          input. Safe to re-run — existing players are skipped.
+        </p>
+        {rosterCycles.length === 0 ? (
+          <p className="text-sm text-zinc-500">
+            No finalized rosters found for this organization yet. Finalize the
+            cycle in the All-Star Vault, or paste names below.
+          </p>
+        ) : (
+          <div className="grid gap-3 sm:grid-cols-2">
+            <label className="block text-sm sm:col-span-2">
+              <span className="mb-1 block text-zinc-400">Ballot cycle</span>
+              <select
+                value={cycleId}
+                onChange={(ev) => setCycleId(ev.target.value)}
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+              >
+                {rosterCycles.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.label} — {c.selectedCount} first
+                    {c.secondTeamCount > 0
+                      ? ` / ${c.secondTeamCount} second`
+                      : ""}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="block text-sm">
+              <span className="mb-1 block text-zinc-400">Roster team</span>
+              <select
+                value={rosterTeam}
+                onChange={(ev) =>
+                  setRosterTeam(ev.target.value as "first" | "second" | "both")
+                }
+                className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-zinc-100"
+              >
+                <option value="both">
+                  Both teams
+                  {selectedCycle
+                    ? ` (${selectedCycle.selectedCount + selectedCycle.secondTeamCount})`
+                    : ""}
+                </option>
+                <option value="first">
+                  First team only
+                  {selectedCycle ? ` (${selectedCycle.selectedCount})` : ""}
+                </option>
+                <option value="second">
+                  Second team only
+                  {selectedCycle ? ` (${selectedCycle.secondTeamCount})` : ""}
+                </option>
+              </select>
+            </label>
+            <div className="flex items-end">
+              <button
+                type="submit"
+                disabled={importing || !cycleId}
+                className="w-full rounded-lg border border-emerald-600/60 bg-emerald-950/40 px-4 py-2 text-sm font-semibold text-emerald-100 disabled:opacity-50"
+              >
+                {importing ? "Importing…" : "Import roster + generate links"}
+              </button>
+            </div>
+          </div>
+        )}
+        {importNote && (
+          <p className="mt-3 text-sm text-emerald-200/90">{importNote}</p>
+        )}
+      </form>
+
+      <form
         onSubmit={addPlayers}
         className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4"
       >
-        <h3 className="mb-1 font-semibold text-zinc-100">Add players</h3>
+        <h3 className="mb-1 font-semibold text-zinc-100">Add players manually</h3>
         <p className="mb-3 text-xs text-zinc-500">
           One full name per line. Each player gets a unique magic link for parents.
         </p>

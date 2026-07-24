@@ -129,6 +129,8 @@ export async function addParticipants(
     jerseyNumber?: string | null;
     candidateId?: string | null;
     paymentId?: string | null;
+    /** Optional draft answers (e.g. guardian prefill from TeamPlayer) */
+    initialAnswers?: TripAnswers | null;
   }>,
 ) {
   const event = await prisma.tripEvent.findFirst({
@@ -137,16 +139,31 @@ export async function addParticipants(
   if (!event) throw new Error("Event not found");
 
   const created = [];
+  let skipped = 0;
   for (const row of rows) {
     const name = row.playerFullName.trim();
     if (!name) continue;
-    const existing = await prisma.tripParticipant.findFirst({
+
+    const existingByName = await prisma.tripParticipant.findFirst({
       where: {
         eventId,
         playerFullName: { equals: name, mode: "insensitive" },
       },
     });
-    if (existing) continue;
+    if (existingByName) {
+      skipped++;
+      continue;
+    }
+
+    if (row.candidateId) {
+      const existingByCandidate = await prisma.tripParticipant.findFirst({
+        where: { eventId, candidateId: row.candidateId },
+      });
+      if (existingByCandidate) {
+        skipped++;
+        continue;
+      }
+    }
 
     let token = generateTripInviteToken();
     for (let i = 0; i < 5; i++) {
@@ -162,8 +179,24 @@ export async function addParticipants(
             candidateId: row.candidateId ?? null,
             paymentId: row.paymentId ?? null,
             inviteToken: token,
+            status: row.initialAnswers ? "draft" : "not_started",
           },
         });
+
+        if (row.initialAnswers && Object.keys(row.initialAnswers).length > 0) {
+          await prisma.tripResponse.create({
+            data: {
+              participantId: p.id,
+              answersJson: JSON.stringify(row.initialAnswers),
+              submitterName: null,
+              submitterEmail:
+                typeof row.initialAnswers.guardian1_email === "string"
+                  ? row.initialAnswers.guardian1_email || null
+                  : null,
+            },
+          });
+        }
+
         created.push(p);
         break;
       } catch {
@@ -171,7 +204,51 @@ export async function addParticipants(
       }
     }
   }
-  return created;
+  return { created, skipped };
+}
+
+/** Import finalized All-Star roster into a trip event (idempotent by name/candidate). */
+export async function importParticipantsFromFinalRoster(input: {
+  eventId: string;
+  organizationId: string;
+  cycleId: string;
+  slots?: Array<"SELECTED" | "SECOND_TEAM">;
+}) {
+  const { buildTripImportRowsFromFinalRoster } = await import(
+    "@/lib/trip/importFromRoster"
+  );
+  const built = await buildTripImportRowsFromFinalRoster({
+    organizationId: input.organizationId,
+    cycleId: input.cycleId,
+    slots: input.slots,
+  });
+
+  // Link event to ballot cycle for traceability
+  await prisma.tripEvent.updateMany({
+    where: { id: input.eventId, organizationId: input.organizationId },
+    data: { ballotCycleId: built.cycle.id },
+  });
+
+  const result = await addParticipants(
+    input.eventId,
+    input.organizationId,
+    built.rows.map((r) => ({
+      playerFullName: r.playerFullName,
+      ageGroup: r.ageGroup,
+      team: r.team,
+      jerseyNumber: r.jerseyNumber,
+      candidateId: r.candidateId,
+      initialAnswers: r.answers,
+    })),
+  );
+
+  return {
+    cycle: built.cycle,
+    sourceCount: built.rows.length,
+    contactMatched: built.rows.filter((r) => r.contactMatched).length,
+    created: result.created,
+    skipped: result.skipped,
+  };
 }
 
 export async function loadPublicTripByToken(token: string) {
