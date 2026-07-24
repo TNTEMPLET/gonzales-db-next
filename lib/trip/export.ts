@@ -50,10 +50,22 @@ export type TripExportRow = {
   inviteToken?: string;
 };
 
+/** Fields safe for tournament-director Google Sheet paste. */
+export function directorExportFields(fields: TripFieldDefPublic[]): TripFieldDefPublic[] {
+  return [...fields]
+    .filter(
+      (f) =>
+        !f.excludeFromDirectorExport &&
+        !f.adminOnly &&
+        f.sheetColumn.trim() !== "" &&
+        f.section !== "health",
+    )
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+}
+
 /**
  * Build CSV matching Google Sheet headers (sheetColumn order).
- * When sheetOnly is true, only Sheet columns are emitted (paste-ready).
- * When false, admin tracking columns are appended.
+ * Director/sheet export never includes health or staff-only fields.
  */
 export function buildTripExportCsv(input: {
   fields: TripFieldDefPublic[];
@@ -63,9 +75,21 @@ export function buildTripExportCsv(input: {
   /** Include invite URL column for admin link packs */
   includeInviteUrl?: boolean;
   inviteBaseUrl?: string;
+  /**
+   * When true (default for sheetOnly), strip health / non-director columns.
+   * When false with sheetOnly false, still never puts health in director columns —
+   * health is omitted from all CSV modes by design.
+   */
+  directorOnly?: boolean;
 }): string {
-  const fields = [...input.fields].sort((a, b) => a.sortOrder - b.sortOrder);
   const sheetOnly = input.sheetOnly !== false;
+  const directorOnly = input.directorOnly !== false;
+
+  const fields = directorOnly
+    ? directorExportFields(input.fields)
+    : [...input.fields]
+        .filter((f) => f.sheetColumn.trim() !== "" && !f.excludeFromDirectorExport)
+        .sort((a, b) => a.sortOrder - b.sortOrder);
 
   const headers = [...fields.map((f) => f.sheetColumn)];
   if (!sheetOnly) {

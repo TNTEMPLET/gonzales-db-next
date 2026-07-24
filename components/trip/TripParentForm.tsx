@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 import type { TripAnswers, TripFieldDefPublic } from "@/lib/trip/types";
 
@@ -60,6 +60,15 @@ export default function TripParentForm({ token }: { token: string }) {
     setAnswers((prev) => ({ ...prev, [key]: value }));
     setSavedDraft(false);
   }
+
+  const rosterFields = useMemo(
+    () => (data?.fields ?? []).filter((f) => (f.section ?? "roster") === "roster"),
+    [data?.fields],
+  );
+  const healthFields = useMemo(
+    () => (data?.fields ?? []).filter((f) => f.section === "health"),
+    [data?.fields],
+  );
 
   async function submit(asDraft: boolean) {
     setSaving(true);
@@ -184,21 +193,56 @@ export default function TripParentForm({ token }: { token: string }) {
       )}
 
       <form
-        className="space-y-5"
+        className="space-y-8"
         onSubmit={(e) => {
           e.preventDefault();
           void submit(false);
         }}
       >
-        {data.fields.map((f) => (
-          <FieldInput
-            key={f.key}
-            field={f}
-            value={answers[f.key]}
-            onChange={(v) => setField(f.key, v)}
-            disabled={closed || saving}
-          />
-        ))}
+        <section className="space-y-5">
+          <div className="border-b border-zinc-800 pb-2">
+            <h2 className="text-sm font-semibold uppercase tracking-wide text-zinc-300">
+              Section 1–2 · Roster &amp; contacts
+            </h2>
+            <p className="mt-1 text-xs text-zinc-500">
+              Required fields are used for the tournament director roster export.
+            </p>
+          </div>
+          {rosterFields.map((f) => (
+            <FieldInput
+              key={f.key}
+              field={f}
+              value={answers[f.key]}
+              onChange={(v) => setField(f.key, v)}
+              disabled={closed || saving}
+            />
+          ))}
+        </section>
+
+        {healthFields.length > 0 && (
+          <section className="space-y-5 rounded-2xl border border-rose-900/40 bg-rose-950/10 p-4 sm:p-5">
+            <div className="border-b border-rose-900/30 pb-2">
+              <h2 className="text-sm font-semibold uppercase tracking-wide text-rose-100/90">
+                Section 3 of 3 · Health and allergy information
+              </h2>
+              <p className="mt-1 text-xs text-zinc-400">
+                Information needed for travel consideration. Shared with league
+                admins and coaching staff only — not sent on the tournament
+                director roster export. Optional; you may submit roster info
+                first and return later to add health details.
+              </p>
+            </div>
+            {healthFields.map((f) => (
+              <FieldInput
+                key={f.key}
+                field={f}
+                value={answers[f.key]}
+                onChange={(v) => setField(f.key, v)}
+                disabled={closed || saving}
+              />
+            ))}
+          </section>
+        )}
 
         <div className="flex flex-wrap gap-3 pt-2">
           <button

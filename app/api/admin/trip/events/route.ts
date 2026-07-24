@@ -29,6 +29,8 @@ export async function GET(request: NextRequest) {
   }
 
   const organizationId = resolveOrg(request);
+  // Keep SW Regional field defs in sync (health section, etc.)
+  await ensureSwRegionalTemplate();
   const events = await listTripEventsForOrg(organizationId);
 
   return NextResponse.json({

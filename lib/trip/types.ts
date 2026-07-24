@@ -12,6 +12,8 @@ export type TripFieldType =
 export type TripEventStatus = "draft" | "open" | "closed";
 export type TripParticipantStatus = "not_started" | "draft" | "submitted";
 
+export type TripFieldSection = "roster" | "health";
+
 export type TripPrefillSource =
   | "playerFullName"
   | "playerFirstName"
@@ -31,6 +33,9 @@ export type TripFieldDefPublic = {
   helpText: string | null;
   prefillFrom: TripPrefillSource | null;
   adminOnly: boolean;
+  section: TripFieldSection;
+  /** Never appear on tournament-director CSV */
+  excludeFromDirectorExport: boolean;
 };
 
 export type TripAnswers = Record<string, string | boolean | number | null>;
