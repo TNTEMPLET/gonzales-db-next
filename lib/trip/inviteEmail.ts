@@ -1,5 +1,7 @@
 import "server-only";
 
+import { randomBytes } from "crypto";
+
 import { getDefaultFromAddress } from "@/lib/communications/fromAddresses";
 import { sendEmailViaResend } from "@/lib/communications/providers/resend";
 import { createUnsubscribeToken } from "@/lib/communications/unsubscribeToken";
@@ -21,6 +23,11 @@ import {
   reconnectPrisma,
   withTransientDbRetry,
 } from "@/lib/prismaRetry";
+
+/** App-side id (Prisma cuid() is not available as a Postgres function). */
+function newId() {
+  return `c${Date.now().toString(36)}${randomBytes(8).toString("hex")}`;
+}
 
 export {
   applyTripInviteTemplate,
@@ -305,33 +312,74 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
     };
   }
 
-  // Campaign + snapshots in one write (no long idle after this until batch results)
-  const campaign = await prisma.communicationCampaign.create({
-    data: {
-      organizationId: input.organizationId,
-      channels: ["EMAIL"],
-      status: "SENDING",
-      title: `Trip invites: ${event.name}`.slice(0, 200),
-      messageSubject: subjectTpl,
-      messageBody: bodyTpl,
-      fromEmail: fromAddress,
-      createdByAdminId: input.createdByAdminId ?? null,
-      audienceRules: {
-        create: {
-          ruleType: "ORGANIZATION",
-          organizationId: input.organizationId,
-        },
-      },
-      recipientSnapshots: {
-        create: pending.map((row) => ({
-          recipientType: "TRIP_GUARDIAN" as const,
-          tripParticipantId: row.participantId,
-          email: row.email,
-          matchReasons: [`trip_event:${event.id}`],
-        })),
+  // Prisma Client + PPG enum arrays currently emit malformed literals
+  // ("EMAIL" instead of {EMAIL}). Nested creates also open interactive
+  // transactions that drop the PPG WebSocket. Use raw SQL for campaign row.
+  const campaignId = newId();
+  await withTransientDbRetry(
+    async () => {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "CommunicationCampaign"
+           (id, "organizationId", channels, status, title, "messageSubject", "messageBody",
+            "fromEmail", "createdByAdminId", "logicalMode", "createdAt", "updatedAt")
+         VALUES
+           ($1, $2, ARRAY['EMAIL']::"CommunicationChannel"[], 'SENDING'::"CommunicationCampaignStatus",
+            $3, $4, $5, $6, $7, 'AND'::"CommunicationAudienceLogicalMode", NOW(), NOW())`,
+        campaignId,
+        input.organizationId,
+        `Trip invites: ${event.name}`.slice(0, 200),
+        subjectTpl,
+        bodyTpl,
+        fromAddress,
+        input.createdByAdminId ?? null,
+      );
+    },
+    {
+      attempts: 3,
+      delayMs: 500,
+      onRetry: async () => {
+        await reconnectPrisma(prisma);
       },
     },
-  });
+  );
+
+  await withTransientDbRetry(
+    async () => {
+      await prisma.$executeRawUnsafe(
+        `INSERT INTO "CommunicationAudienceRule"
+           (id, "campaignId", "ruleType", "organizationId", "createdAt")
+         VALUES
+           ($1, $2, 'ORGANIZATION'::"CommunicationAudienceRuleType", $3, NOW())`,
+        newId(),
+        campaignId,
+        input.organizationId,
+      );
+
+      // Snapshots one-by-one (small N for trip rosters) to avoid array binding issues
+      for (const row of pending) {
+        await prisma.$executeRawUnsafe(
+          `INSERT INTO "CommunicationRecipientSnapshot"
+             (id, "campaignId", "recipientType", "tripParticipantId", email, "matchReasons", "createdAt")
+           VALUES
+             ($1, $2, 'TRIP_GUARDIAN'::"CommunicationRecipientType", $3, $4, ARRAY[$5]::text[], NOW())`,
+          newId(),
+          campaignId,
+          row.participantId,
+          row.email,
+          `trip_event:${event.id}`,
+        );
+      }
+    },
+    {
+      attempts: 3,
+      delayMs: 500,
+      onRetry: async () => {
+        await reconnectPrisma(prisma);
+      },
+    },
+  );
+
+  const campaign = { id: campaignId };
 
   type DeliveryResult = {
     participantId: string;
@@ -418,25 +466,35 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
     await withTransientDbRetry(
       async () => {
         // Idempotent: clear partial deliveries from a previous retry of this campaign
-        await prisma.communicationDelivery.deleteMany({
-          where: { campaignId: campaign.id },
-        });
+        await prisma.$executeRawUnsafe(
+          `DELETE FROM "CommunicationDelivery" WHERE "campaignId" = $1`,
+          campaign.id,
+        );
 
-        await prisma.communicationDelivery.createMany({
-          data: results.map((r) => ({
-            campaignId: campaign.id,
-            channel: "EMAIL" as const,
-            recipientType: "TRIP_GUARDIAN" as const,
-            tripParticipantId: r.participantId,
-            toEmail: r.email,
-            provider: r.provider ?? null,
-            providerMessageId: r.providerMessageId ?? null,
-            status: r.status,
-            errorMessage: r.errorMessage ?? null,
-            attemptedAt: now,
-            sentAt: r.status === "SENT" ? now : null,
-          })),
-        });
+        // Raw inserts avoid PPG enum-array / enum binding bugs
+        for (const r of results) {
+          await prisma.$executeRawUnsafe(
+            `INSERT INTO "CommunicationDelivery"
+               (id, "campaignId", channel, "recipientType", "tripParticipantId",
+                "toEmail", provider, "providerMessageId", status, "errorMessage",
+                "attemptedAt", "sentAt", "createdAt", "updatedAt")
+             VALUES
+               ($1, $2, 'EMAIL'::"CommunicationChannel",
+                'TRIP_GUARDIAN'::"CommunicationRecipientType", $3,
+                $4, $5, $6, $7::"CommunicationDeliveryStatus", $8,
+                $9, $10, NOW(), NOW())`,
+            newId(),
+            campaign.id,
+            r.participantId,
+            r.email,
+            r.provider ?? null,
+            r.providerMessageId ?? null,
+            r.status,
+            r.errorMessage ?? null,
+            now,
+            r.status === "SENT" ? now : null,
+          );
+        }
 
         // Absolute count (not increment) so reconnect retries stay idempotent
         for (const r of results) {
@@ -451,13 +509,17 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
           });
         }
 
-        await prisma.communicationCampaign.update({
-          where: { id: campaign.id },
-          data: {
-            status: failed > 0 && sent === 0 ? "FAILED" : "SENT",
-            sentAt: now,
-          },
-        });
+        const finalStatus = failed > 0 && sent === 0 ? "FAILED" : "SENT";
+        await prisma.$executeRawUnsafe(
+          `UPDATE "CommunicationCampaign"
+           SET status = $2::"CommunicationCampaignStatus",
+               "sentAt" = $3,
+               "updatedAt" = NOW()
+           WHERE id = $1`,
+          campaign.id,
+          finalStatus,
+          now,
+        );
       },
       {
         attempts: 4,
@@ -480,13 +542,16 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
     // Best-effort campaign status after reconnect
     try {
       await reconnectPrisma(prisma);
-      await prisma.communicationCampaign.update({
-        where: { id: campaign.id },
-        data: {
-          status: sent > 0 ? "SENT" : "FAILED",
-          sentAt: now,
-        },
-      });
+      await prisma.$executeRawUnsafe(
+        `UPDATE "CommunicationCampaign"
+         SET status = $2::"CommunicationCampaignStatus",
+             "sentAt" = $3,
+             "updatedAt" = NOW()
+         WHERE id = $1`,
+        campaign.id,
+        sent > 0 ? "SENT" : "FAILED",
+        now,
+      );
     } catch {
       /* ignore */
     }
