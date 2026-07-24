@@ -62,21 +62,33 @@ export async function GET(
       createdAt: event.createdAt.toISOString(),
       updatedAt: event.updatedAt.toISOString(),
     },
-    participants: event.participants.map((p) => ({
-      id: p.id,
-      playerFullName: p.playerFullName,
-      ageGroup: p.ageGroup,
-      team: p.team,
-      jerseyNumber: p.jerseyNumber,
-      status: p.status,
-      inviteToken: p.inviteToken,
-      inviteUrl: `${baseUrl}/trip/${p.inviteToken}`,
-      submitterName: p.response?.submitterName ?? null,
-      submitterEmail: p.response?.submitterEmail ?? null,
-      submittedAt: p.response?.submittedAt?.toISOString() ?? null,
-      answers: parseAnswersJson(p.response?.answersJson),
-      updatedAt: p.updatedAt.toISOString(),
-    })),
+    participants: event.participants.map((p) => {
+      const answers = parseAnswersJson(p.response?.answersJson);
+      const guardianEmail =
+        (typeof answers.guardian1_email === "string" &&
+          answers.guardian1_email.trim()) ||
+        p.response?.submitterEmail ||
+        null;
+      return {
+        id: p.id,
+        playerFullName: p.playerFullName,
+        ageGroup: p.ageGroup,
+        team: p.team,
+        jerseyNumber: p.jerseyNumber,
+        status: p.status,
+        inviteToken: p.inviteToken,
+        inviteUrl: `${baseUrl}/trip/${p.inviteToken}`,
+        submitterName: p.response?.submitterName ?? null,
+        submitterEmail: p.response?.submitterEmail ?? null,
+        guardianEmail,
+        inviteEmailSentAt: p.inviteEmailSentAt?.toISOString() ?? null,
+        inviteEmailTo: p.inviteEmailTo,
+        inviteEmailCount: p.inviteEmailCount,
+        submittedAt: p.response?.submittedAt?.toISOString() ?? null,
+        answers,
+        updatedAt: p.updatedAt.toISOString(),
+      };
+    }),
   });
 }
 

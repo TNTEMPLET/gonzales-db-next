@@ -160,6 +160,8 @@ enum CommunicationRecipientType {
   REGISTERED_USER
   ADMIN_USER
   COACHING_INTEREST
+  /// Parent/guardian email for All-Star travel trip magic links
+  TRIP_GUARDIAN
 }
 
 enum CommunicationDeliveryStatus {
@@ -804,15 +806,17 @@ model CommunicationApproval {
 }
 
 model CommunicationRecipientSnapshot {
-  id               String                     @id @default(cuid())
-  campaignId       String
-  recipientType    CommunicationRecipientType
-  registeredUserId String?
-  adminUserId      String?
-  email            String?
-  phone            String?
-  matchReasons     String[]
-  createdAt        DateTime                   @default(now())
+  id                 String                     @id @default(cuid())
+  campaignId         String
+  recipientType      CommunicationRecipientType
+  registeredUserId   String?
+  adminUserId        String?
+  /// Trip participant when recipientType is TRIP_GUARDIAN
+  tripParticipantId  String?
+  email              String?
+  phone              String?
+  matchReasons       String[]
+  createdAt          DateTime                   @default(now())
 
   campaign       CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   registeredUser RegisteredUser?       @relation("CommunicationRecipientRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
@@ -821,6 +825,7 @@ model CommunicationRecipientSnapshot {
   @@index([campaignId])
   @@index([registeredUserId])
   @@index([adminUserId])
+  @@index([tripParticipantId])
 }
 
 model CommunicationDelivery {
@@ -830,6 +835,8 @@ model CommunicationDelivery {
   recipientType     CommunicationRecipientType
   registeredUserId  String?
   adminUserId       String?
+  /// Trip participant when recipientType is TRIP_GUARDIAN
+  tripParticipantId String?
   toEmail           String?
   toPhone           String?
   provider          String?
@@ -848,6 +855,7 @@ model CommunicationDelivery {
   @@index([campaignId, status, channel])
   @@index([registeredUserId])
   @@index([adminUserId])
+  @@index([tripParticipantId])
 }
 
 model EmailSuppression {
@@ -2273,6 +2281,10 @@ model TripParticipant {
   inviteToken    String        @unique
   /// not_started | draft | submitted
   status         String        @default("not_started")
+  /// Last successful invite email send (guardian)
+  inviteEmailSentAt    DateTime?
+  inviteEmailTo        String?
+  inviteEmailCount     Int           @default(0)
   response       TripResponse?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
