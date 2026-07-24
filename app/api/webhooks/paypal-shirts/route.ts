@@ -1,95 +1,40 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { resolveShirtOrderFromDraft } from "@/lib/merch/orderDrafts";
-import {
-  isShirtOrderItem,
-  looksLikeShirtAmount,
-  resolveShirtOrg,
-} from "@/lib/merch/shirtOrderMatch";
-import prisma from "@/lib/prisma";
-import { fetchTransactionById } from "@/lib/paypal/client";
+import { ingestShirtCaptureById } from "@/lib/merch/shirtOrderIngest";
+import type { PayPalTransaction } from "@/lib/paypal/client";
 import { extractPayment, verifyPayPalWebhookSignature } from "@/lib/paypal/webhook";
 
-const HANDLED_EVENTS = new Set(["PAYMENT.SALE.COMPLETED", "PAYMENT.CAPTURE.COMPLETED"]);
-
 /**
- * Store a shirt order from the best available PayPal payload.
- * Reporting API often lags the activity feed by hours — webhook must not depend on it.
+ * Live shirt ingest. PayPal NCP checkouts fire CAPTURE/SALE (and sometimes CHECKOUT.ORDER.*).
+ * Cart details come from capture→order (not lagging Reporting).
  */
-async function storeShirtOrder(input: {
-  txId: string;
-  amountCents: number;
-  txDate: Date;
-  payerName: string | null;
-  payerEmail: string | null;
-  itemName: string | null;
-  itemQuantity: number | null;
-  note: string | null;
-  checkoutNote: string | null;
-  gonzalesKw: string;
-  ascensionKw: string;
-  shirtPriceCents: number;
-  /** When item name is unknown, allow $15 multiples as provisional shirt orders. */
-  allowAmountHeuristic: boolean;
-}): Promise<
-  | { stored: true; org: string; quantity: number; provisional: boolean; draftCode: string | null }
-  | { stored: false; reason: string; itemName: string | null }
-> {
-  const hasItem = Boolean(input.itemName?.trim());
-  const matchesItem = isShirtOrderItem(input.itemName, input.gonzalesKw, input.ascensionKw);
-  const matchesAmount =
-    input.allowAmountHeuristic && looksLikeShirtAmount(input.amountCents, input.shirtPriceCents);
+const HANDLED_EVENTS = new Set([
+  "PAYMENT.SALE.COMPLETED",
+  "PAYMENT.CAPTURE.COMPLETED",
+  "CHECKOUT.ORDER.COMPLETED",
+  "CHECKOUT.ORDER.APPROVED",
+  "CHECKOUT.ORDER.PROCESSED",
+]);
 
-  if (!matchesItem && !matchesAmount) {
-    return { stored: false, reason: "not_a_shirt_order", itemName: input.itemName };
+function captureIdFromCheckoutOrder(resource: Record<string, unknown>): string | null {
+  const units = resource.purchase_units as
+    | Array<{
+        payments?: { captures?: Array<{ id?: string; status?: string }> };
+      }>
+    | undefined;
+  if (!Array.isArray(units)) return null;
+  for (const u of units) {
+    const caps = u.payments?.captures ?? [];
+    const done =
+      caps.find((c) => (c.status || "").toUpperCase() === "COMPLETED") || caps[0];
+    if (done?.id) return done.id;
   }
-
-  const provisional = !matchesItem && matchesAmount;
-  const fallbackOrg = resolveShirtOrg(input.itemName, input.gonzalesKw, input.ascensionKw);
-  const fallbackQuantity =
-    input.itemQuantity ??
-    Math.max(1, Math.round(input.amountCents / input.shirtPriceCents));
-  const rawNote = input.checkoutNote ?? input.note;
-  const resolved = await resolveShirtOrderFromDraft({
-    note: rawNote,
-    txId: input.txId,
-    amountCents: input.amountCents,
-    payerEmail: input.payerEmail,
-    fallbackQuantity,
-    fallbackOrg,
-  });
-
-  await prisma.shirtOrderRecord.create({
-    data: {
-      txId: input.txId,
-      org: resolved.org,
-      payerName: input.payerName,
-      payerEmail: input.payerEmail,
-      amountCents: input.amountCents,
-      quantity: resolved.quantity,
-      note: resolved.note,
-      // Mark provisional rows so admin can see they need a later Reporting enrich.
-      itemName: input.itemName ?? (provisional ? "Shirt order (awaiting PayPal details)" : null),
-      txDate: input.txDate,
-      items: {
-        create: resolved.itemCreates,
-      },
-    },
-  });
-
-  return {
-    stored: true,
-    org: resolved.org,
-    quantity: resolved.quantity,
-    provisional,
-    draftCode: resolved.draftCode ?? null,
-  };
+  return null;
 }
 
 export async function POST(request: NextRequest) {
   const rawBody = await request.text();
 
-  // Prefer a shirts-specific webhook id; fall back to caps webhook if shared.
   const webhookId =
     process.env.PAYPAL_WEBHOOK_ID_SHIRTS ||
     process.env.PAYPAL_WEBHOOK_ID_CAPS ||
@@ -106,6 +51,7 @@ export async function POST(request: NextRequest) {
 
   const valid = await verifyPayPalWebhookSignature(headers, rawBody, webhookId);
   if (!valid) {
+    console.error("PayPal shirts webhook: invalid signature");
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
@@ -117,61 +63,62 @@ export async function POST(request: NextRequest) {
   }
 
   if (!HANDLED_EVENTS.has(event.event_type)) {
-    return NextResponse.json({ skipped: true, reason: "unhandled_event_type" });
-  }
-
-  const payment = extractPayment(event.event_type, event.resource);
-  if (!payment?.txId) {
-    return NextResponse.json({ skipped: true, reason: "no_tx_id" });
-  }
-
-  const existing = await prisma.shirtOrderRecord.findUnique({ where: { txId: payment.txId } });
-  if (existing) return NextResponse.json({ skipped: true, reason: "already_stored" });
-
-  const gonzalesKw = process.env.PAYPAL_SHIRT_ITEM_GONZALES ?? "";
-  const ascensionKw = process.env.PAYPAL_SHIRT_ITEM_ASCENSION ?? "";
-  const shirtPriceCents = parseInt(process.env.PAYPAL_SHIRT_PRICE_CENTS ?? "1500", 10);
-
-  // Prefer Reporting API cart details when available (item name + checkout options).
-  let fullTx: Awaited<ReturnType<typeof fetchTransactionById>> = null;
-  try {
-    fullTx = await fetchTransactionById(payment.txId);
-  } catch {
-    fullTx = null;
-  }
-
-  const result = await storeShirtOrder({
-    txId: payment.txId,
-    amountCents: fullTx?.amountCents ?? payment.amountCents,
-    txDate: fullTx?.txDate ?? payment.txDate,
-    payerName: fullTx?.payerName ?? payment.payerName,
-    payerEmail: fullTx?.payerEmail ?? payment.payerEmail,
-    itemName: fullTx?.itemName ?? payment.itemName,
-    itemQuantity: fullTx?.itemQuantity ?? payment.itemQuantity,
-    note: fullTx?.note ?? payment.note ?? payment.customId,
-    checkoutNote: fullTx?.checkoutNote ?? null,
-    gonzalesKw,
-    ascensionKw,
-    shirtPriceCents,
-    // Only use $15 heuristic when Reporting has no item yet (common NCP lag).
-    allowAmountHeuristic: !fullTx?.itemName,
-  });
-
-  if (!result.stored) {
     return NextResponse.json({
       skipped: true,
-      reason: result.reason,
-      itemName: result.itemName,
+      reason: "unhandled_event_type",
+      event_type: event.event_type,
     });
   }
 
+  let txId: string | null = null;
+  let fallback: Partial<PayPalTransaction> | undefined;
+
+  if (event.event_type.startsWith("CHECKOUT.ORDER.")) {
+    txId = captureIdFromCheckoutOrder(event.resource);
+    if (!txId) {
+      return NextResponse.json({
+        skipped: true,
+        reason: "no_capture_on_order_yet",
+        orderId: (event.resource.id as string | undefined) ?? null,
+      });
+    }
+  } else {
+    const payment = extractPayment(event.event_type, event.resource);
+    if (!payment?.txId) {
+      return NextResponse.json({ skipped: true, reason: "no_tx_id" });
+    }
+    txId = payment.txId;
+    fallback = {
+      txDate: payment.txDate,
+      payerName: payment.payerName,
+      payerEmail: payment.payerEmail,
+      amountCents: payment.amountCents,
+      note: payment.note,
+      itemName: payment.itemName,
+      itemQuantity: payment.itemQuantity,
+      checkoutNote: null,
+      status: "S",
+    };
+  }
+
+  const ingested = await ingestShirtCaptureById(txId, { fallback });
+
+  if (!ingested.ok) {
+    console.info("PayPal shirts webhook skip", ingested.reason, txId, ingested.itemName);
+    return NextResponse.json({
+      skipped: true,
+      reason: ingested.reason,
+      itemName: ingested.itemName ?? null,
+      txId,
+    });
+  }
+
+  console.info("PayPal shirts webhook", ingested.result, txId, ingested.tx.itemName);
   return NextResponse.json({
-    stored: true,
-    org: result.org,
-    quantity: result.quantity,
-    txId: payment.txId,
-    provisional: result.provisional,
-    draftCode: result.draftCode,
-    enrichedFromReporting: Boolean(fullTx?.itemName),
+    stored: ingested.result === "created",
+    result: ingested.result,
+    txId,
+    itemName: ingested.tx.itemName,
+    amountCents: ingested.tx.amountCents,
   });
 }

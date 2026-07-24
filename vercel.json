@@ -11,6 +11,10 @@
     {
       "path": "/api/cron/schedule-manager",
       "schedule": "*/15 * * * *"
+    },
+    {
+      "path": "/api/cron/shirt-orders-sync",
+      "schedule": "*/10 * * * *"
     }
   ]
 }
