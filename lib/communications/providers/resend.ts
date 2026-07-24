@@ -7,6 +7,17 @@ export type ResendAttachment = {
   contentType?: string;
 };
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function isRateLimitError(status: number, message: string) {
+  return (
+    status === 429 ||
+    /too many requests|rate limit/i.test(message)
+  );
+}
+
 export async function sendEmailViaResend(input: {
   /** One address, or multiple (Resend accepts an array). */
   to: string | string[];
@@ -56,21 +67,50 @@ export async function sendEmailViaResend(input: {
     }));
   }
 
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify(body),
-  });
+  // Resend free/default tier: 10 req/s. Retry 429s with backoff.
+  const maxAttempts = 5;
+  let lastError = "Resend send failed";
 
-  const json = (await response.json()) as { id?: string; message?: string; error?: unknown };
-  if (!response.ok) {
-    throw new Error(json.message || `Resend send failed (${response.status})`);
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    const response = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(body),
+    });
+
+    const json = (await response.json().catch(() => ({}))) as {
+      id?: string;
+      message?: string;
+      name?: string;
+      error?: unknown;
+    };
+    if (response.ok) {
+      return {
+        provider: "resend",
+        providerMessageId: json.id ?? null,
+      };
+    }
+
+    lastError =
+      json.message ||
+      json.name ||
+      `Resend send failed (${response.status})`;
+
+    if (isRateLimitError(response.status, lastError) && attempt < maxAttempts) {
+      const retryAfterHdr = response.headers.get("retry-after");
+      const retryAfterSec = retryAfterHdr ? Number(retryAfterHdr) : NaN;
+      const waitMs = Number.isFinite(retryAfterSec)
+        ? Math.max(250, retryAfterSec * 1000)
+        : 250 * 2 ** (attempt - 1); // 250, 500, 1000, 2000…
+      await sleep(waitMs);
+      continue;
+    }
+
+    throw new Error(lastError);
   }
-  return {
-    provider: "resend",
-    providerMessageId: json.id ?? null,
-  };
+
+  throw new Error(lastError);
 }

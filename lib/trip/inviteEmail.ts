@@ -395,7 +395,13 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
   const appBase = process.env.NEXT_PUBLIC_APP_URL || baseUrl;
 
   // ── External sends only (no Prisma) — keeps PPG WebSocket from going stale ──
-  for (const row of pending) {
+  // Pace under Resend's default 10 req/s limit (bulk roster sends hit this).
+  const paceMs = 120;
+  for (let i = 0; i < pending.length; i++) {
+    const row = pending[i]!;
+    if (i > 0 && paceMs > 0) {
+      await new Promise((r) => setTimeout(r, paceMs));
+    }
     if (suppressedEmails.has(row.email)) {
       results.push({
         participantId: row.participantId,
