@@ -21,6 +21,10 @@ type Participant = {
   inviteUrl: string;
   submitterName: string | null;
   submitterEmail: string | null;
+  guardianEmail?: string | null;
+  inviteEmailSentAt?: string | null;
+  inviteEmailTo?: string | null;
+  inviteEmailCount?: number;
   submittedAt: string | null;
   answers: Record<string, unknown>;
 };
@@ -67,6 +71,10 @@ export default function TravelEventDetailClient({
   );
   const [importing, setImporting] = useState(false);
   const [importNote, setImportNote] = useState<string | null>(null);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
+  const [emailing, setEmailing] = useState(false);
+  const [emailNote, setEmailNote] = useState<string | null>(null);
+  const [resendAlready, setResendAlready] = useState(false);
 
   const orgQ = `org=${encodeURIComponent(organizationId)}`;
 
@@ -129,6 +137,84 @@ export default function TravelEventDetailClient({
   }, [participants]);
 
   const selectedCycle = rosterCycles.find((c) => c.id === cycleId) ?? null;
+
+  const emailReady = useMemo(() => {
+    return participants.filter((p) => {
+      const email =
+        p.guardianEmail ||
+        (typeof p.answers?.guardian1_email === "string"
+          ? p.answers.guardian1_email
+          : null) ||
+        p.submitterEmail;
+      return Boolean(email && String(email).trim());
+    });
+  }, [participants]);
+
+  function toggleSelected(id: string) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function selectAllWithEmail() {
+    setSelectedIds(new Set(emailReady.map((p) => p.id)));
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+  }
+
+  async function sendInviteEmails(mode: "selected" | "all_with_email") {
+    setEmailing(true);
+    setError(null);
+    setEmailNote(null);
+    try {
+      const participantIds =
+        mode === "selected"
+          ? Array.from(selectedIds)
+          : emailReady.map((p) => p.id);
+      if (participantIds.length === 0) {
+        throw new Error("No players with guardian email selected");
+      }
+      const res = await fetch(
+        `/api/admin/trip/events/${eventId}/invite-emails?${orgQ}`,
+        {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            participantIds,
+            resend: resendAlready,
+          }),
+        },
+      );
+      const data = (await res.json()) as {
+        error?: string;
+        sent?: number;
+        failed?: number;
+        skipped?: Array<{ playerFullName: string; reason: string }>;
+        campaignId?: string | null;
+      };
+      if (!res.ok) throw new Error(data.error || "Send failed");
+      const skipN = data.skipped?.length ?? 0;
+      setEmailNote(
+        `Sent ${data.sent ?? 0}` +
+          (data.failed ? `, failed ${data.failed}` : "") +
+          (skipN ? `, skipped ${skipN}` : "") +
+          (data.campaignId
+            ? ` · logged in Communications (${data.campaignId.slice(0, 8)}…)`
+            : ""),
+      );
+      await load();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Send failed");
+    } finally {
+      setEmailing(false);
+    }
+  }
 
   async function importFromRoster(e: React.FormEvent) {
     e.preventDefault();
@@ -334,6 +420,74 @@ export default function TravelEventDetailClient({
         </a>
       </div>
 
+      <div className="rounded-2xl border border-violet-900/40 bg-violet-950/15 p-4">
+        <h3 className="mb-1 font-semibold text-zinc-100">
+          Email parent invite links
+        </h3>
+        <p className="mb-3 text-xs text-zinc-500">
+          Sends each guardian a personalized magic link via Resend (same stack as
+          Communications). Uses guardian email from roster import or form draft.
+          Event must be <span className="text-zinc-300">open</span>.{" "}
+          {emailReady.length} of {participants.length} players have an email on
+          file.
+        </p>
+        <div className="mb-3 flex flex-wrap items-center gap-3 text-sm">
+          <button
+            type="button"
+            onClick={selectAllWithEmail}
+            className="text-xs text-violet-300 hover:underline"
+          >
+            Select all with email
+          </button>
+          <button
+            type="button"
+            onClick={clearSelection}
+            className="text-xs text-zinc-500 hover:underline"
+          >
+            Clear selection
+          </button>
+          <label className="flex items-center gap-2 text-xs text-zinc-400">
+            <input
+              type="checkbox"
+              checked={resendAlready}
+              onChange={(ev) => setResendAlready(ev.target.checked)}
+              className="rounded border-zinc-600"
+            />
+            Resend even if already emailed
+          </label>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={emailing || selectedIds.size === 0 || event.status !== "open"}
+            onClick={() => void sendInviteEmails("selected")}
+            className="rounded-lg border border-violet-600/60 bg-violet-950/40 px-4 py-2 text-sm font-semibold text-violet-100 disabled:opacity-50"
+          >
+            {emailing
+              ? "Sending…"
+              : `Email selected (${selectedIds.size})`}
+          </button>
+          <button
+            type="button"
+            disabled={
+              emailing || emailReady.length === 0 || event.status !== "open"
+            }
+            onClick={() => void sendInviteEmails("all_with_email")}
+            className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-medium text-zinc-200 hover:bg-zinc-900 disabled:opacity-50"
+          >
+            Email all with address ({emailReady.length})
+          </button>
+        </div>
+        {event.status !== "open" && (
+          <p className="mt-2 text-xs text-amber-200/90">
+            Open the event for parents before sending invite emails.
+          </p>
+        )}
+        {emailNote && (
+          <p className="mt-3 text-sm text-violet-200/90">{emailNote}</p>
+        )}
+      </div>
+
       <form
         onSubmit={importFromRoster}
         className="rounded-2xl border border-emerald-900/40 bg-emerald-950/15 p-4"
@@ -446,52 +600,101 @@ export default function TravelEventDetailClient({
         <table className="min-w-full text-left text-sm">
           <thead className="border-b border-zinc-800 bg-zinc-900/80 text-xs uppercase tracking-wide text-zinc-500">
             <tr>
+              <th className="px-3 py-2 font-medium w-8" />
               <th className="px-3 py-2 font-medium">Player</th>
               <th className="px-3 py-2 font-medium">Status</th>
-              <th className="px-3 py-2 font-medium">Guardian</th>
+              <th className="px-3 py-2 font-medium">Guardian email</th>
+              <th className="px-3 py-2 font-medium">Emailed</th>
               <th className="px-3 py-2 font-medium">Invite</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/80">
             {participants.length === 0 ? (
               <tr>
-                <td colSpan={4} className="px-3 py-6 text-center text-zinc-500">
-                  No players yet — paste names above.
+                <td colSpan={6} className="px-3 py-6 text-center text-zinc-500">
+                  No players yet — import roster or paste names above.
                 </td>
               </tr>
             ) : (
-              participants.map((p) => (
-                <tr key={p.id} className="hover:bg-zinc-900/50">
-                  <td className="px-3 py-2.5">
-                    <p className="font-medium text-zinc-100">{p.playerFullName}</p>
-                    {p.jerseyNumber && (
-                      <p className="text-xs text-zinc-500">#{p.jerseyNumber}</p>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <StatusDot status={p.status} />
-                  </td>
-                  <td className="px-3 py-2.5 text-xs text-zinc-400">
-                    {p.submitterName || p.submitterEmail ? (
-                      <>
-                        <p>{p.submitterName}</p>
-                        <p className="text-zinc-500">{p.submitterEmail}</p>
-                      </>
-                    ) : (
-                      <span className="text-zinc-600">—</span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2.5">
-                    <button
-                      type="button"
-                      onClick={() => void copyLink(p)}
-                      className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-amber-600/50 hover:text-amber-200"
-                    >
-                      {copiedId === p.id ? "Copied!" : "Copy link"}
-                    </button>
-                  </td>
-                </tr>
-              ))
+              participants.map((p) => {
+                const gEmail =
+                  p.guardianEmail ||
+                  (typeof p.answers?.guardian1_email === "string"
+                    ? String(p.answers.guardian1_email)
+                    : null) ||
+                  p.submitterEmail ||
+                  null;
+                const hasEmail = Boolean(gEmail && String(gEmail).trim());
+                return (
+                  <tr key={p.id} className="hover:bg-zinc-900/50">
+                    <td className="px-3 py-2.5">
+                      <input
+                        type="checkbox"
+                        disabled={!hasEmail}
+                        checked={selectedIds.has(p.id)}
+                        onChange={() => toggleSelected(p.id)}
+                        className="rounded border-zinc-600"
+                        aria-label={`Select ${p.playerFullName}`}
+                      />
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <p className="font-medium text-zinc-100">
+                        {p.playerFullName}
+                      </p>
+                      {p.jerseyNumber && (
+                        <p className="text-xs text-zinc-500">#{p.jerseyNumber}</p>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <StatusDot status={p.status} />
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-zinc-400">
+                      {hasEmail ? (
+                        <>
+                          <p className="text-zinc-300">{gEmail}</p>
+                          {(p.submitterName ||
+                            (typeof p.answers?.guardian1_first_name ===
+                              "string" &&
+                              p.answers.guardian1_first_name)) && (
+                            <p className="text-zinc-500">
+                              {p.submitterName ||
+                                [
+                                  p.answers.guardian1_first_name,
+                                  p.answers.guardian1_last_name,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ")}
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <span className="text-amber-600/80">No email</span>
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5 text-xs text-zinc-500">
+                      {(p.inviteEmailCount ?? 0) > 0 ? (
+                        <span className="text-violet-300">
+                          {p.inviteEmailCount}×
+                          {p.inviteEmailSentAt
+                            ? ` · ${new Date(p.inviteEmailSentAt).toLocaleDateString()}`
+                            : ""}
+                        </span>
+                      ) : (
+                        "—"
+                      )}
+                    </td>
+                    <td className="px-3 py-2.5">
+                      <button
+                        type="button"
+                        onClick={() => void copyLink(p)}
+                        className="rounded border border-zinc-700 px-2 py-1 text-xs text-zinc-300 hover:border-amber-600/50 hover:text-amber-200"
+                      >
+                        {copiedId === p.id ? "Copied!" : "Copy link"}
+                      </button>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
