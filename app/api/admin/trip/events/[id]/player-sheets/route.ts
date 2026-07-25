@@ -11,6 +11,7 @@ import {
 import {
   buildPlayerSheetsHtml,
   buildPlayerSheetsPdf,
+  filterPlayerSheetParticipants,
 } from "@/lib/trip/playerSheet";
 import { getTripEventDetail } from "@/lib/trip/service";
 
@@ -23,8 +24,9 @@ function resolveOrg(request: NextRequest): string {
 }
 
 /**
- * Printable coach binder player sheets (HTML or PDF).
- * Includes health — league admin / coaching staff only; never director CSV.
+ * Printable player binder sheets (HTML or PDF) for athletes only.
+ * Coaches/managers are director-spreadsheet only — never included here.
+ * Includes health for coaching staff; never director CSV.
  *
  * Query:
  *   format=html|pdf (default html)
@@ -67,9 +69,25 @@ export async function GET(
     participants = participants.filter((p) => p.status === "submitted");
   }
 
-  if (participants.length === 0) {
+  // Athletes only — coaches/managers stay on director CSV
+  const playerRows = filterPlayerSheetParticipants(
+    participants.map((p) => ({
+      id: p.id,
+      playerFullName: p.playerFullName,
+      ageGroup: p.ageGroup,
+      team: p.team,
+      jerseyNumber: p.jerseyNumber,
+      status: p.status,
+      answersJson: p.response?.answersJson ?? null,
+    })),
+  );
+
+  if (playerRows.length === 0) {
     return NextResponse.json(
-      { error: "No participants match the filter" },
+      {
+        error:
+          "No player sheets to print — coaches and staff are included on the director spreadsheet only.",
+      },
       { status: 404 },
     );
   }
@@ -92,13 +110,13 @@ export async function GET(
     name: event.name,
     teamLabel: event.teamLabel,
   };
-  const rows = participants.map((p) => ({
+  const rows = playerRows.map((p) => ({
     playerFullName: p.playerFullName,
     ageGroup: p.ageGroup,
     team: p.team,
     jerseyNumber: p.jerseyNumber,
     status: p.status,
-    answersJson: p.response?.answersJson ?? null,
+    answersJson: p.answersJson,
   }));
 
   const safeName = event.name.replace(/[^a-zA-Z0-9_-]+/g, "-").slice(0, 50);

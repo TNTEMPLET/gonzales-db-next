@@ -529,8 +529,9 @@ export default function TravelEventDetailClient({
         </a>
       </div>
       <p className="text-xs text-zinc-500 -mt-4">
-        Player sheets include health for coaching staff only. Director CSV never
-        includes health fields.
+        Player sheets/cards are athletes only (with health for staff). Coaches and
+        managers stay on the director spreadsheet — not binder cards. Director CSV
+        never includes health fields.
       </p>
 
       <div className="rounded-2xl border border-violet-900/40 bg-violet-950/15 p-4">

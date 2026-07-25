@@ -112,6 +112,26 @@ export function resolvePlayerSheetData(
 }
 
 /**
+ * Player sheets / cards are for athletes only.
+ * Coaches, managers, and other staff go on the director spreadsheet — not binder cards.
+ */
+export function isPlayerSheetEligible(
+  participant: Pick<PlayerSheetParticipant, "answersJson">,
+): boolean {
+  const a = parseAnswersJson(participant.answersJson);
+  const type = str(a, "participant_type").toLowerCase();
+  // Empty / missing defaults to Player (roster imports)
+  if (!type || type === "player") return true;
+  return false;
+}
+
+export function filterPlayerSheetParticipants<T extends PlayerSheetParticipant>(
+  participants: T[],
+): T[] {
+  return participants.filter((p) => isPlayerSheetEligible(p));
+}
+
+/**
  * Printable HTML: one player per page, letter portrait.
  * mode=cards: compact multi-card layout (still page-break friendly).
  */
@@ -133,7 +153,9 @@ export function buildPlayerSheetsHtml(input: {
     .filter(Boolean)
     .join(" · ");
 
-  const sheets = input.participants.map((p) => {
+  // Coaches/managers never get binder cards — director CSV only
+  const eligible = filterPlayerSheetParticipants(input.participants);
+  const sheets = eligible.map((p) => {
     const d = resolvePlayerSheetData(p);
     if (layout === "cards") {
       return `
@@ -347,13 +369,13 @@ export function buildPlayerSheetsHtml(input: {
 <body class="${bodyClass}">
   <div class="toolbar">
     <button type="button" onclick="window.print()">Print</button>
-    <span>${escapeHtml(input.org.shortName)} · ${escapeHtml(input.event.name)} · ${input.participants.length} player(s)</span>
-    <span class="muted">Confidential — coaching staff only</span>
+    <span>${escapeHtml(input.org.shortName)} · ${escapeHtml(input.event.name)} · ${eligible.length} player(s)</span>
+    <span class="muted">Players only · coaches on director spreadsheet</span>
   </div>
   ${
     layout === "cards"
       ? `<div class="cards-wrap">${sheets.join("\n")}
-         <p class="cards-footer">Confidential — coaching staff only · ${escapeHtml(generated)}</p>
+         <p class="cards-footer">Players only · coaches on director spreadsheet · ${escapeHtml(generated)}</p>
          </div>`
       : sheets.join("\n")
   }
@@ -378,6 +400,8 @@ export async function buildPlayerSheetsPdf(input: {
     timeStyle: "short",
   });
 
+  const participants = filterPlayerSheetParticipants(input.participants);
+
   let logoDataUrl: string | null = null;
   if (input.org.logoAbsoluteUrl) {
     try {
@@ -394,7 +418,14 @@ export async function buildPlayerSheetsPdf(input: {
 
   const teamLine = [input.event.teamLabel, input.event.name].filter(Boolean).join(" · ");
 
-  input.participants.forEach((p, idx) => {
+  if (participants.length === 0) {
+    doc.setFont("helvetica", "normal");
+    doc.setFontSize(12);
+    doc.text("No player sheets — coaches/staff are director spreadsheet only.", margin, margin + 20);
+    return new Uint8Array(doc.output("arraybuffer") as ArrayBuffer);
+  }
+
+  participants.forEach((p, idx) => {
     if (idx > 0) doc.addPage();
     const d = resolvePlayerSheetData(p);
     let y = margin;
