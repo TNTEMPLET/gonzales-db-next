@@ -108,7 +108,7 @@ export async function ensureSwRegionalTemplate(opts?: { forceResync?: boolean })
       key: SW_REGIONAL_TEMPLATE_KEY,
       name: "Southwest Regional travel roster (v1)",
       description:
-        "Parent intake: roster columns for tournament director CSV plus optional health section for coach binder sheets (health never exported to director CSV).",
+        "Parent intake: roster columns for tournament director CSV plus optional health for player binder sheets (athletes only; coaches are director-sheet only; health never exported to director CSV).",
       fields: {
         create: SW_REGIONAL_V1_FIELDS.map((f) => ({
           key: f.key,

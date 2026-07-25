@@ -24,7 +24,7 @@ export type SeedField = {
   excludeFromDirectorExport?: boolean;
 };
 
-/** Health / travel-consideration field keys (coach binder; never director CSV). */
+/** Health / travel-consideration field keys (player sheets only; never director CSV). */
 export const TRIP_HEALTH_FIELD_KEYS = [
   "health_allergies",
   "health_sleep",
@@ -79,7 +79,8 @@ export const SW_REGIONAL_V1_FIELDS: SeedField[] = [
     required: true,
     options: ["Player", "Coach", "Manager", "Other"],
     sortOrder: 30,
-    helpText: "Usually Player for All-Star roster athletes.",
+    helpText:
+      "Players get binder sheets. Coach/Manager/Other appear on the director spreadsheet only.",
     section: "roster",
   },
   {
@@ -115,7 +116,7 @@ export const SW_REGIONAL_V1_FIELDS: SeedField[] = [
     sheetColumn: "",
     fieldType: "phone",
     sortOrder: 65,
-    helpText: "Optional — for coach binder contact.",
+    helpText: "Optional — player contact for staff (not on director CSV).",
     section: "roster",
     excludeFromDirectorExport: true,
   },
@@ -150,7 +151,7 @@ export const SW_REGIONAL_V1_FIELDS: SeedField[] = [
     sheetColumn: "",
     fieldType: "phone",
     sortOrder: 95,
-    helpText: "Optional — for coach binder contact.",
+    helpText: "Optional — player contact for staff (not on director CSV).",
     section: "roster",
     excludeFromDirectorExport: true,
   },
@@ -193,7 +194,7 @@ export const SW_REGIONAL_V1_FIELDS: SeedField[] = [
     sortOrder: 130,
     section: "roster",
   },
-  // ── Section 3: Health and Allergy (coach binder only; never director CSV) ──
+  // ── Section 3: Health and Allergy (player sheets only; never director CSV) ──
   {
     key: "health_allergies",
     label: "Allergies",
