@@ -77,6 +77,8 @@ const moduleCatalog: Record<
   // People hub consolidates directory + volunteer cards (+ coaching interest UI).
   USERS: { category: "operations", sortOrder: 10 },
   VOLUNTEERS: { category: "operations", sortOrder: 11 },
+  // Dedicated high-privilege surface for Master Admins to manage roles across orgs (least-privilege focused).
+  ROLE_ASSIGNMENT: { category: "operations", sortOrder: 5 },
   REPORTS: { category: "operations", sortOrder: 20 },
   PARK_ALERTS: { category: "operations", sortOrder: 15 },
   PARK_INFO: { category: "program", sortOrder: 26 },
