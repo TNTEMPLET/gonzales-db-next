@@ -527,6 +527,20 @@ export default function TravelEventDetailClient({
         >
           Download PDF
         </a>
+        <a
+          href={`/api/admin/trip/events/${eventId}/roster?${orgQ}&format=html`}
+          target="_blank"
+          rel="noreferrer"
+          className="rounded-lg border border-emerald-700/50 bg-emerald-950/30 px-3 py-2 text-sm font-medium text-emerald-100 hover:bg-emerald-950/50"
+        >
+          Print roster
+        </a>
+        <a
+          href={`/api/admin/trip/events/${eventId}/roster?${orgQ}&format=pdf`}
+          className="rounded-lg border border-zinc-700 px-3 py-2 text-sm font-medium text-zinc-300 hover:bg-zinc-900"
+        >
+          Roster PDF
+        </a>
       </div>
       <p className="text-xs text-zinc-500 -mt-4">
         Player sheets/cards are athletes only (with health for staff). Coaches and
