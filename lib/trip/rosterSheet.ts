@@ -37,6 +37,16 @@ export const DEFAULT_SW_REGIONALS_COACHES: RosterCoach[] = [
   { name: "Travis Drago", role: "Assistant Coach" },
 ];
 
+/** Coach names that must never appear in the Players section of the roster (case-insensitive). */
+const COACH_NAMES_TO_EXCLUDE = new Set(
+  DEFAULT_SW_REGIONALS_COACHES.map((c) => c.name.toLowerCase().trim()),
+);
+
+function isCoachName(name: string): boolean {
+  const t = (name || "").toLowerCase().trim();
+  return COACH_NAMES_TO_EXCLUDE.has(t);
+}
+
 function str(answers: TripAnswers, key: string): string {
   const v = answers[key];
   if (v === null || v === undefined) return "";
@@ -71,6 +81,44 @@ function resolvePlayerForRoster(p: RosterParticipant): ResolvedRosterPlayer {
   };
 }
 
+/**
+ * Roster only shows athletes in the Players table.
+ * Coaches, managers, and other staff are listed in the Coaching Staff section
+ * (hardcoded for this trip) and must not appear as player rows.
+ */
+function isAthlete(p: Pick<RosterParticipant, "answersJson">): boolean {
+  const a = parseAnswersJson(p.answersJson);
+  const type = str(a, "participant_type").toLowerCase().trim();
+  // Empty / missing / "player" => athlete. Everything else (Coach, Manager, etc.) is excluded.
+  if (!type || type === "player") return true;
+  return false;
+}
+
+function filterAthletes<T extends Pick<RosterParticipant, "answersJson">>(ps: T[]): T[] {
+  return ps.filter(isAthlete);
+}
+
+/**
+ * After resolving, drop any row whose name matches a known coach.
+ * This catches cases where a coach was added as a trip participant
+ * (with placeholder jersey like "NA" or "—") before participant_type was set.
+ */
+function filterOutCoachNames(players: ResolvedRosterPlayer[]): ResolvedRosterPlayer[] {
+  return players.filter((p) => !isCoachName(p.playerName));
+}
+
+/** Drop rows that have no usable jersey number (NA, —, -, empty, etc.). */
+function hasMeaningfulJersey(p: ResolvedRosterPlayer): boolean {
+  const j = (p.jerseyNumber || "").trim().toUpperCase();
+  if (!j) return false;
+  if (j === "NA" || j === "N/A" || j === "-" || j === "—") return false;
+  return true;
+}
+
+function filterMeaningfulPlayers(players: ResolvedRosterPlayer[]): ResolvedRosterPlayer[] {
+  return players.filter(hasMeaningfulJersey);
+}
+
 /** Build a clean printable roster (jersey + name for players, plus coaches). */
 export function buildRosterHtml(input: {
   org: RosterOrg;
@@ -92,9 +140,9 @@ export function buildRosterHtml(input: {
     ? input.coaches
     : DEFAULT_SW_REGIONALS_COACHES;
 
-  // Build player list from all participants (jersey + name only).
-  // Sort by jersey number (numeric where possible), then name.
-  const players: ResolvedRosterPlayer[] = (input.participants ?? [])
+  // Build player list from athletes only (coaches/staff are in the Coaching Staff section above).
+  // 1) participant_type filter, 2) sort, 3) name filter (coaches), 4) jersey filter (drop NA / — / empty placeholders).
+  let players: ResolvedRosterPlayer[] = filterAthletes(input.participants ?? [])
     .map((p: RosterParticipant) => resolvePlayerForRoster(p))
     .sort((a: ResolvedRosterPlayer, b: ResolvedRosterPlayer) => {
       const aj = parseInt(a.jerseyNumber, 10);
@@ -104,6 +152,8 @@ export function buildRosterHtml(input: {
       if (aNum !== bNum) return aNum - bNum;
       return a.playerName.localeCompare(b.playerName);
     });
+  players = filterOutCoachNames(players);
+  players = filterMeaningfulPlayers(players);
 
   const playerRows = players
     .map((p) => {
@@ -362,7 +412,9 @@ export async function buildRosterPdf(input: {
     ? input.coaches
     : DEFAULT_SW_REGIONALS_COACHES;
 
-  const players: ResolvedRosterPlayer[] = (input.participants ?? [])
+  // Athletes only in the PLAYERS section (coaches are shown above in COACHING STAFF).
+  // 1) type filter, 2) sort, 3) name filter, 4) jersey filter (drop NA/—/empty).
+  let players: ResolvedRosterPlayer[] = filterAthletes(input.participants ?? [])
     .map((p: RosterParticipant) => resolvePlayerForRoster(p))
     .sort((a: ResolvedRosterPlayer, b: ResolvedRosterPlayer) => {
       const aj = parseInt(a.jerseyNumber, 10);
@@ -372,6 +424,8 @@ export async function buildRosterPdf(input: {
       if (aNum !== bNum) return aNum - bNum;
       return a.playerName.localeCompare(b.playerName);
     });
+  players = filterOutCoachNames(players);
+  players = filterMeaningfulPlayers(players);
 
   let y = margin;
 
