@@ -31,6 +31,7 @@ export const ADMIN_MODULES = [
   "TOURNAMENT_ALERTS",
   "PARK_ALERTS",
   "PARK_INFO",
+  "ROLE_ASSIGNMENT",
 ] as const;
 
 export type AdminModule = (typeof ADMIN_MODULES)[number];
@@ -62,6 +63,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   TOURNAMENT_ALERTS: "MASTER_ADMIN",
   PARK_ALERTS: "ADMIN",
   PARK_INFO: "ADMIN",
+  ROLE_ASSIGNMENT: "MASTER_ADMIN",
 };
 
 const MASTER_ONLY_MODULES = new Set<AdminModule>([
@@ -72,6 +74,7 @@ const MASTER_ONLY_MODULES = new Set<AdminModule>([
   "TOURNAMENT_BRACKETS",
   "TOURNAMENT_ALERTS",
   "PARK_INFO",
+  "ROLE_ASSIGNMENT",
 ]);
 
 export function isAdminRole(
@@ -129,4 +132,52 @@ export function getAdminRoleLabel(role: AdminRole): string {
   if (role === "BOARD_MEMBER") return "Board Member";
   if (role === "PARK_DIRECTOR") return "Park Director";
   return "Admin";
+}
+
+/**
+ * Suggest the least-privilege AdminRole for a set of desired modules.
+ * Used by the Role Assignment console to guide Master Admins.
+ */
+export function suggestLeastPrivilegeRole(
+  desiredModules: AdminModule[],
+): { role: AdminRole; notes: string } {
+  if (!desiredModules || desiredModules.length === 0) {
+    return {
+      role: "PARK_DIRECTOR",
+      notes: "Minimal access. Good for read-only oversight (reports + basic dashboard).",
+    };
+  }
+
+  const needsMaster = desiredModules.some((m) =>
+    ["TOURNAMENT_BRACKETS", "TOURNAMENT_ALERTS", "ROLE_ASSIGNMENT"].includes(m),
+  );
+  if (needsMaster) {
+    return {
+      role: "MASTER_ADMIN",
+      notes: "Requires platform-level privileges. Only for trusted cross-org operators.",
+    };
+  }
+
+  const needsBoard = desiredModules.some((m) =>
+    [
+      "SCORES",
+      "DUGOUT_MODERATION",
+      "NEWS_ADMIN",
+      "ALL_STAR_PAYMENTS",
+      "SOCIAL_MEDIA",
+      "ORG_DOCUMENTS",
+    ].includes(m),
+  );
+  if (needsBoard) {
+    return {
+      role: "BOARD_MEMBER",
+      notes: "Elevated operational + publishing/moderation. Use when scores, moderation, or payments oversight is required.",
+    };
+  }
+
+  // Default for day-to-day league work (teams, users, volunteers, comms, assignr, etc.)
+  return {
+    role: "ADMIN",
+    notes: "Site-level operator. Preferred for most league staff. Grant per-organization via AdminOrgMembership.",
+  };
 }

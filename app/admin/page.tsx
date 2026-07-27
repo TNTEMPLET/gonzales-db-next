@@ -294,6 +294,20 @@ export default async function AdminDashboardPage({
           : "Accounts, admin access, volunteer compliance cards, and coaching interest in one place.",
         action: masterMode ? "Open People Desk" : "Open People",
       },
+      // Dedicated high-privilege Role Assignment surface for Master Admins only (least-privilege focused role management).
+      // Appears as its own card on the master deployment for MASTER_ADMIN actors.
+      ...(masterMode && hasAdminRoleAtLeast(adminRole, "MASTER_ADMIN")
+        ? [
+            {
+              module: "ROLE_ASSIGNMENT" as AdminModule,
+              href: "/admin/roles",
+              title: "Role Assignment",
+              description:
+                "Grant, change, and revoke admin roles across organizations. Includes least-privilege suggestions and audit history.",
+              action: "Open Role Assignment",
+            },
+          ]
+        : []),
       {
         module: "REPORTS" as AdminModule,
         href: moduleHref("/admin/reports", "REPORTS"),
