@@ -46,7 +46,7 @@ export default async function AdminRoleAssignmentPage() {
     adminUser.isMaster,
     "gonzales", // any content org is fine for rank check
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
   if (!hasAdminRoleAtLeast(role, "MASTER_ADMIN")) {
     redirect("/admin?denied=role-assignment");

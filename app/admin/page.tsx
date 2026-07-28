@@ -74,12 +74,19 @@ export default async function AdminDashboardPage({
   const roleEntries = await Promise.all(
     CONTENT_ORGS.map(async (orgId) => [
       orgId,
-      (await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, orgId)) ??
-        toAdminRole(adminUser.role, adminUser.isMaster),
+      await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, orgId),
     ] as const),
   );
-  const roleByOrg = Object.fromEntries(roleEntries) as Record<ContentOrgId, AdminRole>;
-  const adminRole = currentOrg ? roleByOrg[currentOrg] : toAdminRole(adminUser.role, adminUser.isMaster);
+  const roleByOrg = Object.fromEntries(roleEntries) as Record<ContentOrgId, AdminRole | null>;
+
+  // Effective role for the current context:
+  // - Specific org: the membership (or null)
+  // - All Sites on master: MASTER_ADMIN (even with no rows)
+  // - All Sites otherwise: pick any granted role or null
+  const adminRole: AdminRole = currentOrg
+    ? (roleByOrg[currentOrg] ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR"))
+    : (adminUser.isMaster ? "MASTER_ADMIN" : (Object.values(roleByOrg).find((r): r is AdminRole => !!r) ?? "PARK_DIRECTOR"));
+
   const allowRolePreview = hasAdminRoleAtLeast(adminRole, "ADMIN");
   const communicationsEnabled = isCommunicationsModuleEnabled();
   const allStarLinkedUsers = await prisma.registeredUser.findMany({
@@ -106,7 +113,8 @@ export default async function AdminDashboardPage({
     if (module === "ALL_STAR_VAULT") {
       return adminUser.isMaster || allStarVaultViewByOrg[orgId];
     }
-    return canAccessAdminModule(roleByOrg[orgId], module);
+    const r = roleByOrg[orgId] ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
+    return canAccessAdminModule(r, module);
   };
   const hasModuleAnyOrg = (module: AdminModule) =>
     CONTENT_ORGS.some((orgId) => hasModuleAccess(orgId, module));

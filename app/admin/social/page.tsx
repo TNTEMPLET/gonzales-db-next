@@ -29,7 +29,7 @@ export default async function AdminSocialPage() {
     redirect("/admin/login?next=/admin/social");
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  const role = adminUser.isMaster ? "MASTER_ADMIN" : null;
   if (!canAccessAdminModule(role, "SOCIAL_MEDIA")) {
     redirect("/admin?denied=social");
   }

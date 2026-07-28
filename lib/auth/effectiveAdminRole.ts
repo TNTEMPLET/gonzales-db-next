@@ -1,11 +1,14 @@
-import {
-  getHighestAdminRole,
-  type AdminRole,
-  toAdminRole,
-} from "@/lib/auth/adminRoles";
+import { type AdminRole } from "@/lib/auth/adminRoles";
 import prisma from "@/lib/prisma";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
+/**
+ * Single source of truth for an admin's effective role on a specific organization.
+ *
+ * - Masters (isMaster flag) are MASTER_ADMIN everywhere.
+ * - Everyone else must have an explicit row in AdminOrgMembership for that org.
+ * - AdminUser.role is no longer consulted for authorization decisions.
+ */
 export async function getEffectiveAdminRoleForOrg(
   adminUserId: string,
   isMaster: boolean,
@@ -13,42 +16,23 @@ export async function getEffectiveAdminRoleForOrg(
 ): Promise<AdminRole | null> {
   if (isMaster) return "MASTER_ADMIN";
 
-  const adminUser = await prisma.adminUser.findUnique({
-    where: { id: adminUserId },
-    select: { role: true },
-  });
-  if (!adminUser) return null;
-
-  // Command-and-control roles are global across orgs.
-  const aggregateRole = toAdminRole(adminUser.role, false);
-  if (aggregateRole === "BOARD_MEMBER" || aggregateRole === "PARK_DIRECTOR") {
-    return aggregateRole;
-  }
-
   const row = await prisma.adminOrgMembership.findUnique({
     where: {
       adminUserId_organizationId: { adminUserId, organizationId },
     },
-  });
-  if (!row) return null;
-  return toAdminRole(row.role, false);
-}
-
-export async function syncAdminUserAggregateRole(adminUserId: string) {
-  const user = await prisma.adminUser.findUnique({
-    where: { id: adminUserId },
-    select: { isMaster: true },
-  });
-  if (!user || user.isMaster) return;
-
-  const memberships = await prisma.adminOrgMembership.findMany({
-    where: { adminUserId },
     select: { role: true },
   });
-  const roles = memberships.map((m) => m.role);
-  const aggregate = getHighestAdminRole(roles);
-  await prisma.adminUser.update({
-    where: { id: adminUserId },
-    data: { role: aggregate },
-  });
+
+  return row?.role ?? null;
+}
+
+/**
+ * @deprecated For authorization decisions, use getEffectiveAdminRoleForOrg + isMaster.
+ * This helper can be used only for cosmetic "highest role across orgs" display.
+ * It no longer writes to AdminUser.role for auth purposes.
+ */
+export async function syncAdminUserAggregateRole(adminUserId: string) {
+  // Intentionally a no-op for the new model.
+  // The AdminUser.role column is treated as legacy/display only.
+  return;
 }

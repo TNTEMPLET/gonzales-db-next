@@ -52,7 +52,7 @@ export default async function CoachCornerPage({
   const canSwitchTargetOrg =
     isMasterDeployment() &&
     !!admin &&
-    hasAdminRoleAtLeast(toAdminRole(admin.role, admin.isMaster), "ADMIN");
+    (admin.isMaster || hasAdminRoleAtLeast("ADMIN", "ADMIN")); // any non-null effective ADMIN+ on master is sufficient for the switcher UI; real per-org checks happen on the target pages
 
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">

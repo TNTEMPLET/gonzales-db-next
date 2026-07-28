@@ -27,8 +27,10 @@ export default async function AdminScoresPage({ searchParams }: { searchParams: 
   const cookieStore = await cookies();
   const adminUser = await getAdminUserFromCookieToken(cookieStore.get(ADMIN_SESSION_COOKIE)?.value);
   if (!adminUser) redirect("/admin/login?next=/admin/scores");
-  const effectiveRole = currentOrg ? await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, currentOrg) : toAdminRole(adminUser.role, adminUser.isMaster);
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const effectiveRole = currentOrg
+    ? await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, currentOrg)
+    : null;
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
   const orgRoles = await Promise.all(CONTENT_ORGS.map((orgId) => getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, orgId)));
   const canAccessScores = canAccessAdminModule(role, "SCORES") || (masterMode && !currentOrg && orgRoles.some((orgRole) => orgRole && canAccessAdminModule(orgRole, "SCORES")));
   if (!canAccessScores) redirect("/admin?denied=scores");

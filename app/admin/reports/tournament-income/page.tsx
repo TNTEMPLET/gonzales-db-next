@@ -57,7 +57,7 @@ export default async function TournamentIncomeReportPage({
     adminUser.isMaster,
     authOrg,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
   if (!canAccessAdminModule(role, "REPORTS")) {
     redirect("/admin?denied=reports");
   }

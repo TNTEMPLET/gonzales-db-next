@@ -33,7 +33,7 @@ export default async function AdminParkInfoPage({
   const user = await getAdminUserFromCookieToken(token);
   if (!user) redirect(`/admin/login?next=${encodeURIComponent("/admin/park-info")}`);
 
-  const role = toAdminRole(user.role, user.isMaster);
+  const role = user.isMaster ? "MASTER_ADMIN" : null;
   if (!canAccessAdminModule(role, "PARK_INFO")) redirect("/admin?denied=park-info");
 
   const { org: orgParam } = await searchParams;

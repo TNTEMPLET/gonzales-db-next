@@ -66,10 +66,13 @@ async function hasImplicitAllStarFullAccess(registeredUserId: string) {
     orderBy: { updatedAt: "desc" },
     select: { role: true, isMaster: true },
   });
-  if (!adminUser || !adminUser.isMaster) return false;
+  if (!adminUser) return false;
+  if (adminUser.isMaster) return true;
 
-  const adminRole = toAdminRole(adminUser.role, adminUser.isMaster);
-  return hasAdminRoleAtLeast(adminRole, "ADMIN");
+  // Under the new model, non-master implicit vault access is not granted just because
+  // AdminUser.role happens to say ADMIN. Require an actual membership at ADMIN+.
+  // (Callers that have org context should use getEffectiveAdminRoleForOrg.)
+  return false;
 }
 
 export async function getAllStarVaultRoleForUser(

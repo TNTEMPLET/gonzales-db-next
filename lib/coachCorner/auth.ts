@@ -1,8 +1,9 @@
 import type { NextRequest } from "next/server";
 
-import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { hasAdminRoleAtLeast } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getCoachUserFromRequest } from "@/lib/auth/coachSession";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import prisma from "@/lib/prisma";
 import { recordDuplicateCandidatesForNewUser } from "@/lib/registeredUserDuplicates";
 import { resolveAdminTargetOrg, type ContentOrgId } from "@/lib/siteConfig";
@@ -32,10 +33,13 @@ export async function resolveCoachCornerActor(
   const admin = await getAdminUserFromRequest(request);
   if (!admin) return null;
 
-  const adminRole = toAdminRole(admin.role, admin.isMaster);
-  if (!hasAdminRoleAtLeast(adminRole, "PARK_DIRECTOR")) {
-    return null;
+  if (!admin.isMaster) {
+    const eff = await getEffectiveAdminRoleForOrg(admin.id, admin.isMaster, targetOrg);
+    if (!eff || !hasAdminRoleAtLeast(eff, "PARK_DIRECTOR")) {
+      return null;
+    }
   }
+  // Masters pass the gate; email match below decides the linked RegisteredUser.
 
   const existing = await prisma.registeredUser.findFirst({
     where: {

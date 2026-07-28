@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import {
   canAccessAdminModule,
   hasAdminRoleAtLeast,
-  toAdminRole,
+  type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
@@ -53,7 +53,7 @@ export default async function AdminAlertsPage({
     adminUser.isMaster,
     currentOrg,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
   if (!canAccessAdminModule(role, "PARK_ALERTS")) {
     redirect("/admin?denied=park-alerts");
   }

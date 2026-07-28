@@ -8,7 +8,7 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { canAccessAdminModule, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 
@@ -23,7 +23,7 @@ async function requireParkAlertsAccess(targetOrg: ContentOrgId) {
     adminUser.isMaster,
     targetOrg,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
   if (!canAccessAdminModule(role, "PARK_ALERTS")) {
     redirect("/admin?denied=park-alerts");
   }
