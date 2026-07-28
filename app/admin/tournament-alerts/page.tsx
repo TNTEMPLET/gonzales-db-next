@@ -7,7 +7,7 @@ import TournamentAlertsPanel from "@/components/admin/TournamentAlertsPanel";
 import {
   canAccessAdminModule,
   hasAdminRoleAtLeast,
-  toAdminRole,
+  type AdminRole,
 } from "@/lib/auth/adminRoles";
 import {
   ADMIN_SESSION_COOKIE,

@@ -6,7 +6,7 @@ import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarProgramNav from "@/components/admin/allStar/AllStarProgramNav";
 import MerchDraftsList from "@/components/merch/MerchDraftsList";
 import MerchTestOrderForm from "@/components/merch/MerchTestOrderForm";
-import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { listMerchProductsForOrgAsync } from "@/lib/merch/catalog";

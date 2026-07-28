@@ -1,7 +1,7 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
@@ -29,7 +29,7 @@ export default async function AdminSocialPage() {
     redirect("/admin/login?next=/admin/social");
   }
 
-  const role = adminUser.isMaster ? "MASTER_ADMIN" : null;
+  const role: AdminRole = adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR";
   if (!canAccessAdminModule(role, "SOCIAL_MEDIA")) {
     redirect("/admin?denied=social");
   }
