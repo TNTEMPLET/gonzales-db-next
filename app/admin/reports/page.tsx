@@ -3,7 +3,7 @@ import { redirect } from "next/navigation";
 
 import AdminReportsManager from "@/components/admin/AdminReportsManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   ADMIN_SESSION_COOKIE,

@@ -4,7 +4,7 @@ import { redirect } from "next/navigation";
 import AdminAssignrPayManager from "@/components/admin/AdminAssignrPayManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import { assignrHubHref } from "@/lib/admin/assignrOrgScope";
-import { canAccessAdminModule, hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   ADMIN_SESSION_COOKIE,

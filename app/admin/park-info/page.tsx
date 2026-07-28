@@ -5,7 +5,7 @@ import ParkInfoEditorClient from "@/components/admin/ParkInfoEditorClient";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import {
   canAccessAdminModule,
-  toAdminRole,
+  type AdminRole,
 } from "@/lib/auth/adminRoles";
 import {
   ADMIN_SESSION_COOKIE,
