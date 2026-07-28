@@ -596,7 +596,7 @@ export default async function AdminDashboardPage({
                       key={item.orgId}
                       className="rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs text-zinc-200"
                     >
-                      {item.name}: {item.role.replace("_", " ")} -{" "}
+                      {item.name}: {(item.role || "PARK_DIRECTOR").replace("_", " ")} -{" "}
                       {item.accessibleModuleCount} modules
                     </span>
                   ))}

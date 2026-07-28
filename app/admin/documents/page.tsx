@@ -4,8 +4,8 @@ import { redirect } from "next/navigation";
 import {
   canAccessAdminModule,
   hasAdminRoleAtLeast,
-  toAdminRole,
-import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
+  type AdminRole,
+} from "@/lib/auth/adminRoles";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,

@@ -6,7 +6,7 @@ import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import {
   canAccessAdminModule,
   hasAdminRoleAtLeast,
-  toAdminRole,
+  type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
