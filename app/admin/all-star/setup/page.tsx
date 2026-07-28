@@ -38,7 +38,7 @@ export default async function AdminAllStarSetupPage({
     adminUser.isMaster,
     currentOrg,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
   const { vaultView, canManageAllStarVaultUi } = await resolveAllStarVaultAccessForAdmin({
     isMaster: adminUser.isMaster,
     email: adminUser.email,

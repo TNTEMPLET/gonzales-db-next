@@ -40,7 +40,7 @@ export default async function AdminDugoutPage({
     adminUser.isMaster,
     currentOrg,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
   if (!canAccessAdminModule(role, "DUGOUT_MODERATION")) {
     redirect("/admin?denied=dugout");
   }

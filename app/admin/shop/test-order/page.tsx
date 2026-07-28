@@ -54,7 +54,7 @@ export default async function AdminMerchTestOrderPage({
     adminUser.isMaster,
     currentOrg,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
   if (!adminUser.isMaster && !hasAdminRoleAtLeast(role, "BOARD_MEMBER")) {
     redirect("/admin?denied=shop");

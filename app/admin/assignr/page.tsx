@@ -40,7 +40,7 @@ export default async function AdminAssignrPage({
     adminUser.isMaster,
     orgId,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
   if (!canAccessAdminModule(role, "ASSIGNR")) {
     redirect("/admin?denied=assignr");
   }

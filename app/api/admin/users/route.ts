@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { getEffectiveAdminRoleForOrg, syncAdminUserAggregateRole } from "@/lib/auth/effectiveAdminRole";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   hasAdminRoleAtLeast,
   isAdminRole,
@@ -283,7 +283,7 @@ export async function GET(request: NextRequest) {
       },
       currentAdminEmail: currentAdmin?.email || null,
       currentAdminRole: currentAdmin
-        ? toAdminRole(currentAdmin.role, currentAdmin.isMaster)
+        ? (currentAdmin.isMaster ? "MASTER_ADMIN" : null) // display only; effective role per org is computed via getEffectiveAdminRoleForOrg
         : null,
       currentAdminOrgRole,
       protectedMasterAdminEmail: PROTECTED_MASTER_ADMIN_EMAIL,
@@ -485,8 +485,7 @@ export async function POST(request: NextRequest) {
         },
         update: { role: effectiveRole },
       });
-
-      await syncAdminUserAggregateRole(admin.id);
+      // No aggregate sync — AdminOrgMembership is the source of truth.
     }
 
     await prisma.adminAuditLog.create({
@@ -735,19 +734,15 @@ export async function PATCH(request: NextRequest) {
       update: { role: nextRole },
     });
 
-    await syncAdminUserAggregateRole(targetAdmin.id);
-
-    const refreshed = await prisma.adminUser.findUnique({
-      where: { id: targetAdmin.id },
-    });
+    // No aggregate sync. The membership row is authoritative.
 
     return NextResponse.json({
       success: true,
       admin: {
-        id: refreshed!.id,
-        email: refreshed!.email,
-        role: refreshed!.role,
-        isMaster: refreshed!.isMaster,
+        id: targetAdmin.id,
+        email: targetAdmin.email,
+        role: nextRole,
+        isMaster: targetAdmin.isMaster,
       },
     });
   } catch (err: unknown) {
@@ -891,12 +886,11 @@ export async function DELETE(request: NextRequest) {
       where: { adminUserId: targetAdmin.id },
     });
 
-    if (remainingMemberships === 0) {
+    if (remainingMemberships === 0 && !targetAdmin.isMaster) {
       await prisma.adminSession.deleteMany({ where: { userId: targetAdmin.id } });
       await prisma.adminUser.delete({ where: { id: targetAdmin.id } });
-    } else {
-      await syncAdminUserAggregateRole(targetAdmin.id);
     }
+    // No aggregate sync. Memberships (or isMaster) are authoritative.
 
     return NextResponse.json({
       success: true,

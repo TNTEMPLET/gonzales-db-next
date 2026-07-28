@@ -20,8 +20,9 @@ export async function POST(request: NextRequest) {
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const user = await getAdminUserFromCookieToken(token);
   if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  const role = toAdminRole(user.role, user.isMaster);
-  if (!canAccessAdminModule(role, "PARK_INFO"))
+  // Park Info is effectively master-gated (module + deployment). Use isMaster for the role shape.
+  const role = user.isMaster ? "MASTER_ADMIN" : null;
+  if (!user.isMaster || !canAccessAdminModule(role!, "PARK_INFO"))
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const formData = await request.formData();

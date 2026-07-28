@@ -50,7 +50,7 @@ export default async function AdminPeoplePage({
     adminUser.isMaster,
     currentOrg,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
   const canDirectory = canAccessAdminModule(role, "USERS");
   const canVolunteers = canAccessAdminModule(role, "VOLUNTEERS");

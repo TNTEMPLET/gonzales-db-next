@@ -93,6 +93,23 @@ export function toAdminRole(
   return "ADMIN";
 }
 
+/**
+ * Resolve a non-null AdminRole for authorization/display.
+ * Under the better model:
+ *   - isMaster → MASTER_ADMIN
+ *   - has explicit per-org role → that role
+ *   - otherwise → PARK_DIRECTOR (lowest) as a safe default for UI,
+ *     while real access should be denied earlier via ensureAdminModule.
+ */
+export function resolveAdminRole(
+  isMaster: boolean,
+  perOrgRole: AdminRole | null | undefined,
+): AdminRole {
+  if (isMaster) return "MASTER_ADMIN";
+  if (perOrgRole) return perOrgRole;
+  return "PARK_DIRECTOR";
+}
+
 export function hasAdminRoleAtLeast(
   role: AdminRole,
   minimum: AdminRole,

@@ -10,8 +10,9 @@ async function getAuth() {
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const user = await getAdminUserFromCookieToken(token);
   if (!user) return null;
-  const role = toAdminRole(user.role, user.isMaster);
-  if (!canAccessAdminModule(role, "PARK_INFO")) return null;
+  const role = user.isMaster ? "MASTER_ADMIN" : null;
+  if (!user.isMaster && (!role || !canAccessAdminModule(role, "PARK_INFO"))) return null;
+  // Park Info is master-deployment-only in module config; isMaster is the practical gate here.
   return user;
 }
 

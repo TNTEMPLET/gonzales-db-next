@@ -33,8 +33,8 @@ async function requireShopAdmin(request: NextRequest, org: ContentOrgId) {
     adminUser.isMaster,
     org,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
-  if (!hasAdminRoleAtLeast(role, "BOARD_MEMBER")) {
+  const role = effectiveRole ?? null;
+  if (!role || !hasAdminRoleAtLeast(role, "BOARD_MEMBER")) {
     return { ok: false as const, status: 403, message: "Forbidden" };
   }
   return { ok: true as const, adminUser };

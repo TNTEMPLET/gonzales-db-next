@@ -34,7 +34,7 @@ export default async function AdminDocumentsPage() {
     redirect("/admin/login?next=/admin/documents");
   }
 
-  const role = toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR";
   if (!canAccessAdminModule(role, "ORG_DOCUMENTS")) {
     redirect("/admin?denied=documents");
   }

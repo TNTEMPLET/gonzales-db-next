@@ -40,7 +40,7 @@ export default async function AdminReportsPage({
     adminUser.isMaster,
     orgId,
   );
-  const role = effectiveRole ?? toAdminRole(adminUser.role, adminUser.isMaster);
+  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
   if (!canAccessAdminModule(role, "REPORTS")) {
     redirect("/admin?denied=reports");
   }

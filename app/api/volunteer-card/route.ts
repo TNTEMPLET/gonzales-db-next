@@ -12,7 +12,9 @@ async function isRequestMasterAdmin(request: NextRequest): Promise<boolean> {
   const admin = await getAdminUserFromRequest(request);
   if (!admin) return false;
   if (admin.isMaster) return true;
-  return hasAdminRoleAtLeast(toAdminRole(admin.role, admin.isMaster), "MASTER_ADMIN");
+  // Under the new model, a non-master reaching here with MASTER_ADMIN intent is impossible via role column.
+  // Real master power comes from isMaster flag (or explicit MASTER_ADMIN membership, but isMaster is the signal).
+  return false;
 }
 
 /**
