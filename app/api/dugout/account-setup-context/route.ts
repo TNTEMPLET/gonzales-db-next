@@ -28,24 +28,21 @@ export async function POST(request: NextRequest) {
   }
 
   const organizationId = getDugoutRegisteredUserOrgId();
-  const user = await prisma.registeredUser.findFirst({
+  // Global identity by email; per-org coach/age/team live on the profile.
+  const globalUser = await prisma.registeredUser.findFirst({
     where: {
-      organizationId,
       email: { equals: email, mode: "insensitive" },
     },
     select: {
-      organizationId: true,
-      isCoach: true,
+      id: true,
       firstName: true,
       lastName: true,
       contactPhone: true,
-      ageGroup: true,
-      assignedTeam: true,
       passwordHash: true,
     },
   });
 
-  if (!user) {
+  if (!globalUser) {
     return NextResponse.json({
       isCoach: false,
       organizationId: null as string | null,
@@ -53,25 +50,32 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const isCoach = Boolean(user.isCoach);
+  const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
+    where: {
+      registeredUserId_organizationId: { registeredUserId: globalUser.id, organizationId },
+    },
+    select: { isCoach: true, ageGroup: true, assignedTeam: true },
+  });
 
-  if (user.passwordHash) {
+  const isCoach = Boolean(prof?.isCoach);
+
+  if (globalUser.passwordHash) {
     return NextResponse.json({
       isCoach,
-      organizationId: user.organizationId,
+      organizationId,
       profile: null,
     });
   }
 
   return NextResponse.json({
     isCoach,
-    organizationId: user.organizationId,
+    organizationId,
     profile: {
-      firstName: user.firstName?.trim() || "",
-      lastName: user.lastName?.trim() || "",
-      contactPhone: user.contactPhone?.trim() || "",
-      ageGroup: user.ageGroup?.trim() || "",
-      assignedTeam: user.assignedTeam?.trim() || "",
+      firstName: globalUser.firstName?.trim() || "",
+      lastName: globalUser.lastName?.trim() || "",
+      contactPhone: globalUser.contactPhone?.trim() || "",
+      ageGroup: prof?.ageGroup?.trim() || "",
+      assignedTeam: prof?.assignedTeam?.trim() || "",
     },
   });
 }

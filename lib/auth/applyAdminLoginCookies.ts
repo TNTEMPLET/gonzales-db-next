@@ -17,15 +17,30 @@ async function safeCreateCoachSessionForAdmin(
   adminUser: { email: string },
 ) {
   try {
-    const registeredUser = await withTransientDbRetry(() =>
-      prisma.registeredUser.findFirst({
-        where: {
-          organizationId: getDugoutRegisteredUserOrgId(),
-          email: adminUser.email,
-        },
+    const orgId = getDugoutRegisteredUserOrgId();
+    // Global identity: find by email, then ensure a profile exists for the dugout org bucket.
+    const registeredUser = await withTransientDbRetry(async () => {
+      const byEmail = await prisma.registeredUser.findFirst({
+        where: { email: { equals: adminUser.email, mode: "insensitive" } },
         select: { id: true },
-      }),
-    );
+      });
+      if (!byEmail) return null;
+      // Ensure profile (create if missing) so downstream coach gates see the person for this org.
+      await (prisma as any).registeredUserOrgProfile.upsert({
+        where: {
+          registeredUserId_organizationId: { registeredUserId: byEmail.id, organizationId: orgId },
+        },
+        create: {
+          registeredUserId: byEmail.id,
+          organizationId: orgId,
+          isCoach: false,
+          ageGroup: null,
+          assignedTeam: null,
+        },
+        update: {},
+      });
+      return byEmail;
+    });
 
     if (!registeredUser) return;
 

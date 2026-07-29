@@ -185,12 +185,16 @@ export async function listPlayerCardsForGuardian(input: {
     getSeasonConfigForOrg(input.organizationId as ContentOrgId).year;
   const audience = input.audience ?? "GUARDIAN";
 
-  const user = await prisma.registeredUser.findFirst({
+  // Global identity + org profile presence
+  const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
     where: {
-      id: input.registeredUserId,
-      organizationId: input.organizationId,
-      isBlocked: false,
+      registeredUserId_organizationId: { registeredUserId: input.registeredUserId, organizationId: input.organizationId },
     },
+    select: { registeredUserId: true },
+  });
+  if (!prof) return [];
+  const user = await prisma.registeredUser.findUnique({
+    where: { id: input.registeredUserId, isBlocked: false },
     select: { id: true, email: true },
   });
   if (!user?.email) return [];

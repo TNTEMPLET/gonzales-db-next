@@ -1,6 +1,6 @@
 /**
- * Creates a disposable `RegisteredUser` with `isCoach: true` for local / QA testing
- * (Dugout login, coach account setup, etc.).
+ * Creates a disposable global `RegisteredUser` + per-org profile with `isCoach: true`
+ * for local / QA testing (Dugout login, coach account setup, etc.).
  *
  * Usage:
  *   DATABASE_URL=... [SITE_ORG=gonzales|ascension|master] npm run coach:test
@@ -10,8 +10,8 @@
  *
  * Flags (create only):
  *   --organization-id, --org   gonzales | ascension (overrides SITE_ORG-based default)
- *   --age-group, --league      stored as RegisteredUser.ageGroup (league / division label)
- *   --team, --assigned-team    stored as RegisteredUser.assignedTeam
+ *   --age-group, --league      stored on the RegisteredUserOrgProfile for the org
+ *   --team, --assigned-team    stored on the RegisteredUserOrgProfile for the org
  *
  * Defaults: no local password (use /account/setup after “can register” login flow),
  * random email `test-coach+<unixMs>@apbaseball.test`, org bucket matches Dugout when
@@ -149,19 +149,27 @@ async function createCoach(options: CreateOptions) {
   }
   const passwordHash = plain ? await bcrypt.hash(plain, 10) : null;
 
+  // Create global identity (no org/coach fields live here anymore)
   const user = await prisma.registeredUser.create({
     data: {
-      organizationId,
       email,
       firstName: "Test",
       lastName: "Coach",
       name: "Test Coach",
-      isCoach: true,
       contactPhone: null,
-      ageGroup,
-      assignedTeam,
       passwordHash,
       googleSub: null,
+    },
+  });
+
+  // Create the org profile with coach flag + optional age/team
+  await (prisma as any).registeredUserOrgProfile.create({
+    data: {
+      registeredUserId: user.id,
+      organizationId,
+      isCoach: true,
+      ageGroup,
+      assignedTeam,
     },
   });
 
@@ -169,11 +177,11 @@ async function createCoach(options: CreateOptions) {
   console.log("Created disposable test coach");
   console.log("────────────────────────────────────");
   console.log(`  id:             ${user.id}`);
-  console.log(`  organizationId: ${user.organizationId}`);
-  console.log(`  ageGroup:       ${user.ageGroup ?? "(null)"}`);
-  console.log(`  assignedTeam:   ${user.assignedTeam ?? "(null)"}`);
+  console.log(`  organizationId: ${organizationId}`);
+  console.log(`  ageGroup:       ${ageGroup ?? "(null)"}`);
+  console.log(`  assignedTeam:   ${assignedTeam ?? "(null)"}`);
   console.log(`  email:          ${user.email}`);
-  console.log(`  isCoach:        ${user.isCoach}`);
+  console.log(`  isCoach:        true`);
   if (plain) {
     console.log(`  password:       ${plain}`);
     console.log("");
