@@ -16,17 +16,34 @@ export async function GET(request: NextRequest) {
 
     const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
 
-    const users = await prisma.registeredUser.findMany({
+    // Global identity: RegisteredUser has no organizationId. Find users who have a profile in this org.
+    const profiles = await (prisma as any).registeredUserOrgProfile.findMany({
       where: { organizationId: targetOrg },
-      select: {
-        id: true,
-        email: true,
-        name: true,
-        firstName: true,
-        lastName: true,
+      include: {
+        registeredUser: {
+          select: {
+            id: true,
+            email: true,
+            name: true,
+            firstName: true,
+            lastName: true,
+          },
+        },
       },
-      orderBy: [{ email: "asc" }],
+      orderBy: [{ updatedAt: "desc" }],
     });
+
+    // Dedup by user id (in case of multiple profiles historically) and return global user shape.
+    const seen = new Set<string>();
+    const users = [];
+    for (const p of profiles) {
+      const u = p.registeredUser;
+      if (!u || seen.has(u.id)) continue;
+      seen.add(u.id);
+      users.push(u);
+    }
+    // Sort by email for stable UI
+    users.sort((a: any, b: any) => (a.email || "").localeCompare(b.email || ""));
 
     return NextResponse.json({ data: users });
   } catch (err: unknown) {
