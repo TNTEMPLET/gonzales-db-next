@@ -485,16 +485,12 @@ model AdminOrgMembership {
 
 model RegisteredUser {
   id                              String                             @id @default(cuid())
-  organizationId                  String                             @default("gonzales")
   email                           String
   name                            String?
   firstName                       String?
   lastName                        String?
-  isCoach                         Boolean                            @default(false)
   isBlocked                       Boolean                            @default(false)
   contactPhone                    String?
-  ageGroup                        String?
-  assignedTeam                    String?
   googleSub                       String?                            @unique
   passwordHash                    String?
   avatarUrl                       String?
@@ -508,10 +504,16 @@ model RegisteredUser {
   abuseAwarenessTrainingCertificateUploadedAt DateTime?
   /**
    * True when name-based duplicate detection flagged this account for admin review.
+   * Global (person-level) after the identity refactor.
    */
   duplicateReviewPending          Boolean                            @default(false)
   createdAt                       DateTime                           @default(now())
   updatedAt                       DateTime                           @updatedAt
+
+  // Per-organization state and permissions (the "child" profiles).
+  // One row per (person, org) where the person has participated or been granted access.
+  orgProfiles                     RegisteredUserOrgProfile[]
+
   auditLogs                       AdminAuditLog[]
   sessions                        CoachSession[]
   dugoutPosts                     DugoutPost[]
@@ -535,9 +537,25 @@ model RegisteredUser {
   smsConsents                     SmsConsent[]
   volunteerProfiles               VolunteerProfile[]
 
-  @@unique([organizationId, email])
+  @@unique([email])
+  @@index([duplicateReviewPending])
+}
+
+model RegisteredUserOrgProfile {
+  id               String   @id @default(cuid())
+  registeredUserId String
+  organizationId   String
+  isCoach          Boolean  @default(false)
+  ageGroup         String?
+  assignedTeam     String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  registeredUser RegisteredUser @relation(fields: [registeredUserId], references: [id], onDelete: Cascade)
+
+  @@unique([registeredUserId, organizationId])
   @@index([organizationId])
-  @@index([organizationId, duplicateReviewPending])
+  @@index([registeredUserId])
 }
 
 model CoachingInterestSubmission {

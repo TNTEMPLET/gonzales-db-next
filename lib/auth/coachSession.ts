@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { NextRequest } from "next/server";
 
 import prisma from "@/lib/prisma";
+import { getDugoutRegisteredUserOrgId } from "@/lib/siteConfig";
 
 export const COACH_SESSION_COOKIE = "gdb_coach_session";
 const SESSION_TTL_DAYS = 7;
@@ -69,13 +70,25 @@ export async function getCoachUserByToken(token: string | undefined) {
     return null;
   }
 
+  // Resolve effective per-org isCoach from the profile using the current deployment's org bucket.
+  const orgForProfile = getDugoutRegisteredUserOrgId();
+  const profile = await prisma.registeredUserOrgProfile.findUnique({
+    where: {
+      registeredUserId_organizationId: {
+        registeredUserId: session.user.id,
+        organizationId: orgForProfile,
+      },
+    },
+    select: { isCoach: true },
+  });
+
   return {
     id: session.user.id,
     email: session.user.email,
     name: session.user.name,
     firstName: session.user.firstName,
     lastName: session.user.lastName,
-    isCoach: session.user.isCoach,
+    isCoach: profile?.isCoach ?? false,
     isBlocked: session.user.isBlocked,
     avatarUrl: session.user.avatarUrl ?? null,
   } satisfies CoachSessionUser;

@@ -90,6 +90,10 @@ export async function POST(request: NextRequest) {
       lastName,
     });
 
+    if (!user) {
+      return NextResponse.json({ error: "Failed to create or link user account" }, { status: 500 });
+    }
+
     // Check if user is blocked
     if (user.isBlocked) {
       return NextResponse.json(

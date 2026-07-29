@@ -11,6 +11,10 @@ import {
   createCoachSession,
 } from "@/lib/auth/coachSession";
 import prisma from "@/lib/prisma";
+import {
+  getRegisteredUserWithOrgProfile,
+  upsertRegisteredUserFromGoogle, // not used here, but for symmetry
+} from "@/lib/auth/registeredUserAuth";
 import { recordDuplicateCandidatesForNewUser } from "@/lib/registeredUserDuplicates";
 import { getDugoutRegisteredUserOrgId } from "@/lib/siteConfig";
 
@@ -65,43 +69,64 @@ export async function POST(request: NextRequest) {
 
     if (mode === "signup") {
       const passwordHash = await bcrypt.hash(password, 10);
-      const existing = await prisma.registeredUser.findFirst({
-        where: { organizationId: orgId, email },
+
+      // Global identity (by email)
+      let globalUser = await prisma.registeredUser.findFirst({
+        where: { email },
+        select: { id: true, email: true, name: true, firstName: true, lastName: true, googleSub: true, isBlocked: true },
       });
 
-      let user;
-      if (existing) {
-        user = await prisma.registeredUser.update({
-          where: { id: existing.id },
+      if (globalUser) {
+        globalUser = await prisma.registeredUser.update({
+          where: { id: globalUser.id },
           data: {
             passwordHash,
             firstName,
             lastName,
             name: displayName(firstName, lastName),
             contactPhone,
-            ageGroup,
-            assignedTeam,
           },
+          select: { id: true, email: true, name: true, firstName: true, lastName: true, googleSub: true, isBlocked: true },
         });
       } else {
-        user = await prisma.registeredUser.create({
+        globalUser = await prisma.registeredUser.create({
           data: {
-            organizationId: orgId,
             email,
             firstName,
             lastName,
             name: displayName(firstName, lastName),
             passwordHash,
             contactPhone,
-            ageGroup,
-            assignedTeam,
           },
+          select: { id: true, email: true, name: true, firstName: true, lastName: true, googleSub: true, isBlocked: true },
         });
-        await recordDuplicateCandidatesForNewUser(prisma, user);
+        await recordDuplicateCandidatesForNewUser(prisma, {
+          id: globalUser.id,
+          firstName,
+          lastName,
+          name: displayName(firstName, lastName),
+        });
       }
 
-      // Check if user is blocked
-      if (user.isBlocked) {
+      // Ensure per-org profile with the supplied context values
+      await prisma.registeredUserOrgProfile.upsert({
+        where: {
+          registeredUserId_organizationId: { registeredUserId: globalUser.id, organizationId: orgId },
+        },
+        create: {
+          registeredUserId: globalUser.id,
+          organizationId: orgId,
+          isCoach: false, // explicit signup does not auto-grant coach; caller may toggle later
+          ageGroup,
+          assignedTeam,
+        },
+        update: {
+          ageGroup,
+          assignedTeam,
+        },
+      });
+
+      if (globalUser.isBlocked) {
         return NextResponse.json(
           {
             error:
@@ -116,12 +141,12 @@ export async function POST(request: NextRequest) {
       const response = NextResponse.json({
         success: true,
         isAdmin: Boolean(admin),
-        isCoach: Boolean(user.isCoach),
-        linkedGoogle: Boolean(user.googleSub),
-        user: { email: user.email, name: user.name },
+        isCoach: false, // fresh profile for this org
+        linkedGoogle: Boolean(globalUser.googleSub),
+        user: { email: globalUser.email, name: globalUser.name },
       });
 
-      const session = await createCoachSession(user.id);
+      const session = await createCoachSession(globalUser.id);
       response.cookies.set({
         name: COACH_SESSION_COOKIE,
         value: session.token,
@@ -148,8 +173,10 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
-    const user = await prisma.registeredUser.findFirst({
-      where: { organizationId: orgId, email },
+    // LOGIN (non-signup)
+    const globalUser = await prisma.registeredUser.findFirst({
+      where: { email },
+      select: { id: true, email: true, name: true, googleSub: true, isBlocked: true, passwordHash: true },
     });
 
     // Allow admin-local sign in even when there's no linked RegisteredUser local password.
@@ -159,7 +186,7 @@ export async function POST(request: NextRequest) {
       const response = NextResponse.json({
         success: true,
         isAdmin: true,
-        linkedGoogle: Boolean(user?.googleSub),
+        linkedGoogle: Boolean(globalUser?.googleSub),
         user: { email: adminAuth.email, name: adminAuth.name },
       });
 
@@ -176,22 +203,23 @@ export async function POST(request: NextRequest) {
       return response;
     }
 
-    if (!user || !user.passwordHash) {
+    if (!globalUser || !globalUser.passwordHash) {
       return NextResponse.json(
         {
-          error: user
+          error: globalUser
             ? "Finish account setup to create your password and confirm your profile."
             : "No local login found for this email. Use Google sign-in or create a local password.",
           canRegister: true,
           email,
-          isCoach: user ? Boolean(user.isCoach) : false,
-          setupProfile: user
+          isCoach: false,
+          setupProfile: globalUser
             ? {
-                firstName: user.firstName || "",
-                lastName: user.lastName || "",
-                contactPhone: user.contactPhone || "",
-                ageGroup: user.ageGroup || "",
-                assignedTeam: user.assignedTeam || "",
+                firstName: (globalUser as any).firstName || "",
+                lastName: (globalUser as any).lastName || "",
+                contactPhone: (globalUser as any).contactPhone || "",
+                // We don't have per-org values here without loading the profile; leave minimal
+                ageGroup: "",
+                assignedTeam: "",
               }
             : null,
         },
@@ -199,7 +227,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const valid = await bcrypt.compare(password, user.passwordHash);
+    const valid = await bcrypt.compare(password, globalUser.passwordHash);
     if (!valid) {
       return NextResponse.json(
         { error: "Invalid email or password" },
@@ -207,8 +235,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Check if user is blocked
-    if (user.isBlocked) {
+    // Check if user is blocked (global)
+    if (globalUser.isBlocked) {
       return NextResponse.json(
         {
           error:
@@ -218,17 +246,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Ensure/load the org profile to get the effective isCoach for responses
+    const withProfile = await getRegisteredUserWithOrgProfile(globalUser.id, orgId);
+    const effectiveIsCoach = withProfile ? withProfile.isCoach : false;
+
     const admin = await prisma.adminUser.findUnique({ where: { email } });
 
     const response = NextResponse.json({
       success: true,
       isAdmin: Boolean(admin),
-      isCoach: Boolean(user.isCoach),
-      linkedGoogle: Boolean(user.googleSub),
-      user: { email: user.email, name: user.name },
+      isCoach: effectiveIsCoach,
+      linkedGoogle: Boolean(globalUser.googleSub),
+      user: { email: globalUser.email, name: globalUser.name },
     });
 
-    const session = await createCoachSession(user.id);
+    const session = await createCoachSession(globalUser.id);
     response.cookies.set({
       name: COACH_SESSION_COOKIE,
       value: session.token,
