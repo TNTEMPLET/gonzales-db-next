@@ -56,13 +56,25 @@ export async function GET(request: NextRequest) {
       );
       if (!effectiveRole) continue;
 
-      const linkedUsers = await prisma.registeredUser.findMany({
+      // Global identity: RegisteredUser has no organizationId.
+      // Find by email globally, then check for a profile in this org.
+      const globalUsers = await prisma.registeredUser.findMany({
         where: {
           email: { equals: admin.email, mode: "insensitive" },
-          organizationId: org,
         },
         select: { id: true },
       });
+
+      const linkedUsers = [];
+      for (const gu of globalUsers) {
+        const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
+          where: {
+            registeredUserId_organizationId: { registeredUserId: gu.id, organizationId: org },
+          },
+          select: { registeredUserId: true },
+        });
+        if (prof) linkedUsers.push(gu);
+      }
 
       let allStarVaultView = false;
       for (const linked of linkedUsers) {
