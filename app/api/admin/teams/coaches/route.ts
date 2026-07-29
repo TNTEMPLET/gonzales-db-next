@@ -27,6 +27,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Team not found" }, { status: 404 });
   }
 
+  // Global identity: per-org coach state (ageGroup/assignedTeam) lives on the OrgProfile.
+  // We enrich the response with effective profile values below.
   const assignments = await prisma.teamCoachAssignment.findMany({
     where: { teamId: team.id },
     orderBy: [{ role: "asc" }, { createdAt: "asc" }],
@@ -39,14 +41,33 @@ export async function GET(request: NextRequest) {
           lastName: true,
           name: true,
           contactPhone: true,
-          ageGroup: true,
-          assignedTeam: true,
         },
       },
     },
   });
 
-  return NextResponse.json({ data: assignments });
+  // Attach effective per-org values from the profile for this org (for UI/display).
+  const assignmentsWithProfile = await Promise.all(
+    assignments.map(async (a: any) => {
+      const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
+        where: {
+          registeredUserId_organizationId: { registeredUserId: a.registeredUserId, organizationId: targetOrg },
+        },
+        select: { ageGroup: true, assignedTeam: true, isCoach: true },
+      });
+      return {
+        ...a,
+        registeredUser: {
+          ...a.registeredUser,
+          ageGroup: prof?.ageGroup ?? null,
+          assignedTeam: prof?.assignedTeam ?? null,
+          isCoach: prof?.isCoach ?? false,
+        },
+      };
+    }),
+  );
+
+  return NextResponse.json({ data: assignmentsWithProfile });
 }
 
 export async function POST(request: NextRequest) {
@@ -71,23 +92,31 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const [team, coach] = await Promise.all([
+  const [team, globalCoach] = await Promise.all([
     prisma.team.findUnique({
       where: { id: body.teamId },
       select: { id: true, organizationId: true },
     }),
     prisma.registeredUser.findUnique({
       where: { id: body.registeredUserId },
-      select: { id: true, organizationId: true, isCoach: true, isBlocked: true },
+      select: { id: true, isBlocked: true },
     }),
   ]);
   if (!team || team.organizationId !== targetOrg) {
     return NextResponse.json({ error: "Team not found" }, { status: 404 });
   }
-  if (!coach || coach.organizationId !== targetOrg) {
+  if (!globalCoach) {
     return NextResponse.json({ error: "Coach account not found" }, { status: 404 });
   }
-  if (!coach.isCoach || coach.isBlocked) {
+
+  // Global identity: presence + coach flag for this org is in the profile.
+  const profile = await (prisma as any).registeredUserOrgProfile.findUnique({
+    where: {
+      registeredUserId_organizationId: { registeredUserId: globalCoach.id, organizationId: targetOrg },
+    },
+    select: { isCoach: true },
+  });
+  if (!profile || !profile.isCoach || globalCoach.isBlocked) {
     return NextResponse.json(
       { error: "User must be an active coach to assign." },
       { status: 400 },
@@ -98,12 +127,12 @@ export async function POST(request: NextRequest) {
     where: {
       teamId_registeredUserId: {
         teamId: team.id,
-        registeredUserId: coach.id,
+        registeredUserId: globalCoach.id,
       },
     },
     create: {
       teamId: team.id,
-      registeredUserId: coach.id,
+      registeredUserId: globalCoach.id,
       role: body.role || "ASSISTANT_COACH",
     },
     update: {
@@ -118,8 +147,6 @@ export async function POST(request: NextRequest) {
           lastName: true,
           name: true,
           contactPhone: true,
-          ageGroup: true,
-          assignedTeam: true,
         },
       },
     },
