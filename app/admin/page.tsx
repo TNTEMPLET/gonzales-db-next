@@ -89,18 +89,27 @@ export default async function AdminDashboardPage({
 
   const allowRolePreview = hasAdminRoleAtLeast(adminRole, "ADMIN");
   const communicationsEnabled = isCommunicationsModuleEnabled();
-  const allStarLinkedUsers = await prisma.registeredUser.findMany({
+  // Global identity: RegisteredUser has no organizationId. Look up by email,
+  // then check per-org profiles to decide All-Star vault visibility per org.
+  const globalLinkedUsers = await prisma.registeredUser.findMany({
     where: { email: { equals: adminUser.email, mode: "insensitive" } },
-    select: { id: true, organizationId: true },
+    select: { id: true },
   });
   const allStarVaultViewByOrg = Object.fromEntries(
     CONTENT_ORGS.map((orgId) => [orgId, false] as const),
   ) as Record<ContentOrgId, boolean>;
-  for (const row of allStarLinkedUsers) {
-    if (!CONTENT_ORGS.includes(row.organizationId as ContentOrgId)) continue;
-    const orgId = row.organizationId as ContentOrgId;
-    if (await canViewAllStarVault(row.id, orgId)) {
-      allStarVaultViewByOrg[orgId] = true;
+  for (const u of globalLinkedUsers) {
+    for (const orgId of CONTENT_ORGS) {
+      // Only consider orgs where this global user has a profile (i.e. participates here).
+      const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
+        where: {
+          registeredUserId_organizationId: { registeredUserId: u.id, organizationId: orgId },
+        },
+        select: { registeredUserId: true },
+      });
+      if (prof && (await canViewAllStarVault(u.id, orgId))) {
+        allStarVaultViewByOrg[orgId] = true;
+      }
     }
   }
   const allStarVaultView = currentOrg
