@@ -21,14 +21,38 @@ type ResolveAllStarVoterOptions = {
 };
 
 /**
- * On the master deployment, coach login (`gdb_coach_session`) is tied to a single
- * `RegisteredUser` id, and new Google/local sign-ups default to the site's
- * default content org (on master, currently Gonzales). Coaches who also have an
- * Ascension (etc.) row under the same email then hit "Wrong organization" for
- * Ascension ballots.
- * If the ballot cycle's org differs from the session row, prefer the same-email row
- * for that org when one exists.
+ * Resolve effective org/coach/age for a global user for a given cycle's org.
+ * Uses RegisteredUserOrgProfile (global identity model).
  */
+async function resolveVoterProfileForOrg(
+  userId: string,
+  email: string,
+  targetOrg: string,
+): Promise<{ organizationId: string; ageGroup: string | null; isCoach: boolean }> {
+  const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
+    where: {
+      registeredUserId_organizationId: { registeredUserId: userId, organizationId: targetOrg },
+    },
+    select: { organizationId: true, ageGroup: true, isCoach: true },
+  });
+  if (prof) {
+    return { organizationId: prof.organizationId, ageGroup: prof.ageGroup ?? null, isCoach: !!prof.isCoach };
+  }
+  // Fallback: find any profile for this email's global user in that org by email match on profile join
+  const byEmailProf = await (prisma as any).registeredUserOrgProfile.findFirst({
+    where: {
+      organizationId: targetOrg,
+      registeredUser: { email: { equals: email, mode: "insensitive" } },
+    },
+    select: { organizationId: true, ageGroup: true, isCoach: true },
+  });
+  if (byEmailProf) {
+    return { organizationId: byEmailProf.organizationId, ageGroup: byEmailProf.ageGroup ?? null, isCoach: !!byEmailProf.isCoach };
+  }
+  // Last resort: return the target org with defaults (caller will enforce isCoach etc.)
+  return { organizationId: targetOrg, ageGroup: null, isCoach: false };
+}
+
 async function coachRegisteredUserForBallotCycle(
   sessionRow: {
     id: string;
@@ -50,24 +74,22 @@ async function coachRegisteredUserForBallotCycle(
     return sessionRow;
   }
 
-  const alternate = await prisma.registeredUser.findFirst({
-    where: {
-      email: { equals: sessionRow.email, mode: "insensitive" },
-      organizationId: cycle.organizationId,
-      isBlocked: false,
-    },
-    select: {
-      id: true,
-      email: true,
-      organizationId: true,
-      ageGroup: true,
-      isCoach: true,
-      isBlocked: true,
-    },
-    orderBy: { updatedAt: "desc" },
+  // Global by email, then profile for the cycle org
+  const alt = await prisma.registeredUser.findFirst({
+    where: { email: { equals: sessionRow.email, mode: "insensitive" }, isBlocked: false },
+    select: { id: true, email: true, isBlocked: true },
   });
+  if (!alt) return sessionRow;
 
-  return alternate ?? sessionRow;
+  const prof = await resolveVoterProfileForOrg(alt.id, alt.email, cycle.organizationId);
+  return {
+    id: alt.id,
+    email: alt.email,
+    organizationId: prof.organizationId,
+    ageGroup: prof.ageGroup,
+    isCoach: prof.isCoach,
+    isBlocked: alt.isBlocked,
+  };
 }
 
 export async function resolveAllStarVoterFromRequest(
@@ -76,42 +98,60 @@ export async function resolveAllStarVoterFromRequest(
 ) {
   const admin = await getAdminUserFromRequest(request);
   if (admin) {
-    const registeredUser = await prisma.registeredUser.findFirst({
+    const g = await prisma.registeredUser.findFirst({
       where: { email: { equals: admin.email, mode: "insensitive" } },
       orderBy: { updatedAt: "desc" },
-      select: {
-        id: true,
-        email: true,
-        organizationId: true,
-        ageGroup: true,
-        isCoach: true,
-        isBlocked: true,
-      },
+      select: { id: true, email: true, isBlocked: true },
     });
-    if (registeredUser && !registeredUser.isBlocked) {
-      return { ...registeredUser, isAdmin: true };
+    if (g && !g.isBlocked) {
+      // We don't know a specific cycle org here; pick a representative org from any profile or default later in ensure.
+      // For admin voters we keep a synthetic org until cycle context; use a safe placeholder that ensureVoterCanAccessCycle will override via cycle.
+      // To keep shape stable, resolve using cycle if provided else first profile org.
+      let org = "gonzales";
+      let age: string | null = null;
+      let coach = false;
+      if (options.cycleId) {
+        const c = await prisma.allStarBallotCycle.findUnique({ where: { id: options.cycleId }, select: { organizationId: true } });
+        if (c) {
+          const p = await resolveVoterProfileForOrg(g.id, g.email, c.organizationId);
+          org = p.organizationId; age = p.ageGroup; coach = p.isCoach;
+        }
+      } else {
+        const prof = await (prisma as any).registeredUserOrgProfile.findFirst({
+          where: { registeredUserId: g.id },
+          select: { organizationId: true, ageGroup: true, isCoach: true },
+        });
+        if (prof) { org = prof.organizationId; age = prof.ageGroup ?? null; coach = !!prof.isCoach; }
+      }
+      return { id: g.id, email: g.email, organizationId: org, ageGroup: age, isCoach: coach, isBlocked: false, isAdmin: true };
     }
   }
 
   const coach = await getCoachUserFromRequest(request);
   if (coach && !coach.isBlocked) {
-    const registeredUser = await prisma.registeredUser.findUnique({
+    const g = await prisma.registeredUser.findUnique({
       where: { id: coach.id },
-      select: {
-        id: true,
-        email: true,
-        organizationId: true,
-        ageGroup: true,
-        isCoach: true,
-        isBlocked: true,
-      },
+      select: { id: true, email: true, isBlocked: true },
     });
-
-    if (registeredUser && !registeredUser.isBlocked) {
-      const aligned = await coachRegisteredUserForBallotCycle(
-        registeredUser,
-        options.cycleId,
-      );
+    if (g && !g.isBlocked) {
+      let org = "gonzales";
+      let age: string | null = null;
+      let isC = false;
+      if (options.cycleId) {
+        const c = await prisma.allStarBallotCycle.findUnique({ where: { id: options.cycleId }, select: { organizationId: true } });
+        if (c) {
+          const p = await resolveVoterProfileForOrg(g.id, g.email, c.organizationId);
+          org = p.organizationId; age = p.ageGroup; isC = p.isCoach;
+        }
+      } else {
+        const prof = await (prisma as any).registeredUserOrgProfile.findFirst({
+          where: { registeredUserId: g.id },
+          select: { organizationId: true, ageGroup: true, isCoach: true },
+        });
+        if (prof) { org = prof.organizationId; age = prof.ageGroup ?? null; isC = !!prof.isCoach; }
+      }
+      const base = { id: g.id, email: g.email, organizationId: org, ageGroup: age, isCoach: isC, isBlocked: false };
+      const aligned = await coachRegisteredUserForBallotCycle(base as any, options.cycleId);
       return { ...aligned, isAdmin: false };
     }
   }
@@ -123,14 +163,7 @@ export async function resolveAllStarVoterFromRequest(
     where: { tokenHash: hashed },
     include: {
       invitedUser: {
-        select: {
-          id: true,
-          email: true,
-          organizationId: true,
-          ageGroup: true,
-          isCoach: true,
-          isBlocked: true,
-        },
+        select: { id: true, email: true, isBlocked: true },
       },
     },
   });
@@ -143,27 +176,23 @@ export async function resolveAllStarVoterFromRequest(
     return null;
   }
 
+  // invitedUser may be a global id now; resolve profile for invite's org
   if (invite.invitedUser && !invite.invitedUser.isBlocked) {
-    return { ...invite.invitedUser, isAdmin: false };
+    const p = await resolveVoterProfileForOrg(invite.invitedUser.id, invite.invitedUser.email, invite.organizationId);
+    return { id: invite.invitedUser.id, email: invite.invitedUser.email, organizationId: p.organizationId, ageGroup: p.ageGroup, isCoach: p.isCoach, isBlocked: false, isAdmin: false };
   }
 
   const inviteEmailUser = await prisma.registeredUser.findFirst({
     where: {
-      organizationId: invite.organizationId,
       email: { equals: invite.invitedEmail, mode: "insensitive" },
       isBlocked: false,
     },
-    select: {
-      id: true,
-      email: true,
-      organizationId: true,
-      ageGroup: true,
-      isCoach: true,
-      isBlocked: true,
-    },
+    select: { id: true, email: true, isBlocked: true },
   });
 
-  return inviteEmailUser ? { ...inviteEmailUser, isAdmin: false } : null;
+  if (!inviteEmailUser) return null;
+  const p2 = await resolveVoterProfileForOrg(inviteEmailUser.id, inviteEmailUser.email, invite.organizationId);
+  return { id: inviteEmailUser.id, email: inviteEmailUser.email, organizationId: p2.organizationId, ageGroup: p2.ageGroup, isCoach: p2.isCoach, isBlocked: false, isAdmin: false };
 }
 
 export async function ensureVoterCanAccessCycle(

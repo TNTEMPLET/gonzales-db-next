@@ -9,23 +9,33 @@ async function getAgeGroupCoachIdsForCycle(cycle: {
   seasonYear: number;
   ageGroup: string;
 }) {
-  const assignmentRows = await prisma.teamCoachAssignment.findMany({
-    where: {
-      registeredUser: {
+  // Global identity: coaches for an org/age are determined by OrgProfile (isCoach + ageGroup) + team assignments.
+  const [profileRows, assignmentRows] = await Promise.all([
+    (prisma as any).registeredUserOrgProfile.findMany({
+      where: {
         organizationId: cycle.organizationId,
         isCoach: true,
-        isBlocked: false,
-      },
-      team: {
-        organizationId: cycle.organizationId,
-        seasonYear: cycle.seasonYear,
         ageGroup: { equals: cycle.ageGroup, mode: "insensitive" },
+        registeredUser: { isBlocked: false },
       },
-    },
-    select: { registeredUserId: true },
-  });
+      select: { registeredUserId: true },
+    }),
+    prisma.teamCoachAssignment.findMany({
+      where: {
+        team: {
+          organizationId: cycle.organizationId,
+          seasonYear: cycle.seasonYear,
+          ageGroup: { equals: cycle.ageGroup, mode: "insensitive" },
+        },
+      },
+      select: { registeredUserId: true },
+    }),
+  ]);
 
-  return new Set(assignmentRows.map((row) => row.registeredUserId));
+  const ids = new Set<string>();
+  for (const p of profileRows) ids.add(p.registeredUserId);
+  for (const a of assignmentRows) ids.add(a.registeredUserId);
+  return ids;
 }
 
 /**

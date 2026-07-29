@@ -105,15 +105,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    // Global identity rows: we only filter by id (RegisteredUser is org-agnostic).
     const createdUsers = await prisma.registeredUser.findMany({
-      where: { id: { in: createdUserIds }, organizationId: targetOrg },
+      where: { id: { in: createdUserIds } },
       select: { id: true },
     });
     const deletableIds = createdUsers.map((user) => user.id);
 
     const updatedUserIds = updatedUsers.map((item) => item.id);
     const existingUpdatedUsers = await prisma.registeredUser.findMany({
-      where: { id: { in: updatedUserIds }, organizationId: targetOrg },
+      where: { id: { in: updatedUserIds } },
       select: { id: true },
     });
     const existingUpdatedUserIdSet = new Set(
@@ -122,6 +123,7 @@ export async function POST(request: NextRequest) {
 
     let revertedUpdated = 0;
     if (updatedUsers.length > 0) {
+      // Restore global fields on the user row; restore per-org coach/age/team on the profile.
       const tx = updatedUsers
         .filter((item) => existingUpdatedUserIdSet.has(item.id))
         .map((item) =>
@@ -133,16 +135,33 @@ export async function POST(request: NextRequest) {
               name: item.name,
               contactPhone:
                 typeof item.contactPhone === "string" ? item.contactPhone : null,
-              ageGroup: item.ageGroup,
-              assignedTeam: item.assignedTeam,
-              isCoach: item.isCoach,
             },
           }),
         );
       if (tx.length > 0) {
         await prisma.$transaction(tx);
-        revertedUpdated = tx.length;
       }
+      // Profile restores (per-org)
+      for (const item of updatedUsers.filter((it) => existingUpdatedUserIdSet.has(it.id))) {
+        await (prisma as any).registeredUserOrgProfile.upsert({
+          where: {
+            registeredUserId_organizationId: { registeredUserId: item.id, organizationId: targetOrg },
+          },
+          create: {
+            registeredUserId: item.id,
+            organizationId: targetOrg,
+            isCoach: item.isCoach,
+            ageGroup: item.ageGroup,
+            assignedTeam: item.assignedTeam,
+          },
+          update: {
+            isCoach: item.isCoach,
+            ageGroup: item.ageGroup,
+            assignedTeam: item.assignedTeam,
+          },
+        });
+      }
+      revertedUpdated = updatedUsers.filter((it) => existingUpdatedUserIdSet.has(it.id)).length;
     }
 
     let removedAssignments = 0;
@@ -160,8 +179,9 @@ export async function POST(request: NextRequest) {
 
     let deletedCreated = 0;
     if (deletableIds.length > 0) {
+      // RegisteredUser is now global; delete the global rows (profiles/assignments cascade or are cleaned separately).
       const deleted = await prisma.registeredUser.deleteMany({
-        where: { id: { in: deletableIds }, organizationId: targetOrg },
+        where: { id: { in: deletableIds } },
       });
       deletedCreated = deleted.count;
     }

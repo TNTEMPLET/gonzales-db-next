@@ -241,34 +241,30 @@ export async function syncCoachesToVolunteers(
   const year =
     seasonYear ?? getSeasonConfigForOrg(organizationId as ContentOrgId).year;
 
-  const coaches = await prisma.registeredUser.findMany({
-    where: {
-      organizationId,
-      OR: [
-        { isCoach: true },
-        {
+  // Global identity: coaches for org are profile rows (isCoach) OR have team assignments for the season.
+  const profRows = await (prisma as any).registeredUserOrgProfile.findMany({
+    where: { organizationId, isCoach: true },
+    select: { registeredUserId: true },
+  });
+  const profIdsFromCoach: string[] = (profRows as any[]).map((p: any) => p.registeredUserId);
+  // Also pull anyone with assignments even if profile.isCoach is not set
+  const assigned = await prisma.teamCoachAssignment.findMany({
+    where: { team: { organizationId, seasonYear: year } },
+    select: { registeredUserId: true },
+  });
+  const profIds: string[] = Array.from(new Set([...profIdsFromCoach, ...assigned.map((a) => a.registeredUserId)]));
+  const coaches = profIds.length
+    ? await prisma.registeredUser.findMany({
+        where: { id: { in: profIds } },
+        include: {
           teamCoachAssignments: {
-            some: {
-              team: {
-                organizationId,
-                seasonYear: year,
-              },
+            where: {
+              team: { organizationId, seasonYear: year },
             },
           },
         },
-      ],
-    },
-    include: {
-      teamCoachAssignments: {
-        where: {
-          team: {
-            organizationId,
-            seasonYear: year,
-          },
-        },
-      },
-    },
-  });
+      })
+    : [];
 
   if (coaches.length === 0) return { createdOrUpdated: 0 };
 
@@ -331,10 +327,20 @@ export async function syncCoachesToVolunteers(
     roleKey: string;
     teamId: string | null;
   }> = [];
+  // Fetch per-org isCoach flags for these users in one shot (global row no longer has isCoach)
+  const orgProfs = profIds.length
+    ? await (prisma as any).registeredUserOrgProfile.findMany({
+        where: { organizationId, registeredUserId: { in: profIds } },
+        select: { registeredUserId: true, isCoach: true },
+      })
+    : [];
+  const isCoachByUser = new Map<string, boolean>((orgProfs as any[]).map((p: any) => [p.registeredUserId, !!p.isCoach]));
+
   for (const coach of coaches) {
     const profileId = profileByUser.get(coach.id);
     if (!profileId) continue;
-    if (coach.teamCoachAssignments.length === 0 && coach.isCoach) {
+    const hasTeamAssignments = coach.teamCoachAssignments.length > 0;
+    if (!hasTeamAssignments && (isCoachByUser.get(coach.id) ?? false)) {
       roleRows.push({
         volunteerProfileId: profileId,
         roleKey: "LEAGUE_ASSISTANT_COACH",
@@ -745,12 +751,16 @@ export async function getMyVolunteerCard(input: {
     input.seasonYear ??
     getSeasonConfigForOrg(input.organizationId as ContentOrgId).year;
 
-  const user = await prisma.registeredUser.findFirst({
+  // Global identity + profile presence for this org
+  const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
     where: {
-      id: input.registeredUserId,
-      organizationId: input.organizationId,
-      isBlocked: false,
+      registeredUserId_organizationId: { registeredUserId: input.registeredUserId, organizationId: input.organizationId },
     },
+    select: { registeredUserId: true },
+  });
+  if (!prof) return null;
+  const user = await prisma.registeredUser.findFirst({
+    where: { id: input.registeredUserId, isBlocked: false },
     include: {
       teamCoachAssignments: {
         where: {
@@ -765,6 +775,14 @@ export async function getMyVolunteerCard(input: {
   });
   if (!user) return null;
 
+  // Fetch per-org isCoach from profile (global row no longer carries it)
+  const orgProf = await (prisma as any).registeredUserOrgProfile.findUnique({
+    where: {
+      registeredUserId_organizationId: { registeredUserId: input.registeredUserId, organizationId: input.organizationId },
+    },
+    select: { isCoach: true },
+  });
+
   let profile = await prisma.volunteerProfile.findUnique({
     where: {
       organizationId_registeredUserId_seasonYear: {
@@ -777,7 +795,7 @@ export async function getMyVolunteerCard(input: {
   });
 
   const isVolunteerCandidate =
-    user.isCoach || user.teamCoachAssignments.length > 0 || Boolean(profile);
+    (orgProf?.isCoach ?? false) || user.teamCoachAssignments.length > 0 || Boolean(profile);
 
   if (!profile && input.ensureIfCoach !== false && isVolunteerCandidate) {
     const roles = user.teamCoachAssignments.map((a) => ({
@@ -790,7 +808,7 @@ export async function getMyVolunteerCard(input: {
       seasonYear: year,
       roles: roles.length
         ? roles
-        : user.isCoach
+        : (orgProf?.isCoach ?? false)
           ? [{ role: "LEAGUE_ASSISTANT_COACH" }]
           : undefined,
     });

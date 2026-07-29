@@ -43,20 +43,23 @@ export async function inferDefaultAdminTargetOrgForMasterDashboard(
     }
   }
 
-  const registered = await prisma.registeredUser.findMany({
-    where: {
-      email: { equals: adminEmail, mode: "insensitive" },
-      organizationId: { in: [...CONTENT_ORGS] },
-    },
-    select: { id: true, organizationId: true },
+  // Global identity: find the user by email, then check which orgs have a profile for them.
+  const byEmail = await prisma.registeredUser.findFirst({
+    where: { email: { equals: adminEmail, mode: "insensitive" } },
+    select: { id: true },
   });
-
   const vaultOrgs: ContentOrgId[] = [];
-  for (const row of registered) {
-    if (!CONTENT_ORGS.includes(row.organizationId as ContentOrgId)) continue;
-    const orgId = row.organizationId as ContentOrgId;
-    if (await canViewAllStarVault(row.id, orgId)) {
-      vaultOrgs.push(orgId);
+  if (byEmail) {
+    const profiles = await (prisma as any).registeredUserOrgProfile.findMany({
+      where: { registeredUserId: byEmail.id, organizationId: { in: [...CONTENT_ORGS] } },
+      select: { organizationId: true },
+    });
+    for (const p of profiles) {
+      const orgId = p.organizationId as ContentOrgId;
+      if (!CONTENT_ORGS.includes(orgId)) continue;
+      if (await canViewAllStarVault(byEmail.id, orgId)) {
+        vaultOrgs.push(orgId);
+      }
     }
   }
   const uniqueVault = [...new Set(vaultOrgs)];

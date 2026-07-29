@@ -40,20 +40,28 @@ async function main() {
 
   for (const organizationId of orgs) {
     const seasonYear = getSeasonConfigForOrg(organizationId).year;
-    const users = await prisma.registeredUser.findMany({
-      where: {
-        organizationId,
-        abuseAwarenessTrainingCertificateUrl: { not: null },
-      },
-      select: {
-        id: true,
-        email: true,
-        abuseAwarenessTrainingCertificateUrl: true,
-        abuseAwarenessTrainingCertificateFileName: true,
-        abuseAwarenessTrainingCertificateMimeType: true,
-        abuseAwarenessTrainingCertificateUploadedAt: true,
-      },
+    // Global identity: find users who have a profile row for this org (may carry legacy AAT on the global row)
+    const profiles: Array<{ registeredUserId: string }> = await (prisma as any).registeredUserOrgProfile.findMany({
+      where: { organizationId },
+      select: { registeredUserId: true },
     });
+    const ids: string[] = Array.from(new Set(profiles.map((p) => p.registeredUserId)));
+    const users = ids.length
+      ? await prisma.registeredUser.findMany({
+          where: {
+            id: { in: ids },
+            abuseAwarenessTrainingCertificateUrl: { not: null },
+          },
+          select: {
+            id: true,
+            email: true,
+            abuseAwarenessTrainingCertificateUrl: true,
+            abuseAwarenessTrainingCertificateFileName: true,
+            abuseAwarenessTrainingCertificateMimeType: true,
+            abuseAwarenessTrainingCertificateUploadedAt: true,
+          },
+        })
+      : [];
 
     for (const user of users) {
       scanned += 1;

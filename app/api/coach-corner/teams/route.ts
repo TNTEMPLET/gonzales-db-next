@@ -47,15 +47,20 @@ export async function GET(request: NextRequest) {
   const parsedSeasonYear = seasonYearParam ? Number(seasonYearParam) : Number.NaN;
   const seasonFilter = Number.isFinite(parsedSeasonYear) ? parsedSeasonYear : undefined;
 
-  const actorCoach = await prisma.registeredUser.findFirst({
+  // Global identity + per-org profile (isCoach lives on profile)
+  const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
     where: {
-      id: actor.registeredUserId,
-      organizationId: actor.targetOrg,
-      isCoach: true,
-      isBlocked: false,
+      registeredUserId_organizationId: { registeredUserId: actor.registeredUserId, organizationId: actor.targetOrg },
     },
-    select: coachProfileSelect,
+    select: { isCoach: true },
   });
+  const isCoachForOrg = !!prof?.isCoach;
+  const actorCoach = isCoachForOrg
+    ? await prisma.registeredUser.findUnique({
+        where: { id: actor.registeredUserId, isBlocked: false },
+        select: coachProfileSelect,
+      })
+    : null;
 
   const teams = actor.isAdmin
     ? await prisma.team.findMany({
