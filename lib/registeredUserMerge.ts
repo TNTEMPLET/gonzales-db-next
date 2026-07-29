@@ -29,9 +29,8 @@ export async function mergeRegisteredUsers(
   if (!keep || !merge) {
     throw new Error("User not found");
   }
-  if (keep.organizationId !== organizationId || merge.organizationId !== organizationId) {
-    throw new Error("Users must belong to the selected organization");
-  }
+  // Global identity: RegisteredUser rows are not org-scoped. The caller (merge route)
+  // already verified both have (or will have) a profile for the target organizationId.
 
   const mergeEmail = merge.email.trim().toLowerCase();
   if (mergeEmail === PROTECTED_MASTER_ADMIN_EMAIL.toLowerCase()) {
@@ -250,11 +249,40 @@ export async function mergeRegisteredUsers(
           firstName: keep.firstName ?? merge.firstName,
           lastName: keep.lastName ?? merge.lastName,
           name: keep.name ?? merge.name,
-          ageGroup: keep.ageGroup ?? merge.ageGroup,
-          assignedTeam: keep.assignedTeam ?? merge.assignedTeam,
-          isCoach: keep.isCoach || merge.isCoach,
         },
       });
+
+      // Merge per-org profile state (isCoach/age/assigned) for the target org.
+      // Upsert a profile for the keep user in this org and take the union of coach flags.
+      const keepProf = await (tx as any).registeredUserOrgProfile.findUnique({
+        where: {
+          registeredUserId_organizationId: { registeredUserId: keepUserId, organizationId },
+        },
+      });
+      const mergeProf = await (tx as any).registeredUserOrgProfile.findUnique({
+        where: {
+          registeredUserId_organizationId: { registeredUserId: mergeUserId, organizationId },
+        },
+      });
+      if (mergeProf) {
+        await (tx as any).registeredUserOrgProfile.upsert({
+          where: {
+            registeredUserId_organizationId: { registeredUserId: keepUserId, organizationId },
+          },
+          create: {
+            registeredUserId: keepUserId,
+            organizationId,
+            isCoach: Boolean(mergeProf.isCoach),
+            ageGroup: mergeProf.ageGroup ?? null,
+            assignedTeam: mergeProf.assignedTeam ?? null,
+          },
+          update: {
+            isCoach: Boolean(keepProf?.isCoach) || Boolean(mergeProf.isCoach),
+            ageGroup: keepProf?.ageGroup ?? mergeProf.ageGroup ?? null,
+            assignedTeam: keepProf?.assignedTeam ?? mergeProf.assignedTeam ?? null,
+          },
+        });
+      }
 
       await tx.registeredUser.delete({ where: { id: mergeUserId } });
     },

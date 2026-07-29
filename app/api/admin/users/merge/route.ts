@@ -66,14 +66,27 @@ export async function POST(request: NextRequest) {
     const mergeUser = await prisma.registeredUser.findUnique({
       where: { id: mergeUserId },
     });
-    if (!mergeUser || mergeUser.organizationId !== targetOrg) {
+    if (!mergeUser) {
+      return NextResponse.json({ error: "Merge user not found" }, { status: 404 });
+    }
+    // Under global identity, verify the user has (or will have) presence in the target org via profile.
+    const mergeProfile = await (prisma as any).registeredUserOrgProfile.findUnique({
+      where: { registeredUserId_organizationId: { registeredUserId: mergeUser.id, organizationId: targetOrg } },
+    });
+    if (!mergeProfile) {
       return NextResponse.json({ error: "Merge user not found for org" }, { status: 404 });
     }
 
     const keepUser = await prisma.registeredUser.findUnique({
       where: { id: keepUserId },
     });
-    if (!keepUser || keepUser.organizationId !== targetOrg) {
+    if (!keepUser) {
+      return NextResponse.json({ error: "Keep user not found" }, { status: 404 });
+    }
+    const keepProfile = await (prisma as any).registeredUserOrgProfile.findUnique({
+      where: { registeredUserId_organizationId: { registeredUserId: keepUser.id, organizationId: targetOrg } },
+    });
+    if (!keepProfile) {
       return NextResponse.json({ error: "Keep user not found for org" }, { status: 404 });
     }
 

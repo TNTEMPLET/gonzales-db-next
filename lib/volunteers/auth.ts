@@ -26,35 +26,35 @@ export async function resolveVolunteerCardActor(
 
   const coach = await getCoachUserFromRequest(request);
   if (coach && !coach.isBlocked) {
-    const user = await prisma.registeredUser.findFirst({
+    // Global identity: check that a profile exists for this org.
+    const profile = await (prisma as any).registeredUserOrgProfile.findUnique({
       where: {
-        id: coach.id,
-        organizationId: targetOrg,
-        isBlocked: false,
+        registeredUserId_organizationId: { registeredUserId: coach.id, organizationId: targetOrg },
       },
-      select: { id: true },
+      select: { registeredUserId: true },
     });
-    if (user) {
+    if (profile) {
       return {
         targetOrg,
-        registeredUserId: user.id,
+        registeredUserId: coach.id,
         isAdmin: false,
       };
     }
-    // Cookie user may be on another org bucket — match by email on target org.
-    const byEmail = await prisma.registeredUser.findFirst({
+    // Fallback: global user by email that has a profile in target org.
+    const profileByEmail = await (prisma as any).registeredUserOrgProfile.findFirst({
       where: {
         organizationId: targetOrg,
-        email: { equals: coach.email, mode: "insensitive" },
-        isBlocked: false,
+        registeredUser: {
+          email: { equals: coach.email, mode: "insensitive" },
+          isBlocked: false,
+        },
       },
-      orderBy: { updatedAt: "desc" },
-      select: { id: true },
+      select: { registeredUserId: true },
     });
-    if (byEmail) {
+    if (profileByEmail) {
       return {
         targetOrg,
-        registeredUserId: byEmail.id,
+        registeredUserId: profileByEmail.registeredUserId,
         isAdmin: false,
       };
     }
@@ -75,13 +75,26 @@ export async function resolveVolunteerCardActor(
 
   const existing = await prisma.registeredUser.findFirst({
     where: {
-      organizationId: targetOrg,
       email: { equals: admin.email, mode: "insensitive" },
     },
     orderBy: { updatedAt: "desc" },
     select: { id: true, isBlocked: true },
   });
   if (existing && !existing.isBlocked) {
+    // Ensure profile for target org.
+    await (prisma as any).registeredUserOrgProfile.upsert({
+      where: {
+        registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg },
+      },
+      create: {
+        registeredUserId: existing.id,
+        organizationId: targetOrg,
+        isCoach: false,
+        ageGroup: null,
+        assignedTeam: null,
+      },
+      update: {},
+    });
     return {
       targetOrg,
       registeredUserId: existing.id,

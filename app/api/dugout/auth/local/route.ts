@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
       }
 
       // Ensure per-org profile with the supplied context values
-      await prisma.registeredUserOrgProfile.upsert({
+      await (prisma as any).registeredUserOrgProfile.upsert({
         where: {
           registeredUserId_organizationId: { registeredUserId: globalUser.id, organizationId: orgId },
         },

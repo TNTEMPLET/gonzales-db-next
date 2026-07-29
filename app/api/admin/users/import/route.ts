@@ -361,25 +361,27 @@ export async function POST(request: NextRequest) {
         null;
       const contactPhone = selectPreferredContactPhone(row);
 
-      const existing = await prisma.registeredUser.findUnique({
-        where: {
-          organizationId_email: {
-            organizationId: targetOrg,
-            email: normalizedEmail,
-          },
-        },
+      // Global identity lookup + per-org profile
+      let existing = await prisma.registeredUser.findFirst({
+        where: { email: normalizedEmail },
       });
 
-      if (existing) {
+      let profile = existing
+        ? await (prisma as any).registeredUserOrgProfile.findUnique({
+            where: { registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg } },
+          })
+        : null;
+
+      if (existing && profile) {
         updatedUsersBeforeImport.push({
           id: existing.id,
           firstName: existing.firstName,
           lastName: existing.lastName,
           name: existing.name,
           contactPhone: existing.contactPhone,
-          ageGroup: existing.ageGroup,
-          assignedTeam: existing.assignedTeam,
-          isCoach: existing.isCoach,
+          ageGroup: profile.ageGroup,
+          assignedTeam: profile.assignedTeam,
+          isCoach: profile.isCoach,
         });
         await prisma.registeredUser.update({
           where: { id: existing.id },
@@ -388,6 +390,11 @@ export async function POST(request: NextRequest) {
             lastName,
             name,
             contactPhone,
+          },
+        });
+        await (prisma as any).registeredUserOrgProfile.update({
+          where: { registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg } },
+          data: {
             ageGroup,
             assignedTeam,
             isCoach: true,
@@ -437,17 +444,24 @@ export async function POST(request: NextRequest) {
         }
         updated += 1;
       } else {
+        // Create global identity first
         const createdUser = await prisma.registeredUser.create({
           data: {
-            organizationId: targetOrg,
             email: normalizedEmail,
             firstName,
             lastName,
             name,
             contactPhone,
+          },
+        });
+        // Then create the org profile with the import data
+        await (prisma as any).registeredUserOrgProfile.create({
+          data: {
+            registeredUserId: createdUser.id,
+            organizationId: targetOrg,
+            isCoach: true,
             ageGroup,
             assignedTeam,
-            isCoach: true,
           },
         });
         if (autoAssignToTeams) {
