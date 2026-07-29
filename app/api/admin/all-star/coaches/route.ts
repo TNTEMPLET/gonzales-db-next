@@ -33,14 +33,11 @@ export async function GET(request: NextRequest) {
    * Prefer team assignments for role accuracy, then merge in active coach profiles
    * for the cycle age group so coaches can be managed before teams are built.
    */
-  const [assignmentRows, profileRows] = await Promise.all([
+  // Global identity model: RegisteredUser has no organizationId/isCoach/ageGroup.
+  // Assignments are scoped by the team. "Coach profile" presence + age is on RegisteredUserOrgProfile.
+  const [assignmentRows, orgProfiles] = await Promise.all([
     prisma.teamCoachAssignment.findMany({
       where: {
-        registeredUser: {
-          organizationId: cycle.organizationId,
-          isCoach: true,
-          isBlocked: false,
-        },
         team: {
           organizationId: cycle.organizationId,
           seasonYear: cycle.seasonYear,
@@ -54,22 +51,26 @@ export async function GET(request: NextRequest) {
       },
       orderBy: [{ createdAt: "desc" }],
     }),
-    prisma.registeredUser.findMany({
+    (prisma as any).registeredUserOrgProfile.findMany({
       where: {
         organizationId: cycle.organizationId,
         isCoach: true,
-        isBlocked: false,
         ageGroup: { equals: cycle.ageGroup, mode: "insensitive" },
+        registeredUser: { isBlocked: false },
       },
-      select: coachSelect,
-      orderBy: [{ firstName: "asc" }, { lastName: "asc" }, { email: "asc" }],
+      include: {
+        registeredUser: {
+          select: coachSelect,
+        },
+      },
+      orderBy: [{ updatedAt: "desc" }],
     }),
   ]);
 
   const mergedByCoachId = new Map<
     string,
     {
-      coach: (typeof profileRows)[number];
+      coach: any;
       coachRole: "HEAD_COACH" | "ASSISTANT_COACH" | null;
     }
   >();
@@ -88,7 +89,9 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  for (const coach of profileRows) {
+  for (const p of orgProfiles) {
+    const coach = p.registeredUser;
+    if (!coach) continue;
     if (!mergedByCoachId.has(coach.id)) {
       mergedByCoachId.set(coach.id, { coach, coachRole: null });
     }
