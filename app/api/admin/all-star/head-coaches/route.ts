@@ -39,27 +39,38 @@ export async function POST(request: NextRequest) {
   const cycle = await prisma.allStarBallotCycle.findUnique({ where: { id: body.cycleId } });
   if (!cycle) return NextResponse.json({ error: "Cycle not found" }, { status: 404 });
 
-  const coach = await prisma.registeredUser.findUnique({
+  // Global identity: RegisteredUser has no organizationId/isCoach/ageGroup.
+  // Look up the global row, then the per-org profile for eligibility.
+  const globalCoach = await prisma.registeredUser.findUnique({
     where: { id: body.registeredUserId },
     select: {
       id: true,
-      organizationId: true,
-      ageGroup: true,
-      isCoach: true,
-      isBlocked: true,
       email: true,
       firstName: true,
       lastName: true,
       name: true,
+      isBlocked: true,
     },
   });
-  if (!coach) return NextResponse.json({ error: "Coach not found" }, { status: 404 });
+  if (!globalCoach) return NextResponse.json({ error: "Coach not found" }, { status: 404 });
+
+  const profile = await (prisma as any).registeredUserOrgProfile.findUnique({
+    where: {
+      registeredUserId_organizationId: {
+        registeredUserId: globalCoach.id,
+        organizationId: cycle.organizationId,
+      },
+    },
+    select: { isCoach: true, ageGroup: true },
+  });
+
+  const isCoachForOrg = !!profile?.isCoach;
+  const ageGroupForOrg = profile?.ageGroup || null;
+
   if (
-    !coach.isCoach ||
-    coach.isBlocked ||
-    coach.organizationId !== cycle.organizationId ||
-    (coach.ageGroup || "").trim().toLowerCase() !==
-      cycle.ageGroup.trim().toLowerCase()
+    !isCoachForOrg ||
+    globalCoach.isBlocked ||
+    (ageGroupForOrg || "").trim().toLowerCase() !== cycle.ageGroup.trim().toLowerCase()
   ) {
     return NextResponse.json(
       { error: "Selected coach is not eligible for this cycle" },
@@ -70,7 +81,7 @@ export async function POST(request: NextRequest) {
   const existing = await prisma.allStarHeadCoachAssignment.findFirst({
     where: {
       ballotCycleId: cycle.id,
-      registeredUserId: coach.id,
+      registeredUserId: globalCoach.id,
     },
     select: { id: true },
   });
@@ -87,13 +98,13 @@ export async function POST(request: NextRequest) {
       ballotCycleId: cycle.id,
       organizationId: cycle.organizationId,
       ageGroup: cycle.ageGroup,
-      registeredUserId: coach.id,
+      registeredUserId: globalCoach.id,
       adminUserId: admin?.id || null,
       coachName:
-        [coach.firstName, coach.lastName].filter(Boolean).join(" ") ||
-        coach.name ||
+        [globalCoach.firstName, globalCoach.lastName].filter(Boolean).join(" ") ||
+        globalCoach.name ||
         null,
-      coachEmail: coach.email,
+      coachEmail: globalCoach.email,
     },
   });
 
