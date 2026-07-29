@@ -121,11 +121,36 @@ export async function GET(request: NextRequest) {
         : undefined,
     };
 
-    const [users, currentAdmin, auditLogs, totalAuditLogs, latestImportBatch, orgMemberships, masterAdmins] =
+    // Global identities that have (or will have) a profile in this org.
+    // We load via the org profile join so we can surface per-org coach/assignment context.
+    // Note: after schema change we use the new RegisteredUserOrgProfile table.
+    // (prisma as any) until client is regenerated after migration.
+    const [profileRows, currentAdmin, auditLogs, totalAuditLogs, latestImportBatch, orgMemberships, masterAdmins] =
       await Promise.all([
-        prisma.registeredUser.findMany({
+        (prisma as any).registeredUserOrgProfile.findMany({
           where: { organizationId: targetOrg },
-          orderBy: { createdAt: "desc" },
+          include: {
+            registeredUser: {
+              select: {
+                id: true,
+                email: true,
+                name: true,
+                firstName: true,
+                lastName: true,
+                contactPhone: true,
+                googleSub: true,
+                isBlocked: true,
+                createdAt: true,
+                updatedAt: true,
+                // legacy AAT columns are still read directly off the global row
+                abuseAwarenessTrainingCertificateUrl: true,
+                abuseAwarenessTrainingCertificateFileName: true,
+                abuseAwarenessTrainingCertificateMimeType: true,
+                abuseAwarenessTrainingCertificateUploadedAt: true,
+              },
+            },
+          },
+          orderBy: { updatedAt: "desc" },
         }),
         getAdminUserFromRequest(request),
         prisma.adminAuditLog.findMany({
@@ -158,6 +183,15 @@ export async function GET(request: NextRequest) {
           orderBy: { createdAt: "desc" },
         }),
       ]);
+
+    // Shape like the old "users" list for the rest of the handler.
+    const users = ((profileRows as any[]) || []).map((p: any) => ({
+      ...p.registeredUser,
+      organizationId: targetOrg, // synthetic for any legacy code paths that still read it
+      isCoach: p.isCoach,
+      ageGroup: p.ageGroup,
+      assignedTeam: p.assignedTeam,
+    }));
 
     const userIds = users.map((user) => user.id);
     const coachAssignments =
@@ -395,20 +429,36 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const user = await prisma.registeredUser.findUnique({
+    const globalUser = await prisma.registeredUser.findUnique({
       where: { id: body.userId },
+      select: { id: true, email: true, name: true, firstName: true, lastName: true },
     });
 
-    if (!user) {
+    if (!globalUser) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    if (user.organizationId !== targetOrg) {
-      return NextResponse.json(
-        { error: "User not found for selected org" },
-        { status: 404 },
-      );
-    }
+    // Under the global identity model, the RegisteredUser row is org-agnostic.
+    // Ensure a minimal org profile exists for the target org so downstream
+    // features (Dugout, coach gates, volunteer card, etc.) see the person.
+    await prisma.registeredUserOrgProfile.upsert({
+      where: {
+        registeredUserId_organizationId: {
+          registeredUserId: globalUser.id,
+          organizationId: targetOrg,
+        },
+      },
+      create: {
+        registeredUserId: globalUser.id,
+        organizationId: targetOrg,
+        isCoach: false,
+        ageGroup: null,
+        assignedTeam: null,
+      },
+      update: {}, // profile already exists — no change needed for role assignment
+    });
+
+    const user = globalUser; // keep variable name for the rest of the function (email, name, etc.)
 
     const isProtectedTargetEmail =
       user.email.trim().toLowerCase() === PROTECTED_MASTER_ADMIN_EMAIL;

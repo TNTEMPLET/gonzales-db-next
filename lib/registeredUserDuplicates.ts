@@ -25,14 +25,16 @@ export function nameMatchKeyFromParts(
 }
 
 /**
- * After a brand-new `RegisteredUser` row is created, find same-org accounts with the same
- * normalized name key and record merge-review candidates. Never throws to callers.
+ * After a brand-new global `RegisteredUser` row is created, find other global accounts
+ * with the same normalized name key and record merge-review candidates.
+ * (Duplicate detection is now at the global person level; org context is only for logging.)
  */
 export async function recordDuplicateCandidatesForNewUser(
   prisma: PrismaClient,
   newUser: {
     id: string;
-    organizationId: string;
+    // organizationId kept only for backward compat in callers; no longer used for scoping detection.
+    organizationId?: string;
     firstName: string | null;
     lastName: string | null;
     name: string | null;
@@ -48,7 +50,6 @@ export async function recordDuplicateCandidatesForNewUser(
 
     const peers = await prisma.registeredUser.findMany({
       where: {
-        organizationId: newUser.organizationId,
         id: { not: newUser.id },
       },
       select: {
@@ -66,9 +67,10 @@ export async function recordDuplicateCandidatesForNewUser(
 
     if (matches.length === 0) return;
 
+    const orgForCandidate = newUser.organizationId || "gonzales"; // global detection; use a representative org
     await prisma.registeredUserDuplicateCandidate.createMany({
       data: matches.map((m) => ({
-        organizationId: newUser.organizationId,
+        organizationId: orgForCandidate,
         newerUserId: newUser.id,
         candidateUserId: m.id,
         matchReason: "NAME_NORMALIZED" as const,

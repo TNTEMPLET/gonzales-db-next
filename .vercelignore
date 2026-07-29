@@ -1,0 +1,10 @@
+node_modules
+.next
+.git
+**/.next
+**/node_modules
+tsconfig.tsbuildinfo
+services/gamechanger-schedule-writer
+exports
+docs
+scripts/archive
