@@ -355,11 +355,27 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
 
   let currentUserId: string | null = coach?.id ?? null;
   if (!currentUserId && admin) {
+    // Global identity: find by email, then ensure/confirm a profile exists for this Dugout org.
     const reg = await prisma.registeredUser.findFirst({
-      where: { organizationId: orgId, email: admin.email },
+      where: { email: { equals: admin.email, mode: "insensitive" } },
       select: { id: true },
     });
-    currentUserId = reg?.id ?? null;
+    if (reg) {
+      await (prisma as any).registeredUserOrgProfile.upsert({
+        where: {
+          registeredUserId_organizationId: { registeredUserId: reg.id, organizationId: orgId },
+        },
+        create: {
+          registeredUserId: reg.id,
+          organizationId: orgId,
+          isCoach: false,
+          ageGroup: null,
+          assignedTeam: null,
+        },
+        update: {},
+      });
+      currentUserId = reg.id;
+    }
   }
 
   const currentUserName = coach
