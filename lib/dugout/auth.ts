@@ -19,15 +19,27 @@ export async function resolveAuthorId(
   const adminUser = await getAdminUserFromRequest(request);
   if (!adminUser) return null;
 
-  const where =
-    targetOrg === "master"
-      ? { email: adminUser.email }
-      : { organizationId: targetOrg, email: adminUser.email };
-
+  // Global identity: RegisteredUser has no organizationId. Find by email (global),
+  // then ensure a minimal org profile exists for non-master Dugout contexts.
   const reg = await prisma.registeredUser.findFirst({
-    where,
+    where: { email: adminUser.email },
     select: { id: true },
   });
+  if (reg && targetOrg !== "master") {
+    await (prisma as any).registeredUserOrgProfile.upsert({
+      where: {
+        registeredUserId_organizationId: { registeredUserId: reg.id, organizationId: targetOrg },
+      },
+      create: {
+        registeredUserId: reg.id,
+        organizationId: targetOrg,
+        isCoach: false,
+        ageGroup: null,
+        assignedTeam: null,
+      },
+      update: {},
+    });
+  }
   return reg?.id ?? null;
 }
 

@@ -34,30 +34,29 @@ async function fetchRegisteredCandidates(rule: AudienceRuleInput): Promise<Audie
     rule.ruleType === "ALL_COACHES" || rule.ruleType === "ORGANIZATION_COACHES"
       ? true
       : undefined;
-  const users = await prisma.registeredUser.findMany({
+  // Global users that have a profile in the org (and optional coach filter via profile).
+  const profiles = await (prisma as any).registeredUserOrgProfile.findMany({
     where: {
       organizationId: whereOrg,
-      isBlocked: false,
-      isCoach: whereCoach,
+      registeredUser: { isBlocked: false },
+      ...(whereCoach ? { isCoach: true } : {}),
     },
-    select: {
-      id: true,
-      organizationId: true,
-      email: true,
-      contactPhone: true,
-      isCoach: true,
+    include: {
+      registeredUser: {
+        select: { id: true, email: true, contactPhone: true },
+      },
     },
   });
 
-  return users.map((user) => ({
+  return profiles.map((p: any) => ({
     recipientType: "REGISTERED_USER",
-    registeredUserId: user.id,
+    registeredUserId: p.registeredUserId,
     adminUserId: null,
     coachingInterestSubmissionId: null,
-    organizationId: user.organizationId,
-    email: user.email,
-    phone: user.contactPhone ?? null,
-    isCoach: user.isCoach,
+    organizationId: p.organizationId,
+    email: p.registeredUser.email,
+    phone: p.registeredUser.contactPhone ?? null,
+    isCoach: p.isCoach,
     adminRole: null,
     matchReasons: [rule.ruleType],
   }));
@@ -69,33 +68,51 @@ async function fetchExplicitUserCandidates(rule: AudienceRuleInput): Promise<Aud
   );
   if (ids.length === 0) return [];
 
+  const targetOrg = rule.organizationId ?? undefined;
+
   const users = await prisma.registeredUser.findMany({
     where: {
       id: { in: ids },
       isBlocked: false,
-      ...(rule.organizationId ? { organizationId: rule.organizationId } : {}),
     },
     select: {
       id: true,
-      organizationId: true,
       email: true,
       contactPhone: true,
-      isCoach: true,
     },
   });
 
-  return users.map((user) => ({
-    recipientType: "REGISTERED_USER" as const,
-    registeredUserId: user.id,
-    adminUserId: null,
-    coachingInterestSubmissionId: null,
-    organizationId: user.organizationId,
-    email: user.email,
-    phone: user.contactPhone ?? null,
-    isCoach: user.isCoach,
-    adminRole: null,
-    matchReasons: ["EXPLICIT_USERS"],
-  }));
+  // For each explicit user, resolve their org profile (if any) for the rule's org to get isCoach.
+  const results: AudienceRecipient[] = [];
+  for (const u of users) {
+    let isCoach = false;
+    let orgForRow: string | null = null;
+    if (targetOrg) {
+      const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
+        where: {
+          registeredUserId_organizationId: { registeredUserId: u.id, organizationId: targetOrg },
+        },
+        select: { isCoach: true, organizationId: true },
+      });
+      if (prof) {
+        isCoach = !!prof.isCoach;
+        orgForRow = prof.organizationId;
+      }
+    }
+    results.push({
+      recipientType: "REGISTERED_USER" as const,
+      registeredUserId: u.id,
+      adminUserId: null,
+      coachingInterestSubmissionId: null,
+      organizationId: orgForRow,
+      email: u.email,
+      phone: u.contactPhone ?? null,
+      isCoach,
+      adminRole: null,
+      matchReasons: ["EXPLICIT_USERS"],
+    });
+  }
+  return results;
 }
 
 async function fetchAdminRoleCandidates(rule: AudienceRuleInput): Promise<AudienceRecipient[]> {

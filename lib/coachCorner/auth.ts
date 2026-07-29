@@ -21,12 +21,22 @@ export async function resolveCoachCornerActor(
 
   const coach = await getCoachUserFromRequest(request);
   if (coach && coach.isCoach && !coach.isBlocked) {
-    const user = await prisma.registeredUser.findUnique({
-      where: { id: coach.id },
-      select: { id: true, organizationId: true, isBlocked: true },
+    // Global identity: presence in the org is represented by a profile row.
+    const profile = await (prisma as any).registeredUserOrgProfile.findUnique({
+      where: {
+        registeredUserId_organizationId: { registeredUserId: coach.id, organizationId: targetOrg },
+      },
+      select: { registeredUserId: true },
     });
-    if (user && user.organizationId === targetOrg && !user.isBlocked) {
-      return { targetOrg, registeredUserId: user.id, isAdmin: false };
+    if (profile) {
+      // Also confirm not blocked (global flag lives on the user).
+      const u = await prisma.registeredUser.findUnique({
+        where: { id: coach.id },
+        select: { isBlocked: true },
+      });
+      if (u && !u.isBlocked) {
+        return { targetOrg, registeredUserId: coach.id, isAdmin: false };
+      }
     }
   }
 
@@ -43,19 +53,31 @@ export async function resolveCoachCornerActor(
 
   const existing = await prisma.registeredUser.findFirst({
     where: {
-      organizationId: targetOrg,
       email: { equals: admin.email, mode: "insensitive" },
     },
     orderBy: { updatedAt: "desc" },
     select: { id: true, isBlocked: true },
   });
   if (existing && !existing.isBlocked) {
+    // Ensure a profile row exists for this org (global user).
+    await (prisma as any).registeredUserOrgProfile.upsert({
+      where: {
+        registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg },
+      },
+      create: {
+        registeredUserId: existing.id,
+        organizationId: targetOrg,
+        isCoach: true,
+        ageGroup: null,
+        assignedTeam: null,
+      },
+      update: { isCoach: true },
+    });
     return { targetOrg, registeredUserId: existing.id, isAdmin: true };
   }
 
   const created = await prisma.registeredUser.create({
     data: {
-      organizationId: targetOrg,
       email: admin.email.toLowerCase(),
       firstName: admin.firstName?.trim() || null,
       lastName: admin.lastName?.trim() || null,
@@ -63,14 +85,22 @@ export async function resolveCoachCornerActor(
         [admin.firstName, admin.lastName].filter(Boolean).join(" ").trim() ||
         admin.name ||
         null,
-      isCoach: true,
     },
     select: {
       id: true,
-      organizationId: true,
       firstName: true,
       lastName: true,
       name: true,
+    },
+  });
+
+  await (prisma as any).registeredUserOrgProfile.create({
+    data: {
+      registeredUserId: created.id,
+      organizationId: targetOrg,
+      isCoach: true,
+      ageGroup: null,
+      assignedTeam: null,
     },
   });
 

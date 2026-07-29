@@ -72,7 +72,7 @@ export async function getCoachUserByToken(token: string | undefined) {
 
   // Resolve effective per-org isCoach from the profile using the current deployment's org bucket.
   const orgForProfile = getDugoutRegisteredUserOrgId();
-  const profile = await prisma.registeredUserOrgProfile.findUnique({
+  const profile = await (prisma as any).registeredUserOrgProfile.findUnique({
     where: {
       registeredUserId_organizationId: {
         registeredUserId: session.user.id,

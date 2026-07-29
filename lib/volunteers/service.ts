@@ -157,17 +157,29 @@ export async function ensureVolunteerProfile(input: {
     input.seasonYear ??
     getSeasonConfigForOrg(input.organizationId as ContentOrgId).year;
 
-  const user = await prisma.registeredUser.findFirst({
-    where: {
-      id: input.registeredUserId,
-      organizationId: input.organizationId,
-    },
+  const globalUser = await prisma.registeredUser.findUnique({
+    where: { id: input.registeredUserId },
   });
-  if (!user) {
-    throw new Error("Registered user not found for organization");
+  if (!globalUser) {
+    throw new Error("Registered user not found");
   }
+  // Ensure a per-org profile row exists (the "child").
+  await (prisma as any).registeredUserOrgProfile.upsert({
+    where: {
+      registeredUserId_organizationId: {
+        registeredUserId: globalUser.id,
+        organizationId: input.organizationId,
+      },
+    },
+    create: {
+      registeredUserId: globalUser.id,
+      organizationId: input.organizationId,
+      isCoach: false,
+    },
+    update: {},
+  });
 
-  const profile = await prisma.volunteerProfile.upsert({
+  const vProfile = await prisma.volunteerProfile.upsert({
     where: {
       organizationId_registeredUserId_seasonYear: {
         organizationId: input.organizationId,
@@ -186,8 +198,8 @@ export async function ensureVolunteerProfile(input: {
     },
   });
 
-  await ensureRequirementRows(profile.id);
-  await hydrateAatFromLegacyUser(profile.id, user);
+  await ensureRequirementRows(vProfile.id);
+  await hydrateAatFromLegacyUser(vProfile.id, globalUser);
 
   if (input.roles?.length) {
     await ensureDefaultRoleDefs();
@@ -196,7 +208,7 @@ export async function ensureVolunteerProfile(input: {
       const roleKey = r.role;
       const existingRole = await prisma.volunteerRoleAssignment.findFirst({
         where: {
-          volunteerProfileId: profile.id,
+          volunteerProfileId: vProfile.id,
           roleKey,
           teamId,
         },
@@ -204,7 +216,7 @@ export async function ensureVolunteerProfile(input: {
       if (!existingRole) {
         await prisma.volunteerRoleAssignment.create({
           data: {
-            volunteerProfileId: profile.id,
+            volunteerProfileId: vProfile.id,
             roleKey,
             teamId,
           },
@@ -213,7 +225,7 @@ export async function ensureVolunteerProfile(input: {
     }
   }
 
-  return profile;
+  return vProfile;
 }
 
 /**
@@ -503,6 +515,7 @@ export function toVolunteerCardView(
     requiredByDefault: boolean;
     allowsVolunteerUpload: boolean;
   }> = DEFAULT_DEFS,
+  orgProfile?: { isCoach: boolean; ageGroup: string | null; assignedTeam: string | null } | null,
 ): VolunteerCardView {
   const defByKey = new Map(defs.map((d) => [d.key, d]));
   const reqViews = VOLUNTEER_REQUIREMENT_KEYS.map((key) => {
@@ -556,9 +569,9 @@ export function toVolunteerCardView(
       firstName: profile.registeredUser.firstName,
       lastName: profile.registeredUser.lastName,
       contactPhone: profile.registeredUser.contactPhone,
-      isCoach: profile.registeredUser.isCoach,
-      ageGroup: profile.registeredUser.ageGroup,
-      assignedTeam: profile.registeredUser.assignedTeam,
+      isCoach: orgProfile ? orgProfile.isCoach : false,
+      ageGroup: orgProfile ? orgProfile.ageGroup : null,
+      assignedTeam: orgProfile ? orgProfile.assignedTeam : null,
     },
     teamAssignments,
     createdAt: profile.createdAt.toISOString(),

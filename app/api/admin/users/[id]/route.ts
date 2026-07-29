@@ -87,36 +87,53 @@ export async function PATCH(
     );
   }
 
-  const user = await prisma.registeredUser.findUnique({ where: { id } });
-  if (!user || user.organizationId !== targetOrg) {
+  const globalUser = await prisma.registeredUser.findUnique({ where: { id } });
+  if (!globalUser) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  // Under global identity, existence of a profile row for this org means "this org knows the user".
+  // Use any-cast because the Prisma client in some Vercel builds may not yet know the new model.
+  const profile = await (prisma as any).registeredUserOrgProfile.findUnique({
+    where: {
+      registeredUserId_organizationId: {
+        registeredUserId: globalUser.id,
+        organizationId: targetOrg,
+      },
+    },
+  });
+  if (!profile) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 
   const updateData: {
-    isCoach?: boolean;
     isBlocked?: boolean;
     firstName?: string | null;
     lastName?: string | null;
     name?: string | null;
     contactPhone?: string | null;
+  } = {};
+
+  const profileUpdate: {
+    isCoach?: boolean;
     ageGroup?: string | null;
     assignedTeam?: string | null;
   } = {};
 
   if (hasCoachUpdate) {
-    updateData.isCoach = body.isCoach;
+    profileUpdate.isCoach = body.isCoach;
   }
   if (hasBlockedUpdate) {
     updateData.isBlocked = body.isBlocked;
   }
 
   if (hasAgeGroupUpdate) {
-    updateData.ageGroup =
+    profileUpdate.ageGroup =
       typeof body.ageGroup === "string" ? body.ageGroup.trim() || null : null;
   }
 
   if (hasAssignedTeamUpdate) {
-    updateData.assignedTeam =
+    profileUpdate.assignedTeam =
       typeof body.assignedTeam === "string"
         ? body.assignedTeam.trim() || null
         : null;
@@ -132,10 +149,10 @@ export async function PATCH(
   if (hasFirstNameUpdate || hasLastNameUpdate) {
     const nextFirstName = hasFirstNameUpdate
       ? body.firstName?.trim() || null
-      : user.firstName;
+      : globalUser.firstName;
     const nextLastName = hasLastNameUpdate
       ? body.lastName?.trim() || null
-      : user.lastName;
+      : globalUser.lastName;
     const composedName = [nextFirstName, nextLastName]
       .filter(Boolean)
       .join(" ");
@@ -145,10 +162,21 @@ export async function PATCH(
     updateData.name = composedName || null;
   }
 
-  const updated = await prisma.registeredUser.update({
-    where: { id },
-    data: updateData,
-  });
+  if (Object.keys(updateData).length > 0) {
+    await prisma.registeredUser.update({
+      where: { id },
+      data: updateData,
+    });
+  }
+
+  if (Object.keys(profileUpdate).length > 0) {
+    await (prisma as any).registeredUserOrgProfile.update({
+      where: { registeredUserId_organizationId: { registeredUserId: globalUser.id, organizationId: targetOrg } },
+      data: profileUpdate,
+    });
+  }
+
+  const updated = await prisma.registeredUser.findUnique({ where: { id } });
 
   // Log block/unblock action to audit log
   if (hasBlockedUpdate) {
@@ -161,9 +189,9 @@ export async function PATCH(
         action: action as "BLOCK" | "UNBLOCK",
         actorAdminId: admin.id,
         actorEmail: admin.email,
-        targetRegisteredUserId: user.id,
-        targetEmail: user.email,
-        targetName: user.name,
+        targetRegisteredUserId: globalUser.id,
+        targetEmail: globalUser.email,
+        targetName: globalUser.name,
         sourcePath,
         requestIp,
       },
@@ -196,7 +224,15 @@ export async function DELETE(
   );
   const user = await prisma.registeredUser.findUnique({ where: { id } });
 
-  if (!user || user.organizationId !== targetOrg) {
+  if (!user) {
+    return NextResponse.json({ error: "User not found" }, { status: 404 });
+  }
+
+  // Global identity: require a profile for this org.
+  const profile = await (prisma as any).registeredUserOrgProfile.findUnique({
+    where: { registeredUserId_organizationId: { registeredUserId: user.id, organizationId: targetOrg } },
+  });
+  if (!profile) {
     return NextResponse.json({ error: "User not found" }, { status: 404 });
   }
 

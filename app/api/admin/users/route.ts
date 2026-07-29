@@ -441,7 +441,7 @@ export async function POST(request: NextRequest) {
     // Under the global identity model, the RegisteredUser row is org-agnostic.
     // Ensure a minimal org profile exists for the target org so downstream
     // features (Dugout, coach gates, volunteer card, etc.) see the person.
-    await prisma.registeredUserOrgProfile.upsert({
+    await (prisma as any).registeredUserOrgProfile.upsert({
       where: {
         registeredUserId_organizationId: {
           registeredUserId: globalUser.id,
@@ -897,24 +897,48 @@ export async function DELETE(request: NextRequest) {
 
     let linkedRegisteredUser = await prisma.registeredUser.findFirst({
       where: {
-        organizationId: targetOrg,
         email: { equals: targetAdmin.email, mode: "insensitive" },
       },
+      orderBy: { updatedAt: "desc" },
     });
 
     if (!linkedRegisteredUser) {
       linkedRegisteredUser = await prisma.registeredUser.create({
         data: {
-          organizationId: targetOrg,
           email: targetAdmin.email.trim().toLowerCase(),
           name: targetAdmin.name,
           firstName: targetAdmin.firstName,
           lastName: targetAdmin.lastName,
-          isCoach: false,
           isBlocked: false,
+        },
+      });
+      // Ensure at least a minimal profile for the target org.
+      await (prisma as any).registeredUserOrgProfile.create({
+        data: {
+          registeredUserId: linkedRegisteredUser.id,
+          organizationId: targetOrg,
+          isCoach: false,
           ageGroup: null,
           assignedTeam: null,
         },
+      });
+    } else {
+      // Ensure profile exists for demotion context org (idempotent).
+      await (prisma as any).registeredUserOrgProfile.upsert({
+        where: {
+          registeredUserId_organizationId: {
+            registeredUserId: linkedRegisteredUser.id,
+            organizationId: targetOrg,
+          },
+        },
+        create: {
+          registeredUserId: linkedRegisteredUser.id,
+          organizationId: targetOrg,
+          isCoach: false,
+          ageGroup: null,
+          assignedTeam: null,
+        },
+        update: {},
       });
     }
 
