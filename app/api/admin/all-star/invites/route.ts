@@ -95,10 +95,28 @@ export async function POST(request: NextRequest) {
   for (const rawEmail of body.emails) {
     const email = rawEmail.trim().toLowerCase();
     if (!email) continue;
+    // Global identity: RegisteredUser is keyed by email (no organizationId).
+    // A user "belongs" to the cycle org if they have a profile row for it.
     const registered = await prisma.registeredUser.findFirst({
-      where: { email, organizationId: cycle.organizationId },
+      where: { email },
       select: { id: true },
     });
+    if (registered) {
+      // Ensure a minimal profile so the invited person is visible in this org's context.
+      await (prisma as any).registeredUserOrgProfile.upsert({
+        where: {
+          registeredUserId_organizationId: { registeredUserId: registered.id, organizationId: cycle.organizationId },
+        },
+        create: {
+          registeredUserId: registered.id,
+          organizationId: cycle.organizationId,
+          isCoach: false,
+          ageGroup: null,
+          assignedTeam: null,
+        },
+        update: {},
+      });
+    }
     const existing = await prisma.allStarInvite.findFirst({
       where: {
         ballotCycleId: cycle.id,
