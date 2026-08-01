@@ -16,7 +16,7 @@ export function generateMetadata() {
 export default function RegistrationPage() {
   const site = getSiteConfig();
   const isFallBall = site.orgId === "fallball";
-  const regOpen = isRegistrationOpen(isFallBall ? "fallball" : site.orgId);
+  const regOpen = await isRegistrationOpen(isFallBall ? "fallball" : site.orgId);
   const caps = isFallBall ? getOrgCapabilities("fallball") : null;
   const isSportsConnect = caps?.registration === "sportsconnect";
 

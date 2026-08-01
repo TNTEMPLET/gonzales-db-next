@@ -7,7 +7,8 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import SponsorScroller from "../components/sponsors/SponsorScroller";
 import DevLiveIndicator from "../components/dev/DevLiveIndicator";
-import { getSiteConfig, isTournamentOnlyDeployment } from "@/lib/siteConfig";
+import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getSiteConfig, isContentOrgId, isTournamentOnlyDeployment } from "@/lib/siteConfig";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -23,11 +24,15 @@ export const metadata: Metadata = {
   },
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
+  const registrationOpen = await isRegistrationOpen(
+    isContentOrgId(site.orgId) ? site.orgId : undefined,
+  );
+
   const brand = {
     orgId: site.orgId,
     tournamentOnly: isTournamentOnlyDeployment(),
@@ -36,6 +41,7 @@ export default function RootLayout({
     displayNameLine1: site.displayNameLine1,
     displayNameLine2: site.displayNameLine2,
     logoPath: site.logoPath,
+    registrationOpen,
   };
 
   const orgCss = `

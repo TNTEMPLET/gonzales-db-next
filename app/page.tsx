@@ -269,7 +269,7 @@ export default async function Home({
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const site = getSiteConfig();
   const contentOrg = getDefaultContentOrg();
-  const regOpen = isRegistrationOpen(contentOrg);
+  const regOpen = await isRegistrationOpen(contentOrg);
   const homepageCopy = getHomepageCopy(contentOrg);
   const orgCaps = getOrgCapabilities(contentOrg);
   const scReg =

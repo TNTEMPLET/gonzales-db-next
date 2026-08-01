@@ -172,6 +172,21 @@ export default async function AdminDashboardPage({
             },
           ]
         : []),
+      ...(masterMode
+        ? [
+            {
+              module: "REGISTRATION_WINDOWS" as AdminModule,
+              href:
+                currentOrg && ["gonzales", "ascension", "fallball"].includes(currentOrg)
+                  ? moduleHref("/admin/registration", "REGISTRATION_WINDOWS")
+                  : "/admin/registration?org=fallball",
+              title: "Registration Windows",
+              description:
+                "Set public registration open/close times per site (America/Chicago) without a code deploy. Used on Fall Ball homepage CTAs and registration pages.",
+              action: "Open Registration Windows",
+            },
+          ]
+        : []),
       {
         module: "SCORES" as AdminModule,
         href: currentOrg ? moduleHref("/admin/scores", "SCORES") : "/admin/scores",

@@ -32,6 +32,7 @@ export const ADMIN_MODULES = [
   "PARK_ALERTS",
   "PARK_INFO",
   "ROLE_ASSIGNMENT",
+  "REGISTRATION_WINDOWS",
 ] as const;
 
 export type AdminModule = (typeof ADMIN_MODULES)[number];
@@ -64,6 +65,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   PARK_ALERTS: "ADMIN",
   PARK_INFO: "ADMIN",
   ROLE_ASSIGNMENT: "MASTER_ADMIN",
+  REGISTRATION_WINDOWS: "MASTER_ADMIN",
 };
 
 const MASTER_ONLY_MODULES = new Set<AdminModule>([
@@ -75,6 +77,7 @@ const MASTER_ONLY_MODULES = new Set<AdminModule>([
   "TOURNAMENT_ALERTS",
   "PARK_INFO",
   "ROLE_ASSIGNMENT",
+  "REGISTRATION_WINDOWS",
 ]);
 
 export function isAdminRole(
@@ -166,7 +169,7 @@ export function suggestLeastPrivilegeRole(
   }
 
   const needsMaster = desiredModules.some((m) =>
-    ["TOURNAMENT_BRACKETS", "TOURNAMENT_ALERTS", "ROLE_ASSIGNMENT"].includes(m),
+    ["TOURNAMENT_BRACKETS", "TOURNAMENT_ALERTS", "ROLE_ASSIGNMENT", "REGISTRATION_WINDOWS"].includes(m),
   );
   if (needsMaster) {
     return {
