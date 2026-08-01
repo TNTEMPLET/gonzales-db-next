@@ -64,7 +64,7 @@ const configs: Record<OrgId, SiteConfig> = {
     colorPrimary: "#590275",
     colorPrimaryDark: "#4a0163",
     colorAccent: "#ffcb29",
-    assignrSiteId: process.env.ASSIGNR_SITE_ID ?? "",
+    assignrSiteId: process.env.ASSIGNR_SITE_ID ?? "18601",
     assignrLeagueId: process.env.ASSIGNR_LEAGUE_ID ?? "515712",
   },
   ascension: {
@@ -81,7 +81,7 @@ const configs: Record<OrgId, SiteConfig> = {
     colorPrimary: "#09306a",
     colorPrimaryDark: "#072550",
     colorAccent: "#b10807",
-    assignrSiteId: process.env.ASSIGNR_SITE_ID ?? "",
+    assignrSiteId: process.env.ASSIGNR_SITE_ID ?? "18601",
     assignrLeagueId: process.env.ASSIGNR_LEAGUE_ID ?? "430676",
   },
   fallball: {

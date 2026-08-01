@@ -14,7 +14,7 @@ export const SPORTS_CONNECT_REGISTRATION_URLS: Record<
 > = {
   fallball: {
     label: "APBaseball.com (Fall Ball)",
-    href: "https://www.apbaseball.com",
+    href: "https://www.apbaseball.com/Default.aspx?tabid=1467117",
     notes:
       "Fall Ball player registration and payment are managed in SportsConnect via APBaseball.com.",
   },

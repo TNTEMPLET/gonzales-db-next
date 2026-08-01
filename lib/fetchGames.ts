@@ -30,6 +30,7 @@ export async function fetchGames({
     startDate,
     endDate,
     leagueId: effectiveLeagueId,
+    siteId: site.assignrSiteId || undefined,
     limit,
     maxPages,
     cache: cache ?? "default",
