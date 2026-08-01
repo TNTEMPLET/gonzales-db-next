@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import type { ContentOrgId } from "@/lib/siteConfig";
-import { toDatetimeLocalInput } from "@/lib/registrationStatus";
+import { toDatetimeLocalInput } from "@/lib/registrationWindowFormat";
 
 type WindowPayload = {
   organizationId: ContentOrgId;

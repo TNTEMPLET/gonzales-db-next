@@ -13,7 +13,7 @@ export function generateMetadata() {
   };
 }
 
-export default function RegistrationPage() {
+export default async function RegistrationPage() {
   const site = getSiteConfig();
   const isFallBall = site.orgId === "fallball";
   const regOpen = await isRegistrationOpen(isFallBall ? "fallball" : site.orgId);
