@@ -480,11 +480,79 @@ export default async function Home({
     </div>
   );
 
+  // When news owns the hero, surface registration / hero actions as a strip on the rotator.
+  const rotatorCtaStrip =
+    heroRotatorItems.length > 0
+      ? {
+          title: homepageCopy.registrationLabel,
+          statusLabel: regOpen
+            ? "Registration Open"
+            : orgCaps.registration === "sportsconnect"
+              ? "Opens August 1"
+              : showRegistrationCta
+                ? `${CURRENT_SEASON_LABEL} Season`
+                : "Registration Closed",
+          statusTone: (regOpen
+            ? "open"
+            : showRegistrationCta
+              ? "pending"
+              : "closed") as "open" | "pending" | "closed",
+          actions: [
+            ...(regOpen && scReg
+              ? [
+                  {
+                    label: "Register Now",
+                    href: scReg.href,
+                    variant: "primary" as const,
+                    external: true,
+                  },
+                ]
+              : showRegistrationCta
+                ? [
+                    {
+                      label:
+                        orgCaps.registration === "sportsconnect"
+                          ? "Registration info"
+                          : "Register Now",
+                      href: "/registration",
+                      variant: "primary" as const,
+                    },
+                  ]
+                : []),
+            ...(orgCaps.coachingInterest
+              ? [
+                  {
+                    label: "Coaching Interest",
+                    href: "/coaching-interest",
+                    variant: "secondary" as const,
+                  },
+                ]
+              : []),
+            ...(scheduleLive
+              ? [
+                  {
+                    label: "View Schedules",
+                    href: "#schedule",
+                    variant: "outline" as const,
+                  },
+                ]
+              : []),
+          ],
+        }
+      : null;
+
   return (
     <main className="min-h-screen">
       {/* Hero Section */}
       {heroRotatorItems.length > 0 ? (
-        <HeroNewsRotator items={heroRotatorItems} />
+        <HeroNewsRotator
+          items={heroRotatorItems}
+          ctaStrip={
+            rotatorCtaStrip && rotatorCtaStrip.actions.length > 0
+              ? rotatorCtaStrip
+              : null
+          }
+        />
       ) : (
         <section className="relative flex min-h-[70svh] items-center justify-center overflow-hidden bg-black p-4 sm:min-h-[75vh]">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_20%,rgba(245,158,11,0.18),transparent_50%),radial-gradient(circle_at_80%_80%,rgba(124,58,237,0.2),transparent_55%),linear-gradient(145deg,#09090b,#18181b)]" />
