@@ -2324,3 +2324,18 @@ model TripResponse {
   createdAt      DateTime        @default(now())
   updatedAt      DateTime        @updatedAt
 }
+
+/// Master-Admin-managed public registration open window (America/Chicago wall times).
+/// Used by Fall Ball and other content orgs so open/close does not require a deploy.
+model OrgRegistrationWindow {
+  organizationId   String   @id
+  /// Inclusive start, America/Chicago: YYYY-MM-DDTHH:mm:ss
+  startLocal       String
+  /// Inclusive end, America/Chicago: YYYY-MM-DDTHH:mm:ss
+  endLocal         String
+  updatedAt        DateTime @updatedAt
+  updatedByAdminId String?
+
+  @@index([updatedAt])
+}
+

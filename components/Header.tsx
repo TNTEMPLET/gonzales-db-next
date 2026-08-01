@@ -13,7 +13,6 @@ import {
   type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
-import { isRegistrationOpen } from "@/lib/registrationStatus";
 import { getSportsConnectRegistrationUrl } from "@/lib/sportsConnect/registrationUrl";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
@@ -48,6 +47,8 @@ type HeaderProps = {
     displayNameLine2: string;
     logoPath: string;
     tournamentOnly?: boolean;
+    /** Server-evaluated registration window (Master Admin / defaults). */
+    registrationOpen?: boolean;
   };
 };
 
@@ -72,9 +73,7 @@ export default function Header({ brand }: HeaderProps) {
   const isMasterHeader = brand.orgId === "master";
   const isTournamentOnly = brand.tournamentOnly ?? false;
   const isFallBallHeader = brand.orgId === "fallball";
-  const [regOpen] = useState(() =>
-    isRegistrationOpen(isFallBallHeader ? "fallball" : brand.orgId),
-  );
+  const [regOpen] = useState(() => Boolean(brand.registrationOpen));
   const fallBallRegisterHref = isFallBallHeader
     ? getSportsConnectRegistrationUrl("fallball").href
     : null;
