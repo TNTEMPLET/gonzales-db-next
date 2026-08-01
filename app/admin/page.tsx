@@ -91,26 +91,37 @@ export default async function AdminDashboardPage({
   const communicationsEnabled = isCommunicationsModuleEnabled();
   // Global identity: RegisteredUser has no organizationId. Look up by email,
   // then check per-org profiles to decide All-Star vault visibility per org.
-  const globalLinkedUsers = await prisma.registeredUser.findMany({
-    where: { email: { equals: adminUser.email, mode: "insensitive" } },
-    select: { id: true },
-  });
+  // Wrapped so a missing RegisteredUserOrgProfile migration cannot take down /admin.
   const allStarVaultViewByOrg = Object.fromEntries(
     CONTENT_ORGS.map((orgId) => [orgId, false] as const),
   ) as Record<ContentOrgId, boolean>;
-  for (const u of globalLinkedUsers) {
-    for (const orgId of CONTENT_ORGS) {
-      // Only consider orgs where this global user has a profile (i.e. participates here).
-      const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
-        where: {
-          registeredUserId_organizationId: { registeredUserId: u.id, organizationId: orgId },
-        },
-        select: { registeredUserId: true },
-      });
-      if (prof && (await canViewAllStarVault(u.id, orgId))) {
-        allStarVaultViewByOrg[orgId] = true;
+  try {
+    const globalLinkedUsers = await prisma.registeredUser.findMany({
+      where: { email: { equals: adminUser.email, mode: "insensitive" } },
+      select: { id: true },
+    });
+    for (const u of globalLinkedUsers) {
+      for (const orgId of CONTENT_ORGS) {
+        // Only consider orgs where this global user has a profile (i.e. participates here).
+        const prof = await prisma.registeredUserOrgProfile.findUnique({
+          where: {
+            registeredUserId_organizationId: {
+              registeredUserId: u.id,
+              organizationId: orgId,
+            },
+          },
+          select: { registeredUserId: true },
+        });
+        if (prof && (await canViewAllStarVault(u.id, orgId))) {
+          allStarVaultViewByOrg[orgId] = true;
+        }
       }
     }
+  } catch (err) {
+    console.error(
+      "Admin dashboard All-Star org-profile lookup failed (continuing):",
+      err instanceof Error ? err.message : err,
+    );
   }
   const allStarVaultView = currentOrg
     ? allStarVaultViewByOrg[currentOrg]
