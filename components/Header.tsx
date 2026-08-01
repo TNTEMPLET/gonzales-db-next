@@ -14,6 +14,7 @@ import {
   type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getSportsConnectRegistrationUrl } from "@/lib/sportsConnect/registrationUrl";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 import {
@@ -68,10 +69,15 @@ export default function Header({ brand }: HeaderProps) {
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
   const currentOrgParam = searchParams.get("org");
-  const [regOpen] = useState(() => isRegistrationOpen());
   const isMasterHeader = brand.orgId === "master";
   const isTournamentOnly = brand.tournamentOnly ?? false;
   const isFallBallHeader = brand.orgId === "fallball";
+  const [regOpen] = useState(() =>
+    isRegistrationOpen(isFallBallHeader ? "fallball" : brand.orgId),
+  );
+  const fallBallRegisterHref = isFallBallHeader
+    ? getSportsConnectRegistrationUrl("fallball").href
+    : null;
 
   const headerClassName = isMasterHeader
     ? "sticky top-0 z-50 border-b border-red-900/60 bg-gradient-to-r from-zinc-950 via-zinc-900 to-zinc-950 shadow-[0_6px_24px_rgba(0,0,0,0.3)]"
@@ -567,12 +573,23 @@ export default function Header({ brand }: HeaderProps) {
 
         {/* Register Button */}
         {!isMasterHeader && !isTournamentOnly && regOpen && (
-          <Link
-            href="/registration"
-            className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm text-white transition"
-          >
-            Register Now
-          </Link>
+          fallBallRegisterHref ? (
+            <a
+              href={fallBallRegisterHref}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm text-white transition"
+            >
+              Register Now
+            </a>
+          ) : (
+            <Link
+              href="/registration"
+              className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm text-white transition"
+            >
+              Register Now
+            </Link>
+          )
         )}
 
         {/* Mobile Menu Button */}
@@ -665,13 +682,25 @@ export default function Header({ brand }: HeaderProps) {
               </>
             )}
             {!isMasterHeader && !isTournamentOnly && regOpen && (
-              <Link
-                href="/registration"
-                onClick={() => setIsMenuOpen(false)}
-                className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
-              >
-                Register for {CURRENT_SEASON_LABEL}
-              </Link>
+              fallBallRegisterHref ? (
+                <a
+                  href={fallBallRegisterHref}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
+                >
+                  Register for {CURRENT_SEASON_LABEL}
+                </a>
+              ) : (
+                <Link
+                  href="/registration"
+                  onClick={() => setIsMenuOpen(false)}
+                  className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
+                >
+                  Register for {CURRENT_SEASON_LABEL}
+                </Link>
+              )
             )}
             {!isMasterHeader && !isFallBallHeader && canSeeDugout && (
               <Link

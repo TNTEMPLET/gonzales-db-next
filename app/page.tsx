@@ -10,6 +10,7 @@ import {
   getHomepageRotatorPosts,
 } from "@/lib/news/queries";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getSportsConnectRegistrationUrl } from "@/lib/sportsConnect/registrationUrl";
 import {
   getAssignrLeagueId,
   getDefaultContentOrg,
@@ -56,10 +57,7 @@ function getHomepageCopy(orgId: ContentOrgId) {
       seasonBadge: season.label.toUpperCase(),
       tagline:
         "Independent AP Baseball Fall Ball league operations, teams, schedules, and updates.",
-      registrationLabel:
-        caps.registration === "sportsconnect"
-          ? "SportsConnect Registration"
-          : "Registration",
+      registrationLabel: "Registration",
       liveScoresText:
         caps.schedule === "none"
           ? "Schedules and scores will appear once Fall Ball games are published."
@@ -269,11 +267,15 @@ export default async function Home({
   }
 
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
-  const regOpen = isRegistrationOpen();
   const site = getSiteConfig();
   const contentOrg = getDefaultContentOrg();
+  const regOpen = isRegistrationOpen(contentOrg);
   const homepageCopy = getHomepageCopy(contentOrg);
   const orgCaps = getOrgCapabilities(contentOrg);
+  const scReg =
+    orgCaps.registration === "sportsconnect"
+      ? getSportsConnectRegistrationUrl(contentOrg)
+      : null;
   // SportsConnect hub stays reachable even when spring internal reg window is closed.
   const showRegistrationCta =
     regOpen || orgCaps.registration === "sportsconnect";
@@ -367,7 +369,9 @@ export default async function Home({
     year: "numeric",
   });
 
+  // League is in Ascension Parish, LA — show "today" in Central time, not server UTC.
   const todayParts = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Chicago",
     month: "short",
     day: "numeric",
     year: "numeric",
@@ -433,18 +437,33 @@ export default async function Home({
         </Link>
       ) : null}
       {showRegistrationCta ? (
-        <a
-          href="/registration"
-          className={
-            compactOps
-              ? "inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-purple px-6 py-3 text-base font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95"
-              : "rounded-xl bg-brand-purple px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
-          }
-        >
-          {orgCaps.registration === "sportsconnect"
-            ? homepageCopy.registrationLabel
-            : "Register Now"}
-        </a>
+        regOpen && scReg ? (
+          <a
+            href={scReg.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={
+              compactOps
+                ? "inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-purple px-6 py-3 text-base font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95"
+                : "rounded-xl bg-brand-purple px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
+            }
+          >
+            Register Now
+          </a>
+        ) : (
+          <a
+            href="/registration"
+            className={
+              compactOps
+                ? "inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-purple px-6 py-3 text-base font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95"
+                : "rounded-xl bg-brand-purple px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
+            }
+          >
+            {orgCaps.registration === "sportsconnect"
+              ? homepageCopy.registrationLabel
+              : "Register Now"}
+          </a>
+        )
       ) : null}
       {scheduleLive ? (
         <a
@@ -558,13 +577,42 @@ export default async function Home({
             <h3 className="font-semibold text-xl mb-1 text-white">
               {homepageCopy.registrationLabel}
             </h3>
-            <p className="text-brand-gold">
-              {showRegistrationCta
-                ? orgCaps.registration === "sportsconnect"
-                  ? "Via SportsConnect"
-                  : `${CURRENT_SEASON_LABEL} Season`
-                : "Closed"}
-            </p>
+            {regOpen ? (
+              <>
+                <p className="text-emerald-400 font-semibold tracking-wide">
+                  Registration Open
+                </p>
+                {scReg ? (
+                  <a
+                    href={scReg.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-purple px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95"
+                  >
+                    Register Now
+                  </a>
+                ) : (
+                  <Link
+                    href="/registration"
+                    className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-purple px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95"
+                  >
+                    Register Now
+                  </Link>
+                )}
+              </>
+            ) : orgCaps.registration === "sportsconnect" ? (
+              <>
+                <p className="text-brand-gold">Opens August 1</p>
+                <Link
+                  href="/registration"
+                  className="mt-3 inline-flex text-sm font-semibold text-white underline decoration-brand-gold underline-offset-4 hover:text-brand-gold"
+                >
+                  Prep steps for new families
+                </Link>
+              </>
+            ) : (
+              <p className="text-brand-gold">Closed</p>
+            )}
             {orgCaps.coachingInterest ? (
               <Link
                 href="/coaching-interest"
