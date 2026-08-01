@@ -52,6 +52,8 @@
     "node_modules",
     "services",
     "scripts/smoke-*.ts",
-    "scripts/_*.ts"
+    "scripts/_*.ts",
+    "scripts/**/*",
+    "scripts"
   ]
 }
