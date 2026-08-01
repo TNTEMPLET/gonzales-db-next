@@ -36,7 +36,7 @@ export async function ensureAllStarVaultAccess(
   const registeredUsers = await prisma.registeredUser.findMany({
     where: {
       email: { equals: adminUser.email, mode: "insensitive" },
-      organizationId: orgId,
+      orgProfiles: { some: { organizationId: orgId } },
     },
     select: { id: true },
   });
@@ -140,7 +140,7 @@ export async function ensureAllStarVaultFinalRosterAdmin(
   const registeredUsers = await prisma.registeredUser.findMany({
     where: {
       email: { equals: adminUser.email, mode: "insensitive" },
-      organizationId: orgId,
+      orgProfiles: { some: { organizationId: orgId } },
     },
     select: { id: true },
   });
@@ -182,7 +182,7 @@ export async function resolveAllStarVaultAccessForAdmin(options: {
   const vaultLinkedUsers = await prisma.registeredUser.findMany({
     where: {
       email: { equals: options.email, mode: "insensitive" },
-      organizationId: options.organizationId,
+      orgProfiles: { some: { organizationId: options.organizationId } },
     },
     select: { id: true },
   });
@@ -223,7 +223,7 @@ export async function ensureAllStarVaultCanDeleteVoteSubmission(request: NextReq
   const registeredUsers = await prisma.registeredUser.findMany({
     where: {
       email: { equals: adminUser.email, mode: "insensitive" },
-      organizationId: orgId,
+      orgProfiles: { some: { organizationId: orgId } },
     },
     select: { id: true },
   });

@@ -955,8 +955,8 @@ export async function getAatSnapshotsByUserIds(input: {
   if (missing.length) {
     const users = await prisma.registeredUser.findMany({
       where: {
-        organizationId: input.organizationId,
         id: { in: missing },
+        orgProfiles: { some: { organizationId: input.organizationId } },
       },
       select: {
         id: true,
