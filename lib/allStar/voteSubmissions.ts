@@ -13,8 +13,8 @@ export async function deleteVoteSubmissionsForCycleCoachEmail(
 
   const coaches = await db.registeredUser.findMany({
     where: {
-      organizationId,
       email: { equals: normalizedEmail, mode: "insensitive" },
+      orgProfiles: { some: { organizationId } },
     },
     select: { id: true },
   });
