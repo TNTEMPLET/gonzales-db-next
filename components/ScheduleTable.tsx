@@ -3,9 +3,6 @@
 
 import { useRouter, useSearchParams } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import RainoutPopup from "./RainoutPopup";
 import StandingsTabs from "@/components/standings/StandingsTabs";
 import type { AgeGroupStandings } from "@/lib/standings";
@@ -241,11 +238,6 @@ export default function ScheduleTable({
       }));
   }, [sortedGames]);
 
-  useEffect(() => {
-    const statuses = sortedGames.map((g) => ({ id: g.id, status: g.status }));
-    console.log("Game statuses:", statuses);
-  }, [sortedGames]);
-
   // Rainout detection — admin override takes priority, then auto-detect from today's games
   const { rainedOutVenues, allParksRainedOut } = useMemo(() => {
     if (forceRainout) {
@@ -381,7 +373,8 @@ export default function ScheduleTable({
     document.body.removeChild(link);
   };
 
-  const downloadXLSX = (games: Game[]) => {
+  const downloadXLSX = async (games: Game[]) => {
+    const XLSX = await import("xlsx");
     const data = games.map((game) => ({
       "Date & Time": game.localized_date
         ? `${game.localized_date} • ${game.localized_time || "TBD"}`
@@ -402,7 +395,9 @@ export default function ScheduleTable({
     );
   };
 
-  const downloadPDF = (games: Game[]) => {
+  const downloadPDF = async (games: Game[]) => {
+    const jsPDF = (await import("jspdf")).default;
+    const autoTable = (await import("jspdf-autotable")).default;
     const doc = new jsPDF({
       orientation: "landscape",
       unit: "mm",
