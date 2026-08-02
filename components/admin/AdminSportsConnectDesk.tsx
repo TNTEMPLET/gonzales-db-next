@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import * as XLSX from "xlsx";
 
 import {
   SportsConnectQualityPanel,
@@ -77,6 +76,7 @@ async function safeJson(response: Response) {
 async function readWorkbookHeadersAndSampleRows(
   file: File,
 ): Promise<{ headers: string[]; rows: Array<Record<string, unknown>> }> {
+  const XLSX = await import("xlsx");
   const buffer = await file.arrayBuffer();
   const workbook = XLSX.read(buffer, { type: "array" });
   const firstSheet = workbook.Sheets[workbook.SheetNames[0] || ""];
