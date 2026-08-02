@@ -1,6 +1,5 @@
 "use client";
 
-import { jsPDF } from "jspdf";
 import { useRouter, usePathname } from "next/navigation";
 import {
   useCallback,
@@ -1388,6 +1387,7 @@ export default function TournamentBracketsClient({ organizationId }: { organizat
     setBusy(true);
     setError("");
     try {
+      const { jsPDF } = await import("jspdf");
       const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "landscape" });
       const pageW = doc.internal.pageSize.getWidth();
       const pageH = doc.internal.pageSize.getHeight();

@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import ReportSendPanel from "@/components/admin/ReportSendPanel";
-import autoTable from "jspdf-autotable";
 
 type LeagueFilter = "all" | "littleleague" | "diamond";
 type ReportMode = "main" | "umpire";
@@ -407,6 +406,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
     setError("");
     try {
       const jsPDF = (await import("jspdf")).default;
+      const autoTable = (await import("jspdf-autotable")).default;
       const doc = new jsPDF({
         orientation: "landscape",
         unit: "pt",
@@ -627,6 +627,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
     setError("");
     try {
       const jsPDF = (await import("jspdf")).default;
+      const autoTable = (await import("jspdf-autotable")).default;
       const doc = new jsPDF({
         orientation: "portrait",
         unit: "pt",
