@@ -275,9 +275,6 @@ export default async function Home({
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const site = getSiteConfig();
   const contentOrg = getDefaultContentOrg();
-  const registrationStatus = await getRegistrationStatus(contentOrg);
-  const regOpen = registrationStatus === "OPEN";
-  const regWaitlist = registrationStatus === "WAITLIST";
   const homepageCopy = getHomepageCopy(contentOrg);
   const orgCaps = getOrgCapabilities(contentOrg);
   const volunteerRegistrationUrl = getSportsConnectVolunteerRegistrationUrl();
@@ -289,43 +286,8 @@ export default async function Home({
     orgCaps.registration === "sportsconnect"
       ? getSportsConnectRegistrationUrl(contentOrg)
       : null;
-  // SportsConnect hub stays reachable even when spring internal reg window is closed.
-  const showRegistrationCta =
-    regOpen || regWaitlist || orgCaps.registration === "sportsconnect";
-  const heroBadge = regWaitlist ? "WAITLIST OPEN" : homepageCopy.seasonBadge;
   const scheduleLive = orgCaps.schedule === "scheduler";
   const compactOps = orgCaps.homepage === "compact-ops";
-
-  let rotatorPosts: HomepageRotatorPost[] = [];
-  let featuredPosts: HomepageFeaturedPost[] = [];
-  try {
-    rotatorPosts = (await getHomepageRotatorPosts()) as HomepageRotatorPost[];
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error ? err.message : "Unknown rotator loading error";
-    console.error(`Homepage rotator load failed: ${message}`);
-  }
-
-  try {
-    featuredPosts =
-      (await getHomepageFeaturedNewsPosts()) as HomepageFeaturedPost[];
-  } catch (err: unknown) {
-    const message =
-      err instanceof Error
-        ? err.message
-        : "Unknown featured news loading error";
-    console.error(`Homepage featured news load failed: ${message}`);
-  }
-
-  const heroRotatorItems = rotatorPosts
-    .filter((post: HomepageRotatorPost) => Boolean(post.imageUrl))
-    .map((post: HomepageRotatorPost) => ({
-      id: post.id,
-      title: post.title,
-      slug: post.slug,
-      imageUrl: post.imageUrl || "",
-      excerpt: post.excerpt,
-    }));
 
   // Calculate date range based on view mode
   let startDate: string;
@@ -356,33 +318,100 @@ export default async function Home({
     endDate = SEASON_END_DATE;
   }
 
-  let games: Awaited<ReturnType<typeof loadPublicScheduleGames>> = [];
-  let practices: Awaited<ReturnType<typeof loadPublicPracticeSlots>> = [];
-  let error: string | null = null;
-  let seasonName = CURRENT_SEASON_LABEL;
+  // These five loads are independent of one another — run them concurrently
+  // instead of waterfalling sequential awaits on the homepage's critical path.
+  // Each keeps the same per-branch error isolation as before (a failure in one
+  // must not affect the others).
+  type SchedulePayload = {
+    games: Awaited<ReturnType<typeof loadPublicScheduleGames>>;
+    practices: Awaited<ReturnType<typeof loadPublicPracticeSlots>>;
+    error: string | null;
+    seasonName: string;
+  };
 
-  if (scheduleLive) {
-    try {
-      const window = await loadPublicScheduleWindow(contentOrg);
-      seasonName = window.seasonName;
-      const rangeStart = viewMode === "fullSeason" ? window.startDate : startDate;
-      const rangeEnd = viewMode === "fullSeason" ? window.endDate : endDate;
-      [games, practices] = await Promise.all([
-        loadPublicScheduleGames({ org: contentOrg, startDate: rangeStart, endDate: rangeEnd }),
-        loadPublicPracticeSlots({
-          org: contentOrg,
-          seasonYear: window.seasonYear,
-          startDate: rangeStart,
-          endDate: rangeEnd,
-        }),
-      ]);
-    } catch (err: unknown) {
-      error = err instanceof Error ? err.message : "Failed to load game data";
-      console.error(err);
-    }
-  }
+  const schedulePromise: Promise<SchedulePayload> = scheduleLive
+    ? loadPublicScheduleWindow(contentOrg)
+        .then(async (window) => {
+          const rangeStart = viewMode === "fullSeason" ? window.startDate : startDate;
+          const rangeEnd = viewMode === "fullSeason" ? window.endDate : endDate;
+          const [games, practices] = await Promise.all([
+            loadPublicScheduleGames({ org: contentOrg, startDate: rangeStart, endDate: rangeEnd }),
+            loadPublicPracticeSlots({
+              org: contentOrg,
+              seasonYear: window.seasonYear,
+              startDate: rangeStart,
+              endDate: rangeEnd,
+            }),
+          ]);
+          return { games, practices, error: null, seasonName: window.seasonName };
+        })
+        .catch((err: unknown): SchedulePayload => {
+          console.error(err);
+          return {
+            games: [],
+            practices: [],
+            error: err instanceof Error ? err.message : "Failed to load game data",
+            seasonName: CURRENT_SEASON_LABEL,
+          };
+        })
+    : Promise.resolve({
+        games: [],
+        practices: [],
+        error: null,
+        seasonName: CURRENT_SEASON_LABEL,
+      });
 
-  const orgAlert = await getActiveOrgAlert(getDefaultContentOrg()).catch(() => null);
+  const rotatorPostsPromise = getHomepageRotatorPosts()
+    .then((posts) => posts as HomepageRotatorPost[])
+    .catch((err: unknown): HomepageRotatorPost[] => {
+      const message =
+        err instanceof Error ? err.message : "Unknown rotator loading error";
+      console.error(`Homepage rotator load failed: ${message}`);
+      return [];
+    });
+
+  const featuredPostsPromise = getHomepageFeaturedNewsPosts()
+    .then((posts) => posts as HomepageFeaturedPost[])
+    .catch((err: unknown): HomepageFeaturedPost[] => {
+      const message =
+        err instanceof Error
+          ? err.message
+          : "Unknown featured news loading error";
+      console.error(`Homepage featured news load failed: ${message}`);
+      return [];
+    });
+
+  const orgAlertPromise = getActiveOrgAlert(getDefaultContentOrg()).catch(
+    () => null,
+  );
+
+  const [registrationStatus, rotatorPosts, featuredPosts, scheduleResult, orgAlert] =
+    await Promise.all([
+      getRegistrationStatus(contentOrg),
+      rotatorPostsPromise,
+      featuredPostsPromise,
+      schedulePromise,
+      orgAlertPromise,
+    ]);
+
+  const { games, practices, error, seasonName } = scheduleResult;
+
+  const regOpen = registrationStatus === "OPEN";
+  const regWaitlist = registrationStatus === "WAITLIST";
+  // SportsConnect hub stays reachable even when spring internal reg window is closed.
+  const showRegistrationCta =
+    regOpen || regWaitlist || orgCaps.registration === "sportsconnect";
+  const heroBadge = regWaitlist ? "WAITLIST OPEN" : homepageCopy.seasonBadge;
+
+  const heroRotatorItems = rotatorPosts
+    .filter((post: HomepageRotatorPost) => Boolean(post.imageUrl))
+    .map((post: HomepageRotatorPost) => ({
+      id: post.id,
+      title: post.title,
+      slug: post.slug,
+      imageUrl: post.imageUrl || "",
+      excerpt: post.excerpt,
+    }));
 
   const today = new Date().toLocaleDateString("en-US", {
     month: "numeric",
