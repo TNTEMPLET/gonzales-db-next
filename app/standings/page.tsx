@@ -21,7 +21,9 @@ export default async function StandingsPage() {
   const leagueId = getAssignrLeagueId();
   const orgId = getOrgId();
 
-  const scores = await prisma.gameScore.findMany({
+  // These two are independent of one another — fetch concurrently instead of
+  // waterfalling the DB query behind the Assignr schedule call.
+  const scoresPromise = prisma.gameScore.findMany({
     where: { organizationId: orgId },
     orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
     select: {
@@ -34,23 +36,29 @@ export default async function StandingsPage() {
     },
   });
 
-  let activeGameIds: Set<string> | null = null;
-  let scheduleUnavailable = false;
-  try {
-    const allSeasonGames = await fetchGames({
-      startDate: SEASON_START_DATE,
-      endDate: SEASON_END_DATE,
-      leagueId,
-    });
-    activeGameIds = new Set(
-      allSeasonGames
-        .filter((game) => game.status?.trim().toUpperCase() === "A")
-        .map((game) => String(game.id)),
-    );
-  } catch {
-    // Fail-soft: keep standings renderable when schedule API credentials expire.
-    scheduleUnavailable = true;
-  }
+  const scheduleActivityPromise = fetchGames({
+    startDate: SEASON_START_DATE,
+    endDate: SEASON_END_DATE,
+    leagueId,
+  })
+    .then((allSeasonGames) => ({
+      activeGameIds: new Set(
+        allSeasonGames
+          .filter((game) => game.status?.trim().toUpperCase() === "A")
+          .map((game) => String(game.id)),
+      ) as Set<string> | null,
+      scheduleUnavailable: false,
+    }))
+    .catch(() => ({
+      // Fail-soft: keep standings renderable when schedule API credentials expire.
+      activeGameIds: null as Set<string> | null,
+      scheduleUnavailable: true,
+    }));
+
+  const [scores, { activeGameIds, scheduleUnavailable }] = await Promise.all([
+    scoresPromise,
+    scheduleActivityPromise,
+  ]);
 
   const standings = computeStandingsByAgeGroup(
     activeGameIds ? scores.filter((score) => activeGameIds.has(score.gameExternalId)) : scores,
