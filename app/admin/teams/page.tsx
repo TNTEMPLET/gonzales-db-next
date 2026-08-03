@@ -65,7 +65,7 @@ export default async function AdminTeamsPage({
           </p>
         </div>
 
-        <AdminTeamsManager targetOrg={currentOrg} />
+        <AdminTeamsManager targetOrg={currentOrg} isMaster={adminUser.isMaster} />
       </section>
     </main>
   );
