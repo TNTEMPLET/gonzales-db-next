@@ -72,7 +72,7 @@ export default async function AdminSponsorsPage({
             scroller changes can be visible to families immediately after saving.
           </p>
         </div>
-        <AdminSponsorsManager targetOrg={currentOrg} />
+        <AdminSponsorsManager targetOrg={currentOrg} isMaster={adminUser.isMaster} />
       </section>
     </main>
   );
