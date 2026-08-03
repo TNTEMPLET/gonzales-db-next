@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import BulkEmailToolbar from "@/components/admin/communications/BulkEmailToolbar";
+import SendEmailModal from "@/components/admin/communications/SendEmailModal";
+import { useRowSelection } from "@/components/admin/communications/useRowSelection";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
 
@@ -47,7 +50,13 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-export default function AdminCoachingInterestManager({ targetOrg }: { targetOrg: ContentOrgId }) {
+export default function AdminCoachingInterestManager({
+  targetOrg,
+  isMaster = false,
+}: {
+  targetOrg: ContentOrgId;
+  isMaster?: boolean;
+}) {
   const [submissions, setSubmissions] = useState<Submission[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -57,6 +66,8 @@ export default function AdminCoachingInterestManager({ targetOrg }: { targetOrg:
   const [division, setDivision] = useState("");
   const [search, setSearch] = useState("");
   const [notesById, setNotesById] = useState<Record<string, string>>({});
+  const selectedSubmissions = useRowSelection<string>();
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
 
   const queryString = useMemo(() => {
     const params = new URLSearchParams({ org: targetOrg });
@@ -140,12 +151,24 @@ export default function AdminCoachingInterestManager({ targetOrg }: { targetOrg:
               Reviewing {formatOrganizationIdDisplay(targetOrg)} coaching interest submissions.
             </p>
           </div>
-          <a
-            href={`/api/admin/coaching-interest?${queryString}&format=csv`}
-            className="inline-flex rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-100 hover:border-brand-gold hover:text-brand-gold"
-          >
-            Export CSV
-          </a>
+          <div className="flex flex-wrap items-center gap-2">
+            <a
+              href={`/api/admin/coaching-interest?${queryString}&format=csv`}
+              className="inline-flex rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-100 hover:border-brand-gold hover:text-brand-gold"
+            >
+              Export CSV
+            </a>
+          </div>
+        </div>
+
+        <div className="mt-4">
+          <BulkEmailToolbar
+            selectedCount={selectedSubmissions.size}
+            disabled={busy}
+            onSelectPage={() => selectedSubmissions.selectMany(submissions.map((s) => s.id))}
+            onClear={selectedSubmissions.clear}
+            onOpenEmail={() => setEmailModalOpen(true)}
+          />
         </div>
 
         <div className="mt-5 grid gap-3 md:grid-cols-4">
@@ -194,6 +217,12 @@ export default function AdminCoachingInterestManager({ targetOrg }: { targetOrg:
             <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
               <div>
                 <div className="flex flex-wrap items-center gap-2">
+                  <input
+                    type="checkbox"
+                    className="rounded border-zinc-600"
+                    checked={selectedSubmissions.selected.has(submission.id)}
+                    onChange={(e) => selectedSubmissions.toggle(submission.id, e.target.checked)}
+                  />
                   <h3 className="text-lg font-semibold">
                     {submission.firstName} {submission.lastName}
                   </h3>
@@ -250,6 +279,31 @@ export default function AdminCoachingInterestManager({ targetOrg }: { targetOrg:
           </article>
         ))}
       </div>
+
+      <SendEmailModal
+        open={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        targetOrg={targetOrg}
+        isMasterAdmin={isMaster}
+        contacts={submissions
+          .filter((s) => selectedSubmissions.selected.has(s.id))
+          .map((s) => ({
+            email: s.email,
+            name: [s.firstName, s.lastName].filter(Boolean).join(" ") || null,
+            sourceType: "COACHING_INTEREST_SUBMISSION",
+            sourceId: s.id,
+          }))}
+        onSent={(result) => {
+          if (typeof result.sent === "number") {
+            setNotice(`Email sent. Delivered ${result.sent}; failed ${result.failed ?? 0}.`);
+          } else {
+            setNotice(
+              `Campaign created and submitted for approval (${result.recipients ?? selectedSubmissions.size} recipients). Open Communications to track it.`,
+            );
+          }
+          selectedSubmissions.clear();
+        }}
+      />
     </section>
   );
 }
