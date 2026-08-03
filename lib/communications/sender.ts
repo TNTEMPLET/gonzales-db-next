@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 
 import { resolveFromAddress } from "./fromAddresses";
 import { sendEmailViaResend } from "./providers/resend";
+import { isEmailSuppressed } from "./suppression";
 import { createUnsubscribeToken } from "./unsubscribeToken";
 
 function deliveryStatusFromErrorMessage(message: string): CommunicationDeliveryStatus {
@@ -34,6 +35,8 @@ export async function sendCampaignEmails(campaign: CommunicationCampaign) {
           recipientType: snapshot.recipientType,
           registeredUserId: snapshot.registeredUserId,
           adminUserId: snapshot.adminUserId,
+          sourceType: snapshot.sourceType,
+          sourceId: snapshot.sourceId,
           toEmail: snapshot.email,
           status: "SKIPPED_NO_CONTACT",
           errorMessage: "No email contact available",
@@ -42,13 +45,7 @@ export async function sendCampaignEmails(campaign: CommunicationCampaign) {
       continue;
     }
 
-    const suppressed = await prisma.emailSuppression.findFirst({
-      where: {
-        email,
-        organizationId: campaign.organizationId ?? null,
-      },
-      select: { id: true },
-    });
+    const suppressed = await isEmailSuppressed(email, campaign.organizationId ?? null);
     if (suppressed) {
       failed += 1;
       await prisma.communicationDelivery.create({
@@ -58,6 +55,8 @@ export async function sendCampaignEmails(campaign: CommunicationCampaign) {
           recipientType: snapshot.recipientType,
           registeredUserId: snapshot.registeredUserId,
           adminUserId: snapshot.adminUserId,
+          sourceType: snapshot.sourceType,
+          sourceId: snapshot.sourceId,
           toEmail: email,
           status: "SKIPPED_SUPPRESSED",
           errorMessage: "Email is suppressed",
@@ -98,6 +97,8 @@ export async function sendCampaignEmails(campaign: CommunicationCampaign) {
           recipientType: snapshot.recipientType,
           registeredUserId: snapshot.registeredUserId,
           adminUserId: snapshot.adminUserId,
+          sourceType: snapshot.sourceType,
+          sourceId: snapshot.sourceId,
           toEmail: email,
           provider: providerResponse.provider,
           providerMessageId: providerResponse.providerMessageId,
@@ -116,6 +117,8 @@ export async function sendCampaignEmails(campaign: CommunicationCampaign) {
           recipientType: snapshot.recipientType,
           registeredUserId: snapshot.registeredUserId,
           adminUserId: snapshot.adminUserId,
+          sourceType: snapshot.sourceType,
+          sourceId: snapshot.sourceId,
           toEmail: email,
           status: deliveryStatusFromErrorMessage(message),
           errorMessage: message,

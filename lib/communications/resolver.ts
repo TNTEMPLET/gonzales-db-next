@@ -2,6 +2,7 @@ import type { AdminRole, CommunicationAudienceLogicalMode, CommunicationAudience
 
 import prisma from "@/lib/prisma";
 
+import { normalizeRawContacts } from "./rawContacts";
 import type {
   AudienceRecipient,
   AudienceResolutionResult,
@@ -59,6 +60,9 @@ async function fetchRegisteredCandidates(rule: AudienceRuleInput): Promise<Audie
     isCoach: p.isCoach,
     adminRole: null,
     matchReasons: [rule.ruleType],
+    contactName: null,
+    sourceType: null,
+    sourceId: null,
   }));
 }
 
@@ -110,6 +114,9 @@ async function fetchExplicitUserCandidates(rule: AudienceRuleInput): Promise<Aud
       isCoach,
       adminRole: null,
       matchReasons: ["EXPLICIT_USERS"],
+      contactName: null,
+      sourceType: null,
+      sourceId: null,
     });
   }
   return results;
@@ -180,6 +187,9 @@ async function fetchAdminRoleCandidates(rule: AudienceRuleInput): Promise<Audien
     isCoach: false,
     adminRole: admin.role,
     matchReasons: [`ADMIN_ROLE:${rule.adminRole}`],
+    contactName: null,
+    sourceType: null,
+    sourceId: null,
   }));
 }
 
@@ -212,6 +222,34 @@ async function fetchCoachingInterestCandidates(rule: AudienceRuleInput): Promise
     isCoach: false,
     adminRole: null,
     matchReasons: [`COACHING_INTEREST:${row.status}`],
+    contactName: null,
+    sourceType: null,
+    sourceId: null,
+  }));
+}
+
+/**
+ * EXPLICIT_CONTACTS — raw email/name pairs supplied directly by the caller
+ * (Sponsors, Team roster guardians, Coaching Interest per-record selection,
+ * All-Star ballot invites, Shirt/Cap Orders manual recipients). No DB lookup:
+ * the caller already resolved these from its own source record.
+ */
+function fetchExplicitContactCandidates(rule: AudienceRuleInput): AudienceRecipient[] {
+  const { contacts } = normalizeRawContacts(rule.explicitContacts);
+  return contacts.map((contact) => ({
+    recipientType: "RAW_CONTACT",
+    registeredUserId: null,
+    adminUserId: null,
+    coachingInterestSubmissionId: null,
+    organizationId: rule.organizationId ?? null,
+    email: contact.email,
+    phone: null,
+    isCoach: false,
+    adminRole: null,
+    matchReasons: ["EXPLICIT_CONTACTS"],
+    contactName: contact.name ?? null,
+    sourceType: contact.sourceType ?? null,
+    sourceId: contact.sourceId ?? null,
   }));
 }
 
@@ -224,6 +262,8 @@ async function resolveRuleRecipients(rule: AudienceRuleInput): Promise<AudienceR
       return fetchRegisteredCandidates(rule);
     case "EXPLICIT_USERS":
       return fetchExplicitUserCandidates(rule);
+    case "EXPLICIT_CONTACTS":
+      return fetchExplicitContactCandidates(rule);
     case "COACHING_INTEREST":
       return fetchCoachingInterestCandidates(rule);
     case "ADMIN_ROLE":
@@ -236,7 +276,11 @@ async function resolveRuleRecipients(rule: AudienceRuleInput): Promise<AudienceR
 function toBucket(rows: AudienceRecipient[]): RecipientBucket {
   const map: RecipientBucket = new Map();
   for (const row of rows) {
-    const id = row.registeredUserId || row.adminUserId || row.coachingInterestSubmissionId;
+    const id =
+      row.registeredUserId ||
+      row.adminUserId ||
+      row.coachingInterestSubmissionId ||
+      (row.recipientType === "RAW_CONTACT" ? row.email?.trim().toLowerCase() : null);
     if (!id) continue;
     map.set(recipientKey(row.recipientType, id), row);
   }

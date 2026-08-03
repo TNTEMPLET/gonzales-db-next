@@ -8,6 +8,7 @@ import {
   resolveFromAddress,
 } from "@/lib/communications/fromAddresses";
 import { canSendForOrg } from "@/lib/communications/policy";
+import { EXPLICIT_CONTACTS_MAX, normalizeRawContacts, type RawContactInput } from "@/lib/communications/rawContacts";
 import { EXPLICIT_USERS_MAX } from "@/lib/communications/types";
 import prisma from "@/lib/prisma";
 
@@ -23,6 +24,8 @@ type CreateCampaignBody = {
   quietHoursEnd?: number | null;
   /** Shortcut: create EXPLICIT_USERS rule from Users-page multi-select. */
   registeredUserIds?: string[];
+  /** Shortcut: create EXPLICIT_CONTACTS rule from raw email/name pairs (Sponsors, guardians, etc). */
+  contacts?: RawContactInput[];
   rules?: Array<{
     ruleType:
       | "ALL_USERS"
@@ -31,11 +34,13 @@ type CreateCampaignBody = {
       | "ORGANIZATION_COACHES"
       | "COACHING_INTEREST"
       | "ADMIN_ROLE"
-      | "EXPLICIT_USERS";
+      | "EXPLICIT_USERS"
+      | "EXPLICIT_CONTACTS";
     organizationId?: string | null;
     adminRole?: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR" | null;
     coachingInterestStatus?: "NEW" | "CONTACTED" | "NOT_INTERESTED" | "CONVERTED" | "ARCHIVED" | null;
     explicitRegisteredUserIds?: string[] | null;
+    explicitContacts?: RawContactInput[] | null;
   }>;
 };
 
@@ -107,6 +112,22 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const { contacts: contactsFromBody, rejected: rejectedContacts } = normalizeRawContacts(
+    body.contacts,
+  );
+  if ((body.contacts?.length || 0) > EXPLICIT_CONTACTS_MAX) {
+    return NextResponse.json(
+      { error: `Too many recipients (max ${EXPLICIT_CONTACTS_MAX})` },
+      { status: 400 },
+    );
+  }
+  if (explicitIdsFromBody.length > 0 && contactsFromBody.length > 0) {
+    return NextResponse.json(
+      { error: "Provide either registeredUserIds or contacts, not both" },
+      { status: 400 },
+    );
+  }
+
   let rules = body.rules ?? [];
   if (explicitIdsFromBody.length > 0) {
     rules = [
@@ -116,6 +137,14 @@ export async function POST(request: NextRequest) {
         explicitRegisteredUserIds: explicitIdsFromBody,
       },
     ];
+  } else if (contactsFromBody.length > 0) {
+    rules = [
+      {
+        ruleType: "EXPLICIT_CONTACTS",
+        organizationId: requestedOrg,
+        explicitContacts: contactsFromBody,
+      },
+    ];
   }
 
   for (const rule of rules) {
@@ -123,6 +152,13 @@ export async function POST(request: NextRequest) {
     if (rule.ruleType === "EXPLICIT_USERS" && ids.length > EXPLICIT_USERS_MAX) {
       return NextResponse.json(
         { error: `Too many recipients (max ${EXPLICIT_USERS_MAX})` },
+        { status: 400 },
+      );
+    }
+    const contacts = rule.explicitContacts || [];
+    if (rule.ruleType === "EXPLICIT_CONTACTS" && contacts.length > EXPLICIT_CONTACTS_MAX) {
+      return NextResponse.json(
+        { error: `Too many recipients (max ${EXPLICIT_CONTACTS_MAX})` },
         { status: 400 },
       );
     }
@@ -154,6 +190,10 @@ export async function POST(request: NextRequest) {
                   new Set((rule.explicitRegisteredUserIds || []).map((id) => id.trim()).filter(Boolean)),
                 )
               : [],
+          explicitContacts:
+            rule.ruleType === "EXPLICIT_CONTACTS"
+              ? normalizeRawContacts(rule.explicitContacts).contacts
+              : undefined,
         })),
       },
     },
@@ -162,5 +202,9 @@ export async function POST(request: NextRequest) {
     },
   });
 
-  return NextResponse.json({ success: true, data: created });
+  return NextResponse.json({
+    success: true,
+    data: created,
+    ...(rejectedContacts > 0 ? { rejectedContacts } : {}),
+  });
 }
