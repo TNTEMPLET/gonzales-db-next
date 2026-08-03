@@ -2,6 +2,9 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 
+import BulkEmailToolbar from "@/components/admin/communications/BulkEmailToolbar";
+import SendEmailModal from "@/components/admin/communications/SendEmailModal";
+import { useRowSelection } from "@/components/admin/communications/useRowSelection";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { formatOrganizationIdDisplay } from "@/lib/siteConfig";
 import {
@@ -69,6 +72,8 @@ export default function AdminVolunteersManager({
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [reqBusy, setReqBusy] = useState(false);
+  const selectedVolunteers = useRowSelection<string>();
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
 
   // Master role catalog CRUD
   const [rolesOpen, setRolesOpen] = useState(false);
@@ -618,6 +623,14 @@ export default function AdminVolunteersManager({
             ))}
           </select>
         </div>
+
+        <BulkEmailToolbar
+          selectedCount={selectedVolunteers.size}
+          disabled={busy}
+          onSelectPage={() => selectedVolunteers.selectMany(cards.map((c) => c.registeredUser.id))}
+          onClear={selectedVolunteers.clear}
+          onOpenEmail={() => setEmailModalOpen(true)}
+        />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-[1fr_minmax(280px,380px)]">
@@ -625,6 +638,9 @@ export default function AdminVolunteersManager({
           <table className="w-full text-left text-sm">
             <thead className="bg-zinc-950/80 text-xs uppercase tracking-wide text-zinc-500">
               <tr>
+                <th className="px-3 py-2">
+                  <span className="sr-only">Select</span>
+                </th>
                 <th className="px-3 py-2">Volunteer</th>
                 <th className="px-3 py-2">Roles</th>
                 <th className="px-3 py-2">JDP</th>
@@ -635,7 +651,7 @@ export default function AdminVolunteersManager({
             <tbody>
               {cards.length === 0 ? (
                 <tr>
-                  <td colSpan={5} className="px-3 py-6 text-center text-zinc-500">
+                  <td colSpan={6} className="px-3 py-6 text-center text-zinc-500">
                     {busy
                       ? "Loading…"
                       : "No volunteers yet. Click Sync coaches or create from Users."}
@@ -653,6 +669,16 @@ export default function AdminVolunteersManager({
                       }`}
                       onClick={() => setSelectedId(card.id)}
                     >
+                      <td className="px-3 py-2" onClick={(e) => e.stopPropagation()}>
+                        <input
+                          type="checkbox"
+                          className="rounded border-zinc-600"
+                          checked={selectedVolunteers.selected.has(card.registeredUser.id)}
+                          onChange={(e) =>
+                            selectedVolunteers.toggle(card.registeredUser.id, e.target.checked)
+                          }
+                        />
+                      </td>
                       <td className="px-3 py-2">
                         <p className="font-medium text-zinc-100">{displayName(card)}</p>
                         <p className="text-xs text-zinc-500">{card.registeredUser.email}</p>
@@ -697,6 +723,24 @@ export default function AdminVolunteersManager({
           )}
         </div>
       </div>
+
+      <SendEmailModal
+        open={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        targetOrg={targetOrg}
+        isMasterAdmin={isMaster}
+        registeredUserIds={Array.from(selectedVolunteers.selected)}
+        onSent={(result) => {
+          if (typeof result.sent === "number") {
+            setNotice(`Email sent. Delivered ${result.sent}; failed ${result.failed ?? 0}.`);
+          } else {
+            setNotice(
+              `Campaign created and submitted for approval (${result.recipients ?? selectedVolunteers.size} recipients). Open Communications to track it.`,
+            );
+          }
+          selectedVolunteers.clear();
+        }}
+      />
     </div>
   );
 }
