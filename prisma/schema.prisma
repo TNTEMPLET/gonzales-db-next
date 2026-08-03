@@ -154,6 +154,9 @@ enum CommunicationAudienceRuleType {
   COACHING_INTEREST
   ADMIN_ROLE
   EXPLICIT_USERS
+  /// Raw (non-RegisteredUser) contacts — Sponsors, roster guardians, Coaching Interest
+  /// per-record selection, All-Star ballot invites, Shirt/Cap Orders manual recipients.
+  EXPLICIT_CONTACTS
 }
 
 enum CommunicationRecipientType {
@@ -162,6 +165,8 @@ enum CommunicationRecipientType {
   COACHING_INTEREST
   /// Parent/guardian email for All-Star travel trip magic links
   TRIP_GUARDIAN
+  /// Generic non-RegisteredUser contact, see CommunicationAudienceRuleType.EXPLICIT_CONTACTS.
+  RAW_CONTACT
 }
 
 enum CommunicationDeliveryStatus {
@@ -798,6 +803,10 @@ model CommunicationAudienceRule {
   coachingInterestStatus    CoachingInterestStatus?
   /// RegisteredUser ids when ruleType is EXPLICIT_USERS (Users-page multi-select).
   explicitRegisteredUserIds String[]                      @default([])
+  /// Raw contacts when ruleType is EXPLICIT_CONTACTS: JSON array of
+  /// { email: string; name?: string|null; sourceType?: string|null; sourceId?: string|null }.
+  /// Normalized + capped at EXPLICIT_CONTACTS_MAX (lib/communications/rawContacts.ts) before write.
+  explicitContacts          Json?
   createdAt                 DateTime                      @default(now())
 
   campaign CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
@@ -831,6 +840,13 @@ model CommunicationRecipientSnapshot {
   adminUserId        String?
   /// Trip participant when recipientType is TRIP_GUARDIAN
   tripParticipantId  String?
+  /// Display name for RAW_CONTACT rows (Sponsor contactName, guardian full name, etc).
+  contactName        String?
+  /// Generic provenance for RAW_CONTACT rows (e.g. "SPONSOR", "TEAM_PLAYER_GUARDIAN");
+  /// null for all other recipientTypes, which already have their own FK columns above.
+  /// Not a typed relation on purpose — traceability only, like matchReasons.
+  sourceType         String?
+  sourceId           String?
   email              String?
   phone              String?
   matchReasons       String[]
@@ -844,6 +860,7 @@ model CommunicationRecipientSnapshot {
   @@index([registeredUserId])
   @@index([adminUserId])
   @@index([tripParticipantId])
+  @@index([sourceType, sourceId])
 }
 
 model CommunicationDelivery {
@@ -855,6 +872,10 @@ model CommunicationDelivery {
   adminUserId       String?
   /// Trip participant when recipientType is TRIP_GUARDIAN
   tripParticipantId String?
+  /// Generic provenance for RAW_CONTACT deliveries, copied from the snapshot at send time
+  /// (snapshots get wiped/recreated on every resolve; deliveries are permanent history).
+  sourceType        String?
+  sourceId          String?
   toEmail           String?
   toPhone           String?
   provider          String?
