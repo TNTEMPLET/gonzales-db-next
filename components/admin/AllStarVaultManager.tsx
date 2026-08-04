@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import AllStarAuditLogPanel from "@/components/admin/allStar/AllStarAuditLogPanel";
 import AllStarCycleWorkspace from "@/components/admin/allStar/AllStarCycleWorkspace";
+import SendEmailModal from "@/components/admin/communications/SendEmailModal";
 
 import {
   allowedWorkspaceTabs,
@@ -556,6 +557,7 @@ export default function AllStarVaultManager({
   const [selectedCoachUserId, setSelectedCoachUserId] = useState("");
   const [selectedInviteCoachIds, setSelectedInviteCoachIds] = useState<string[]>([]);
   const [inviteCoachSearch, setInviteCoachSearch] = useState("");
+  const [inviteEmailModalOpen, setInviteEmailModalOpen] = useState(false);
   const [vaultUserId, setVaultUserId] = useState("");
   const [vaultRole, setVaultRole] = useState<"FULL_ACCESS" | "LIMITED_ADMIN">("LIMITED_ADMIN");
   const [inviteEmails, setInviteEmails] = useState("");
@@ -5149,6 +5151,17 @@ export default function AllStarVaultManager({
               Save invite roster
             </button>
           ) : null}
+          {!isLimitedVaultAccess ? (
+            <button
+              type="button"
+              disabled={manageDisabled || inviteLinks.filter((i) => !i.revokedAt).length === 0}
+              onClick={() => setInviteEmailModalOpen(true)}
+              className="rounded-lg border border-brand-purple bg-brand-purple/20 text-brand-purple-light px-4 py-2 text-sm font-semibold hover:bg-brand-purple/30 disabled:opacity-60"
+              title="Email all non-revoked invited coaches the shared ballot link"
+            >
+              Send invite emails ({inviteLinks.filter((i) => !i.revokedAt).length})
+            </button>
+          ) : null}
           {renderExportTopCountControl()}
           <a
             href={
@@ -5500,6 +5513,35 @@ export default function AllStarVaultManager({
       </>
       ) : null}
       </>
+
+      <SendEmailModal
+        open={inviteEmailModalOpen}
+        onClose={() => setInviteEmailModalOpen(false)}
+        targetOrg={org}
+        isMasterAdmin={isMasterMode}
+        contacts={inviteLinks
+          .filter((invite) => !invite.revokedAt)
+          .map((invite) => ({
+            email: invite.invitedEmail,
+            name: invite.invitedCoachName,
+            sourceType: "ALL_STAR_INVITE",
+            sourceId: invite.inviteId,
+          }))}
+        defaultBody={
+          ballotVotingLink
+            ? `You're invited to vote in the All-Star ballot. Use this link to vote:\n\n${ballotVotingLink}`
+            : ""
+        }
+        onSent={(result) => {
+          if (typeof result.sent === "number") {
+            setNotice(`Email sent. Delivered ${result.sent}; failed ${result.failed ?? 0}.`);
+          } else {
+            setNotice(
+              `Campaign created and submitted for approval (${result.recipients ?? inviteLinks.filter((i) => !i.revokedAt).length} recipients). Open Communications to track it.`,
+            );
+          }
+        }}
+      />
     </section>
   );
 }

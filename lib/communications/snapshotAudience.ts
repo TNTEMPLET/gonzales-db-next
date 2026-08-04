@@ -22,6 +22,9 @@ export async function snapshotCampaignAudience(campaignId: string) {
       adminRole: rule.adminRole,
       coachingInterestStatus: rule.coachingInterestStatus,
       explicitRegisteredUserIds: rule.explicitRegisteredUserIds,
+      explicitContacts: (rule.explicitContacts as unknown as
+        | { email: string; name?: string | null; sourceType?: string | null; sourceId?: string | null }[]
+        | null) ?? null,
     })),
     logicalMode: campaign.logicalMode,
   });
@@ -35,6 +38,9 @@ export async function snapshotCampaignAudience(campaignId: string) {
           recipientType: row.recipientType,
           registeredUserId: row.registeredUserId,
           adminUserId: row.adminUserId,
+          contactName: row.contactName,
+          sourceType: row.sourceType,
+          sourceId: row.sourceId,
           email: row.email,
           phone: row.phone,
           matchReasons: row.matchReasons,

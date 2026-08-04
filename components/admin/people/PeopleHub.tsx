@@ -135,7 +135,7 @@ export default function PeopleHub({
       ) : null}
 
       {section === "coaching-interest" && canCoachingInterest ? (
-        <AdminCoachingInterestManager targetOrg={targetOrg} />
+        <AdminCoachingInterestManager targetOrg={targetOrg} isMaster={isMaster} />
       ) : null}
     </div>
   );

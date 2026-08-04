@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import BulkEmailToolbar from "@/components/admin/communications/BulkEmailToolbar";
+import SendEmailModal from "@/components/admin/communications/SendEmailModal";
+import { useRowSelection } from "@/components/admin/communications/useRowSelection";
 import {
   StatusCountPill,
   TeamHealthSummaryGrid,
@@ -202,12 +205,20 @@ type UndoImportStatus = {
   message: string;
 };
 
-export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrgId }) {
+export default function AdminTeamsManager({
+  targetOrg,
+  isMaster = false,
+}: {
+  targetOrg: ContentOrgId;
+  isMaster?: boolean;
+}) {
   const orgQuery = `org=${targetOrg}`;
   const isFallBall = targetOrg === "fallball";
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const selectedGuardians = useRowSelection<string>();
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
 
   const [seasonYear, setSeasonYear] = useState(new Date().getFullYear());
   const [ageGroup, setAgeGroup] = useState("");
@@ -553,6 +564,7 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
   }, [teamManagementAgeGroupOptions]);
 
   useEffect(() => {
+    selectedGuardians.clear();
     const timer = window.setTimeout(() => {
       if (!selectedTeamId) {
         setPlayers([]);
@@ -2475,6 +2487,19 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
               </div>
             </div>
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-400">Players</p>
+            <BulkEmailToolbar
+              selectedCount={selectedGuardians.size}
+              disabled={busy}
+              onSelectPage={() =>
+                selectedGuardians.selectMany(
+                  players.filter((p) => p.guardianEmail).map((p) => p.id),
+                )
+              }
+              onClear={selectedGuardians.clear}
+              onOpenEmail={() => setEmailModalOpen(true)}
+              selectPageLabel="Select all with guardian email"
+              helpText="Only players with a guardian email on file can be selected. Scoped to this team's roster."
+            />
             {isEditingRoster ? (
               <div className="grid md:grid-cols-3 gap-3">
                 <input
@@ -2506,6 +2531,9 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                 <table className="w-full text-sm">
                   <thead className="sticky top-0 z-10 bg-zinc-900 text-zinc-300">
                     <tr className="text-center">
+                      <th className="px-3 py-2">
+                        <span className="sr-only">Select</span>
+                      </th>
                       <th className="px-3 py-2">#</th>
                       <th className="px-3 py-2">First Name</th>
                       <th className="px-3 py-2">Last Name</th>
@@ -2527,6 +2555,20 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
                       const lastNameValue = player.lastName || derived.lastName;
                       return (
                         <tr key={player.id} className="border-t border-zinc-800">
+                          <td className="px-3 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              className="rounded border-zinc-600"
+                              disabled={!player.guardianEmail}
+                              title={
+                                player.guardianEmail
+                                  ? undefined
+                                  : "No guardian email on file"
+                              }
+                              checked={selectedGuardians.selected.has(player.id)}
+                              onChange={(e) => selectedGuardians.toggle(player.id, e.target.checked)}
+                            />
+                          </td>
                           <td className="px-3 py-2 text-center">
                             <input
                               value={player.jerseyNumber || ""}
@@ -3916,6 +3958,31 @@ export default function AdminTeamsManager({ targetOrg }: { targetOrg: ContentOrg
           </div>
         </div>
       ) : null}
+
+      <SendEmailModal
+        open={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        targetOrg={targetOrg}
+        isMasterAdmin={isMaster}
+        contacts={players
+          .filter((p) => selectedGuardians.selected.has(p.id) && p.guardianEmail)
+          .map((p) => ({
+            email: p.guardianEmail as string,
+            name: [p.guardianFirstName, p.guardianLastName].filter(Boolean).join(" ") || null,
+            sourceType: "TEAM_PLAYER_GUARDIAN",
+            sourceId: p.id,
+          }))}
+        onSent={(result) => {
+          if (typeof result.sent === "number") {
+            setNotice(`Email sent. Delivered ${result.sent}; failed ${result.failed ?? 0}.`);
+          } else {
+            setNotice(
+              `Campaign created and submitted for approval (${result.recipients ?? selectedGuardians.size} recipients). Open Communications to track it.`,
+            );
+          }
+          selectedGuardians.clear();
+        }}
+      />
     </section>
   );
 }
