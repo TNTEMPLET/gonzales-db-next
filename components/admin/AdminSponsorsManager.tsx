@@ -2,6 +2,9 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import BulkEmailToolbar from "@/components/admin/communications/BulkEmailToolbar";
+import SendEmailModal from "@/components/admin/communications/SendEmailModal";
+import { useRowSelection } from "@/components/admin/communications/useRowSelection";
 import { SPONSOR_PACKAGE_TYPES, type SponsorPackageTypeValue } from "@/lib/sponsors/catalog";
 import { CONTENT_ORGS, formatOrganizationIdDisplay, type ContentOrgId } from "@/lib/siteConfig";
 import { SPONSOR_PACKAGE_TEMPLATES } from "@/lib/sponsors/templates";
@@ -239,8 +242,10 @@ function mapSponsorToForm(sponsor: SponsorRecord): SponsorFormState {
 
 export default function AdminSponsorsManager({
   targetOrg,
+  isMaster = false,
 }: {
   targetOrg: ContentOrgId;
+  isMaster?: boolean;
 }) {
   const [sponsors, setSponsors] = useState<SponsorRecord[]>([]);
   const [busy, setBusy] = useState(false);
@@ -253,6 +258,8 @@ export default function AdminSponsorsManager({
   const [editingSponsorId, setEditingSponsorId] = useState<string | null>(null);
   const [uploadingLogo, setUploadingLogo] = useState(false);
   const orgQuery = `org=${targetOrg}`;
+  const selectedSponsors = useRowSelection<string>();
+  const [emailModalOpen, setEmailModalOpen] = useState(false);
 
   const activeTemplate = useMemo(
     () =>
@@ -892,10 +899,25 @@ export default function AdminSponsorsManager({
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <h2 className="text-lg font-semibold">Sponsors</h2>
+        <BulkEmailToolbar
+          selectedCount={selectedSponsors.size}
+          disabled={busy}
+          onSelectPage={() =>
+            selectedSponsors.selectMany(
+              sponsors.filter((s) => s.contactEmail).map((s) => s.id),
+            )
+          }
+          onClear={selectedSponsors.clear}
+          onOpenEmail={() => setEmailModalOpen(true)}
+          helpText="Only sponsors with a contact email can be selected. Uses Communications (Resend)."
+        />
         <div className="overflow-x-auto rounded-lg border border-zinc-800">
           <table className="min-w-full text-sm">
             <thead className="bg-zinc-950/80 text-zinc-400">
               <tr>
+                <th className="px-3 py-2 text-left">
+                  <span className="sr-only">Select</span>
+                </th>
                 <th className="px-3 py-2 text-left">Business</th>
                 <th className="px-3 py-2 text-left">Package</th>
                 <th className="px-3 py-2 text-left">Amount</th>
@@ -907,6 +929,16 @@ export default function AdminSponsorsManager({
             <tbody>
               {sponsors.map((sponsor) => (
                 <tr key={sponsor.id} className="border-t border-zinc-800">
+                  <td className="px-3 py-2">
+                    <input
+                      type="checkbox"
+                      className="rounded border-zinc-600"
+                      disabled={!sponsor.contactEmail}
+                      title={sponsor.contactEmail ? undefined : "No contact email on file"}
+                      checked={selectedSponsors.selected.has(sponsor.id)}
+                      onChange={(e) => selectedSponsors.toggle(sponsor.id, e.target.checked)}
+                    />
+                  </td>
                   <td className="px-3 py-2">
                     <p className="font-medium">{sponsor.businessName}</p>
                     <p className="text-xs text-zinc-500">{sponsor.contactEmail || "—"}</p>
@@ -988,6 +1020,31 @@ export default function AdminSponsorsManager({
           )}
         </div>
       </div>
+
+      <SendEmailModal
+        open={emailModalOpen}
+        onClose={() => setEmailModalOpen(false)}
+        targetOrg={targetOrg}
+        isMasterAdmin={isMaster}
+        contacts={sponsors
+          .filter((s) => selectedSponsors.selected.has(s.id) && s.contactEmail)
+          .map((s) => ({
+            email: s.contactEmail as string,
+            name: s.contactName,
+            sourceType: "SPONSOR",
+            sourceId: s.id,
+          }))}
+        onSent={(result) => {
+          if (typeof result.sent === "number") {
+            setNotice(`Email sent. Delivered ${result.sent}; failed ${result.failed ?? 0}.`);
+          } else {
+            setNotice(
+              `Campaign created and submitted for approval (${result.recipients ?? selectedSponsors.size} recipients). Open Communications to track it.`,
+            );
+          }
+          selectedSponsors.clear();
+        }}
+      />
     </section>
   );
 }
