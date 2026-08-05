@@ -11,6 +11,7 @@ import {
 } from "@/lib/auth/adminRoles";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import { isAllSitesUsersScope, resolveAdminUsersScope } from "@/lib/admin/usersScope";
 import prisma from "@/lib/prisma";
 import { isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 import {
@@ -84,7 +85,11 @@ export async function GET(request: NextRequest) {
 
   try {
     const query = request.nextUrl.searchParams;
-    const targetOrg = resolveAdminTargetOrg(query.get("org"));
+    const usersScope = resolveAdminUsersScope(query.get("org"), auth.admin.isMaster);
+    const isAllSites = isAllSitesUsersScope(usersScope);
+    // Real org for the (org-scoped) audit log / import-batch / admin-membership queries below;
+    // meaningless in all-sites mode, where those panels are hidden client-side.
+    const targetOrg = isAllSites ? resolveAdminTargetOrg(null) : usersScope;
     const logPage = toPositiveInt(query.get("logPage"), 1);
     const logPageSize = Math.min(
       toPositiveInt(query.get("logPageSize"), 25),
@@ -125,9 +130,13 @@ export async function GET(request: NextRequest) {
     // We load via the org profile join so we can surface per-org coach/assignment context.
     // Note: after schema change we use the new RegisteredUserOrgProfile table.
     // (prisma as any) until client is regenerated after migration.
-    const [profileRows, currentAdmin, auditLogs, totalAuditLogs, latestImportBatch, orgMemberships, masterAdmins] =
+    // In "all sites" scope (master-only), skip the org-scoped profile join and load
+    // every global identity directly, with all of its org profiles attached.
+    const [profileRows, globalUsers, currentAdmin, auditLogs, totalAuditLogs, latestImportBatch, orgMemberships, masterAdmins] =
       await Promise.all([
-        (prisma as any).registeredUserOrgProfile.findMany({
+        isAllSites
+          ? Promise.resolve([])
+          : (prisma as any).registeredUserOrgProfile.findMany({
           where: { organizationId: targetOrg },
           include: {
             registeredUser: {
@@ -152,6 +161,16 @@ export async function GET(request: NextRequest) {
           },
           orderBy: { updatedAt: "desc" },
         }),
+        isAllSites
+          ? prisma.registeredUser.findMany({
+              orderBy: { updatedAt: "desc" },
+              include: {
+                orgProfiles: {
+                  select: { organizationId: true, isCoach: true, ageGroup: true, assignedTeam: true },
+                },
+              },
+            })
+          : Promise.resolve([]),
         getAdminUserFromRequest(request),
         prisma.adminAuditLog.findMany({
           where: auditWhere,
@@ -160,7 +179,9 @@ export async function GET(request: NextRequest) {
           take: logPageSize,
         }),
         prisma.adminAuditLog.count({ where: auditWhere }),
-        prisma.coachImportBatch.findFirst({
+        isAllSites
+          ? Promise.resolve(null)
+          : prisma.coachImportBatch.findFirst({
           where: { organizationId: targetOrg, undoneAt: null },
           orderBy: { createdAt: "desc" },
           select: {
@@ -174,7 +195,7 @@ export async function GET(request: NextRequest) {
           },
         }),
         prisma.adminOrgMembership.findMany({
-          where: { organizationId: targetOrg },
+          where: isAllSites ? {} : { organizationId: targetOrg },
           include: { adminUser: true },
           orderBy: { updatedAt: "desc" },
         }),
@@ -185,7 +206,25 @@ export async function GET(request: NextRequest) {
       ]);
 
     // Shape like the old "users" list for the rest of the handler.
-    const users = ((profileRows as any[]) || []).map((p: any) => ({
+    const users = isAllSites
+      ? globalUsers.map((u) => {
+          const { orgProfiles, ...rest } = u;
+          const profiles = orgProfiles || [];
+          return {
+            ...rest,
+            organizationId: null,
+            isCoach: profiles.some((p) => p.isCoach),
+            ageGroup: null,
+            assignedTeam: null,
+            orgs: profiles.map((p) => ({
+              organizationId: p.organizationId,
+              isCoach: p.isCoach,
+              ageGroup: p.ageGroup,
+              assignedTeam: p.assignedTeam,
+            })),
+          };
+        })
+      : ((profileRows as any[]) || []).map((p: any) => ({
       ...p.registeredUser,
       organizationId: targetOrg, // synthetic for any legacy code paths that still read it
       isCoach: p.isCoach,
@@ -198,16 +237,19 @@ export async function GET(request: NextRequest) {
       userIds.length === 0
         ? []
         : await prisma.teamCoachAssignment.findMany({
-            where: {
-              registeredUserId: { in: userIds },
-              team: { organizationId: targetOrg },
-            },
+            where: isAllSites
+              ? { registeredUserId: { in: userIds } }
+              : {
+                  registeredUserId: { in: userIds },
+                  team: { organizationId: targetOrg },
+                },
             include: {
               team: {
                 select: {
                   teamName: true,
                   ageGroup: true,
                   seasonYear: true,
+                  organizationId: true,
                 },
               },
             },
@@ -219,6 +261,7 @@ export async function GET(request: NextRequest) {
       teamName: string;
       role: "HEAD_COACH" | "ASSISTANT_COACH";
       seasonYear: number;
+      organizationId?: string;
     };
 
     const coachTeamAssignmentsByUserId = new Map<string, CoachTeamRow[]>();
@@ -239,6 +282,7 @@ export async function GET(request: NextRequest) {
         teamName: assignment.team.teamName.trim(),
         role: assignment.role,
         seasonYear: assignment.team.seasonYear,
+        organizationId: assignment.team.organizationId,
       });
     }
 
@@ -289,19 +333,25 @@ export async function GET(request: NextRequest) {
       adminEmailSet.add(a.email.trim().toLowerCase());
     }
 
-    const currentAdminOrgRole = currentAdmin
-      ? await getEffectiveAdminRoleForOrg(
-          currentAdmin.id,
-          currentAdmin.isMaster,
-          targetOrg,
-        )
-      : null;
+    const currentAdminOrgRole = isAllSites
+      ? "MASTER_ADMIN" // resolveAdminUsersScope only returns "all" for Master Admins
+      : currentAdmin
+        ? await getEffectiveAdminRoleForOrg(
+            currentAdmin.id,
+            currentAdmin.isMaster,
+            targetOrg,
+          )
+        : null;
     const totalPages = Math.max(1, Math.ceil(totalAuditLogs / logPageSize));
 
-    const aatByUser = await getAatSnapshotsByUserIds({
-      organizationId: targetOrg,
-      registeredUserIds: userIds,
-    });
+    // AAT snapshots are org-scoped; skip enrichment in all-sites mode and fall back
+    // to the legacy global columns already present on each user row.
+    const aatByUser = isAllSites
+      ? new Map()
+      : await getAatSnapshotsByUserIds({
+          organizationId: targetOrg,
+          registeredUserIds: userIds,
+        });
 
     return NextResponse.json({
       admins,
@@ -323,7 +373,7 @@ export async function GET(request: NextRequest) {
       protectedMasterAdminEmail: PROTECTED_MASTER_ADMIN_EMAIL,
       currentAdminIsMaster: currentAdmin?.isMaster || false,
       isMasterDeployment: isMasterDeployment(),
-      targetOrg,
+      targetOrg: usersScope,
       latestImportBatch,
       data: users.map((user) => {
         const aat = aatByUser.get(user.id) ?? EMPTY_AAT_SNAPSHOT;
