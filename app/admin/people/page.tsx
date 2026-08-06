@@ -19,7 +19,7 @@ import {
 } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
-import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { getSiteConfig, resolveAdminTargetOrg, type ContentOrgId } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -57,6 +57,10 @@ export default async function AdminPeoplePage({
   const canCoachingInterest =
     canAccessAdminModule(role, "TEAMS") && isCoachingInterestEnabled(currentOrg);
 
+  // Cross-org aggregate Directory view — master-only, explicit ?org=all.
+  const directoryScope: ContentOrgId | "all" =
+    org === "all" && adminUser.isMaster ? "all" : currentOrg;
+
   if (!canDirectory && !canVolunteers && !canCoachingInterest) {
     redirect("/admin?denied=people");
   }
@@ -90,7 +94,7 @@ export default async function AdminPeoplePage({
         <div className="mb-8">
           <AdminSectionHeader
             badge="PEOPLE"
-            currentOrg={currentOrg}
+            currentOrg={directoryScope === "all" ? null : currentOrg}
             currentPath={`/admin/people?section=${initialSection}`}
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
@@ -113,6 +117,7 @@ export default async function AdminPeoplePage({
         >
           <PeopleHub
             targetOrg={currentOrg}
+            directoryScope={directoryScope}
             initialSection={initialSection}
             focusUserId={userId || null}
             isMaster={adminUser.isMaster || role === "MASTER_ADMIN"}

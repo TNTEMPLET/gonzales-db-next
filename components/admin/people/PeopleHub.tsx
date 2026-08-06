@@ -39,6 +39,7 @@ const SECTION_META: Record<
 
 export default function PeopleHub({
   targetOrg,
+  directoryScope,
   initialSection,
   focusUserId,
   isMaster,
@@ -47,6 +48,8 @@ export default function PeopleHub({
   canCoachingInterest,
 }: {
   targetOrg: ContentOrgId;
+  /** Directory-only scope; "all" is the master-only cross-org aggregate view. */
+  directoryScope: ContentOrgId | "all";
   initialSection: PeopleSection;
   focusUserId?: string | null;
   isMaster: boolean;
@@ -86,6 +89,16 @@ export default function PeopleHub({
     [pathname, router, searchParams, targetOrg],
   );
 
+  const setDirectoryScope = useCallback(
+    (nextOrg: ContentOrgId | "all") => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("section", "directory");
+      params.set("org", nextOrg);
+      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
+
   if (availableSections.length === 0) {
     return (
       <div className="rounded-xl border border-amber-800/60 bg-amber-950/30 px-4 py-6 text-amber-100">
@@ -122,8 +135,24 @@ export default function PeopleHub({
 
       <p className="text-sm text-zinc-400">{SECTION_META[section].description}</p>
 
+      {section === "directory" && canDirectory && isMaster ? (
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() =>
+              setDirectoryScope(directoryScope === "all" ? targetOrg : "all")
+            }
+            className="rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-500 hover:text-white"
+          >
+            {directoryScope === "all"
+              ? "Switch to a single org"
+              : "View all sites"}
+          </button>
+        </div>
+      ) : null}
+
       {section === "directory" && canDirectory ? (
-        <AdminUsersManager targetOrg={targetOrg} />
+        <AdminUsersManager targetOrg={directoryScope} />
       ) : null}
 
       {section === "volunteers" && canVolunteers ? (
