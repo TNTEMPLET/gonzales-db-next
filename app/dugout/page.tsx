@@ -171,10 +171,13 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
   const cookieStore = await cookies();
 
   const coachToken = cookieStore.get(COACH_SESSION_COOKIE)?.value;
-  const coach = await getCoachUserFromCookieToken(coachToken);
-
   const adminToken = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-  const admin = await getAdminUserByToken(adminToken);
+
+  // Independent session lookups — resolve concurrently instead of sequentially.
+  const [coach, admin] = await Promise.all([
+    getCoachUserFromCookieToken(coachToken),
+    getAdminUserByToken(adminToken),
+  ]);
 
   const authed = admin ?? (coach?.isCoach ? coach : null);
 
