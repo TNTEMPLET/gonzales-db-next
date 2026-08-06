@@ -42,12 +42,20 @@ type RegisteredUser = {
   abuseAwarenessTrainingCertificateMimeType: string | null;
   abuseAwarenessTrainingCertificateUploadedAt: string | null;
   duplicateReviewPending?: boolean;
-  /** Per-team assignments for this org (age group + team + role). Used for coach list grouping. */
+  /** Per-team assignments (age group + team + role). Used for coach list grouping. */
   coachTeamAssignments?: Array<{
     ageGroup: string;
     teamName: string;
     role: "HEAD_COACH" | "ASSISTANT_COACH";
     seasonYear: number;
+    organizationId?: string;
+  }>;
+  /** Present only in the "all sites" scope: this person's per-org footprint. */
+  orgs?: Array<{
+    organizationId: string;
+    isCoach: boolean;
+    ageGroup: string | null;
+    assignedTeam: string | null;
   }>;
 };
 
@@ -235,8 +243,9 @@ function primaryAgeGroupLabelForSort(user: RegisteredUser): string {
 export default function AdminUsersManager({
   targetOrg,
 }: {
-  targetOrg: ContentOrgId;
+  targetOrg: ContentOrgId | "all";
 }) {
+  const isAllSites = targetOrg === "all";
   const orgQuery = `org=${targetOrg}`;
   const [admins, setAdmins] = useState<AdminUser[]>([]);
   const [auditLogs, setAuditLogs] = useState<AdminAuditLog[]>([]);
@@ -544,10 +553,12 @@ export default function AdminUsersManager({
         fetch(`/api/admin/users?${params.toString()}`, {
           cache: "no-store",
         }),
-        fetch(
-          `/api/admin/users/duplicate-candidates?org=${encodeURIComponent(targetOrg)}&status=PENDING`,
-          { cache: "no-store" },
-        ),
+        isAllSites
+          ? Promise.resolve(null)
+          : fetch(
+              `/api/admin/users/duplicate-candidates?org=${encodeURIComponent(targetOrg)}&status=PENDING`,
+              { cache: "no-store" },
+            ),
       ]);
       const json = (await response.json()) as ApiResponse | { error?: string };
 
@@ -557,7 +568,7 @@ export default function AdminUsersManager({
         );
       }
 
-      if (dupResponse.ok) {
+      if (dupResponse?.ok) {
         const dupJson = (await dupResponse.json()) as {
           candidates?: DuplicateCandidateRow[];
         };
@@ -1069,7 +1080,7 @@ export default function AdminUsersManager({
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.22em] text-zinc-500">
-            Access health for {targetOrg}
+            Access health for {isAllSites ? "all sites" : targetOrg}
           </p>
           <p className="mt-1 text-sm text-zinc-400">
             Use these counts as a quick check before changing access. Promote only
@@ -1184,6 +1195,20 @@ export default function AdminUsersManager({
                     )}
                     </div>
                   </label>
+                  {isAllSites ? (
+                    <div className="flex items-center gap-1 flex-wrap justify-end max-w-[240px]">
+                      {(user.orgs ?? []).map((o) => (
+                        <span
+                          key={o.organizationId}
+                          className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 border border-zinc-700 text-zinc-300 bg-zinc-800/60"
+                          title={o.isCoach ? "Coach in this org" : undefined}
+                        >
+                          {o.organizationId}
+                          {o.isCoach ? " · Coach" : ""}
+                        </span>
+                      ))}
+                    </div>
+                  ) : (
                   <div className="flex items-center gap-1.5 flex-wrap justify-end">
                     <button
                       type="button"
@@ -1338,6 +1363,7 @@ export default function AdminUsersManager({
                       x
                     </button>
                   </div>
+                  )}
                 </div>
               ))
             )}
@@ -1384,6 +1410,7 @@ export default function AdminUsersManager({
           </div>
         </div>
 
+        {isAllSites ? null : (
         <div className="rounded-xl border border-amber-900/50 bg-amber-950/20 p-5 space-y-4">
           <div>
             <h2 className="font-semibold text-lg">Potential duplicate accounts</h2>
@@ -1476,6 +1503,7 @@ export default function AdminUsersManager({
             </div>
           )}
         </div>
+        )}
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
           <div>
@@ -1584,6 +1612,20 @@ export default function AdminUsersManager({
                           Volunteer card
                         </a>
                       </div>
+                      {isAllSites ? (
+                        <div className="ml-auto flex items-center gap-1 flex-wrap justify-end max-w-[240px]">
+                          {(user.orgs ?? []).map((o) => (
+                            <span
+                              key={o.organizationId}
+                              className="text-[10px] uppercase tracking-wide rounded px-1.5 py-0.5 border border-zinc-700 text-zinc-300 bg-zinc-800/60"
+                              title={o.isCoach ? "Coach in this org" : undefined}
+                            >
+                              {o.organizationId}
+                              {o.isCoach ? " · Coach" : ""}
+                            </span>
+                          ))}
+                        </div>
+                      ) : (
                       <div className="ml-auto flex items-center gap-1.5 flex-wrap justify-end">
                         <button
                           type="button"
@@ -1743,6 +1785,7 @@ export default function AdminUsersManager({
                           x
                         </button>
                       </div>
+                      )}
                     </div>
                     );
                   })}
@@ -1791,6 +1834,12 @@ export default function AdminUsersManager({
         </div>
 
         <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+          {isAllSites ? (
+            <p className="text-sm text-zinc-500">
+              Admin role management is per organization. Switch to a specific site to manage admin access.
+            </p>
+          ) : (
+          <>
           <div>
             <h2 className="font-semibold text-lg">Admin Accounts</h2>
             <p className="text-zinc-400 text-sm mt-1">
@@ -1926,10 +1975,18 @@ export default function AdminUsersManager({
               })
             )}
           </div>
+          </>
+          )}
         </div>
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+        {isAllSites ? (
+          <p className="text-sm text-zinc-500">
+            The audit log is viewed per organization. Switch to a specific site to review promote/demote history.
+          </p>
+        ) : (
+        <>
         <div className="flex items-start justify-between gap-4">
           <div>
             <h2 className="font-semibold text-lg">Admin Audit Log</h2>
@@ -2059,6 +2116,8 @@ export default function AdminUsersManager({
             </button>
           </div>
         </div>
+        </>
+        )}
       </div>
 
       {confirmAction ? (

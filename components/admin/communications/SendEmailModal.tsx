@@ -13,7 +13,7 @@ export type RawContactInputClient = {
 type SendEmailModalProps = {
   open: boolean;
   onClose: () => void;
-  /** organizationId for the campaign + the admin API's ?org= switcher param. */
+  /** organizationId for the campaign + the admin API's ?org= switcher param. "all" (master-only aggregate views) creates a global campaign. */
   targetOrg: string;
   isMasterAdmin: boolean;
   /** Exactly one of these two must be non-empty. */
@@ -48,6 +48,8 @@ export default function SendEmailModal({
   const [error, setError] = useState("");
 
   const recipientCount = registeredUserIds.length || contacts.length;
+  const isAllSitesOrg = targetOrg === "all";
+  const targetOrgLabel = isAllSitesOrg ? "all sites" : targetOrg;
 
   if (!open) return null;
 
@@ -65,7 +67,7 @@ export default function SendEmailModal({
     }
     if (isMasterAdmin) {
       const ok = window.confirm(
-        `Send email to ${recipientCount} selected recipient(s) in ${targetOrg} now?\n\nSubject: ${subject.trim() || campaignTitle}\n\nThis cannot be undone.`,
+        `Send email to ${recipientCount} selected recipient(s) in ${targetOrgLabel} now?\n\nSubject: ${subject.trim() || campaignTitle}\n\nThis cannot be undone.`,
       );
       if (!ok) return;
     }
@@ -73,8 +75,8 @@ export default function SendEmailModal({
     setBusy(true);
     setError("");
     try {
-      const orgQuery = `org=${targetOrg}`;
-      const createRes = await fetch(`/api/admin/communications/campaigns?${orgQuery}`, {
+      const orgQuery = isAllSitesOrg ? "" : `org=${targetOrg}`;
+      const createRes = await fetch(`/api/admin/communications/campaigns${orgQuery ? `?${orgQuery}` : ""}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -82,7 +84,7 @@ export default function SendEmailModal({
           messageSubject: subject.trim() || null,
           messageBody,
           channels: ["EMAIL"],
-          organizationId: targetOrg,
+          organizationId: isAllSitesOrg ? null : targetOrg,
           ...(registeredUserIds.length > 0
             ? { registeredUserIds }
             : { contacts }),
@@ -96,7 +98,7 @@ export default function SendEmailModal({
 
       if (isMasterAdmin) {
         const sendRes = await fetch(
-          `/api/admin/communications/campaigns/${campaignId}/send-now?${orgQuery}`,
+          `/api/admin/communications/campaigns/${campaignId}/send-now${orgQuery ? `?${orgQuery}` : ""}`,
           { method: "POST" },
         );
         const sendJson = (await sendRes.json()) as {
@@ -107,7 +109,7 @@ export default function SendEmailModal({
         onSent?.({ sent: sendJson.result?.sent, failed: sendJson.result?.failed });
       } else {
         const subRes = await fetch(
-          `/api/admin/communications/campaigns/${campaignId}/submit-approval?${orgQuery}`,
+          `/api/admin/communications/campaigns/${campaignId}/submit-approval${orgQuery ? `?${orgQuery}` : ""}`,
           { method: "POST" },
         );
         const subJson = (await subRes.json()) as { error?: string; recipients?: number };
@@ -132,7 +134,7 @@ export default function SendEmailModal({
         <div>
           <h3 className="text-lg font-semibold">Email selected recipients</h3>
           <p className="text-sm text-zinc-400 mt-1">
-            {recipientCount} recipient(s) in {targetOrg}. Creates a Communications campaign with
+            {recipientCount} recipient(s) in {targetOrgLabel}. Creates a Communications campaign with
             an explicit audience.
             {isMasterAdmin
               ? " As Master Admin you can send immediately after create."
