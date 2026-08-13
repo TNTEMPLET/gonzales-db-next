@@ -91,14 +91,14 @@ async function readWorkbookHeadersAndSampleRows(
 
 export default function AdminSportsConnectDesk({
   targetOrg,
-  seasonYear: initialSeasonYear,
-  registrationHref,
-  registrationLabel,
+  seasonYear: initialSeasonYear = new Date().getFullYear(),
+  registrationHref = "/admin/registration",
+  registrationLabel = "Registration Config",
 }: {
   targetOrg: ContentOrgId;
-  seasonYear: number;
-  registrationHref: string;
-  registrationLabel: string;
+  seasonYear?: number;
+  registrationHref?: string;
+  registrationLabel?: string;
 }) {
   const orgQuery = `org=${targetOrg}`;
   const [activeSection, setActiveSection] = useState<DeskSectionId>("setup");
