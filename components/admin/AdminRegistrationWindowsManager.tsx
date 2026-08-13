@@ -34,6 +34,7 @@ export default function AdminRegistrationWindowsManager({
       startLocal: toDatetimeLocalInput(new Date().toISOString()),
       endLocal: toDatetimeLocalInput(new Date(Date.now() + 30 * 86400000).toISOString()),
     },
+    timezone: "America/Chicago",
     updatedAt: undefined,
   };
   const [startLocal, setStartLocal] = useState(fallback.startLocal);
