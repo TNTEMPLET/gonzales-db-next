@@ -1,11 +1,12 @@
 import type { AdminModule } from "@/lib/auth/adminRoles";
 
 export const ADMIN_DASHBOARD_CATEGORIES = [
-  "program",
+  "people",
+  "competition",
+  "park",
   "publishing",
-  "operations",
-  "integrations",
-  "community",
+  "orders",
+  "allstar",
 ] as const;
 
 export type AdminDashboardCategory = (typeof ADMIN_DASHBOARD_CATEGORIES)[number];
@@ -23,30 +24,29 @@ export const ADMIN_DASHBOARD_CATEGORY_META: Record<
   AdminDashboardCategory,
   CategoryMeta
 > = {
-  program: {
-    label: "Season Operations",
-    description:
-      "Run the season: teams, scores, tournaments, All-Star work, sponsors, and park details.",
+  people: {
+    label: "People & Access",
+    description: "Accounts, volunteer compliance (JDP & Abuse Awareness), coaching leads, and admin role assignments.",
+  },
+  competition: {
+    label: "Competition & Play",
+    description: "Teams, game scores, season scheduler, umpires (Assignr), SportsConnect imports, and registration windows.",
+  },
+  park: {
+    label: "Park & Tournaments",
+    description: "Bracket creator, tournament monitors, rainout alerts, and field rules.",
   },
   publishing: {
-    label: "Publishing & Messages",
-    description:
-      "Publish news, social posts, documents, and approved messages for families and coaches.",
+    label: "Publishing & Comms",
+    description: "Email campaigns (Resend), news publishing, social media, dugout feed moderation, and shared Google Drive.",
   },
-  operations: {
-    label: "Access & Back Office",
-    description:
-      "Manage admin access, reports, rainout alerts, and office workflows.",
+  orders: {
+    label: "Orders & Commerce",
+    description: "Cap orders, championship shirt orders, merch shop catalog, sponsors, and payment audit logs.",
   },
-  integrations: {
-    label: "Connected Services",
-    description:
-      "Open shared files and services that support schedules, officials, and league operations.",
-  },
-  community: {
-    label: "Community Safety",
-    description:
-      "Review coach community activity and handle moderation.",
+  allstar: {
+    label: "All-Star Program",
+    description: "Vault (cycles & ballots), candidate rosters, voting, and final roster overrides.",
   },
 };
 
@@ -62,28 +62,26 @@ const moduleCatalog: Record<
   { category: AdminDashboardCategory; sortOrder: number } | null
 > = {
   DASHBOARD: null,
-  TEAMS: { category: "program", sortOrder: 10 },
-  SCORES: { category: "program", sortOrder: 20 },
-  ALL_STAR_VAULT: { category: "program", sortOrder: 30 },
-  ALL_STAR_PAYMENTS: { category: "program", sortOrder: 31 },
-  SPONSORS: { category: "program", sortOrder: 40 },
-  NEWS_ADMIN: { category: "publishing", sortOrder: 10 },
-  SOCIAL_MEDIA: { category: "publishing", sortOrder: 20 },
-  COMMUNICATIONS: { category: "publishing", sortOrder: 30 },
-  ORG_DOCUMENTS: { category: "integrations", sortOrder: 10 },
-  ASSIGNR: { category: "integrations", sortOrder: 20 },
-  TOURNAMENT_BRACKETS: { category: "program", sortOrder: 25 },
-  TOURNAMENT_ALERTS: { category: "operations", sortOrder: 12 },
-  // People hub consolidates directory + volunteer cards (+ coaching interest UI).
-  USERS: { category: "operations", sortOrder: 10 },
-  VOLUNTEERS: { category: "operations", sortOrder: 11 },
-  // Dedicated high-privilege surface for Master Admins to manage roles across orgs (least-privilege focused).
-  ROLE_ASSIGNMENT: { category: "operations", sortOrder: 5 },
-  REGISTRATION_WINDOWS: { category: "program", sortOrder: 12 },
-  REPORTS: { category: "operations", sortOrder: 20 },
-  PARK_ALERTS: { category: "operations", sortOrder: 15 },
-  PARK_INFO: { category: "program", sortOrder: 26 },
-  DUGOUT_MODERATION: { category: "community", sortOrder: 10 },
+  USERS: { category: "people", sortOrder: 10 },
+  VOLUNTEERS: { category: "people", sortOrder: 11 },
+  ROLE_ASSIGNMENT: { category: "people", sortOrder: 12 },
+  TEAMS: { category: "competition", sortOrder: 10 },
+  SCORES: { category: "competition", sortOrder: 20 },
+  ASSIGNR: { category: "competition", sortOrder: 30 },
+  REGISTRATION_WINDOWS: { category: "competition", sortOrder: 40 },
+  TOURNAMENT_BRACKETS: { category: "park", sortOrder: 10 },
+  TOURNAMENT_ALERTS: { category: "park", sortOrder: 20 },
+  PARK_ALERTS: { category: "park", sortOrder: 30 },
+  PARK_INFO: { category: "park", sortOrder: 40 },
+  COMMUNICATIONS: { category: "publishing", sortOrder: 10 },
+  NEWS_ADMIN: { category: "publishing", sortOrder: 20 },
+  SOCIAL_MEDIA: { category: "publishing", sortOrder: 30 },
+  DUGOUT_MODERATION: { category: "publishing", sortOrder: 40 },
+  ORG_DOCUMENTS: { category: "publishing", sortOrder: 50 },
+  ALL_STAR_PAYMENTS: { category: "orders", sortOrder: 10 },
+  SPONSORS: { category: "orders", sortOrder: 20 },
+  REPORTS: { category: "orders", sortOrder: 30 },
+  ALL_STAR_VAULT: { category: "allstar", sortOrder: 10 },
 };
 
 export type AdminDashboardCardDescriptor = {

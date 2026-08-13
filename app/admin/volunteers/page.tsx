@@ -1,15 +1,26 @@
 import { redirect } from "next/navigation";
 
-/** Legacy URL — People hub Volunteer Cards section. */
-export default async function AdminVolunteersRedirectPage({
+export default async function LegacyRedirectPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string; userId?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { org, userId } = await searchParams;
+  const resolvedParams = await searchParams;
+  const targetBase = "/admin/people?section=volunteers";
   const params = new URLSearchParams();
-  params.set("section", "volunteers");
-  if (org) params.set("org", org);
-  if (userId) params.set("userId", userId);
-  redirect(`/admin/people?${params.toString()}`);
+  
+  if (targetBase.includes("?")) {
+    const [path, query] = targetBase.split("?");
+    const existing = new URLSearchParams(query);
+    existing.forEach((value, key) => params.set(key, value));
+  }
+
+  for (const [key, value] of Object.entries(resolvedParams)) {
+    if (value && typeof value === "string") {
+      params.set(key, value);
+    }
+  }
+
+  const basePath = targetBase.split("?")[0];
+  redirect(`${basePath}?${params.toString()}`);
 }

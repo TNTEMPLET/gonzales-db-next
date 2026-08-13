@@ -6,6 +6,7 @@ import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import AdminCoachingInterestManager from "@/components/admin/AdminCoachingInterestManager";
 import AdminUsersManager from "@/components/admin/AdminUsersManager";
 import AdminVolunteersManager from "@/components/admin/AdminVolunteersManager";
+import AdminRoleAssignmentConsole from "@/components/admin/AdminRoleAssignmentConsole";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 import {
@@ -35,27 +36,32 @@ const SECTION_META: Record<
     description:
       "Fall Ball coach leads, follow-up status, and export for registration planning.",
   },
+  roles: {
+    label: "Role Assignment",
+    description:
+      "Master Admin console: grant, change, and revoke organization admin roles with least-privilege guidance.",
+  },
 };
 
 export default function PeopleHub({
   targetOrg,
-  directoryScope,
-  initialSection,
+  directoryScope = targetOrg,
+  initialSection = "directory",
   focusUserId,
-  isMaster,
-  canDirectory,
-  canVolunteers,
-  canCoachingInterest,
+  isMaster = false,
+  canDirectory = true,
+  canVolunteers = true,
+  canCoachingInterest = true,
 }: {
   targetOrg: ContentOrgId;
   /** Directory-only scope; "all" is the master-only cross-org aggregate view. */
-  directoryScope: ContentOrgId | "all";
-  initialSection: PeopleSection;
+  directoryScope?: ContentOrgId | "all";
+  initialSection?: PeopleSection;
   focusUserId?: string | null;
-  isMaster: boolean;
-  canDirectory: boolean;
-  canVolunteers: boolean;
-  canCoachingInterest: boolean;
+  isMaster?: boolean;
+  canDirectory?: boolean;
+  canVolunteers?: boolean;
+  canCoachingInterest?: boolean;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -66,8 +72,9 @@ export default function PeopleHub({
     if (canDirectory) sections.push("directory");
     if (canVolunteers) sections.push("volunteers");
     if (canCoachingInterest) sections.push("coaching-interest");
+    if (isMaster) sections.push("roles");
     return sections;
-  }, [canDirectory, canVolunteers, canCoachingInterest]);
+  }, [canDirectory, canVolunteers, canCoachingInterest, isMaster]);
 
   const section = useMemo(() => {
     const fromUrl = parsePeopleSection(searchParams.get("section"));
@@ -81,12 +88,9 @@ export default function PeopleHub({
       const params = new URLSearchParams(searchParams.toString());
       params.set("section", next);
       params.set("org", targetOrg);
-      if (next !== "volunteers") {
-        params.delete("userId");
-      }
-      router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+      router.push(`/admin/people?${params.toString()}`);
     },
-    [pathname, router, searchParams, targetOrg],
+    [router, searchParams, targetOrg],
   );
 
   const setDirectoryScope = useCallback(
@@ -109,63 +113,59 @@ export default function PeopleHub({
 
   return (
     <div className="space-y-6">
-      <nav
-        className="flex flex-wrap gap-2 border-b border-zinc-800 pb-3"
-        aria-label="People sections"
-      >
-        {availableSections.map((id) => {
-          const active = section === id;
-          return (
+      <div className="border-b border-zinc-800">
+        <nav className="-mb-px flex flex-wrap gap-2 sm:gap-6" aria-label="People Hub Sections">
+          {availableSections.map((s) => {
+            const active = section === s;
+            return (
+              <button
+                key={s}
+                onClick={() => setSection(s)}
+                className={`border-b-2 pb-3 text-sm font-semibold transition-colors ${
+                  active
+                    ? "border-red-500 text-white"
+                    : "border-transparent text-zinc-400 hover:border-zinc-700 hover:text-zinc-200"
+                }`}
+              >
+                {SECTION_META[s].label}
+              </button>
+            );
+          })}
+        </nav>
+      </div>
+
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6 space-y-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <p className="text-sm text-zinc-400">{SECTION_META[section].description}</p>
+          {section === "directory" && canDirectory && isMaster ? (
             <button
-              key={id}
               type="button"
-              onClick={() => setSection(id)}
-              className={
-                active
-                  ? "rounded-lg border border-violet-500/60 bg-violet-950/50 px-3 py-2 text-sm font-medium text-violet-100"
-                  : "rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-2 text-sm font-medium text-zinc-300 hover:border-zinc-500 hover:text-white"
+              onClick={() =>
+                setDirectoryScope(directoryScope === "all" ? targetOrg : "all")
               }
-              aria-current={active ? "page" : undefined}
+              className="rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-500 hover:text-white"
             >
-              {SECTION_META[id].label}
+              {directoryScope === "all"
+                ? "Switch to single org view"
+                : "View all sites directory"}
             </button>
-          );
-        })}
-      </nav>
-
-      <p className="text-sm text-zinc-400">{SECTION_META[section].description}</p>
-
-      {section === "directory" && canDirectory && isMaster ? (
-        <div className="flex justify-end">
-          <button
-            type="button"
-            onClick={() =>
-              setDirectoryScope(directoryScope === "all" ? targetOrg : "all")
-            }
-            className="rounded-lg border border-zinc-700 bg-zinc-900/60 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:border-zinc-500 hover:text-white"
-          >
-            {directoryScope === "all"
-              ? "Switch to a single org"
-              : "View all sites"}
-          </button>
+          ) : null}
         </div>
-      ) : null}
 
-      {section === "directory" && canDirectory ? (
-        <AdminUsersManager targetOrg={directoryScope} />
-      ) : null}
+        {section === "directory" && canDirectory && (
+          <AdminUsersManager targetOrg={directoryScope} focusUserId={focusUserId} />
+        )}
 
-      {section === "volunteers" && canVolunteers ? (
-        <AdminVolunteersManager
-          targetOrg={targetOrg}
-          focusUserId={focusUserId || null}
-          isMaster={isMaster}
-        />
-      ) : null}
+        {section === "volunteers" && canVolunteers && (
+          <AdminVolunteersManager targetOrg={targetOrg} focusUserId={focusUserId} />
+        )}
 
-      {section === "coaching-interest" && canCoachingInterest ? (
-        <AdminCoachingInterestManager targetOrg={targetOrg} isMaster={isMaster} />
-      ) : null}
+        {section === "coaching-interest" && canCoachingInterest && (
+          <AdminCoachingInterestManager targetOrg={targetOrg} />
+        )}
+
+        {section === "roles" && isMaster && <AdminRoleAssignmentConsole />}
+      </div>
     </div>
   );
 }

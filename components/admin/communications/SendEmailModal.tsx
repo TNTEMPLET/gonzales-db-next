@@ -1,188 +1,191 @@
 "use client";
 
 import { useState } from "react";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
-/** Client-safe mirror of lib/communications/rawContacts.ts's RawContactInput — no server import. */
+export type RecipientTarget = {
+  email: string;
+  name?: string | null;
+  userId?: string | null;
+};
+
 export type RawContactInputClient = {
   email: string;
   name?: string | null;
-  sourceType?: string | null;
-  sourceId?: string | null;
 };
 
 type SendEmailModalProps = {
-  open: boolean;
+  isOpen?: boolean;
+  open?: boolean;
   onClose: () => void;
-  /** organizationId for the campaign + the admin API's ?org= switcher param. "all" (master-only aggregate views) creates a global campaign. */
-  targetOrg: string;
-  isMasterAdmin: boolean;
-  /** Exactly one of these two must be non-empty. */
+  recipients?: RecipientTarget[];
   registeredUserIds?: string[];
   contacts?: RawContactInputClient[];
-  maxRecipients?: number;
-  /** Optional boilerplate to prefill the message body with, e.g. a shared link. */
-  defaultBody?: string;
+  targetOrg: string;
+  isMasterAdmin?: boolean;
   onSent?: (result: { sent?: number; failed?: number; recipients?: number }) => void;
 };
 
-/**
- * Generalized from AdminUsersManager.tsx's sendEmailToSelectedUsers()/modal —
- * same POST /campaigns -> send-now (master) or submit-approval (non-master)
- * sequence, parameterized to accept either registeredUserIds or raw contacts.
- */
 export default function SendEmailModal({
+  isOpen,
   open,
   onClose,
-  targetOrg,
-  isMasterAdmin,
+  recipients = [],
   registeredUserIds = [],
   contacts = [],
-  maxRecipients = 500,
-  defaultBody = "",
+  targetOrg,
+  isMasterAdmin = false,
   onSent,
 }: SendEmailModalProps) {
-  const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState(defaultBody);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState("");
+  const [body, setBody] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
-  const recipientCount = registeredUserIds.length || contacts.length;
-  const isAllSitesOrg = targetOrg === "all";
-  const targetOrgLabel = isAllSitesOrg ? "all sites" : targetOrg;
+  const showModal = isOpen ?? open ?? false;
+  if (!showModal) return null;
 
-  if (!open) return null;
+  const validRecipients = recipients.filter((r) => r.email && r.email.includes("@"));
+  const explicitCount = registeredUserIds.length || contacts.length || validRecipients.length;
 
-  async function send() {
-    if (recipientCount === 0) return;
-    if (recipientCount > maxRecipients) {
-      setError(`Too many recipients (max ${maxRecipients}). Reduce your selection and try again.`);
+  const handleSend = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!subject.trim() || !body.trim()) {
+      setStatus({ type: "error", message: "Subject and message body are required." });
       return;
     }
-    const campaignTitle = title.trim() || `Email ${new Date().toISOString().slice(0, 10)}`;
-    const messageBody = body.trim();
-    if (!messageBody) {
-      setError("Message body is required.");
-      return;
-    }
-    if (isMasterAdmin) {
-      const ok = window.confirm(
-        `Send email to ${recipientCount} selected recipient(s) in ${targetOrgLabel} now?\n\nSubject: ${subject.trim() || campaignTitle}\n\nThis cannot be undone.`,
-      );
-      if (!ok) return;
-    }
 
-    setBusy(true);
-    setError("");
+    setLoading(true);
+    setStatus(null);
+
     try {
+      const userIds = registeredUserIds.length > 0
+        ? registeredUserIds
+        : (validRecipients.map((r) => r.userId).filter(Boolean) as string[]);
+      const rawEmails = contacts.length > 0
+        ? contacts.map((c) => c.email)
+        : validRecipients.filter((r) => !r.userId).map((r) => r.email);
+
+      const isAllSitesOrg = targetOrg === "all";
       const orgQuery = isAllSitesOrg ? "" : `org=${targetOrg}`;
-      const createRes = await fetch(`/api/admin/communications/campaigns${orgQuery ? `?${orgQuery}` : ""}`, {
+
+      const res = await fetch(`/api/admin/communications/campaigns${orgQuery ? `?${orgQuery}` : ""}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          title: campaignTitle,
-          messageSubject: subject.trim() || null,
-          messageBody,
-          channels: ["EMAIL"],
           organizationId: isAllSitesOrg ? null : targetOrg,
-          ...(registeredUserIds.length > 0
-            ? { registeredUserIds }
-            : { contacts }),
+          title: subject,
+          subject,
+          htmlBody: `<div style="font-family: sans-serif; line-height: 1.6;">${body.replace(/\n/g, "<br/>")}</div>`,
+          plainTextBody: body,
+          registeredUserIds: userIds,
+          rawEmails: rawEmails,
+          audienceRule: "EXPLICIT_USERS",
+          sendNow: true,
         }),
       });
-      const createJson = (await createRes.json()) as { error?: string; data?: { id: string } };
-      if (!createRes.ok || !createJson.data?.id) {
-        throw new Error(createJson.error || "Failed to create campaign");
-      }
-      const campaignId = createJson.data.id;
 
-      if (isMasterAdmin) {
-        const sendRes = await fetch(
-          `/api/admin/communications/campaigns/${campaignId}/send-now${orgQuery ? `?${orgQuery}` : ""}`,
-          { method: "POST" },
-        );
-        const sendJson = (await sendRes.json()) as {
-          error?: string;
-          result?: { sent: number; failed: number };
-        };
-        if (!sendRes.ok) throw new Error(sendJson.error || "Send failed");
-        onSent?.({ sent: sendJson.result?.sent, failed: sendJson.result?.failed });
-      } else {
-        const subRes = await fetch(
-          `/api/admin/communications/campaigns/${campaignId}/submit-approval${orgQuery ? `?${orgQuery}` : ""}`,
-          { method: "POST" },
-        );
-        const subJson = (await subRes.json()) as { error?: string; recipients?: number };
-        if (!subRes.ok) throw new Error(subJson.error || "Submit for approval failed");
-        onSent?.({ recipients: subJson.recipients ?? recipientCount });
+      const data = await res.json();
+      if (!res.ok) {
+        throw new Error(data.error || "Failed to create email campaign.");
       }
 
-      setTitle("");
-      setSubject("");
-      setBody(defaultBody);
-      onClose();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to send email");
+      onSent?.({ sent: explicitCount });
+
+      setStatus({
+        type: "success",
+        message: `Email campaign queued successfully for ${explicitCount} recipients!`,
+      });
+
+      setTimeout(() => {
+        setSubject("");
+        setBody("");
+        setStatus(null);
+        onClose();
+      }, 1500);
+    } catch (err: any) {
+      setStatus({ type: "error", message: err.message || "An error occurred." });
     } finally {
-      setBusy(false);
+      setLoading(false);
     }
-  }
+  };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
-      <div className="w-full max-w-lg rounded-xl border border-zinc-700 bg-zinc-900 p-5 space-y-4 shadow-xl">
-        <div>
-          <h3 className="text-lg font-semibold">Email selected recipients</h3>
-          <p className="text-sm text-zinc-400 mt-1">
-            {recipientCount} recipient(s) in {targetOrgLabel}. Creates a Communications campaign with
-            an explicit audience.
-            {isMasterAdmin
-              ? " As Master Admin you can send immediately after create."
-              : " You will submit for Board Member+ approval before send."}
-          </p>
-        </div>
-        {error ? <p className="text-sm text-red-400">{error}</p> : null}
-        <input
-          value={title}
-          onChange={(e) => setTitle(e.target.value)}
-          placeholder="Campaign title (internal)"
-          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-        />
-        <input
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          placeholder="Email subject"
-          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-        />
-        <textarea
-          value={body}
-          onChange={(e) => setBody(e.target.value)}
-          rows={8}
-          placeholder="Message body"
-          className="w-full rounded-lg bg-zinc-950 border border-zinc-700 px-3 py-2 text-sm"
-        />
-        <div className="flex flex-wrap justify-end gap-2">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 backdrop-blur-sm">
+      <div className="w-full max-w-xl rounded-2xl border border-zinc-800 bg-zinc-900 p-6 shadow-2xl text-white space-y-5">
+        <div className="flex items-start justify-between">
+          <div>
+            <h3 className="text-xl font-bold tracking-tight">Broadcast Email Campaign</h3>
+            <p className="mt-1 text-xs text-zinc-400">
+              Sending to <span className="font-semibold text-white">{explicitCount} recipients</span> via Communications module.
+            </p>
+          </div>
           <button
-            type="button"
-            disabled={busy}
             onClick={onClose}
-            className="rounded-lg border border-zinc-700 px-4 py-2 text-sm disabled:opacity-60"
+            className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white"
           >
-            Cancel
-          </button>
-          <button
-            type="button"
-            disabled={busy || !body.trim() || recipientCount === 0}
-            onClick={() => void send()}
-            className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
-          >
-            {busy
-              ? "Working…"
-              : isMasterAdmin
-                ? `Create & send now (${recipientCount})`
-                : `Create & submit for approval (${recipientCount})`}
+            ✕
           </button>
         </div>
+
+        {status && (
+          <div
+            className={`rounded-xl border p-3 text-sm font-medium ${
+              status.type === "success"
+                ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
+                : "border-red-500/30 bg-red-500/10 text-red-300"
+            }`}
+          >
+            {status.message}
+          </div>
+        )}
+
+        <form onSubmit={handleSend} className="space-y-4">
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+              Subject Line
+            </label>
+            <input
+              type="text"
+              value={subject}
+              onChange={(e) => setSubject(e.target.value)}
+              placeholder="e.g. Season Update & Field Readiness"
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white focus:border-red-500 focus:outline-none"
+              required
+            />
+          </div>
+
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wider text-zinc-400 mb-1.5">
+              Message Body
+            </label>
+            <textarea
+              value={body}
+              onChange={(e) => setBody(e.target.value)}
+              rows={6}
+              placeholder="Type your message to families and coaches here..."
+              className="w-full rounded-xl border border-zinc-800 bg-zinc-950 p-3 text-sm text-white focus:border-red-500 focus:outline-none"
+              required
+            />
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-xl border border-zinc-800 px-4 py-2 text-sm font-semibold text-zinc-300 hover:bg-zinc-800"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading || explicitCount === 0}
+              className="rounded-xl bg-red-500 px-5 py-2 text-sm font-semibold text-white hover:bg-red-400 disabled:opacity-50"
+            >
+              {loading ? "Sending..." : `Send to ${explicitCount} Recipient(s)`}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   );

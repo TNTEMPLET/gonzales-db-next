@@ -1,15 +1,26 @@
 import { redirect } from "next/navigation";
 
-/** Legacy URL — People hub Coaching Interest section. */
-export default async function AdminCoachingInterestRedirectPage({
+export default async function LegacyRedirectPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { org } = await searchParams;
+  const resolvedParams = await searchParams;
+  const targetBase = "/admin/people?section=coaching-interest";
   const params = new URLSearchParams();
-  params.set("section", "coaching-interest");
-  if (org) params.set("org", org);
-  else params.set("org", "fallball");
-  redirect(`/admin/people?${params.toString()}`);
+  
+  if (targetBase.includes("?")) {
+    const [path, query] = targetBase.split("?");
+    const existing = new URLSearchParams(query);
+    existing.forEach((value, key) => params.set(key, value));
+  }
+
+  for (const [key, value] of Object.entries(resolvedParams)) {
+    if (value && typeof value === "string") {
+      params.set(key, value);
+    }
+  }
+
+  const basePath = targetBase.split("?")[0];
+  redirect(`${basePath}?${params.toString()}`);
 }
