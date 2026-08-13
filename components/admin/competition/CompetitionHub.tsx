@@ -107,7 +107,7 @@ export default function CompetitionHub({
         {tab === "scheduler" && <AdminSchedulerManager targetOrg={targetOrg} />}
         {tab === "assignr" && <AdminAssignrHub targetOrg={targetOrg} />}
         {tab === "sports-connect" && <AdminSportsConnectDesk targetOrg={targetOrg} />}
-        {tab === "registration" && <AdminRegistrationWindowsManager targetOrg={targetOrg} />}
+        {tab === "registration" && <AdminRegistrationWindowsManager organizationId={targetOrg} />}
       </div>
     </div>
   );

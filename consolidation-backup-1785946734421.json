@@ -1,0 +1,1537 @@
+{
+  "generatedAt": "2026-08-05T16:18:22.411Z",
+  "groups": [
+    {
+      "email": "trent@apbaseball.com",
+      "survivor": {
+        "id": "cmrmgb7ny000004jsf3ybpj0b",
+        "email": "trent@apbaseball.com",
+        "name": "Trent Templet",
+        "firstName": "Trent",
+        "lastName": "Templet",
+        "isBlocked": false,
+        "contactPhone": null,
+        "googleSub": "101192588149206187688",
+        "passwordHash": null,
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-07-15T19:06:26.062Z",
+        "updatedAt": "2026-08-05T03:00:28.743Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmokakrm90000ajdxcz6ilvcq",
+          "email": "trent@apbaseball.com",
+          "name": "Trent Templet",
+          "firstName": "Trent",
+          "lastName": "Templet",
+          "isBlocked": false,
+          "contactPhone": null,
+          "googleSub": null,
+          "passwordHash": null,
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-04-29T16:51:14.769Z",
+          "updatedAt": "2026-05-02T16:33:28.904Z"
+        },
+        {
+          "id": "cmolo84d9000012dxuuccg8rq",
+          "email": "trent@apbaseball.com",
+          "name": "Trent Templet",
+          "firstName": "Trent",
+          "lastName": "Templet",
+          "isBlocked": false,
+          "contactPhone": null,
+          "googleSub": null,
+          "passwordHash": null,
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-04-30T16:01:05.565Z",
+          "updatedAt": "2026-07-29T23:30:36.364Z"
+        },
+        {
+          "id": "cmon5mal7000004jyv2wptvz6",
+          "email": "trent@apbaseball.com",
+          "name": "Trent Templet",
+          "firstName": "Trent",
+          "lastName": "Templet",
+          "isBlocked": false,
+          "contactPhone": null,
+          "googleSub": null,
+          "passwordHash": null,
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-05-01T16:55:46.459Z",
+          "updatedAt": "2026-07-29T23:53:37.294Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [
+          {
+            "id": "cmookddxx000004l85jl9rgf0",
+            "tokenHash": "771ed8ea944571bfac670803c43ef805f81c9e401107c7245691a8e6c4f9629e",
+            "expiresAt": "2026-05-09T16:36:31.312Z",
+            "createdAt": "2026-05-02T16:36:31.317Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmooni4t00001u8dxus7vwgon",
+            "tokenHash": "f7573fa311d9b8292216c64288d8e773fcd6ebe8ebba1fb075e8af0098cbd1d7",
+            "expiresAt": "2026-05-09T18:04:11.603Z",
+            "createdAt": "2026-05-02T18:04:11.604Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmoopn7ka000004jo1mwb8ann",
+            "tokenHash": "62bd3258cfd875b58db06cd95502058b7489e136470c90ea940f1366f86837a8",
+            "expiresAt": "2026-05-09T19:04:07.685Z",
+            "createdAt": "2026-05-02T19:04:07.690Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmosnnkew000004lax0u2qjrx",
+            "tokenHash": "99ad69bce1f91ecb8ba6db04754bc4688655142df9fac69676f20afad8a77733",
+            "expiresAt": "2026-05-12T13:19:29.812Z",
+            "createdAt": "2026-05-05T13:19:29.816Z",
+            "userId": "cmon5mal7000004jyv2wptvz6"
+          },
+          {
+            "id": "cmosoc3ha000004kztd2x6lhv",
+            "tokenHash": "e060a01f7de60318ed805b4d3df2a8dbedc22d6e77e1d0532f9441cbe92d938a",
+            "expiresAt": "2026-05-12T13:38:34.265Z",
+            "createdAt": "2026-05-05T13:38:34.270Z",
+            "userId": "cmon5mal7000004jyv2wptvz6"
+          },
+          {
+            "id": "cmosp7yia000004l72sk3kd0o",
+            "tokenHash": "162a21cb4e9b69bf0bf2a8cc48836b65e975eb705237a079f94a235a40a2650e",
+            "expiresAt": "2026-05-12T14:03:20.810Z",
+            "createdAt": "2026-05-05T14:03:20.818Z",
+            "userId": "cmon5mal7000004jyv2wptvz6"
+          },
+          {
+            "id": "cmot43338000104jsom671qdo",
+            "tokenHash": "0487fbc01d7fc8b1c39ed6a85d0cf21e5c123957a4e0c9f928b66a3dec5bf7ca",
+            "expiresAt": "2026-05-12T20:59:27.715Z",
+            "createdAt": "2026-05-05T20:59:27.716Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmovky0u20001qhdxsdavfa4l",
+            "tokenHash": "087c15665750bb21812518346bd493df78cb174df35c56fc4a866abdfd82ba5b",
+            "expiresAt": "2026-05-14T14:26:57.336Z",
+            "createdAt": "2026-05-07T14:26:57.338Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmp1j1qfh0001fmdxlzrkq649",
+            "tokenHash": "8b22d842bd9df8d9037ac2b9d379beaf771facef493ca3e026ada6a61a395f4c",
+            "expiresAt": "2026-05-18T18:20:28.300Z",
+            "createdAt": "2026-05-11T18:20:28.301Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmp490hrv000104l5y01065lt",
+            "tokenHash": "0066ad4e43f5da0b4ea4c03ada6e8a9ccf10c9c60ba533318c4d2d09c31f27db",
+            "expiresAt": "2026-05-20T16:02:52.794Z",
+            "createdAt": "2026-05-13T16:02:52.795Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmp4alfr3000004l5vfsy14vy",
+            "tokenHash": "2ed21924fdc94801dd3d61f08b1ee83d3fd059fcd9b820c7820111142de53b2f",
+            "expiresAt": "2026-05-20T16:47:09.562Z",
+            "createdAt": "2026-05-13T16:47:09.567Z",
+            "userId": "cmon5mal7000004jyv2wptvz6"
+          },
+          {
+            "id": "cmp77wuui0001kjdxtuuo6p8c",
+            "tokenHash": "dfb8b93f141c7f6b1a805967f1eacaefe129de32c674f29a6d883f40da1d62e8",
+            "expiresAt": "2026-05-22T17:55:22.026Z",
+            "createdAt": "2026-05-15T17:55:22.026Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmpbllzd90001zldx2teexdo4",
+            "tokenHash": "84f0b8fb5ad358b54964be47b0ac1c0b87082dec20fa4c07ef730e4c795136c1",
+            "expiresAt": "2026-05-25T19:29:53.996Z",
+            "createdAt": "2026-05-18T19:29:53.997Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmpd8anaa000004larlip7jwv",
+            "tokenHash": "eab4ac5b9c9f938cddb12b7f3dcdc46cfd7e4701663301b0c150e012cca7cb07",
+            "expiresAt": "2026-05-26T22:52:42.459Z",
+            "createdAt": "2026-05-19T22:52:42.466Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmpdc8e06000004jps0a0yg54",
+            "tokenHash": "33b1b30d7230b873e0f0595cf891b7dedf0e7d1a7c1b0a5ef19bc7c043fca275",
+            "expiresAt": "2026-05-27T00:42:55.585Z",
+            "createdAt": "2026-05-20T00:42:55.590Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmphcjxf2000101o0dq9vn54y",
+            "tokenHash": "d295e477958fe6a0b0e72978744f8a8aff35ff267eb6a6a139b2966c24b08431",
+            "expiresAt": "2026-05-29T20:02:58.669Z",
+            "createdAt": "2026-05-22T20:02:58.670Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmphdut200001s7soxtrvt98j",
+            "tokenHash": "f9b37f3e56f6c39109e107a1075e9aa7a0b05f4e9c5a964330232a39ecbf8886",
+            "expiresAt": "2026-05-29T20:39:25.848Z",
+            "createdAt": "2026-05-22T20:39:25.849Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmpkgi24m000103kgtxqycusz",
+            "tokenHash": "76b72437075c0c416ceb1c26c0432247f11cb29eb65ba48ad7174ea5e43d5a17",
+            "expiresAt": "2026-06-01T00:16:48.453Z",
+            "createdAt": "2026-05-25T00:16:48.454Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmpl7xbbs00015nkg780113eu",
+            "tokenHash": "42f454ca85090bcce766c6c5ea5cdadcffa0a8ba85c421602d1cc659ed48ca5e",
+            "expiresAt": "2026-06-01T13:04:29.847Z",
+            "createdAt": "2026-05-25T13:04:29.848Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmplm533x0001xrkgsr4bwteh",
+            "tokenHash": "3c55d5cac501cb13e0c1bb37f50a0edc414d8e2a910cb52db4584c2cba559a4c",
+            "expiresAt": "2026-06-01T19:42:27.068Z",
+            "createdAt": "2026-05-25T19:42:27.069Z",
+            "userId": "cmokakrm90000ajdxcz6ilvcq"
+          },
+          {
+            "id": "cmppuf8jo000005jrrj3z0u7w",
+            "tokenHash": "a94fd1661336a6d5839067eff2c4988c21d8a04f15fdaf5d74dd8d0e1ac5a052",
+            "expiresAt": "2026-06-04T18:45:22.301Z",
+            "createdAt": "2026-05-28T18:45:22.308Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmpzr5u2e000004k0u29su76k",
+            "tokenHash": "67fc8b7a2908bfb323e24968b8ec53f1e53de158454cebc08c1d69659fd6b646",
+            "expiresAt": "2026-06-11T17:11:46.544Z",
+            "createdAt": "2026-06-04T17:11:46.550Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmqil1i7a000104l78ok2mj26",
+            "tokenHash": "d6ef7602ca942cad5ffb1edc3990afe91de612311c7192e2c640bd0b1dabed45",
+            "expiresAt": "2026-06-24T21:28:04.197Z",
+            "createdAt": "2026-06-17T21:28:04.198Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmql9z7bd000104l2k7i2yth5",
+            "tokenHash": "01f58fd7cca5839bf74275d3b445d05e49c183181c843b8f6ef686207af2c76e",
+            "expiresAt": "2026-06-26T18:41:39.528Z",
+            "createdAt": "2026-06-19T18:41:39.529Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmquyub59000104l2grpv08zl",
+            "tokenHash": "4b5fefe03ab27e4a3590e87f24c494221e825143eb8e35f32b3d8a0ce3287692",
+            "expiresAt": "2026-07-03T13:27:37.195Z",
+            "createdAt": "2026-06-26T13:27:37.197Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmquyuc1v000104le789jalc6",
+            "tokenHash": "568cc25b039bbb84fa69c1a8f65b564d912b92e4238186a00eff31ed428d6a1c",
+            "expiresAt": "2026-07-03T13:27:38.370Z",
+            "createdAt": "2026-06-26T13:27:38.371Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmqzxn1i8000104l650pgqdgc",
+            "tokenHash": "802f756e4ecfa3d449420472f88decf6a355af4c08ca3bca7b47fc39f8ef3325",
+            "expiresAt": "2026-07-07T00:52:49.374Z",
+            "createdAt": "2026-06-30T00:52:49.376Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmrclum9c000104l4iyfb6t7b",
+            "tokenHash": "53ffe32df45f2a749aeca136dab3420abc4113825c97079a87a74c53a8259813",
+            "expiresAt": "2026-07-15T21:43:47.759Z",
+            "createdAt": "2026-07-08T21:43:47.760Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmrmbi0so000004l879kscz87",
+            "tokenHash": "31287b8f77070c139c71968cb3dd5aa8c89949f135c7693da6e952ffd104433a",
+            "expiresAt": "2026-07-22T16:51:45.668Z",
+            "createdAt": "2026-07-15T16:51:45.673Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmrmh2hy2000004jv95l81rnr",
+            "tokenHash": "fddfc08d022abd7804db80c2ab2565c6851d50c67e0a8e6f101265f288fd19a0",
+            "expiresAt": "2026-07-22T19:27:39.092Z",
+            "createdAt": "2026-07-15T19:27:39.098Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmrmjkzmb000104jw1txm4kpe",
+            "tokenHash": "da5443e1c3021b77af3c771bc89b07cbcc0ece8fbc2f8e8f7c781e7f8f11d16d",
+            "expiresAt": "2026-07-22T20:38:01.041Z",
+            "createdAt": "2026-07-15T20:38:01.043Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmrv49krh000004l579ytpnck",
+            "tokenHash": "d8621c408e7befdd8258450ae89861f4e2daf4991960344d300c558ed86b4829",
+            "expiresAt": "2026-07-28T20:39:09.912Z",
+            "createdAt": "2026-07-21T20:39:09.917Z",
+            "userId": "cmon5mal7000004jyv2wptvz6"
+          },
+          {
+            "id": "cmrvib8vx000004l5y2r93ied",
+            "tokenHash": "259e9632d14bba6b261b73c6392160ae89f4ea84d167609abc8f3a6f1903424b",
+            "expiresAt": "2026-07-29T03:12:22.457Z",
+            "createdAt": "2026-07-22T03:12:22.461Z",
+            "userId": "cmon5mal7000004jyv2wptvz6"
+          },
+          {
+            "id": "cmrxndm5u000004lboko5r7n6",
+            "tokenHash": "79301970897969a50109fd5a1ab8643589eeeb982912917a4d158e3f64477f99",
+            "expiresAt": "2026-07-30T15:09:43.406Z",
+            "createdAt": "2026-07-23T15:09:43.411Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cmry59bp3000104l4fcsgcikt",
+            "tokenHash": "7fa369389d7cb2cb0bef23dc88c41b5ae3f59c1dbd5d62ab3dbf12fe37680954",
+            "expiresAt": "2026-07-30T23:30:16.310Z",
+            "createdAt": "2026-07-23T23:30:16.311Z",
+            "userId": "cmolo84d9000012dxuuccg8rq"
+          },
+          {
+            "id": "cms6pwvc1000004jx1c7g0i1n",
+            "tokenHash": "3a5cd36e9ca6709ff280cc04293479d29c08eed878d9de5f8378875ea60c673c",
+            "expiresAt": "2026-08-05T23:30:36.572Z",
+            "createdAt": "2026-07-29T23:30:36.577Z",
+            "userId": "cmon5mal7000004jyv2wptvz6"
+          }
+        ],
+        "dugoutComment": [
+          {
+            "id": "cmooox1v10000l5dx1hirnbue",
+            "content": "I have Giphy working in replies now...",
+            "mediaUrl": "https://media2.giphy.com/media/v1.Y2lkPTNhZTVhOTFiOW84ZzM2bTE2d2M3d2t1YjZ5azBubnFwc2l4MTQzYWdkOW90cGJobCZlcD12MV9naWZzX3NlYXJjaCZjdD1n/dyoqmRjK1gXgA/giphy.gif",
+            "mediaType": "GIF",
+            "postId": "cmon7mwwt000104l5yqwhdiin",
+            "authorId": "cmokakrm90000ajdxcz6ilvcq",
+            "parentId": null,
+            "createdAt": "2026-05-02T18:43:47.245Z",
+            "updatedAt": "2026-05-02T18:43:47.245Z"
+          },
+          {
+            "id": "cmot47qo4000104l85fp5eug4",
+            "content": "",
+            "mediaUrl": "https://media4.giphy.com/media/v1.Y2lkPTNhZTVhOTFiMG8waHhyamthMHBobnQ0MGE4dnVobzVhdnNpams2amlkb2gxd3ZrMiZlcD12MV9naWZzX3NlYXJjaCZjdD1n/XQs7HoqFjsyawfTsVP/giphy.gif",
+            "mediaType": "GIF",
+            "postId": "cmot0gm37000104l81m8tbio9",
+            "authorId": "cmokakrm90000ajdxcz6ilvcq",
+            "parentId": null,
+            "createdAt": "2026-05-05T21:03:04.900Z",
+            "updatedAt": "2026-05-05T21:03:04.900Z"
+          }
+        ],
+        "dugoutPostLike": [
+          {
+            "id": "cmon7pj61000204l4hdxafvpw",
+            "postId": "cmon7mwwt000104l5yqwhdiin",
+            "userId": "cmokakrm90000ajdxcz6ilvcq",
+            "reaction": "🎉",
+            "createdAt": "2026-05-01T17:54:16.778Z"
+          },
+          {
+            "id": "cmot47fmm000004l8hae7eiwk",
+            "postId": "cmot0gm37000104l81m8tbio9",
+            "userId": "cmokakrm90000ajdxcz6ilvcq",
+            "reaction": "👍",
+            "createdAt": "2026-05-05T21:02:50.590Z"
+          }
+        ],
+        "dugoutNotificationCursor": [
+          {
+            "id": "cmomzwnm8000004jlcuk5kgnl",
+            "userId": "cmolo84d9000012dxuuccg8rq",
+            "lastSeenAt": "1970-01-01T00:00:00.000Z",
+            "updatedAt": "2026-05-01T14:15:52.208Z"
+          },
+          {
+            "id": "cmon7mi27000004juu9hn3vo5",
+            "userId": "cmokakrm90000ajdxcz6ilvcq",
+            "lastSeenAt": "1970-01-01T00:00:00.000Z",
+            "updatedAt": "2026-05-01T17:51:55.375Z"
+          },
+          {
+            "id": "cmosnnpbf000204la30feto3j",
+            "userId": "cmon5mal7000004jyv2wptvz6",
+            "lastSeenAt": "1970-01-01T00:00:00.000Z",
+            "updatedAt": "2026-05-05T13:19:36.171Z"
+          }
+        ],
+        "allStarVoteSubmission": [],
+        "allStarInvite": [],
+        "teamCoachAssignment": [],
+        "volunteerProfile": [
+          {
+            "id": "cmrm48o7q003sosny59a59wac",
+            "organizationId": "ascension",
+            "registeredUserId": "cmon5mal7000004jyv2wptvz6",
+            "seasonYear": 2026,
+            "status": "ACTIVE",
+            "notes": null,
+            "aMark": false,
+            "createdAt": "2026-07-15T13:28:32.147Z",
+            "updatedAt": "2026-07-15T13:28:32.147Z"
+          },
+          {
+            "id": "cmrm45fru00cmjnnyndp984r1",
+            "organizationId": "gonzales",
+            "registeredUserId": "cmolo84d9000012dxuuccg8rq",
+            "seasonYear": 2026,
+            "status": "ACTIVE",
+            "notes": null,
+            "aMark": true,
+            "createdAt": "2026-07-15T13:26:01.242Z",
+            "updatedAt": "2026-07-15T19:35:12.190Z"
+          }
+        ],
+        "registeredUserOrgProfile": [
+          {
+            "id": "01df040d-ea4e-4c82-ba06-60d35dcba258",
+            "registeredUserId": "cmokakrm90000ajdxcz6ilvcq",
+            "organizationId": "master",
+            "isCoach": false,
+            "ageGroup": null,
+            "assignedTeam": null,
+            "createdAt": "2026-04-29T16:51:14.769Z",
+            "updatedAt": "2026-05-02T16:33:28.904Z"
+          },
+          {
+            "id": "ec8c657a-fd89-4baf-b3b8-37b84c3bb916",
+            "registeredUserId": "cmolo84d9000012dxuuccg8rq",
+            "organizationId": "gonzales",
+            "isCoach": true,
+            "ageGroup": null,
+            "assignedTeam": null,
+            "createdAt": "2026-04-30T16:01:05.565Z",
+            "updatedAt": "2026-07-29T23:30:36.364Z"
+          },
+          {
+            "id": "076336c3-612a-4126-bf9d-1cb7ebef6078",
+            "registeredUserId": "cmon5mal7000004jyv2wptvz6",
+            "organizationId": "ascension",
+            "isCoach": true,
+            "ageGroup": null,
+            "assignedTeam": null,
+            "createdAt": "2026-05-01T16:55:46.459Z",
+            "updatedAt": "2026-07-29T23:53:37.294Z"
+          }
+        ]
+      }
+    },
+    {
+      "email": "jb.18charlie@gmail.com",
+      "survivor": {
+        "id": "cmolmyxjp001cwudxtejc7uui",
+        "email": "jb.18charlie@gmail.com",
+        "name": "Jean Becnel",
+        "firstName": "Jean",
+        "lastName": "Becnel",
+        "isBlocked": false,
+        "contactPhone": "225-439-1102",
+        "googleSub": null,
+        "passwordHash": "$2b$10$QUuBLIOgiqUYGK4QgAuPlu4917vy7E5yf6CsBOh4ukyrWllNGYUES",
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-04-30T15:25:57.205Z",
+        "updatedAt": "2026-05-13T03:06:10.917Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmokcckfc000l8idxet7fp0u3",
+          "email": "jb.18charlie@gmail.com",
+          "name": "Jean Becnel",
+          "firstName": "Jean",
+          "lastName": "Becnel",
+          "isBlocked": false,
+          "contactPhone": "225-439-1102",
+          "googleSub": null,
+          "passwordHash": "$2b$10$gRKz/tyclJnHTpU4bjSpTetKu6Z6Dm4K.RFbqr4URa7horrmYijTa",
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-04-29T17:40:51.432Z",
+          "updatedAt": "2026-05-05T19:45:17.004Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [
+          {
+            "id": "cmot1fp3f000004l8tsbrdel7",
+            "tokenHash": "f5a34cd41c773352d671a34dca517e3591a0ddf8795aa73d10e8d6af3af01bc0",
+            "expiresAt": "2026-05-12T19:45:17.255Z",
+            "createdAt": "2026-05-05T19:45:17.259Z",
+            "userId": "cmokcckfc000l8idxet7fp0u3"
+          },
+          {
+            "id": "cmph6fo8m000004l43sjn9ct8",
+            "tokenHash": "1cc4043f233381041d048220ba11f2b1be84a5bea09ad2ec70a960c4c13f793a",
+            "expiresAt": "2026-05-29T17:11:42.446Z",
+            "createdAt": "2026-05-22T17:11:42.454Z",
+            "userId": "cmokcckfc000l8idxet7fp0u3"
+          }
+        ],
+        "dugoutComment": [],
+        "dugoutPostLike": [],
+        "dugoutNotificationCursor": [
+          {
+            "id": "cmot1fszh000004k4qotrvypj",
+            "userId": "cmokcckfc000l8idxet7fp0u3",
+            "lastSeenAt": "1970-01-01T00:00:00.000Z",
+            "updatedAt": "2026-05-05T19:45:22.301Z"
+          }
+        ],
+        "allStarVoteSubmission": [
+          {
+            "id": "cmot2a1xo000204l2l1xybg8h",
+            "ballotCycleId": "cmosno97i000004jrkdms8faf",
+            "coachUserId": "cmokcckfc000l8idxet7fp0u3",
+            "phase": "FIRST_TEAM",
+            "organizationId": "ascension",
+            "ageGroup": "8U MAJ LLB",
+            "submittedAt": "2026-05-05T20:08:53.580Z",
+            "createdAt": "2026-05-05T20:08:53.580Z"
+          },
+          {
+            "id": "cmpikwmgu000104l59nl3cljq",
+            "ballotCycleId": "cmpfkoln8000005l8vpgm457m",
+            "coachUserId": "cmokcckfc000l8idxet7fp0u3",
+            "phase": "FIRST_TEAM",
+            "organizationId": "gonzales",
+            "ageGroup": "6U DYB",
+            "submittedAt": "2026-05-23T16:44:34.110Z",
+            "createdAt": "2026-05-23T16:44:34.110Z"
+          }
+        ],
+        "allStarInvite": [
+          {
+            "id": "cmpfkr4b8001a04l11u17mji7",
+            "ballotCycleId": "cmpfkoln8000005l8vpgm457m",
+            "phase": "FIRST_TEAM",
+            "tokenHash": null,
+            "inviteToken": null,
+            "organizationId": "gonzales",
+            "ageGroup": "6U DYB",
+            "invitedEmail": "jb.18charlie@gmail.com",
+            "invitedUserId": "cmokcckfc000l8idxet7fp0u3",
+            "createdByAdminId": "cmastertrent0000000000000001",
+            "revokedAt": null,
+            "openedAt": null,
+            "expiresAt": null,
+            "createdAt": "2026-05-21T14:16:58.772Z"
+          }
+        ],
+        "teamCoachAssignment": [
+          {
+            "id": "cmolw6lxq002q6bdx0heusb0n",
+            "teamId": "cmoltct0v006u46dxub9giesq",
+            "registeredUserId": "cmokcckfc000l8idxet7fp0u3",
+            "role": "ASSISTANT_COACH",
+            "createdAt": "2026-04-30T19:43:51.950Z",
+            "updatedAt": "2026-04-30T19:43:51.950Z"
+          },
+          {
+            "id": "cmolw888u004g6bdxno264k3s",
+            "teamId": "cmoltfphb00c646dxusm4ayv7",
+            "registeredUserId": "cmokcckfc000l8idxet7fp0u3",
+            "role": "HEAD_COACH",
+            "createdAt": "2026-04-30T19:45:07.518Z",
+            "updatedAt": "2026-04-30T19:45:07.518Z"
+          }
+        ],
+        "volunteerProfile": [
+          {
+            "id": "cmrm46jve00f7jnnya4e3a5fe",
+            "organizationId": "ascension",
+            "registeredUserId": "cmokcckfc000l8idxet7fp0u3",
+            "seasonYear": 2026,
+            "status": "ACTIVE",
+            "notes": null,
+            "aMark": false,
+            "createdAt": "2026-07-15T13:26:53.210Z",
+            "updatedAt": "2026-07-15T13:26:53.210Z"
+          }
+        ],
+        "registeredUserOrgProfile": [
+          {
+            "id": "ae2982a4-3f55-4611-b9dc-5a96af9990ba",
+            "registeredUserId": "cmokcckfc000l8idxet7fp0u3",
+            "organizationId": "ascension",
+            "isCoach": true,
+            "ageGroup": "8U MAJ LLB",
+            "assignedTeam": "Velo Cages - Haydel",
+            "createdAt": "2026-04-29T17:40:51.432Z",
+            "updatedAt": "2026-05-05T19:45:17.004Z"
+          }
+        ]
+      }
+    },
+    {
+      "email": "kfrederic@chillcoinc.com",
+      "survivor": {
+        "id": "cmolmyt72000zwudxm8duc9i2",
+        "email": "kfrederic@chillcoinc.com",
+        "name": "Kale Frederic",
+        "firstName": "Kale",
+        "lastName": "Frederic",
+        "isBlocked": false,
+        "contactPhone": "225-772-8916",
+        "googleSub": null,
+        "passwordHash": "$2b$10$PHoucfl1btoagALP24lwtO3el8KS5fiYc.ruC0I0oKnWl95Fg/ite",
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-04-30T15:25:51.566Z",
+        "updatedAt": "2026-05-12T21:35:02.695Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmokccwud001z8idxieuwhc5j",
+          "email": "kfrederic@chillcoinc.com",
+          "name": "Kale Frederic",
+          "firstName": "Kale",
+          "lastName": "Frederic",
+          "isBlocked": false,
+          "contactPhone": "225-772-8916",
+          "googleSub": null,
+          "passwordHash": null,
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-04-29T17:41:07.525Z",
+          "updatedAt": "2026-04-30T19:43:16.135Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [],
+        "dugoutComment": [],
+        "dugoutPostLike": [],
+        "dugoutNotificationCursor": [],
+        "allStarVoteSubmission": [],
+        "allStarInvite": [],
+        "teamCoachAssignment": [
+          {
+            "id": "cmolw5up3001q6bdxldet0n8f",
+            "teamId": "cmoltbawi004046dx3f24huxj",
+            "registeredUserId": "cmokccwud001z8idxieuwhc5j",
+            "role": "ASSISTANT_COACH",
+            "createdAt": "2026-04-30T19:43:16.647Z",
+            "updatedAt": "2026-04-30T19:43:16.647Z"
+          }
+        ],
+        "volunteerProfile": [
+          {
+            "id": "cmrm48o7p001gosnyqbw8rqqw",
+            "organizationId": "ascension",
+            "registeredUserId": "cmokccwud001z8idxieuwhc5j",
+            "seasonYear": 2026,
+            "status": "ACTIVE",
+            "notes": null,
+            "aMark": false,
+            "createdAt": "2026-07-15T13:28:32.147Z",
+            "updatedAt": "2026-07-15T13:28:32.147Z"
+          }
+        ],
+        "registeredUserOrgProfile": [
+          {
+            "id": "e9977aa7-5030-4239-a1a3-9e4e654f9191",
+            "registeredUserId": "cmokccwud001z8idxieuwhc5j",
+            "organizationId": "ascension",
+            "isCoach": true,
+            "ageGroup": "7U LLB",
+            "assignedTeam": "Squirters - Planche",
+            "createdAt": "2026-04-29T17:41:07.525Z",
+            "updatedAt": "2026-04-30T19:43:16.135Z"
+          }
+        ]
+      }
+    },
+    {
+      "email": "jburch1@entergy.com",
+      "survivor": {
+        "id": "cmokccsa7001h8idx8lfxeq7x",
+        "email": "jburch1@entergy.com",
+        "name": "Jared Burch",
+        "firstName": "Jared",
+        "lastName": "Burch",
+        "isBlocked": false,
+        "contactPhone": "225-571-8093",
+        "googleSub": null,
+        "passwordHash": null,
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-04-29T17:41:01.615Z",
+        "updatedAt": "2026-04-30T19:43:20.538Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmolmytgi0010wudxn6ty8h4y",
+          "email": "jburch1@entergy.com",
+          "name": "Jared Burch",
+          "firstName": "Jared",
+          "lastName": "Burch",
+          "isBlocked": false,
+          "contactPhone": "225-571-8093",
+          "googleSub": null,
+          "passwordHash": null,
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-04-30T15:25:51.906Z",
+          "updatedAt": "2026-04-30T18:09:09.794Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [],
+        "dugoutComment": [],
+        "dugoutPostLike": [],
+        "dugoutNotificationCursor": [],
+        "allStarVoteSubmission": [],
+        "allStarInvite": [
+          {
+            "id": "cmp1x8yjq000604l7owzcpkgd",
+            "ballotCycleId": "cmp1x2hcx000004jiew38hoxv",
+            "phase": "FIRST_TEAM",
+            "tokenHash": null,
+            "inviteToken": null,
+            "organizationId": "gonzales",
+            "ageGroup": "12U DYB",
+            "invitedEmail": "jburch1@entergy.com",
+            "invitedUserId": "cmolmytgi0010wudxn6ty8h4y",
+            "createdByAdminId": "cmokclno200818idxzippo9ac",
+            "revokedAt": null,
+            "openedAt": null,
+            "expiresAt": null,
+            "createdAt": "2026-05-12T00:58:00.038Z"
+          },
+          {
+            "id": "cmp2rjyt8000604jm9mbosv5t",
+            "ballotCycleId": "cmp2riqqm000004lad3jtrokl",
+            "phase": "FIRST_TEAM",
+            "tokenHash": null,
+            "inviteToken": null,
+            "organizationId": "gonzales",
+            "ageGroup": "12U DYB",
+            "invitedEmail": "jburch1@entergy.com",
+            "invitedUserId": "cmolmytgi0010wudxn6ty8h4y",
+            "createdByAdminId": "cmastertrent0000000000000001",
+            "revokedAt": null,
+            "openedAt": null,
+            "expiresAt": null,
+            "createdAt": "2026-05-12T15:06:22.076Z"
+          }
+        ],
+        "teamCoachAssignment": [
+          {
+            "id": "cmolr64em000zsqdx7z9lrywg",
+            "teamId": "cmolp3n3n002qhbdxpqq05zlu",
+            "registeredUserId": "cmolmytgi0010wudxn6ty8h4y",
+            "role": "ASSISTANT_COACH",
+            "createdAt": "2026-04-30T17:23:31.150Z",
+            "updatedAt": "2026-04-30T20:23:52.032Z"
+          }
+        ],
+        "volunteerProfile": [
+          {
+            "id": "cmrm42ocn004gjnnyzvrj9ish",
+            "organizationId": "gonzales",
+            "registeredUserId": "cmolmytgi0010wudxn6ty8h4y",
+            "seasonYear": 2026,
+            "status": "ACTIVE",
+            "notes": null,
+            "aMark": false,
+            "createdAt": "2026-07-15T13:23:52.391Z",
+            "updatedAt": "2026-07-15T13:23:52.391Z"
+          }
+        ],
+        "registeredUserOrgProfile": [
+          {
+            "id": "c7d89c31-facc-4674-bb7a-9e22e1da736a",
+            "registeredUserId": "cmolmytgi0010wudxn6ty8h4y",
+            "organizationId": "gonzales",
+            "isCoach": true,
+            "ageGroup": "12U DYB",
+            "assignedTeam": "Glaze Heating and Air - Doncer",
+            "createdAt": "2026-04-30T15:25:51.906Z",
+            "updatedAt": "2026-04-30T18:09:09.794Z"
+          }
+        ]
+      }
+    },
+    {
+      "email": "hammerhead00@hotmail.com",
+      "survivor": {
+        "id": "cms3trzjz000004jrlqn5p5rq",
+        "email": "hammerhead00@hotmail.com",
+        "name": "Adam Trahan",
+        "firstName": "Adam",
+        "lastName": "Trahan",
+        "isBlocked": false,
+        "contactPhone": "2253171491",
+        "googleSub": null,
+        "passwordHash": "$2b$10$A.4VQ5D.Wnp.i9Moz25iNOz/ujDxMdM6SL11gRUaqBdpMS1Cod20G",
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-07-27T22:55:28.703Z",
+        "updatedAt": "2026-07-27T22:55:28.703Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmokcdymr005q8idxnd0tch2i",
+          "email": "hammerhead00@hotmail.com",
+          "name": "Adam Trahan",
+          "firstName": "Adam",
+          "lastName": "Trahan",
+          "isBlocked": false,
+          "contactPhone": "225-317-1491",
+          "googleSub": null,
+          "passwordHash": "$2b$10$/j9rsYH5XFFI2qx4YO4qve0i6zJQqlBNteU.9kMKPm4mABUYAJ1MW",
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-04-29T17:41:56.499Z",
+          "updatedAt": "2026-05-15T13:24:41.545Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [
+          {
+            "id": "cmp6y8ru1000104ldfqr7nmfa",
+            "tokenHash": "58bfb16a2443bbf22d61ce899f210acff176c82e9589444949fdc145ac1a471e",
+            "expiresAt": "2026-05-22T13:24:41.832Z",
+            "createdAt": "2026-05-15T13:24:41.833Z",
+            "userId": "cmokcdymr005q8idxnd0tch2i"
+          },
+          {
+            "id": "cmp787c2q000004kzj6oz0w5x",
+            "tokenHash": "a97768ca87906c4685e783011ca429d943ef4474ba841c462404a75dd242d871",
+            "expiresAt": "2026-05-22T18:03:30.906Z",
+            "createdAt": "2026-05-15T18:03:30.914Z",
+            "userId": "cmokcdymr005q8idxnd0tch2i"
+          }
+        ],
+        "dugoutComment": [],
+        "dugoutPostLike": [],
+        "dugoutNotificationCursor": [
+          {
+            "id": "cmp6y8v2n000304l8vj4xl1sq",
+            "userId": "cmokcdymr005q8idxnd0tch2i",
+            "lastSeenAt": "1970-01-01T00:00:00.000Z",
+            "updatedAt": "2026-05-15T13:24:46.031Z"
+          }
+        ],
+        "allStarVoteSubmission": [
+          {
+            "id": "cmp6z70tz000e04l11lfv8wqo",
+            "ballotCycleId": "cmp6bwjl5000m04le1nmhns5u",
+            "coachUserId": "cmokcdymr005q8idxnd0tch2i",
+            "phase": "FIRST_TEAM",
+            "organizationId": "ascension",
+            "ageGroup": "8U LLB",
+            "submittedAt": "2026-05-15T13:51:19.799Z",
+            "createdAt": "2026-05-15T13:51:19.799Z"
+          }
+        ],
+        "allStarInvite": [
+          {
+            "id": "cmp6byrwq001104l47uwg906w",
+            "ballotCycleId": "cmp6bwjl5000m04le1nmhns5u",
+            "phase": "FIRST_TEAM",
+            "tokenHash": null,
+            "inviteToken": null,
+            "organizationId": "ascension",
+            "ageGroup": "8U LLB",
+            "invitedEmail": "hammerhead00@hotmail.com",
+            "invitedUserId": "cmokcdymr005q8idxnd0tch2i",
+            "createdByAdminId": "cmastertrent0000000000000001",
+            "revokedAt": null,
+            "openedAt": "2026-05-15T13:33:19.027Z",
+            "expiresAt": null,
+            "createdAt": "2026-05-15T03:01:03.818Z"
+          }
+        ],
+        "teamCoachAssignment": [
+          {
+            "id": "cmolw6pze002w6bdxe6osxtg0",
+            "teamId": "cmoltdg14008c46dxp0rbr2o8",
+            "registeredUserId": "cmokcdymr005q8idxnd0tch2i",
+            "role": "ASSISTANT_COACH",
+            "createdAt": "2026-04-30T19:43:57.194Z",
+            "updatedAt": "2026-04-30T20:15:53.311Z"
+          }
+        ],
+        "volunteerProfile": [
+          {
+            "id": "cmrm48o7p002xosnygjzz99vz",
+            "organizationId": "ascension",
+            "registeredUserId": "cmokcdymr005q8idxnd0tch2i",
+            "seasonYear": 2026,
+            "status": "ACTIVE",
+            "notes": null,
+            "aMark": false,
+            "createdAt": "2026-07-15T13:28:32.147Z",
+            "updatedAt": "2026-07-15T13:28:32.147Z"
+          }
+        ],
+        "registeredUserOrgProfile": [
+          {
+            "id": "3b2c57cf-d372-4418-a88a-0aeb6c6f1ac4",
+            "registeredUserId": "cmokcdymr005q8idxnd0tch2i",
+            "organizationId": "ascension",
+            "isCoach": true,
+            "ageGroup": "8U LLB",
+            "assignedTeam": "Barado's Plumbing - Oyola",
+            "createdAt": "2026-04-29T17:41:56.499Z",
+            "updatedAt": "2026-05-15T13:24:41.545Z"
+          }
+        ]
+      }
+    },
+    {
+      "email": "swall80@hotmail.com",
+      "survivor": {
+        "id": "cmokcdbrz003j8idxefzjvpi8",
+        "email": "swall80@hotmail.com",
+        "name": "Steven Wall",
+        "firstName": "Steven",
+        "lastName": "Wall",
+        "isBlocked": false,
+        "contactPhone": "985-507-6689",
+        "googleSub": null,
+        "passwordHash": null,
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-04-29T17:41:26.879Z",
+        "updatedAt": "2026-04-30T19:44:32.849Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmolmyohx000iwudxuazzt1qk",
+          "email": "swall80@hotmail.com",
+          "name": "Steven Wall",
+          "firstName": "Steven",
+          "lastName": "Wall",
+          "isBlocked": false,
+          "contactPhone": "985-507-6689",
+          "googleSub": null,
+          "passwordHash": null,
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-04-30T15:25:45.477Z",
+          "updatedAt": "2026-04-30T18:08:54.968Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [],
+        "dugoutComment": [],
+        "dugoutPostLike": [],
+        "dugoutNotificationCursor": [],
+        "allStarVoteSubmission": [],
+        "allStarInvite": [
+          {
+            "id": "cmp8bwj8m000k04jx3imabsy1",
+            "ballotCycleId": "cmp8bw2sj000004kzkubsirtq",
+            "phase": "FIRST_TEAM",
+            "tokenHash": null,
+            "inviteToken": null,
+            "organizationId": "gonzales",
+            "ageGroup": "10U DYB",
+            "invitedEmail": "swall80@hotmail.com",
+            "invitedUserId": "cmolmyohx000iwudxuazzt1qk",
+            "createdByAdminId": "cmokclno200818idxzippo9ac",
+            "revokedAt": null,
+            "openedAt": null,
+            "expiresAt": null,
+            "createdAt": "2026-05-16T12:34:51.622Z"
+          }
+        ],
+        "teamCoachAssignment": [
+          {
+            "id": "cmolr5y07000isqdxsu7tygcj",
+            "teamId": "cmolp2rc70002hbdx8j2io4uj",
+            "registeredUserId": "cmolmyohx000iwudxuazzt1qk",
+            "role": "ASSISTANT_COACH",
+            "createdAt": "2026-04-30T17:23:22.855Z",
+            "updatedAt": "2026-04-30T17:23:22.855Z"
+          }
+        ],
+        "volunteerProfile": [
+          {
+            "id": "cmrm4262u0030jnny04tbij2k",
+            "organizationId": "gonzales",
+            "registeredUserId": "cmolmyohx000iwudxuazzt1qk",
+            "seasonYear": 2026,
+            "status": "ACTIVE",
+            "notes": null,
+            "aMark": false,
+            "createdAt": "2026-07-15T13:23:28.710Z",
+            "updatedAt": "2026-07-15T13:23:28.710Z"
+          }
+        ],
+        "registeredUserOrgProfile": [
+          {
+            "id": "a334e694-c2f7-4b35-b42d-5ca08693bd41",
+            "registeredUserId": "cmolmyohx000iwudxuazzt1qk",
+            "organizationId": "gonzales",
+            "isCoach": true,
+            "ageGroup": "10U DYB",
+            "assignedTeam": "Velocity Trailer Rentals - Nichols",
+            "createdAt": "2026-04-30T15:25:45.477Z",
+            "updatedAt": "2026-04-30T18:08:54.968Z"
+          }
+        ]
+      }
+    },
+    {
+      "email": "bourquecm@hotmail.com",
+      "survivor": {
+        "id": "cmolmzc7i002pwudxfi9bo5of",
+        "email": "bourquecm@hotmail.com",
+        "name": "Clay Bourque",
+        "firstName": "Clay",
+        "lastName": "Bourque",
+        "isBlocked": false,
+        "contactPhone": "225-571-2404",
+        "googleSub": null,
+        "passwordHash": "$2b$10$7fLuNXj/mxk153gZ3WsO/u8CEqKiHsblTxyXE6HHLFAc4laS3IFGq",
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-04-30T15:26:16.206Z",
+        "updatedAt": "2026-05-14T13:24:04.412Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmokce2bl00618idxqnkspovd",
+          "email": "bourquecm@hotmail.com",
+          "name": "Clay Bourque",
+          "firstName": "Clay",
+          "lastName": "Bourque",
+          "isBlocked": false,
+          "contactPhone": "225-571-2404",
+          "googleSub": null,
+          "passwordHash": "$2b$10$KTcHg0BSzRELSa1qWTTolu9oh9rVlcxYOXxSwX7gxi9U9vpbllG36",
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-04-29T17:42:01.281Z",
+          "updatedAt": "2026-05-05T17:32:44.754Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [
+          {
+            "id": "cmoswp93l000204l4zndy8bqv",
+            "tokenHash": "4dc4fe9343e0e4601a52f3ac06f5a797fa89fc302ce86725ea67ee87ee72ecc8",
+            "expiresAt": "2026-05-12T17:32:45.009Z",
+            "createdAt": "2026-05-05T17:32:45.009Z",
+            "userId": "cmokce2bl00618idxqnkspovd"
+          },
+          {
+            "id": "cmovk8tze000004i9zn4dniva",
+            "tokenHash": "8e98ab4235f13edcb8fbecbfb604945c67b72047dc9674b5693ccd9a2fbd97c8",
+            "expiresAt": "2026-05-14T14:07:22.050Z",
+            "createdAt": "2026-05-07T14:07:22.058Z",
+            "userId": "cmokce2bl00618idxqnkspovd"
+          }
+        ],
+        "dugoutComment": [],
+        "dugoutPostLike": [],
+        "dugoutNotificationCursor": [
+          {
+            "id": "cmoswpde7000004jyxc119b1t",
+            "userId": "cmokce2bl00618idxqnkspovd",
+            "lastSeenAt": "1970-01-01T00:00:00.000Z",
+            "updatedAt": "2026-05-05T17:32:50.575Z"
+          }
+        ],
+        "allStarVoteSubmission": [
+          {
+            "id": "cmot4rn45000004ii7yoc6edk",
+            "ballotCycleId": "cmosno97i000004jrkdms8faf",
+            "coachUserId": "cmokce2bl00618idxqnkspovd",
+            "phase": "FIRST_TEAM",
+            "organizationId": "ascension",
+            "ageGroup": "8U MAJ LLB",
+            "submittedAt": "2026-05-05T21:18:33.413Z",
+            "createdAt": "2026-05-05T21:18:33.413Z"
+          },
+          {
+            "id": "cmovkcp2p000004jows1l1so0",
+            "ballotCycleId": "cmoukypus0000isdxlf6b5db9",
+            "coachUserId": "cmokce2bl00618idxqnkspovd",
+            "phase": "FIRST_TEAM",
+            "organizationId": "ascension",
+            "ageGroup": "8U MAJ LLB",
+            "submittedAt": "2026-05-07T14:10:22.321Z",
+            "createdAt": "2026-05-07T14:10:22.321Z"
+          }
+        ],
+        "allStarInvite": [],
+        "teamCoachAssignment": [
+          {
+            "id": "cmolw6bov002d6bdx2njl0fe6",
+            "teamId": "cmoltcuqy006y46dxhagskiro",
+            "registeredUserId": "cmokce2bl00618idxqnkspovd",
+            "role": "ASSISTANT_COACH",
+            "createdAt": "2026-04-30T19:43:38.672Z",
+            "updatedAt": "2026-04-30T19:43:38.672Z"
+          }
+        ],
+        "volunteerProfile": [
+          {
+            "id": "cmrm48o7q004sosnyz6m6ckwh",
+            "organizationId": "ascension",
+            "registeredUserId": "cmokce2bl00618idxqnkspovd",
+            "seasonYear": 2026,
+            "status": "ACTIVE",
+            "notes": null,
+            "aMark": false,
+            "createdAt": "2026-07-15T13:28:32.147Z",
+            "updatedAt": "2026-07-15T13:28:32.147Z"
+          }
+        ],
+        "registeredUserOrgProfile": [
+          {
+            "id": "604a50cd-1cf7-492e-ba3a-e6b7ebb63919",
+            "registeredUserId": "cmokce2bl00618idxqnkspovd",
+            "organizationId": "ascension",
+            "isCoach": true,
+            "ageGroup": "8U MAJ LLB",
+            "assignedTeam": "Ascension Parks - Bennett",
+            "createdAt": "2026-04-29T17:42:01.281Z",
+            "updatedAt": "2026-05-05T17:32:44.754Z"
+          }
+        ]
+      }
+    },
+    {
+      "email": "zach@apbaseball.com",
+      "survivor": {
+        "id": "cmokckfsf0000tpdx3jhznpwn",
+        "email": "zach@apbaseball.com",
+        "name": "Zach Boudreaux",
+        "firstName": "Zach",
+        "lastName": "Boudreaux",
+        "isBlocked": false,
+        "contactPhone": "2252350330",
+        "googleSub": "112954705887282618725",
+        "passwordHash": "$2b$10$W/XrB4JHbMBkhD2VOu5j.u0TK2LHYZwng4UMdEf9aQOK7KFTHJX.a",
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-04-29T17:46:58.671Z",
+        "updatedAt": "2026-08-04T19:12:07.664Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmot3ol7p000004jmhafbym0d",
+          "email": "zach@apbaseball.com",
+          "name": "Zach Boudreaux",
+          "firstName": "Zach",
+          "lastName": "Boudreaux",
+          "isBlocked": false,
+          "contactPhone": "2252350330",
+          "googleSub": null,
+          "passwordHash": "$2b$10$Bbpvqy1lQH0ED/VE3W8U0OEI9bA4.ZkMgKoWkRJSQ/szW16ayDl3W",
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-05-05T20:48:11.365Z",
+          "updatedAt": "2026-05-05T20:48:11.365Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [
+          {
+            "id": "cmot3olj0000104jmy17dnlw9",
+            "tokenHash": "cb0f5183361cd42acee3066f173030418558a52d72556fda25c3695f2cd66c19",
+            "expiresAt": "2026-05-12T20:48:11.767Z",
+            "createdAt": "2026-05-05T20:48:11.773Z",
+            "userId": "cmot3ol7p000004jmhafbym0d"
+          }
+        ],
+        "dugoutComment": [],
+        "dugoutPostLike": [],
+        "dugoutNotificationCursor": [],
+        "allStarVoteSubmission": [],
+        "allStarInvite": [],
+        "teamCoachAssignment": [],
+        "volunteerProfile": [],
+        "registeredUserOrgProfile": [
+          {
+            "id": "4038f7d9-7abe-429f-a99c-f3c22da1a05f",
+            "registeredUserId": "cmot3ol7p000004jmhafbym0d",
+            "organizationId": "ascension",
+            "isCoach": false,
+            "ageGroup": null,
+            "assignedTeam": null,
+            "createdAt": "2026-05-05T20:48:11.365Z",
+            "updatedAt": "2026-05-05T20:48:11.365Z"
+          }
+        ]
+      }
+    },
+    {
+      "email": "chefjcmiller@yahoo.com",
+      "survivor": {
+        "id": "cmpcofzx6004ra9dxx2wsjtfc",
+        "email": "chefjcmiller@yahoo.com",
+        "name": "Jonathon Miller",
+        "firstName": "Jonathon",
+        "lastName": "Miller",
+        "isBlocked": false,
+        "contactPhone": "225-715-8333",
+        "googleSub": null,
+        "passwordHash": null,
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-05-19T13:36:59.802Z",
+        "updatedAt": "2026-05-19T13:36:59.802Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmolmzhvl0038wudxmt7pbhby",
+          "email": "chefjcmiller@yahoo.com",
+          "name": "Jonathon Miller",
+          "firstName": "Jonathon",
+          "lastName": "Miller",
+          "isBlocked": false,
+          "contactPhone": "225-715-8333",
+          "googleSub": null,
+          "passwordHash": null,
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-04-30T15:26:23.553Z",
+          "updatedAt": "2026-04-30T18:10:39.616Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [],
+        "dugoutComment": [],
+        "dugoutPostLike": [],
+        "dugoutNotificationCursor": [],
+        "allStarVoteSubmission": [],
+        "allStarInvite": [
+          {
+            "id": "cmp5gr3lf001y04jz0ts4r6rw",
+            "ballotCycleId": "cmp5f65cy000104l7qu7n4w6s",
+            "phase": "FIRST_TEAM",
+            "tokenHash": null,
+            "inviteToken": null,
+            "organizationId": "gonzales",
+            "ageGroup": "9U DYB",
+            "invitedEmail": "chefjcmiller@yahoo.com",
+            "invitedUserId": "cmolmzhvl0038wudxmt7pbhby",
+            "createdByAdminId": "cmokclno200818idxzippo9ac",
+            "revokedAt": null,
+            "openedAt": null,
+            "expiresAt": null,
+            "createdAt": "2026-05-14T12:27:17.619Z"
+          },
+          {
+            "id": "cmp6zl5sb001g04l53q87669k",
+            "ballotCycleId": "cmp6zl5b1000004l5fwqck4tu",
+            "phase": "FIRST_TEAM",
+            "tokenHash": null,
+            "inviteToken": null,
+            "organizationId": "gonzales",
+            "ageGroup": "9U DYB",
+            "invitedEmail": "chefjcmiller@yahoo.com",
+            "invitedUserId": "cmolmzhvl0038wudxmt7pbhby",
+            "createdByAdminId": "cmokclno200818idxzippo9ac",
+            "revokedAt": null,
+            "openedAt": null,
+            "expiresAt": null,
+            "createdAt": "2026-05-15T14:02:19.403Z"
+          }
+        ],
+        "teamCoachAssignment": [
+          {
+            "id": "cmolr6zme0038sqdxw58e6gxv",
+            "teamId": "cmolp64ax009fhbdxtgv7dzyn",
+            "registeredUserId": "cmolmzhvl0038wudxmt7pbhby",
+            "role": "ASSISTANT_COACH",
+            "createdAt": "2026-04-30T17:24:11.606Z",
+            "updatedAt": "2026-04-30T17:24:11.606Z"
+          }
+        ],
+        "volunteerProfile": [
+          {
+            "id": "cmrm458kr00byjnnyft49n9sa",
+            "organizationId": "gonzales",
+            "registeredUserId": "cmolmzhvl0038wudxmt7pbhby",
+            "seasonYear": 2026,
+            "status": "ACTIVE",
+            "notes": null,
+            "aMark": false,
+            "createdAt": "2026-07-15T13:25:51.915Z",
+            "updatedAt": "2026-07-15T13:25:51.915Z"
+          }
+        ],
+        "registeredUserOrgProfile": [
+          {
+            "id": "e6acc3b2-28a2-4ba2-bdcb-453943df5c32",
+            "registeredUserId": "cmolmzhvl0038wudxmt7pbhby",
+            "organizationId": "gonzales",
+            "isCoach": true,
+            "ageGroup": "9U DYB",
+            "assignedTeam": "Velo Cages - Bueche",
+            "createdAt": "2026-04-30T15:26:23.553Z",
+            "updatedAt": "2026-04-30T18:10:39.616Z"
+          }
+        ]
+      }
+    },
+    {
+      "email": "doc@impact-sports.net",
+      "survivor": {
+        "id": "cmq04ddtt000004k0vd5uf5xl",
+        "email": "doc@impact-sports.net",
+        "name": "Jason Adams",
+        "firstName": "Jason",
+        "lastName": "Adams",
+        "isBlocked": false,
+        "contactPhone": null,
+        "googleSub": "109208359568932958157",
+        "passwordHash": null,
+        "avatarUrl": null,
+        "abuseAwarenessTrainingCertificateUrl": null,
+        "abuseAwarenessTrainingCertificateFileName": null,
+        "abuseAwarenessTrainingCertificateMimeType": null,
+        "abuseAwarenessTrainingCertificateUploadedAt": null,
+        "duplicateReviewPending": false,
+        "createdAt": "2026-06-04T23:21:33.761Z",
+        "updatedAt": "2026-07-30T00:09:08.441Z"
+      },
+      "nonSurvivors": [
+        {
+          "id": "cmq8ar2bg000004l4za59yj9h",
+          "email": "doc@impact-sports.net",
+          "name": null,
+          "firstName": null,
+          "lastName": null,
+          "isBlocked": false,
+          "contactPhone": null,
+          "googleSub": null,
+          "passwordHash": "$2b$10$YmuTHA4FldDXOnt33KbZ3.0HVNZgdRocs2bbpp48vP8l2UcVCJyvW",
+          "avatarUrl": null,
+          "abuseAwarenessTrainingCertificateUrl": null,
+          "abuseAwarenessTrainingCertificateFileName": null,
+          "abuseAwarenessTrainingCertificateMimeType": null,
+          "abuseAwarenessTrainingCertificateUploadedAt": null,
+          "duplicateReviewPending": false,
+          "createdAt": "2026-06-10T16:42:19.133Z",
+          "updatedAt": "2026-06-10T16:42:19.133Z"
+        }
+      ],
+      "dependents": {
+        "coachSession": [
+          {
+            "id": "cmq8ar2xq000104l4uwd52vow",
+            "tokenHash": "9c516537887ee89a8c5836fbb0bcbdcfb34a8f2759ccdc97833de8c6a7c7eca8",
+            "expiresAt": "2026-06-17T16:42:19.932Z",
+            "createdAt": "2026-06-10T16:42:19.934Z",
+            "userId": "cmq8ar2bg000004l4za59yj9h"
+          },
+          {
+            "id": "cmq8arfgo000004ksgcpx69p7",
+            "tokenHash": "1acb9ebf6309552b7cd373833c8a741d2eda55c7a4a15bd45fb00100bdae20ff",
+            "expiresAt": "2026-06-17T16:42:36.150Z",
+            "createdAt": "2026-06-10T16:42:36.168Z",
+            "userId": "cmq8ar2bg000004l4za59yj9h"
+          }
+        ],
+        "dugoutComment": [],
+        "dugoutPostLike": [],
+        "dugoutNotificationCursor": [
+          {
+            "id": "cmq8aucc5000004k0g12hf62a",
+            "userId": "cmq8ar2bg000004l4za59yj9h",
+            "lastSeenAt": "1970-01-01T00:00:00.000Z",
+            "updatedAt": "2026-06-10T16:44:52.085Z"
+          }
+        ],
+        "allStarVoteSubmission": [],
+        "allStarInvite": [],
+        "teamCoachAssignment": [],
+        "volunteerProfile": [],
+        "registeredUserOrgProfile": [
+          {
+            "id": "99fdc3c9-3ef9-4fc8-8e48-f33daebc7744",
+            "registeredUserId": "cmq8ar2bg000004l4za59yj9h",
+            "organizationId": "ascension",
+            "isCoach": false,
+            "ageGroup": null,
+            "assignedTeam": null,
+            "createdAt": "2026-06-10T16:42:19.133Z",
+            "updatedAt": "2026-06-10T16:42:19.133Z"
+          }
+        ]
+      }
+    }
+  ],
+  "collisions": [
+    {
+      "email": "trent@apbaseball.com",
+      "survivorId": "cmrmgb7ny000004jsf3ybpj0b",
+      "collisions": {
+        "dugoutNotificationCursor": [
+          {
+            "nonSurvivorRowId": "cmomzwnm8000004jlcuk5kgnl",
+            "survivorRowId": "cmrpnay18000004l1yf8t644k"
+          },
+          {
+            "nonSurvivorRowId": "cmon7mi27000004juu9hn3vo5",
+            "survivorRowId": "cmrpnay18000004l1yf8t644k"
+          },
+          {
+            "nonSurvivorRowId": "cmosnnpbf000204la30feto3j",
+            "survivorRowId": "cmrpnay18000004l1yf8t644k"
+          }
+        ],
+        "registeredUserOrgProfile": [
+          {
+            "nonSurvivorRowId": "ec8c657a-fd89-4baf-b3b8-37b84c3bb916",
+            "survivorRowId": "cmsdknlmb000004jyvyrx17zh",
+            "organizationId": "gonzales"
+          },
+          {
+            "nonSurvivorRowId": "076336c3-612a-4126-bf9d-1cb7ebef6078",
+            "survivorRowId": "cmsdkrslu000004jryiblv0sx",
+            "organizationId": "ascension"
+          }
+        ]
+      }
+    },
+    {
+      "email": "jb.18charlie@gmail.com",
+      "survivorId": "cmolmyxjp001cwudxtejc7uui",
+      "collisions": {
+        "dugoutNotificationCursor": [
+          {
+            "nonSurvivorRowId": "cmot1fszh000004k4qotrvypj",
+            "survivorRowId": "cmp3h9rh4000004js8zuuxfxt"
+          }
+        ]
+      }
+    },
+    {
+      "email": "bourquecm@hotmail.com",
+      "survivorId": "cmolmzc7i002pwudxfi9bo5of",
+      "collisions": {
+        "dugoutNotificationCursor": [
+          {
+            "nonSurvivorRowId": "cmoswpde7000004jyxc119b1t",
+            "survivorRowId": "cmp5is6b9000004jgje11e5nh"
+          }
+        ]
+      }
+    },
+    {
+      "email": "doc@impact-sports.net",
+      "survivorId": "cmq04ddtt000004k0vd5uf5xl",
+      "collisions": {
+        "dugoutNotificationCursor": [
+          {
+            "nonSurvivorRowId": "cmq8aucc5000004k0g12hf62a",
+            "survivorRowId": "cmq059b5m000004jmn2jowxtk"
+          }
+        ]
+      }
+    }
+  ]
+}
