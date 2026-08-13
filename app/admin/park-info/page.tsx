@@ -1,75 +1,26 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import ParkInfoEditorClient from "@/components/admin/ParkInfoEditorClient";
-import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import {
-  canAccessAdminModule,
-  type AdminRole,
-} from "@/lib/auth/adminRoles";
-import {
-  ADMIN_SESSION_COOKIE,
-  getAdminUserFromCookieToken,
-} from "@/lib/auth/adminSession";
-import {
-  BRACKET_ORGS,
-  getSiteConfig,
-  isMasterDeployment,
-  resolveBracketAdminTargetOrg,
-} from "@/lib/siteConfig";
-import prisma from "@/lib/prisma";
-
-export function generateMetadata() {
-  return { title: `Park Info | ${getSiteConfig().name}` };
-}
-
-export default async function AdminParkInfoPage({
+export default async function LegacyRedirectPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-  const user = await getAdminUserFromCookieToken(token);
-  if (!user) redirect(`/admin/login?next=${encodeURIComponent("/admin/park-info")}`);
+  const resolvedParams = await searchParams;
+  const targetBase = "/admin/park?tab=facilities";
+  const params = new URLSearchParams();
+  
+  if (targetBase.includes("?")) {
+    const [path, query] = targetBase.split("?");
+    const existing = new URLSearchParams(query);
+    existing.forEach((value, key) => params.set(key, value));
+  }
 
-  const role: AdminRole = user.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR";
-  if (!canAccessAdminModule(role, "PARK_INFO")) redirect("/admin?denied=park-info");
+  for (const [key, value] of Object.entries(resolvedParams)) {
+    if (value && typeof value === "string") {
+      params.set(key, value);
+    }
+  }
 
-  const { org: orgParam } = await searchParams;
-  const org = resolveBracketAdminTargetOrg(orgParam);
-
-  const row = await prisma.parkInfoPage.findUnique({ where: { organizationId: org } });
-  const initial = {
-    rulesMarkdown: row?.rulesMarkdown ?? "",
-    parkingMarkdown: row?.parkingMarkdown ?? "",
-    fieldLayoutImageUrl: row?.fieldLayoutImageUrl ?? null,
-  };
-
-  return (
-    <main className="min-h-screen bg-zinc-950 py-6 text-white sm:py-8">
-      <section className="mx-auto max-w-4xl px-4 sm:px-6">
-        <div className="mb-4">
-          <AdminSectionHeader
-            badge="PARK INFO"
-            currentOrg={org}
-            currentPath="/admin/park-info"
-            orgSwitcherShowAllSites={false}
-            orgSwitcherOrgs={BRACKET_ORGS}
-          />
-        </div>
-        <h2 className="mb-1 text-lg font-bold">Park Info Editor</h2>
-        <p className="mb-6 text-sm text-zinc-400">
-          Keep tournament rules, parking notes, and the field map ready for
-          families visiting <strong className="text-zinc-200">{org}</strong>.
-          Save after each update; published content is visible on the park info
-          page for the selected site.{" "}
-          {!isMasterDeployment() && (
-            <span>Visible at <code className="text-xs">/park-info</code> on this site.</span>
-          )}
-        </p>
-        <ParkInfoEditorClient org={org} initial={initial} />
-      </section>
-    </main>
-  );
+  const basePath = targetBase.split("?")[0];
+  redirect(`${basePath}?${params.toString()}`);
 }

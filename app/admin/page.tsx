@@ -4,7 +4,6 @@ import { redirect } from "next/navigation";
 import {
   canAccessAdminModule,
   hasAdminRoleAtLeast,
-  toAdminRole,
   type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
@@ -17,7 +16,6 @@ import {
 import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
 import AdminRolePreviewControl from "@/components/admin/AdminRolePreviewControl";
 import AdminDashboardModuleGrid from "@/components/admin/AdminDashboardModuleGrid";
-import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import {
   CONTENT_ORGS,
   getDefaultContentOrg,
@@ -64,7 +62,6 @@ export default async function AdminDashboardPage({
     redirect("/admin/login?next=/admin");
   }
 
-
   const currentOrg = masterMode ? requestedOrg : getDefaultContentOrg();
 
   const displayName =
@@ -79,19 +76,12 @@ export default async function AdminDashboardPage({
   );
   const roleByOrg = Object.fromEntries(roleEntries) as Record<ContentOrgId, AdminRole | null>;
 
-  // Effective role for the current context:
-  // - Specific org: the membership (or null)
-  // - All Sites on master: MASTER_ADMIN (even with no rows)
-  // - All Sites otherwise: pick any granted role or null
   const adminRole: AdminRole = currentOrg
     ? (roleByOrg[currentOrg] ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR"))
     : (adminUser.isMaster ? "MASTER_ADMIN" : (Object.values(roleByOrg).find((r): r is AdminRole => !!r) ?? "PARK_DIRECTOR"));
 
   const allowRolePreview = hasAdminRoleAtLeast(adminRole, "ADMIN");
   const communicationsEnabled = isCommunicationsModuleEnabled();
-  // Global identity: RegisteredUser has no organizationId. Look up by email,
-  // then check per-org profiles to decide All-Star vault visibility per org.
-  // Wrapped so a missing RegisteredUserOrgProfile migration cannot take down /admin.
   const allStarVaultViewByOrg = Object.fromEntries(
     CONTENT_ORGS.map((orgId) => [orgId, false] as const),
   ) as Record<ContentOrgId, boolean>;
@@ -102,8 +92,7 @@ export default async function AdminDashboardPage({
     });
     for (const u of globalLinkedUsers) {
       for (const orgId of CONTENT_ORGS) {
-        // Only consider orgs where this global user has a profile (i.e. participates here).
-        const prof = await prisma.registeredUserOrgProfile.findUnique({
+        const prof = await (prisma as any).registeredUserOrgProfile.findUnique({
           where: {
             registeredUserId_organizationId: {
               registeredUserId: u.id,
@@ -136,314 +125,86 @@ export default async function AdminDashboardPage({
     const r = roleByOrg[orgId] ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
     return canAccessAdminModule(r, module);
   };
-  const hasModuleAnyOrg = (module: AdminModule) =>
-    CONTENT_ORGS.some((orgId) => hasModuleAccess(orgId, module));
+
   const preferredOrgForModule = (module: AdminModule): ContentOrgId => {
     if (currentOrg) return currentOrg;
     return CONTENT_ORGS.find((orgId) => hasModuleAccess(orgId, module)) ?? CONTENT_ORGS[0];
   };
+
   const moduleHref = (basePath: string, module: AdminModule) =>
     `${basePath}?org=${preferredOrgForModule(module)}`;
-  const cards = sortAdminDashboardCards(
-    [
-      {
-        module: "TEAMS" as AdminModule,
-        href: moduleHref("/admin/teams", "TEAMS"),
-        title: "Teams Management",
-        description: masterMode
-          ? "Import players, build rosters, assign coaches, and maintain team operations by site."
-          : "Manage team rosters, coach assignments, and season setup.",
-        action: masterMode ? "Open Teams Console" : "Open Teams",
-      },
-      ...(masterMode || currentOrg === "fallball"
-        ? [
-            {
-              module: "TEAMS" as AdminModule,
-              href: currentOrg
-                ? moduleHref("/admin/sports-connect", "TEAMS")
-                : "/admin/sports-connect?org=fallball",
-              title: "Sports Connect Ops Desk",
-              description:
-                "Assisted SportsConnect loads: checklist, multi-file plan, mapping presets, roster quality, and import run history.",
-              action: "Open Sports Connect",
-            },
-          ]
-        : []),
-      ...(currentOrg === "fallball" || (!currentOrg && masterMode)
-        ? [
-            {
-              module: "TEAMS" as AdminModule,
-              href: currentOrg
-                ? moduleHref("/admin/scheduler", "TEAMS")
-                : "/admin/scheduler?org=fallball",
-              title: "Scheduler",
-              description:
-                "Build Fall Ball seasons, park and field availability, division rules, generated drafts, manual fixes, and CSV exports.",
-              action: "Open Scheduler",
-            },
-          ]
-        : []),
-      ...(masterMode
-        ? [
-            {
-              module: "REGISTRATION_WINDOWS" as AdminModule,
-              href:
-                currentOrg && ["gonzales", "ascension", "fallball"].includes(currentOrg)
-                  ? moduleHref("/admin/registration", "REGISTRATION_WINDOWS")
-                  : "/admin/registration?org=fallball",
-              title: "Registration Windows",
-              description:
-                "Set public registration open/close times per site (America/Chicago) without a code deploy. Used on Fall Ball homepage CTAs and registration pages.",
-              action: "Open Registration Windows",
-            },
-          ]
-        : []),
-      {
-        module: "SCORES" as AdminModule,
-        href: currentOrg ? moduleHref("/admin/scores", "SCORES") : "/admin/scores",
-        title: "Scores & Standings",
-        description: masterMode
-          ? currentOrg
-            ? "Enter scores and keep standings accurate for the selected site."
-            : "Review scores and standings across every site from the aggregate view."
-          : "Enter game scores and keep standings current by age group.",
-        action: masterMode
-          ? currentOrg
-            ? "Open Site Scores"
-            : "Open All Scores"
-          : "Open Score Entry",
-      },
-      {
-        module: "ALL_STAR_VAULT" as AdminModule,
-        href: moduleHref("/admin/all-star", "ALL_STAR_VAULT"),
-        title: "All-Star Program",
-        description: masterMode
-          ? "Vault, payments, cap orders, and shirt orders for All-Star season work across organizations."
-          : "Vault (cycles & ballots), payments, cap orders, and championship shirt orders in one program.",
-        action: masterMode ? "Open All-Star Program" : "Open All-Star",
-      },
-      {
-        module: "ALL_STAR_PAYMENTS" as AdminModule,
-        href: moduleHref("/admin/shop", "ALL_STAR_PAYMENTS"),
-        title: "Merch Shop",
-        description: masterMode
-          ? "PayPal catalog links by site, plus shortcuts to shirt and cap order desks."
-          : "Public merch catalog (PayPal checkout links) and order-desk shortcuts.",
-        action: "Open Merch Shop",
-      },
-      {
-        module: "TOURNAMENT_BRACKETS" as AdminModule,
-        href: "/admin/tournament-brackets",
-        title: "Tournament Brackets",
-        description:
-          "Build tournament brackets from seeds, review the bracket, and export printable flyers or web-ready files.",
-        action: "Open Bracket Creator",
-      },
-      {
-        module: "TOURNAMENT_ALERTS" as AdminModule,
-        href: "/admin/tournament-alerts",
-        title: "Tournament Alerts",
-        description:
-          "Phone-friendly tournament communications status: monitor runs, recent alerts, provider readiness, and email setup next steps.",
-        action: "Open Alert Status",
-      },
-      {
-        module: "PARK_INFO" as AdminModule,
-        href: moduleHref("/admin/park-info", "PARK_INFO"),
-        title: "Park Info",
-        description: masterMode
-          ? "Manage tournament rules, parking details, and field layout images for the selected site."
-          : "Manage tournament rules, parking details, and field layout images for your park.",
-        action: "Open Park Info",
-      },
-      {
-        module: "SPONSORS" as AdminModule,
-        href: moduleHref("/admin/sponsors", "SPONSORS"),
-        title: "Sponsors",
-        description: masterMode
-          ? "Manage sponsorship packages, logo assets, and site placements for footer sponsorship visibility."
-          : "Manage sponsors, package enrollments, and footer logo display.",
-        action: masterMode ? "Open Sponsors Console" : "Open Sponsors",
-      },
-      {
-        module: "NEWS_ADMIN" as AdminModule,
-        href: moduleHref("/news/admin", "NEWS_ADMIN"),
-        title: "News Management",
-        description: masterMode
-          ? "Coordinate announcements, featured stories, and publishing cadence from the AP Baseball desk."
-          : "Create, edit, publish, and delete site news posts.",
-        action: masterMode ? "Open Content Desk" : "Open News Admin",
-      },
-      {
-        module: "SOCIAL_MEDIA" as AdminModule,
-        href: "/admin/social",
-        title: "Social media",
-        description: masterMode
-          ? "Draft posts for the shared AP Baseball Facebook Page (not per league site)."
-          : "Compose posts and publish to your Facebook Page (Meta credentials required).",
-        action: masterMode ? "Open Social Desk" : "Open Social Media",
-      },
-      {
-        module: "COMMUNICATIONS" as AdminModule,
-        href: moduleHref("/admin/communications", "COMMUNICATIONS"),
-        title: "Communications",
-        description: masterMode
-          ? "Coordinate approved broadcast communications across organizations with audience targeting."
-          : "Send approved organization communications by audience rules and roles.",
-        action: masterMode ? "Open Comms Hub" : "Open Communications",
-      },
-      {
-        module: "ORG_DOCUMENTS" as AdminModule,
-        href: "/admin/documents",
-        title: "Google Drive",
-        description: masterMode
-          ? "Open the shared AP Baseball Google Drive folder for policies, templates, and org files."
-          : "Open the shared Google Drive folder for organizational documents.",
-        action: masterMode ? "Open Google Drive" : "Open Google Drive",
-      },
-      {
-        module: "ASSIGNR" as const,
-        href: moduleHref("/admin/assignr", "ASSIGNR"),
-        title: "Assignr",
-        description: masterMode
-          ? "Open Assignr for the selected site to keep schedules and officials aligned."
-          : "Manage schedule and official assignments through Assignr.",
-        action: "Open Assignr",
-      },
-      {
-        // ACL: show when USERS, VOLUNTEERS, or coaching-interest (TEAMS+capability) is allowed.
-        // Category uses USERS; filter overridden below for people hub access.
-        module: "USERS" as AdminModule,
-        href: (() => {
-          const peopleOrg =
-            currentOrg ??
-            CONTENT_ORGS.find(
-              (orgId) =>
-                hasModuleAccess(orgId, "USERS") ||
-                hasModuleAccess(orgId, "VOLUNTEERS") ||
-                (isCoachingInterestEnabled(orgId) && hasModuleAccess(orgId, "TEAMS")),
-            ) ??
-            preferredOrgForModule("USERS");
-          const section = hasModuleAccess(peopleOrg, "USERS")
-            ? "directory"
-            : hasModuleAccess(peopleOrg, "VOLUNTEERS")
-              ? "volunteers"
-              : "coaching-interest";
-          return `/admin/people?org=${peopleOrg}&section=${section}`;
-        })(),
-        title: "People",
-        description: masterMode
-          ? "Directory, volunteer compliance cards (JDP / Abuse Awareness), and coaching interest for the selected site."
-          : "Accounts, admin access, volunteer compliance cards, and coaching interest in one place.",
-        action: masterMode ? "Open People Desk" : "Open People",
-      },
-      // Dedicated high-privilege Role Assignment surface for Master Admins only (least-privilege focused role management).
-      // Appears as its own card on the master deployment for MASTER_ADMIN actors.
-      ...(masterMode && hasAdminRoleAtLeast(adminRole, "MASTER_ADMIN")
-        ? [
-            {
-              module: "ROLE_ASSIGNMENT" as AdminModule,
-              href: "/admin/roles",
-              title: "Role Assignment",
-              description:
-                "Grant, change, and revoke admin roles across organizations. Includes least-privilege suggestions and audit history.",
-              action: "Open Role Assignment",
-            },
-          ]
-        : []),
-      {
-        module: "REPORTS" as AdminModule,
-        href: moduleHref("/admin/reports", "REPORTS"),
-        title: "Reporting",
-        description: masterMode
-          ? "Run umpire payout reports and operational summaries from the AP Baseball reporting desk."
-          : "Generate umpire reports and payout summaries.",
-        action: masterMode ? "Open Reporting Desk" : "Open Reports",
-      },
-      {
-        module: "PARK_ALERTS" as AdminModule,
-        href: moduleHref("/admin/alerts", "PARK_ALERTS"),
-        title: "Park Alerts",
-        description: masterMode
-          ? "Post manual rainout alerts on either site that override Assignr detection and expire automatically."
-          : "Post a rainout alert on the public site. Overrides Assignr detection and expires automatically.",
-        action: masterMode ? "Open Alerts Console" : "Open Park Alerts",
-      },
-      {
-        module: "DUGOUT_MODERATION" as AdminModule,
-        href: moduleHref("/admin/dugout", "DUGOUT_MODERATION"),
-        title: "Dugout Moderation",
-        description: masterMode
-          ? "Review coach conversations and remove posts that need moderator attention."
-          : "Edit or remove posts in The Dugout feed.",
-        action: "Open Dugout Moderation",
-      },
-    ]
-      .map((card) => ({
-        ...card,
-        category: getAdminDashboardCategory(card.module)!,
-      }))
-      .filter((card) => (card.module === "COMMUNICATIONS" ? communicationsEnabled : true))
-      .filter((card) => {
-        // People hub: any of directory / volunteers / coaching interest
-        if (card.title === "People") {
-          const orgCanPeople = (orgId: ContentOrgId) =>
-            hasModuleAccess(orgId, "USERS") ||
-            hasModuleAccess(orgId, "VOLUNTEERS") ||
-            (isCoachingInterestEnabled(orgId) && hasModuleAccess(orgId, "TEAMS"));
-          return currentOrg
-            ? orgCanPeople(currentOrg)
-            : CONTENT_ORGS.some((orgId) => orgCanPeople(orgId));
-        }
-        // All-Star Program: vault view or payments module
-        if (card.title === "All-Star Program") {
-          const orgCanAllStar = (orgId: ContentOrgId) =>
-            hasModuleAccess(orgId, "ALL_STAR_VAULT") ||
-            hasModuleAccess(orgId, "ALL_STAR_PAYMENTS") ||
-            allStarVaultViewByOrg[orgId];
-          return currentOrg
-            ? orgCanAllStar(currentOrg)
-            : CONTENT_ORGS.some((orgId) => orgCanAllStar(orgId));
-        }
-        if (card.module === "ASSIGNR") {
-          return currentOrg
-            ? hasModuleAccess(currentOrg, "ASSIGNR")
-            : hasModuleAnyOrg("ASSIGNR");
-        }
-        return currentOrg
-          ? hasModuleAccess(currentOrg, card.module)
-          : hasModuleAnyOrg(card.module);
-      }),
-  );
 
-  const visibleModuleCount = new Set(cards.map((card) => card.module)).size;
-  const communicationsAccessCount = communicationsEnabled
-    ? CONTENT_ORGS.filter((orgId) => hasModuleAccess(orgId, "COMMUNICATIONS")).length
-    : 0;
+  const cards = sortAdminDashboardCards([
+    {
+      module: "USERS" as AdminModule,
+      href: `/admin/people?org=${currentOrg || "gonzales"}`,
+      title: "People & Access Hub",
+      description: masterMode
+        ? "Accounts, volunteer compliance cards (JDP / Abuse Awareness), coaching interest, and Master Role Assignments."
+        : "Directory, volunteer compliance cards, coaching interest, and organization access.",
+      action: masterMode ? "Open People Hub" : "Open People",
+    },
+    {
+      module: "TEAMS" as AdminModule,
+      href: `/admin/competition?org=${currentOrg || "gonzales"}`,
+      title: "Competition & Play Hub",
+      description: masterMode
+        ? "Teams & rosters, game scores, Fall Ball scheduler, Assignr umpires, SportsConnect imports, and registration windows."
+        : "Manage team rosters, game scores, scheduler, and Assignr umpires in one place.",
+      action: masterMode ? "Open Competition Hub" : "Open Competition",
+    },
+    {
+      module: "TOURNAMENT_BRACKETS" as AdminModule,
+      href: `/admin/park?org=${currentOrg || "gonzales"}`,
+      title: "Park & Tournament Hub",
+      description: masterMode
+        ? "Bracket creator, tournament monitor readiness, rainout alerts, and park rules/field layouts."
+        : "Build brackets, monitor alerts, post rainouts, and manage park rules.",
+      action: masterMode ? "Open Park Hub" : "Open Park Desk",
+    },
+    {
+      module: "COMMUNICATIONS" as AdminModule,
+      href: `/admin/publishing?org=${currentOrg || "gonzales"}`,
+      title: "Publishing & Comms Center",
+      description: masterMode
+        ? "Email broadcast campaigns (Resend), news announcements, Facebook post drafts, Dugout moderation, and shared Drive files."
+        : "Publish emails, news stories, social posts, moderate dugout feed, and open shared files.",
+      action: masterMode ? "Open Publishing Center" : "Open Publishing",
+    },
+    {
+      module: "ALL_STAR_PAYMENTS" as AdminModule,
+      href: `/admin/orders?org=${currentOrg || "gonzales"}`,
+      title: "Orders & Commerce Desk",
+      description: masterMode
+        ? "Fulfill cap orders, manage championship shirt orders, review merch catalog PayPal links, sponsors, and payment reports."
+        : "Cap orders, championship shirt orders, merch shop catalog, and payment audit log.",
+      action: masterMode ? "Open Orders Desk" : "Open Orders",
+    },
+    {
+      module: "ALL_STAR_VAULT" as AdminModule,
+      href: moduleHref("/admin/all-star", "ALL_STAR_VAULT"),
+      title: "All-Star Program",
+      description: masterMode
+        ? "Vault, payments, cap orders, and shirt orders for All-Star season work across organizations."
+        : "Vault (cycles & ballots), payments, cap orders, and championship shirt orders in one program.",
+      action: masterMode ? "Open All-Star Program" : "Open All-Star",
+    },
+  ].map((card) => ({
+    ...card,
+    category: getAdminDashboardCategory(card.module)!,
+  })));
+
+  const visibleModuleCount = cards.length;
   const targetExplanation = currentOrg
-    ? "You are working on " +
-      getOrgDisplayName(currentOrg) +
-      ". Dashboard links keep that site selected so changes apply there."
-    : "All Sites shows every dashboard tool you can use somewhere. Site-specific tools open the first site you can manage, while Scores opens the all-site aggregate view.";
-  const accessSummaryByOrg = CONTENT_ORGS.map((orgId) => {
-    const accessibleModuleCount = new Set(
-      cards
-        .filter((card) => hasModuleAccess(orgId, card.module))
-        .map((card) => card.module),
-    ).size;
-
-    return {
-      orgId,
-      name: getOrgDisplayName(orgId),
-      role: roleByOrg[orgId],
-      accessibleModuleCount,
-    };
-  });
+    ? `Operating on behalf of ${getOrgDisplayName(currentOrg)}.`
+    : "Showing tools available across all sites.";
 
   const statusChips = [
     {
-      label: "Platform",
-      value: masterMode
+      label: "Selected Site",
+      value: currentOrg
+        ? getOrgDisplayName(currentOrg)
+        : masterMode
         ? "AP Baseball Master"
         : getOrgDisplayName(getDefaultContentOrg()),
     },
@@ -454,15 +215,7 @@ export default async function AdminDashboardPage({
     { label: "Visible Modules", value: visibleModuleCount + " available" },
     {
       label: "Communications",
-      value: communicationsEnabled
-        ? currentOrg
-          ? hasModuleAccess(currentOrg, "COMMUNICATIONS")
-            ? "Available"
-            : "No access"
-          : communicationsAccessCount +
-            " site" +
-            (communicationsAccessCount === 1 ? "" : "s")
-        : "Disabled",
+      value: communicationsEnabled ? "Available" : "Disabled",
     },
     {
       label: "Endpoint",
@@ -620,24 +373,6 @@ export default async function AdminDashboardPage({
                 </div>
               ))}
             </div>
-            {!currentOrg ? (
-              <div className="rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-300">
-                <p className="text-[10px] uppercase tracking-[0.24em] text-zinc-500">
-                  Role & Access By Site
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  {accessSummaryByOrg.map((item) => (
-                    <span
-                      key={item.orgId}
-                      className="rounded-full border border-zinc-800 bg-zinc-900/70 px-3 py-1.5 text-xs text-zinc-200"
-                    >
-                      {item.name}: {(item.role || "PARK_DIRECTOR").replace("_", " ")} -{" "}
-                      {item.accessibleModuleCount} modules
-                    </span>
-                  ))}
-                </div>
-              </div>
-            ) : null}
           </div>
         ) : null}
 

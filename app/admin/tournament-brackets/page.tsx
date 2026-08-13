@@ -1,104 +1,26 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import TournamentBracketsClient from "@/components/admin/TournamentBracketsClient";
-import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import {
-  canAccessAdminModule,
-  hasAdminRoleAtLeast,
-  type AdminRole,
-} from "@/lib/auth/adminRoles";
-import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import {
-  ADMIN_SESSION_COOKIE,
-  getAdminUserFromCookieToken,
-} from "@/lib/auth/adminSession";
-import {
-  BRACKET_ORGS,
-  getSiteConfig,
-  isAdminModuleEnabledForOrg,
-  isContentOrgId,
-  isMasterDeployment,
-  resolveBracketAdminTargetOrg,
-} from "@/lib/siteConfig";
-
-export function generateMetadata() {
-  const site = getSiteConfig();
-  return {
-    title: `Tournament Brackets | ${site.name}`,
-    description:
-      "Master-only bracket builder: structure rounds for the web preview, optional XLSX schedule import, HTML export, and flyer PDF.",
-  };
-}
-
-export default async function AdminTournamentBracketsPage({
+export default async function LegacyRedirectPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  if (!isMasterDeployment()) {
-    redirect("/admin?denied=tournament-brackets");
+  const resolvedParams = await searchParams;
+  const targetBase = "/admin/park?tab=brackets";
+  const params = new URLSearchParams();
+  
+  if (targetBase.includes("?")) {
+    const [path, query] = targetBase.split("?");
+    const existing = new URLSearchParams(query);
+    existing.forEach((value, key) => params.set(key, value));
   }
 
-  const { org } = await searchParams;
-  if (org === "fallball" || !isAdminModuleEnabledForOrg(isContentOrgId(org) ? org : null, "TOURNAMENT_BRACKETS")) {
-    redirect("/admin?org=fallball&denied=tournament-brackets");
-  }
-  const bracketOrg = resolveBracketAdminTargetOrg(org);
-
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-  const adminUser = await getAdminUserFromCookieToken(token);
-
-  if (!adminUser) {
-    redirect(`/admin/login?next=${encodeURIComponent("/admin/tournament-brackets")}`);
+  for (const [key, value] of Object.entries(resolvedParams)) {
+    if (value && typeof value === "string") {
+      params.set(key, value);
+    }
   }
 
-  if (!adminUser.isMaster) {
-    redirect("/admin?denied=tournament-brackets-master");
-  }
-
-  const leagueOrg = isContentOrgId(bracketOrg) ? bracketOrg : "gonzales";
-  const effectiveRole = await getEffectiveAdminRoleForOrg(
-    adminUser.id,
-    adminUser.isMaster,
-    leagueOrg,
-  );
-  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
-  if (!canAccessAdminModule(role, "TOURNAMENT_BRACKETS")) {
-    redirect("/admin?denied=tournament-brackets");
-  }
-
-  return (
-    <main className="min-h-screen bg-zinc-950 py-6 text-white sm:py-8">
-      <section className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="mb-4">
-          <AdminSectionHeader
-            badge="TOURNAMENT BRACKETS"
-            currentOrg={bracketOrg}
-            orgSwitcherOrgs={BRACKET_ORGS}
-            currentPath="/admin/tournament-brackets"
-            orgSwitcherShowAllSites={false}
-            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
-            allowViewByUser={adminUser.isMaster}
-          />
-          <h1 className="mb-2 text-2xl font-bold tracking-tight md:text-3xl">Tournament Bracket Builder</h1>
-          <details className="group/about max-w-3xl text-sm text-zinc-400">
-            <summary className="cursor-pointer list-none font-medium text-zinc-500 marker:content-none hover:text-zinc-300 [&::-webkit-details-marker]:hidden">
-              <span className="underline decoration-zinc-600 underline-offset-2 group-open/about:text-zinc-300">
-                About this tool
-              </span>
-            </summary>
-            <p className="mt-2 leading-relaxed">
-              Master Admin: create the bracket structure, map teams, import schedule data when needed, preview the public layout, then mark only reviewed brackets READY. READY brackets appear on the public Tournaments page; DRAFT and ARCHIVED projects stay out of public view.
-            </p>
-            <p className="mt-2 leading-relaxed text-amber-300/90">
-              Import and publish actions can change what families see. Preview after every import and keep Fall Ball out of this module.
-            </p>
-          </details>
-        </div>
-        <TournamentBracketsClient key={bracketOrg} organizationId={bracketOrg} />
-      </section>
-    </main>
-  );
+  const basePath = targetBase.split("?")[0];
+  redirect(`${basePath}?${params.toString()}`);
 }

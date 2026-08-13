@@ -1,66 +1,26 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
-import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import { assignrHubHref, resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
-import { listUnifiedScoreGames } from "@/lib/admin/unifiedScoreSources";
-import TournamentAlertsPanel from "@/components/admin/TournamentAlertsPanel";
-import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import ScoresHub from "@/components/admin/scores/ScoresHub";
-import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
-import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
-import { CONTENT_ORGS, getDefaultContentOrg, getSiteConfig, isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
+export default async function LegacyRedirectPage({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
+  const resolvedParams = await searchParams;
+  const targetBase = "/admin/competition?tab=scores";
+  const params = new URLSearchParams();
+  
+  if (targetBase.includes("?")) {
+    const [path, query] = targetBase.split("?");
+    const existing = new URLSearchParams(query);
+    existing.forEach((value, key) => params.set(key, value));
+  }
 
-export function generateMetadata() {
-  const site = getSiteConfig();
-  return { title: `Game Scores | ${site.name}`, description: "Manage league and tournament scores from one workflow." };
-}
-export default async function AdminScoresPage({ searchParams }: { searchParams: Promise<{ org?: string; seasonYear?: string }> }) {
-  const { org, seasonYear: rawSeasonYear } = await searchParams;
-  const masterMode = isMasterDeployment();
-  const requestedOrg = org && CONTENT_ORGS.includes(org as ContentOrgId) ? (org as ContentOrgId) : null;
-  const scope = resolveAdminAssignrScope(org);
-  const currentOrg = masterMode ? requestedOrg : getDefaultContentOrg();
-  const seasonYear = Number.parseInt(rawSeasonYear || String(new Date().getFullYear()), 10);
-  const safeSeasonYear = Number.isFinite(seasonYear) ? seasonYear : new Date().getFullYear();
-  const cookieStore = await cookies();
-  const adminUser = await getAdminUserFromCookieToken(cookieStore.get(ADMIN_SESSION_COOKIE)?.value);
-  if (!adminUser) redirect("/admin/login?next=/admin/scores");
-  const effectiveRole = currentOrg
-    ? await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, currentOrg)
-    : null;
-  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
-  const orgRoles = await Promise.all(CONTENT_ORGS.map((orgId) => getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, orgId)));
-  const canAccessScores = canAccessAdminModule(role, "SCORES") || (masterMode && !currentOrg && orgRoles.some((orgRole) => orgRole && canAccessAdminModule(orgRole, "SCORES")));
-  if (!canAccessScores) redirect("/admin?denied=scores");
-  const canAccessAssignr = canAccessAdminModule(role, "ASSIGNR") || (masterMode && !currentOrg && orgRoles.some((orgRole) => orgRole && canAccessAdminModule(orgRole, "ASSIGNR")));
-  const scoresResult = await listUnifiedScoreGames({ scope, seasonYear: safeSeasonYear, startDate: SEASON_START_DATE, endDate: SEASON_END_DATE }).then((payload) => ({ payload, scoresLoadError: "" })).catch((error: unknown) => { console.error("[admin-scores] Failed to load unified scores", error); return { payload: { games: [], connections: [] }, scoresLoadError: "Scores are temporarily loading in safe mode. Manual imports remain available while the unified data source is checked." }; });  const { payload, scoresLoadError } = scoresResult;
-  return (
-    <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
-      <section className="mx-auto max-w-7xl px-4 sm:px-6">
-        <ScoresPageHeader currentOrg={currentOrg} allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")} allowViewByUser={adminUser.isMaster} moduleHubHref={canAccessAssignr ? assignrHubHref(currentOrg ?? getDefaultContentOrg()) : undefined} />
-        {masterMode ? <TournamentAlertsPanel /> : null}
-        {scoresLoadError ? <div className="mb-5 rounded-xl border border-amber-500/40 bg-amber-950/40 px-4 py-3 text-sm text-amber-100">{scoresLoadError}</div> : null}
-        <ScoresHub
-          games={payload.games}
-          connections={payload.connections}
-          scope={scope}
-          seasonYear={safeSeasonYear}
-        />
-      </section>
-    </main>
-  );
-}
-function ScoresPageHeader({ currentOrg, allowRolePreview, allowViewByUser, moduleHubHref }: { currentOrg: ContentOrgId | null; allowRolePreview: boolean; allowViewByUser: boolean; moduleHubHref?: string }) {
-  return (
-    <div className="mb-8">
-      <AdminSectionHeader badge="SCORES" currentOrg={currentOrg} currentPath="/admin/scores" allowRolePreview={allowRolePreview} allowViewByUser={allowViewByUser} moduleHubHref={moduleHubHref} moduleHubLabel="Assignr Hub" />
-      <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Scores &amp; Standings</h1>
-      <p className="max-w-3xl text-zinc-400">
-        One competition console: score queue, GameChanger connections/imports, and file imports.
-        Use Assignr Hub for schedule/officials; use Tournament Brackets for bracket layout (not score entry).
-      </p>
-    </div>
-  );
+  for (const [key, value] of Object.entries(resolvedParams)) {
+    if (value && typeof value === "string") {
+      params.set(key, value);
+    }
+  }
+
+  const basePath = targetBase.split("?")[0];
+  redirect(`${basePath}?${params.toString()}`);
 }
