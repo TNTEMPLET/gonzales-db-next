@@ -79,7 +79,7 @@ export default function ParkHub({
 
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
         <p className="mb-6 text-sm text-zinc-400">{TAB_META[tab].description}</p>
-        {tab === "brackets" && <TournamentBracketsClient />}
+        {tab === "brackets" && <TournamentBracketsClient organizationId={targetOrg as any} />}
         {tab === "alerts" && (
           <div className="space-y-8">
             <AdminAlertsManager targetOrg={targetOrg} />
