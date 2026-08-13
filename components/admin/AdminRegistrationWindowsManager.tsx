@@ -188,11 +188,11 @@ export default function AdminRegistrationWindowsManager({
             type="button"
             disabled={saving}
             onClick={() => {
-              setStartLocal(initial.defaults.startLocal);
-              setEndLocal(initial.defaults.endLocal);
+              setStartLocal(fallback.defaults.startLocal);
+              setEndLocal(fallback.defaults.endLocal);
               void save({
-                startLocal: initial.defaults.startLocal,
-                endLocal: initial.defaults.endLocal,
+                startLocal: fallback.defaults.startLocal,
+                endLocal: fallback.defaults.endLocal,
                 resetToDefaults: true,
               });
             }}
