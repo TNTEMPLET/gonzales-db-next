@@ -24,16 +24,17 @@ export default function AdminRegistrationWindowsManager({
   organizationId,
   initial,
 }: Props) {
-  const fallback = initial || {
+  const fallback: WindowPayload = initial || {
     organizationId,
     startLocal: toDatetimeLocalInput(new Date().toISOString()),
     endLocal: toDatetimeLocalInput(new Date(Date.now() + 30 * 86400000).toISOString()),
-    source: "default" as const,
+    source: "default",
     isOpenNow: true,
     defaults: {
       startLocal: toDatetimeLocalInput(new Date().toISOString()),
       endLocal: toDatetimeLocalInput(new Date(Date.now() + 30 * 86400000).toISOString()),
     },
+    updatedAt: undefined,
   };
   const [startLocal, setStartLocal] = useState(fallback.startLocal);
   const [endLocal, setEndLocal] = useState(fallback.endLocal);
