@@ -8,10 +8,11 @@ import { parseGameChangerEmbedSnippet } from "@/lib/gamechanger/parseEmbedSnippe
 import type { UnifiedGameChangerConnection, UnifiedScoreGame, UnifiedScoreSourceType } from "@/lib/admin/unifiedScoreSources";
 
 type Props = {
-  games: UnifiedScoreGame[];
-  connections: UnifiedGameChangerConnection[];
-  scope: AdminAssignrScope;
-  seasonYear: number;
+  targetOrg?: string;
+  games?: UnifiedScoreGame[];
+  connections?: UnifiedGameChangerConnection[];
+  scope?: AdminAssignrScope;
+  seasonYear?: number;
   /** When true (Scores hub GameChanger section), open the GC service panel by default. */
   preferGameChangerExpanded?: boolean;
 };
@@ -39,10 +40,11 @@ function dateOptionLabel(key: string, fallback?: string) {
 }
 
 export default function AdminScoresManager({
-  games,
-  connections,
-  scope,
-  seasonYear,
+  targetOrg,
+  games = [],
+  connections = [],
+  scope = (targetOrg as AdminAssignrScope) || "all",
+  seasonYear = new Date().getFullYear(),
   preferGameChangerExpanded = false,
 }: Props) {
   const router = useRouter();
