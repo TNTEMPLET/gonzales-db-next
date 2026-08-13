@@ -23,6 +23,8 @@ type SendEmailModalProps = {
   contacts?: RawContactInputClient[];
   targetOrg: string;
   isMasterAdmin?: boolean;
+  defaultBody?: string;
+  maxRecipients?: number;
   onSent?: (result: { sent?: number; failed?: number; recipients?: number }) => void;
 };
 
@@ -35,10 +37,12 @@ export default function SendEmailModal({
   contacts = [],
   targetOrg,
   isMasterAdmin = false,
+  defaultBody = "",
+  maxRecipients,
   onSent,
 }: SendEmailModalProps) {
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [body, setBody] = useState(defaultBody || "");
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
