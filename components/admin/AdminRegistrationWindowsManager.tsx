@@ -17,19 +17,30 @@ type WindowPayload = {
 
 type Props = {
   organizationId: ContentOrgId;
-  initial: WindowPayload;
+  initial?: WindowPayload;
 };
 
 export default function AdminRegistrationWindowsManager({
   organizationId,
   initial,
 }: Props) {
-  const [startLocal, setStartLocal] = useState(initial.startLocal);
-  const [endLocal, setEndLocal] = useState(initial.endLocal);
-  const [source, setSource] = useState(initial.source);
-  const [isOpenNow, setIsOpenNow] = useState(initial.isOpenNow);
+  const fallback = initial || {
+    organizationId,
+    startLocal: toDatetimeLocalInput(new Date().toISOString()),
+    endLocal: toDatetimeLocalInput(new Date(Date.now() + 30 * 86400000).toISOString()),
+    source: "default" as const,
+    isOpenNow: true,
+    defaults: {
+      startLocal: toDatetimeLocalInput(new Date().toISOString()),
+      endLocal: toDatetimeLocalInput(new Date(Date.now() + 30 * 86400000).toISOString()),
+    },
+  };
+  const [startLocal, setStartLocal] = useState(fallback.startLocal);
+  const [endLocal, setEndLocal] = useState(fallback.endLocal);
+  const [source, setSource] = useState(fallback.source);
+  const [isOpenNow, setIsOpenNow] = useState(fallback.isOpenNow);
   const [updatedAt, setUpdatedAt] = useState<string | null>(
-    initial.updatedAt ?? null,
+    fallback.updatedAt ?? null,
   );
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
