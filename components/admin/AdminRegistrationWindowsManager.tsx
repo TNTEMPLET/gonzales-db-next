@@ -160,7 +160,7 @@ export default function AdminRegistrationWindowsManager({
         <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/50 p-3 text-xs text-zinc-500">
           Code defaults for this org:{" "}
           <code className="text-zinc-300">
-            {initial.defaults.startLocal} → {initial.defaults.endLocal}
+            {fallback.defaults.startLocal} → {fallback.defaults.endLocal}
           </code>
         </div>
 
