@@ -1,7 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { FallBallCapacityReport } from "@/lib/sportsConnect/fallballCapacity";
+import type {
+  FallBallCapacityReport,
+  FallBallPlayerDataSource,
+} from "@/lib/sportsConnect/fallballCapacity";
+
+const PLAYER_SOURCE_LABEL: Record<FallBallPlayerDataSource, string> = {
+  team_rosters: "From teams entered in Team Manager",
+  sports_connect_sync: "From the last synced SportsConnect enrollment file",
+  manual_fallback: "Manually recorded snapshot — not live data",
+  none: "No enrollment data yet",
+};
 
 async function safeJson(response: Response) {
   const text = await response.text();
@@ -102,7 +112,7 @@ export default function FallBallCapacityCard() {
             {data.seasonLabel} — Division Enrollment &amp; Coach Capacity
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            From teams and rosters entered in Team Manager.{" "}
+            {PLAYER_SOURCE_LABEL[data.playerDataSource]}.{" "}
             {data.lastPlayerRegSyncAt
               ? `Last SportsConnect sync: ${new Date(data.lastPlayerRegSyncAt).toLocaleString("en-US")}.`
               : "No SportsConnect enrollment file has been synced yet."}
@@ -143,7 +153,14 @@ export default function FallBallCapacityCard() {
 
       <div className="mt-5 grid grid-cols-3 gap-4">
         <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
-          <div className="text-xs font-medium text-zinc-400">Total Enrolled Players</div>
+          <div className="flex items-center gap-2">
+            <div className="text-xs font-medium text-zinc-400">Total Enrolled Players</div>
+            {data.playerDataSource === "manual_fallback" ? (
+              <span className="rounded-full border border-amber-800/60 bg-amber-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">
+                Manual
+              </span>
+            ) : null}
+          </div>
           <div className="mt-1 text-2xl font-black text-emerald-400">{data.totalPlayers}</div>
         </div>
         <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
@@ -171,7 +188,9 @@ export default function FallBallCapacityCard() {
             {data.divisions.length === 0 ? (
               <tr>
                 <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
-                  No teams have been entered for {data.seasonLabel} yet.
+                  {data.teamsFormed
+                    ? `No teams have been entered for ${data.seasonLabel} yet.`
+                    : "Teams haven't been formed yet — per-division breakdown will appear here once they are. Totals above reflect pre-team-formation enrollment."}
                 </td>
               </tr>
             ) : (
