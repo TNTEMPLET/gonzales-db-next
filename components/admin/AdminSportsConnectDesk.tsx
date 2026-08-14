@@ -207,6 +207,9 @@ export default function AdminSportsConnectDesk({
   const [driveConfigured, setDriveConfigured] = useState(false);
   const [driveSyncing, setDriveSyncing] = useState(false);
   const [driveSyncResult, setDriveSyncResult] = useState<string | null>(null);
+  const [driveDegraded, setDriveDegraded] = useState(false);
+  const [driveDegradedReason, setDriveDegradedReason] = useState<string | null>(null);
+  const [driveProvisioning, setDriveProvisioning] = useState(false);
 
   const loadDriveSync = useCallback(async () => {
     try {
@@ -215,16 +218,45 @@ export default function AdminSportsConnectDesk({
       });
       const json = await safeJson(res);
       if (res.ok && json.data && typeof json.data === "object") {
-        const data = json.data as { configured: boolean; driveFolderId: string | null };
+        const data = json.data as {
+          configured: boolean;
+          driveFolderId: string | null;
+          degraded?: boolean;
+          degradedReason?: string;
+        };
         setDriveConfigured(data.configured);
         if (data.driveFolderId) {
           setDriveFolderIdInput(data.driveFolderId);
         }
+        setDriveDegraded(Boolean(data.degraded));
+        setDriveDegradedReason(data.degradedReason ?? null);
       }
     } catch {
       // ignore
     }
   }, [orgQuery]);
+
+  const runDbMigration = async () => {
+    setDriveProvisioning(true);
+    setDriveSyncResult(null);
+    try {
+      const res = await fetch("/api/admin/sports-connect/drive-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ organizationId: targetOrg, provisionOnly: true }),
+      });
+      const json = await safeJson(res);
+      if (!res.ok) {
+        throw new Error(String(json.error || "Schema provisioning failed"));
+      }
+      setDriveSyncResult("Database schema provisioned successfully. Refreshing status…");
+      await loadDriveSync();
+    } catch (err) {
+      setDriveSyncResult(err instanceof Error ? err.message : "Schema provisioning failed");
+    } finally {
+      setDriveProvisioning(false);
+    }
+  };
 
   const triggerDriveSync = async () => {
     setDriveSyncing(true);
@@ -751,6 +783,26 @@ export default function AdminSportsConnectDesk({
               {driveConfigured ? "Folder Mapped" : "Not Mapped"}
             </span>
           </div>
+
+          {driveDegraded ? (
+            <div className="rounded-lg border border-amber-800/60 bg-amber-950/30 p-4 space-y-2.5">
+              <p className="text-xs font-semibold text-amber-200">
+                Drive sync database schema not provisioned
+              </p>
+              <p className="text-xs text-amber-200/80">
+                {driveDegradedReason ??
+                  "Drive sync status is temporarily unavailable."}
+              </p>
+              <button
+                type="button"
+                onClick={() => void runDbMigration()}
+                disabled={driveProvisioning}
+                className="rounded-lg bg-amber-700 hover:bg-amber-600 disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white"
+              >
+                {driveProvisioning ? "Running migration…" : "Run DB Migration"}
+              </button>
+            </div>
+          ) : null}
 
           <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/50 p-4">
             <label className="block space-y-1">
