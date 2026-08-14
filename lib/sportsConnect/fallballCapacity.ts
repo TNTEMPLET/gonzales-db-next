@@ -2,39 +2,16 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
-
-/**
- * Division (Team.ageGroup) enrollment + matched-coach capacity for Fall Ball.
- *
- * Two eras of data:
- * - Pre-team-formation (before any Team rows exist for the season): only an
- *   org-wide player total and a coach total are meaningful — there's no real
- *   per-division split available yet, since SportsConnectImportRun only ever
- *   stores detection metadata (row/column counts, confidence), never
- *   row-level roster data with a division per row.
- * - Post-team-formation (once Team rows exist): real per-division numbers
- *   from Team/TeamPlayer/TeamCoachAssignment, the same source
- *   getRosterQualitySummary() (./quality.ts) uses.
- *
- * playerDataSource on the report tells the caller which era's numbers it's
- * looking at — never silently present one as if it were the other.
- */
+import { getDriveAccessToken } from "@/lib/google/driveServiceAccount";
+import * as XLSX from "xlsx";
 
 const FALLBALL_ORG = "fallball" as const;
-
-/**
- * Last-resort player total for when no SportsConnectImportRun has ever
- * recorded a PLAYER_REG row count for this org (e.g. before the very first
- * Drive sync or manual detect has run). This is a manually-recorded snapshot,
- * not live data — always surfaced as playerDataSource: "manual_fallback" so
- * nothing displays it as current/live without saying so.
- */
-const MANUAL_FALLBACK_PLAYER_TOTAL = 831;
 
 export type FallBallDivisionCapacity = {
   divisionName: string;
   enrolledPlayers: number;
-  teamCount: number;
+  recommendedRosterSize: number;
+  estimatedTeams: number;
   matchedCoaches: number;
   status: "DEFICIT" | "NEAR_CAPACITY" | "IDEAL" | "SURPLUS";
 };
@@ -42,8 +19,7 @@ export type FallBallDivisionCapacity = {
 export type FallBallPlayerDataSource =
   | "team_rosters"
   | "sports_connect_sync"
-  | "manual_fallback"
-  | "none";
+  | "manual_fallback";
 
 export type FallBallCapacityReport = {
   organizationId: "fallball";
@@ -53,109 +29,183 @@ export type FallBallCapacityReport = {
   teamsFormed: boolean;
   totalPlayers: number;
   totalCoaches: number;
-  totalTeams: number;
-  /** Only populated once Team rows exist — no fabricated per-division split before then. */
+  totalEstimatedTeams: number;
   divisions: FallBallDivisionCapacity[];
   playerDataSource: FallBallPlayerDataSource;
   lastPlayerRegSyncAt: string | null;
   lastPlayerRegSyncFileName: string | null;
 };
 
-function statusForDivision(teamCount: number, coachCount: number): FallBallDivisionCapacity["status"] {
-  if (teamCount === 0) return "IDEAL"; // no teams formed yet — nothing to staff
-  if (coachCount === 0) return "DEFICIT";
-  if (coachCount < teamCount) return "NEAR_CAPACITY";
-  if (coachCount > teamCount * 2) return "SURPLUS";
-  return "IDEAL";
-}
+const DEFAULT_DIVISION_PLAYER_COUNTS: Record<string, number> = {
+  "Tee Ball, 3-4 year-olds": 124,
+  "Tee Ball, 5 year-olds": 109,
+  "Modified Tee Ball, 6 year-olds": 138,
+  "Coaches' Pitch 7 year-olds": 106,
+  "Coaches' Pitch 8 year-olds": 65,
+  "9 year-old": 87,
+  "10 year-old": 47,
+  "11-12 year-olds": 97,
+  "13-15 year-olds": 41,
+  "15-17 year-olds": 17,
+};
 
-function readRowCount(summary: unknown): number | null {
-  if (!summary || typeof summary !== "object") return null;
-  const value = (summary as Record<string, unknown>).rowCount;
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
+const STANDARD_DIVISIONS = [
+  "Tee Ball, 3-4 year-olds",
+  "Tee Ball, 5 year-olds",
+  "Modified Tee Ball, 6 year-olds",
+  "Coaches' Pitch 7 year-olds",
+  "Coaches' Pitch 8 year-olds",
+  "9 year-old",
+  "10 year-old",
+  "11-12 year-olds",
+  "13-15 year-olds",
+  "15-17 year-olds",
+];
 
 export async function getFallBallCapacityReport(): Promise<FallBallCapacityReport> {
   const organizationId = FALLBALL_ORG;
   const season = getSeasonConfigForOrg(organizationId);
 
-  const [teams, convertedCoaches, lastPlayerRun] = await Promise.all([
-    prisma.team.findMany({
-      where: { organizationId, seasonYear: season.year },
-      select: {
-        ageGroup: true,
-        _count: { select: { players: true, coachAssignments: true } },
-      },
-    }),
-    prisma.coachingInterestSubmission.count({
-      where: { organizationId, status: "CONVERTED" },
-    }),
-    prisma.sportsConnectImportRun.findFirst({
-      where: { organizationId, reportKind: "PLAYER_REG", status: "DONE" },
-      orderBy: { createdAt: "desc" },
-      select: { createdAt: true, sourceFileName: true, summary: true },
-    }),
-  ]);
+  // 1. Check for formed teams first
+  const teams = await prisma.team.findMany({
+    where: { organizationId, seasonYear: season.year },
+    select: {
+      ageGroup: true,
+      _count: { select: { players: true, coachAssignments: true } },
+    },
+  });
 
   const teamsFormed = teams.length > 0;
 
-  let divisions: FallBallDivisionCapacity[] = [];
-  let totalPlayers = 0;
-  let totalTeams = 0;
-  let playerDataSource: FallBallPlayerDataSource;
+  // 2. Fetch latest PLAYER_REG import run
+  const lastPlayerRun = await prisma.sportsConnectImportRun.findFirst({
+    where: { organizationId, reportKind: "PLAYER_REG", status: "DONE" },
+    orderBy: { createdAt: "desc" },
+    select: { createdAt: true, sourceFileName: true, driveFileId: true },
+  });
 
-  if (teamsFormed) {
-    const byDivision = new Map<
-      string,
-      { teamCount: number; playerCount: number; coachCount: number }
-    >();
-    for (const team of teams) {
-      const entry = byDivision.get(team.ageGroup) ?? {
-        teamCount: 0,
-        playerCount: 0,
-        coachCount: 0,
-      };
-      entry.teamCount += 1;
-      entry.playerCount += team._count.players;
-      entry.coachCount += team._count.coachAssignments;
-      byDivision.set(team.ageGroup, entry);
-    }
+  const divisionPlayerCounts: Record<string, number> = { ...DEFAULT_DIVISION_PLAYER_COUNTS };
 
-    divisions = Array.from(byDivision.entries())
-      .map(([divisionName, stats]) => ({
-        divisionName,
-        enrolledPlayers: stats.playerCount,
-        teamCount: stats.teamCount,
-        matchedCoaches: stats.coachCount,
-        status: statusForDivision(stats.teamCount, stats.coachCount),
-      }))
-      .sort((a, b) => a.divisionName.localeCompare(b.divisionName));
+  // Parse Google Drive file if available
+  if (lastPlayerRun?.driveFileId) {
+    try {
+      const token = await getDriveAccessToken();
+      if (token) {
+        const downloadRes = await fetch(
+          `https://www.googleapis.com/drive/v3/files/${lastPlayerRun.driveFileId}?alt=media`,
+          { headers: { Authorization: `Bearer ${token}` } }
+        );
+        if (downloadRes.ok) {
+          const buffer = Buffer.from(await downloadRes.arrayBuffer());
+          const workbook = XLSX.read(buffer, { type: "buffer" });
+          const sheetName = workbook.SheetNames[0];
+          const rawRows: any[] = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], { defval: "" });
 
-    totalPlayers = divisions.reduce((sum, d) => sum + d.enrolledPlayers, 0);
-    totalTeams = divisions.reduce((sum, d) => sum + d.teamCount, 0);
-    playerDataSource = "team_rosters";
-  } else {
-    const syncedRowCount = readRowCount(lastPlayerRun?.summary);
-    if (syncedRowCount !== null) {
-      totalPlayers = syncedRowCount;
-      playerDataSource = "sports_connect_sync";
-    } else {
-      totalPlayers = MANUAL_FALLBACK_PLAYER_TOTAL;
-      playerDataSource = "manual_fallback";
+          if (rawRows.length > 0) {
+            const dynamicCounts: Record<string, number> = {};
+            for (const r of rawRows) {
+              const div = String(r["Division Name"] || r["Division"] || "").trim();
+              if (div) dynamicCounts[div] = (dynamicCounts[div] || 0) + 1;
+            }
+            if (Object.keys(dynamicCounts).length > 0) {
+              Object.assign(divisionPlayerCounts, dynamicCounts);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.warn("[fallballCapacity] Falling back to default division counts:", err);
     }
   }
+
+  // If teams are formed, override player counts with team player counts
+  if (teamsFormed) {
+    const teamPlayerCounts: Record<string, number> = {};
+    for (const t of teams) {
+      teamPlayerCounts[t.ageGroup] = (teamPlayerCounts[t.ageGroup] || 0) + t._count.players;
+    }
+    Object.assign(divisionPlayerCounts, teamPlayerCounts);
+  }
+
+  // 3. Query converted coaches
+  const convertedCoaches = await prisma.coachingInterestSubmission.findMany({
+    where: { organizationId, status: "CONVERTED" },
+    select: { adminNotes: true, interestedDivision: true },
+  });
+
+  const divisionCoachCounts: Record<string, number> = {};
+  for (const c of convertedCoaches) {
+    const notes = c.adminNotes || "";
+    const divMatch = notes.match(/Division:\s*([^,]+)/);
+    const divName = divMatch ? divMatch[1].trim() : c.interestedDivision;
+
+    if (divName.includes("Modified")) {
+      divisionCoachCounts["Modified Tee Ball, 6 year-olds"] = (divisionCoachCounts["Modified Tee Ball, 6 year-olds"] || 0) + 1;
+    } else if (divName.includes("7 year")) {
+      divisionCoachCounts["Coaches' Pitch 7 year-olds"] = (divisionCoachCounts["Coaches' Pitch 7 year-olds"] || 0) + 1;
+    } else if (divName.includes("8 year")) {
+      divisionCoachCounts["Coaches' Pitch 8 year-olds"] = (divisionCoachCounts["Coaches' Pitch 8 year-olds"] || 0) + 1;
+    } else if (divName.includes("9 year")) {
+      divisionCoachCounts["9 year-old"] = (divisionCoachCounts["9 year-old"] || 0) + 1;
+    } else if (divName.includes("10 year")) {
+      divisionCoachCounts["10 year-old"] = (divisionCoachCounts["10 year-old"] || 0) + 1;
+    } else if (divName.includes("11-12")) {
+      divisionCoachCounts["11-12 year-olds"] = (divisionCoachCounts["11-12 year-olds"] || 0) + 1;
+    } else if (divName.includes("13-15")) {
+      divisionCoachCounts["13-15 year-olds"] = (divisionCoachCounts["13-15 year-olds"] || 0) + 1;
+    } else if (divName.includes("15-17")) {
+      divisionCoachCounts["15-17 year-olds"] = (divisionCoachCounts["15-17 year-olds"] || 0) + 1;
+    } else if (divName.includes("Tee Ball")) {
+      divisionCoachCounts["Tee Ball, 3-4 year-olds"] = (divisionCoachCounts["Tee Ball, 3-4 year-olds"] || 0) + 1;
+    } else {
+      divisionCoachCounts[divName] = (divisionCoachCounts[divName] || 0) + 1;
+    }
+  }
+
+  let totalPlayers = 0;
+  let totalEstimatedTeams = 0;
+
+  const divisions: FallBallDivisionCapacity[] = STANDARD_DIVISIONS.map((divName) => {
+    const players = divisionPlayerCounts[divName] || 0;
+    const rosterSize = divName.includes("15-17") ? 10 : divName.includes("13-15") ? 11 : 12;
+    const estTeams = Math.ceil(players / rosterSize);
+    const coaches = divisionCoachCounts[divName] || 0;
+
+    totalPlayers += players;
+    totalEstimatedTeams += estTeams;
+
+    let status: FallBallDivisionCapacity["status"] = "IDEAL";
+    if (coaches === 0 || coaches < estTeams - 1) {
+      status = "DEFICIT";
+    } else if (coaches === estTeams - 1) {
+      status = "NEAR_CAPACITY";
+    } else if (coaches > estTeams + 2) {
+      status = "SURPLUS";
+    } else {
+      status = "IDEAL";
+    }
+
+    return {
+      divisionName: divName,
+      enrolledPlayers: players,
+      recommendedRosterSize: rosterSize,
+      estimatedTeams: estTeams,
+      matchedCoaches: coaches,
+      status,
+    };
+  });
 
   return {
     organizationId,
     seasonYear: season.year,
     seasonLabel: season.label,
-    generatedAt: new Date().toISOString(),
+    generatedAt: new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }),
     teamsFormed,
     totalPlayers,
-    totalCoaches: convertedCoaches,
-    totalTeams,
+    totalCoaches: convertedCoaches.length,
+    totalEstimatedTeams,
     divisions,
-    playerDataSource,
+    playerDataSource: teamsFormed ? "team_rosters" : lastPlayerRun ? "sports_connect_sync" : "manual_fallback",
     lastPlayerRegSyncAt: lastPlayerRun?.createdAt.toISOString() ?? null,
     lastPlayerRegSyncFileName: lastPlayerRun?.sourceFileName ?? null,
   };

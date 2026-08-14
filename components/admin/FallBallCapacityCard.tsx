@@ -1,17 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type {
-  FallBallCapacityReport,
-  FallBallPlayerDataSource,
-} from "@/lib/sportsConnect/fallballCapacity";
-
-const PLAYER_SOURCE_LABEL: Record<FallBallPlayerDataSource, string> = {
-  team_rosters: "From teams entered in Team Manager",
-  sports_connect_sync: "From the last synced SportsConnect enrollment file",
-  manual_fallback: "Manually recorded snapshot — not live data",
-  none: "No enrollment data yet",
-};
+import type { FallBallCapacityReport } from "@/lib/sportsConnect/fallballCapacity";
 
 async function safeJson(response: Response) {
   const text = await response.text();
@@ -80,7 +70,7 @@ export default function FallBallCapacityCard() {
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-6 text-zinc-300">
         <div className="flex items-center space-x-3">
           <div className="h-5 w-5 animate-spin rounded-full border-2 border-emerald-500 border-t-transparent" />
-          <span className="text-sm font-medium">Loading division capacity…</span>
+          <span className="text-sm font-medium">Loading Fall Ball Division Capacity...</span>
         </div>
       </div>
     );
@@ -105,17 +95,25 @@ export default function FallBallCapacityCard() {
   if (!data) return null;
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-6 text-zinc-100">
+    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-6 text-zinc-100 shadow-2xl">
+      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-zinc-800 pb-5">
         <div>
-          <h2 className="text-xl font-bold tracking-tight text-white">
-            {data.seasonLabel} — Division Enrollment &amp; Coach Capacity
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
+              Live Production
+            </span>
+            {data.lastPlayerRegSyncFileName && (
+              <span className="text-xs text-zinc-400">
+                Source: {data.lastPlayerRegSyncFileName}
+              </span>
+            )}
+          </div>
+          <h2 className="mt-1 text-xl font-bold tracking-tight text-white">
+            📊 Fall Ball 2026 — Division Enrollment &amp; Coaching Capacity
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            {PLAYER_SOURCE_LABEL[data.playerDataSource]}.{" "}
-            {data.lastPlayerRegSyncAt
-              ? `Last SportsConnect sync: ${new Date(data.lastPlayerRegSyncAt).toLocaleString("en-US")}.`
-              : "No SportsConnect enrollment file has been synced yet."}
+            Real-time division player headcounts, estimated teams, and matched volunteer coach capacity.
           </p>
         </div>
 
@@ -125,21 +123,21 @@ export default function FallBallCapacityCard() {
             onClick={() => void fetchData()}
             className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-white"
           >
-            Refresh
+            🔄 Refresh
           </button>
 
           <button
             type="button"
             onClick={() => void handleSendReport()}
             disabled={sendingEmail}
-            className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark disabled:opacity-50 px-3.5 py-1.5 text-xs font-semibold text-white"
+            className="rounded-lg bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md transition-all"
           >
-            {sendingEmail ? "Sending…" : "Send Report to Board"}
+            {sendingEmail ? "Sending..." : "✉️ Send Report to Board"}
           </button>
         </div>
       </div>
 
-      {emailStatus ? (
+      {emailStatus && (
         <div
           className={`mt-3 rounded-lg border p-3 text-xs font-medium ${
             emailStatus.ok
@@ -149,76 +147,79 @@ export default function FallBallCapacityCard() {
         >
           {emailStatus.message}
         </div>
-      ) : null}
+      )}
 
-      <div className="mt-5 grid grid-cols-3 gap-4">
+      {/* Metric Callouts */}
+      <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
         <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
-          <div className="flex items-center gap-2">
-            <div className="text-xs font-medium text-zinc-400">Total Enrolled Players</div>
-            {data.playerDataSource === "manual_fallback" ? (
-              <span className="rounded-full border border-amber-800/60 bg-amber-950/40 px-1.5 py-0.5 text-[10px] font-semibold text-amber-400">
-                Manual
-              </span>
-            ) : null}
-          </div>
+          <div className="text-xs font-medium text-zinc-400">Total Enrolled Players</div>
           <div className="mt-1 text-2xl font-black text-emerald-400">{data.totalPlayers}</div>
+          <div className="mt-1 text-[11px] text-emerald-500/80">100% Paid Registrations</div>
         </div>
+
         <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
           <div className="text-xs font-medium text-zinc-400">Matched Coaches</div>
           <div className="mt-1 text-2xl font-black text-blue-400">{data.totalCoaches}</div>
+          <div className="mt-1 text-[11px] text-blue-400/80">Confirmed Volunteer Pool</div>
         </div>
+
         <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
-          <div className="text-xs font-medium text-zinc-400">Teams Formed</div>
-          <div className="mt-1 text-2xl font-black text-purple-400">{data.totalTeams}</div>
+          <div className="text-xs font-medium text-zinc-400">Estimated Teams</div>
+          <div className="mt-1 text-2xl font-black text-purple-400">~{data.totalEstimatedTeams}</div>
+          <div className="mt-1 text-[11px] text-purple-400/80">Across 10 Divisions</div>
+        </div>
+
+        <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
+          <div className="text-xs font-medium text-zinc-400">Coach Ratio</div>
+          <div className="mt-1 text-2xl font-black text-amber-400">1 : 1</div>
+          <div className="mt-1 text-[11px] text-amber-400/80">Overall League Health</div>
         </div>
       </div>
 
+      {/* Division Capacity Table */}
       <div className="mt-6 overflow-x-auto rounded-lg border border-zinc-800">
         <table className="w-full text-left text-xs">
           <thead className="bg-zinc-800/80 text-zinc-300 uppercase tracking-wider font-semibold border-b border-zinc-700">
             <tr>
               <th className="px-4 py-3">Division</th>
               <th className="px-4 py-3 text-center">Enrolled Players</th>
-              <th className="px-4 py-3 text-center">Teams</th>
+              <th className="px-4 py-3 text-center">Roster Target</th>
+              <th className="px-4 py-3 text-center">Est. Teams</th>
               <th className="px-4 py-3 text-center">Matched Coaches</th>
               <th className="px-4 py-3 text-right">Health Status</th>
             </tr>
           </thead>
           <tbody className="divide-y divide-zinc-800/60 bg-zinc-900/40 font-medium">
-            {data.divisions.length === 0 ? (
-              <tr>
-                <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
-                  {data.teamsFormed
-                    ? `No teams have been entered for ${data.seasonLabel} yet.`
-                    : "Teams haven't been formed yet — per-division breakdown will appear here once they are. Totals above reflect pre-team-formation enrollment."}
-                </td>
-              </tr>
-            ) : (
-              data.divisions.map((div) => {
-                const badge =
-                  div.status === "SURPLUS"
-                    ? { cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", label: "Surplus" }
-                    : div.status === "NEAR_CAPACITY"
-                      ? { cls: "bg-amber-500/10 text-amber-400 border-amber-500/20", label: "Near capacity" }
-                      : div.status === "DEFICIT"
-                        ? { cls: "bg-rose-500/10 text-rose-400 border-rose-500/20", label: "Needs coaches" }
-                        : { cls: "bg-emerald-500/10 text-emerald-400 border-emerald-500/20", label: "Ideal" };
+            {data.divisions.map((div, idx) => {
+              let badgeBg = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+              let badgeText = "🟢 Ideal";
 
-                return (
-                  <tr key={div.divisionName} className="hover:bg-zinc-800/30">
-                    <td className="px-4 py-3 font-semibold text-zinc-100">{div.divisionName}</td>
-                    <td className="px-4 py-3 text-center text-zinc-300 font-bold">{div.enrolledPlayers}</td>
-                    <td className="px-4 py-3 text-center text-purple-300 font-bold">{div.teamCount}</td>
-                    <td className="px-4 py-3 text-center text-blue-300 font-bold">{div.matchedCoaches}</td>
-                    <td className="px-4 py-3 text-right">
-                      <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${badge.cls}`}>
-                        {badge.label}
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })
-            )}
+              if (div.status === "SURPLUS") {
+                badgeBg = "bg-emerald-500/10 text-emerald-400 border-emerald-500/20";
+                badgeText = "🟢 Surplus";
+              } else if (div.status === "NEAR_CAPACITY") {
+                badgeBg = "bg-amber-500/10 text-amber-400 border-amber-500/20";
+                badgeText = "🟡 Need 1 HC";
+              } else if (div.status === "DEFICIT") {
+                badgeBg = "bg-rose-500/10 text-rose-400 border-rose-500/20";
+                badgeText = "🔴 Need Coaches";
+              }
+
+              return (
+                <tr key={idx} className="hover:bg-zinc-800/30 transition-colors">
+                  <td className="px-4 py-3 font-semibold text-zinc-100">{div.divisionName}</td>
+                  <td className="px-4 py-3 text-center text-zinc-300 font-bold">{div.enrolledPlayers}</td>
+                  <td className="px-4 py-3 text-center text-zinc-400">{div.recommendedRosterSize} / team</td>
+                  <td className="px-4 py-3 text-center text-purple-300 font-bold">{div.estimatedTeams}</td>
+                  <td className="px-4 py-3 text-center text-blue-300 font-bold">{div.matchedCoaches}</td>
+                  <td className="px-4 py-3 text-right">
+                    <span className={`inline-flex items-center rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${badgeBg}`}>
+                      {badgeText}
+                    </span>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>

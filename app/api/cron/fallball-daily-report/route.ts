@@ -20,7 +20,7 @@ function safeCompare(a: string, b: string): boolean {
 
 function isCronAuthorized(request: NextRequest): boolean {
   const cronSecret = process.env.FALLBALL_REPORT_CRON_SECRET || process.env.CRON_SECRET;
-  if (!cronSecret) return false; // fail closed — no silent open-auth fallback
+  if (!cronSecret) return false;
   const authHeader = request.headers.get("authorization") || "";
   return safeCompare(authHeader, `Bearer ${cronSecret}`);
 }
@@ -46,7 +46,8 @@ function buildReportHtml(data: FallBallCapacityReport): string {
         <tr style="border-bottom: 1px solid #e2e8f0;">
           <td style="padding: 12px 16px; font-weight: 600; color: #1e293b;">${div.divisionName}</td>
           <td style="padding: 12px 16px; text-align: center; font-weight: 700; color: #0f172a;">${div.enrolledPlayers}</td>
-          <td style="padding: 12px 16px; text-align: center; color: #64748b;">${div.teamCount}</td>
+          <td style="padding: 12px 16px; text-align: center; color: #64748b;">${div.recommendedRosterSize} / team</td>
+          <td style="padding: 12px 16px; text-align: center; font-weight: 700; color: #6366f1;">${div.estimatedTeams}</td>
           <td style="padding: 12px 16px; text-align: center; font-weight: 700; color: #2563eb;">${div.matchedCoaches}</td>
           <td style="padding: 12px 16px; text-align: right;">
             <span style="display: inline-block; padding: 4px 10px; border-radius: 9999px; font-size: 11px; font-weight: 700; color: ${badge.color}; background-color: ${badge.bg}; border: 1px solid ${badge.color}33;">
@@ -58,30 +59,11 @@ function buildReportHtml(data: FallBallCapacityReport): string {
     })
     .join("");
 
-  const needsCoaches = data.divisions.filter((d) => d.status === "DEFICIT" || d.status === "NEAR_CAPACITY");
-  const needsCoachesHtml =
-    needsCoaches.length > 0
-      ? `<li>Divisions needing coach recruitment: ${needsCoaches
-          .map((d) => `<strong>${d.divisionName}</strong> (${d.matchedCoaches}/${d.teamCount} teams staffed)`)
-          .join(", ")}.</li>`
-      : `<li>All divisions with formed teams currently have at least one coach matched.</li>`;
-
   const reportDate = new Date().toLocaleDateString("en-US", {
     month: "short",
     day: "numeric",
     year: "numeric",
   });
-
-  const playerSourceNote =
-    data.playerDataSource === "team_rosters"
-      ? "Figures reflect teams and rosters entered in Team Manager."
-      : data.playerDataSource === "sports_connect_sync"
-        ? `Teams haven't been formed yet — total players reflects the last synced SportsConnect enrollment file${
-            data.lastPlayerRegSyncAt ? ` (${new Date(data.lastPlayerRegSyncAt).toLocaleString("en-US")})` : ""
-          }${data.lastPlayerRegSyncFileName ? `: ${data.lastPlayerRegSyncFileName}` : ""}.`
-        : data.playerDataSource === "manual_fallback"
-          ? "Teams haven't been formed yet and no SportsConnect enrollment file has synced yet — total players is a manually recorded snapshot, not live data."
-          : "No enrollment data available yet.";
 
   return `
     <!DOCTYPE html>
@@ -110,8 +92,8 @@ function buildReportHtml(data: FallBallCapacityReport): string {
                 <div style="font-size: 24px; font-weight: 900; color: #2563eb; margin-top: 4px;">${data.totalCoaches}</div>
               </div>
               <div style="flex: 1; background-color: #f1f5f9; padding: 16px; border-radius: 8px; border: 1px solid #e2e8f0; text-align: center;">
-                <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase;">Teams Formed</div>
-                <div style="font-size: 24px; font-weight: 900; color: #4f46e5; margin-top: 4px;">${data.totalTeams}</div>
+                <div style="font-size: 11px; font-weight: 600; color: #64748b; text-transform: uppercase;">Estimated Teams</div>
+                <div style="font-size: 24px; font-weight: 900; color: #4f46e5; margin-top: 4px;">~${data.totalEstimatedTeams}</div>
               </div>
             </div>
 
@@ -121,27 +103,20 @@ function buildReportHtml(data: FallBallCapacityReport): string {
                   <tr>
                     <th style="padding: 10px 16px;">Division</th>
                     <th style="padding: 10px 16px; text-align: center;">Players</th>
-                    <th style="padding: 10px 16px; text-align: center;">Teams</th>
+                    <th style="padding: 10px 16px; text-align: center;">Target</th>
+                    <th style="padding: 10px 16px; text-align: center;">Est. Teams</th>
                     <th style="padding: 10px 16px; text-align: center;">Coaches</th>
-                    <th style="padding: 10px 16px; text-align: right;">Status</th>
+                    <th style="padding: 10px 16px; text-align: right;">Health</th>
                   </tr>
                 </thead>
-                <tbody>${htmlRows || `<tr><td colspan="5" style="padding: 16px; text-align: center; color: #64748b;">No teams have been entered for this season yet.</td></tr>`}</tbody>
+                <tbody>
+                  ${htmlRows}
+                </tbody>
               </table>
             </div>
 
-            <div style="background-color: #eff6ff; border-left: 4px solid #3b82f6; padding: 16px; border-radius: 4px; font-size: 13px; line-height: 1.5; color: #1e3a8a;">
-              <strong>Summary:</strong>
-              <ul style="margin: 6px 0 0 0; padding-left: 20px;">
-                ${needsCoachesHtml}
-              </ul>
-            </div>
-
-            <p style="margin-top: 16px; font-size: 11px; color: #94a3b8;">${playerSourceNote}</p>
-
             <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; text-align: center; color: #94a3b8;">
-              Sent automatically to <strong>${BOARD_RECIPIENT}</strong> via AP Baseball Admin Operations Hub.<br/>
-              <a href="https://admin.apbaseball.com" style="color: #2563eb; text-decoration: underline;">Open Admin Desk</a>
+              Sent automatically to <strong>${BOARD_RECIPIENT}</strong> via AP Baseball Admin Operations Hub.
             </div>
           </div>
         </div>
@@ -150,57 +125,54 @@ function buildReportHtml(data: FallBallCapacityReport): string {
   `;
 }
 
-async function sendFallBallDailyReport() {
+async function dispatchReport() {
   const data = await getFallBallCapacityReport();
-  const subject = `AP Baseball ${data.seasonLabel} — Daily Capacity Report (${data.totalPlayers} players, ${data.totalCoaches} coaches)`;
+  const html = buildReportHtml(data);
+  const subject = `📊 AP Baseball ${data.seasonLabel} — Daily Capacity Report (${data.totalPlayers} Players, ${data.totalCoaches} Coaches)`;
 
   const providerResponse = await sendEmailViaResend({
     to: BOARD_RECIPIENT,
     subject,
-    html: buildReportHtml(data),
+    html,
   });
 
   return { success: true, recipient: BOARD_RECIPIENT, providerResponse, report: data };
 }
 
-/**
- * GET — Vercel Cron trigger. vercel.json is identical across all 6 Vercel
- * projects sharing this repo, so this cron fires on all 6 independently;
- * only the fallball deployment (SITE_ORG=fallball) actually sends, so the
- * board doesn't get 6 duplicate emails every day.
- */
 export async function GET(request: NextRequest) {
   if (getOrgId() !== "fallball") {
-    return NextResponse.json({ ok: true, skipped: true, reason: "Not the fallball deployment" });
+    return NextResponse.json({ ok: true, skipped: true, reason: "Cron only runs on fallball deployment" });
   }
+
   if (!isCronAuthorized(request)) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
+
   try {
-    const result = await sendFallBallDailyReport();
+    const result = await dispatchReport();
     return NextResponse.json(result);
   } catch (err) {
-    console.error("[cron/fallball-daily-report GET]", err);
+    console.error("[api/cron/fallball-daily-report GET]", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to send daily report" },
+      { error: err instanceof Error ? err.message : "Failed to dispatch daily report" },
       { status: 500 },
     );
   }
 }
 
-/** POST — "Send Report to Board" button in AdminSportsConnectDesk. Admin-session gated. */
 export async function POST(request: NextRequest) {
   const auth = await ensureAdminModule(request, "TEAMS");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
+
   try {
-    const result = await sendFallBallDailyReport();
+    const result = await dispatchReport();
     return NextResponse.json(result);
   } catch (err) {
-    console.error("[cron/fallball-daily-report POST]", err);
+    console.error("[api/cron/fallball-daily-report POST]", err);
     return NextResponse.json(
-      { error: err instanceof Error ? err.message : "Failed to send daily report" },
+      { error: err instanceof Error ? err.message : "Failed to dispatch daily report" },
       { status: 500 },
     );
   }
