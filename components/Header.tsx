@@ -281,39 +281,6 @@ export default function Header({ brand }: HeaderProps) {
   const masterNavGroups: MasterNavGroup[] = isMasterHeader
     ? [
         {
-          id: "program",
-          label: "Program",
-          items: [
-            { href: `/admin/teams${masterOrgSuffix}`, label: "Teams" },
-            ...(allowModule("SPONSORS")
-              ? [{ href: `/admin/sponsors${masterOrgSuffix}`, label: "Sponsors" }]
-              : []),
-            ...(allowModule("SOCIAL_MEDIA")
-              ? [{ href: "/admin/social", label: "Social" }]
-              : []),
-            ...(allowModule("ORG_DOCUMENTS")
-              ? [{ href: "/admin/documents", label: "Documents" }]
-              : []),
-            ...(allowModule("TOURNAMENT_BRACKETS")
-              ? [
-                  {
-                    href: "/admin/tournament-brackets",
-                    label: "Brackets",
-                  },
-                ]
-              : []),
-            ...(allowModule("PARK_INFO")
-              ? [{ href: `/admin/park-info${masterOrgSuffix}`, label: "Park Info" }]
-              : []),
-            ...(allowModule("ALL_STAR_VAULT")
-              ? [{ href: `/admin/all-star${masterOrgSuffix}`, label: "Vault" }]
-              : []),
-            ...(allowModule("ALL_STAR_PAYMENTS")
-              ? [{ href: `/admin/shop${masterOrgSuffix}`, label: "Shop" }]
-              : []),
-          ],
-        },
-        {
           id: "operations",
           label: "Operations",
           items: [
@@ -321,21 +288,43 @@ export default function Header({ brand }: HeaderProps) {
               ? [
                   {
                     href: `/admin/people${masterOrgSuffix || "?org=gonzales"}`,
-                    label: "People",
+                    label: "People & Access",
                   },
                 ]
               : []),
-            ...(allowModule("REPORTS")
-              ? [{ href: "/admin/reports", label: "Reports" }]
+            ...(allowModule("TEAMS") ||
+            allowModule("SCORES") ||
+            allowModule("ASSIGNR") ||
+            allowModule("REGISTRATION_WINDOWS")
+              ? [{ href: `/admin/competition${masterOrgSuffix}`, label: "Competition & Play" }]
               : []),
-            ...(allowModule("SCORES")
-              ? [{ href: "/admin/scores", label: "Scores" }]
-              : []),
-            ...(allowModule("DUGOUT_MODERATION")
-              ? [{ href: "/admin/dugout", label: "Dugout" }]
+            ...(allowModule("TOURNAMENT_BRACKETS") ||
+            allowModule("PARK_ALERTS") ||
+            allowModule("TOURNAMENT_ALERTS") ||
+            allowModule("PARK_INFO")
+              ? [{ href: `/admin/park${masterOrgSuffix}`, label: "Park & Tournaments" }]
               : []),
             ...(canSeeDugout
               ? [{ href: `/coach-corner${masterOrgSuffix}`, label: "Coach's Corner" }]
+              : []),
+          ],
+        },
+        {
+          id: "program",
+          label: "Program & Commerce",
+          items: [
+            ...(allowModule("COMMUNICATIONS") ||
+            allowModule("NEWS_ADMIN") ||
+            allowModule("SOCIAL_MEDIA") ||
+            allowModule("DUGOUT_MODERATION") ||
+            allowModule("ORG_DOCUMENTS")
+              ? [{ href: `/admin/publishing${masterOrgSuffix}`, label: "Publishing & Comms" }]
+              : []),
+            ...(allowModule("ALL_STAR_PAYMENTS") || allowModule("SPONSORS") || allowModule("REPORTS")
+              ? [{ href: `/admin/orders${masterOrgSuffix}`, label: "Orders & Commerce" }]
+              : []),
+            ...(allowModule("ALL_STAR_VAULT")
+              ? [{ href: `/admin/all-star${masterOrgSuffix}`, label: "All-Star Program" }]
               : []),
           ],
         },
