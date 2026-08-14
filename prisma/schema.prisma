@@ -2236,6 +2236,9 @@ model SportsConnectImportRun {
   teamPlayerBatchId String?
   coachBatchId      String?
   createdByAdminId  String?
+  driveFileId       String?
+  revisionToken     String?
+  leaseExpiresAt    DateTime?
   createdAt         DateTime  @default(now())
   completedAt       DateTime?
 
@@ -2243,7 +2246,18 @@ model SportsConnectImportRun {
 
   @@index([organizationId, seasonYear, createdAt])
   @@index([organizationId, status, createdAt])
+  @@unique([organizationId, seasonYear, driveFileId, revisionToken])
 }
+
+/// Explicit mapping of content organization to Google Drive export folder ID
+model SportsConnectOrgDriveFolder {
+  id              String   @id @default(cuid())
+  organizationId  String   @unique
+  driveFolderId   String
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
 
 // ── Travel / Regional trip intake (multi-org All-Star program) ───────────────
 

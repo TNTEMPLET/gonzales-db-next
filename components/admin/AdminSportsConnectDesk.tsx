@@ -46,6 +46,7 @@ type DeskSectionId =
   | "checklist"
   | "files"
   | "quality"
+  | "drive-sync"
   | "history";
 
 const DESK_SECTIONS: Array<{ id: DeskSectionId; label: string }> = [
@@ -53,6 +54,7 @@ const DESK_SECTIONS: Array<{ id: DeskSectionId; label: string }> = [
   { id: "checklist", label: "Checklist" },
   { id: "files", label: "File plan" },
   { id: "quality", label: "Quality" },
+  { id: "drive-sync", label: "Google Drive Sync" },
   { id: "history", label: "History" },
 ];
 
@@ -201,6 +203,67 @@ export default function AdminSportsConnectDesk({
     }
   }, [orgQuery, seasonYear]);
 
+  const [driveFolderIdInput, setDriveFolderIdInput] = useState("");
+  const [driveConfigured, setDriveConfigured] = useState(false);
+  const [driveSyncing, setDriveSyncing] = useState(false);
+  const [driveSyncResult, setDriveSyncResult] = useState<string | null>(null);
+
+  const loadDriveSync = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/admin/sports-connect/drive-sync?${orgQuery}`, {
+        cache: "no-store",
+      });
+      const json = await safeJson(res);
+      if (res.ok && json.data && typeof json.data === "object") {
+        const data = json.data as { configured: boolean; driveFolderId: string | null };
+        setDriveConfigured(data.configured);
+        if (data.driveFolderId) {
+          setDriveFolderIdInput(data.driveFolderId);
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, [orgQuery]);
+
+  const triggerDriveSync = async () => {
+    setDriveSyncing(true);
+    setDriveSyncResult(null);
+    try {
+      const res = await fetch("/api/admin/sports-connect/drive-sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId: targetOrg,
+          driveFolderId: driveFolderIdInput,
+          seasonYear,
+        }),
+      });
+      const json = await safeJson(res);
+      if (!res.ok) {
+        throw new Error(String(json.error || "Drive sync failed"));
+      }
+      const syncResult = (
+        json.data as {
+          syncResult?: {
+            filesProcessed: number;
+            filesFound: number;
+            filesQuarantined: number;
+          };
+        }
+      )?.syncResult;
+      setDriveSyncResult(
+        `Sync completed: ${syncResult?.filesProcessed ?? 0} files processed out of ${syncResult?.filesFound ?? 0} found (${syncResult?.filesQuarantined ?? 0} quarantined).`,
+      );
+      setDriveConfigured(true);
+      void loadRuns();
+    } catch (err) {
+      setDriveSyncResult(err instanceof Error ? err.message : "Sync failed");
+    } finally {
+      setDriveSyncing(false);
+    }
+  };
+
   useEffect(() => {
     void loadCatalog();
   }, [loadCatalog]);
@@ -209,7 +272,8 @@ export default function AdminSportsConnectDesk({
     void loadQuality();
     void loadPresets();
     void loadRuns();
-  }, [loadQuality, loadPresets, loadRuns]);
+    void loadDriveSync();
+  }, [loadQuality, loadPresets, loadRuns, loadDriveSync]);
 
   const checklistStatus = useMemo(() => {
     const hasTeams = (quality?.teamCount ?? 0) > 0;
@@ -663,6 +727,73 @@ export default function AdminSportsConnectDesk({
                 </a>
                 .
               </li>
+            </ul>
+          </div>
+        </div>
+      ) : null}
+
+      {activeSection === "drive-sync" ? (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h3 className="text-base font-semibold">Google Drive Automated Ingestion</h3>
+              <p className="text-xs text-zinc-400">
+                Configure your organization's Google Drive export folder ID for SportsConnect reports.
+              </p>
+            </div>
+            <span
+              className={`rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                driveConfigured
+                  ? "bg-emerald-950 text-emerald-400 border border-emerald-800"
+                  : "bg-amber-950 text-amber-400 border border-amber-800"
+              }`}
+            >
+              {driveConfigured ? "Folder Mapped" : "Not Mapped"}
+            </span>
+          </div>
+
+          <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/50 p-4">
+            <label className="block space-y-1">
+              <span className="text-xs text-zinc-300 font-medium">
+                Google Drive Folder ID
+              </span>
+              <input
+                type="text"
+                value={driveFolderIdInput}
+                onChange={(e) => setDriveFolderIdInput(e.target.value)}
+                placeholder="e.g. 1a2b3c4d5e6f7g8h9i0j"
+                className="w-full rounded-lg bg-zinc-900 border border-zinc-700 px-3 py-2 text-xs font-mono text-zinc-200"
+              />
+              <p className="text-[11px] text-zinc-500">
+                The Google Drive folder ID where SportsConnect CSV reports are exported for site{" "}
+                <span className="text-zinc-300 font-semibold">{targetOrg}</span>.
+              </p>
+            </label>
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => void triggerDriveSync()}
+                disabled={driveSyncing || !driveFolderIdInput.trim()}
+                className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark disabled:opacity-50 px-4 py-2 text-xs font-semibold text-white"
+              >
+                {driveSyncing ? "Syncing Google Drive…" : "Sync Drive Files Now"}
+              </button>
+            </div>
+
+            {driveSyncResult ? (
+              <p className="text-xs font-medium text-emerald-400 bg-emerald-950/40 border border-emerald-900/60 rounded-md p-2.5">
+                {driveSyncResult}
+              </p>
+            ) : null}
+          </div>
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3.5 text-xs text-zinc-400 space-y-1.5">
+            <p className="font-semibold text-zinc-300">How Drive Sync Works:</p>
+            <ul className="list-disc list-inside space-y-1 text-zinc-400">
+              <li>Vercel Cron automatically polls this folder every 2 hours.</li>
+              <li>Only modified files (new revision token) are processed.</li>
+              <li>Files exceeding 10,000 rows or with invalid headers are quarantined safely without erroring background cron runs.</li>
             </ul>
           </div>
         </div>
