@@ -11,6 +11,28 @@ import type {
 } from "./types";
 import { isSportsConnectReportKind } from "./types";
 
+/**
+ * True if the error looks like the Drive-sync columns/table aren't provisioned
+ * yet (schema.prisma ahead of the deployed database — see
+ * prisma/migrations/20260814150000_sports_connect_drive_sync). Same detection
+ * approach as lib/admin/unifiedScoreSources.ts's isMissingOptionalScoresTableError.
+ */
+export function isMissingDriveSyncSchemaError(error: unknown): boolean {
+  const code =
+    typeof error === "object" && error && "code" in error
+      ? String((error as { code?: unknown }).code)
+      : "";
+  const message = error instanceof Error ? error.message : String(error);
+  const details = typeof error === "object" && error ? JSON.stringify(error) : "";
+  return (
+    code === "P2021" ||
+    code === "P2022" ||
+    /does not exist|relation .* does not exist|column .* does not exist|SportsConnectOrgDriveFolder|driveFileId|revisionToken|leaseExpiresAt/i.test(
+      message + " " + details,
+    )
+  );
+}
+
 const RUN_STATUSES = new Set<string>([
   "PREVIEW",
   "RUNNING",
@@ -77,26 +99,48 @@ export async function listImportRuns(input: {
   limit?: number;
 }): Promise<SportsConnectImportRunView[]> {
   const limit = Math.min(100, Math.max(1, input.limit ?? 25));
-  const rows = await prisma.sportsConnectImportRun.findMany({
-    where: {
-      organizationId: input.organizationId,
-      seasonYear: input.seasonYear,
-      reportKind: input.reportKind,
-    },
-    orderBy: [{ createdAt: "desc" }],
-    take: limit,
-  });
-  return rows.map(mapImportRunRow);
+  try {
+    const rows = await prisma.sportsConnectImportRun.findMany({
+      where: {
+        organizationId: input.organizationId,
+        seasonYear: input.seasonYear,
+        reportKind: input.reportKind,
+      },
+      orderBy: [{ createdAt: "desc" }],
+      take: limit,
+    });
+    return rows.map(mapImportRunRow);
+  } catch (err) {
+    if (isMissingDriveSyncSchemaError(err)) {
+      console.error(
+        "[sportsConnect/importRuns] listImportRuns: Drive-sync schema not provisioned yet, returning empty list:",
+        err instanceof Error ? err.message : err,
+      );
+      return [];
+    }
+    throw err;
+  }
 }
 
 export async function getImportRun(
   id: string,
   organizationId: string,
 ): Promise<SportsConnectImportRunView | null> {
-  const row = await prisma.sportsConnectImportRun.findFirst({
-    where: { id, organizationId },
-  });
-  return row ? mapImportRunRow(row) : null;
+  try {
+    const row = await prisma.sportsConnectImportRun.findFirst({
+      where: { id, organizationId },
+    });
+    return row ? mapImportRunRow(row) : null;
+  } catch (err) {
+    if (isMissingDriveSyncSchemaError(err)) {
+      console.error(
+        "[sportsConnect/importRuns] getImportRun: Drive-sync schema not provisioned yet:",
+        err instanceof Error ? err.message : err,
+      );
+      return null;
+    }
+    throw err;
+  }
 }
 
 export async function createImportRun(input: {

@@ -8,7 +8,10 @@ import {
   getOrgDriveFolderMapping,
   syncOrgDriveFolder,
 } from "@/lib/sportsConnect/driveSync";
-import { listImportRuns } from "@/lib/sportsConnect/importRuns";
+import {
+  listImportRuns,
+  isMissingDriveSyncSchemaError,
+} from "@/lib/sportsConnect/importRuns";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -32,20 +35,43 @@ export async function GET(request: NextRequest) {
     );
   }
 
-  const driveFolderId = await getOrgDriveFolderMapping(org);
   const seasonYear = getSeasonConfigForOrg(org).year;
-  const runs = await listImportRuns({ organizationId: org, seasonYear, limit: 15 });
 
-  return NextResponse.json({
-    ok: true,
-    data: {
-      organizationId: org,
-      seasonYear,
-      configured: !!driveFolderId,
-      driveFolderId,
-      runs,
-    },
-  });
+  try {
+    // getOrgDriveFolderMapping already degrades to null on a missing-table error;
+    // listImportRuns already degrades to [] — this try/catch is defense-in-depth
+    // for any other unexpected failure in either call.
+    const driveFolderId = await getOrgDriveFolderMapping(org);
+    const runs = await listImportRuns({ organizationId: org, seasonYear, limit: 15 });
+
+    return NextResponse.json({
+      ok: true,
+      data: {
+        organizationId: org,
+        seasonYear,
+        configured: !!driveFolderId,
+        driveFolderId,
+        runs,
+      },
+    });
+  } catch (err) {
+    console.error("[api/admin/sports-connect/drive-sync GET]", err);
+    const schemaMissing = isMissingDriveSyncSchemaError(err);
+    return NextResponse.json({
+      ok: true,
+      data: {
+        organizationId: org,
+        seasonYear,
+        configured: false,
+        driveFolderId: null,
+        runs: [],
+        degraded: true,
+        degradedReason: schemaMissing
+          ? "Drive sync database schema is not yet provisioned. Run the pending Prisma migration."
+          : "Drive sync status is temporarily unavailable.",
+      },
+    });
+  }
 }
 
 /**
@@ -100,6 +126,15 @@ export async function POST(request: NextRequest) {
     });
   } catch (err) {
     console.error("[api/admin/sports-connect/drive-sync] Sync failed:", err);
+    if (isMissingDriveSyncSchemaError(err)) {
+      return NextResponse.json(
+        {
+          error:
+            "Drive sync database schema is not yet provisioned. Run the pending Prisma migration (prisma/migrations/20260814150000_sports_connect_drive_sync) before using this feature.",
+        },
+        { status: 503 },
+      );
+    }
     return NextResponse.json(
       { error: err instanceof Error ? err.message : "Sync execution failed" },
       { status: 500 },
