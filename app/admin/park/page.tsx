@@ -7,7 +7,15 @@ import ParkHub, { type ParkTab } from "@/components/admin/park/ParkHub";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import {
+  CONTENT_ORGS,
+  getSiteConfig,
+  getSiteConfigForOrg,
+  isMasterDeployment,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
+import { getAllActiveOrgAlerts } from "@/lib/orgAlerts";
+import prisma from "@/lib/prisma";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -49,6 +57,27 @@ export default async function ParkPage({
 
   const initialTab: ParkTab = (tabParam as ParkTab) || "brackets";
 
+  const masterMode = isMasterDeployment();
+  const activeAlerts = canAlerts
+    ? masterMode
+      ? await getAllActiveOrgAlerts()
+      : (await getAllActiveOrgAlerts()).filter((a) => a.organizationId === currentOrg)
+    : [];
+  const availableOrgs = canAlerts
+    ? masterMode
+      ? CONTENT_ORGS.map((id) => ({ id, name: getSiteConfigForOrg(id).name }))
+      : [{ id: currentOrg, name: getSiteConfigForOrg(currentOrg).name }]
+    : [];
+
+  const parkInfoRow = canParkInfo
+    ? await prisma.parkInfoPage.findUnique({ where: { organizationId: currentOrg } })
+    : null;
+  const parkInfoInitial = {
+    rulesMarkdown: parkInfoRow?.rulesMarkdown ?? "",
+    parkingMarkdown: parkInfoRow?.parkingMarkdown ?? "",
+    fieldLayoutImageUrl: parkInfoRow?.fieldLayoutImageUrl ?? null,
+  };
+
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
@@ -79,6 +108,9 @@ export default async function ParkPage({
             targetOrg={currentOrg}
             initialTab={initialTab}
             isMaster={adminUser.isMaster || role === "MASTER_ADMIN"}
+            activeAlerts={activeAlerts}
+            availableOrgs={availableOrgs}
+            parkInfoInitial={parkInfoInitial}
           />
         </Suspense>
       </section>

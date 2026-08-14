@@ -124,6 +124,7 @@ export default async function AdminPeoplePage({
             canDirectory={canDirectory}
             canVolunteers={canVolunteers}
             canCoachingInterest={canCoachingInterest}
+            currentAdminEmail={adminUser.email}
           />
         </Suspense>
       </section>

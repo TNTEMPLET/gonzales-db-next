@@ -8,6 +8,8 @@ import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { isDriveServiceAccountConfigured } from "@/lib/google/driveServiceAccount";
+import { getOrgDocumentsConfig } from "@/lib/orgDocuments";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -51,6 +53,10 @@ export default async function PublishingPage({
 
   const initialTab: PublishingTab = (tabParam as PublishingTab) || "comms";
 
+  const canManageSharing = hasAdminRoleAtLeast(role, "MASTER_ADMIN");
+  const drive = canDrive ? getOrgDocumentsConfig() : null;
+  const driveApiEnabled = canDrive ? isDriveServiceAccountConfigured() : false;
+
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
       <section className="mx-auto max-w-6xl px-4 sm:px-6">
@@ -81,6 +87,11 @@ export default async function PublishingPage({
             targetOrg={currentOrg}
             initialTab={initialTab}
             isMaster={adminUser.isMaster || role === "MASTER_ADMIN"}
+            adminEmail={adminUser.email}
+            adminName={adminUser.name}
+            drive={drive}
+            driveApiEnabled={driveApiEnabled}
+            canManageSharing={canManageSharing}
           />
         </Suspense>
       </section>
