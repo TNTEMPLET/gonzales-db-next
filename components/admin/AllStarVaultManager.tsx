@@ -572,8 +572,8 @@ export default function AllStarVaultManager({
   const [limitedOverviewMoreCycleId, setLimitedOverviewMoreCycleId] = useState("");
 
   useEffect(() => {
-    setPreviewRole(readAdminViewPreviewRole(org));
     const onPreviewUpdate = () => setPreviewRole(readAdminViewPreviewRole(org));
+    onPreviewUpdate();
     window.addEventListener("admin-view-preview-updated", onPreviewUpdate);
     window.addEventListener("storage", onPreviewUpdate);
     return () => {
@@ -596,32 +596,44 @@ export default function AllStarVaultManager({
   }, [showEditModules, previewRole]);
 
   useEffect(() => {
-    setOrg(initialOrg);
-    setSelectedCycleId(initialSelectedCycleId);
-    setError("");
-    setNotice("");
+    function syncFromProps() {
+      setOrg(initialOrg);
+      setSelectedCycleId(initialSelectedCycleId);
+      setError("");
+      setNotice("");
+    }
+    syncFromProps();
   }, [initialOrg, initialSelectedCycleId]);
 
   useEffect(() => {
-    if (!initialOpenEditModules) return;
-    setShowEditModules(true);
-    scrollEditModulesIntoViewAfterExpand.current = true;
-    setActiveWorkspaceTab("overview");
+    function openEditModulesFromProp() {
+      if (!initialOpenEditModules) return;
+      setShowEditModules(true);
+      scrollEditModulesIntoViewAfterExpand.current = true;
+      setActiveWorkspaceTab("overview");
+    }
+    openEditModulesFromProp();
   }, [initialOpenEditModules]);
 
   useEffect(() => {
-    if (!usesTabbedWorkspace) return;
-    const fromUrl = parseWorkspaceTab(searchParams.get("tab"));
-    const allowed = allowedWorkspaceTabs(isLimitedVaultAccess);
-    setActiveWorkspaceTab(allowed.includes(fromUrl) ? fromUrl : (allowed[0] ?? "overview"));
+    function syncTabFromUrl() {
+      if (!usesTabbedWorkspace) return;
+      const fromUrl = parseWorkspaceTab(searchParams.get("tab"));
+      const allowed = allowedWorkspaceTabs(isLimitedVaultAccess);
+      setActiveWorkspaceTab(allowed.includes(fromUrl) ? fromUrl : (allowed[0] ?? "overview"));
+    }
+    syncTabFromUrl();
   }, [searchParams, isLimitedVaultAccess, usesTabbedWorkspace]);
 
   useEffect(() => {
-    if (isLimitedVaultAccess) {
-      setModuleVisibility(getVisibilityForLimitedVaultBallotToolkit());
-      return;
+    function syncModuleVisibility() {
+      if (isLimitedVaultAccess) {
+        setModuleVisibility(getVisibilityForLimitedVaultBallotToolkit());
+        return;
+      }
+      setModuleVisibility(getVisibilityForPreset(modulePreset));
     }
-    setModuleVisibility(getVisibilityForPreset(modulePreset));
+    syncModuleVisibility();
   }, [modulePreset, isLimitedVaultAccess]);
 
   useEffect(() => {
@@ -672,66 +684,78 @@ export default function AllStarVaultManager({
       void loadVaultAccess();
       void loadUserOptions();
     } else {
-      setVaultAccess([]);
-      setUserOptions([]);
+      function clearVaultAccess() {
+        setVaultAccess([]);
+        setUserOptions([]);
+      }
+      clearVaultAccess();
     }
   }, [org, seasonYear, canManageAllStarVault, selectedCycleId]);
 
   useEffect(() => {
-    latestCycleIdRef.current = selectedCycleId;
-    setSelectedCandidateIds([]);
-    setShowAdvancedCycleActions(false);
-    if (selectedCycleId) {
-      setCandidates([]);
-      setHeadCoaches([]);
-      setCycleCoachOptions([]);
-      setSubmittedBallots([]);
-      setVoteSummary([]);
-      setVoteSummarySubmissionCount(0);
-      setSelectedCoachUserId("");
-      void (async () => {
-        try {
-          /** Invites GET always returns `ballotVotingLink` from the cycle token (all access modes). */
-          const loads = [
-            loadCycleDetails(selectedCycleId),
-            loadCycleCoaches(selectedCycleId),
-            loadSubmittedBallots(selectedCycleId),
-            loadVoteSummary(selectedCycleId),
-            loadInvites(selectedCycleId),
-          ];
-          await Promise.all(loads);
-        } catch (err: unknown) {
-          if (latestCycleIdRef.current !== selectedCycleId) return;
-          setError(err instanceof Error ? err.message : "Failed to load cycle data");
-        }
-      })();
-    } else {
-      setCandidates([]);
-      setHeadCoaches([]);
-      setCycleCoachOptions([]);
-      setSubmittedBallots([]);
-      setVoteSummary([]);
-      setVoteSummarySubmissionCount(0);
-      setSelectedCoachUserId("");
-      setSelectedInviteCoachIds([]);
-      setInviteLinks([]);
-      setBallotVotingLink(null);
-      setCycleOpenAt("");
-      setCycleCloseAt("");
-      setCycleRequiredRatingsPerCoach(12);
+    function syncSelectedCycle() {
+      latestCycleIdRef.current = selectedCycleId;
+      setSelectedCandidateIds([]);
+      setShowAdvancedCycleActions(false);
+      if (selectedCycleId) {
+        setCandidates([]);
+        setHeadCoaches([]);
+        setCycleCoachOptions([]);
+        setSubmittedBallots([]);
+        setVoteSummary([]);
+        setVoteSummarySubmissionCount(0);
+        setSelectedCoachUserId("");
+        void (async () => {
+          try {
+            /** Invites GET always returns `ballotVotingLink` from the cycle token (all access modes). */
+            const loads = [
+              loadCycleDetails(selectedCycleId),
+              loadCycleCoaches(selectedCycleId),
+              loadSubmittedBallots(selectedCycleId),
+              loadVoteSummary(selectedCycleId),
+              loadInvites(selectedCycleId),
+            ];
+            await Promise.all(loads);
+          } catch (err: unknown) {
+            if (latestCycleIdRef.current !== selectedCycleId) return;
+            setError(err instanceof Error ? err.message : "Failed to load cycle data");
+          }
+        })();
+      } else {
+        setCandidates([]);
+        setHeadCoaches([]);
+        setCycleCoachOptions([]);
+        setSubmittedBallots([]);
+        setVoteSummary([]);
+        setVoteSummarySubmissionCount(0);
+        setSelectedCoachUserId("");
+        setSelectedInviteCoachIds([]);
+        setInviteLinks([]);
+        setBallotVotingLink(null);
+        setCycleOpenAt("");
+        setCycleCloseAt("");
+        setCycleRequiredRatingsPerCoach(12);
+      }
     }
+    syncSelectedCycle();
   }, [selectedCycleId, cycles]);
 
   useEffect(() => {
-    if (!selectedCycleId) return;
-    const cycle = cycles.find((entry) => entry.id === selectedCycleId);
-    setCycleOpenAt(toDateTimeLocalValue(cycle?.publishedAt || null));
-    setCycleCloseAt(toDateTimeLocalValue(cycle?.closedAt || null));
-    setCycleRequiredRatingsPerCoach(cycle?.requiredRatingsPerCoach ?? 12);
+    function syncCycleFormFields() {
+      if (!selectedCycleId) return;
+      const cycle = cycles.find((entry) => entry.id === selectedCycleId);
+      setCycleOpenAt(toDateTimeLocalValue(cycle?.publishedAt || null));
+      setCycleCloseAt(toDateTimeLocalValue(cycle?.closedAt || null));
+      setCycleRequiredRatingsPerCoach(cycle?.requiredRatingsPerCoach ?? 12);
+    }
+    syncCycleFormFields();
   }, [cycles, selectedCycleId]);
 
   useEffect(() => {
-    setLimitedOverviewMoreCycleId("");
+    function resetLimitedOverviewMoreCycleId() {
+      setLimitedOverviewMoreCycleId("");
+    }
+    resetLimitedOverviewMoreCycleId();
   }, [selectedCycleId]);
 
   useEffect(() => {
@@ -2460,7 +2484,12 @@ export default function AllStarVaultManager({
   }, [activeRunoffCandidates, runoffBuilderCandidateSearch, runoffBuilderSelectedCandidateIds]);
 
   useEffect(() => {
-    setSelectedCandidateIds((prev) => prev.filter((id) => candidates.some((candidate) => candidate.id === id)));
+    function pruneStaleSelectedCandidateIds() {
+      setSelectedCandidateIds((prev) =>
+        prev.filter((id) => candidates.some((candidate) => candidate.id === id)),
+      );
+    }
+    pruneStaleSelectedCandidateIds();
   }, [candidates]);
 
   const ballotRosterStatus = useMemo(() => {
