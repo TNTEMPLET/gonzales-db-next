@@ -14,8 +14,10 @@ import { isSportsConnectReportKind } from "./types";
 const RUN_STATUSES = new Set<string>([
   "PREVIEW",
   "RUNNING",
+  "LEASED",
   "DONE",
   "FAILED",
+  "QUARANTINED",
   "CANCELLED",
 ]);
 
@@ -40,6 +42,9 @@ export function mapImportRunRow(row: {
   errorMessage: string | null;
   teamPlayerBatchId: string | null;
   coachBatchId: string | null;
+  driveFileId?: string | null;
+  revisionToken?: string | null;
+  leaseExpiresAt?: Date | null;
   createdAt: Date;
   completedAt: Date | null;
 }): SportsConnectImportRunView {
@@ -57,6 +62,9 @@ export function mapImportRunRow(row: {
     errorMessage: row.errorMessage,
     teamPlayerBatchId: row.teamPlayerBatchId,
     coachBatchId: row.coachBatchId,
+    driveFileId: row.driveFileId ?? null,
+    revisionToken: row.revisionToken ?? null,
+    leaseExpiresAt: row.leaseExpiresAt?.toISOString() ?? null,
     createdAt: row.createdAt.toISOString(),
     completedAt: row.completedAt?.toISOString() ?? null,
   };
@@ -103,6 +111,9 @@ export async function createImportRun(input: {
   teamPlayerBatchId?: string | null;
   coachBatchId?: string | null;
   createdByAdminId?: string | null;
+  driveFileId?: string | null;
+  revisionToken?: string | null;
+  leaseExpiresAt?: Date | null;
 }): Promise<SportsConnectImportRunView> {
   const row = await prisma.sportsConnectImportRun.create({
     data: {
@@ -120,9 +131,13 @@ export async function createImportRun(input: {
       teamPlayerBatchId: input.teamPlayerBatchId ?? undefined,
       coachBatchId: input.coachBatchId ?? undefined,
       createdByAdminId: input.createdByAdminId ?? undefined,
+      driveFileId: input.driveFileId ?? undefined,
+      revisionToken: input.revisionToken ?? undefined,
+      leaseExpiresAt: input.leaseExpiresAt ?? undefined,
       completedAt:
         input.status === "DONE" ||
         input.status === "FAILED" ||
+        input.status === "QUARANTINED" ||
         input.status === "CANCELLED"
           ? new Date()
           : undefined,
@@ -134,6 +149,7 @@ export async function createImportRun(input: {
 export async function updateImportRun(input: {
   id: string;
   organizationId: string;
+  reportKind?: SportsConnectReportKind;
   status?: SportsConnectRunStatus;
   sourceFileName?: string | null;
   presetId?: string | null;
@@ -141,6 +157,9 @@ export async function updateImportRun(input: {
   errorMessage?: string | null;
   teamPlayerBatchId?: string | null;
   coachBatchId?: string | null;
+  driveFileId?: string | null;
+  revisionToken?: string | null;
+  leaseExpiresAt?: Date | null;
   markComplete?: boolean;
 }): Promise<SportsConnectImportRunView | null> {
   const existing = await prisma.sportsConnectImportRun.findFirst({
@@ -152,12 +171,14 @@ export async function updateImportRun(input: {
   const terminal =
     input.status === "DONE" ||
     input.status === "FAILED" ||
+    input.status === "QUARANTINED" ||
     input.status === "CANCELLED" ||
     input.markComplete === true;
 
   const row = await prisma.sportsConnectImportRun.update({
     where: { id: input.id },
     data: {
+      reportKind: input.reportKind,
       status: input.status,
       sourceFileName:
         input.sourceFileName === undefined ? undefined : input.sourceFileName,
@@ -176,6 +197,12 @@ export async function updateImportRun(input: {
           : input.teamPlayerBatchId,
       coachBatchId:
         input.coachBatchId === undefined ? undefined : input.coachBatchId,
+      driveFileId:
+        input.driveFileId === undefined ? undefined : input.driveFileId,
+      revisionToken:
+        input.revisionToken === undefined ? undefined : input.revisionToken,
+      leaseExpiresAt:
+        input.leaseExpiresAt === undefined ? undefined : input.leaseExpiresAt,
       completedAt: terminal ? new Date() : undefined,
     },
   });

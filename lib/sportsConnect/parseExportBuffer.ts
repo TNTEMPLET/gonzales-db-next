@@ -5,18 +5,50 @@ import * as XLSX from "xlsx";
 
 export const SPORTS_CONNECT_INGEST_MAX_BYTES = 15 * 1024 * 1024;
 export const SPORTS_CONNECT_INGEST_SAMPLE_ROWS = 50;
+export const SPORTS_CONNECT_INGEST_MAX_ROWS = 10_000;
 
 export type ParsedSportsConnectExport = {
   fileName: string;
   headers: string[];
   rows: Array<Record<string, unknown>>;
   totalRowCount: number;
+  exceedsMaxRows?: boolean;
 };
 
 function extensionOf(fileName: string): string {
   const lower = fileName.toLowerCase();
   const i = lower.lastIndexOf(".");
   return i >= 0 ? lower.slice(i) : "";
+}
+
+/**
+  * Prevent formula injection by sanitizing string values that begin with =, +, -, or @
+  */
+export function sanitizeFormulaValue(val: unknown): unknown {
+  if (typeof val === "string") {
+    const trimmed = val.trim();
+    if (
+      trimmed.startsWith("=") ||
+      trimmed.startsWith("+") ||
+      trimmed.startsWith("-") ||
+      trimmed.startsWith("@")
+    ) {
+      return `'${val}`;
+    }
+  }
+  return val;
+}
+
+export function sanitizeFormulaCells(
+  rows: Array<Record<string, unknown>>,
+): Array<Record<string, unknown>> {
+  return rows.map((row) => {
+    const clean: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(row)) {
+      clean[key] = sanitizeFormulaValue(val);
+    }
+    return clean;
+  });
 }
 
 /**
@@ -38,6 +70,12 @@ export function parseSportsConnectExportBuffer(input: {
       ? new Uint8Array(input.buffer)
       : input.buffer;
 
+  if (data.length > SPORTS_CONNECT_INGEST_MAX_BYTES) {
+    throw new Error(
+      `File size exceeds maximum permitted limit of ${SPORTS_CONNECT_INGEST_MAX_BYTES / (1024 * 1024)}MB`,
+    );
+  }
+
   const workbook = XLSX.read(data, {
     type: "array",
     raw: false,
@@ -47,11 +85,12 @@ export function parseSportsConnectExportBuffer(input: {
     return { fileName, headers: [], rows: [], totalRowCount: 0 };
   }
 
-  const allRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
+  const rawRows = XLSX.utils.sheet_to_json<Record<string, unknown>>(firstSheet, {
     defval: "",
     raw: false,
   });
-  const headers = allRows[0] ? Object.keys(allRows[0]) : [];
+  const headers = rawRows[0] ? Object.keys(rawRows[0]) : [];
+
   // If sheet is header-only via sheet_to_json with blank rows, try header row mode.
   if (headers.length === 0) {
     const matrix = XLSX.utils.sheet_to_json<string[]>(firstSheet, {
@@ -68,11 +107,15 @@ export function parseSportsConnectExportBuffer(input: {
     };
   }
 
+  const exceedsMaxRows = rawRows.length > SPORTS_CONNECT_INGEST_MAX_ROWS;
+  const sanitizedRows = sanitizeFormulaCells(rawRows);
+
   return {
     fileName,
     headers,
-    rows: allRows.slice(0, sampleLimit),
-    totalRowCount: allRows.length,
+    rows: sanitizedRows.slice(0, sampleLimit),
+    totalRowCount: sanitizedRows.length,
+    exceedsMaxRows,
   };
 }
 
@@ -80,3 +123,4 @@ export function isAllowedSportsConnectExportName(fileName: string): boolean {
   const ext = extensionOf(fileName);
   return ext === ".csv" || ext === ".xlsx" || ext === ".xls";
 }
+

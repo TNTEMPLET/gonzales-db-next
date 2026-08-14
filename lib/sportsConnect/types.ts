@@ -17,8 +17,10 @@ export type SportsConnectReportKind =
 export const SPORTS_CONNECT_RUN_STATUSES = [
   "PREVIEW",
   "RUNNING",
+  "LEASED",
   "DONE",
   "FAILED",
+  "QUARANTINED",
   "CANCELLED",
 ] as const;
 
@@ -89,6 +91,9 @@ export type SportsConnectImportRunView = {
   errorMessage: string | null;
   teamPlayerBatchId: string | null;
   coachBatchId: string | null;
+  driveFileId?: string | null;
+  revisionToken?: string | null;
+  leaseExpiresAt?: string | null;
   createdAt: string;
   completedAt: string | null;
 };
