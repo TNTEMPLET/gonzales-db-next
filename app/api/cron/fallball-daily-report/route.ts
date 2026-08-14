@@ -72,11 +72,16 @@ function buildReportHtml(data: FallBallCapacityReport): string {
     year: "numeric",
   });
 
-  const syncNote = data.lastPlayerRegSyncAt
-    ? `Last SportsConnect enrollment file detected: ${new Date(data.lastPlayerRegSyncAt).toLocaleString("en-US")}${
-        data.lastPlayerRegSyncFileName ? ` (${data.lastPlayerRegSyncFileName})` : ""
-      }`
-    : "No SportsConnect enrollment file has been synced yet — figures below reflect teams entered directly in Team Manager.";
+  const playerSourceNote =
+    data.playerDataSource === "team_rosters"
+      ? "Figures reflect teams and rosters entered in Team Manager."
+      : data.playerDataSource === "sports_connect_sync"
+        ? `Teams haven't been formed yet — total players reflects the last synced SportsConnect enrollment file${
+            data.lastPlayerRegSyncAt ? ` (${new Date(data.lastPlayerRegSyncAt).toLocaleString("en-US")})` : ""
+          }${data.lastPlayerRegSyncFileName ? `: ${data.lastPlayerRegSyncFileName}` : ""}.`
+        : data.playerDataSource === "manual_fallback"
+          ? "Teams haven't been formed yet and no SportsConnect enrollment file has synced yet — total players is a manually recorded snapshot, not live data."
+          : "No enrollment data available yet.";
 
   return `
     <!DOCTYPE html>
@@ -132,7 +137,7 @@ function buildReportHtml(data: FallBallCapacityReport): string {
               </ul>
             </div>
 
-            <p style="margin-top: 16px; font-size: 11px; color: #94a3b8;">${syncNote}</p>
+            <p style="margin-top: 16px; font-size: 11px; color: #94a3b8;">${playerSourceNote}</p>
 
             <div style="margin-top: 28px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; text-align: center; color: #94a3b8;">
               Sent automatically to <strong>${BOARD_RECIPIENT}</strong> via AP Baseball Admin Operations Hub.<br/>
