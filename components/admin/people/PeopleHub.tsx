@@ -52,6 +52,7 @@ export default function PeopleHub({
   canDirectory = true,
   canVolunteers = true,
   canCoachingInterest = true,
+  currentAdminEmail = null,
 }: {
   targetOrg: ContentOrgId;
   /** Directory-only scope; "all" is the master-only cross-org aggregate view. */
@@ -62,6 +63,7 @@ export default function PeopleHub({
   canDirectory?: boolean;
   canVolunteers?: boolean;
   canCoachingInterest?: boolean;
+  currentAdminEmail?: string | null;
 }) {
   const router = useRouter();
   const pathname = usePathname();
@@ -153,7 +155,7 @@ export default function PeopleHub({
         </div>
 
         {section === "directory" && canDirectory && (
-          <AdminUsersManager targetOrg={directoryScope} focusUserId={focusUserId} />
+          <AdminUsersManager targetOrg={directoryScope} />
         )}
 
         {section === "volunteers" && canVolunteers && (
@@ -164,7 +166,12 @@ export default function PeopleHub({
           <AdminCoachingInterestManager targetOrg={targetOrg} />
         )}
 
-        {section === "roles" && isMaster && <AdminRoleAssignmentConsole />}
+        {section === "roles" && isMaster && (
+          <AdminRoleAssignmentConsole
+            currentAdminEmail={currentAdminEmail}
+            isMasterAdmin={isMaster}
+          />
+        )}
       </div>
     </div>
   );

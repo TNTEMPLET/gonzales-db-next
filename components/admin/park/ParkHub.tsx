@@ -8,6 +8,7 @@ import TournamentAlertsPanel from "@/components/admin/TournamentAlertsPanel";
 import AdminAlertsManager from "@/components/admin/AdminAlertsManager";
 import ParkInfoEditorClient from "@/components/admin/ParkInfoEditorClient";
 import type { ContentOrgId } from "@/lib/siteConfig";
+import type { OrgAlertRecord } from "@/lib/orgAlerts";
 
 export type ParkTab = "brackets" | "alerts" | "facilities";
 
@@ -30,10 +31,20 @@ export default function ParkHub({
   targetOrg,
   initialTab,
   isMaster,
+  activeAlerts,
+  availableOrgs,
+  parkInfoInitial,
 }: {
   targetOrg: ContentOrgId;
   initialTab: ParkTab;
   isMaster: boolean;
+  activeAlerts: OrgAlertRecord[];
+  availableOrgs: { id: ContentOrgId; name: string }[];
+  parkInfoInitial: {
+    rulesMarkdown: string;
+    parkingMarkdown: string;
+    fieldLayoutImageUrl: string | null;
+  };
 }) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -82,11 +93,17 @@ export default function ParkHub({
         {tab === "brackets" && <TournamentBracketsClient organizationId={targetOrg as any} />}
         {tab === "alerts" && (
           <div className="space-y-8">
-            <AdminAlertsManager targetOrg={targetOrg} />
+            <AdminAlertsManager
+              activeAlerts={activeAlerts}
+              availableOrgs={availableOrgs}
+              defaultOrg={targetOrg}
+            />
             <TournamentAlertsPanel />
           </div>
         )}
-        {tab === "facilities" && <ParkInfoEditorClient targetOrg={targetOrg} />}
+        {tab === "facilities" && (
+          <ParkInfoEditorClient org={targetOrg} initial={parkInfoInitial} />
+        )}
       </div>
     </div>
   );
