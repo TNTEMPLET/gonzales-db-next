@@ -1,7 +1,25 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { FallBallCapacityReport } from "@/lib/sportsConnect/fallballCapacity";
+import type {
+  FallBallCapacityReport,
+  FallBallPlayerDataSource,
+} from "@/lib/sportsConnect/fallballCapacity";
+
+const PLAYER_SOURCE_BADGE: Record<FallBallPlayerDataSource, { label: string; cls: string }> = {
+  team_rosters: {
+    label: "From Team Manager",
+    cls: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",
+  },
+  sports_connect_sync: {
+    label: "From SportsConnect sync",
+    cls: "bg-blue-500/10 text-blue-400 ring-blue-500/20",
+  },
+  manual_fallback: {
+    label: "Manual snapshot — not live",
+    cls: "bg-amber-500/10 text-amber-400 ring-amber-500/20",
+  },
+};
 
 async function safeJson(response: Response) {
   const text = await response.text();
@@ -100,8 +118,10 @@ export default function FallBallCapacityCard() {
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-zinc-800 pb-5">
         <div>
           <div className="flex items-center gap-2">
-            <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2.5 py-0.5 text-xs font-semibold text-emerald-400 ring-1 ring-inset ring-emerald-500/20">
-              Live Production
+            <span
+              className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${PLAYER_SOURCE_BADGE[data.playerDataSource].cls}`}
+            >
+              {PLAYER_SOURCE_BADGE[data.playerDataSource].label}
             </span>
             {data.lastPlayerRegSyncFileName && (
               <span className="text-xs text-zinc-400">
@@ -110,10 +130,10 @@ export default function FallBallCapacityCard() {
             )}
           </div>
           <h2 className="mt-1 text-xl font-bold tracking-tight text-white">
-            📊 Fall Ball 2026 — Division Enrollment &amp; Coaching Capacity
+            📊 {data.seasonLabel} — Division Enrollment &amp; Coaching Capacity
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Real-time division player headcounts, estimated teams, and matched volunteer coach capacity.
+            Division player headcounts, estimated teams, and matched volunteer coach capacity.
           </p>
         </div>
 
@@ -150,29 +170,21 @@ export default function FallBallCapacityCard() {
       )}
 
       {/* Metric Callouts */}
-      <div className="mt-5 grid grid-cols-2 gap-4 sm:grid-cols-4">
+      <div className="mt-5 grid grid-cols-1 gap-4 sm:grid-cols-3">
         <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
           <div className="text-xs font-medium text-zinc-400">Total Enrolled Players</div>
           <div className="mt-1 text-2xl font-black text-emerald-400">{data.totalPlayers}</div>
-          <div className="mt-1 text-[11px] text-emerald-500/80">100% Paid Registrations</div>
         </div>
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
           <div className="text-xs font-medium text-zinc-400">Matched Coaches</div>
           <div className="mt-1 text-2xl font-black text-blue-400">{data.totalCoaches}</div>
-          <div className="mt-1 text-[11px] text-blue-400/80">Confirmed Volunteer Pool</div>
         </div>
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
           <div className="text-xs font-medium text-zinc-400">Estimated Teams</div>
           <div className="mt-1 text-2xl font-black text-purple-400">~{data.totalEstimatedTeams}</div>
           <div className="mt-1 text-[11px] text-purple-400/80">Across 10 Divisions</div>
-        </div>
-
-        <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
-          <div className="text-xs font-medium text-zinc-400">Coach Ratio</div>
-          <div className="mt-1 text-2xl font-black text-amber-400">1 : 1</div>
-          <div className="mt-1 text-[11px] text-amber-400/80">Overall League Health</div>
         </div>
       </div>
 
