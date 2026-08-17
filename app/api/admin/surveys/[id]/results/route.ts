@@ -14,8 +14,12 @@ export async function GET(
   try {
     const { id } = await params;
 
-    const survey = await prisma.survey.findUnique({
-      where: { id },
+    // Scope to the org ensureAdminModule already validated the caller
+    // against — without this, any admin who knows/guesses a survey id can
+    // read another tenant's full results, including free-text answers and
+    // respondent emails.
+    const survey = await prisma.survey.findFirst({
+      where: { id, organizationId: auth.orgId },
       include: {
         sections: {
           orderBy: { order: "asc" },
