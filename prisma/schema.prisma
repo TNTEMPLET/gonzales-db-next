@@ -2374,3 +2374,79 @@ model OrgRegistrationWindow {
   @@index([updatedAt])
 }
 
+model Survey {
+  id              String           @id @default(cuid())
+  organizationId  String           // "fallball" | "district6" | "apbaseball"
+  seasonYear      Int              // 2026
+  title           String
+  description     String?
+  slug            String
+  isPublished     Boolean          @default(true)
+  isAnonymous     Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  sections        SurveySection[]
+  responses       SurveyResponse[]
+
+  @@unique([organizationId, slug])
+  @@index([organizationId, seasonYear])
+}
+
+model SurveySection {
+  id           String           @id @default(cuid())
+  surveyId     String
+  survey       Survey           @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  order        Int              @default(0)
+  title        String
+  description  String?
+  
+  questions    SurveyQuestion[]
+
+  @@index([surveyId, order])
+}
+
+model SurveyQuestion {
+  id             String         @id @default(cuid())
+  sectionId      String
+  section        SurveySection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  order          Int            @default(0)
+  questionText   String
+  type           String         // RATING | LIKERT_CHOICE | MATRIX | SINGLE_CHOICE | TEXT | CONDITIONAL_GATE
+  isRequired     Boolean        @default(true)
+  matrixTopics   String[]       @default([])
+  options        String[]       @default([])
+
+  answers        SurveyAnswer[]
+
+  @@index([sectionId, order])
+}
+
+model SurveyResponse {
+  id             String         @id @default(cuid())
+  surveyId       String
+  survey         Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  respondentEmail String?
+  divisionName   String?
+  submittedAt    DateTime       @default(now())
+
+  answers        SurveyAnswer[]
+
+  @@index([surveyId, submittedAt])
+}
+
+model SurveyAnswer {
+  id             String         @id @default(cuid())
+  responseId     String
+  response       SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  questionId     String
+  question       SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  matrixTopic    String?
+  textValue      String?
+  numberValue    Float?
+  stringValue    String?
+
+  @@index([responseId])
+  @@index([questionId])
+}
+
