@@ -320,6 +320,9 @@ export default function Header({ brand }: HeaderProps) {
             allowModule("ORG_DOCUMENTS")
               ? [{ href: `/admin/publishing${masterOrgSuffix}`, label: "Publishing & Comms" }]
               : []),
+            ...(allowModule("TEAMS")
+              ? [{ href: `/admin/surveys${masterOrgSuffix}`, label: "Surveys" }]
+              : []),
             ...(allowModule("ALL_STAR_PAYMENTS") || allowModule("SPONSORS") || allowModule("REPORTS")
               ? [{ href: `/admin/orders${masterOrgSuffix}`, label: "Orders & Commerce" }]
               : []),
