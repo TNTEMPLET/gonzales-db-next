@@ -9,11 +9,13 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const { searchParams } = new URL(request.url);
-    const org = searchParams.get("org") || "fallball";
-
+    // Use the org ensureAdminModule already validated the caller against
+    // (respects the master ?org= switcher, locked to the deployment's own
+    // org otherwise) — never trust the raw query param directly, or an
+    // admin on a non-master deployment could pass ?org=<other-org> and read
+    // another tenant's surveys.
     const surveys = await prisma.survey.findMany({
-      where: { organizationId: org },
+      where: { organizationId: auth.orgId },
       orderBy: { createdAt: "desc" },
       include: {
         _count: {
