@@ -71,7 +71,7 @@ export default async function AdminSurveysPage({
             </div>
           }
         >
-          <SurveyAnalyticsCard organizationId={currentOrg} />
+          <SurveyAnalyticsCard organizationId={currentOrg} isMasterAdmin={adminUser.isMaster} />
         </Suspense>
       </section>
     </main>

@@ -103,11 +103,33 @@ export async function GET(
         Math.round((matrixScores[topic].sum / matrixScores[topic].count) * 10) / 10;
     });
 
+    // Open text (type: "TEXT") answers, grouped by question so the UI can
+    // render one card per open-ended question rather than one flat list —
+    // built from the same filteredResponses set as the other aggregates so
+    // org/division filters apply here too.
+    const textQuestions = survey.sections.flatMap((section) => section.questions).filter((q) => q.type === "TEXT");
+    const textResponses = textQuestions.map((question) => ({
+      questionId: question.id,
+      questionText: question.questionText,
+      comments: filteredResponses.flatMap((resp) =>
+        resp.answers
+          .filter((ans) => ans.questionId === question.id && ans.textValue && ans.textValue.trim())
+          .map((ans) => ({
+            id: ans.id,
+            text: ans.textValue as string,
+            organizationId: resp.organizationId,
+            divisionName: resp.divisionName,
+            submittedAt: resp.submittedAt,
+          })),
+      ),
+    }));
+
     return NextResponse.json({
       survey,
       totalResponses,
       matrixScores,
       priorityCounts,
+      textResponses,
       availableOrganizations,
       availableDivisions,
       appliedFilters: { respondentOrg: respondentOrgFilter, division: divisionFilter },
