@@ -25,12 +25,11 @@ export async function GET(
     // read another tenant's full results, including free-text answers and
     // respondent emails.
     //
-    // Master admins can also reach the cross-org "apbaseball" Spring
-    // survey (see app/api/admin/surveys/route.ts for the same exception) —
-    // non-master admins stay strictly locked to auth.orgId.
-    const allowedOrgIds = isMasterAdminActor(auth) ? [auth.orgId, "apbaseball"] : [auth.orgId];
+    // Master admins can reach any survey by id regardless of org (same
+    // reasoning as app/api/admin/surveys/route.ts) — non-master admins
+    // stay strictly locked to auth.orgId.
     const survey = await prisma.survey.findFirst({
-      where: { id, organizationId: { in: allowedOrgIds } },
+      where: isMasterAdminActor(auth) ? { id } : { id, organizationId: auth.orgId },
       include: {
         sections: {
           orderBy: { order: "asc" },
