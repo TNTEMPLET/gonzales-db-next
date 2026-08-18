@@ -17,7 +17,12 @@ export async function GET(request: NextRequest) {
     // deployment's own org otherwise). Never trust the raw ?org= query
     // param directly for a non-master admin, or they could pass
     // ?org=<other-org> and read another tenant's surveys.
-    const where = isMasterAdminActor(auth) ? {} : { organizationId: auth.orgId };
+    // isPublished: true so unpublished/draft surveys never show up in the
+    // active survey list — matches the public route, which already only
+    // ever serves published surveys.
+    const where = isMasterAdminActor(auth)
+      ? { isPublished: true }
+      : { organizationId: auth.orgId, isPublished: true };
 
     const surveys = await prisma.survey.findMany({
       where,
