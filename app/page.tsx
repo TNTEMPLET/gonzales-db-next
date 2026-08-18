@@ -10,7 +10,10 @@ import {
   getHomepageRotatorPosts,
 } from "@/lib/news/queries";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
-import { getSportsConnectRegistrationUrl } from "@/lib/sportsConnect/registrationUrl";
+import {
+  getSportsConnectRegistrationUrl,
+  getSportsConnectVolunteerRegistrationUrl,
+} from "@/lib/sportsConnect/registrationUrl";
 import {
   getAssignrLeagueId,
   getDefaultContentOrg,
@@ -272,6 +275,7 @@ export default async function Home({
   const regOpen = await isRegistrationOpen(contentOrg);
   const homepageCopy = getHomepageCopy(contentOrg);
   const orgCaps = getOrgCapabilities(contentOrg);
+  const volunteerRegistrationUrl = getSportsConnectVolunteerRegistrationUrl();
   const scReg =
     orgCaps.registration === "sportsconnect"
       ? getSportsConnectRegistrationUrl(contentOrg)
@@ -423,18 +427,20 @@ export default async function Home({
           : "flex flex-col sm:flex-row gap-4 justify-center"
       }
     >
-      {/* CTA priority for compact-ops: coaching → registration → schedule (if live) */}
+      {/* CTA priority for compact-ops: volunteer registration → registration → schedule (if live) */}
       {orgCaps.coachingInterest ? (
-        <Link
-          href="/coaching-interest"
+        <a
+          href={volunteerRegistrationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
           className={
             compactOps
               ? "inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-gold px-6 py-3 text-base font-semibold text-zinc-950 transition-all hover:bg-brand-gold/90 active:scale-95"
               : "rounded-xl bg-brand-gold px-8 py-4 text-lg font-semibold text-zinc-950 transition-all hover:bg-brand-gold/90 active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
           }
         >
-          Coaching Interest
-        </Link>
+          Volunteer Registration (Coaches &amp; Umpires)
+        </a>
       ) : null}
       {showRegistrationCta ? (
         regOpen && scReg ? (
@@ -522,9 +528,10 @@ export default async function Home({
             ...(orgCaps.coachingInterest
               ? [
                   {
-                    label: "Coaching Interest",
-                    href: "/coaching-interest",
+                    label: "Volunteer Registration (Coaches & Umpires)",
+                    href: volunteerRegistrationUrl,
                     variant: "secondary" as const,
+                    external: true,
                   },
                 ]
               : []),
@@ -682,12 +689,14 @@ export default async function Home({
               <p className="text-brand-gold">Closed</p>
             )}
             {orgCaps.coachingInterest ? (
-              <Link
-                href="/coaching-interest"
+              <a
+                href={volunteerRegistrationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
                 className="mt-3 inline-flex text-sm font-semibold text-white underline decoration-brand-gold underline-offset-4 hover:text-brand-gold"
               >
-                Join the coach interest list
-              </Link>
+                Volunteer Registration (Coaches &amp; Umpires)
+              </a>
             ) : null}
           </div>
           <div>
