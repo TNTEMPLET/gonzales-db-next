@@ -6,6 +6,7 @@ import { usePathname } from "next/navigation";
 import { useState } from "react";
 import DesignedByBrand from "@/components/ui/DesignedByBrand";
 import type { OrgId } from "@/lib/siteConfig";
+import { getSportsConnectVolunteerRegistrationUrl } from "@/lib/sportsConnect/registrationUrl";
 
 type FooterProps = {
   brand: {
@@ -26,6 +27,7 @@ export default function Footer({ brand }: FooterProps) {
   const isMaster = brand.orgId === "master";
   const isTournamentOnly = brand.tournamentOnly ?? false;
   const isFallBall = brand.orgId === "fallball";
+  const volunteerRegistrationUrl = getSportsConnectVolunteerRegistrationUrl();
 
   return (
     <footer className="border-t border-zinc-800 bg-zinc-950 py-10 sm:py-14 md:py-16">
@@ -167,6 +169,18 @@ export default function Footer({ brand }: FooterProps) {
                     Player Registration
                   </a>
                 </li>
+                {isFallBall && (
+                  <li>
+                    <a
+                      href={volunteerRegistrationUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-zinc-100 hover:text-brand-gold transition"
+                    >
+                      Volunteer Registration (Coaches &amp; Umpires)
+                    </a>
+                  </li>
+                )}
                 <li>
                   <Link
                     href="/news"

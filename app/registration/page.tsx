@@ -2,8 +2,34 @@ import Link from "next/link";
 import { isRegistrationOpen } from "@/lib/registrationStatus";
 import { getOrgCapabilities } from "@/lib/org/capabilities";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
-import { getSportsConnectRegistrationUrl } from "@/lib/sportsConnect/registrationUrl";
+import {
+  getSportsConnectRegistrationUrl,
+  getSportsConnectVolunteerRegistrationUrl,
+} from "@/lib/sportsConnect/registrationUrl";
 import { getSiteConfig } from "@/lib/siteConfig";
+
+function VolunteerRegistrationCallout() {
+  const volunteerUrl = getSportsConnectVolunteerRegistrationUrl();
+  return (
+    <section className="border border-zinc-700 bg-zinc-900/60 rounded-xl p-6 sm:p-8">
+      <h2 className="text-2xl font-bold text-white tracking-tight mb-2">
+        Volunteer Registration (Coaches &amp; Umpires)
+      </h2>
+      <p className="text-zinc-400 mb-6">
+        Interested in coaching or umpiring for Fall Ball? Coaches and umpires
+        register separately from players on APBaseball.com.
+      </p>
+      <a
+        href={volunteerUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex bg-brand-gold hover:bg-brand-gold/90 text-black font-semibold text-lg px-8 py-4 rounded-xl transition-all active:scale-95"
+      >
+        Volunteer Registration (Coaches &amp; Umpires)
+      </a>
+    </section>
+  );
+}
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -122,6 +148,8 @@ export default async function RegistrationPage() {
                 </Link>
               </div>
             </section>
+
+            <VolunteerRegistrationCallout />
 
             <section className="space-y-4 text-zinc-300 leading-relaxed">
               <div className="border border-zinc-800 bg-zinc-900/60 rounded-xl p-5">
@@ -256,6 +284,8 @@ export default async function RegistrationPage() {
               </Link>
             </div>
           </section>
+
+          <VolunteerRegistrationCallout />
 
           <section className="space-y-4 text-zinc-300 leading-relaxed">
             <div className="border border-zinc-800 bg-zinc-900/60 rounded-xl p-5">

@@ -43,3 +43,14 @@ export function getSportsConnectRegistrationUrl(org: ContentOrgId): {
 /** Default family-facing registration link (Fall Ball / shared AP Baseball domain). */
 export const DEFAULT_SPORTS_CONNECT_REGISTRATION_HREF =
   SPORTS_CONNECT_REGISTRATION_URLS.fallball.href;
+
+/**
+ * Volunteer (Coaches & Umpires) registration entry point on SportsConnect —
+ * distinct tabid from player registration above. Same org, different form.
+ */
+export const SPORTS_CONNECT_VOLUNTEER_REGISTRATION_URL =
+  "https://www.apbaseball.com/Default.aspx?tabid=1467250";
+
+export function getSportsConnectVolunteerRegistrationUrl(): string {
+  return SPORTS_CONNECT_VOLUNTEER_REGISTRATION_URL;
+}
