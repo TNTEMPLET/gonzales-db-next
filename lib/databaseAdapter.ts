@@ -1,23 +1,18 @@
 import { PrismaPg } from "@prisma/adapter-pg";
-import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
 import pg from "pg";
 
 /**
- * Dual adapters are intentional (Phase 8):
- * - `@prisma/adapter-ppg` — Prisma-hosted Postgres gateway (`db.prisma.io` / prod)
- * - `@prisma/adapter-pg` — local / standard Postgres (dev-box `127.0.0.1`)
- *
- * Do not remove either without confirming both connection shapes still work.
+ * `@prisma/adapter-ppg` (PrismaPostgresAdapter) was previously used for the
+ * hosted Prisma Postgres gateway (db.prisma.io / prisma-data.net), but it
+ * throws `TypeError: e.map is not a function` on any model with a native
+ * Postgres array column (String[] — e.g. SurveyQuestion.matrixTopics,
+ * .options). Verified directly against the production database: the ppg
+ * adapter fails on that query, and PrismaPg + pg.Pool succeeds against the
+ * exact same host/data. Standard pg.Pool connects to db.prisma.io fine (the
+ * seed scripts have done so directly all along), so there's no connectivity
+ * reason to keep the ppg-specific path — just use one adapter for every
+ * PostgreSQL connection string.
  */
-/** Prisma Postgres hosted gateway (production / remote dev on db.prisma.io). */
-export function isPrismaHostedPostgres(connectionString: string) {
-  return /db\.prisma\.io|prisma-data\.net/i.test(connectionString);
-}
-
-/** Local Postgres on dev-box, or Prisma Postgres gateway in prod. */
 export function createDatabaseAdapter(connectionString: string) {
-  if (isPrismaHostedPostgres(connectionString)) {
-    return new PrismaPostgresAdapter({ connectionString });
-  }
   return new PrismaPg(new pg.Pool({ connectionString }));
 }
