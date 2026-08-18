@@ -21,6 +21,36 @@ interface Section {
 
 type SurveySeason = "SPRING" | "FALL";
 
+/**
+ * Which of Q15's real seeded division options are valid for each org.
+ * Every entry here must be a subset of the actual "Division played"
+ * SurveyQuestion.options (verified against the source survey doc) — this
+ * is a filter over real options, not a separate/duplicate list, so a
+ * Gonzales or Ascension respondent can never submit a division value Q15
+ * doesn't actually have.
+ */
+const ORG_DIVISIONS: Record<string, string[]> = {
+  gonzales: ["5UTB", "6U CP", "8U CP", "9U DYB", "10U DYB", "12U DYB", "13-15 DBB", "15-17 DBB", "Other"],
+  ascension: ["3-4TB", "5UTB", "6U Mod TB", "7U CP", "7/8 Majors", "9/10 Majors", "11/12 Majors", "Other"],
+  fallball: [
+    "3-4TB",
+    "5UTB",
+    "6U Mod TB",
+    "6U CP",
+    "7/8 Majors",
+    "7U CP",
+    "8U CP",
+    "9/10 Majors",
+    "9U DYB",
+    "10U DYB",
+    "11/12 Majors",
+    "12U DYB",
+    "13-15 DBB",
+    "15-17 DBB",
+    "Other",
+  ],
+};
+
 interface SurveyData {
   id: string;
   title: string;
@@ -107,6 +137,14 @@ export default function PublicSurveyPage({
     .flatMap((s) => s.questions)
     .find((q) => q.questionText.toLowerCase().includes("division"));
 
+  // Filtered to whichever of Q15's real options are valid for the selected
+  // org — a filter over real data, not a separate list, so a Gonzales/
+  // Ascension respondent can never end up submitting a division value Q15
+  // doesn't actually have.
+  const availableDivisions = selectedOrg
+    ? (divisionQuestion?.options ?? []).filter((opt) => (ORG_DIVISIONS[selectedOrg] ?? []).includes(opt))
+    : [];
+
   const handleDivisionSelect = (value: string) => {
     setDivision(value);
     // Keep Q15's own answer in sync so parents aren't asked the same
@@ -115,6 +153,27 @@ export default function PublicSurveyPage({
       handleOptionSelect(divisionQuestion.id, value);
     }
   };
+
+  // Whenever the respondent changes org, the previously-selected division
+  // may no longer be valid for the new org — clear it (and Q15's answer)
+  // rather than leave a stale, possibly-invalid value in place.
+  useEffect(() => {
+    function resetDivisionForNewOrg() {
+      setDivision("");
+      if (divisionQuestion) {
+        setAnswers((prev) => {
+          const next = { ...prev };
+          delete next[divisionQuestion.id];
+          return next;
+        });
+      }
+    }
+    resetDivisionForNewOrg();
+    // divisionQuestion is intentionally excluded — it's a new object
+    // reference every render, and including it would re-fire this effect
+    // (and wipe the just-made selection) immediately after handleDivisionSelect.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedOrg]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -296,18 +355,24 @@ export default function PublicSurveyPage({
                   Helps us break feedback down by age group.
                 </p>
               </div>
-              <select
-                value={division}
-                onChange={(e) => handleDivisionSelect(e.target.value)}
-                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-              >
-                <option value="">Select a division…</option>
-                {divisionQuestion.options.map((opt) => (
-                  <option key={opt} value={opt}>
-                    {opt}
-                  </option>
-                ))}
-              </select>
+              {survey?.season === "SPRING" && !selectedOrg ? (
+                <p className="text-sm text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
+                  Select an organization above first.
+                </p>
+              ) : (
+                <select
+                  value={division}
+                  onChange={(e) => handleDivisionSelect(e.target.value)}
+                  className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                >
+                  <option value="">Select a division…</option>
+                  {availableDivisions.map((opt) => (
+                    <option key={opt} value={opt}>
+                      {opt}
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
 
