@@ -112,6 +112,13 @@ export default function FallBallCapacityCard() {
 
   if (!data) return null;
 
+  // Sums the table's own columns rather than reusing data.totalCoaches — a
+  // coach can now match more than one division (see matchStandardDivisions
+  // in fallballCapacity.ts), so this footer total can run higher than the
+  // distinct-coach headline above when that happens; each number is correct
+  // for what it represents.
+  const matchedCoachesColumnTotal = data.divisions.reduce((sum, div) => sum + div.matchedCoaches, 0);
+
   return (
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-6 text-zinc-100 shadow-2xl">
       {/* Header */}
@@ -233,8 +240,25 @@ export default function FallBallCapacityCard() {
               );
             })}
           </tbody>
+          <tfoot className="border-t-2 border-zinc-700 bg-zinc-800/60 font-bold">
+            <tr>
+              <td className="px-4 py-3 text-zinc-100">Total (10 Divisions)</td>
+              <td className="px-4 py-3 text-center text-emerald-400">{data.totalPlayers}</td>
+              <td className="px-4 py-3 text-center text-zinc-500">—</td>
+              <td className="px-4 py-3 text-center text-purple-300">{data.totalEstimatedTeams}</td>
+              <td className="px-4 py-3 text-center text-blue-300">{matchedCoachesColumnTotal}</td>
+              <td className="px-4 py-3 text-right text-zinc-500">—</td>
+            </tr>
+          </tfoot>
         </table>
       </div>
+      {matchedCoachesColumnTotal !== data.totalCoaches && (
+        <p className="mt-2 text-[11px] text-zinc-500">
+          Matched Coaches total above ({matchedCoachesColumnTotal}) can exceed the {data.totalCoaches} distinct
+          converted coaches shown in Matched Coaches up top — a coach interested in more than one division is
+          counted toward each one.
+        </p>
+      )}
     </div>
   );
 }
