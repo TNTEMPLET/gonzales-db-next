@@ -38,7 +38,6 @@ export default function SurveyAnalyticsCard({
   organizationId = "fallball",
 }: SurveyAnalyticsProps) {
   const [loading, setLoading] = useState(true);
-  const [season, setSeason] = useState<SurveySeason>("FALL");
   const [surveys, setSurveys] = useState<SurveyListItem[]>([]);
   const [selectedSurveyId, setSelectedSurveyId] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<SurveyAnalyticsResponse | null>(null);
@@ -49,17 +48,14 @@ export default function SurveyAnalyticsCard({
     async function loadSurveys() {
       setLoading(true);
       try {
-        // Spring is a cross-org survey owned by "apbaseball" (master-admin
-        // only) — Fall stays scoped to whichever org this card was mounted
-        // for, matching the admin's normal tenant scope.
-        const listOrg = season === "SPRING" ? "apbaseball" : organizationId;
-        const res = await fetch(`/api/admin/surveys?org=${encodeURIComponent(listOrg)}`);
+        // No ?org= needed — the route returns every survey across every
+        // org for master admins, and stays scoped to auth.orgId server-side
+        // for everyone else.
+        const res = await fetch("/api/admin/surveys");
         const data = await safeJson(res);
         const list = Array.isArray(data.surveys) ? (data.surveys as SurveyListItem[]) : [];
         setSurveys(list);
         setSelectedSurveyId(list[0]?.id ?? null);
-        setRespondentOrgFilter("");
-        setDivisionFilter("");
       } catch (err) {
         console.error("Error loading surveys:", err);
         setSurveys([]);
@@ -69,7 +65,17 @@ export default function SurveyAnalyticsCard({
       }
     }
     loadSurveys();
-  }, [organizationId, season]);
+  }, []);
+
+  // Changing survey invalidates whatever org/division filter was picked
+  // for the previous one.
+  useEffect(() => {
+    function resetFilters() {
+      setRespondentOrgFilter("");
+      setDivisionFilter("");
+    }
+    resetFilters();
+  }, [selectedSurveyId]);
 
   useEffect(() => {
     if (!selectedSurveyId) {
@@ -132,7 +138,7 @@ export default function SurveyAnalyticsCard({
             <h2 className="text-lg font-bold text-white">Parent Survey Analytics</h2>
           </div>
           <p className="text-xs text-slate-400 mt-0.5">
-            Season feedback ratings & priority breakdowns
+            Feedback ratings & priority breakdowns
           </p>
         </div>
 
@@ -141,65 +147,67 @@ export default function SurveyAnalyticsCard({
         </div>
       </div>
 
-      {/* Season / Org / Division Filters */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <label className="block space-y-1">
-          <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Season</span>
-          <select
-            value={season}
-            onChange={(e) => setSeason(e.target.value as SurveySeason)}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-sm text-slate-200"
-          >
-            <option value="SPRING">2026 Spring</option>
-            <option value="FALL">2026 Fall</option>
-          </select>
-        </label>
-
-        <label className="block space-y-1">
-          <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Organization</span>
-          <select
-            value={respondentOrgFilter}
-            onChange={(e) => setRespondentOrgFilter(e.target.value)}
-            disabled={season === "FALL"}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-sm text-slate-200 disabled:opacity-50"
-          >
-            <option value="">All Organizations</option>
-            {season === "SPRING" ? (
-              <>
-                <option value="gonzales">Gonzales DYB</option>
-                <option value="ascension">Ascension LL</option>
-              </>
-            ) : (
-              <option value="fallball">Fall Ball</option>
-            )}
-          </select>
-        </label>
-
-        <label className="block space-y-1">
-          <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Division</span>
-          <select
-            value={divisionFilter}
-            onChange={(e) => setDivisionFilter(e.target.value)}
-            disabled={availableDivisions.length === 0}
-            className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-sm text-slate-200 disabled:opacity-50"
-          >
-            <option value="">All Divisions</option>
-            {availableDivisions.map((d) => (
-              <option key={d} value={d}>
-                {d}
-              </option>
-            ))}
-          </select>
-        </label>
-      </div>
-
       {surveys.length === 0 ? (
         <div className="text-slate-400 text-sm py-6 text-center">
-          No {season === "SPRING" ? "Spring" : "Fall"} survey found
-          {season === "SPRING" ? " (master admin access required)" : ` for org: ${organizationId}`}.
+          No surveys found{organizationId ? ` for org: ${organizationId}` : ""}.
         </div>
       ) : (
         <>
+          {/* Survey / Org / Division Filters */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <label className="block space-y-1">
+              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Select Survey</span>
+              <select
+                value={selectedSurveyId ?? ""}
+                onChange={(e) => setSelectedSurveyId(e.target.value || null)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-sm text-slate-200"
+              >
+                {surveys.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.title}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Organization</span>
+              <select
+                value={respondentOrgFilter}
+                onChange={(e) => setRespondentOrgFilter(e.target.value)}
+                disabled={selectedSurvey?.season !== "SPRING"}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-sm text-slate-200 disabled:opacity-50"
+              >
+                <option value="">All Organizations</option>
+                {selectedSurvey?.season === "SPRING" ? (
+                  <>
+                    <option value="gonzales">Gonzales DYB</option>
+                    <option value="ascension">Ascension LL</option>
+                  </>
+                ) : (
+                  <option value="fallball">Fall Ball</option>
+                )}
+              </select>
+            </label>
+
+            <label className="block space-y-1">
+              <span className="text-[11px] font-medium text-slate-400 uppercase tracking-wider">Division</span>
+              <select
+                value={divisionFilter}
+                onChange={(e) => setDivisionFilter(e.target.value)}
+                disabled={availableDivisions.length === 0}
+                className="w-full bg-slate-950 border border-slate-800 rounded-lg px-2.5 py-2 text-sm text-slate-200 disabled:opacity-50"
+              >
+                <option value="">All Divisions</option>
+                {availableDivisions.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            </label>
+          </div>
+
           {/* Top Level Category Rating Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             {[
