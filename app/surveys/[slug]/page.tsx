@@ -22,34 +22,19 @@ interface Section {
 type SurveySeason = "SPRING" | "FALL";
 
 /**
- * Which of Q15's real seeded division options are valid for each org.
- * Every entry here must be a subset of the actual "Division played"
- * SurveyQuestion.options (verified against the source survey doc) — this
- * is a filter over real options, not a separate/duplicate list, so a
- * Gonzales or Ascension respondent can never submit a division value Q15
- * doesn't actually have.
+ * Which of Q15's real seeded division options are valid for each org —
+ * computed from the actual options rather than a hardcoded list, so it
+ * can't drift out of sync if the seeded divisions ever change. Gonzales
+ * DYB divisions are tagged "DYB"/"DBB" in their real option text; every
+ * other option belongs to Ascension LL. Fall Ball sees everything.
  */
-const ORG_DIVISIONS: Record<string, string[]> = {
-  gonzales: ["5UTB", "6U CP", "8U CP", "9U DYB", "10U DYB", "12U DYB", "13-15 DBB", "15-17 DBB", "Other"],
-  ascension: ["3-4TB", "5UTB", "6U Mod TB", "7U CP", "7/8 Majors", "9/10 Majors", "11/12 Majors", "Other"],
-  fallball: [
-    "3-4TB",
-    "5UTB",
-    "6U Mod TB",
-    "6U CP",
-    "7/8 Majors",
-    "7U CP",
-    "8U CP",
-    "9/10 Majors",
-    "9U DYB",
-    "10U DYB",
-    "11/12 Majors",
-    "12U DYB",
-    "13-15 DBB",
-    "15-17 DBB",
-    "Other",
-  ],
-};
+function divisionsForOrg(org: string, allOptions: string[]): string[] {
+  const isDybOrDbb = (opt: string) => opt.includes("DYB") || opt.includes("DBB");
+  if (org === "gonzales") return allOptions.filter(isDybOrDbb);
+  if (org === "ascension") return allOptions.filter((opt) => !isDybOrDbb(opt));
+  if (org === "fallball") return allOptions;
+  return [];
+}
 
 interface SurveyData {
   id: string;
@@ -142,7 +127,7 @@ export default function PublicSurveyPage({
   // Ascension respondent can never end up submitting a division value Q15
   // doesn't actually have.
   const availableDivisions = selectedOrg
-    ? (divisionQuestion?.options ?? []).filter((opt) => (ORG_DIVISIONS[selectedOrg] ?? []).includes(opt))
+    ? divisionsForOrg(selectedOrg, divisionQuestion?.options ?? [])
     : [];
 
   const handleDivisionSelect = (value: string) => {
