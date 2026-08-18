@@ -15,8 +15,8 @@ export async function GET(
       );
     }
 
-    const survey = await prisma.survey.findUnique({
-      where: { organizationId_slug: { organizationId: org, slug }, isPublished: true },
+    const survey = await prisma.survey.findFirst({
+      where: { organizationId: org, slug: slug, isPublished: true },
       include: {
         sections: {
           orderBy: { order: "asc" },
@@ -40,7 +40,10 @@ export async function GET(
   } catch (error) {
     console.error("Error fetching survey:", error);
     return NextResponse.json(
-      { error: "Failed to load survey" },
+      {
+        error: "Failed to load survey",
+        details: error instanceof Error ? error.message : String(error),
+      },
       { status: 500 }
     );
   }
