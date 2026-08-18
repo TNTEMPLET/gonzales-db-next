@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import { ensureAdminModule, isMasterAdminActor } from "@/lib/auth/ensureAdminModule";
 import prisma from "@/lib/prisma";
 
 export async function GET(request: NextRequest) {
@@ -14,8 +14,18 @@ export async function GET(request: NextRequest) {
     // org otherwise) — never trust the raw query param directly, or an
     // admin on a non-master deployment could pass ?org=<other-org> and read
     // another tenant's surveys.
+    //
+    // Narrow exception: Survey.organizationId can also be "apbaseball" —
+    // the cross-org Spring survey (Gonzales + Ascension respondents), which
+    // isn't a real ContentOrgId auth.orgId can ever resolve to. Only a
+    // master admin explicitly asking for it via ?org=apbaseball gets it;
+    // everyone else stays strictly on auth.orgId.
+    const requestedOrg = request.nextUrl.searchParams.get("org");
+    const targetOrg =
+      requestedOrg === "apbaseball" && isMasterAdminActor(auth) ? "apbaseball" : auth.orgId;
+
     const surveys = await prisma.survey.findMany({
-      where: { organizationId: auth.orgId },
+      where: { organizationId: targetOrg },
       orderBy: { createdAt: "desc" },
       include: {
         _count: {
