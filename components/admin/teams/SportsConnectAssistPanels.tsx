@@ -1,8 +1,10 @@
 "use client";
 
+import { useState } from "react";
 import type {
   ColumnDetectResult,
   RosterQualitySummary,
+  SportsConnectImportRunView,
   SportsConnectMappingPresetView,
 } from "@/lib/sportsConnect/types";
 
@@ -198,6 +200,92 @@ export function SportsConnectPresetBar({
       </div>
       {notice ? <p className="text-xs text-emerald-300">{notice}</p> : null}
       {error ? <p className="text-xs text-red-300">{error}</p> : null}
+    </div>
+  );
+}
+
+type SyncedDriveFileMenuProps = {
+  /** Recent DONE runs with a driveFileId for this modal's report kind — data-fetching lives in the parent. */
+  runs: SportsConnectImportRunView[];
+  loading?: boolean;
+  error?: string;
+  /** Id of the run currently being downloaded, if any — disables the whole list while it's in flight. */
+  fetchingRunId?: string | null;
+  disabled?: boolean;
+  /** Fired the first time the menu opens, so the parent can (re)load the run list lazily. */
+  onOpen: () => void;
+  onSelect: (run: SportsConnectImportRunView) => void;
+};
+
+/** 1-click "use the file Drive Sync already pulled" alternative to the local file input, mirrored across the Player/Coach/Team List import modals. */
+export function SyncedDriveFileMenu({
+  runs,
+  loading = false,
+  error = "",
+  fetchingRunId = null,
+  disabled = false,
+  onOpen,
+  onSelect,
+}: SyncedDriveFileMenuProps) {
+  const [open, setOpen] = useState(false);
+
+  function toggle() {
+    if (disabled) return;
+    const next = !open;
+    setOpen(next);
+    if (next) onOpen();
+  }
+
+  return (
+    <div className="relative inline-block">
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={toggle}
+        className="rounded-lg border border-sky-700 text-sky-300 px-4 py-2 text-sm hover:bg-sky-950/30 disabled:opacity-60"
+      >
+        📁 Use Synced Drive File
+      </button>
+      {open ? (
+        <div className="absolute z-20 mt-2 w-80 rounded-lg border border-zinc-700 bg-zinc-900 p-3 shadow-xl">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="text-xs font-semibold text-zinc-200">Recently synced from Drive</p>
+            <button
+              type="button"
+              onClick={() => setOpen(false)}
+              className="text-[11px] text-zinc-500 hover:text-zinc-300"
+            >
+              Close
+            </button>
+          </div>
+          {loading ? (
+            <p className="text-xs text-zinc-400">Loading synced files…</p>
+          ) : error ? (
+            <p className="text-xs text-rose-300">{error}</p>
+          ) : runs.length === 0 ? (
+            <p className="text-xs text-zinc-500">No synced Drive files yet for this report type.</p>
+          ) : (
+            <ul className="max-h-64 space-y-1.5 overflow-y-auto">
+              {runs.map((run) => (
+                <li key={run.id}>
+                  <button
+                    type="button"
+                    onClick={() => onSelect(run)}
+                    disabled={fetchingRunId !== null}
+                    className="w-full rounded border border-zinc-700 px-2 py-1.5 text-left text-xs hover:bg-zinc-800 disabled:opacity-50"
+                  >
+                    <div className="font-medium text-zinc-100">
+                      {run.sourceFileName || "Synced file"}
+                      {fetchingRunId === run.id ? " — downloading…" : ""}
+                    </div>
+                    <div className="text-zinc-500">{new Date(run.createdAt).toLocaleString()}</div>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      ) : null}
     </div>
   );
 }

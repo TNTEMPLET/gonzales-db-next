@@ -16,6 +16,7 @@ import {
   SportsConnectDetectionBanner,
   SportsConnectPresetBar,
   SportsConnectQualityPanel,
+  SyncedDriveFileMenu,
 } from "./teams/SportsConnectAssistPanels";
 import PlayerCardDemoPreview from "@/components/players/PlayerCardDemoPreview";
 import PlayerCardPanel, {
@@ -52,7 +53,9 @@ import type { ContentOrgId } from "@/lib/siteConfig";
 import type {
   ColumnDetectResult,
   RosterQualitySummary,
+  SportsConnectImportRunView,
   SportsConnectMappingPresetView,
+  SportsConnectReportKind,
 } from "@/lib/sportsConnect/types";
 
 type Team = {
@@ -246,6 +249,22 @@ export default function AdminTeamsManager({
 
   const [importFile, setImportFile] = useState<File | null>(null);
   const [importPreparing, setImportPreparing] = useState(false);
+
+  // "Use Synced Drive File" — shared across the Player/Coach/Team List import
+  // modals below. Keyed by reportKind since each modal only ever needs its
+  // own report's runs; fetching/downloading stays here (the panel component
+  // is presentation-only), mirroring how presets/quality data flow into
+  // SportsConnectAssistPanels elsewhere in this file.
+  const [syncedDriveRuns, setSyncedDriveRuns] = useState<
+    Record<SportsConnectReportKind, SportsConnectImportRunView[]>
+  >({ PLAYER_REG: [], COACH_VOLUNTEER: [], TEAM_LIST: [] });
+  const [syncedDriveLoading, setSyncedDriveLoading] = useState<
+    Record<SportsConnectReportKind, boolean>
+  >({ PLAYER_REG: false, COACH_VOLUNTEER: false, TEAM_LIST: false });
+  const [syncedDriveError, setSyncedDriveError] = useState<
+    Record<SportsConnectReportKind, string>
+  >({ PLAYER_REG: "", COACH_VOLUNTEER: "", TEAM_LIST: "" });
+  const [syncedDriveFetchingId, setSyncedDriveFetchingId] = useState<string | null>(null);
   const [showImportMappingModal, setShowImportMappingModal] = useState(false);
   const [showPlayersImportModal, setShowPlayersImportModal] = useState(false);
   const [showCoachImportModal, setShowCoachImportModal] = useState(false);
@@ -624,6 +643,56 @@ export default function AdminTeamsManager({
     const text = await response.text();
     if (!text.trim()) return {};
     return JSON.parse(text) as Record<string, unknown>;
+  }
+
+  /** Loads (or refreshes) the recent synced-Drive runs for one report kind, lazily — called when a modal's menu is first opened. */
+  async function loadSyncedDriveRuns(reportKind: SportsConnectReportKind) {
+    setSyncedDriveLoading((prev) => ({ ...prev, [reportKind]: true }));
+    setSyncedDriveError((prev) => ({ ...prev, [reportKind]: "" }));
+    try {
+      const response = await fetch(
+        `/api/admin/sports-connect/runs?${orgQuery}&reportKind=${reportKind}&limit=5`,
+        { cache: "no-store" },
+      );
+      const json = await safeJson(response);
+      if (!response.ok) {
+        throw new Error(String(json.error || "Failed to load synced files"));
+      }
+      const list = Array.isArray(json.data) ? (json.data as SportsConnectImportRunView[]) : [];
+      // Only DONE runs that actually carry a Drive file are selectable.
+      const usable = list.filter((run) => run.status === "DONE" && run.driveFileId);
+      setSyncedDriveRuns((prev) => ({ ...prev, [reportKind]: usable }));
+    } catch (err) {
+      setSyncedDriveError((prev) => ({
+        ...prev,
+        [reportKind]: err instanceof Error ? err.message : "Failed to load synced files",
+      }));
+    } finally {
+      setSyncedDriveLoading((prev) => ({ ...prev, [reportKind]: false }));
+    }
+  }
+
+  /** Downloads a synced run's Drive file and hands it to the same setter/handler the local file input would call, so the rest of the import pipeline is untouched. */
+  async function applySyncedDriveFile(run: SportsConnectImportRunView, apply: (file: File) => void) {
+    setSyncedDriveFetchingId(run.id);
+    try {
+      const response = await fetch(`/api/admin/sports-connect/drive-file?${orgQuery}&runId=${run.id}`);
+      if (!response.ok) {
+        const json = await safeJson(response);
+        throw new Error(String(json.error || "Failed to download the synced file"));
+      }
+      const blob = await response.blob();
+      const fileName = run.sourceFileName || `synced-${run.reportKind.toLowerCase()}-${run.id}`;
+      const file = new File([blob], fileName, { type: blob.type || "application/octet-stream" });
+      apply(file);
+    } catch (err) {
+      setSyncedDriveError((prev) => ({
+        ...prev,
+        [run.reportKind]: err instanceof Error ? err.message : "Failed to use the synced file",
+      }));
+    } finally {
+      setSyncedDriveFetchingId(null);
+    }
   }
 
   async function loadSportsConnectQuality() {
@@ -3083,6 +3152,15 @@ export default function AdminTeamsManager({
                     disabled={teamListImportBusy}
                     className="text-sm"
                   />
+                  <SyncedDriveFileMenu
+                    runs={syncedDriveRuns.TEAM_LIST}
+                    loading={syncedDriveLoading.TEAM_LIST}
+                    error={syncedDriveError.TEAM_LIST}
+                    fetchingRunId={syncedDriveFetchingId}
+                    disabled={teamListImportBusy}
+                    onOpen={() => void loadSyncedDriveRuns("TEAM_LIST")}
+                    onSelect={(run) => void applySyncedDriveFile(run, (file) => void handleTeamListFile(file))}
+                  />
                   <button
                     type="button"
                     onClick={downloadTeamListTemplate}
@@ -3281,6 +3359,15 @@ export default function AdminTeamsManager({
                 onChange={(event) => setCoachImportFile(event.target.files?.[0] || null)}
                 className="text-sm"
               />
+              <SyncedDriveFileMenu
+                runs={syncedDriveRuns.COACH_VOLUNTEER}
+                loading={syncedDriveLoading.COACH_VOLUNTEER}
+                error={syncedDriveError.COACH_VOLUNTEER}
+                fetchingRunId={syncedDriveFetchingId}
+                disabled={coachImportBusy || coachImportPreparing}
+                onOpen={() => void loadSyncedDriveRuns("COACH_VOLUNTEER")}
+                onSelect={(run) => void applySyncedDriveFile(run, setCoachImportFile)}
+              />
               <button
                 type="button"
                 disabled={coachImportBusy || coachImportPreparing || !coachImportFile}
@@ -3438,6 +3525,15 @@ export default function AdminTeamsManager({
                 accept=".csv,.xlsx,.xls"
                 onChange={(event) => setImportFile(event.target.files?.[0] || null)}
                 className="text-sm"
+              />
+              <SyncedDriveFileMenu
+                runs={syncedDriveRuns.PLAYER_REG}
+                loading={syncedDriveLoading.PLAYER_REG}
+                error={syncedDriveError.PLAYER_REG}
+                fetchingRunId={syncedDriveFetchingId}
+                disabled={busy || importPreparing}
+                onOpen={() => void loadSyncedDriveRuns("PLAYER_REG")}
+                onSelect={(run) => void applySyncedDriveFile(run, setImportFile)}
               />
               <button
                 type="button"
