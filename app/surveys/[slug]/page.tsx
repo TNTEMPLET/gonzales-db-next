@@ -19,10 +19,13 @@ interface Section {
   questions: Question[];
 }
 
+type SurveySeason = "SPRING" | "FALL";
+
 interface SurveyData {
   id: string;
   title: string;
   description?: string;
+  season: SurveySeason;
   sections: Section[];
 }
 
@@ -43,8 +46,14 @@ export default function PublicSurveyPage({
   // Form State: questionId / topic -> answer
   const [answers, setAnswers] = useState<Record<string, { numberValue?: number; stringValue?: string; textValue?: string }>>({});
   const [allStarGate, setAllStarGate] = useState<boolean | null>(null);
+  // Division/age-group selection — also used as the value for the "Division
+  // played" survey question (Q15) so parents aren't asked the same thing twice.
   const [division, setDivision] = useState<string>("");
   const [email, setEmail] = useState<string>("");
+  // Spring surveys serve both Gonzales DYB and Ascension LL — the respondent
+  // picks which one. Fall surveys are fallball-only, set automatically once
+  // the survey loads.
+  const [selectedOrg, setSelectedOrg] = useState<string>("");
 
   useEffect(() => {
     async function loadSurvey() {
@@ -55,6 +64,9 @@ export default function PublicSurveyPage({
           setError(data.error);
         } else {
           setSurvey(data.survey);
+          if (data.survey?.season === "FALL") {
+            setSelectedOrg("fallball");
+          }
         }
       } catch (err) {
         console.error("Error loading survey:", err);
@@ -88,10 +100,32 @@ export default function PublicSurveyPage({
     }));
   };
 
+  // Reuse the real "Division played" question (Q15) and its actual seeded
+  // options as the source for the top-of-form division/age-group selector,
+  // rather than duplicating a hardcoded list that could drift out of sync.
+  const divisionQuestion = survey?.sections
+    .flatMap((s) => s.questions)
+    .find((q) => q.questionText.toLowerCase().includes("division"));
+
+  const handleDivisionSelect = (value: string) => {
+    setDivision(value);
+    // Keep Q15's own answer in sync so parents aren't asked the same
+    // question twice.
+    if (divisionQuestion) {
+      handleOptionSelect(divisionQuestion.id, value);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setSubmitting(true);
     setError(null);
+
+    if (survey?.season === "SPRING" && !selectedOrg) {
+      setError("Please select your organization (Gonzales DYB or Ascension LL) before submitting.");
+      return;
+    }
+
+    setSubmitting(true);
 
     try {
       const formattedAnswers: Array<{
@@ -125,8 +159,10 @@ export default function PublicSurveyPage({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
+          selectedOrg: selectedOrg || null,
           respondentEmail: email || null,
           divisionName: division || null,
+          ageGroup: division || null,
           answers: formattedAnswers,
         }),
       });
@@ -222,6 +258,59 @@ export default function PublicSurveyPage({
         )}
 
         <form onSubmit={handleSubmit} className="space-y-8">
+          {survey?.season === "SPRING" && (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-md">
+              <div>
+                <h2 className="text-lg font-semibold text-emerald-400">Your Organization</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Which organization is your player registered with?
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {[
+                  { id: "gonzales", label: "⚾ Gonzales DYB" },
+                  { id: "ascension", label: "⚾ Ascension Little League" },
+                ].map((option) => (
+                  <button
+                    key={option.id}
+                    type="button"
+                    onClick={() => setSelectedOrg(option.id)}
+                    className={`p-4 rounded-xl text-center text-sm font-semibold transition-all border ${
+                      selectedOrg === option.id
+                        ? "bg-emerald-500/10 border-emerald-500 text-emerald-300"
+                        : "bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-slate-800"
+                    }`}
+                  >
+                    {option.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {divisionQuestion && (
+            <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-md">
+              <div>
+                <h2 className="text-lg font-semibold text-emerald-400">Your Player&apos;s Division</h2>
+                <p className="text-xs text-slate-400 mt-1">
+                  Helps us break feedback down by age group.
+                </p>
+              </div>
+              <select
+                value={division}
+                onChange={(e) => handleDivisionSelect(e.target.value)}
+                className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+              >
+                <option value="">Select a division…</option>
+                {divisionQuestion.options.map((opt) => (
+                  <option key={opt} value={opt}>
+                    {opt}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
           {survey?.sections.map((section) => {
             const isAllStarSection = section.title.includes("All-Star");
             if (isAllStarSection && allStarGate === false) {
@@ -244,6 +333,13 @@ export default function PublicSurveyPage({
 
                 <div className="space-y-6">
                   {section.questions.map((q) => {
+                    // Already captured by the top-of-form division selector
+                    // above (kept in sync via handleDivisionSelect) — don't
+                    // ask the same question twice.
+                    if (q.id === divisionQuestion?.id) {
+                      return null;
+                    }
+
                     if (q.type === "CONDITIONAL_GATE") {
                       return (
                         <div key={q.id} className="space-y-3">

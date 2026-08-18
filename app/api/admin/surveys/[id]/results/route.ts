@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import { ensureAdminModule, isMasterAdminActor } from "@/lib/auth/ensureAdminModule";
 import prisma from "@/lib/prisma";
 
 export async function GET(
@@ -13,13 +13,24 @@ export async function GET(
 
   try {
     const { id } = await params;
+    // respondentOrg/division filter the responses used for aggregates below
+    // (the org a Spring respondent self-selected — gonzales/ascension/
+    // fallball — not to be confused with auth.orgId, the admin's own
+    // authorized tenant scope, which is enforced separately and always).
+    const respondentOrgFilter = request.nextUrl.searchParams.get("respondentOrg");
+    const divisionFilter = request.nextUrl.searchParams.get("division");
 
     // Scope to the org ensureAdminModule already validated the caller
     // against — without this, any admin who knows/guesses a survey id can
     // read another tenant's full results, including free-text answers and
     // respondent emails.
+    //
+    // Master admins can also reach the cross-org "apbaseball" Spring
+    // survey (see app/api/admin/surveys/route.ts for the same exception) —
+    // non-master admins stay strictly locked to auth.orgId.
+    const allowedOrgIds = isMasterAdminActor(auth) ? [auth.orgId, "apbaseball"] : [auth.orgId];
     const survey = await prisma.survey.findFirst({
-      where: { id, organizationId: auth.orgId },
+      where: { id, organizationId: { in: allowedOrgIds } },
       include: {
         sections: {
           orderBy: { order: "asc" },
@@ -46,14 +57,33 @@ export async function GET(
       return NextResponse.json({ error: "Survey not found" }, { status: 404 });
     }
 
-    // Process analytics aggregates
-    const totalResponses = survey.responses.length;
+    // Full, unfiltered lists so the admin UI's filter dropdowns always show
+    // every real option, even while a filter is applied.
+    const availableOrganizations = Array.from(
+      new Set(survey.responses.map((r) => r.organizationId).filter((v): v is string => Boolean(v))),
+    ).sort();
+    const availableDivisions = Array.from(
+      new Set(
+        survey.responses
+          .flatMap((r) => [r.divisionName, r.ageGroup])
+          .filter((v): v is string => Boolean(v)),
+      ),
+    ).sort();
+
+    const filteredResponses = survey.responses.filter((r) => {
+      if (respondentOrgFilter && r.organizationId !== respondentOrgFilter) return false;
+      if (divisionFilter && r.divisionName !== divisionFilter && r.ageGroup !== divisionFilter) return false;
+      return true;
+    });
+
+    // Process analytics aggregates (on the filtered set)
+    const totalResponses = filteredResponses.length;
 
     // Calculate Matrix Averages per Category/Topic
     const matrixScores: Record<string, { sum: number; count: number; avg: number }> = {};
     const priorityCounts: Record<string, number> = {};
 
-    survey.responses.forEach((resp) => {
+    filteredResponses.forEach((resp) => {
       resp.answers.forEach((ans) => {
         if (ans.matrixTopic && ans.numberValue !== null && ans.numberValue !== undefined) {
           if (!matrixScores[ans.matrixTopic]) {
@@ -79,6 +109,9 @@ export async function GET(
       totalResponses,
       matrixScores,
       priorityCounts,
+      availableOrganizations,
+      availableDivisions,
+      appliedFilters: { respondentOrg: respondentOrgFilter, division: divisionFilter },
     });
   } catch (error) {
     console.error("Error computing survey analytics:", error);
