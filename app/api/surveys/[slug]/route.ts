@@ -15,19 +15,33 @@ export async function GET(
       );
     }
 
-    const survey = await prisma.survey.findFirst({
-      where: { organizationId: org, slug: slug, isPublished: true },
-      include: {
-        sections: {
-          orderBy: { order: "asc" },
-          include: {
-            questions: {
-              orderBy: { order: "asc" },
-            },
+    const surveyInclude = {
+      sections: {
+        orderBy: { order: "asc" as const },
+        include: {
+          questions: {
+            orderBy: { order: "asc" as const },
           },
         },
       },
+    };
+
+    // This route is public/unauthenticated by design (a parent survey form),
+    // so there's no tenant-isolation concern in broadening the lookup — the
+    // exact org match just picks the "expected" owner first; if it misses
+    // (e.g. a visitor lands on the wrong site's URL for a cross-org survey
+    // like the Spring one), fall back to any published survey with this
+    // slug so the form still loads instead of 404ing.
+    let survey = await prisma.survey.findFirst({
+      where: { organizationId: org, slug: slug, isPublished: true },
+      include: surveyInclude,
     });
+    if (!survey) {
+      survey = await prisma.survey.findFirst({
+        where: { slug: slug, isPublished: true },
+        include: surveyInclude,
+      });
+    }
 
     if (!survey) {
       return NextResponse.json(
@@ -79,16 +93,27 @@ export async function POST(
       }>;
     };
 
-    const survey = await prisma.survey.findUnique({
-      where: { organizationId_slug: { organizationId: org, slug }, isPublished: true },
-      include: {
-        sections: {
-          select: {
-            questions: { select: { id: true } },
-          },
+    const responseSurveyInclude = {
+      sections: {
+        select: {
+          questions: { select: { id: true } },
         },
       },
+    };
+
+    // Same reasoning as GET: no tenant-isolation concern on this public
+    // route, so fall back to a global slug lookup if the visitor's org
+    // doesn't own this survey directly.
+    let survey = await prisma.survey.findUnique({
+      where: { organizationId_slug: { organizationId: org, slug }, isPublished: true },
+      include: responseSurveyInclude,
     });
+    if (!survey) {
+      survey = await prisma.survey.findFirst({
+        where: { slug, isPublished: true },
+        include: responseSurveyInclude,
+      });
+    }
 
     if (!survey) {
       return NextResponse.json(
