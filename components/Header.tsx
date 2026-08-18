@@ -13,7 +13,10 @@ import {
   type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
-import { getSportsConnectRegistrationUrl } from "@/lib/sportsConnect/registrationUrl";
+import {
+  getSportsConnectRegistrationUrl,
+  getSportsConnectVolunteerRegistrationUrl,
+} from "@/lib/sportsConnect/registrationUrl";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 import {
@@ -379,17 +382,22 @@ export default function Header({ brand }: HeaderProps) {
     isPublicNavEnabledForOrg(contentOrgForCaps, "coaching-interest");
   const fallBallCoachCornerLinks = isFallBallHeader
     ? [
+        {
+          href: getSportsConnectVolunteerRegistrationUrl(),
+          label: "Volunteer Registration (Coaches & Umpires)",
+          external: true,
+        },
         ...(coachingInterestPublic
-          ? [{ href: "/coaching-interest", label: "Coaching Interest" }]
+          ? [{ href: "/coaching-interest", label: "Coaching Interest", external: false }]
           : []),
         ...(canSeeDugout && isPublicNavEnabledForOrg("fallball", "coaches")
-          ? [{ href: "/coach-corner", label: "Coaches" }]
+          ? [{ href: "/coach-corner", label: "Coaches", external: false }]
           : []),
         ...(canSeeDugout
-          ? [{ href: "/volunteer-card", label: "Volunteer Card" }]
+          ? [{ href: "/volunteer-card", label: "Volunteer Card", external: false }]
           : []),
         ...(canSeeDugout && isPublicNavEnabledForOrg("fallball", "dugout")
-          ? [{ href: "/dugout", label: "Dugout" }]
+          ? [{ href: "/dugout", label: "Dugout", external: false }]
           : []),
       ]
     : [];
@@ -544,16 +552,29 @@ export default function Header({ brand }: HeaderProps) {
                     className="absolute right-0 top-full z-50 mt-3 min-w-48 rounded-lg border border-zinc-700 bg-zinc-950 py-1 shadow-xl"
                     onClick={(e) => e.stopPropagation()}
                   >
-                    {fallBallCoachCornerLinks.map((item) => (
-                      <Link
-                        key={item.href}
-                        href={item.href}
-                        className="block px-4 py-2 text-sm text-white transition-colors hover:bg-zinc-800 hover:text-brand-gold"
-                        onClick={() => setIsCoachCornerOpen(false)}
-                      >
-                        {item.label}
-                      </Link>
-                    ))}
+                    {fallBallCoachCornerLinks.map((item) =>
+                      item.external ? (
+                        <a
+                          key={item.href}
+                          href={item.href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="block px-4 py-2 text-sm text-white transition-colors hover:bg-zinc-800 hover:text-brand-gold"
+                          onClick={() => setIsCoachCornerOpen(false)}
+                        >
+                          {item.label}
+                        </a>
+                      ) : (
+                        <Link
+                          key={item.href}
+                          href={item.href}
+                          className="block px-4 py-2 text-sm text-white transition-colors hover:bg-zinc-800 hover:text-brand-gold"
+                          onClick={() => setIsCoachCornerOpen(false)}
+                        >
+                          {item.label}
+                        </Link>
+                      ),
+                    )}
                   </div>
                 ) : null}
               </div>
@@ -657,16 +678,29 @@ export default function Header({ brand }: HeaderProps) {
                       Coach&apos;s Corner
                     </p>
                     <div className="flex flex-col gap-2 border-l border-zinc-700 pl-3">
-                      {fallBallCoachCornerLinks.map((item) => (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          onClick={() => setIsMenuOpen(false)}
-                          className={mobileLinkClassName(item.href)}
-                        >
-                          {item.label}
-                        </Link>
-                      ))}
+                      {fallBallCoachCornerLinks.map((item) =>
+                        item.external ? (
+                          <a
+                            key={item.href}
+                            href={item.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            onClick={() => setIsMenuOpen(false)}
+                            className={mobileLinkClassName(item.href)}
+                          >
+                            {item.label}
+                          </a>
+                        ) : (
+                          <Link
+                            key={item.href}
+                            href={item.href}
+                            onClick={() => setIsMenuOpen(false)}
+                            className={mobileLinkClassName(item.href)}
+                          >
+                            {item.label}
+                          </Link>
+                        ),
+                      )}
                     </div>
                   </div>
                 ) : null}
