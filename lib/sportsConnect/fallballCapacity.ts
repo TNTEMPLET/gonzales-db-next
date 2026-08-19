@@ -2,7 +2,7 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
-import { getDriveAccessToken } from "@/lib/google/driveServiceAccount";
+import { downloadDriveFileBuffer } from "@/lib/sportsConnect/driveSync";
 import * as XLSX from "xlsx";
 
 /**
@@ -246,15 +246,9 @@ function statusForDivision(estimatedTeams: number, coaches: number): FallBallDiv
 /** Downloads and parses the actual synced PLAYER_REG file for real per-division counts. */
 async function fetchSyncedDivisionPlayerCounts(driveFileId: string): Promise<Record<string, number> | null> {
   try {
-    const token = await getDriveAccessToken();
-    if (!token) return null;
+    const buffer = await downloadDriveFileBuffer(driveFileId);
+    if (!buffer) return null;
 
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-
-    const buffer = Buffer.from(await res.arrayBuffer());
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ""];
     if (!sheet) return null;
@@ -305,15 +299,9 @@ function isCoachVolunteerRole(roleValue: string): boolean {
 /** Downloads and parses the actual synced COACH_VOLUNTEER file for real per-division coach counts. */
 async function fetchSyncedDivisionCoachCounts(driveFileId: string): Promise<Record<string, number> | null> {
   try {
-    const token = await getDriveAccessToken();
-    if (!token) return null;
+    const buffer = await downloadDriveFileBuffer(driveFileId);
+    if (!buffer) return null;
 
-    const res = await fetch(`https://www.googleapis.com/drive/v3/files/${driveFileId}?alt=media`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
-    if (!res.ok) return null;
-
-    const buffer = Buffer.from(await res.arrayBuffer());
     const workbook = XLSX.read(buffer, { type: "buffer" });
     const sheet = workbook.Sheets[workbook.SheetNames[0] ?? ""];
     if (!sheet) return null;
