@@ -36,88 +36,106 @@ export async function ensureAdminModule(
   request: NextRequest,
   module: AdminModule,
 ): Promise<EnsureAdminResult> {
-  const adminUser = await getAdminUserFromRequest(request);
-  if (!adminUser) {
+  try {
+    const adminUser = await getAdminUserFromRequest(request);
+    if (!adminUser) {
+      return {
+        ok: false,
+        status: 401,
+        message: "Unauthorized",
+      };
+    }
+
+    const orgId = resolveAuthOrganizationId(request);
+    const effectiveRole = await getEffectiveAdminRoleForOrg(
+      adminUser.id,
+      adminUser.isMaster,
+      orgId,
+    );
+    if (!effectiveRole) {
+      return {
+        ok: false,
+        status: 403,
+        message: "No admin access for this organization",
+      };
+    }
+
+    if (!canAccessAdminModule(effectiveRole, module)) {
+      return {
+        ok: false,
+        status: 403,
+        message: "Forbidden",
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      admin: adminUser,
+      role: effectiveRole,
+      orgId,
+    };
+  } catch (err) {
+    console.error("[ensureAdminModule] auth check failed:", err);
     return {
       ok: false,
       status: 401,
       message: "Unauthorized",
     };
   }
-
-  const orgId = resolveAuthOrganizationId(request);
-  const effectiveRole = await getEffectiveAdminRoleForOrg(
-    adminUser.id,
-    adminUser.isMaster,
-    orgId,
-  );
-  if (!effectiveRole) {
-    return {
-      ok: false,
-      status: 403,
-      message: "No admin access for this organization",
-    };
-  }
-
-  if (!canAccessAdminModule(effectiveRole, module)) {
-    return {
-      ok: false,
-      status: 403,
-      message: "Forbidden",
-    };
-  }
-
-  return {
-    ok: true,
-    status: 200,
-    admin: adminUser,
-    role: effectiveRole,
-    orgId,
-  };
 }
 
 export async function ensureAdminRole(
   request: NextRequest,
   minimumRole: AdminRole,
 ): Promise<EnsureAdminResult> {
-  const adminUser = await getAdminUserFromRequest(request);
-  if (!adminUser) {
+  try {
+    const adminUser = await getAdminUserFromRequest(request);
+    if (!adminUser) {
+      return {
+        ok: false,
+        status: 401,
+        message: "Unauthorized",
+      };
+    }
+
+    const orgId = resolveAuthOrganizationId(request);
+    const effectiveRole = await getEffectiveAdminRoleForOrg(
+      adminUser.id,
+      adminUser.isMaster,
+      orgId,
+    );
+    if (!effectiveRole) {
+      return {
+        ok: false,
+        status: 403,
+        message: "No admin access for this organization",
+      };
+    }
+
+    if (!hasAdminRoleAtLeast(effectiveRole, minimumRole)) {
+      return {
+        ok: false,
+        status: 403,
+        message: "Forbidden",
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      admin: adminUser,
+      role: effectiveRole,
+      orgId,
+    };
+  } catch (err) {
+    console.error("[ensureAdminRole] auth check failed:", err);
     return {
       ok: false,
       status: 401,
       message: "Unauthorized",
     };
   }
-
-  const orgId = resolveAuthOrganizationId(request);
-  const effectiveRole = await getEffectiveAdminRoleForOrg(
-    adminUser.id,
-    adminUser.isMaster,
-    orgId,
-  );
-  if (!effectiveRole) {
-    return {
-      ok: false,
-      status: 403,
-      message: "No admin access for this organization",
-    };
-  }
-
-  if (!hasAdminRoleAtLeast(effectiveRole, minimumRole)) {
-    return {
-      ok: false,
-      status: 403,
-      message: "Forbidden",
-    };
-  }
-
-  return {
-    ok: true,
-    status: 200,
-    admin: adminUser,
-    role: effectiveRole,
-    orgId,
-  };
 }
 
 /** True when the successful auth result is a Master Admin (deployment or role). */
