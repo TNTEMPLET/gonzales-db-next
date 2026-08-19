@@ -119,7 +119,19 @@ export function parseSportsConnectExportBuffer(input: {
   };
 }
 
-export function isAllowedSportsConnectExportName(fileName: string): boolean {
+/**
+ * Native Google Sheets files (as opposed to an uploaded .csv/.xlsx/.xls) have
+ * no file extension in their Drive `name` at all — the name is just the
+ * spreadsheet's title. `isAllowedSportsConnectExportName` needs the mimeType
+ * to recognize these, since the extension check alone always misses them.
+ */
+export const GOOGLE_SHEETS_MIME_TYPE = "application/vnd.google-apps.spreadsheet";
+
+export function isAllowedSportsConnectExportName(
+  fileName: string,
+  mimeType?: string,
+): boolean {
+  if (mimeType === GOOGLE_SHEETS_MIME_TYPE) return true;
   const ext = extensionOf(fileName);
   return ext === ".csv" || ext === ".xlsx" || ext === ".xls";
 }

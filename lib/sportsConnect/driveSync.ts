@@ -8,6 +8,7 @@ import {
 import { fileIsUnderOrgFolder } from "@/lib/google/driveOrgFolder";
 import { detectSportsConnectReport } from "./columnProfiles";
 import {
+  GOOGLE_SHEETS_MIME_TYPE,
   isAllowedSportsConnectExportName,
   parseSportsConnectExportBuffer,
   SPORTS_CONNECT_INGEST_MAX_BYTES,
@@ -193,15 +194,42 @@ export async function acquireDriveRunLease(input: {
 }
 
 /**
- * Download file buffer directly from Google Drive v3 API.
+ * Download file buffer directly from Google Drive v3 API. Native Google
+ * Workspace formats (Sheets, Docs, Slides) have no binary content of their
+ * own — `?alt=media` returns 403 for them — so a Google Sheet must go
+ * through `/export` instead, requesting CSV so the downstream XLSX parser
+ * (which auto-detects format from content, not extension) reads it the same
+ * as an uploaded .csv.
+ *
+ * `mimeType` is optional because syncOrgDriveFolder already has it from the
+ * folder listing and can pass it straight through, but other callers (e.g.
+ * the "Use Synced Drive File" re-download route, which only has a stored
+ * driveFileId) don't — for those, look it up via a cheap metadata-only Drive
+ * call before choosing the download URL. A failed lookup isn't fatal: fall
+ * through to the normal `?alt=media` path rather than failing the whole
+ * download over a metadata hiccup.
  */
 export async function downloadDriveFileBuffer(
   fileId: string,
+  mimeType?: string,
 ): Promise<Buffer | null> {
   const token = await getDriveAccessToken();
   if (!token) return null;
 
-  const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+  let resolvedMimeType = mimeType;
+  if (!resolvedMimeType) {
+    const meta = await driveV3Request<{ mimeType?: string }>(
+      `/files/${encodeURIComponent(fileId)}?fields=${encodeURIComponent("mimeType")}&supportsAllDrives=true`,
+    );
+    if (meta.ok) {
+      resolvedMimeType = meta.data.mimeType;
+    }
+  }
+
+  const url =
+    resolvedMimeType === GOOGLE_SHEETS_MIME_TYPE
+      ? `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=${encodeURIComponent("text/csv")}`
+      : `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
   const res = await fetch(url, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -246,14 +274,14 @@ export async function syncOrgDriveFolder(input: {
   result.filesFound = files.length;
 
   for (const file of files) {
-    if (!isAllowedSportsConnectExportName(file.name)) {
+    if (!isAllowedSportsConnectExportName(file.name, file.mimeType)) {
       result.filesSkipped++;
       continue;
     }
 
     // Verify tenant boundary using driveOrgFolder.ts helper
     const safeUnderOrg = await fileIsUnderOrgFolder(file.id, folderId);
-    if (!safeUnderOrg) {
+    if (!safeUnderOrg.ok || !safeUnderOrg.data) {
       console.warn(
         `[driveSync] Security Boundary Check Failed for file ${file.id} under org folder ${folderId}`,
       );
@@ -290,7 +318,7 @@ export async function syncOrgDriveFolder(input: {
     }
 
     // Download file buffer
-    const buffer = await downloadDriveFileBuffer(file.id);
+    const buffer = await downloadDriveFileBuffer(file.id, file.mimeType);
     if (!buffer) {
       await updateImportRun({
         id: lease.runId,
