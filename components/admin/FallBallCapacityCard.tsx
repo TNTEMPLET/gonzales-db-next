@@ -3,20 +3,36 @@
 import { useCallback, useEffect, useState } from "react";
 import type {
   FallBallCapacityReport,
+  FallBallCoachDataSource,
   FallBallPlayerDataSource,
 } from "@/lib/sportsConnect/fallballCapacity";
 
 const PLAYER_SOURCE_BADGE: Record<FallBallPlayerDataSource, { label: string; cls: string }> = {
   team_rosters: {
-    label: "From Team Manager",
+    label: "Players: From Team Manager",
     cls: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",
   },
   sports_connect_sync: {
-    label: "From SportsConnect sync",
+    label: "Players: From SportsConnect sync",
     cls: "bg-blue-500/10 text-blue-400 ring-blue-500/20",
   },
   manual_fallback: {
-    label: "Manual snapshot — not live",
+    label: "Players: Manual snapshot — not live",
+    cls: "bg-amber-500/10 text-amber-400 ring-amber-500/20",
+  },
+};
+
+const COACH_SOURCE_BADGE: Record<FallBallCoachDataSource, { label: string; cls: string }> = {
+  team_rosters: {
+    label: "Coaches: From Team Manager",
+    cls: "bg-emerald-500/10 text-emerald-400 ring-emerald-500/20",
+  },
+  sports_connect_sync: {
+    label: "Coaches: From SportsConnect sync",
+    cls: "bg-blue-500/10 text-blue-400 ring-blue-500/20",
+  },
+  coaching_interest_fallback: {
+    label: "Coaches: Coaching Interest pre-reg",
     cls: "bg-amber-500/10 text-amber-400 ring-amber-500/20",
   },
 };
@@ -112,11 +128,9 @@ export default function FallBallCapacityCard() {
 
   if (!data) return null;
 
-  // Sums the table's own columns rather than reusing data.totalCoaches — a
-  // coach can now match more than one division (see matchStandardDivisions
-  // in fallballCapacity.ts), so this footer total can run higher than the
-  // distinct-coach headline above when that happens; each number is correct
-  // for what it represents.
+  const coachLabel =
+    data.coachDataSource === "coaching_interest_fallback" ? "Matched Coaches" : "Registered Coaches";
+
   const matchedCoachesColumnTotal = data.divisions.reduce((sum, div) => sum + div.matchedCoaches, 0);
 
   return (
@@ -124,12 +138,21 @@ export default function FallBallCapacityCard() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between border-b border-zinc-800 pb-5">
         <div>
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             <span
               className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${PLAYER_SOURCE_BADGE[data.playerDataSource].cls}`}
             >
               {PLAYER_SOURCE_BADGE[data.playerDataSource].label}
             </span>
+
+            {data.coachDataSource && (
+              <span
+                className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold ring-1 ring-inset ${COACH_SOURCE_BADGE[data.coachDataSource].cls}`}
+              >
+                {COACH_SOURCE_BADGE[data.coachDataSource].label}
+              </span>
+            )}
+
             {data.lastPlayerRegSyncFileName && (
               <span className="text-xs text-zinc-400">
                 Source: {data.lastPlayerRegSyncFileName}
@@ -140,7 +163,7 @@ export default function FallBallCapacityCard() {
             📊 {data.seasonLabel} — Division Enrollment &amp; Coaching Capacity
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Division player headcounts, estimated teams, and matched volunteer coach capacity.
+            Division player headcounts, estimated teams, and registered volunteer coach capacity.
           </p>
         </div>
 
@@ -184,7 +207,7 @@ export default function FallBallCapacityCard() {
         </div>
 
         <div className="rounded-lg border border-zinc-800 bg-zinc-800/40 p-4">
-          <div className="text-xs font-medium text-zinc-400">Matched Coaches</div>
+          <div className="text-xs font-medium text-zinc-400">{coachLabel}</div>
           <div className="mt-1 text-2xl font-black text-blue-400">{data.totalCoaches}</div>
         </div>
 
@@ -204,7 +227,7 @@ export default function FallBallCapacityCard() {
               <th className="px-4 py-3 text-center">Enrolled Players</th>
               <th className="px-4 py-3 text-center">Roster Target</th>
               <th className="px-4 py-3 text-center">Est. Teams</th>
-              <th className="px-4 py-3 text-center">Matched Coaches</th>
+              <th className="px-4 py-3 text-center">{coachLabel}</th>
               <th className="px-4 py-3 text-right">Health Status</th>
             </tr>
           </thead>
@@ -252,7 +275,7 @@ export default function FallBallCapacityCard() {
           </tfoot>
         </table>
       </div>
-      {matchedCoachesColumnTotal !== data.totalCoaches && (
+      {data.coachDataSource === "coaching_interest_fallback" && matchedCoachesColumnTotal !== data.totalCoaches && (
         <p className="mt-2 text-[11px] text-zinc-500">
           Matched Coaches total above ({matchedCoachesColumnTotal}) can exceed the {data.totalCoaches} distinct
           converted coaches shown in Matched Coaches up top — a coach interested in more than one division is
