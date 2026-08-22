@@ -69,7 +69,7 @@ export const DEFAULT_REGISTRATION_WINDOWS: Record<
 > = {
   fallball: {
     startLocal: "2026-08-01T00:00:00",
-    endLocal: "2026-11-30T23:59:59",
+    endLocal: "2026-08-01T23:59:59",
   },
   gonzales: {
     startLocal: "2025-12-20T00:00:00",
