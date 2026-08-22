@@ -15,6 +15,9 @@ import {
   getRegistrationWindow,
   isRegistrationWindowOpen,
   isValidRegistrationLocal,
+  isValidRegistrationMode,
+  resolveRegistrationStatus,
+  type RegistrationModeSetting,
 } from "@/lib/registrationStatus";
 import prisma from "@/lib/prisma";
 import {
@@ -54,8 +57,10 @@ export async function GET(request: NextRequest) {
       organizationId: orgParam,
       startLocal: window.startLocal,
       endLocal: window.endLocal,
+      mode: window.mode,
       source: window.source,
       isOpenNow: isRegistrationWindowOpen(window),
+      status: resolveRegistrationStatus(window),
       defaults,
       timezone: "America/Chicago",
     },
@@ -72,6 +77,7 @@ export async function POST(request: NextRequest) {
     organizationId?: string;
     startLocal?: string;
     endLocal?: string;
+    mode?: string;
     resetToDefaults?: boolean;
   };
 
@@ -79,16 +85,36 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid organizationId" }, { status: 400 });
   }
 
+  const rawMode = body.mode;
+  if (rawMode !== undefined && !isValidRegistrationMode(rawMode)) {
+    return NextResponse.json(
+      { error: "Invalid mode. Use AUTO_SCHEDULED, OPEN, WAITLIST, or CLOSED." },
+      { status: 400 },
+    );
+  }
+
   const org = body.organizationId as ContentOrgId;
   let startLocal: string;
   let endLocal: string;
+  let mode: RegistrationModeSetting;
 
   if (body.resetToDefaults) {
     startLocal = DEFAULT_REGISTRATION_WINDOWS[org].startLocal;
     endLocal = DEFAULT_REGISTRATION_WINDOWS[org].endLocal;
+    mode = DEFAULT_REGISTRATION_WINDOWS[org].mode;
   } else {
-    startLocal = fromDatetimeLocalInput(String(body.startLocal ?? ""));
-    endLocal = fromDatetimeLocalInput(String(body.endLocal ?? ""));
+    // A mode-only toggle (no dates in the request) must not clobber the
+    // existing window, and vice versa — start from the current saved state.
+    const current = await getRegistrationWindow(org);
+    startLocal =
+      body.startLocal !== undefined
+        ? fromDatetimeLocalInput(String(body.startLocal))
+        : current.startLocal;
+    endLocal =
+      body.endLocal !== undefined
+        ? fromDatetimeLocalInput(String(body.endLocal))
+        : current.endLocal;
+    mode = rawMode !== undefined ? rawMode : current.mode;
   }
 
   if (!isValidRegistrationLocal(startLocal) || !isValidRegistrationLocal(endLocal)) {
@@ -115,11 +141,13 @@ export async function POST(request: NextRequest) {
         organizationId: org,
         startLocal,
         endLocal,
+        mode,
         updatedByAdminId: user.id,
       },
       update: {
         startLocal,
         endLocal,
+        mode,
         updatedByAdminId: user.id,
       },
     });
@@ -127,6 +155,7 @@ export async function POST(request: NextRequest) {
     const window = {
       startLocal: row.startLocal,
       endLocal: row.endLocal,
+      mode: row.mode,
       source: "database" as const,
     };
 
@@ -135,8 +164,10 @@ export async function POST(request: NextRequest) {
         organizationId: org,
         startLocal: row.startLocal,
         endLocal: row.endLocal,
+        mode: row.mode,
         source: "database",
         isOpenNow: isRegistrationWindowOpen(window),
+        status: resolveRegistrationStatus(window),
         defaults: DEFAULT_REGISTRATION_WINDOWS[org],
         timezone: "America/Chicago",
         updatedAt: row.updatedAt,

@@ -7,7 +7,7 @@ import Header from "../components/Header";
 import Footer from "../components/Footer";
 import SponsorScroller from "../components/sponsors/SponsorScroller";
 import DevLiveIndicator from "../components/dev/DevLiveIndicator";
-import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getRegistrationStatus } from "@/lib/registrationStatus";
 import { getSiteConfig, isContentOrgId, isTournamentOnlyDeployment } from "@/lib/siteConfig";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -29,7 +29,7 @@ export default async function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const registrationOpen = await isRegistrationOpen(
+  const registrationStatus = await getRegistrationStatus(
     isContentOrgId(site.orgId) ? site.orgId : undefined,
   );
 
@@ -41,7 +41,7 @@ export default async function RootLayout({
     displayNameLine1: site.displayNameLine1,
     displayNameLine2: site.displayNameLine2,
     logoPath: site.logoPath,
-    registrationOpen,
+    registrationStatus,
   };
 
   const orgCss = `

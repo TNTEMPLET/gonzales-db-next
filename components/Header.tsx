@@ -26,6 +26,7 @@ import {
   type OrgId,
 } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
+import type { RegistrationStatus } from "@/lib/registrationStatus";
 
 type DugoutMeResponse = {
   user: {
@@ -50,8 +51,8 @@ type HeaderProps = {
     displayNameLine2: string;
     logoPath: string;
     tournamentOnly?: boolean;
-    /** Server-evaluated registration window (Master Admin / defaults). */
-    registrationOpen?: boolean;
+    /** Server-evaluated registration status (Master Admin mode override or scheduled window). */
+    registrationStatus?: RegistrationStatus;
   };
 };
 
@@ -76,7 +77,11 @@ export default function Header({ brand }: HeaderProps) {
   const isMasterHeader = brand.orgId === "master";
   const isTournamentOnly = brand.tournamentOnly ?? false;
   const isFallBallHeader = brand.orgId === "fallball";
-  const [regOpen] = useState(() => Boolean(brand.registrationOpen));
+  const [registrationStatus] = useState<RegistrationStatus>(
+    () => brand.registrationStatus ?? "CLOSED",
+  );
+  const regOpen = registrationStatus === "OPEN";
+  const regWaitlist = registrationStatus === "WAITLIST";
   const fallBallRegisterHref = isFallBallHeader
     ? getSportsConnectRegistrationUrl("fallball").href
     : null;
@@ -361,7 +366,7 @@ export default function Header({ brand }: HeaderProps) {
         ...(showParkInfoLink ? [{ href: "/park-info", label: "Park Info" }] : []),
         { href: "/news", label: "News" },
         ...(showShopLink ? [{ href: "/shop", label: "Shop", key: "shop" }] : []),
-        ...(regOpen ? [{ href: "/registration", label: "Registration" }] : []),
+        ...(regOpen || regWaitlist ? [{ href: "/registration", label: "Registration" }] : []),
         ...(!isFallBallHeader && canSeeDugout ? [{ href: "/coach-corner", label: "Coaches" }] : []),
         ...(!isFallBallHeader && canSeeDugout
           ? [{ href: "/volunteer-card", label: "Volunteer Card" }]
@@ -584,7 +589,7 @@ export default function Header({ brand }: HeaderProps) {
         )}
 
         {/* Register Button */}
-        {!isMasterHeader && !isTournamentOnly && (regOpen || isFallBallHeader) && (
+        {!isMasterHeader && !isTournamentOnly && (regOpen || regWaitlist) && (
           fallBallRegisterHref ? (
             <a
               href={fallBallRegisterHref}
@@ -592,14 +597,14 @@ export default function Header({ brand }: HeaderProps) {
               rel="noopener noreferrer"
               className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm text-white transition"
             >
-              {isFallBallHeader && !regOpen ? "Join the Waitlist" : "Register Now"}
+              {regWaitlist ? "Join the Waitlist" : "Register Now"}
             </a>
           ) : (
             <Link
               href="/registration"
               className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm text-white transition"
             >
-              Register Now
+              {regWaitlist ? "Join the Waitlist" : "Register Now"}
             </Link>
           )
         )}
@@ -706,7 +711,7 @@ export default function Header({ brand }: HeaderProps) {
                 ) : null}
               </>
             )}
-            {!isMasterHeader && !isTournamentOnly && (regOpen || isFallBallHeader) && (
+            {!isMasterHeader && !isTournamentOnly && (regOpen || regWaitlist) && (
               fallBallRegisterHref ? (
                 <a
                   href={fallBallRegisterHref}
@@ -715,7 +720,7 @@ export default function Header({ brand }: HeaderProps) {
                   onClick={() => setIsMenuOpen(false)}
                   className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
                 >
-                  {isFallBallHeader && !regOpen ? "Join the Waitlist" : `Register for ${CURRENT_SEASON_LABEL}`}
+                  {regWaitlist ? "Join the Waitlist" : `Register for ${CURRENT_SEASON_LABEL}`}
                 </a>
               ) : (
                 <Link
@@ -723,7 +728,7 @@ export default function Header({ brand }: HeaderProps) {
                   onClick={() => setIsMenuOpen(false)}
                   className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
                 >
-                  Register for {CURRENT_SEASON_LABEL}
+                  {regWaitlist ? "Join the Waitlist" : `Register for ${CURRENT_SEASON_LABEL}`}
                 </Link>
               )
             )}
