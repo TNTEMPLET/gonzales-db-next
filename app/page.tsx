@@ -57,7 +57,7 @@ function getHomepageCopy(orgId: ContentOrgId) {
 
   if (orgId === "fallball") {
     return {
-      seasonBadge: season.label.toUpperCase(),
+      seasonBadge: "WAITLIST OPEN",
       tagline:
         "Independent AP Baseball Fall Ball league operations, teams, schedules, and updates.",
       registrationLabel: "Registration",
@@ -443,7 +443,20 @@ export default async function Home({
         </a>
       ) : null}
       {showRegistrationCta ? (
-        regOpen && scReg ? (
+        contentOrg === "fallball" && scReg ? (
+          <a
+            href={scReg.href}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={
+              compactOps
+                ? "inline-flex min-h-12 items-center justify-center rounded-xl bg-brand-purple px-6 py-3 text-base font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95"
+                : "rounded-xl bg-brand-purple px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
+            }
+          >
+            Join the Waitlist
+          </a>
+        ) : regOpen && scReg ? (
           <a
             href={scReg.href}
             target="_blank"
@@ -491,20 +504,34 @@ export default async function Home({
     heroRotatorItems.length > 0
       ? {
           title: homepageCopy.registrationLabel,
-          statusLabel: regOpen
-            ? "Registration Open"
-            : orgCaps.registration === "sportsconnect"
-              ? "Opens August 1"
-              : showRegistrationCta
-                ? `${CURRENT_SEASON_LABEL} Season`
-                : "Registration Closed",
-          statusTone: (regOpen
+          statusLabel:
+            contentOrg === "fallball"
+              ? "Waitlist Open"
+              : regOpen
+                ? "Registration Open"
+                : orgCaps.registration === "sportsconnect"
+                  ? "Opens August 1"
+                  : showRegistrationCta
+                    ? `${CURRENT_SEASON_LABEL} Season`
+                    : "Registration Closed",
+          statusTone: (contentOrg === "fallball"
             ? "open"
-            : showRegistrationCta
-              ? "pending"
-              : "closed") as "open" | "pending" | "closed",
+            : regOpen
+              ? "open"
+              : showRegistrationCta
+                ? "pending"
+                : "closed") as "open" | "pending" | "closed",
           actions: [
-            ...(regOpen && scReg
+            ...(contentOrg === "fallball" && scReg
+              ? [
+                  {
+                    label: "Join the Waitlist",
+                    href: scReg.href,
+                    variant: "primary" as const,
+                    external: true,
+                  },
+                ]
+              : regOpen && scReg
               ? [
                   {
                     label: "Register Now",
@@ -677,13 +704,26 @@ export default async function Home({
               </>
             ) : orgCaps.registration === "sportsconnect" ? (
               <>
-                <p className="text-brand-gold">Opens August 1</p>
-                <Link
-                  href="/registration"
-                  className="mt-3 inline-flex text-sm font-semibold text-white underline decoration-brand-gold underline-offset-4 hover:text-brand-gold"
-                >
-                  Prep steps for new families
-                </Link>
+                <p className="text-amber-400 font-semibold tracking-wide">
+                  Waitlist Open
+                </p>
+                {scReg ? (
+                  <a
+                    href={scReg.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-purple px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95"
+                  >
+                    Join the Waitlist
+                  </a>
+                ) : (
+                  <Link
+                    href="/registration"
+                    className="mt-4 inline-flex min-h-11 items-center justify-center rounded-xl bg-brand-purple px-6 py-2.5 text-sm font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95"
+                  >
+                    Join the Waitlist
+                  </Link>
+                )}
               </>
             ) : (
               <p className="text-brand-gold">Closed</p>

@@ -584,7 +584,7 @@ export default function Header({ brand }: HeaderProps) {
         )}
 
         {/* Register Button */}
-        {!isMasterHeader && !isTournamentOnly && regOpen && (
+        {!isMasterHeader && !isTournamentOnly && (regOpen || isFallBallHeader) && (
           fallBallRegisterHref ? (
             <a
               href={fallBallRegisterHref}
@@ -592,7 +592,7 @@ export default function Header({ brand }: HeaderProps) {
               rel="noopener noreferrer"
               className="hidden md:block bg-brand-purple hover:bg-brand-purple-dark px-6 py-2.5 rounded-lg font-semibold text-sm text-white transition"
             >
-              Register Now
+              {isFallBallHeader && !regOpen ? "Join the Waitlist" : "Register Now"}
             </a>
           ) : (
             <Link
@@ -706,7 +706,7 @@ export default function Header({ brand }: HeaderProps) {
                 ) : null}
               </>
             )}
-            {!isMasterHeader && !isTournamentOnly && regOpen && (
+            {!isMasterHeader && !isTournamentOnly && (regOpen || isFallBallHeader) && (
               fallBallRegisterHref ? (
                 <a
                   href={fallBallRegisterHref}
@@ -715,7 +715,7 @@ export default function Header({ brand }: HeaderProps) {
                   onClick={() => setIsMenuOpen(false)}
                   className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
                 >
-                  Register for {CURRENT_SEASON_LABEL}
+                  {isFallBallHeader && !regOpen ? "Join the Waitlist" : `Register for ${CURRENT_SEASON_LABEL}`}
                 </a>
               ) : (
                 <Link
