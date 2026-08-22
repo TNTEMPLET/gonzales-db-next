@@ -9,7 +9,7 @@ import {
   getHomepageFeaturedNewsPosts,
   getHomepageRotatorPosts,
 } from "@/lib/news/queries";
-import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getRegistrationStatus } from "@/lib/registrationStatus";
 import {
   getSportsConnectRegistrationUrl,
   getSportsConnectVolunteerRegistrationUrl,
@@ -57,7 +57,7 @@ function getHomepageCopy(orgId: ContentOrgId) {
 
   if (orgId === "fallball") {
     return {
-      seasonBadge: "WAITLIST OPEN",
+      seasonBadge: season.label.toUpperCase(),
       tagline:
         "Independent AP Baseball Fall Ball league operations, teams, schedules, and updates.",
       registrationLabel: "Registration",
@@ -272,7 +272,9 @@ export default async function Home({
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const site = getSiteConfig();
   const contentOrg = getDefaultContentOrg();
-  const regOpen = await isRegistrationOpen(contentOrg);
+  const registrationStatus = await getRegistrationStatus(contentOrg);
+  const regOpen = registrationStatus === "OPEN";
+  const regWaitlist = registrationStatus === "WAITLIST";
   const homepageCopy = getHomepageCopy(contentOrg);
   const orgCaps = getOrgCapabilities(contentOrg);
   const volunteerRegistrationUrl = getSportsConnectVolunteerRegistrationUrl();
@@ -282,7 +284,8 @@ export default async function Home({
       : null;
   // SportsConnect hub stays reachable even when spring internal reg window is closed.
   const showRegistrationCta =
-    regOpen || orgCaps.registration === "sportsconnect";
+    regOpen || regWaitlist || orgCaps.registration === "sportsconnect";
+  const heroBadge = regWaitlist ? "WAITLIST OPEN" : homepageCopy.seasonBadge;
   const scheduleLive =
     orgCaps.schedule === "assignr" && hasAssignrLeagueId();
   const compactOps = orgCaps.homepage === "compact-ops";
@@ -443,7 +446,7 @@ export default async function Home({
         </a>
       ) : null}
       {showRegistrationCta ? (
-        contentOrg === "fallball" && scReg ? (
+        regWaitlist && scReg ? (
           <a
             href={scReg.href}
             target="_blank"
@@ -478,9 +481,11 @@ export default async function Home({
                 : "rounded-xl bg-brand-purple px-8 py-4 text-lg font-semibold text-white transition-all hover:bg-brand-purple-dark active:scale-95 sm:px-12 sm:py-5 sm:text-xl"
             }
           >
-            {orgCaps.registration === "sportsconnect"
-              ? homepageCopy.registrationLabel
-              : "Register Now"}
+            {regWaitlist
+              ? "Join the Waitlist"
+              : orgCaps.registration === "sportsconnect"
+                ? homepageCopy.registrationLabel
+                : "Register Now"}
           </a>
         )
       ) : null}
@@ -504,17 +509,16 @@ export default async function Home({
     heroRotatorItems.length > 0
       ? {
           title: homepageCopy.registrationLabel,
-          statusLabel:
-            contentOrg === "fallball"
-              ? "Waitlist Open"
-              : regOpen
-                ? "Registration Open"
-                : orgCaps.registration === "sportsconnect"
-                  ? "Opens August 1"
-                  : showRegistrationCta
-                    ? `${CURRENT_SEASON_LABEL} Season`
-                    : "Registration Closed",
-          statusTone: (contentOrg === "fallball"
+          statusLabel: regWaitlist
+            ? "Waitlist Open"
+            : regOpen
+              ? "Registration Open"
+              : orgCaps.registration === "sportsconnect"
+                ? "Opens August 1"
+                : showRegistrationCta
+                  ? `${CURRENT_SEASON_LABEL} Season`
+                  : "Registration Closed",
+          statusTone: (regWaitlist
             ? "open"
             : regOpen
               ? "open"
@@ -522,7 +526,7 @@ export default async function Home({
                 ? "pending"
                 : "closed") as "open" | "pending" | "closed",
           actions: [
-            ...(contentOrg === "fallball" && scReg
+            ...(regWaitlist && scReg
               ? [
                   {
                     label: "Join the Waitlist",
@@ -543,8 +547,9 @@ export default async function Home({
               : showRegistrationCta
                 ? [
                     {
-                      label:
-                        orgCaps.registration === "sportsconnect"
+                      label: regWaitlist
+                        ? "Join the Waitlist"
+                        : orgCaps.registration === "sportsconnect"
                           ? "Registration info"
                           : "Register Now",
                       href: "/registration",
@@ -605,7 +610,7 @@ export default async function Home({
 
           <div className="relative z-10 mx-auto max-w-5xl px-4 text-center sm:px-6">
             <div className="mb-5 inline-block rounded-full bg-brand-purple px-4 py-2 text-[11px] tracking-[2px] text-white sm:mb-6 sm:px-6 sm:text-xs sm:tracking-[3px]">
-              {homepageCopy.seasonBadge}
+              {heroBadge}
             </div>
 
             <h1 className="mb-5 text-4xl font-bold leading-none tracking-tighter text-white sm:text-5xl md:mb-6 md:text-7xl">
@@ -702,7 +707,7 @@ export default async function Home({
                   </Link>
                 )}
               </>
-            ) : orgCaps.registration === "sportsconnect" ? (
+            ) : regWaitlist ? (
               <>
                 <p className="text-amber-400 font-semibold tracking-wide">
                   Waitlist Open

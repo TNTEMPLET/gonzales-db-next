@@ -2360,15 +2360,25 @@ model TripResponse {
   updatedAt      DateTime        @updatedAt
 }
 
+/// Master-Admin registration mode override. AUTO_SCHEDULED defers to the
+/// start/end window below; the other three force a fixed public status.
+enum RegistrationMode {
+  AUTO_SCHEDULED
+  OPEN
+  WAITLIST
+  CLOSED
+}
+
 /// Master-Admin-managed public registration open window (America/Chicago wall times).
 /// Used by Fall Ball and other content orgs so open/close does not require a deploy.
 model OrgRegistrationWindow {
-  organizationId   String   @id
+  organizationId   String           @id
   /// Inclusive start, America/Chicago: YYYY-MM-DDTHH:mm:ss
   startLocal       String
   /// Inclusive end, America/Chicago: YYYY-MM-DDTHH:mm:ss
   endLocal         String
-  updatedAt        DateTime @updatedAt
+  mode             RegistrationMode @default(AUTO_SCHEDULED)
+  updatedAt        DateTime         @updatedAt
   updatedByAdminId String?
 
   @@index([updatedAt])

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { isRegistrationOpen } from "@/lib/registrationStatus";
+import { getRegistrationStatus } from "@/lib/registrationStatus";
 import { getOrgCapabilities } from "@/lib/org/capabilities";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import {
@@ -42,7 +42,11 @@ export function generateMetadata() {
 export default async function RegistrationPage() {
   const site = getSiteConfig();
   const isFallBall = site.orgId === "fallball";
-  const regOpen = await isRegistrationOpen(isFallBall ? "fallball" : site.orgId);
+  const registrationStatus = await getRegistrationStatus(
+    isFallBall ? "fallball" : site.orgId,
+  );
+  const regOpen = registrationStatus === "OPEN";
+  const regWaitlist = registrationStatus === "WAITLIST";
   const caps = isFallBall ? getOrgCapabilities("fallball") : null;
   const isSportsConnect = caps?.registration === "sportsconnect";
 
@@ -72,83 +76,253 @@ export default async function RegistrationPage() {
   if (isFallBall && isSportsConnect) {
     const scReg = getSportsConnectRegistrationUrl("fallball");
 
+    if (regOpen) {
+      return (
+        <main className="min-h-screen bg-black text-white">
+          <section className="bg-zinc-900 border-b border-zinc-800 py-14 px-6 text-center">
+            <div className="inline-block bg-emerald-600 text-xs tracking-[3px] px-6 py-2 rounded-full mb-6">
+              REGISTRATION OPEN
+            </div>
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+              AP Baseball Fall Ball Registration
+            </h1>
+            <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
+              Fall Ball registration is open now. Complete player registration and
+              payment on APBaseball.com.
+            </p>
+            <a
+              href={scReg.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-8 inline-flex bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-10 py-4 rounded-xl transition-all active:scale-95"
+            >
+              Register Now
+            </a>
+          </section>
+
+          <div className="max-w-3xl mx-auto px-6 py-12 space-y-8">
+            <section className="border border-brand-gold/40 bg-brand-gold/5 rounded-xl p-6 sm:p-8">
+              <h2 className="text-2xl font-bold text-brand-gold tracking-tight mb-2">
+                How to register
+              </h2>
+              <ol className="mt-4 space-y-4 text-zinc-200">
+                <li className="flex gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-sm font-bold text-white">
+                    1
+                  </span>
+                  <div>
+                    <p className="font-semibold text-white">
+                      Sign in or create your APBaseball.com account
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-400">
+                      Returning families sign in. New families create an account
+                      and family profile first.
+                    </p>
+                  </div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-sm font-bold text-white">
+                    2
+                  </span>
+                  <div>
+                    <p className="font-semibold text-white">
+                      Register each player for Fall Ball
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-400">
+                      Use the Register Now button to open the Fall Ball program
+                      on APBaseball.com and complete registration and payment.
+                    </p>
+                  </div>
+                </li>
+              </ol>
+              <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                <a
+                  href={scReg.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-8 py-4 rounded-xl text-center transition-all active:scale-95"
+                >
+                  Register at APBaseball.com
+                </a>
+                <Link
+                  href="/news/fall-ball-2026-registration-age-cutoff"
+                  className="border border-zinc-600 hover:border-brand-gold hover:text-brand-gold font-semibold text-lg px-8 py-4 rounded-xl text-center transition-all"
+                >
+                  Age cut-off details
+                </Link>
+              </div>
+            </section>
+
+            <VolunteerRegistrationCallout />
+
+            <section className="space-y-4 text-zinc-300 leading-relaxed">
+              <div className="border border-zinc-800 bg-zinc-900/60 rounded-xl p-5">
+                <p className="font-semibold text-white">
+                  Independent AP Baseball program
+                </p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Fall Ball is not affiliated with Gonzales Diamond Baseball or
+                  Ascension Little League. Registration, payment, and player
+                  accounts are managed on APBaseball.com.
+                </p>
+              </div>
+              <p className="text-sm text-zinc-500">
+                This Fall Ball site is the league hub for news, schedules, and
+                team info after players are registered. Questions?{" "}
+                <a
+                  href="mailto:info@apbaseball.com"
+                  className="text-zinc-300 underline underline-offset-2 hover:text-white"
+                >
+                  info@apbaseball.com
+                </a>
+              </p>
+            </section>
+
+            <div className="flex justify-center pt-2">
+              <Link
+                href="/"
+                className="border-2 border-white hover:bg-white hover:text-black font-semibold text-lg px-10 py-4 rounded-xl text-center transition-all"
+              >
+                Fall Ball Home
+              </Link>
+            </div>
+          </div>
+        </main>
+      );
+    }
+
+    if (regWaitlist) {
+      return (
+        <main className="min-h-screen bg-black text-white">
+          <section className="bg-zinc-900 border-b border-zinc-800 py-14 px-6 text-center">
+            <div className="inline-block bg-emerald-600 text-xs tracking-[3px] px-6 py-2 rounded-full mb-6">
+              WAITLIST OPEN
+            </div>
+            <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
+              AP Baseball Fall Ball Waitlist
+            </h1>
+            <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
+              Regular registration for {CURRENT_SEASON_LABEL} Fall Ball is now closed.
+              The waitlist is open on APBaseball.com — join it and we&apos;ll reach out
+              if a roster spot opens up.
+            </p>
+            <a
+              href={scReg.href}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-8 inline-flex bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-10 py-4 rounded-xl transition-all active:scale-95"
+            >
+              Join the Waitlist
+            </a>
+          </section>
+  
+          <div className="max-w-3xl mx-auto px-6 py-12 space-y-8">
+            <section className="border border-brand-gold/40 bg-brand-gold/5 rounded-xl p-6 sm:p-8">
+              <h2 className="text-2xl font-bold text-brand-gold tracking-tight mb-2">
+                How the waitlist works
+              </h2>
+              <ol className="mt-4 space-y-4 text-zinc-200">
+                <li className="flex gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-sm font-bold text-white">
+                    1
+                  </span>
+                  <div>
+                    <p className="font-semibold text-white">
+                      Sign in or create your APBaseball.com account
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-400">
+                      Returning families sign in. New families create an account
+                      and family profile first.
+                    </p>
+                  </div>
+                </li>
+                <li className="flex gap-4">
+                  <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-sm font-bold text-white">
+                    2
+                  </span>
+                  <div>
+                    <p className="font-semibold text-white">
+                      Add your player(s) to the Fall Ball waitlist
+                    </p>
+                    <p className="mt-1 text-sm text-zinc-400">
+                      Use the waitlist button to open the Fall Ball program on
+                      APBaseball.com. We&apos;ll contact you if a roster spot opens up.
+                    </p>
+                  </div>
+                </li>
+              </ol>
+              <div className="mt-8 flex flex-col sm:flex-row gap-3">
+                <a
+                  href={scReg.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-8 py-4 rounded-xl text-center transition-all active:scale-95"
+                >
+                  Join Waitlist at APBaseball.com
+                </a>
+                <Link
+                  href="/news/fall-ball-2026-registration-age-cutoff"
+                  className="border border-zinc-600 hover:border-brand-gold hover:text-brand-gold font-semibold text-lg px-8 py-4 rounded-xl text-center transition-all"
+                >
+                  Age cut-off details
+                </Link>
+              </div>
+            </section>
+  
+            <VolunteerRegistrationCallout />
+  
+            <section className="space-y-4 text-zinc-300 leading-relaxed">
+              <div className="border border-zinc-800 bg-zinc-900/60 rounded-xl p-5">
+                <p className="font-semibold text-white">
+                  Independent AP Baseball program
+                </p>
+                <p className="mt-2 text-sm text-zinc-400">
+                  Fall Ball is not affiliated with Gonzales Diamond Baseball or
+                  Ascension Little League. Registration, payment, and player
+                  accounts are managed on APBaseball.com.
+                </p>
+              </div>
+              <p className="text-sm text-zinc-500">
+                This Fall Ball site is the league hub for news, schedules, and
+                team info after players are registered. Questions?{" "}
+                <a
+                  href="mailto:info@apbaseball.com"
+                  className="text-zinc-300 underline underline-offset-2 hover:text-white"
+                >
+                  info@apbaseball.com
+                </a>
+              </p>
+            </section>
+  
+            <div className="flex justify-center pt-2">
+              <Link
+                href="/"
+                className="border-2 border-white hover:bg-white hover:text-black font-semibold text-lg px-10 py-4 rounded-xl text-center transition-all"
+              >
+                Fall Ball Home
+              </Link>
+            </div>
+          </div>
+        </main>
+      );
+    }
+
     return (
       <main className="min-h-screen bg-black text-white">
         <section className="bg-zinc-900 border-b border-zinc-800 py-14 px-6 text-center">
-          <div className="inline-block bg-emerald-600 text-xs tracking-[3px] px-6 py-2 rounded-full mb-6">
-            WAITLIST OPEN
+          <div className="inline-block bg-zinc-700 text-xs tracking-[3px] px-6 py-2 rounded-full mb-6">
+            REGISTRATION CLOSED
           </div>
           <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-4">
-            AP Baseball Fall Ball Waitlist
+            AP Baseball Fall Ball Registration
           </h1>
           <p className="text-zinc-400 text-lg max-w-2xl mx-auto">
-            Regular registration for {CURRENT_SEASON_LABEL} Fall Ball is now closed.
-            The waitlist is open on APBaseball.com — join it and we&apos;ll reach out
-            if a roster spot opens up.
+            Registration and the waitlist are both closed right now. Check back
+            soon or follow Fall Ball news for updates.
           </p>
-          <a
-            href={scReg.href}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="mt-8 inline-flex bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-10 py-4 rounded-xl transition-all active:scale-95"
-          >
-            Join the Waitlist
-          </a>
         </section>
 
         <div className="max-w-3xl mx-auto px-6 py-12 space-y-8">
-          <section className="border border-brand-gold/40 bg-brand-gold/5 rounded-xl p-6 sm:p-8">
-            <h2 className="text-2xl font-bold text-brand-gold tracking-tight mb-2">
-              How the waitlist works
-            </h2>
-            <ol className="mt-4 space-y-4 text-zinc-200">
-              <li className="flex gap-4">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-sm font-bold text-white">
-                  1
-                </span>
-                <div>
-                  <p className="font-semibold text-white">
-                    Sign in or create your APBaseball.com account
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-400">
-                    Returning families sign in. New families create an account
-                    and family profile first.
-                  </p>
-                </div>
-              </li>
-              <li className="flex gap-4">
-                <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-brand-purple text-sm font-bold text-white">
-                  2
-                </span>
-                <div>
-                  <p className="font-semibold text-white">
-                    Add your player(s) to the Fall Ball waitlist
-                  </p>
-                  <p className="mt-1 text-sm text-zinc-400">
-                    Use the waitlist button to open the Fall Ball program on
-                    APBaseball.com. We&apos;ll contact you if a roster spot opens up.
-                  </p>
-                </div>
-              </li>
-            </ol>
-            <div className="mt-8 flex flex-col sm:flex-row gap-3">
-              <a
-                href={scReg.href}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="bg-brand-purple hover:bg-brand-purple-dark text-white font-semibold text-lg px-8 py-4 rounded-xl text-center transition-all active:scale-95"
-              >
-                Join Waitlist at APBaseball.com
-              </a>
-              <Link
-                href="/news/fall-ball-2026-registration-age-cutoff"
-                className="border border-zinc-600 hover:border-brand-gold hover:text-brand-gold font-semibold text-lg px-8 py-4 rounded-xl text-center transition-all"
-              >
-                Age cut-off details
-              </Link>
-            </div>
-          </section>
-
           <VolunteerRegistrationCallout />
 
           <section className="space-y-4 text-zinc-300 leading-relaxed">
@@ -163,8 +337,7 @@ export default async function RegistrationPage() {
               </p>
             </div>
             <p className="text-sm text-zinc-500">
-              This Fall Ball site is the league hub for news, schedules, and
-              team info after players are registered. Questions?{" "}
+              Questions?{" "}
               <a
                 href="mailto:info@apbaseball.com"
                 className="text-zinc-300 underline underline-offset-2 hover:text-white"
