@@ -51,4 +51,5 @@ if (process.env.NODE_ENV !== "production") {
   global.prismaSchemaVersion = PRISMA_SCHEMA_VERSION;
 }
 
+export { prisma };
 export default prisma;
