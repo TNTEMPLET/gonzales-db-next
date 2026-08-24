@@ -219,6 +219,56 @@ export default function SurveyManagerModal({
     );
   }
 
+  function moveSectionUp(index: number) {
+    if (index <= 0) return;
+    setSections((prev) => {
+      const copy = [...prev];
+      const temp = copy[index - 1];
+      copy[index - 1] = copy[index];
+      copy[index] = temp;
+      return copy;
+    });
+  }
+
+  function moveSectionDown(index: number) {
+    setSections((prev) => {
+      if (index >= prev.length - 1) return prev;
+      const copy = [...prev];
+      const temp = copy[index + 1];
+      copy[index + 1] = copy[index];
+      copy[index] = temp;
+      return copy;
+    });
+  }
+
+  function moveQuestionUp(sectionIndex: number, questionIndex: number) {
+    if (questionIndex <= 0) return;
+    setSections((prev) =>
+      prev.map((s, i) => {
+        if (i !== sectionIndex) return s;
+        const qCopy = [...s.questions];
+        const temp = qCopy[questionIndex - 1];
+        qCopy[questionIndex - 1] = qCopy[questionIndex];
+        qCopy[questionIndex] = temp;
+        return { ...s, questions: qCopy };
+      }),
+    );
+  }
+
+  function moveQuestionDown(sectionIndex: number, questionIndex: number) {
+    setSections((prev) =>
+      prev.map((s, i) => {
+        if (i !== sectionIndex) return s;
+        if (questionIndex >= s.questions.length - 1) return s;
+        const qCopy = [...s.questions];
+        const temp = qCopy[questionIndex + 1];
+        qCopy[questionIndex + 1] = qCopy[questionIndex];
+        qCopy[questionIndex] = temp;
+        return { ...s, questions: qCopy };
+      }),
+    );
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (!title.trim() || !slug.trim()) {
@@ -437,7 +487,10 @@ export default function SurveyManagerModal({
 
               {sections.map((section, sectionIndex) => (
                 <div key={section.id ?? `new-${sectionIndex}`} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4 space-y-3">
-                  <div className="flex items-start gap-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-mono font-bold text-emerald-400 bg-emerald-500/10 px-2 py-1.5 rounded-md">
+                      #{sectionIndex + 1}
+                    </span>
                     <input
                       type="text"
                       value={section.title}
@@ -446,6 +499,26 @@ export default function SurveyManagerModal({
                       className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900 p-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
                       required
                     />
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => moveSectionUp(sectionIndex)}
+                        disabled={sectionIndex === 0}
+                        title="Move section up"
+                        className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        ▲
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => moveSectionDown(sectionIndex)}
+                        disabled={sectionIndex === sections.length - 1}
+                        title="Move section down"
+                        className="rounded-lg border border-zinc-800 bg-zinc-900 px-2.5 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                      >
+                        ▼
+                      </button>
+                    </div>
                     <button
                       type="button"
                       onClick={() => removeSection(sectionIndex)}
@@ -471,7 +544,10 @@ export default function SurveyManagerModal({
                   <div className="space-y-2">
                     {section.questions.map((q, questionIndex) => (
                       <div key={q.id ?? `new-${questionIndex}`} className="rounded-lg border border-zinc-800 p-3 space-y-2">
-                        <div className="flex items-start gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono font-semibold text-zinc-500">
+                            Q{questionIndex + 1}
+                          </span>
                           <input
                             type="text"
                             value={q.questionText}
@@ -480,6 +556,26 @@ export default function SurveyManagerModal({
                             className="flex-1 rounded-lg border border-zinc-800 bg-zinc-900 p-2 text-sm text-white focus:border-emerald-500 focus:outline-none"
                             required
                           />
+                          <div className="flex items-center gap-1">
+                            <button
+                              type="button"
+                              onClick={() => moveQuestionUp(sectionIndex, questionIndex)}
+                              disabled={questionIndex === 0}
+                              title="Move question up"
+                              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              ▲
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => moveQuestionDown(sectionIndex, questionIndex)}
+                              disabled={questionIndex === section.questions.length - 1}
+                              title="Move question down"
+                              className="rounded-lg border border-zinc-800 bg-zinc-900 px-2 py-1 text-xs text-zinc-300 hover:bg-zinc-800 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed"
+                            >
+                              ▼
+                            </button>
+                          </div>
                           <button
                             type="button"
                             onClick={() => removeQuestion(sectionIndex, questionIndex)}
