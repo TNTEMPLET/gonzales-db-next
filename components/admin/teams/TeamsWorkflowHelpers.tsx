@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 
 export const TEAM_WORKFLOW_SECTIONS = [
   { id: "teams-build", label: "Build Teams" },
+  { id: "online-draft", label: "Online Draft" },
   { id: "teams-import-players", label: "Import Players" },
   { id: "teams-assign-coaches", label: "Assign Coaches" },
   { id: "teams-review-rosters", label: "Review Rosters" },
