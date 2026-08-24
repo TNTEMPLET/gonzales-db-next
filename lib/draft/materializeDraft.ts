@@ -59,10 +59,9 @@ export async function materializeDraftSession(draftSessionId: string) {
       if (draftTeam.headCoachUserId) {
         await tx.teamCoachAssignment.upsert({
           where: {
-            teamId_registeredUserId_role: {
+            teamId_registeredUserId: {
               teamId: team.id,
               registeredUserId: draftTeam.headCoachUserId,
-              role: "HEAD_COACH",
             },
           },
           create: {
@@ -78,10 +77,9 @@ export async function materializeDraftSession(draftSessionId: string) {
       if (draftTeam.assistantUserId) {
         await tx.teamCoachAssignment.upsert({
           where: {
-            teamId_registeredUserId_role: {
+            teamId_registeredUserId: {
               teamId: team.id,
               registeredUserId: draftTeam.assistantUserId,
-              role: "ASSISTANT_COACH",
             },
           },
           create: {
