@@ -541,6 +541,8 @@ model RegisteredUser {
   emailSuppressions               EmailSuppression[]
   smsConsents                     SmsConsent[]
   volunteerProfiles               VolunteerProfile[]
+  draftTeamsHeadCoach             DraftTeam[]                        @relation("DraftTeamHeadCoach")
+  draftTeamsAssistantCoach        DraftTeam[]                        @relation("DraftTeamAssistantCoach")
 
   @@unique([email])
   @@index([duplicateReviewPending])
@@ -2468,4 +2470,133 @@ model SurveyAnswer {
   @@index([responseId])
   @@index([questionId])
 }
+
+// ── Online Draft Module ───────────────────────────────────────────────────────
+
+enum DraftType {
+  SNAKE
+  LINEAR
+}
+
+enum DraftSessionStatus {
+  SETUP
+  PAIRED
+  LIVE
+  PAUSED
+  COMPLETED
+  MATERIALIZED
+}
+
+enum DraftProtectionType {
+  HEAD_COACH_CHILD
+  ASSISTANT_COACH_CHILD
+  PAIRING_REQUEST
+}
+
+model DraftSession {
+  id               String             @id @default(cuid())
+  organizationId   String
+  seasonYear       Int
+  ageGroup         String
+  name             String
+  draftType        DraftType          @default(SNAKE)
+  status           DraftSessionStatus @default(SETUP)
+  secondsPerPick   Int?               @default(120)
+  totalRounds      Int                @default(12)
+  currentRound     Int                @default(1)
+  currentPickIndex Int                @default(0)
+  createdByAdminId String?
+  createdAt        DateTime           @default(now())
+  updatedAt        DateTime           @updatedAt
+
+  teams            DraftTeam[]
+  playerPool       DraftPlayerPool[]
+  picks            DraftPick[]
+  protections      CoachPlayerProtection[]
+
+  @@index([organizationId, seasonYear, ageGroup])
+  @@index([organizationId, status])
+}
+
+model DraftTeam {
+  id               String       @id @default(cuid())
+  draftSessionId   String
+  teamName         String
+  draftOrder       Int
+  headCoachUserId  String?
+  assistantUserId  String?
+  targetTeamId     String?
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  draftSession     DraftSession    @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
+  headCoach        RegisteredUser? @relation("DraftTeamHeadCoach", fields: [headCoachUserId], references: [id], onDelete: SetNull)
+  assistantCoach   RegisteredUser? @relation("DraftTeamAssistantCoach", fields: [assistantUserId], references: [id], onDelete: SetNull)
+  picks            DraftPick[]
+  protections      CoachPlayerProtection[]
+
+  @@unique([draftSessionId, draftOrder])
+  @@index([draftSessionId])
+}
+
+model CoachPlayerProtection {
+  id               String              @id @default(cuid())
+  draftSessionId   String
+  draftTeamId      String
+  registeredUserId String?
+  playerName       String
+  guardianEmail    String?
+  protectionType   DraftProtectionType @default(HEAD_COACH_CHILD)
+  protectedRound   Int                 @default(1)
+  isClaimed        Boolean             @default(false)
+  createdAt        DateTime            @default(now())
+
+  draftSession     DraftSession        @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
+  draftTeam        DraftTeam           @relation(fields: [draftTeamId], references: [id], onDelete: Cascade)
+
+  @@index([draftSessionId])
+  @@index([draftTeamId])
+}
+
+model DraftPlayerPool {
+  id               String       @id @default(cuid())
+  draftSessionId   String
+  firstName        String?
+  lastName         String?
+  fullName         String
+  guardianEmail    String?
+  guardianPhone    String?
+  birthDate        DateTime?
+  evaluationScore  Float?
+  pitcherRating    Int?
+  catcherRating    Int?
+  notes            String?
+  isDrafted        Boolean      @default(false)
+  draftedTeamId    String?
+  draftedPickId    String?
+  createdAt        DateTime     @default(now())
+
+  draftSession     DraftSession @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
+
+  @@index([draftSessionId, isDrafted])
+}
+
+model DraftPick {
+  id               String       @id @default(cuid())
+  draftSessionId   String
+  round            Int
+  overallPick      Int
+  draftTeamId      String
+  playerPoolId     String
+  isProtectedPick  Boolean      @default(false)
+  pickedAt         DateTime     @default(now())
+  pickedByAdminId  String?
+
+  draftSession     DraftSession @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
+  draftTeam        DraftTeam    @relation(fields: [draftTeamId], references: [id], onDelete: Cascade)
+
+  @@unique([draftSessionId, overallPick])
+  @@index([draftSessionId])
+}
+
 

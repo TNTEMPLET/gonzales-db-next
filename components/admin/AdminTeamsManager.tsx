@@ -18,6 +18,7 @@ import {
   SportsConnectQualityPanel,
   SyncedDriveFileMenu,
 } from "./teams/SportsConnectAssistPanels";
+import OnlineDraftDesk from "@/components/admin/draft/OnlineDraftDesk";
 import PlayerCardDemoPreview from "@/components/players/PlayerCardDemoPreview";
 import PlayerCardPanel, {
   playerCardFromFields,
@@ -2148,6 +2149,12 @@ export default function AdminTeamsManager({
           />
         </div>
       </div>
+
+      {activeTeamsSection === "online-draft" && (
+        <div id="online-draft" className="scroll-mt-24">
+          <OnlineDraftDesk targetOrg={targetOrg} seasonYear={seasonYear} />
+        </div>
+      )}
 
       <div id="teams-build" className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between gap-3">
