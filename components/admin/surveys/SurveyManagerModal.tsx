@@ -237,12 +237,14 @@ export default function SurveyManagerModal({
       slug: slug.trim(),
       isPublished,
       isAnonymous,
-      sections: sections.map((s) => ({
+      sections: sections.map((s, sIdx) => ({
         id: s.id,
+        order: sIdx + 1,
         title: s.title.trim(),
         description: s.description.trim() || null,
-        questions: s.questions.map((q) => ({
+        questions: s.questions.map((q, qIdx) => ({
           id: q.id,
+          order: qIdx + 1,
           questionText: q.questionText.trim(),
           type: q.type,
           isRequired: q.isRequired,
