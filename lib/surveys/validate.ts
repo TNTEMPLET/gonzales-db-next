@@ -40,9 +40,10 @@ function validateQuestion(raw: unknown, sectionIndex: number, questionIndex: num
   if (!isSurveyQuestionType(q.type)) {
     return { ok: false, error: `Invalid question type "${String(q.type)}" at ${where}` };
   }
-  if (typeof q.order !== "number" || !Number.isFinite(q.order)) {
-    return { ok: false, error: `order must be a number at ${where}` };
-  }
+  const rawOrder = q.order;
+  const order =
+    typeof rawOrder === "number" && Number.isFinite(rawOrder) ? rawOrder : questionIndex + 1;
+
   if (q.id !== undefined && typeof q.id !== "string") {
     return { ok: false, error: `Invalid question id at ${where}` };
   }
@@ -57,7 +58,7 @@ function validateQuestion(raw: unknown, sectionIndex: number, questionIndex: num
     ok: true,
     question: {
       id: typeof q.id === "string" ? q.id : undefined,
-      order: q.order,
+      order,
       questionText,
       type: q.type,
       isRequired: q.isRequired !== false,
@@ -84,9 +85,12 @@ export function validateSections(raw: unknown): ValidateSectionsResult {
     if (!title) {
       return { ok: false, error: `title is required for section ${i + 1}` };
     }
-    if (typeof section.order !== "number" || !Number.isFinite(section.order)) {
-      return { ok: false, error: `order must be a number for section ${i + 1}` };
-    }
+    const rawSectionOrder = section.order;
+    const sectionOrder =
+      typeof rawSectionOrder === "number" && Number.isFinite(rawSectionOrder)
+        ? rawSectionOrder
+        : i + 1;
+
     if (section.id !== undefined && typeof section.id !== "string") {
       return { ok: false, error: `Invalid section id at index ${i}` };
     }
@@ -101,7 +105,7 @@ export function validateSections(raw: unknown): ValidateSectionsResult {
 
     sections.push({
       id: typeof section.id === "string" ? section.id : undefined,
-      order: section.order,
+      order: sectionOrder,
       title,
       description:
         section.description === undefined || section.description === null
