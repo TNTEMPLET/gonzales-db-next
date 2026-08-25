@@ -832,17 +832,25 @@ function PreviewSection({
 
 const ROW_TABLE_LIMIT = 25;
 
-function RowTable<T extends { rowNumber: number }>({
+function RowTable<T extends { rowNumber: number; action?: string }>({
   rows,
   columns,
 }: {
   rows: T[];
   columns: { label: string; render: (row: T) => React.ReactNode }[];
 }) {
-  const shown = rows.slice(0, ROW_TABLE_LIMIT);
+  const [filterMode, setFilterMode] = useState<"ALL" | "SKIP">("ALL");
+
+  const filteredRows = filterMode === "SKIP" ? rows.filter(r => r.action === "SKIP") : rows;
+  const shown = filteredRows.slice(0, ROW_TABLE_LIMIT);
   return (
-    <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
-      <table className="w-full text-xs">
+    <div className="space-y-2">
+      <div className="flex justify-end gap-2 text-xs">
+        <button type="button" onClick={() => setFilterMode("ALL")} className={`px-2 py-1 rounded ${filterMode === "ALL" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-zinc-800"}`}>All Rows</button>
+        <button type="button" onClick={() => setFilterMode("SKIP")} className={`px-2 py-1 rounded ${filterMode === "SKIP" ? "bg-zinc-700 text-white" : "text-zinc-400 hover:bg-zinc-800"}`}>Skipped Only</button>
+      </div>
+      <div className="max-h-64 overflow-auto rounded-lg border border-zinc-800">
+        <table className="w-full text-xs">
         <thead className="sticky top-0 bg-zinc-900 text-zinc-300">
           <tr className="text-left">
             <th className="px-3 py-2">Row</th>
@@ -866,11 +874,12 @@ function RowTable<T extends { rowNumber: number }>({
           ))}
         </tbody>
       </table>
-      {rows.length > ROW_TABLE_LIMIT ? (
+      {filteredRows.length > ROW_TABLE_LIMIT ? (
         <p className="px-3 py-2 text-[11px] text-zinc-500 border-t border-zinc-800">
-          +{rows.length - ROW_TABLE_LIMIT} more row(s) not shown.
+          +{filteredRows.length - ROW_TABLE_LIMIT} more row(s) not shown.
         </p>
       ) : null}
+      </div>
     </div>
   );
 }
