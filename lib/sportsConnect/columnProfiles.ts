@@ -109,9 +109,9 @@ export function detectSportsConnectReport(
       if (set.has("mlb team") || (set.has("age group") && set.has("team name"))) {
         scores.TEAM_LIST = Math.min(1, scores.TEAM_LIST + 0.1);
       }
-      // Penalize if looks like a full player registration dump.
-      if (set.has("player full name") || set.has("user email")) {
-        scores.TEAM_LIST = Math.max(0, scores.TEAM_LIST - 0.3);
+      // Penalize if looks like a full player registration dump or a coach list.
+      if (set.has("player full name") || set.has("user email") || set.has("account email") || set.has("email") || set.has("volunteer role") || set.has("role")) {
+        scores.TEAM_LIST = Math.max(0, scores.TEAM_LIST - 0.4);
       }
     }
   }
