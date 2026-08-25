@@ -290,6 +290,7 @@ model AdminUser {
   enteredScores                    GameScore[]
   gameChangerScoreboardConnections GameChangerScoreboardConnection[] @relation("GameChangerScoreboardConnectionCreatedBy")
   coachImportBatches               CoachImportBatch[]
+  teamListImportBatches            TeamListImportBatch[]
   allStarBallotCycles              AllStarBallotCycle[]              @relation("AllStarCycleCreatedBy")
   allStarHeadCoachAssignments      AllStarHeadCoachAssignment[]      @relation("AllStarHeadCoachAdmin")
   allStarInvites                   AllStarInvite[]                   @relation("AllStarInviteCreatedByAdmin")
@@ -544,7 +545,7 @@ model RegisteredUser {
   draftTeamsHeadCoach             DraftTeam[]                        @relation("DraftTeamHeadCoach")
   draftTeamsAssistantCoach        DraftTeam[]                        @relation("DraftTeamAssistantCoach")
 
-  @@unique([email])
+  @@index([email])
   @@index([duplicateReviewPending])
 }
 
@@ -981,6 +982,26 @@ model GameChangerScoreboardConnection {
 }
 
 model CoachImportBatch {
+  id               String    @id @default(cuid())
+  organizationId   String
+  createdByAdminId String?
+  createdByEmail   String?
+  createdCount     Int       @default(0)
+  updatedCount     Int       @default(0)
+  processedCount   Int       @default(0)
+  skippedCount     Int       @default(0)
+  undoPayload      Json
+  undoneAt         DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  createdByAdmin AdminUser? @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, undoneAt, createdAt])
+}
+
+model TeamListImportBatch {
   id               String    @id @default(cuid())
   organizationId   String
   createdByAdminId String?

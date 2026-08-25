@@ -7,8 +7,8 @@ import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
-type CsvRow = Record<string, string | number | boolean | null | undefined>;
-type UpdatedUserSnapshot = {
+export type CsvRow = Record<string, string | number | boolean | null | undefined>;
+export type UpdatedUserSnapshot = {
   id: string;
   firstName: string | null;
   lastName: string | null;
@@ -19,12 +19,12 @@ type UpdatedUserSnapshot = {
   isCoach: boolean;
 };
 
-type AutoCoachAssignmentSnapshot = {
+export type AutoCoachAssignmentSnapshot = {
   teamId: string;
   registeredUserId: string;
 };
 
-function emptyUndoPayload() {
+export function emptyUndoPayload() {
   return {
     createdUserIds: [] as string[],
     updatedUsers: [] as UpdatedUserSnapshot[],
@@ -32,7 +32,7 @@ function emptyUndoPayload() {
   };
 }
 
-function getRowValue(row: CsvRow, keys: string[]) {
+export function getRowValue(row: CsvRow, keys: string[]) {
   for (const key of keys) {
     if (row[key] !== undefined && row[key] !== null) {
       return String(row[key]).trim();
@@ -41,18 +41,18 @@ function getRowValue(row: CsvRow, keys: string[]) {
   return "";
 }
 
-function isValidEmail(value: string) {
+export function isValidEmail(value: string) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
 }
 
-function shouldImportAsCoach(roleValue: string) {
+export function shouldImportAsCoach(roleValue: string) {
   const normalized = roleValue.trim().toLowerCase();
   if (!normalized) return true;
   if (normalized.includes("not coaches")) return false;
   return normalized.includes("coach");
 }
 
-function parseCoachAssignmentRole(
+export function parseCoachAssignmentRole(
   roleValue: string,
 ): "HEAD_COACH" | "ASSISTANT_COACH" {
   const normalized = roleValue.trim().toLowerCase();
@@ -61,7 +61,7 @@ function parseCoachAssignmentRole(
   return "ASSISTANT_COACH";
 }
 
-function selectPreferredContactPhone(row: CsvRow) {
+export function selectPreferredContactPhone(row: CsvRow) {
   const preferred = getRowValue(row, [
     "contact_phone",
     "Contact Phone",
@@ -76,7 +76,7 @@ function selectPreferredContactPhone(row: CsvRow) {
   return preferred || null;
 }
 
-function parseAgeGroupMappings(
+export function parseAgeGroupMappings(
   value: FormDataEntryValue | null,
 ): Map<string, string> {
   if (typeof value !== "string" || !value.trim()) return new Map();
@@ -161,7 +161,7 @@ function pickTeamMatch(
   return best.id;
 }
 
-async function resolveTeamForAutoAssignment(params: {
+export async function resolveTeamForAutoAssignment(params: {
   organizationId: string;
   assignedTeam: string | null;
   ageGroup: string | null;
@@ -198,6 +198,299 @@ async function resolveTeamForAutoAssignment(params: {
     if (matched) return matched;
   }
   return candidates[0] || null;
+}
+
+/**
+ * Row-processing loop against an already-created, RUNNING CoachImportBatch.
+ * Extracted from POST so both the legacy single-file coach import modal and
+ * the Smart Auto-Build confirm route (app/api/admin/teams/smart-build/confirm)
+ * call one implementation instead of drifting apart — see
+ * review-fallball-coaches.md bug #1 for what happens when a second copy of
+ * this exact loop is missing a check (there, the coach-role filter) the
+ * first one had.
+ */
+export async function applyCoachImportRows(params: {
+  rows: CsvRow[];
+  targetOrg: string;
+  batchId: string;
+  ageGroupMappings: Map<string, string>;
+  autoAssignToTeams: boolean;
+}) {
+  const { rows, targetOrg, batchId, ageGroupMappings, autoAssignToTeams } = params;
+
+  let processed = 0;
+  let created = 0;
+  let updated = 0;
+  let skipped = 0;
+  let autoAssigned = 0;
+  let autoRoleUpdated = 0;
+  let autoAssignAttempts = 0;
+  const unmatchedTeamNames = new Set<string>();
+  const createdUserIds: string[] = [];
+  const updatedUsersBeforeImport: UpdatedUserSnapshot[] = [];
+  const createdCoachAssignments: AutoCoachAssignmentSnapshot[] = [];
+
+  for (const row of rows) {
+    processed += 1;
+
+    const email = getRowValue(row, [
+      "email",
+      "Email",
+      "EMAIL",
+      "Volunteer Email Address",
+    ]);
+    if (!email || !isValidEmail(email)) {
+      skipped += 1;
+      if (processed % 10 === 0) {
+        await prisma.coachImportBatch.update({
+          where: { id: batchId },
+          data: {
+            processedCount: processed,
+            createdCount: created,
+            updatedCount: updated,
+            skippedCount: skipped,
+          },
+        });
+      }
+      continue;
+    }
+
+    const volunteerRole = getRowValue(row, [
+      "Volunteer Role",
+      "role",
+      "Role",
+      "ROLE",
+    ]);
+    if (!shouldImportAsCoach(volunteerRole)) {
+      skipped += 1;
+      if (processed % 10 === 0) {
+        await prisma.coachImportBatch.update({
+          where: { id: batchId },
+          data: {
+            processedCount: processed,
+            createdCount: created,
+            updatedCount: updated,
+            skippedCount: skipped,
+          },
+        });
+      }
+      continue;
+    }
+    const assignmentRole = parseCoachAssignmentRole(volunteerRole);
+
+    const normalizedEmail = email.toLowerCase();
+    const firstName =
+      getRowValue(row, [
+        "first_name",
+        "First Name",
+        "firstName",
+        "FIRST_NAME",
+        "Volunteer First Name",
+      ]) ||
+      null;
+    const lastName =
+      getRowValue(row, [
+        "last_name",
+        "Last Name",
+        "lastName",
+        "LAST_NAME",
+        "Volunteer Last Name",
+      ]) ||
+      null;
+    const name = [firstName, lastName].filter(Boolean).join(" ") || null;
+    const rawAgeGroup = getRowValue(row, [
+      "age_group",
+      "Age Group",
+      "ageGroup",
+      "AGE_GROUP",
+      "Division Name",
+    ]);
+    const mappedAgeGroup = ageGroupMappings.get(rawAgeGroup.trim().toLowerCase());
+    const ageGroup = mappedAgeGroup || normalizeAgeGroup(rawAgeGroup);
+    const assignedTeam =
+      getRowValue(row, [
+        "assigned_team",
+        "Assigned Team",
+        "assignedTeam",
+        "ASSIGNED_TEAM",
+        "Team Name",
+      ]) ||
+      null;
+    const contactPhone = selectPreferredContactPhone(row);
+
+    // Global identity lookup + per-org profile
+    let existing = await prisma.registeredUser.findFirst({
+      where: { email: normalizedEmail },
+    });
+
+    let profile = existing
+      ? await (prisma as any).registeredUserOrgProfile.findUnique({
+          where: { registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg } },
+        })
+      : null;
+
+    if (existing && profile) {
+      updatedUsersBeforeImport.push({
+        id: existing.id,
+        firstName: existing.firstName,
+        lastName: existing.lastName,
+        name: existing.name,
+        contactPhone: existing.contactPhone,
+        ageGroup: profile.ageGroup,
+        assignedTeam: profile.assignedTeam,
+        isCoach: profile.isCoach,
+      });
+      await prisma.registeredUser.update({
+        where: { id: existing.id },
+        data: {
+          firstName,
+          lastName,
+          name,
+          contactPhone,
+        },
+      });
+      await (prisma as any).registeredUserOrgProfile.update({
+        where: { registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg } },
+        data: {
+          ageGroup,
+          assignedTeam,
+          isCoach: true,
+        },
+      });
+      if (autoAssignToTeams) {
+        if (assignedTeam?.trim()) autoAssignAttempts += 1;
+        const targetTeam = await resolveTeamForAutoAssignment({
+          organizationId: targetOrg,
+          assignedTeam,
+          ageGroup,
+        });
+        if (!targetTeam && assignedTeam?.trim()) {
+          unmatchedTeamNames.add(assignedTeam.trim());
+        }
+        if (targetTeam) {
+          const assignment = await prisma.teamCoachAssignment.findUnique({
+            where: {
+              teamId_registeredUserId: {
+                teamId: targetTeam.id,
+                registeredUserId: existing.id,
+              },
+            },
+            select: { id: true, role: true },
+          });
+          if (!assignment) {
+            await prisma.teamCoachAssignment.create({
+              data: {
+                teamId: targetTeam.id,
+                registeredUserId: existing.id,
+                role: assignmentRole,
+              },
+            });
+            createdCoachAssignments.push({
+              teamId: targetTeam.id,
+              registeredUserId: existing.id,
+            });
+            autoAssigned += 1;
+          } else if (assignment.role !== assignmentRole) {
+            await prisma.teamCoachAssignment.update({
+              where: { id: assignment.id },
+              data: { role: assignmentRole },
+            });
+            autoRoleUpdated += 1;
+          }
+        }
+      }
+      updated += 1;
+    } else {
+      // Create global identity first
+      const createdUser = await prisma.registeredUser.create({
+        data: {
+          email: normalizedEmail,
+          firstName,
+          lastName,
+          name,
+          contactPhone,
+        },
+      });
+      // Then create the org profile with the import data
+      await (prisma as any).registeredUserOrgProfile.create({
+        data: {
+          registeredUserId: createdUser.id,
+          organizationId: targetOrg,
+          isCoach: true,
+          ageGroup,
+          assignedTeam,
+        },
+      });
+      if (autoAssignToTeams) {
+        if (assignedTeam?.trim()) autoAssignAttempts += 1;
+        const targetTeam = await resolveTeamForAutoAssignment({
+          organizationId: targetOrg,
+          assignedTeam,
+          ageGroup,
+        });
+        if (!targetTeam && assignedTeam?.trim()) {
+          unmatchedTeamNames.add(assignedTeam.trim());
+        }
+        if (targetTeam) {
+          await prisma.teamCoachAssignment.create({
+            data: {
+              teamId: targetTeam.id,
+              registeredUserId: createdUser.id,
+              role: assignmentRole,
+            },
+          });
+          createdCoachAssignments.push({
+            teamId: targetTeam.id,
+            registeredUserId: createdUser.id,
+          });
+          autoAssigned += 1;
+        }
+      }
+      createdUserIds.push(createdUser.id);
+      created += 1;
+    }
+
+    if (processed % 10 === 0) {
+      await prisma.coachImportBatch.update({
+        where: { id: batchId },
+        data: {
+          processedCount: processed,
+          createdCount: created,
+          updatedCount: updated,
+          skippedCount: skipped,
+        },
+      });
+    }
+  }
+
+  const undoData = {
+    createdUserIds,
+    updatedUsers: updatedUsersBeforeImport,
+    createdCoachAssignments,
+  };
+
+  await prisma.coachImportBatch.update({
+    where: { id: batchId },
+    data: {
+      createdCount: created,
+      updatedCount: updated,
+      processedCount: processed,
+      skippedCount: skipped,
+      undoPayload: undoData,
+    },
+  });
+
+  return {
+    processed,
+    created,
+    updated,
+    skipped,
+    autoAssigned,
+    autoRoleUpdated,
+    autoAssignAttempts,
+    unmatchedTeamNames,
+    undoData,
+  };
 }
 
 export async function POST(request: NextRequest) {
@@ -261,267 +554,24 @@ export async function POST(request: NextRequest) {
       select: { id: true },
     });
 
-    let processed = 0;
-    let created = 0;
-    let updated = 0;
-    let skipped = 0;
-    let autoAssigned = 0;
-    let autoRoleUpdated = 0;
-    let autoAssignAttempts = 0;
-    const unmatchedTeamNames = new Set<string>();
-    const createdUserIds: string[] = [];
-    const updatedUsersBeforeImport: UpdatedUserSnapshot[] = [];
-    const createdCoachAssignments: AutoCoachAssignmentSnapshot[] = [];
-
-    for (const row of rows) {
-      processed += 1;
-
-      const email = getRowValue(row, [
-        "email",
-        "Email",
-        "EMAIL",
-        "Volunteer Email Address",
-      ]);
-      if (!email || !isValidEmail(email)) {
-        skipped += 1;
-        if (processed % 10 === 0) {
-          await prisma.coachImportBatch.update({
-            where: { id: batch.id },
-            data: {
-              processedCount: processed,
-              createdCount: created,
-              updatedCount: updated,
-              skippedCount: skipped,
-            },
-          });
-        }
-        continue;
-      }
-
-      const volunteerRole = getRowValue(row, [
-        "Volunteer Role",
-        "role",
-        "Role",
-        "ROLE",
-      ]);
-      if (!shouldImportAsCoach(volunteerRole)) {
-        skipped += 1;
-        if (processed % 10 === 0) {
-          await prisma.coachImportBatch.update({
-            where: { id: batch.id },
-            data: {
-              processedCount: processed,
-              createdCount: created,
-              updatedCount: updated,
-              skippedCount: skipped,
-            },
-          });
-        }
-        continue;
-      }
-      const assignmentRole = parseCoachAssignmentRole(volunteerRole);
-
-      const normalizedEmail = email.toLowerCase();
-      const firstName =
-        getRowValue(row, [
-          "first_name",
-          "First Name",
-          "firstName",
-          "FIRST_NAME",
-          "Volunteer First Name",
-        ]) ||
-        null;
-      const lastName =
-        getRowValue(row, [
-          "last_name",
-          "Last Name",
-          "lastName",
-          "LAST_NAME",
-          "Volunteer Last Name",
-        ]) ||
-        null;
-      const name = [firstName, lastName].filter(Boolean).join(" ") || null;
-      const rawAgeGroup = getRowValue(row, [
-        "age_group",
-        "Age Group",
-        "ageGroup",
-        "AGE_GROUP",
-        "Division Name",
-      ]);
-      const mappedAgeGroup = ageGroupMappings.get(rawAgeGroup.trim().toLowerCase());
-      const ageGroup = mappedAgeGroup || normalizeAgeGroup(rawAgeGroup);
-      const assignedTeam =
-        getRowValue(row, [
-          "assigned_team",
-          "Assigned Team",
-          "assignedTeam",
-          "ASSIGNED_TEAM",
-          "Team Name",
-        ]) ||
-        null;
-      const contactPhone = selectPreferredContactPhone(row);
-
-      // Global identity lookup + per-org profile
-      let existing = await prisma.registeredUser.findFirst({
-        where: { email: normalizedEmail },
-      });
-
-      let profile = existing
-        ? await (prisma as any).registeredUserOrgProfile.findUnique({
-            where: { registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg } },
-          })
-        : null;
-
-      if (existing && profile) {
-        updatedUsersBeforeImport.push({
-          id: existing.id,
-          firstName: existing.firstName,
-          lastName: existing.lastName,
-          name: existing.name,
-          contactPhone: existing.contactPhone,
-          ageGroup: profile.ageGroup,
-          assignedTeam: profile.assignedTeam,
-          isCoach: profile.isCoach,
-        });
-        await prisma.registeredUser.update({
-          where: { id: existing.id },
-          data: {
-            firstName,
-            lastName,
-            name,
-            contactPhone,
-          },
-        });
-        await (prisma as any).registeredUserOrgProfile.update({
-          where: { registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg } },
-          data: {
-            ageGroup,
-            assignedTeam,
-            isCoach: true,
-          },
-        });
-        if (autoAssignToTeams) {
-          if (assignedTeam?.trim()) autoAssignAttempts += 1;
-          const targetTeam = await resolveTeamForAutoAssignment({
-            organizationId: targetOrg,
-            assignedTeam,
-            ageGroup,
-          });
-          if (!targetTeam && assignedTeam?.trim()) {
-            unmatchedTeamNames.add(assignedTeam.trim());
-          }
-          if (targetTeam) {
-            const assignment = await prisma.teamCoachAssignment.findUnique({
-              where: {
-                teamId_registeredUserId: {
-                  teamId: targetTeam.id,
-                  registeredUserId: existing.id,
-                },
-              },
-              select: { id: true, role: true },
-            });
-            if (!assignment) {
-              await prisma.teamCoachAssignment.create({
-                data: {
-                  teamId: targetTeam.id,
-                  registeredUserId: existing.id,
-                  role: assignmentRole,
-                },
-              });
-              createdCoachAssignments.push({
-                teamId: targetTeam.id,
-                registeredUserId: existing.id,
-              });
-              autoAssigned += 1;
-            } else if (assignment.role !== assignmentRole) {
-              await prisma.teamCoachAssignment.update({
-                where: { id: assignment.id },
-                data: { role: assignmentRole },
-              });
-              autoRoleUpdated += 1;
-            }
-          }
-        }
-        updated += 1;
-      } else {
-        // Create global identity first
-        const createdUser = await prisma.registeredUser.create({
-          data: {
-            email: normalizedEmail,
-            firstName,
-            lastName,
-            name,
-            contactPhone,
-          },
-        });
-        // Then create the org profile with the import data
-        await (prisma as any).registeredUserOrgProfile.create({
-          data: {
-            registeredUserId: createdUser.id,
-            organizationId: targetOrg,
-            isCoach: true,
-            ageGroup,
-            assignedTeam,
-          },
-        });
-        if (autoAssignToTeams) {
-          if (assignedTeam?.trim()) autoAssignAttempts += 1;
-          const targetTeam = await resolveTeamForAutoAssignment({
-            organizationId: targetOrg,
-            assignedTeam,
-            ageGroup,
-          });
-          if (!targetTeam && assignedTeam?.trim()) {
-            unmatchedTeamNames.add(assignedTeam.trim());
-          }
-          if (targetTeam) {
-            await prisma.teamCoachAssignment.create({
-              data: {
-                teamId: targetTeam.id,
-                registeredUserId: createdUser.id,
-                role: assignmentRole,
-              },
-            });
-            createdCoachAssignments.push({
-              teamId: targetTeam.id,
-              registeredUserId: createdUser.id,
-            });
-            autoAssigned += 1;
-          }
-        }
-        createdUserIds.push(createdUser.id);
-        created += 1;
-      }
-
-      if (processed % 10 === 0) {
-        await prisma.coachImportBatch.update({
-          where: { id: batch.id },
-          data: {
-            processedCount: processed,
-            createdCount: created,
-            updatedCount: updated,
-            skippedCount: skipped,
-          },
-        });
-      }
-    }
-
-    const undoData = {
-      createdUserIds,
-      updatedUsers: updatedUsersBeforeImport,
-      createdCoachAssignments,
-    };
-
-    await prisma.coachImportBatch.update({
-      where: { id: batch.id },
-      data: {
-        createdCount: created,
-        updatedCount: updated,
-        processedCount: processed,
-        skippedCount: skipped,
-        undoPayload: undoData,
-      },
+    const result = await applyCoachImportRows({
+      rows,
+      targetOrg,
+      batchId: batch.id,
+      ageGroupMappings,
+      autoAssignToTeams,
     });
+    const {
+      processed,
+      created,
+      updated,
+      skipped,
+      autoAssigned,
+      autoRoleUpdated,
+      autoAssignAttempts,
+      unmatchedTeamNames,
+      undoData,
+    } = result;
 
     return NextResponse.json({
       success: true,

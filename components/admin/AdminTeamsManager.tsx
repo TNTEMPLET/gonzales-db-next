@@ -19,6 +19,7 @@ import {
   SyncedDriveFileMenu,
 } from "./teams/SportsConnectAssistPanels";
 import OnlineDraftDesk from "@/components/admin/draft/OnlineDraftDesk";
+import SmartAutoBuildWizard from "./teams/SmartAutoBuildWizard";
 import PlayerCardDemoPreview from "@/components/players/PlayerCardDemoPreview";
 import PlayerCardPanel, {
   playerCardFromFields,
@@ -2159,7 +2160,20 @@ export default function AdminTeamsManager({
       <div id="teams-build" className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4 scroll-mt-24">
         <div className="flex items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Teams Setup</h2>
-          <div className="flex items-center gap-2">
+          <SmartAutoBuildWizard
+            seasonYear={seasonYear}
+            orgQuery={orgQuery}
+            onBuildComplete={() => {
+              void loadTeams();
+              void loadSportsConnectQuality();
+            }}
+          />
+        </div>
+        <details className="group">
+          <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
+            Advanced: import one file manually
+          </summary>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
             <button
               type="button"
               onClick={openTeamListImport}
@@ -2182,7 +2196,7 @@ export default function AdminTeamsManager({
               Start Player Import
             </button>
           </div>
-        </div>
+        </details>
         <div className="grid md:grid-cols-5 gap-3">
           <input
             type="number"
