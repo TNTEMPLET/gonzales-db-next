@@ -8,14 +8,18 @@ import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
-type Row = Record<string, string | number | boolean | null | undefined>;
-type UndoSnapshot = {
+export type Row = Record<string, string | number | boolean | null | undefined>;
+export type UndoSnapshot = {
   createdTeamIds: string[];
   createdPlayerIds: string[];
   updatedPlayers: Array<{
     id: string;
     data: Record<string, unknown>;
   }>;
+  /** DraftPlayerPool rows created for rows routed to a DRAFT-method age group — see lib/draft/draftPoolImport.ts. */
+  createdDraftPoolEntryIds: string[];
+  /** DraftSessions auto-created (not found-existing) alongside those pool entries — deleted on undo only if still empty. */
+  createdDraftSessionIds: string[];
 };
 type ImportSkipDetail = {
   rowNumber: number | null;
@@ -25,7 +29,7 @@ type ImportSkipDetail = {
   teamName?: string;
 };
 
-const PLAYER_IMPORT_DIVISION_KEYS = [
+export const PLAYER_IMPORT_DIVISION_KEYS = [
   "Division Name",
   "Division",
   "Program Division",
@@ -35,7 +39,7 @@ const PLAYER_IMPORT_DIVISION_KEYS = [
   "AGE_GROUP",
 ];
 
-const PLAYER_IMPORT_TEAM_KEYS = [
+export const PLAYER_IMPORT_TEAM_KEYS = [
   "Team Name",
   "Team",
   "Roster Team Name",
@@ -45,7 +49,7 @@ const PLAYER_IMPORT_TEAM_KEYS = [
   "ASSIGNED_TEAM",
 ];
 
-const PLAYER_IMPORT_NAME_KEYS = [
+export const PLAYER_IMPORT_NAME_KEYS = [
   "Player Full Name",
   "Participant Full Name",
   "Participant Name",
@@ -57,7 +61,7 @@ const PLAYER_IMPORT_NAME_KEYS = [
   "full_name",
 ];
 
-const PLAYER_IMPORT_EMAIL_KEYS = [
+export const PLAYER_IMPORT_EMAIL_KEYS = [
   "User Email",
   "Account Email",
   "Parent Email",
@@ -66,7 +70,7 @@ const PLAYER_IMPORT_EMAIL_KEYS = [
   "email",
 ];
 
-function getRowValue(row: Row, keys: string[]) {
+export function getRowValue(row: Row, keys: string[]) {
   for (const key of keys) {
     const value = row[key];
     if (value === undefined || value === null) continue;
@@ -85,13 +89,13 @@ function normalizeLooseName(value: string) {
     .trim();
 }
 
-function parseSeasonYearFromProgramName(programName: string) {
+export function parseSeasonYearFromProgramName(programName: string) {
   const match = programName.match(/\b(20\d{2})\b/);
   if (!match?.[1]) return null;
   return parseSeasonYear(match[1]);
 }
 
-function splitName(fullName: string) {
+export function splitName(fullName: string) {
   const trimmed = fullName.trim();
   if (!trimmed) return { firstName: null, lastName: null };
   const parts = trimmed.split(/\s+/);
@@ -163,7 +167,7 @@ function parseDivisionMappings(
   }
 }
 
-function shouldSkipDivisionImport(divisionName: string) {
+export function shouldSkipDivisionImport(divisionName: string) {
   const normalized = divisionName.trim().toLowerCase();
   if (!normalized) return false;
   if (normalized.includes("modified tee ball")) return false;
@@ -178,8 +182,14 @@ function shouldSkipDivisionImport(divisionName: string) {
   return false;
 }
 
-function emptyUndoPayload(): UndoSnapshot {
-  return { createdTeamIds: [], createdPlayerIds: [], updatedPlayers: [] };
+export function emptyUndoPayload(): UndoSnapshot {
+  return {
+    createdTeamIds: [],
+    createdPlayerIds: [],
+    updatedPlayers: [],
+    createdDraftPoolEntryIds: [],
+    createdDraftSessionIds: [],
+  };
 }
 
 function toInputJson(value: unknown): Prisma.InputJsonValue {
@@ -230,7 +240,7 @@ function sanitizeUndoTeamPlayerData(data: Record<string, unknown>) {
   return safe;
 }
 
-async function applyImportRows(params: {
+export async function applyImportRows(params: {
   rows: Row[];
   targetOrg: string;
   adminId: string | null;
@@ -680,7 +690,7 @@ async function applyImportRows(params: {
   return { batch: nextBatch, skippedByScope, skippedMissingExisting, skippedDetails };
 }
 
-async function undoBatch(targetOrg: string, batchId?: string) {
+export async function undoBatch(targetOrg: string, batchId?: string) {
   const batch = batchId
     ? await prisma.teamPlayerImportBatch.findFirst({
         where: { id: batchId, organizationId: targetOrg, undoneAt: null },
@@ -717,6 +727,35 @@ async function undoBatch(targetOrg: string, batchId?: string) {
     });
     deletedTeams = deleted.count;
   }
+  // Entries already drafted (isDrafted: true) are left alone rather than deleted out from
+  // under a DraftPick/materialized roster — same "undo is precise, not destructive" contract
+  // as the createdPlayerIds/createdTeamIds deletes above.
+  const draftPoolEntryIds = undoPayload.createdDraftPoolEntryIds || [];
+  const deletedDraftPoolEntries =
+    draftPoolEntryIds.length > 0
+      ? (
+          await prisma.draftPlayerPool.deleteMany({
+            where: { id: { in: draftPoolEntryIds }, isDrafted: false },
+          })
+        ).count
+      : 0;
+  // Sessions this batch auto-created (not found-existing) get deleted too, but only if they're
+  // still empty after the entry deletion above — if a pick was made, another import added more
+  // pool entries, or an admin configured teams/timer since, the session has state beyond what
+  // this batch created and undo leaves it alone rather than destroying that.
+  const draftSessionIds = undoPayload.createdDraftSessionIds || [];
+  let deletedDraftSessions = 0;
+  for (const sessionId of draftSessionIds) {
+    const session = await prisma.draftSession.findUnique({
+      where: { id: sessionId },
+      select: { _count: { select: { playerPool: true, teams: true, picks: true } } },
+    });
+    if (!session) continue;
+    if (session._count.playerPool === 0 && session._count.teams === 0 && session._count.picks === 0) {
+      await prisma.draftSession.delete({ where: { id: sessionId } });
+      deletedDraftSessions += 1;
+    }
+  }
   await prisma.teamPlayerImportBatch.update({
     where: { id: batch.id },
     data: { status: "UNDONE", undoneAt: new Date(), completedAt: new Date() },
@@ -727,6 +766,8 @@ async function undoBatch(targetOrg: string, batchId?: string) {
     skippedMissingUpdated: Math.max(0, updatedAttempted - restoredUpdated),
     deletedPlayers,
     deletedTeams,
+    deletedDraftPoolEntries,
+    deletedDraftSessions,
   };
 }
 

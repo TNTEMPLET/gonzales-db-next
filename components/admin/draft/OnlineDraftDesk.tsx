@@ -174,7 +174,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
             </div>
           ) : (
             <div className="rounded-xl border border-dashed border-zinc-800 p-12 text-center space-y-3">
-              <div className="text-3xl">🏈</div>
+              <div className="text-3xl">⚾</div>
               <h4 className="text-base font-bold text-white">No Draft Sessions Found</h4>
               <p className="text-xs text-zinc-400 max-w-md mx-auto">
                 No online drafts created for {targetOrg} in {seasonYear}. Click below to configure coach-player links and launch a new draft session.
