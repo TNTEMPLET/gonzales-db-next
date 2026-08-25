@@ -355,89 +355,105 @@ export async function POST(request: NextRequest) {
   }
 
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
-  const contentType = request.headers.get("content-type") || "";
 
-  let formData: FormData | null = null;
-  let jsonBody: Record<string, unknown> | null = null;
-  if (contentType.includes("multipart/form-data")) {
-    formData = await request.formData();
-  } else {
-    jsonBody = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-  }
+  try {
+    const contentType = request.headers.get("content-type") || "";
 
-  const seasonYearRaw =
-    (formData?.get("seasonYear") as string | null) ??
-    (typeof jsonBody?.seasonYear === "string" || typeof jsonBody?.seasonYear === "number"
-      ? String(jsonBody.seasonYear)
-      : "");
-  const seasonYear = parseSeasonYear(seasonYearRaw);
-  if (!seasonYear) {
-    return NextResponse.json({ error: "seasonYear is required" }, { status: 400 });
-  }
+    let formData: FormData | null = null;
+    let jsonBody: Record<string, unknown> | null = null;
+    if (contentType.includes("multipart/form-data")) {
+      formData = await request.formData();
+    } else {
+      jsonBody = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    }
 
-  const [teamListSource, playerRegSource, coachVolSource] = await Promise.all([
-    resolveSource(formData, jsonBody, "teamList", "teamListDriveFileId"),
-    resolveSource(formData, jsonBody, "playerReg", "playerRegDriveFileId"),
-    resolveSource(formData, jsonBody, "coachVol", "coachVolDriveFileId"),
-  ]);
+    const seasonYearRaw =
+      (formData?.get("seasonYear") as string | null) ??
+      (typeof jsonBody?.seasonYear === "string" || typeof jsonBody?.seasonYear === "number"
+        ? String(jsonBody.seasonYear)
+        : "");
+    const seasonYear = parseSeasonYear(seasonYearRaw);
+    if (!seasonYear) {
+      return NextResponse.json({ error: "seasonYear is required" }, { status: 400 });
+    }
 
-  if (!teamListSource && !playerRegSource && !coachVolSource) {
-    return NextResponse.json(
-      { error: "At least one of teamList, playerReg, or coachVol is required" },
-      { status: 400 },
-    );
-  }
+    const [teamListSource, playerRegSource, coachVolSource] = await Promise.all([
+      resolveSource(formData, jsonBody, "teamList", "teamListDriveFileId"),
+      resolveSource(formData, jsonBody, "playerReg", "playerRegDriveFileId"),
+      resolveSource(formData, jsonBody, "coachVol", "coachVolDriveFileId"),
+    ]);
 
-  let teamListRows: TeamListImportRow[] | null = null;
-  let teamListSummary = null;
-  let teamListReportKindWarning: string | null = null;
-  if (teamListSource) {
-    teamListReportKindWarning = reportKindWarningFor(
-      parseSportsConnectExportBuffer({ buffer: teamListSource.buffer, fileName: teamListSource.fileName })
-        .headers,
-      "TEAM_LIST",
-      "Team List",
-    );
-    teamListRows = await buildTeamListPreviewRows({
-      targetOrg,
-      seasonYear,
-      source: { kind: "buffer", buffer: teamListSource.buffer, fileName: teamListSource.fileName },
-    });
-    teamListSummary = summarizeTeamListRows(teamListRows);
-  }
+    if (!teamListSource && !playerRegSource && !coachVolSource) {
+      return NextResponse.json(
+        { error: "At least one of teamList, playerReg, or coachVol is required" },
+        { status: 400 },
+      );
+    }
 
-  const [playerPreview, coachPreview] = await Promise.all([
-    buildPlayerPreview(playerRegSource, targetOrg, seasonYear, teamListRows),
-    buildCoachPreview(coachVolSource, targetOrg),
-  ]);
+    let teamListRows: TeamListImportRow[] | null = null;
+    let teamListSummary = null;
+    let teamListReportKindWarning: string | null = null;
+    if (teamListSource) {
+      teamListReportKindWarning = reportKindWarningFor(
+        parseSportsConnectExportBuffer({ buffer: teamListSource.buffer, fileName: teamListSource.fileName })
+          .headers,
+        "TEAM_LIST",
+        "Team List",
+      );
+      teamListRows = await buildTeamListPreviewRows({
+        targetOrg,
+        seasonYear,
+        source: { kind: "buffer", buffer: teamListSource.buffer, fileName: teamListSource.fileName },
+      });
+      teamListSummary = summarizeTeamListRows(teamListRows);
+    }
 
-  const familyCoachMatches = matchFamiliesToCoaches(playerPreview, coachPreview);
+    const [playerPreview, coachPreview] = await Promise.all([
+      buildPlayerPreview(playerRegSource, targetOrg, seasonYear, teamListRows),
+      buildCoachPreview(coachVolSource, targetOrg),
+    ]);
 
-  const unmatchedPlayerRows =
-    playerPreview && teamListRows
-      ? playerPreview.rows.filter((r) => r.action !== "SKIP" && r.matchesTeamList === false).length
-      : 0;
+    const familyCoachMatches = matchFamiliesToCoaches(playerPreview, coachPreview);
 
-  return NextResponse.json({
-    data: {
-      organizationId: targetOrg,
-      seasonYear,
-      teamList: teamListSource
-        ? {
-            fileName: teamListSource.fileName,
-            reportKindWarning: teamListReportKindWarning,
-            rows: teamListRows,
-            summary: teamListSummary,
-          }
-        : null,
-      playerReg: playerPreview,
-      coachVol: coachPreview,
-      familyCoachMatches,
-      warnings: [
-        unmatchedPlayerRows > 0
-          ? `${unmatchedPlayerRows} player row(s) reference a division/team not found in the Team List file.`
+    const unmatchedPlayerRows =
+      playerPreview && teamListRows
+        ? playerPreview.rows.filter((r) => r.action !== "SKIP" && r.matchesTeamList === false).length
+        : 0;
+
+    return NextResponse.json({
+      data: {
+        organizationId: targetOrg,
+        seasonYear,
+        teamList: teamListSource
+          ? {
+              fileName: teamListSource.fileName,
+              reportKindWarning: teamListReportKindWarning,
+              rows: teamListRows,
+              summary: teamListSummary,
+            }
           : null,
-      ].filter((w): w is string => !!w),
-    },
-  });
+        playerReg: playerPreview,
+        coachVol: coachPreview,
+        familyCoachMatches,
+        warnings: [
+          unmatchedPlayerRows > 0
+            ? `${unmatchedPlayerRows} player row(s) reference a division/team not found in the Team List file.`
+            : null,
+        ].filter((w): w is string => !!w),
+      },
+    });
+  } catch (err) {
+    console.error("[api/admin/teams/smart-build/preview POST]", err);
+    const code = typeof err === "object" && err && "code" in err ? String((err as { code?: unknown }).code) : "";
+    const message = err instanceof Error ? err.message : String(err);
+    const missingSchema = code === "P2021" || code === "P2022" || /relation .* does not exist|column .* does not exist/i.test(message);
+    return NextResponse.json(
+      {
+        error: missingSchema
+          ? "Smart Auto-Build's database tables aren't provisioned in this environment yet. Run the pending Prisma migration."
+          : "Failed to build preview. " + message,
+      },
+      { status: 500 },
+    );
+  }
 }
