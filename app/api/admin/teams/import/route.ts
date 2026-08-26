@@ -4,9 +4,12 @@ import { Prisma } from "@prisma/client";
 
 import { parseSeasonYear } from "@/lib/allStar/server";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
+import { shouldSkipDivisionImport } from "@/lib/admin/teamsImportHelpers";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+
+export { shouldSkipDivisionImport };
 
 export type Row = Record<string, string | number | boolean | null | undefined>;
 export type UndoSnapshot = {
@@ -165,21 +168,6 @@ function parseDivisionMappings(
   } catch {
     return new Map();
   }
-}
-
-export function shouldSkipDivisionImport(divisionName: string) {
-  const normalized = divisionName.trim().toLowerCase();
-  if (!normalized) return false;
-  if (normalized.includes("modified tee ball")) return false;
-  if (normalized.includes("umpire")) return true;
-  if (normalized.includes("little league tee ball")) return true;
-  if (normalized.includes("little league teeball")) return true;
-  if (normalized.includes("3-4 year-old")) return true;
-  if (normalized.includes("3-4 year olds")) return true;
-  if (normalized.includes("3/4 year-old")) return true;
-  if (normalized.includes("5 year-old")) return true;
-  if (normalized.includes("5 year olds")) return true;
-  return false;
 }
 
 export function emptyUndoPayload(): UndoSnapshot {

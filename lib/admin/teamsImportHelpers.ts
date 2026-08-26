@@ -107,19 +107,14 @@ export function normalizeLooseName(value: string) {
     .trim();
 }
 
+/**
+ * SportsConnect export divisions are the source of truth for roster imports.
+ * Only non-player program rows (umpire clinics / volunteer ump tracks) are skipped.
+ */
 export function shouldSkipDivisionImport(divisionName: string) {
   const normalized = divisionName.trim().toLowerCase();
   if (!normalized) return false;
-  if (normalized.includes("modified tee ball")) return false;
-  if (normalized.includes("umpire")) return true;
-  if (normalized.includes("little league tee ball")) return true;
-  if (normalized.includes("little league teeball")) return true;
-  if (normalized.includes("3-4 year-old")) return true;
-  if (normalized.includes("3-4 year olds")) return true;
-  if (normalized.includes("3/4 year-old")) return true;
-  if (normalized.includes("5 year-old")) return true;
-  if (normalized.includes("5 year olds")) return true;
-  return false;
+  return normalized.includes("umpire");
 }
 
 export function buildTeamNameFromSponsor(
