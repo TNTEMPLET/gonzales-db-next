@@ -114,7 +114,12 @@ export function normalizeLooseName(value: string) {
 export function shouldSkipDivisionImport(divisionName: string) {
   const normalized = divisionName.trim().toLowerCase();
   if (!normalized) return false;
-  return normalized.includes("umpire");
+  if (normalized.includes("modified tee ball")) return false;
+  if (normalized.includes("umpire")) return true;
+  if (normalized.includes("little league tee ball") || normalized.includes("little league teeball")) return true;
+  if (normalized.includes("3-4 year-old") || normalized.includes("3-4 year olds") || normalized.includes("3/4 year-old")) return true;
+  if (/(^|[^0-9])5 year-old/.test(normalized) || /(^|[^0-9])5 year olds/.test(normalized)) return true;
+  return false;
 }
 
 export function buildTeamNameFromSponsor(
