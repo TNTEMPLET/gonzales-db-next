@@ -75,9 +75,8 @@ The admin **detect** route scores file headers against these profiles (`lib/spor
 
 **Skipped divisions (automatic)**
 
-- Umpire  
-- Little League tee ball (Modified tee ball is kept)  
-- 3–4 year-old / 5 year-old programs  
+- Umpire only (clinics / volunteer ump tracks — not player roster divisions)  
+- All other SportsConnect division labels are imported as-is (tee ball, 3–4 / 5 year-old, etc.) 
 
 ---
 
