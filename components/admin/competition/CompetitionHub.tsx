@@ -9,10 +9,12 @@ import AdminSchedulerManager from "@/components/admin/AdminSchedulerManager";
 import AdminAssignrHub from "@/components/admin/AdminAssignrHub";
 import AdminSportsConnectDesk from "@/components/admin/AdminSportsConnectDesk";
 import AdminRegistrationWindowsManager from "@/components/admin/AdminRegistrationWindowsManager";
+import OnlineDraftDesk from "@/components/admin/draft/OnlineDraftDesk";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 export type CompetitionTab =
   | "teams"
+  | "draft"
   | "scores"
   | "scheduler"
   | "assignr"
@@ -26,6 +28,10 @@ const TAB_META: Record<
   teams: {
     label: "Teams & Rosters",
     description: "Manage team rosters, coach assignments, and player imports.",
+  },
+  draft: {
+    label: "Online Draft",
+    description: "Live draft room with coach-child protection and roster builder.",
   },
   scores: {
     label: "Scores & Standings",
@@ -103,6 +109,7 @@ export default function CompetitionHub({
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
         <p className="mb-6 text-sm text-zinc-400">{TAB_META[tab].description}</p>
         {tab === "teams" && <AdminTeamsManager targetOrg={targetOrg} />}
+        {tab === "draft" && <OnlineDraftDesk targetOrg={targetOrg} seasonYear={2026} />}
         {tab === "scores" && <AdminScoresManager targetOrg={targetOrg} />}
         {tab === "scheduler" && <AdminSchedulerManager targetOrg={targetOrg} />}
         {tab === "assignr" && <AdminAssignrHub targetOrg={targetOrg} />}
