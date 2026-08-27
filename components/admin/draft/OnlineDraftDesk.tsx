@@ -67,7 +67,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
     setContextLoading(true);
     try {
       const res = await fetch(
-        `/api/admin/draft/setup-context?organizationId=${targetOrg}&seasonYear=${seasonYear}&ageGroup=${encodeURIComponent(ageGroup)}`
+        `/api/admin/draft/sessions?mode=setup-context&organizationId=${targetOrg}&seasonYear=${seasonYear}&ageGroup=${encodeURIComponent(ageGroup)}`
       );
       if (res.ok) {
         const data = await res.json();
