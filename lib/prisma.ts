@@ -10,7 +10,7 @@ declare global {
 }
 
 /** Bump when Prisma schema/models change so dev HMR does not reuse a stale PrismaClient. */
-const PRISMA_SCHEMA_VERSION = "2026-07-24-trip-invite-email-v1";
+const PRISMA_SCHEMA_VERSION = "2026-08-28-draft-leader-v1";
 
 function createClient() {
   const connectionString = process.env.DATABASE_URL!;
@@ -25,21 +25,11 @@ const hasRequiredDelegates =
   !!cached &&
   !!cachedDelegates &&
   "adminUser" in cachedDelegates &&
-  "dugoutComment" in cachedDelegates &&
-  "dugoutNotificationCursor" in cachedDelegates &&
-  "allStarVaultAccess" in cachedDelegates &&
-  "bracketProject" in cachedDelegates &&
-  "tournamentRosterIntakeLink" in cachedDelegates &&
-  "coachingInterestSubmission" in cachedDelegates &&
-  "scheduleSeason" in cachedDelegates &&
-  "scheduleDraftGame" in cachedDelegates &&
-  "scheduleExportBatch" in cachedDelegates &&
-  "tournamentIncomeTransaction" in cachedDelegates &&
-  "gameChangerScoreboardConnection" in cachedDelegates &&
-  "orgAlert" in cachedDelegates &&
-  "tripEvent" in cachedDelegates &&
-  "tripParticipant" in cachedDelegates &&
-  "tripFieldTemplate" in cachedDelegates;
+  "draftSession" in cachedDelegates &&
+  "draftTeam" in cachedDelegates &&
+  "draftPlayerPool" in cachedDelegates &&
+  "draftPick" in cachedDelegates &&
+  "coachPlayerProtection" in cachedDelegates;
 const schemaVersionMatches =
   global.prismaSchemaVersion === PRISMA_SCHEMA_VERSION;
 

@@ -44,6 +44,9 @@ export async function getDraftSessionState(sessionId: string) {
   const session = await prisma.draftSession.findUnique({
     where: { id: sessionId },
     include: {
+      draftLeader: {
+        select: { id: true, name: true, email: true },
+      },
       teams: {
         orderBy: { draftOrder: "asc" },
         include: {
@@ -87,18 +90,19 @@ export async function getDraftSessionState(sessionId: string) {
       )
     : undefined;
 
-  const onClock: ActiveTeamOnClock | null = activeTeam
-    ? {
-        teamId: activeTeam.id,
-        teamName: activeTeam.teamName,
-        headCoachName: activeTeam.headCoach?.name || null,
-        round,
-        overallPick: session.currentPickIndex + 1,
-        pickInRound,
-        isProtectedPick: !!protection,
-        protectedPlayerName: protection?.playerName,
-      }
-    : null;
+  const onClock: ActiveTeamOnClock | null =
+    activeTeam && session.status !== "COMPLETED" && session.status !== "MATERIALIZED"
+      ? {
+          teamId: activeTeam.id,
+          teamName: activeTeam.teamName,
+          headCoachName: activeTeam.headCoach?.name || null,
+          round,
+          overallPick: session.currentPickIndex + 1,
+          pickInRound,
+          isProtectedPick: !!protection,
+          protectedPlayerName: protection?.playerName,
+        }
+      : null;
 
   return {
     session,
@@ -129,7 +133,7 @@ export async function makeDraftPick(
     throw new Error("Player has already been drafted");
   }
 
-  return await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
     // 1. Record the pick
     const pick = await tx.draftPick.create({
       data: {
@@ -174,7 +178,7 @@ export async function makeDraftPick(
 
     const nextRound = Math.floor(nextPickIndex / session.teams.length) + 1;
 
-    const updatedSession = await tx.draftSession.update({
+    await tx.draftSession.update({
       where: { id: sessionId },
       data: {
         currentPickIndex: nextPickIndex,
@@ -182,9 +186,9 @@ export async function makeDraftPick(
         status: isFinished ? "COMPLETED" : "LIVE",
       },
     });
-
-    return { pick, session: updatedSession };
   });
+
+  return await getDraftSessionState(sessionId);
 }
 
 /**
@@ -208,7 +212,19 @@ export async function undoLastDraftPick(sessionId: string) {
 
   const lastPick = session.picks[0];
 
-  return await prisma.$transaction(async (tx) => {
+  await prisma.$transaction(async (tx) => {
+    // If the undone pick was a protected pick, unclaim the protection
+    if (lastPick.isProtectedPick) {
+      await tx.coachPlayerProtection.updateMany({
+        where: {
+          draftSessionId: sessionId,
+          draftTeamId: lastPick.draftTeamId,
+          protectedRound: lastPick.round,
+        },
+        data: { isClaimed: false },
+      });
+    }
+
     // Delete the pick
     await tx.draftPick.delete({ where: { id: lastPick.id } });
 
@@ -225,7 +241,7 @@ export async function undoLastDraftPick(sessionId: string) {
     const prevPickIndex = Math.max(0, session.currentPickIndex - 1);
     const prevRound = Math.floor(prevPickIndex / (session.teams.length || 1)) + 1;
 
-    const updatedSession = await tx.draftSession.update({
+    await tx.draftSession.update({
       where: { id: sessionId },
       data: {
         currentPickIndex: prevPickIndex,
@@ -233,7 +249,47 @@ export async function undoLastDraftPick(sessionId: string) {
         status: "LIVE",
       },
     });
+  });
 
-    return { undonePick: lastPick, session: updatedSession };
+  return await getDraftSessionState(sessionId);
+}
+
+/**
+ * Resets all picks and drafted statuses for a draft session.
+ */
+export async function resetDraftSession(sessionId: string) {
+  return await prisma.$transaction(async (tx) => {
+    // Delete all picks
+    await tx.draftPick.deleteMany({
+      where: { draftSessionId: sessionId },
+    });
+
+    // Reset player pool
+    await tx.draftPlayerPool.updateMany({
+      where: { draftSessionId: sessionId },
+      data: {
+        isDrafted: false,
+        draftedTeamId: null,
+        draftedPickId: null,
+      },
+    });
+
+    // Reset protections
+    await tx.coachPlayerProtection.updateMany({
+      where: { draftSessionId: sessionId },
+      data: { isClaimed: false },
+    });
+
+    // Reset session state
+    const updated = await tx.draftSession.update({
+      where: { id: sessionId },
+      data: {
+        currentPickIndex: 0,
+        currentRound: 1,
+        status: "PAIRED",
+      },
+    });
+
+    return updated;
   });
 }

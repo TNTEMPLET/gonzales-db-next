@@ -544,6 +544,7 @@ model RegisteredUser {
   volunteerProfiles               VolunteerProfile[]
   draftTeamsHeadCoach             DraftTeam[]                        @relation("DraftTeamHeadCoach")
   draftTeamsAssistantCoach        DraftTeam[]                        @relation("DraftTeamAssistantCoach")
+  draftSessionsLed                DraftSession[]                     @relation("DraftSessionLeader")
 
   @@index([email])
   @@index([duplicateReviewPending])
@@ -2527,6 +2528,8 @@ model DraftSession {
   currentRound     Int                @default(1)
   currentPickIndex Int                @default(0)
   createdByAdminId String?
+  draftLeaderUserId String?
+  draftLeader      RegisteredUser?    @relation("DraftSessionLeader", fields: [draftLeaderUserId], references: [id], onDelete: SetNull)
   createdAt        DateTime           @default(now())
   updatedAt        DateTime           @updatedAt
 
