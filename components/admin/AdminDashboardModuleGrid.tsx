@@ -45,6 +45,7 @@ const previewModuleMinimumRole: Record<
   PARK_INFO: "ADMIN",
   ROLE_ASSIGNMENT: "MASTER_ADMIN",
   REGISTRATION_WINDOWS: "MASTER_ADMIN",
+  DRAFT: "ADMIN",
 };
 
 const roleRank: Record<"MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR", number> = {

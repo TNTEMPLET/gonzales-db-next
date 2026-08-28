@@ -41,6 +41,7 @@ import { mergeMatchScoresIntoSpec } from "@/lib/tournament-brackets/bracketScori
 function baseSpec(over: Partial<BracketSpec> = {}): BracketSpec {
   return {
     version: 1,
+    layoutPreference: "official",
     teams: [],
     games: [],
     rounds: [],

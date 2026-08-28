@@ -582,7 +582,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                         </div>
                         <div className="flex items-center justify-between text-[10px] text-zinc-400 mt-0.5">
                           <span>{player.evaluationScore ? `${player.evaluationScore.toFixed(1)} pts` : ""}</span>
-                          {pick.isProtectedPick && (
+                          {pick?.isProtectedPick && (
                             <span className="text-amber-400" title="Coach Protection">🔒</span>
                           )}
                         </div>

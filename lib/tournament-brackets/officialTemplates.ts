@@ -320,13 +320,28 @@ export function placeholderTeamsForOfficialTemplate(template: OfficialTemplate):
 export function specDefaultsFromOfficialTemplate(
   templateId: OfficialTemplateId,
   championshipSeriesStyle?: ChampionshipSeriesStyle,
-): Partial<BracketSpec> {
+): {
+  version: 1;
+  governingBody: GoverningBodyId;
+  officialTemplateId: OfficialTemplateId;
+  layoutPreference: "official" | "connected_columns";
+  bracketFormat: ReturnType<typeof bracketFormatForChampionshipSeriesStyle>;
+  championshipSeriesStyle: ChampionshipSeriesStyle;
+  teams: string[];
+  rounds: BracketRound[];
+  games: BracketSpec["games"];
+  flyer: BracketSpec["flyer"];
+  ingestionWarnings: string[];
+  setupWizardCompleted: boolean;
+  classicDoubleElimLayoutLocked: boolean;
+} {
   const template = getOfficialTemplate(templateId);
   if (!template) {
     throw new Error(`Unknown official template: ${templateId}`);
   }
   const style = championshipSeriesStyle ?? template.defaultChampionshipSeriesStyle;
   return {
+    version: 1,
     governingBody: template.governingBody,
     officialTemplateId: template.id,
     layoutPreference: "official",
@@ -335,6 +350,12 @@ export function specDefaultsFromOfficialTemplate(
     teams: placeholderTeamsForOfficialTemplate(template),
     rounds: [],
     games: [],
+    flyer: {
+      includeSponsors: false,
+      sponsorLayout: "none",
+      sponsorStrip: [],
+    },
+    ingestionWarnings: [],
     setupWizardCompleted: false,
     classicDoubleElimLayoutLocked: false,
   };
