@@ -33,7 +33,7 @@ export type DraftProtection = {
   registeredUserId?: string | null;
   playerName: string;
   guardianEmail?: string | null;
-  protectionType: "HEAD_COACH_CHILD" | "ASSISTANT_COACH_CHILD" | "PAIRING_REQUEST";
+  protectionType: "HEAD_COACH_CHILD" | "ASSISTANT_COACH_CHILD" | "PAIRING_REQUEST" | "RETURNING_PLAYER";
   protectedRound: number;
   isClaimed: boolean;
 };
@@ -57,6 +57,7 @@ export type DraftPlayerPoolItem = {
   fullName: string;
   guardianEmail: string | null;
   guardianPhone: string | null;
+  birthDate: string | null;
   evaluationScore: number | null;
   pitcherRating: number | null;
   catcherRating: number | null;
@@ -104,6 +105,7 @@ export type ActiveTeamOnClock = {
   isProtectedPick: boolean;
   protectedPlayerName?: string;
   protectedPlayerPoolId?: string;
+  protectedPlayerProtectionType?: DraftProtection["protectionType"];
 };
 
 export type DraftSessionState = {

@@ -6,9 +6,16 @@ import { getErrorMessage } from "@/lib/draft/clientError";
 
 type CoachOption = DraftUserRef;
 
+function protectionTypeLabel(type: string): string {
+  if (type === "ASSISTANT_COACH_CHILD") return "Assistant Child";
+  if (type === "RETURNING_PLAYER") return "Returning Player";
+  return "Head Coach Child";
+}
+
 type Props = {
   sessionId: string;
   availableCoaches: CoachOption[];
+  totalRounds: number;
   onClose: () => void;
   onUpdated: () => void;
 };
@@ -16,6 +23,7 @@ type Props = {
 export default function DraftTeamsManageModal({
   sessionId,
   availableCoaches,
+  totalRounds,
   onClose,
   onUpdated,
 }: Props) {
@@ -30,7 +38,9 @@ export default function DraftTeamsManageModal({
   const [addingProtectionTeamId, setAddingProtectionTeamId] = useState<string | null>(null);
   const [newChildName, setNewChildName] = useState("");
   const [newChildRound, setNewChildRound] = useState(1);
-  const [newChildRole, setNewChildRole] = useState<"HEAD_COACH_CHILD" | "ASSISTANT_COACH_CHILD">("HEAD_COACH_CHILD");
+  const [newChildRole, setNewChildRole] = useState<
+    "HEAD_COACH_CHILD" | "ASSISTANT_COACH_CHILD" | "RETURNING_PLAYER"
+  >("HEAD_COACH_CHILD");
 
   const fetchTeams = async () => {
     setLoading(true);
@@ -398,9 +408,12 @@ export default function DraftTeamsManageModal({
                             className="flex items-center justify-between rounded bg-zinc-950 px-2.5 py-1.5 border border-zinc-800 text-xs"
                           >
                             <div className="flex items-center gap-2">
+                              {p.protectionType === "RETURNING_PLAYER" && (
+                                <span title="Returning Player">🏠</span>
+                              )}
                               <span className="font-bold text-emerald-400">{p.playerName}</span>
                               <span className="text-[10px] text-zinc-400">
-                                ({p.protectionType === "ASSISTANT_COACH_CHILD" ? "Assistant Child" : "Head Coach Child"})
+                                ({protectionTypeLabel(p.protectionType)})
                               </span>
                               {p.isClaimed && (
                                 <span className="rounded bg-emerald-500/20 px-1.5 py-0.2 text-[9px] font-bold text-emerald-300">
@@ -455,11 +468,19 @@ export default function DraftTeamsManageModal({
                         </select>
                         <select
                           value={newChildRole}
-                          onChange={(e) => setNewChildRole(e.target.value as typeof newChildRole)}
+                          onChange={(e) => {
+                            const role = e.target.value as typeof newChildRole;
+                            setNewChildRole(role);
+                            // Returning players default to the last round — the
+                            // whole point is they're placed after live drafting,
+                            // not competing for an early pick.
+                            if (role === "RETURNING_PLAYER") setNewChildRound(totalRounds);
+                          }}
                           className="rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-xs text-white"
                         >
                           <option value="HEAD_COACH_CHILD">Head Coach Child</option>
                           <option value="ASSISTANT_COACH_CHILD">Assistant Child</option>
+                          <option value="RETURNING_PLAYER">Returning Player</option>
                         </select>
                         <div className="flex items-center gap-1">
                           <span className="text-[10px] text-zinc-400">Rd:</span>

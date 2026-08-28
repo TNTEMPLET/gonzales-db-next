@@ -2513,6 +2513,7 @@ enum DraftProtectionType {
   HEAD_COACH_CHILD
   ASSISTANT_COACH_CHILD
   PAIRING_REQUEST
+  RETURNING_PLAYER
 }
 
 model DraftSession {

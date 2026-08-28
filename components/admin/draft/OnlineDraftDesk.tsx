@@ -564,6 +564,9 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
         <DraftTeamsManageModal
           sessionId={managingTeamsSessionId}
           availableCoaches={availableCoaches}
+          totalRounds={
+            sessions.find((s) => s.id === managingTeamsSessionId)?.totalRounds || 12
+          }
           onClose={() => setManagingTeamsSessionId(null)}
           onUpdated={fetchSessions}
         />
