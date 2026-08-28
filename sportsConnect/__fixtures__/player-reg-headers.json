@@ -1,0 +1,24 @@
+{
+  "description": "Synthetic SportsConnect-style player registration headers (no PII).",
+  "headers": [
+    "Program Name",
+    "Division Name",
+    "Team Name",
+    "Player First Name",
+    "Player Last Name",
+    "Player Full Name",
+    "User Email",
+    "Account First Name",
+    "Account Last Name",
+    "Player Telephone",
+    "Player Birth Date",
+    "Player Gender",
+    "Order Payment Status",
+    "Order No",
+    "Order Date",
+    "Birth Certificate Upload Status",
+    "Jersey Number",
+    "Jersey Size",
+    "Roster Status"
+  ]
+}
