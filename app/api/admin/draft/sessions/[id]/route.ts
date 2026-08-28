@@ -1,17 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
+import type { Prisma } from "@prisma/client";
 import { getDraftSessionState } from "@/lib/draft/draftEngine";
 import { prisma } from "@/lib/prisma";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import { draftApiError } from "@/lib/draft/apiError";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const state = await getDraftSessionState(id);
     return NextResponse.json(state);
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 404 });
+  } catch (e) {
+    return draftApiError("session.get", e, 404);
   }
 }
 
@@ -19,6 +27,11 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const body = await req.json();
@@ -33,7 +46,7 @@ export async function PATCH(
       currentPickIndex,
     } = body;
 
-    const dataToUpdate: any = {};
+    const dataToUpdate: Prisma.DraftSessionUncheckedUpdateInput = {};
     if (name !== undefined) dataToUpdate.name = name;
     if (status !== undefined) dataToUpdate.status = status;
     if (secondsPerPick !== undefined) dataToUpdate.secondsPerPick = secondsPerPick === null ? null : parseInt(String(secondsPerPick), 10);
@@ -52,8 +65,8 @@ export async function PATCH(
     });
 
     return NextResponse.json({ session: updated });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("session.update", e);
   }
 }
 
@@ -61,6 +74,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
 
@@ -69,7 +87,7 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true, message: "Draft session deleted successfully" });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("session.delete", e);
   }
 }

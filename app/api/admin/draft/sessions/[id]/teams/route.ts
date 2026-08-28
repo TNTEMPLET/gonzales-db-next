@@ -1,10 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import { draftApiError } from "@/lib/draft/apiError";
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const teams = await prisma.draftTeam.findMany({
@@ -18,8 +25,8 @@ export async function GET(
       },
     });
     return NextResponse.json({ teams });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("teams.list", e);
   }
 }
 
@@ -27,6 +34,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const body = await req.json();
@@ -59,8 +71,8 @@ export async function POST(
     });
 
     return NextResponse.json({ team }, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("teams.create", e);
   }
 }
 
@@ -68,6 +80,11 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const body = await req.json();
@@ -75,7 +92,7 @@ export async function PATCH(
     if (body.action === "reorder" && Array.isArray(body.teamOrders)) {
       // [{ teamId, draftOrder }]
       await prisma.$transaction(
-        body.teamOrders.map((item: { teamId: string; draftOrder: number }) =>
+        (body.teamOrders as { teamId: string; draftOrder: number }[]).map((item) =>
           prisma.draftTeam.update({
             where: { id: item.teamId, draftSessionId: id },
             data: { draftOrder: item.draftOrder },
@@ -105,8 +122,8 @@ export async function PATCH(
     });
 
     return NextResponse.json({ team: updated });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("teams.update", e);
   }
 }
 
@@ -114,6 +131,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const { searchParams } = new URL(req.url);
@@ -144,7 +166,7 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true, message: "Team deleted successfully" });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("teams.delete", e);
   }
 }

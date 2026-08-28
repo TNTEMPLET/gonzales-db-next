@@ -1,21 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { DraftPlayerPoolItem } from "@/lib/draft/types";
+import { getErrorMessage } from "@/lib/draft/clientError";
 
-type DraftPlayer = {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  fullName: string;
-  guardianEmail: string | null;
-  guardianPhone: string | null;
-  evaluationScore: number | null;
-  pitcherRating: number | null;
-  catcherRating: number | null;
-  notes: string | null;
-  isDrafted: boolean;
-  draftedTeamId: string | null;
-};
+type DraftPlayer = DraftPlayerPoolItem;
 
 type Props = {
   sessionId: string;
@@ -54,8 +43,8 @@ export default function DraftPlayersManageModal({
       if (data.players) {
         setPlayers(data.players);
       }
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -149,8 +138,8 @@ export default function DraftPlayersManageModal({
       resetForm();
       fetchPlayers();
       onUpdated();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     } finally {
       setSaving(false);
     }
@@ -169,8 +158,8 @@ export default function DraftPlayersManageModal({
       }
       fetchPlayers();
       onUpdated();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     }
   };
 
