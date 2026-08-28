@@ -82,6 +82,14 @@ export async function getDraftSessionState(sessionId: string) {
       )
     : undefined;
 
+  const matchingPoolPlayer = protection
+    ? session.playerPool.find(
+        (p) =>
+          !p.isDrafted &&
+          p.fullName.trim().toLowerCase() === protection.playerName.trim().toLowerCase()
+      )
+    : undefined;
+
   const onClock: ActiveTeamOnClock | null =
     activeTeam && session.status !== "COMPLETED" && session.status !== "MATERIALIZED"
       ? {
@@ -93,6 +101,7 @@ export async function getDraftSessionState(sessionId: string) {
           pickInRound,
           isProtectedPick: !!protection,
           protectedPlayerName: protection?.playerName,
+          protectedPlayerPoolId: matchingPoolPlayer?.id,
         }
       : null;
 

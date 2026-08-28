@@ -365,10 +365,26 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                     Head Coach: <span className="font-semibold text-zinc-200">{onClock.headCoachName || "Unassigned"}</span>
                   </div>
 
-                  {onClock.isProtectedPick && (
-                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-xs text-amber-300">
-                      <span>🔒</span>
-                      <span>Coach Child Protection: <strong>{onClock.protectedPlayerName}</strong></span>
+                  {onClock.isProtectedPick ? (
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <div className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-xs text-amber-300">
+                        <span>🔒</span>
+                        <span>Coach Child Protection: <strong>{onClock.protectedPlayerName}</strong></span>
+                      </div>
+                      {onClock.protectedPlayerPoolId && (
+                        <button
+                          onClick={() => handleMakePick(onClock.protectedPlayerPoolId!)}
+                          disabled={session.status !== "LIVE" || submittingPick}
+                          className="rounded-lg bg-amber-500 px-3 py-1 text-xs font-black text-zinc-950 hover:bg-amber-400 shadow transition-all active:scale-95 disabled:opacity-40"
+                        >
+                          {submittingPick ? "Locking..." : `⚡ Auto-Lock ${onClock.protectedPlayerName} ➔`}
+                        </button>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-xs text-emerald-400 font-medium">
+                      <span>⚾</span>
+                      <span>Open Draft Pick (No coach protection in Round {onClock.round})</span>
                     </div>
                   )}
                 </div>
