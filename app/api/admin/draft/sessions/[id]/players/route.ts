@@ -1,10 +1,51 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import { draftApiError } from "@/lib/draft/apiError";
+
+type PlayerPayload = {
+  firstName?: string | null;
+  lastName?: string | null;
+  fullName?: string | null;
+  guardianEmail?: string | null;
+  guardianPhone?: string | null;
+  birthDate?: string | null;
+  evaluationScore?: number | string | null;
+  pitcherRating?: number | string | null;
+  catcherRating?: number | string | null;
+  notes?: string | null;
+};
+
+/** True for any value that should produce a real number, including 0 — only nullish/empty are excluded. */
+function hasNumericValue(v: number | string | null | undefined): v is number | string {
+  return v !== undefined && v !== null && v !== "";
+}
+
+function toPlayerPoolCreateData(draftSessionId: string, p: PlayerPayload) {
+  return {
+    draftSessionId,
+    firstName: p.firstName || null,
+    lastName: p.lastName || null,
+    fullName: p.fullName || `${p.firstName || ""} ${p.lastName || ""}`.trim(),
+    guardianEmail: p.guardianEmail || null,
+    guardianPhone: p.guardianPhone || null,
+    birthDate: p.birthDate ? new Date(p.birthDate) : null,
+    evaluationScore: hasNumericValue(p.evaluationScore) ? parseFloat(String(p.evaluationScore)) : null,
+    pitcherRating: hasNumericValue(p.pitcherRating) ? parseInt(String(p.pitcherRating), 10) : null,
+    catcherRating: hasNumericValue(p.catcherRating) ? parseInt(String(p.catcherRating), 10) : null,
+    notes: p.notes || null,
+  };
+}
 
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const players = await prisma.draftPlayerPool.findMany({
@@ -12,8 +53,8 @@ export async function GET(
       orderBy: [{ evaluationScore: "desc" }, { fullName: "asc" }],
     });
     return NextResponse.json({ players });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("players.list", e);
   }
 }
 
@@ -21,6 +62,11 @@ export async function POST(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const body = await req.json();
@@ -28,60 +74,21 @@ export async function POST(
     if (body.action === "import" && Array.isArray(body.players)) {
       // Batch import
       const created = await prisma.draftPlayerPool.createMany({
-        data: body.players.map((p: any) => ({
-          draftSessionId: id,
-          firstName: p.firstName || null,
-          lastName: p.lastName || null,
-          fullName: p.fullName || `${p.firstName || ""} ${p.lastName || ""}`.trim(),
-          guardianEmail: p.guardianEmail || null,
-          guardianPhone: p.guardianPhone || null,
-          birthDate: p.birthDate ? new Date(p.birthDate) : null,
-          evaluationScore: p.evaluationScore ? parseFloat(String(p.evaluationScore)) : null,
-          pitcherRating: p.pitcherRating ? parseInt(String(p.pitcherRating), 10) : null,
-          catcherRating: p.catcherRating ? parseInt(String(p.catcherRating), 10) : null,
-          notes: p.notes || null,
-        })),
+        data: (body.players as PlayerPayload[]).map((p) => toPlayerPoolCreateData(id, p)),
       });
       return NextResponse.json({ count: created.count }, { status: 201 });
     }
 
-    const {
-      firstName,
-      lastName,
-      fullName,
-      guardianEmail,
-      guardianPhone,
-      birthDate,
-      evaluationScore,
-      pitcherRating,
-      catcherRating,
-      notes,
-    } = body;
-
-    const computedFullName = fullName || `${firstName || ""} ${lastName || ""}`.trim();
-    if (!computedFullName) {
+    const playerData = toPlayerPoolCreateData(id, body as PlayerPayload);
+    if (!playerData.fullName) {
       return NextResponse.json({ error: "Player name is required" }, { status: 400 });
     }
 
-    const player = await prisma.draftPlayerPool.create({
-      data: {
-        draftSessionId: id,
-        firstName: firstName || null,
-        lastName: lastName || null,
-        fullName: computedFullName,
-        guardianEmail: guardianEmail || null,
-        guardianPhone: guardianPhone || null,
-        birthDate: birthDate ? new Date(birthDate) : null,
-        evaluationScore: evaluationScore !== undefined && evaluationScore !== null && evaluationScore !== "" ? parseFloat(String(evaluationScore)) : null,
-        pitcherRating: pitcherRating ? parseInt(String(pitcherRating), 10) : null,
-        catcherRating: catcherRating ? parseInt(String(catcherRating), 10) : null,
-        notes: notes || null,
-      },
-    });
+    const player = await prisma.draftPlayerPool.create({ data: playerData });
 
     return NextResponse.json({ player }, { status: 201 });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("players.create", e);
   }
 }
 
@@ -89,6 +96,11 @@ export async function PATCH(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const body = await req.json();
@@ -133,8 +145,8 @@ export async function PATCH(
     });
 
     return NextResponse.json({ player: updated });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("players.update", e);
   }
 }
 
@@ -142,6 +154,11 @@ export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const { id } = await params;
     const { searchParams } = new URL(req.url);
@@ -171,7 +188,7 @@ export async function DELETE(
     });
 
     return NextResponse.json({ success: true, message: "Player removed from draft pool" });
-  } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+  } catch (e) {
+    return draftApiError("players.delete", e);
   }
 }

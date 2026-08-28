@@ -1,32 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import CoachPairingDesk, { CoachPairing } from "./CoachPairingDesk";
+import CoachPairingDesk from "./CoachPairingDesk";
 import LiveDraftRoom from "./LiveDraftRoom";
 import DraftSessionEditModal from "./DraftSessionEditModal";
 import DraftTeamsManageModal from "./DraftTeamsManageModal";
 import DraftPlayersManageModal from "./DraftPlayersManageModal";
 import type { ContentOrgId } from "@/lib/siteConfig";
+import type { CoachPairing, DraftLeaderOption, DraftSessionListItem, DraftUserRef } from "@/lib/draft/types";
+import type { CoachPlayerMatchCandidate } from "@/lib/draft/coachPlayerMatcher";
+import { getErrorMessage } from "@/lib/draft/clientError";
 
-type DraftSessionItem = {
-  id: string;
-  name: string;
-  ageGroup: string;
-  seasonYear: number;
-  status: string;
-  draftType: string;
-  secondsPerPick: number | null;
-  totalRounds: number;
-  draftLeaderUserId?: string | null;
-  draftLeader?: { id: string; name: string | null; email: string } | null;
-  _count: { playerPool: number; picks: number };
-  teams: {
-    id: string;
-    teamName: string;
-    draftOrder: number;
-    headCoach?: { name: string | null } | null;
-  }[];
-};
+type DraftSessionItem = DraftSessionListItem;
 
 type Props = {
   targetOrg: ContentOrgId;
@@ -52,11 +37,9 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
   const [registeredPlayerCount, setRegisteredPlayerCount] = useState(0);
 
   const [pairings, setPairings] = useState<CoachPairing[]>([]);
-  const [availableCoaches, setAvailableCoaches] = useState<{ id: string; name: string | null; email: string }[]>([]);
-  const [availableDraftLeaders, setAvailableDraftLeaders] = useState<
-    { id: string; name: string | null; email: string; isBoardMember?: boolean; isCoach?: boolean }[]
-  >([]);
-  const [suggestedMatches, setSuggestedMatches] = useState<any[]>([]);
+  const [availableCoaches, setAvailableCoaches] = useState<DraftUserRef[]>([]);
+  const [availableDraftLeaders, setAvailableDraftLeaders] = useState<DraftLeaderOption[]>([]);
+  const [suggestedMatches, setSuggestedMatches] = useState<CoachPlayerMatchCandidate[]>([]);
   const [contextLoading, setContextLoading] = useState(false);
 
   // Modals for CRUD
@@ -153,8 +136,8 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
       await fetchSessions();
       setSelectedSessionId(data.session.id);
       setViewMode("ROOM");
-    } catch (e: any) {
-      alert(`Error creating session: ${e.message}`);
+    } catch (e) {
+      alert(`Error creating session: ${getErrorMessage(e)}`);
     }
   };
 
@@ -175,8 +158,8 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
         setSelectedSessionId(null);
         setViewMode("LIST");
       }
-    } catch (e: any) {
-      alert(`Error deleting session: ${e.message}`);
+    } catch (e) {
+      alert(`Error deleting session: ${getErrorMessage(e)}`);
     }
   };
 
@@ -194,8 +177,8 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
       }
       fetchSessions();
       alert("Draft board reset successfully!");
-    } catch (e: any) {
-      alert(`Error resetting draft: ${e.message}`);
+    } catch (e) {
+      alert(`Error resetting draft: ${getErrorMessage(e)}`);
     }
   };
 
@@ -425,7 +408,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                 <label className="block text-xs font-medium text-zinc-300 mb-1">Draft Format</label>
                 <select
                   value={draftType}
-                  onChange={(e) => setDraftType(e.target.value as any)}
+                  onChange={(e) => setDraftType(e.target.value as "SNAKE" | "LINEAR")}
                   className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-white focus:border-emerald-500"
                 >
                   <option value="SNAKE">Snake Draft (1..N, N..1, 1..N)</option>

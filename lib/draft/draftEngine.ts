@@ -1,16 +1,8 @@
 import { prisma } from "@/lib/prisma";
 import { DraftType } from "@prisma/client";
+import type { ActiveTeamOnClock } from "@/lib/draft/types";
 
-export type ActiveTeamOnClock = {
-  teamId: string;
-  teamName: string;
-  headCoachName: string | null;
-  round: number;
-  overallPick: number;
-  pickInRound: number;
-  isProtectedPick: boolean;
-  protectedPlayerName?: string;
-};
+export type { ActiveTeamOnClock };
 
 /**
  * Calculates which team is on the clock for a given pick index in a draft session.

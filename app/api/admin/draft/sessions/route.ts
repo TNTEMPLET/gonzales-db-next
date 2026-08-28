@@ -1,9 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { DraftProtectionType, DraftType } from "@prisma/client";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { detectCoachPlayerMatches } from "@/lib/draft/coachPlayerMatcher";
+import { draftApiError } from "@/lib/draft/apiError";
+import type { CoachPairing, DraftLeaderOption } from "@/lib/draft/types";
 
 export async function GET(req: NextRequest) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   const { searchParams } = new URL(req.url);
   const organizationId = searchParams.get("org") || "fallball";
   const seasonYearParam = searchParams.get("seasonYear");
@@ -69,7 +77,7 @@ export async function GET(req: NextRequest) {
           assignedTeam: c.orgProfiles[0]?.assignedTeam || null,
         }));
 
-      const availableDraftLeaders = allUsers.map((u) => ({
+      const availableDraftLeaders: DraftLeaderOption[] = allUsers.map((u) => ({
         id: u.id,
         name: u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email,
         email: u.email,
@@ -77,7 +85,7 @@ export async function GET(req: NextRequest) {
       }));
 
       const ageGroupToQuery = selectedAgeGroup || ageGroups[0] || "";
-      let suggestedMatches: any[] = [];
+      let suggestedMatches: Awaited<ReturnType<typeof detectCoachPlayerMatches>> = [];
       let registeredPlayerCount = 0;
 
       if (ageGroupToQuery) {
@@ -105,8 +113,8 @@ export async function GET(req: NextRequest) {
         suggestedMatches,
         registeredPlayerCount,
       });
-    } catch (e: any) {
-      return NextResponse.json({ error: e.message }, { status: 500 });
+    } catch (e) {
+      return draftApiError("sessions.context", e);
     }
   }
 
@@ -135,6 +143,11 @@ export async function GET(req: NextRequest) {
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await ensureAdminModule(req, "DRAFT");
+  if (!auth.ok) {
+    return NextResponse.json({ error: auth.message }, { status: auth.status });
+  }
+
   try {
     const body = await req.json();
     const {
@@ -147,10 +160,22 @@ export async function POST(req: NextRequest) {
       totalRounds = 12,
       draftLeaderUserId = null,
       teamNames = [],
-      coaches = [],
       pairings = [],
       seedFromRegisteredPlayers = true,
       players = [],
+    }: {
+      organizationId: string;
+      seasonYear: number | string;
+      ageGroup: string;
+      name: string;
+      draftType?: string;
+      secondsPerPick?: number | string;
+      totalRounds?: number | string;
+      draftLeaderUserId?: string | null;
+      teamNames?: string[];
+      pairings?: CoachPairing[];
+      seedFromRegisteredPlayers?: boolean;
+      players?: Record<string, unknown>[];
     } = body;
 
     if (!organizationId || !ageGroup || !name) {
@@ -178,77 +203,69 @@ export async function POST(req: NextRequest) {
         },
       });
 
-      // 2. Create Draft Teams and assign coaches
-      const createdTeams = [];
+      // 2. Create Draft Teams and assign coaches. A team can have both a
+      // head coach and an assistant coach pairing, each with their own
+      // protected pick, so collect every pairing assigned to a team rather
+      // than just the first match.
+      type CreatedTeam = Awaited<ReturnType<typeof tx.draftTeam.create>>;
+      const createdTeams: { team: CreatedTeam; pairings: CoachPairing[] }[] = [];
       for (let i = 0; i < teamNames.length; i++) {
         const teamName = teamNames[i];
-        
-        // Find matching pairing for this team
-        const teamPairing =
-          pairings.find(
-            (p: any) =>
-              p.assignedTeamName === teamName ||
-              p.teamIndex === i ||
-              (!p.assignedTeamName && p.teamIndex === undefined && pairings.indexOf(p) === i)
-          ) || coaches[i] || {};
+        const teamPairings = pairings.filter((p) => p.assignedTeamName === teamName);
 
-        const headCoachId =
-          teamPairing.role === "HEAD_COACH" || !teamPairing.role
-            ? teamPairing.coachUserId || teamPairing.headCoachUserId || null
-            : null;
-        const assistantId =
-          teamPairing.role === "ASSISTANT_COACH"
-            ? teamPairing.coachUserId || teamPairing.assistantUserId || null
-            : teamPairing.assistantUserId || null;
+        const headPairing = teamPairings.find((p) => p.role === "HEAD_COACH" || !p.role);
+        const assistantPairing = teamPairings.find((p) => p.role === "ASSISTANT_COACH");
 
         const team = await tx.draftTeam.create({
           data: {
             draftSessionId: newSession.id,
             teamName,
             draftOrder: i + 1,
-            headCoachUserId: headCoachId,
-            assistantUserId: assistantId,
+            headCoachUserId: headPairing?.coachUserId || null,
+            assistantUserId: assistantPairing?.coachUserId || null,
           },
         });
-        createdTeams.push({ team, pairing: teamPairing });
+        createdTeams.push({ team, pairings: teamPairings });
       }
 
-      // 3. Create Coach Protections
-      for (const { team, pairing } of createdTeams) {
-        if (pairing && pairing.playerName) {
-          await tx.coachPlayerProtection.create({
-            data: {
-              draftSessionId: newSession.id,
-              draftTeamId: team.id,
-              registeredUserId: pairing.coachUserId || pairing.headCoachUserId || null,
-              playerName: pairing.playerName,
-              guardianEmail: pairing.guardianEmail || null,
-              protectionType:
-                pairing.role === "ASSISTANT_COACH"
-                  ? DraftProtectionType.ASSISTANT_COACH_CHILD
-                  : DraftProtectionType.HEAD_COACH_CHILD,
-              protectedRound: pairing.protectedRound ? parseInt(String(pairing.protectedRound), 10) : 1,
-              isClaimed: false,
-            },
-          });
+      // 3. Create Coach Protections — one per pairing, not one per team
+      for (const { team, pairings: teamPairings } of createdTeams) {
+        for (const pairing of teamPairings) {
+          if (pairing.playerName) {
+            await tx.coachPlayerProtection.create({
+              data: {
+                draftSessionId: newSession.id,
+                draftTeamId: team.id,
+                registeredUserId: pairing.coachUserId || null,
+                playerName: pairing.playerName,
+                guardianEmail: pairing.guardianEmail || null,
+                protectionType:
+                  pairing.role === "ASSISTANT_COACH"
+                    ? DraftProtectionType.ASSISTANT_COACH_CHILD
+                    : DraftProtectionType.HEAD_COACH_CHILD,
+                protectedRound: pairing.protectedRound ? parseInt(String(pairing.protectedRound), 10) : 1,
+                isClaimed: false,
+              },
+            });
+          }
         }
       }
 
       // 4. Populate Player Pool
       if (players && players.length > 0) {
         await tx.draftPlayerPool.createMany({
-          data: players.map((p: any) => ({
+          data: players.map((p) => ({
             draftSessionId: newSession.id,
-            firstName: p.firstName || null,
-            lastName: p.lastName || null,
-            fullName: p.fullName || `${p.firstName || ""} ${p.lastName || ""}`.trim(),
-            guardianEmail: p.guardianEmail || null,
-            guardianPhone: p.guardianPhone || null,
-            birthDate: p.birthDate ? new Date(p.birthDate) : null,
+            firstName: (p.firstName as string) || null,
+            lastName: (p.lastName as string) || null,
+            fullName: (p.fullName as string) || `${p.firstName || ""} ${p.lastName || ""}`.trim(),
+            guardianEmail: (p.guardianEmail as string) || null,
+            guardianPhone: (p.guardianPhone as string) || null,
+            birthDate: p.birthDate ? new Date(p.birthDate as string) : null,
             evaluationScore: p.evaluationScore ? parseFloat(String(p.evaluationScore)) : null,
             pitcherRating: p.pitcherRating ? parseInt(String(p.pitcherRating), 10) : null,
             catcherRating: p.catcherRating ? parseInt(String(p.catcherRating), 10) : null,
-            notes: p.notes || null,
+            notes: (p.notes as string) || null,
           })),
         });
       } else if (seedFromRegisteredPlayers) {
@@ -290,8 +307,7 @@ export async function POST(req: NextRequest) {
     });
 
     return NextResponse.json({ session }, { status: 201 });
-  } catch (error: any) {
-    console.error("Failed to create draft session:", error);
-    return NextResponse.json({ error: error.message || "Internal server error" }, { status: 500 });
+  } catch (e) {
+    return draftApiError("sessions.create", e);
   }
 }

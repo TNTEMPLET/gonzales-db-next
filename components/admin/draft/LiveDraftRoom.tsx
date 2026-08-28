@@ -1,76 +1,10 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useRef } from "react";
 import DraftSessionEditModal from "./DraftSessionEditModal";
 import DraftPlayersManageModal from "./DraftPlayersManageModal";
-
-type DraftPick = {
-  id: string;
-  round: number;
-  overallPick: number;
-  draftTeamId: string;
-  playerPoolId: string;
-  isProtectedPick: boolean;
-  pickedAt: string;
-  pickedByAdminId?: string | null;
-};
-
-type DraftPlayerPoolItem = {
-  id: string;
-  firstName: string | null;
-  lastName: string | null;
-  fullName: string;
-  guardianEmail: string | null;
-  guardianPhone: string | null;
-  evaluationScore: number | null;
-  pitcherRating: number | null;
-  catcherRating: number | null;
-  notes: string | null;
-  isDrafted: boolean;
-  draftedTeamId: string | null;
-};
-
-type DraftTeam = {
-  id: string;
-  teamName: string;
-  draftOrder: number;
-  headCoach?: { id: string; name: string | null; email: string } | null;
-  assistantCoach?: { id: string; name: string | null; email: string } | null;
-  picks: DraftPick[];
-  protections?: { id: string; playerName: string; protectedRound: number; isClaimed: boolean }[];
-};
-
-type DraftSessionState = {
-  session: {
-    id: string;
-    organizationId: string;
-    seasonYear: number;
-    name: string;
-    ageGroup: string;
-    draftType: "SNAKE" | "LINEAR";
-    status: "SETUP" | "PAIRED" | "LIVE" | "PAUSED" | "COMPLETED" | "MATERIALIZED";
-    secondsPerPick: number | null;
-    totalRounds: number;
-    currentRound: number;
-    currentPickIndex: number;
-    draftLeaderUserId?: string | null;
-    draftLeader?: { id: string; name: string | null; email: string } | null;
-    teams: DraftTeam[];
-    playerPool: DraftPlayerPoolItem[];
-    picks: DraftPick[];
-    protections: { id: string; draftTeamId: string; playerName: string; protectedRound: number; isClaimed: boolean }[];
-  };
-  onClock: {
-    teamId: string;
-    teamName: string;
-    headCoachName: string | null;
-    round: number;
-    overallPick: number;
-    pickInRound: number;
-    isProtectedPick: boolean;
-    protectedPlayerName?: string;
-  } | null;
-};
+import type { DraftLeaderOption, DraftSessionState } from "@/lib/draft/types";
+import { getErrorMessage } from "@/lib/draft/clientError";
 
 type Props = {
   sessionId: string;
@@ -96,21 +30,26 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPlayersModal, setShowPlayersModal] = useState(false);
   const [showRostersDrawer, setShowRostersDrawer] = useState(false);
-  const [availableDraftLeaders, setAvailableDraftLeaders] = useState<any[]>([]);
+  const [availableDraftLeaders, setAvailableDraftLeaders] = useState<DraftLeaderOption[]>([]);
+
+  // Tracks the last-seen pick index so the shot clock only resets when the
+  // pick actually advances, not on every 5s state poll.
+  const lastPickIndexRef = useRef<number | undefined>(undefined);
 
   // Fetch Session State
   const fetchState = async () => {
     try {
       const res = await fetch(`/api/admin/draft/sessions/${sessionId}`);
       if (!res.ok) throw new Error("Failed to load draft session");
-      const json = await res.json();
+      const json: DraftSessionState = await res.json();
       setData(json);
 
-      if (json.session.secondsPerPick) {
+      if (json.session.secondsPerPick && json.session.currentPickIndex !== lastPickIndexRef.current) {
+        lastPickIndexRef.current = json.session.currentPickIndex;
         setTimeLeft(json.session.secondsPerPick);
       }
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -136,12 +75,12 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
 
   // Timer Countdown
   useEffect(() => {
-    if (!data || data.session.status !== "LIVE" || timeLeft <= 0) return;
+    if (!data || data.session.status !== "LIVE") return;
     const timer = setInterval(() => {
       setTimeLeft((prev) => Math.max(0, prev - 1));
     }, 1000);
     return () => clearInterval(timer);
-  }, [data?.session.status, timeLeft]);
+  }, [data?.session.status]);
 
   const handleMakePick = async (playerPoolId: string) => {
     if (submittingPick) return;
@@ -159,8 +98,8 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
       } else {
         await fetchState();
       }
-    } catch (e: any) {
-      alert(`Error submitting pick: ${e.message}`);
+    } catch (e) {
+      alert(`Error submitting pick: ${getErrorMessage(e)}`);
     } finally {
       setSubmittingPick(false);
     }
@@ -179,8 +118,8 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
       } else {
         await fetchState();
       }
-    } catch (e: any) {
-      alert(`Error undoing pick: ${e.message}`);
+    } catch (e) {
+      alert(`Error undoing pick: ${getErrorMessage(e)}`);
     }
   };
 
@@ -196,8 +135,8 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
       } else {
         await fetchState();
       }
-    } catch (e: any) {
-      alert(`Error resetting draft: ${e.message}`);
+    } catch (e) {
+      alert(`Error resetting draft: ${getErrorMessage(e)}`);
     }
   };
 
@@ -211,8 +150,8 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
         body: JSON.stringify({ status: nextStatus }),
       });
       fetchState();
-    } catch (e: any) {
-      alert(`Failed to update status: ${e.message}`);
+    } catch (e) {
+      alert(`Failed to update status: ${getErrorMessage(e)}`);
     }
   };
 
@@ -228,8 +167,8 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
       } else {
         if (onMaterializeComplete) onMaterializeComplete();
       }
-    } catch (e: any) {
-      alert(`Error: ${e.message}`);
+    } catch (e) {
+      alert(`Error: ${getErrorMessage(e)}`);
     }
   };
 
@@ -690,7 +629,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
 
             <select
               value={positionFilter}
-              onChange={(e) => setPositionFilter(e.target.value as any)}
+              onChange={(e) => setPositionFilter(e.target.value as typeof positionFilter)}
               className="rounded-lg bg-zinc-950 border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300"
             >
               <option value="ALL">All Positions</option>
@@ -701,7 +640,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
 
             <select
               value={sortBy}
-              onChange={(e) => setSortBy(e.target.value as any)}
+              onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
               className="rounded-lg bg-zinc-950 border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300"
             >
               <option value="EVAL_DESC">Sort: Eval (High to Low)</option>

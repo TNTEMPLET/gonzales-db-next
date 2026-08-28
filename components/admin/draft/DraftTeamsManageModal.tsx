@@ -1,23 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { DraftTeam, DraftUserRef } from "@/lib/draft/types";
+import { getErrorMessage } from "@/lib/draft/clientError";
 
-type CoachOption = {
-  id: string;
-  name: string | null;
-  email: string;
-};
-
-type DraftTeam = {
-  id: string;
-  teamName: string;
-  draftOrder: number;
-  headCoachUserId?: string | null;
-  assistantUserId?: string | null;
-  headCoach?: { id: string; name: string | null; email: string } | null;
-  assistantCoach?: { id: string; name: string | null; email: string } | null;
-  picks?: any[];
-};
+type CoachOption = DraftUserRef;
 
 type Props = {
   sessionId: string;
@@ -46,8 +33,8 @@ export default function DraftTeamsManageModal({
       if (data.teams) {
         setTeams(data.teams);
       }
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     } finally {
       setLoading(false);
     }
@@ -74,8 +61,8 @@ export default function DraftTeamsManageModal({
       setNewTeamName("");
       fetchTeams();
       onUpdated();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     } finally {
       setAddingTeam(false);
     }
@@ -83,7 +70,7 @@ export default function DraftTeamsManageModal({
 
   const handleUpdateCoach = async (teamId: string, role: "HEAD" | "ASSISTANT", userId: string) => {
     try {
-      const body: any = { teamId };
+      const body: { teamId: string; headCoachUserId?: string | null; assistantUserId?: string | null } = { teamId };
       if (role === "HEAD") body.headCoachUserId = userId || null;
       if (role === "ASSISTANT") body.assistantUserId = userId || null;
 
@@ -98,8 +85,8 @@ export default function DraftTeamsManageModal({
       }
       fetchTeams();
       onUpdated();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     }
   };
 
@@ -128,8 +115,8 @@ export default function DraftTeamsManageModal({
       }
       fetchTeams();
       onUpdated();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     }
   };
 
@@ -145,8 +132,8 @@ export default function DraftTeamsManageModal({
       }
       fetchTeams();
       onUpdated();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     }
   };
 

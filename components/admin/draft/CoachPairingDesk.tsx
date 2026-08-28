@@ -1,30 +1,16 @@
 "use client";
 
 import { useState } from "react";
+import type { CoachPairing, DraftUserRef } from "@/lib/draft/types";
+import type { CoachPlayerMatchCandidate } from "@/lib/draft/coachPlayerMatcher";
 
-export type CoachPairing = {
-  coachUserId: string;
-  coachName: string;
-  coachEmail: string;
-  playerName: string;
-  guardianEmail: string | null;
-  protectedRound: number;
-  role: "HEAD_COACH" | "ASSISTANT_COACH";
-  assignedTeamName?: string;
-};
+export type { CoachPairing };
 
 type Props = {
   ageGroup: string;
   teamNames: string[];
-  availableCoaches: { id: string; name: string | null; email: string }[];
-  suggestedMatches: {
-    coachUserId: string;
-    coachName: string;
-    coachEmail: string;
-    playerName: string;
-    confidence: "HIGH" | "MEDIUM" | "LOW";
-    matchReason: string;
-  }[];
+  availableCoaches: DraftUserRef[];
+  suggestedMatches: CoachPlayerMatchCandidate[];
   pairings: CoachPairing[];
   onUpdatePairings: (pairings: CoachPairing[]) => void;
 };
@@ -224,7 +210,7 @@ export default function CoachPairingDesk({
             <label className="block text-xs text-slate-400 mb-1">Role</label>
             <select
               value={roleInput}
-              onChange={(e) => setRoleInput(e.target.value as any)}
+              onChange={(e) => setRoleInput(e.target.value as CoachPairing["role"])}
               className="w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-1.5 text-sm text-white"
             >
               <option value="HEAD_COACH">Head Coach</option>

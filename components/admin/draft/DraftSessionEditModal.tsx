@@ -1,14 +1,8 @@
 "use client";
 
 import { useState } from "react";
-
-type DraftLeaderOption = {
-  id: string;
-  name: string | null;
-  email: string;
-  isBoardMember?: boolean;
-  isCoach?: boolean;
-};
+import type { DraftLeaderOption, DraftUserRef } from "@/lib/draft/types";
+import { getErrorMessage } from "@/lib/draft/clientError";
 
 type Props = {
   session: {
@@ -20,7 +14,7 @@ type Props = {
     secondsPerPick: number | null;
     totalRounds: number;
     draftLeaderUserId?: string | null;
-    draftLeader?: { id: string; name: string | null; email: string } | null;
+    draftLeader?: DraftUserRef | null;
   };
   availableDraftLeaders: DraftLeaderOption[];
   onClose: () => void;
@@ -66,8 +60,8 @@ export default function DraftSessionEditModal({
 
       onSaved();
       onClose();
-    } catch (e: any) {
-      setError(e.message);
+    } catch (e) {
+      setError(getErrorMessage(e));
     } finally {
       setSaving(false);
     }
