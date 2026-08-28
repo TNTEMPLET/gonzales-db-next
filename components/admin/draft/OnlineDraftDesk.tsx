@@ -350,7 +350,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                 onClick={() => handleStartCreate("10 year-old")}
                 className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 shadow"
               >
-                + Create First Draft Session (10U)
+                + Create First Draft Session
               </button>
             </div>
           )}
