@@ -91,14 +91,26 @@ export async function PATCH(
 
     if (body.action === "reorder" && Array.isArray(body.teamOrders)) {
       // [{ teamId, draftOrder }]
-      await prisma.$transaction(
-        (body.teamOrders as { teamId: string; draftOrder: number }[]).map((item) =>
+      const orders = body.teamOrders as { teamId: string; draftOrder: number }[];
+
+      // DraftTeam has a @@unique([draftSessionId, draftOrder]) constraint that
+      // Postgres checks per-statement (not deferred), so swapping two teams'
+      // order in one pass collides mid-transaction. Move everyone to unique
+      // negative placeholders first, then to their real final order.
+      await prisma.$transaction([
+        ...orders.map((item, idx) =>
+          prisma.draftTeam.update({
+            where: { id: item.teamId, draftSessionId: id },
+            data: { draftOrder: -(idx + 1) },
+          })
+        ),
+        ...orders.map((item) =>
           prisma.draftTeam.update({
             where: { id: item.teamId, draftSessionId: id },
             data: { draftOrder: item.draftOrder },
           })
-        )
-      );
+        ),
+      ]);
       return NextResponse.json({ success: true });
     }
 
