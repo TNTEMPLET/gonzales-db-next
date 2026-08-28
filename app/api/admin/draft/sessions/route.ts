@@ -5,28 +5,26 @@ import { detectCoachPlayerMatches } from "@/lib/draft/coachPlayerMatcher";
 
 export async function GET(req: NextRequest) {
   const { searchParams } = new URL(req.url);
-  const organizationId = searchParams.get("organizationId") || "gonzales";
-  const seasonYear = searchParams.get("seasonYear")
-    ? parseInt(searchParams.get("seasonYear")!, 10)
-    : 2026;
-  const mode = searchParams.get("mode");
-  const selectedAgeGroup = searchParams.get("ageGroup") || "";
+  const organizationId = searchParams.get("org") || "fallball";
+  const seasonYearParam = searchParams.get("seasonYear");
+  const seasonYear = seasonYearParam ? parseInt(seasonYearParam, 10) : 2026;
+  const isContextRequest = searchParams.get("context") === "true";
+  const selectedAgeGroup = searchParams.get("ageGroup");
 
-  // Support setup context query directly on /api/admin/draft/sessions?mode=setup-context
-  if (mode === "setup-context") {
+  if (isContextRequest) {
     try {
-      const existingTeams = await prisma.team.findMany({
+      const distinctAgeGroups = await prisma.team.findMany({
         where: { organizationId, seasonYear },
         select: { ageGroup: true },
         distinct: ["ageGroup"],
-        orderBy: { ageGroup: "asc" },
       });
 
-      let ageGroups = existingTeams.map((t) => t.ageGroup).filter(Boolean);
+      let ageGroups = distinctAgeGroups.map((d) => d.ageGroup).filter(Boolean);
+
       if (ageGroups.length === 0) {
         ageGroups = [
-          "9 year-old",
           "10 year-old",
+          "9 year-old",
           "11-12 year-olds",
           "13-15 year-olds",
           "15-17 year-olds",
@@ -38,12 +36,12 @@ export async function GET(req: NextRequest) {
         ];
       }
 
-      const coaches = await prisma.registeredUser.findMany({
+      // Fetch registered users for this org (for coach and draft leader assignment)
+      const allUsers = await prisma.registeredUser.findMany({
         where: {
           orgProfiles: {
             some: {
               organizationId,
-              isCoach: true,
             },
           },
         },
@@ -55,18 +53,27 @@ export async function GET(req: NextRequest) {
           lastName: true,
           orgProfiles: {
             where: { organizationId },
-            select: { ageGroup: true, assignedTeam: true },
+            select: { isCoach: true, ageGroup: true, assignedTeam: true },
           },
         },
         orderBy: { name: "asc" },
       });
 
-      const availableCoaches = coaches.map((c) => ({
-        id: c.id,
-        name: c.name || `${c.firstName || ""} ${c.lastName || ""}`.trim() || c.email,
-        email: c.email,
-        ageGroup: c.orgProfiles[0]?.ageGroup || null,
-        assignedTeam: c.orgProfiles[0]?.assignedTeam || null,
+      const availableCoaches = allUsers
+        .filter((u) => u.orgProfiles.some((p) => p.isCoach))
+        .map((c) => ({
+          id: c.id,
+          name: c.name || `${c.firstName || ""} ${c.lastName || ""}`.trim() || c.email,
+          email: c.email,
+          ageGroup: c.orgProfiles[0]?.ageGroup || null,
+          assignedTeam: c.orgProfiles[0]?.assignedTeam || null,
+        }));
+
+      const availableDraftLeaders = allUsers.map((u) => ({
+        id: u.id,
+        name: u.name || `${u.firstName || ""} ${u.lastName || ""}`.trim() || u.email,
+        email: u.email,
+        isCoach: u.orgProfiles.some((p) => p.isCoach),
       }));
 
       const ageGroupToQuery = selectedAgeGroup || ageGroups[0] || "";
@@ -94,6 +101,7 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({
         ageGroups,
         availableCoaches,
+        availableDraftLeaders,
         suggestedMatches,
         registeredPlayerCount,
       });
@@ -105,7 +113,11 @@ export async function GET(req: NextRequest) {
   const sessions = await prisma.draftSession.findMany({
     where: { organizationId, seasonYear },
     include: {
+      draftLeader: {
+        select: { id: true, name: true, email: true },
+      },
       teams: {
+        orderBy: { draftOrder: "asc" },
         include: {
           headCoach: { select: { id: true, name: true, email: true } },
           assistantCoach: { select: { id: true, name: true, email: true } },
@@ -133,6 +145,7 @@ export async function POST(req: NextRequest) {
       draftType = "SNAKE",
       secondsPerPick = 120,
       totalRounds = 12,
+      draftLeaderUserId = null,
       teamNames = [],
       coaches = [],
       pairings = [],
@@ -160,6 +173,7 @@ export async function POST(req: NextRequest) {
           draftType: draftType as DraftType,
           secondsPerPick: parseInt(String(secondsPerPick), 10),
           totalRounds: parseInt(String(totalRounds), 10),
+          draftLeaderUserId: draftLeaderUserId || null,
           status: "SETUP",
         },
       });
@@ -169,7 +183,7 @@ export async function POST(req: NextRequest) {
       for (let i = 0; i < teamNames.length; i++) {
         const teamName = teamNames[i];
         
-        // Find matching pairing for this team (by teamName or by index)
+        // Find matching pairing for this team
         const teamPairing =
           pairings.find(
             (p: any) =>
@@ -232,6 +246,8 @@ export async function POST(req: NextRequest) {
             guardianPhone: p.guardianPhone || null,
             birthDate: p.birthDate ? new Date(p.birthDate) : null,
             evaluationScore: p.evaluationScore ? parseFloat(String(p.evaluationScore)) : null,
+            pitcherRating: p.pitcherRating ? parseInt(String(p.pitcherRating), 10) : null,
+            catcherRating: p.catcherRating ? parseInt(String(p.catcherRating), 10) : null,
             notes: p.notes || null,
           })),
         });

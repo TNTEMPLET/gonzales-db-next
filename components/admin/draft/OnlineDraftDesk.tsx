@@ -3,6 +3,9 @@
 import { useEffect, useState } from "react";
 import CoachPairingDesk, { CoachPairing } from "./CoachPairingDesk";
 import LiveDraftRoom from "./LiveDraftRoom";
+import DraftSessionEditModal from "./DraftSessionEditModal";
+import DraftTeamsManageModal from "./DraftTeamsManageModal";
+import DraftPlayersManageModal from "./DraftPlayersManageModal";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type DraftSessionItem = {
@@ -12,8 +15,17 @@ type DraftSessionItem = {
   seasonYear: number;
   status: string;
   draftType: string;
+  secondsPerPick: number | null;
+  totalRounds: number;
+  draftLeaderUserId?: string | null;
+  draftLeader?: { id: string; name: string | null; email: string } | null;
   _count: { playerPool: number; picks: number };
-  teams: { id: string; teamName: string; headCoach?: { name: string | null } | null }[];
+  teams: {
+    id: string;
+    teamName: string;
+    draftOrder: number;
+    headCoach?: { name: string | null } | null;
+  }[];
 };
 
 type Props = {
@@ -34,14 +46,23 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
   const [draftType, setDraftType] = useState<"SNAKE" | "LINEAR">("SNAKE");
   const [secondsPerPick, setSecondsPerPick] = useState(120);
   const [totalRounds, setTotalRounds] = useState(12);
+  const [draftLeaderUserId, setDraftLeaderUserId] = useState("");
   const [teamNamesInput, setTeamNamesInput] = useState("Yankees\nRed Sox\nDodgers\nCubs");
   const [seedFromRegistered, setSeedFromRegistered] = useState(true);
   const [registeredPlayerCount, setRegisteredPlayerCount] = useState(0);
 
   const [pairings, setPairings] = useState<CoachPairing[]>([]);
   const [availableCoaches, setAvailableCoaches] = useState<{ id: string; name: string | null; email: string }[]>([]);
+  const [availableDraftLeaders, setAvailableDraftLeaders] = useState<
+    { id: string; name: string | null; email: string; isBoardMember?: boolean; isCoach?: boolean }[]
+  >([]);
   const [suggestedMatches, setSuggestedMatches] = useState<any[]>([]);
   const [contextLoading, setContextLoading] = useState(false);
+
+  // Modals for CRUD
+  const [editingSession, setEditingSession] = useState<DraftSessionItem | null>(null);
+  const [managingTeamsSessionId, setManagingTeamsSessionId] = useState<string | null>(null);
+  const [managingPlayersSessionId, setManagingPlayersSessionId] = useState<string | null>(null);
 
   const parsedTeamNames = teamNamesInput
     .split("\n")
@@ -51,43 +72,34 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
   const fetchSessions = async () => {
     setLoading(true);
     try {
-      const res = await fetch(`/api/admin/draft/sessions?organizationId=${targetOrg}&seasonYear=${seasonYear}`);
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(data.sessions || []);
+      const res = await fetch(`/api/admin/draft/sessions?org=${targetOrg}&seasonYear=${seasonYear}`);
+      const data = await res.json();
+      if (data.sessions) {
+        setSessions(data.sessions);
       }
     } catch (e) {
-      console.error("Failed to load draft sessions", e);
+      console.error("Failed to load sessions:", e);
     } finally {
       setLoading(false);
     }
   };
 
-  const fetchSetupContext = async (ageGroup: string) => {
+  const fetchContext = async (ageGroup: string) => {
     setContextLoading(true);
     try {
       const res = await fetch(
-        `/api/admin/draft/sessions?mode=setup-context&organizationId=${targetOrg}&seasonYear=${seasonYear}&ageGroup=${encodeURIComponent(ageGroup)}`
+        `/api/admin/draft/sessions?org=${targetOrg}&seasonYear=${seasonYear}&context=true&ageGroup=${encodeURIComponent(
+          ageGroup
+        )}`
       );
-      if (res.ok) {
-        const data = await res.json();
-        if (data.ageGroups && data.ageGroups.length > 0) {
-          setAgeGroups(data.ageGroups);
-        }
-        setAvailableCoaches(data.availableCoaches || []);
-        setSuggestedMatches(data.suggestedMatches || []);
-        setRegisteredPlayerCount(data.registeredPlayerCount || 0);
-
-        // Adjust default team count based on player count
-        const count = data.registeredPlayerCount || 0;
-        if (count > 0) {
-          const estimatedTeams = Math.max(3, Math.ceil(count / 12));
-          const defaultNames = ["Yankees", "Red Sox", "Dodgers", "Cubs", "Braves", "Astros", "Giants", "Cardinals", "Phillies", "Mets"];
-          setTeamNamesInput(defaultNames.slice(0, estimatedTeams).join("\n"));
-        }
-      }
+      const data = await res.json();
+      if (data.ageGroups) setAgeGroups(data.ageGroups);
+      if (data.availableCoaches) setAvailableCoaches(data.availableCoaches);
+      if (data.availableDraftLeaders) setAvailableDraftLeaders(data.availableDraftLeaders);
+      if (data.suggestedMatches) setSuggestedMatches(data.suggestedMatches);
+      if (data.registeredPlayerCount !== undefined) setRegisteredPlayerCount(data.registeredPlayerCount);
     } catch (e) {
-      console.error("Failed to load setup context", e);
+      console.error("Failed to load draft context:", e);
     } finally {
       setContextLoading(false);
     }
@@ -95,29 +107,25 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
 
   useEffect(() => {
     fetchSessions();
+    fetchContext(selectedAgeGroup);
   }, [targetOrg, seasonYear]);
 
-  useEffect(() => {
-    if (viewMode === "CREATE") {
-      fetchSetupContext(selectedAgeGroup);
-    }
-  }, [viewMode, selectedAgeGroup, targetOrg, seasonYear]);
-
-  const handleStartCreate = (ageGroup: string = "10 year-old") => {
-    setSelectedAgeGroup(ageGroup);
-    setDraftName(`${seasonYear} ${ageGroup} Draft`);
-    setPairings([]);
+  const handleStartCreate = (ageGroup?: string) => {
+    const ag = ageGroup || selectedAgeGroup;
+    setSelectedAgeGroup(ag);
+    setDraftName(`${seasonYear} ${ag} Draft`);
+    fetchContext(ag);
     setViewMode("CREATE");
   };
 
   const handleCreateSession = async () => {
     if (!draftName.trim() || parsedTeamNames.length === 0) {
-      alert("Please enter a draft name and at least one team name.");
+      alert("Please enter draft name and at least one team");
       return;
     }
 
     try {
-      const res = await fetch("/api/admin/draft/sessions", {
+      const res = await fetch(`/api/admin/draft/sessions`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -128,6 +136,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
           draftType,
           secondsPerPick,
           totalRounds,
+          draftLeaderUserId: draftLeaderUserId || null,
           teamNames: parsedTeamNames,
           pairings,
           seedFromRegisteredPlayers: seedFromRegistered,
@@ -135,48 +144,87 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
       });
 
       if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error || "Failed to create draft session");
+        const data = await res.json();
+        alert(`Error: ${data.error || "Failed to create draft session"}`);
+        return;
       }
+
       const data = await res.json();
       await fetchSessions();
       setSelectedSessionId(data.session.id);
       setViewMode("ROOM");
-    } catch (err: any) {
-      alert(err.message);
+    } catch (e: any) {
+      alert(`Error creating session: ${e.message}`);
+    }
+  };
+
+  const handleDeleteSession = async (sessionId: string, sessionName: string) => {
+    if (!confirm(`Are you sure you want to permanently delete draft session: "${sessionName}"?\nAll teams, draft picks, and session records will be deleted.`)) return;
+
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sessionId}`, {
+        method: "DELETE",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(`Failed to delete session: ${data.error}`);
+        return;
+      }
+      fetchSessions();
+      if (selectedSessionId === sessionId) {
+        setSelectedSessionId(null);
+        setViewMode("LIST");
+      }
+    } catch (e: any) {
+      alert(`Error deleting session: ${e.message}`);
+    }
+  };
+
+  const handleResetSession = async (sessionId: string, sessionName: string) => {
+    if (!confirm(`Reset all picks for "${sessionName}"?\nThis clears all picks and returns players to the available pool.`)) return;
+
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sessionId}/reset`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        alert(`Reset failed: ${data.error}`);
+        return;
+      }
+      fetchSessions();
+      alert("Draft board reset successfully!");
+    } catch (e: any) {
+      alert(`Error resetting draft: ${e.message}`);
     }
   };
 
   return (
     <div className="space-y-6">
-      {/* Header Controls */}
-      <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/80 p-4">
+      {/* Top Title & Navigation */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-zinc-800 pb-4">
         <div>
-          <h3 className="text-lg font-bold text-white flex items-center gap-2">
-            🏆 Online Draft Module
-          </h3>
+          <h2 className="text-xl font-black text-white flex items-center gap-2">
+            <span>⚾</span> Online Draft Manager
+          </h2>
           <p className="text-xs text-zinc-400">
-            Manage live snake/linear drafts for {targetOrg} ({seasonYear})
+            Live Snake / Linear drafting, coach-child auto-protection locks, draft leader controls, and real-time board
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           {viewMode !== "LIST" && (
             <button
-              onClick={() => {
-                setViewMode("LIST");
-                setSelectedSessionId(null);
-              }}
-              className="rounded-lg border border-zinc-700 bg-zinc-900 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-800"
+              onClick={() => setViewMode("LIST")}
+              className="rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white"
             >
-              ← Back to Sessions List
+              ← All Drafts
             </button>
           )}
-
           {viewMode === "LIST" && (
             <button
-              onClick={() => handleStartCreate("10 year-old")}
-              className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 shadow-lg"
+              onClick={() => handleStartCreate()}
+              className="rounded-lg bg-emerald-600 px-4 py-2 text-xs font-bold text-white hover:bg-emerald-500 shadow"
             >
               + Create New Draft Session
             </button>
@@ -186,49 +234,125 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
 
       {/* VIEW 1: SESSIONS LIST */}
       {viewMode === "LIST" && (
-        <div>
+        <div className="space-y-4">
           {loading ? (
-            <div className="p-8 text-center text-zinc-500">Loading draft sessions...</div>
+            <div className="rounded-xl border border-zinc-800 p-12 text-center text-zinc-400">
+              Loading draft sessions...
+            </div>
           ) : sessions.length > 0 ? (
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
               {sessions.map((sess) => (
                 <div
                   key={sess.id}
-                  className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-5 space-y-3 hover:border-zinc-700 transition-all"
+                  className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-5 space-y-4 flex flex-col justify-between hover:border-zinc-700 transition-all shadow-lg"
                 >
-                  <div className="flex items-center justify-between">
-                    <span className="rounded bg-emerald-500/10 px-2 py-0.5 text-xs font-bold text-emerald-400 border border-emerald-500/20">
-                      {sess.ageGroup}
-                    </span>
-                    <span
-                      className={`text-xs font-mono px-2 py-0.5 rounded ${
-                        sess.status === "LIVE"
-                          ? "bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 animate-pulse font-bold"
-                          : sess.status === "COMPLETED" || sess.status === "MATERIALIZED"
-                          ? "bg-blue-500/20 text-blue-400 border border-blue-500/30"
-                          : "bg-zinc-800 text-zinc-400"
-                      }`}
+                  <div className="space-y-3">
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-400">
+                          {sess.ageGroup}
+                        </span>
+                        <h4 className="font-bold text-white text-base">{sess.name}</h4>
+                      </div>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          sess.status === "LIVE"
+                            ? "bg-emerald-500/20 text-emerald-400 animate-pulse border border-emerald-500/30"
+                            : sess.status === "COMPLETED" || sess.status === "MATERIALIZED"
+                            ? "bg-indigo-500/20 text-indigo-400"
+                            : "bg-zinc-800 text-zinc-400"
+                        }`}
+                      >
+                        {sess.status}
+                      </span>
+                    </div>
+
+                    {/* Draft Leader Badge */}
+                    <div className="flex items-center gap-1.5 text-xs text-zinc-300 bg-zinc-950/80 rounded-lg p-2 border border-zinc-800/80">
+                      <span className="text-indigo-400 font-bold">🎖️ Leader:</span>
+                      <span className="truncate font-medium">
+                        {sess.draftLeader?.name || sess.draftLeader?.email || "Super Admin"}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-3 gap-2 rounded-lg bg-zinc-950 p-2.5 text-center text-xs border border-zinc-800/60">
+                      <div>
+                        <div className="font-mono font-bold text-white">{sess.teams.length}</div>
+                        <div className="text-[10px] text-zinc-500 uppercase">Teams</div>
+                      </div>
+                      <div>
+                        <div className="font-mono font-bold text-emerald-400">{sess._count.playerPool}</div>
+                        <div className="text-[10px] text-zinc-500 uppercase">Pool</div>
+                      </div>
+                      <div>
+                        <div className="font-mono font-bold text-amber-400">{sess._count.picks}</div>
+                        <div className="text-[10px] text-zinc-500 uppercase">Picks</div>
+                      </div>
+                    </div>
+
+                    {/* Teams summary */}
+                    <div className="flex flex-wrap gap-1">
+                      {sess.teams.map((t) => (
+                        <span
+                          key={t.id}
+                          className="rounded bg-zinc-800/80 px-2 py-0.5 text-[10px] text-zinc-300 font-medium"
+                        >
+                          #{t.draftOrder} {t.teamName}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  {/* Actions Toolbar */}
+                  <div className="space-y-2 border-t border-zinc-800 pt-3">
+                    <button
+                      onClick={() => {
+                        setSelectedSessionId(sess.id);
+                        setViewMode("ROOM");
+                      }}
+                      className="w-full rounded-xl bg-emerald-600 px-3 py-2.5 text-xs font-black text-white hover:bg-emerald-500 shadow-lg transition-all"
                     >
-                      {sess.status}
-                    </span>
-                  </div>
+                      🚀 Enter Draft Room ➔
+                    </button>
 
-                  <div>
-                    <h4 className="text-base font-bold text-white">{sess.name}</h4>
-                    <p className="text-xs text-zinc-400">
-                      {sess.teams.length} Teams · {sess._count.playerPool} Players in Pool · {sess._count.picks} Picks Made
-                    </p>
-                  </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      <button
+                        onClick={() => setEditingSession(sess)}
+                        className="rounded-lg bg-zinc-800 px-2 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white text-center"
+                        title="Edit Session & Leader"
+                      >
+                        ⚙️ Edit
+                      </button>
+                      <button
+                        onClick={() => setManagingTeamsSessionId(sess.id)}
+                        className="rounded-lg bg-zinc-800 px-2 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white text-center"
+                        title="Manage Teams & Draft Order"
+                      >
+                        🛡️ Teams
+                      </button>
+                      <button
+                        onClick={() => setManagingPlayersSessionId(sess.id)}
+                        className="rounded-lg bg-zinc-800 px-2 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white text-center"
+                        title="Manage Draft Player Pool"
+                      >
+                        👥 Pool
+                      </button>
+                      <button
+                        onClick={() => handleResetSession(sess.id, sess.name)}
+                        className="rounded-lg bg-zinc-800 px-2 py-1.5 text-[11px] font-semibold text-amber-400 hover:bg-amber-500/20 text-center"
+                        title="Reset Draft Picks"
+                      >
+                        🔄 Reset
+                      </button>
+                    </div>
 
-                  <button
-                    onClick={() => {
-                      setSelectedSessionId(sess.id);
-                      setViewMode("ROOM");
-                    }}
-                    className="w-full rounded-lg bg-indigo-600 px-3 py-2 text-xs font-bold text-white hover:bg-indigo-500 shadow"
-                  >
-                    Enter Draft Room ➔
-                  </button>
+                    <button
+                      onClick={() => handleDeleteSession(sess.id, sess.name)}
+                      className="w-full text-center text-[10px] text-zinc-500 hover:text-rose-400 py-1 transition-colors"
+                    >
+                      🗑️ Delete Draft Session
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>
@@ -275,6 +399,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                     const group = e.target.value;
                     setSelectedAgeGroup(group);
                     setDraftName(`${seasonYear} ${group} Draft`);
+                    fetchContext(group);
                   }}
                   className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-white focus:border-emerald-500"
                 >
@@ -312,11 +437,47 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                 <label className="block text-xs font-medium text-zinc-300 mb-1">Timer (Seconds / Pick)</label>
                 <input
                   type="number"
-                  min={30}
+                  min={0}
                   max={600}
                   step={15}
                   value={secondsPerPick}
-                  onChange={(e) => setSecondsPerPick(parseInt(e.target.value) || 120)}
+                  onChange={(e) => setSecondsPerPick(parseInt(e.target.value) || 0)}
+                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-white"
+                />
+              </div>
+            </div>
+
+            {/* Draft Leader Assignment & Total Rounds */}
+            <div className="grid gap-4 md:grid-cols-2 pt-2 border-t border-zinc-800/60">
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">
+                  🎖️ Assign Draft Leader (Admin Rights)
+                </label>
+                <select
+                  value={draftLeaderUserId}
+                  onChange={(e) => setDraftLeaderUserId(e.target.value)}
+                  className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-white focus:border-emerald-500"
+                >
+                  <option value="">-- No Draft Leader Assigned (Admin Only) --</option>
+                  {availableDraftLeaders.map((dl) => (
+                    <option key={dl.id} value={dl.id}>
+                      {dl.name || dl.email} {dl.isBoardMember ? "★ (Board Member)" : dl.isCoach ? "(Coach)" : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-zinc-400 mt-1">
+                  Draft Leaders can make picks on behalf of coaches, pause timers, and manage/undo picks on the live board.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-zinc-300 mb-1">Total Draft Rounds</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={30}
+                  value={totalRounds}
+                  onChange={(e) => setTotalRounds(parseInt(e.target.value) || 12)}
                   className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-white"
                 />
               </div>
@@ -332,7 +493,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                   value={teamNamesInput}
                   onChange={(e) => setTeamNamesInput(e.target.value)}
                   className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-xs font-mono text-white focus:border-emerald-500"
-                  placeholder="Yankees&#10;Red Sox&#10;Dodgers&#10;Cubs"
+                  placeholder="Yankees\nRed Sox\nDodgers\nCubs"
                 />
               </div>
 
@@ -388,11 +549,45 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
       {viewMode === "ROOM" && selectedSessionId && (
         <LiveDraftRoom
           sessionId={selectedSessionId}
+          onBack={() => {
+            setViewMode("LIST");
+            fetchSessions();
+          }}
           onMaterializeComplete={() => {
             alert("Teams materialized successfully! Redirecting to Teams Management list.");
             setViewMode("LIST");
             fetchSessions();
           }}
+        />
+      )}
+
+      {/* MODALS */}
+      {editingSession && (
+        <DraftSessionEditModal
+          session={editingSession}
+          availableDraftLeaders={availableDraftLeaders}
+          onClose={() => setEditingSession(null)}
+          onSaved={() => {
+            fetchSessions();
+            setEditingSession(null);
+          }}
+        />
+      )}
+
+      {managingTeamsSessionId && (
+        <DraftTeamsManageModal
+          sessionId={managingTeamsSessionId}
+          availableCoaches={availableCoaches}
+          onClose={() => setManagingTeamsSessionId(null)}
+          onUpdated={fetchSessions}
+        />
+      )}
+
+      {managingPlayersSessionId && (
+        <DraftPlayersManageModal
+          sessionId={managingPlayersSessionId}
+          onClose={() => setManagingPlayersSessionId(null)}
+          onUpdated={fetchSessions}
         />
       )}
     </div>
