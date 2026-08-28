@@ -102,6 +102,7 @@ export async function getDraftSessionState(sessionId: string) {
           isProtectedPick: !!protection,
           protectedPlayerName: protection?.playerName,
           protectedPlayerPoolId: matchingPoolPlayer?.id,
+          protectedPlayerProtectionType: protection?.protectionType,
         }
       : null;
 

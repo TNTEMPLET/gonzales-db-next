@@ -5,6 +5,7 @@ import DraftSessionEditModal from "./DraftSessionEditModal";
 import DraftPlayersManageModal from "./DraftPlayersManageModal";
 import type { DraftLeaderOption, DraftSessionState } from "@/lib/draft/types";
 import { getErrorMessage } from "@/lib/draft/clientError";
+import { computePlayingAge } from "@/lib/draft/playingAge";
 
 type Props = {
   sessionId: string;
@@ -21,7 +22,10 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
   // Search & Filter for Player Pool
   const [searchQuery, setSearchQuery] = useState("");
   const [positionFilter, setPositionFilter] = useState<"ALL" | "PITCHER" | "CATCHER" | "TOP_EVAL">("ALL");
-  const [sortBy, setSortBy] = useState<"EVAL_DESC" | "NAME_ASC" | "PITCHER_DESC" | "CATCHER_DESC">("EVAL_DESC");
+  const [ageFilter, setAgeFilter] = useState<"ALL" | number>("ALL");
+  const [sortBy, setSortBy] = useState<
+    "EVAL_DESC" | "NAME_ASC" | "PITCHER_DESC" | "CATCHER_DESC" | "AGE_ASC" | "AGE_DESC"
+  >("EVAL_DESC");
 
   // Timer State
   const [timeLeft, setTimeLeft] = useState<number>(120);
@@ -175,6 +179,24 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
   const session = data?.session;
   const onClock = data?.onClock;
 
+  const playingAgeOf = (birthDate: string | null) =>
+    session ? computePlayingAge(birthDate, session.seasonYear) : null;
+
+  // Distinct playing ages present in the undrafted pool, youngest first —
+  // drives the age filter dropdown so combined divisions (e.g. 11-12U) can
+  // isolate the younger age group.
+  const availableAges = useMemo(() => {
+    if (!session) return [];
+    const ages = new Set<number>();
+    for (const p of session.playerPool) {
+      if (p.isDrafted) continue;
+      const age = playingAgeOf(p.birthDate);
+      if (age !== null) ages.add(age);
+    }
+    return [...ages].sort((a, b) => a - b);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session]);
+
   // Filter and sort available players
   const availablePlayers = useMemo(() => {
     if (!session) return [];
@@ -187,6 +209,11 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
       list = list.filter((p) => (p.catcherRating || 0) >= 3);
     } else if (positionFilter === "TOP_EVAL") {
       list = list.filter((p) => (p.evaluationScore || 0) >= 80);
+    }
+
+    // Filter by playing age
+    if (ageFilter !== "ALL") {
+      list = list.filter((p) => playingAgeOf(p.birthDate) === ageFilter);
     }
 
     // Filter by search query
@@ -214,9 +241,18 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
       if (sortBy === "CATCHER_DESC") {
         return (b.catcherRating || 0) - (a.catcherRating || 0);
       }
+      if (sortBy === "AGE_ASC" || sortBy === "AGE_DESC") {
+        const ageA = playingAgeOf(a.birthDate);
+        const ageB = playingAgeOf(b.birthDate);
+        // Players with no birthdate on file sort last regardless of direction.
+        if (ageA === null) return 1;
+        if (ageB === null) return -1;
+        return sortBy === "AGE_ASC" ? ageA - ageB : ageB - ageA;
+      }
       return 0;
     });
-  }, [session, positionFilter, searchQuery, sortBy]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session, positionFilter, ageFilter, searchQuery, sortBy]);
 
   if (loading) {
     return (
@@ -368,8 +404,13 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                   {onClock.isProtectedPick ? (
                     <div className="mt-2 flex flex-wrap items-center gap-2">
                       <div className="inline-flex items-center gap-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 px-2.5 py-1 text-xs text-amber-300">
-                        <span>🔒</span>
-                        <span>Coach Child Protection: <strong>{onClock.protectedPlayerName}</strong></span>
+                        <span>{onClock.protectedPlayerProtectionType === "RETURNING_PLAYER" ? "🏠" : "🔒"}</span>
+                        <span>
+                          {onClock.protectedPlayerProtectionType === "RETURNING_PLAYER"
+                            ? "Returning Player"
+                            : "Coach Child Protection"}
+                          : <strong>{onClock.protectedPlayerName}</strong>
+                        </span>
                       </div>
                       {onClock.protectedPlayerPoolId && (
                         <button
@@ -598,9 +639,18 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                         </div>
                         <div className="flex items-center justify-between text-[10px] text-zinc-400 mt-0.5">
                           <span>{player.evaluationScore ? `${player.evaluationScore.toFixed(1)} pts` : ""}</span>
-                          {pick?.isProtectedPick && (
-                            <span className="text-amber-400" title="Coach Protection">🔒</span>
-                          )}
+                          {pick?.isProtectedPick &&
+                            (() => {
+                              const matchedProtection = session.protections.find(
+                                (pr) => pr.draftTeamId === team.id && pr.protectedRound === roundNum
+                              );
+                              const isReturning = matchedProtection?.protectionType === "RETURNING_PLAYER";
+                              return (
+                                <span className="text-amber-400" title={isReturning ? "Returning Player" : "Coach Protection"}>
+                                  {isReturning ? "🏠" : "🔒"}
+                                </span>
+                              );
+                            })()}
                         </div>
                       </div>
                     ) : isCurrentlyOnClock ? (
@@ -655,6 +705,20 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
             </select>
 
             <select
+              value={ageFilter}
+              onChange={(e) => setAgeFilter(e.target.value === "ALL" ? "ALL" : parseInt(e.target.value, 10))}
+              className="rounded-lg bg-zinc-950 border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300"
+              title={`Playing age as of 4/30/${(session?.seasonYear || 0) + 1}`}
+            >
+              <option value="ALL">All Ages</option>
+              {availableAges.map((age) => (
+                <option key={age} value={age}>
+                  Age {age} only
+                </option>
+              ))}
+            </select>
+
+            <select
               value={sortBy}
               onChange={(e) => setSortBy(e.target.value as typeof sortBy)}
               className="rounded-lg bg-zinc-950 border border-zinc-800 px-2.5 py-1.5 text-xs text-zinc-300"
@@ -663,6 +727,8 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
               <option value="NAME_ASC">Sort: Name (A-Z)</option>
               <option value="PITCHER_DESC">Sort: Pitcher Rating</option>
               <option value="CATCHER_DESC">Sort: Catcher Rating</option>
+              <option value="AGE_ASC">Sort: Age (Youngest First)</option>
+              <option value="AGE_DESC">Sort: Age (Oldest First)</option>
             </select>
 
             <button
@@ -680,6 +746,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
             <thead className="sticky top-0 bg-zinc-900 border-b border-zinc-800 text-[11px] uppercase text-zinc-400">
               <tr>
                 <th className="px-4 py-3">Player Name</th>
+                <th className="px-4 py-3 text-center">Age</th>
                 <th className="px-4 py-3 text-center">Eval Score</th>
                 <th className="px-4 py-3 text-center">Pitcher</th>
                 <th className="px-4 py-3 text-center">Catcher</th>
@@ -690,7 +757,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
             <tbody className="divide-y divide-zinc-800/60">
               {availablePlayers.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="p-8 text-center text-zinc-500">
+                  <td colSpan={7} className="p-8 text-center text-zinc-500">
                     No available players match your search / filter criteria.
                   </td>
                 </tr>
@@ -702,6 +769,9 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                       {player.guardianEmail && (
                         <div className="text-[10px] text-zinc-500">{player.guardianEmail}</div>
                       )}
+                    </td>
+                    <td className="px-4 py-3 text-center font-mono text-zinc-300 font-bold text-sm">
+                      {playingAgeOf(player.birthDate) ?? "—"}
                     </td>
                     <td className="px-4 py-3 text-center font-mono text-amber-400 font-bold text-sm">
                       {player.evaluationScore !== null ? player.evaluationScore.toFixed(1) : "—"}

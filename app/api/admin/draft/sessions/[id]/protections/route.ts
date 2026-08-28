@@ -4,6 +4,12 @@ import { DraftProtectionType } from "@prisma/client";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { draftApiError } from "@/lib/draft/apiError";
 
+function parseProtectionType(value: unknown): DraftProtectionType {
+  if (value === "ASSISTANT_COACH_CHILD") return DraftProtectionType.ASSISTANT_COACH_CHILD;
+  if (value === "RETURNING_PLAYER") return DraftProtectionType.RETURNING_PLAYER;
+  return DraftProtectionType.HEAD_COACH_CHILD;
+}
+
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -73,10 +79,7 @@ export async function POST(
         registeredUserId: registeredUserId || null,
         playerName: playerName.trim(),
         guardianEmail: guardianEmail || null,
-        protectionType:
-          protectionType === "ASSISTANT_COACH_CHILD"
-            ? DraftProtectionType.ASSISTANT_COACH_CHILD
-            : DraftProtectionType.HEAD_COACH_CHILD,
+        protectionType: parseProtectionType(protectionType),
         protectedRound: parseInt(String(protectedRound), 10) || 1,
         isClaimed: false,
       },
@@ -113,10 +116,7 @@ export async function PATCH(
         ...(playerName !== undefined && { playerName: playerName.trim() }),
         ...(guardianEmail !== undefined && { guardianEmail: guardianEmail || null }),
         ...(protectionType !== undefined && {
-          protectionType:
-            protectionType === "ASSISTANT_COACH_CHILD"
-              ? DraftProtectionType.ASSISTANT_COACH_CHILD
-              : DraftProtectionType.HEAD_COACH_CHILD,
+          protectionType: parseProtectionType(protectionType),
         }),
         ...(protectedRound !== undefined && {
           protectedRound: parseInt(String(protectedRound), 10) || 1,
