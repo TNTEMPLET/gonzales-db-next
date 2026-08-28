@@ -33,6 +33,7 @@ export type DraftProtection = {
   registeredUserId?: string | null;
   playerName: string;
   guardianEmail?: string | null;
+  protectionType: "HEAD_COACH_CHILD" | "ASSISTANT_COACH_CHILD" | "PAIRING_REQUEST";
   protectedRound: number;
   isClaimed: boolean;
 };
@@ -102,6 +103,7 @@ export type ActiveTeamOnClock = {
   pickInRound: number;
   isProtectedPick: boolean;
   protectedPlayerName?: string;
+  protectedPlayerPoolId?: string;
 };
 
 export type DraftSessionState = {
@@ -135,7 +137,9 @@ export type CoachPairing = {
   coachUserId: string;
   coachName: string;
   coachEmail: string;
-  playerName: string;
+  /** The coach's linked child, if any. Omitted/empty means this coach has no
+   * protected pick — their team's protected round stays open to draft normally. */
+  playerName?: string;
   guardianEmail: string | null;
   protectedRound: number;
   role: "HEAD_COACH" | "ASSISTANT_COACH";
