@@ -37,7 +37,20 @@ describe("importScoresIntoBracket", () => {
   it("imports completed games and advances winners", () => {
     const teams = ["A", "B", "C", "D"];
     const rounds = generateSingleEliminationRoundsFromTeams(teams);
-    const spec = { version: 1 as const, teams, rounds, bracketFormat: "single_elimination" as const };
+    const spec = {
+      version: 1 as const,
+      layoutPreference: "official" as const,
+      teams,
+      rounds,
+      games: [],
+      flyer: {
+        includeSponsors: false,
+        sponsorLayout: "none" as const,
+        sponsorStrip: [],
+      },
+      ingestionWarnings: [],
+      bracketFormat: "single_elimination" as const,
+    };
     const refs: GcBracketMatchRef[] = rounds[0]!.matches.map((m) => ({
       id: m.id,
       home: m.home,

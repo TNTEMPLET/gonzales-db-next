@@ -47,6 +47,7 @@ export type GameChangerCreateGameInput = {
 export type GameChangerCreateGameResult = {
   eventId?: string;
   dryRun: boolean;
+  warnings?: string[];
   requestSummary: Record<string, unknown>;
   responseSummary: Record<string, unknown>;
 };

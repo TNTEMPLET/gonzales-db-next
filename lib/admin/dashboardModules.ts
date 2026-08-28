@@ -66,6 +66,7 @@ const moduleCatalog: Record<
   VOLUNTEERS: { category: "people", sortOrder: 11 },
   ROLE_ASSIGNMENT: { category: "people", sortOrder: 12 },
   TEAMS: { category: "competition", sortOrder: 10 },
+  DRAFT: { category: "competition", sortOrder: 15 },
   SCORES: { category: "competition", sortOrder: 20 },
   ASSIGNR: { category: "competition", sortOrder: 30 },
   REGISTRATION_WINDOWS: { category: "competition", sortOrder: 40 },

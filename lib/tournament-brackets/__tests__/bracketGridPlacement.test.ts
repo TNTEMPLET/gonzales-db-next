@@ -18,7 +18,7 @@ function baseSpec(over: Partial<BracketSpec> = {}): BracketSpec {
     },
     ingestionWarnings: [],
     bracketFormat: "single_elimination",
-    treeLayout: "connected",
+    layoutPreference: "connected_columns",
     ...over,
   };
 }
