@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DraftTeam, DraftUserRef } from "@/lib/draft/types";
+import type { DraftPlayerPoolItem, DraftTeam, DraftUserRef } from "@/lib/draft/types";
 import { getErrorMessage } from "@/lib/draft/clientError";
 
 type CoachOption = DraftUserRef;
@@ -20,6 +20,7 @@ export default function DraftTeamsManageModal({
   onUpdated,
 }: Props) {
   const [teams, setTeams] = useState<DraftTeam[]>([]);
+  const [poolPlayers, setPoolPlayers] = useState<DraftPlayerPoolItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [newTeamName, setNewTeamName] = useState("");
   const [addingTeam, setAddingTeam] = useState(false);
@@ -46,9 +47,31 @@ export default function DraftTeamsManageModal({
     }
   };
 
+  const fetchPoolPlayers = async () => {
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sessionId}/players`);
+      const data = await res.json();
+      if (data.players) {
+        setPoolPlayers(data.players);
+      }
+    } catch (e) {
+      console.error("Failed to load player pool:", e);
+    }
+  };
+
   useEffect(() => {
     fetchTeams();
+    fetchPoolPlayers();
   }, [sessionId]);
+
+  // Players already linked to a protection anywhere in this session, so the
+  // picker only offers players who are still available to link.
+  const protectedPlayerNames = new Set(
+    teams.flatMap((t) => (t.protections || []).map((p) => p.playerName))
+  );
+  const linkablePlayers = poolPlayers.filter(
+    (p) => !p.isDrafted && !protectedPlayerNames.has(p.fullName)
+  );
 
   const handleAddTeam = async () => {
     if (!newTeamName.trim()) return;
@@ -418,13 +441,18 @@ export default function DraftTeamsManageModal({
                     {/* Quick Add Form */}
                     {addingProtectionTeamId === team.id && (
                       <div className="flex flex-wrap items-center gap-2 rounded bg-zinc-950 p-2 border border-emerald-500/40 mt-2">
-                        <input
-                          type="text"
-                          placeholder="Linked player name..."
+                        <select
                           value={newChildName}
                           onChange={(e) => setNewChildName(e.target.value)}
                           className="flex-1 min-w-[150px] rounded bg-zinc-900 border border-zinc-700 px-2 py-1 text-xs text-white"
-                        />
+                        >
+                          <option value="">-- Select player from pool --</option>
+                          {linkablePlayers.map((p) => (
+                            <option key={p.id} value={p.fullName}>
+                              {p.fullName}
+                            </option>
+                          ))}
+                        </select>
                         <select
                           value={newChildRole}
                           onChange={(e) => setNewChildRole(e.target.value as typeof newChildRole)}

@@ -11,6 +11,7 @@ type Props = {
   teamNames: string[];
   availableCoaches: DraftUserRef[];
   suggestedMatches: CoachPlayerMatchCandidate[];
+  registeredPlayers: { id: string; fullName: string }[];
   pairings: CoachPairing[];
   onUpdatePairings: (pairings: CoachPairing[]) => void;
 };
@@ -20,6 +21,7 @@ export default function CoachPairingDesk({
   teamNames,
   availableCoaches,
   suggestedMatches,
+  registeredPlayers,
   pairings,
   onUpdatePairings,
 }: Props) {
@@ -32,6 +34,9 @@ export default function CoachPairingDesk({
   const unassignedCoaches = availableCoaches.filter(
     (c) => !pairings.some((p) => p.coachUserId === c.id)
   );
+
+  const linkedPlayerNames = new Set(pairings.filter((p) => p.playerName).map((p) => p.playerName));
+  const linkablePlayers = registeredPlayers.filter((p) => !linkedPlayerNames.has(p.fullName));
 
   /**
    * Adds a pairing, but if this coach already has a team-only placeholder
@@ -291,13 +296,18 @@ export default function CoachPairingDesk({
 
           <div className="sm:col-span-3">
             <label className="block text-xs text-slate-400 mb-1">Child / Player Name (optional)</label>
-            <input
-              type="text"
-              placeholder="Leave blank if no protected pick"
+            <select
               value={playerNameInput}
               onChange={(e) => setPlayerNameInput(e.target.value)}
               className="w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-1.5 text-sm text-white focus:border-emerald-500"
-            />
+            >
+              <option value="">-- No protected pick --</option>
+              {linkablePlayers.map((p) => (
+                <option key={p.id} value={p.fullName}>
+                  {p.fullName}
+                </option>
+              ))}
+            </select>
           </div>
 
           <div className="sm:col-span-3">
