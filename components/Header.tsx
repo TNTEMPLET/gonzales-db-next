@@ -301,6 +301,7 @@ export default function Header({ brand }: HeaderProps) {
                 ]
               : []),
             ...(allowModule("TEAMS") ||
+            allowModule("DRAFT") ||
             allowModule("SCORES") ||
             allowModule("ASSIGNR") ||
             allowModule("REGISTRATION_WINDOWS")

@@ -1,0 +1,463 @@
+/**
+ * PayPal Transactions API client – stub.
+ *
+ * HOW TO ACTIVATE
+ * ───────────────
+ * 1. Go to https://developer.paypal.com/dashboard/applications/live
+ * 2. Create a new app (or use an existing one).
+ * 3. Copy the Client ID and Secret into .env.local:
+ *
+ *      PAYPAL_CLIENT_ID=<your-client-id>
+ *      PAYPAL_CLIENT_SECRET=<your-client-secret>
+ *      PAYPAL_MODE=live          # or "sandbox" for testing
+ *
+ * 4. In app/api/admin/all-star/payments/paypal-sync/route.ts, uncomment the
+ *    import and the call to syncPayPalTransactionsForCycle().
+ *
+ * MATCHING LOGIC
+ * ──────────────
+ * The sync searches all PayPal transactions within the last 180 days for the
+ * configured account. For each transaction it looks for a player name from the
+ * payment tracker in the transaction's note/memo field (case-insensitive).
+ * When a match is found the payment record is marked paid and the PayPal
+ * metadata (txId, txDate, payerName, note) is stored.
+ *
+ * Transactions that don't match any player name are returned as `unmatched`
+ * so the admin can manually assign them.
+ */
+
+const PAYPAL_API_BASE =
+  process.env.PAYPAL_MODE === "live"
+    ? "https://api-m.paypal.com"
+    : "https://api-m.sandbox.paypal.com";
+
+export async function getAccessToken(): Promise<string> {
+  const clientId = process.env.PAYPAL_CLIENT_ID;
+  const clientSecret = process.env.PAYPAL_CLIENT_SECRET;
+
+  if (!clientId || !clientSecret) {
+    throw new Error(
+      "PAYPAL_CLIENT_ID and PAYPAL_CLIENT_SECRET must be set in .env.local to use the PayPal integration.",
+    );
+  }
+
+  const credentials = Buffer.from(`${clientId}:${clientSecret}`).toString("base64");
+  const res = await fetch(`${PAYPAL_API_BASE}/v1/oauth2/token`, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${credentials}`,
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body: "grant_type=client_credentials",
+  });
+
+  if (!res.ok) {
+    throw new Error(`PayPal token request failed: ${res.status} ${await res.text()}`);
+  }
+
+  const data = (await res.json()) as { access_token: string };
+  return data.access_token;
+}
+
+export type PayPalTransaction = {
+  txId: string;
+  txDate: Date;
+  payerName: string | null;
+  payerEmail: string | null;
+  amountCents: number;
+  note: string | null;
+  itemName: string | null;
+  itemCode: string | null;
+  itemQuantity: number | null;
+  /** Joined checkout option values (e.g. player name + sizes on NCP buttons). */
+  checkoutNote: string | null;
+  status: string;
+};
+
+type PayPalCartItem = {
+  item_name?: string;
+  item_code?: string;
+  item_quantity?: string;
+  checkout_options?: { checkout_option_name?: string; checkout_option_value?: string }[];
+};
+
+/** Join all NCP/cart checkout option values (player name, sizes, etc.). */
+export function joinCheckoutOptions(
+  options: PayPalCartItem["checkout_options"] | undefined,
+): string | null {
+  if (!options?.length) return null;
+  const parts = options
+    .map((o) => (o.checkout_option_value ?? "").trim())
+    .filter(Boolean);
+  if (parts.length === 0) return null;
+  return parts.join(" | ");
+}
+
+/**
+ * Fetch PayPal transactions for the last `daysBack` days.
+ * PayPal caps each request at 31 days, so we paginate through windows.
+ * Returns raw transaction data — matching to players is done by the caller.
+ */
+export async function fetchRecentPayPalTransactions(
+  daysBack = 180,
+): Promise<PayPalTransaction[]> {
+  const token = await getAccessToken();
+
+  const MAX_WINDOW = 31;
+  const allTransactions: PayPalTransaction[] = [];
+
+  const overallEnd = new Date();
+  const overallStart = new Date();
+  overallStart.setDate(overallStart.getDate() - daysBack);
+
+  let windowEnd = new Date(overallEnd);
+
+  while (windowEnd > overallStart) {
+    const windowStart = new Date(windowEnd);
+    windowStart.setDate(windowStart.getDate() - MAX_WINDOW);
+    if (windowStart < overallStart) windowStart.setTime(overallStart.getTime());
+
+    const params = new URLSearchParams({
+      start_date: windowStart.toISOString(),
+      end_date: windowEnd.toISOString(),
+      fields: "all",
+      page_size: "500",
+      page: "1",
+    });
+
+    const res = await fetch(
+      `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`,
+      { headers: { Authorization: `Bearer ${token}` } },
+    );
+
+    if (!res.ok) {
+      throw new Error(`PayPal transactions request failed: ${res.status} ${await res.text()}`);
+    }
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const data = (await res.json()) as { transaction_details?: any[] };
+    const details = data.transaction_details ?? [];
+
+    for (const tx of details) {
+      const info = tx.transaction_info ?? {};
+      const payer = tx.payer_info ?? {};
+      const amountStr: string = info.transaction_amount?.value ?? "0";
+      const amountCents = Math.round(parseFloat(amountStr) * 100);
+      const cartItems: PayPalCartItem[] =
+        (tx.cart_info as { item_details?: PayPalCartItem[] } | undefined)?.item_details ?? [];
+      const itemName = cartItems[0]?.item_name ?? null;
+      const itemCode = cartItems[0]?.item_code ?? null;
+      const itemQuantity = cartItems[0]?.item_quantity
+        ? parseInt(cartItems[0].item_quantity, 10) || null
+        : null;
+      const checkoutNote = joinCheckoutOptions(cartItems[0]?.checkout_options);
+      allTransactions.push({
+        txId: info.transaction_id ?? "",
+        txDate: new Date(info.transaction_initiation_date ?? Date.now()),
+        payerName:
+          payer.payer_name
+            ? `${payer.payer_name.given_name ?? ""} ${payer.payer_name.surname ?? ""}`.trim() || null
+            : null,
+        payerEmail: payer.email_address ?? null,
+        amountCents,
+        note: info.transaction_note ?? info.transaction_subject ?? null,
+        itemName,
+        itemCode,
+        itemQuantity,
+        checkoutNote,
+        status: info.transaction_status ?? "",
+      });
+    }
+
+    windowEnd = new Date(windowStart);
+    windowEnd.setMilliseconds(windowEnd.getMilliseconds() - 1);
+  }
+
+  return allTransactions;
+}
+
+/**
+ * Sync PayPal transactions for a given ballot cycle.
+ *
+ * Matches transactions to payment records by looking for the player's full
+ * name (or last name) in the PayPal note/memo field (case-insensitive).
+ *
+ * Returns counts of matched/unmatched transactions.
+ *
+ * NOTE: This function is not yet wired up. See the route file comments above.
+ */
+export async function syncPayPalTransactionsForCycle(
+  cycleId: string,
+): Promise<{
+  matched: number;
+  alreadyPaid: number;
+  unmatched: PayPalTransaction[];
+}> {
+  // Lazy import to avoid pulling Prisma into edge environments.
+  const { default: prisma } = await import("@/lib/prisma");
+
+  const payments = await prisma.allStarPayment.findMany({
+    where: { ballotCycleId: cycleId, isPaid: false },
+  });
+
+  const transactions = await fetchRecentPayPalTransactions(180);
+
+  // Filter to completed All-Star fee transactions only
+  const allStarTx = transactions.filter((tx) => {
+    if (!["S", "P"].includes(tx.status)) return false;
+    const item = (tx.itemName ?? "").toLowerCase();
+    return item.includes("all star") || item.includes("all-star");
+  });
+
+  let matched = 0;
+  let alreadyPaid = 0;
+  const unmatchedTx: PayPalTransaction[] = [];
+
+  for (const tx of allStarTx) {
+    if (!tx.payerName) {
+      unmatchedTx.push(tx);
+      continue;
+    }
+
+    // Match payer last name against player last name (parents pay for their kids)
+    const payerParts = tx.payerName.trim().split(/\s+/);
+    const payerLast = (payerParts[payerParts.length - 1] ?? "").toLowerCase();
+
+    const scored = payments
+      .filter((p) => !p.isPaid)
+      .map((p) => {
+        const playerParts = p.playerFullName.trim().split(/\s+/);
+        const playerLast = (playerParts[playerParts.length - 1] ?? "").toLowerCase();
+        const score = payerLast.length >= 3 && payerLast === playerLast ? 0.7 : 0;
+        return { ...p, score };
+      })
+      .filter((p) => p.score > 0)
+      .sort((a, b) => b.score - a.score);
+
+    const match = scored[0];
+
+    if (!match) {
+      unmatchedTx.push(tx);
+      continue;
+    }
+
+    if (match.isPaid) {
+      alreadyPaid++;
+      continue;
+    }
+
+    await prisma.allStarPayment.update({
+      where: { id: match.id },
+      data: {
+        isPaid: true,
+        paidAt: tx.txDate,
+        paypalTxId: tx.txId,
+        paypalTxDate: tx.txDate,
+        payerName: tx.payerName,
+        paypalNote: tx.itemName,
+      },
+    });
+    matched++;
+  }
+
+  return { matched, alreadyPaid, unmatched: unmatchedTx };
+}
+
+type PayPalCaptureResource = {
+  id?: string;
+  status?: string;
+  amount?: { value?: string; currency_code?: string };
+  create_time?: string;
+  supplementary_data?: { related_ids?: { order_id?: string } };
+  links?: { href?: string; rel?: string }[];
+};
+
+type PayPalCheckoutOrder = {
+  id?: string;
+  status?: string;
+  create_time?: string;
+  payer?: {
+    email_address?: string;
+    name?: { given_name?: string; surname?: string };
+  };
+  payment_source?: {
+    paypal?: {
+      email_address?: string;
+      name?: { given_name?: string; surname?: string };
+    };
+    venmo?: {
+      email_address?: string;
+      name?: { given_name?: string; surname?: string };
+    };
+  };
+  purchase_units?: Array<{
+    items?: Array<{
+      name?: string;
+      quantity?: string;
+      sku?: string;
+      item_option_selections?: Array<{ name?: string; select?: string }>;
+    }>;
+    payments?: {
+      captures?: Array<{ id?: string; create_time?: string; amount?: { value?: string } }>;
+    };
+  }>;
+};
+
+/**
+ * Instant path: capture id → checkout order (NCP cart + player/size options).
+ * Works while Transaction Search / Reporting is still lagging the Activity feed.
+ */
+export async function fetchTransactionByCaptureId(
+  captureId: string,
+): Promise<PayPalTransaction | null> {
+  const token = await getAccessToken();
+  const capRes = await fetch(`${PAYPAL_API_BASE}/v2/payments/captures/${captureId}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!capRes.ok) return null;
+  const cap = (await capRes.json()) as PayPalCaptureResource;
+  if (!cap.id) return null;
+
+  const orderId =
+    cap.supplementary_data?.related_ids?.order_id ||
+    cap.links?.find((l) => l.rel === "up")?.href?.split("/").pop() ||
+    null;
+
+  let order: PayPalCheckoutOrder | null = null;
+  if (orderId) {
+    const ordRes = await fetch(`${PAYPAL_API_BASE}/v2/checkout/orders/${orderId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (ordRes.ok) {
+      order = (await ordRes.json()) as PayPalCheckoutOrder;
+    }
+  }
+
+  const unit = order?.purchase_units?.[0];
+  const item = unit?.items?.[0];
+  const optionNote =
+    item?.item_option_selections
+      ?.map((o) => (o.select ?? "").trim())
+      .filter(Boolean)
+      .join(" | ") || null;
+
+  const payerBlock =
+    order?.payer ||
+    order?.payment_source?.paypal ||
+    order?.payment_source?.venmo ||
+    null;
+  const given = payerBlock?.name?.given_name ?? "";
+  const surname = payerBlock?.name?.surname ?? "";
+  const payerName = `${given} ${surname}`.trim() || null;
+  const payerEmail =
+    (payerBlock && "email_address" in payerBlock
+      ? (payerBlock as { email_address?: string }).email_address
+      : null) ?? null;
+
+  const amountStr = cap.amount?.value ?? unit?.payments?.captures?.[0]?.amount?.value ?? "0";
+  const status =
+    (cap.status ?? "").toUpperCase() === "COMPLETED"
+      ? "S"
+      : (cap.status ?? order?.status ?? "");
+
+  return {
+    txId: cap.id,
+    txDate: new Date(cap.create_time ?? order?.create_time ?? Date.now()),
+    payerName,
+    payerEmail,
+    amountCents: Math.round(parseFloat(amountStr) * 100),
+    note: optionNote,
+    itemName: item?.name ?? null,
+    itemCode: item?.sku ?? null,
+    itemQuantity: item?.quantity ? parseInt(item.quantity, 10) || null : null,
+    checkoutNote: optionNote,
+    status,
+  };
+}
+
+/**
+ * Fetch a single transaction by ID.
+ * Prefers capture→order (instant for NCP) and falls back to Reporting Search.
+ */
+export async function fetchTransactionById(txId: string): Promise<PayPalTransaction | null> {
+  try {
+    const fromCapture = await fetchTransactionByCaptureId(txId);
+    if (fromCapture?.itemName || fromCapture?.amountCents) {
+      return fromCapture;
+    }
+  } catch {
+    // fall through to Reporting
+  }
+
+  const token = await getAccessToken();
+
+  const now = new Date();
+  const start = new Date(now);
+  start.setDate(start.getDate() - 2);
+
+  const params = new URLSearchParams({
+    transaction_id: txId,
+    start_date: start.toISOString(),
+    end_date: now.toISOString(),
+    fields: "all",
+    page_size: "5",
+    page: "1",
+  });
+
+  const res = await fetch(
+    `${PAYPAL_API_BASE}/v1/reporting/transactions?${params.toString()}`,
+    { headers: { Authorization: `Bearer ${token}` } },
+  );
+
+  if (!res.ok) return null;
+
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const data = (await res.json()) as { transaction_details?: any[] };
+  const tx = data.transaction_details?.[0];
+  if (!tx) return null;
+
+  const info = tx.transaction_info ?? {};
+  const payer = tx.payer_info ?? {};
+  const amountStr: string = info.transaction_amount?.value ?? "0";
+  const cartItems: PayPalCartItem[] =
+    (tx.cart_info as { item_details?: PayPalCartItem[] } | undefined)?.item_details ?? [];
+
+  return {
+    txId: info.transaction_id ?? txId,
+    txDate: new Date(info.transaction_initiation_date ?? Date.now()),
+    payerName: payer.payer_name
+      ? `${payer.payer_name.given_name ?? ""} ${payer.payer_name.surname ?? ""}`.trim() || null
+      : null,
+    payerEmail: payer.email_address ?? null,
+    amountCents: Math.round(parseFloat(amountStr) * 100),
+    note: info.transaction_note ?? info.transaction_subject ?? null,
+    itemName: cartItems[0]?.item_name ?? null,
+    itemCode: cartItems[0]?.item_code ?? null,
+    itemQuantity: cartItems[0]?.item_quantity
+      ? parseInt(cartItems[0].item_quantity, 10) || null
+      : null,
+    checkoutNote: joinCheckoutOptions(cartItems[0]?.checkout_options),
+    status: info.transaction_status ?? "",
+  };
+}
+
+/**
+ * Import one or more capture/sale IDs into the normalized PayPalTransaction shape
+ * (capture→order first). Used by admin manual import when Reporting lags.
+ */
+export async function fetchTransactionsByCaptureIds(
+  captureIds: string[],
+): Promise<PayPalTransaction[]> {
+  const out: PayPalTransaction[] = [];
+  for (const id of captureIds) {
+    const cleaned = id.trim();
+    if (!cleaned) continue;
+    try {
+      const tx = await fetchTransactionById(cleaned);
+      if (tx) out.push(tx);
+    } catch {
+      // skip failed ids
+    }
+  }
+  return out;
+}

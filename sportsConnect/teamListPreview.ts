@@ -1,0 +1,436 @@
+import "server-only";
+
+import prisma from "@/lib/prisma";
+
+import { matchStandardDivisions } from "./fallballCapacity";
+import {
+  parseSportsConnectExportBuffer,
+  SPORTS_CONNECT_INGEST_MAX_ROWS,
+} from "./parseExportBuffer";
+
+/**
+ * Pure parser/preview/apply logic for Team List imports (Age Group + Team
+ * Name, or Sponsor + Head Coach Last Name for non-Fall Ball orgs). Shared by
+ * the legacy single-file "Import Team List" modal
+ * (app/api/admin/teams/team-list-import/route.ts) and the Smart Auto-Build
+ * wizard (app/api/admin/teams/smart-build/*) so both call one implementation
+ * instead of drifting apart — see review-fallball-coaches.md bug #1 for what
+ * happens when a second copy of an import path is missing a check the first
+ * one had.
+ */
+
+export type TeamListImportAction = "CREATE" | "UPDATE" | "SKIP";
+
+export type TeamListImportRow = {
+  rowNumber: number;
+  ageGroup: string;
+  rawAgeGroup: string;
+  teamName: string;
+  sponsor: string | null;
+  headCoachLastName: string | null;
+  action: TeamListImportAction;
+  errors: string[];
+  warnings: string[];
+  existingTeamId: string | null;
+};
+
+export type TeamListPreviewSummary = {
+  total: number;
+  create: number;
+  update: number;
+  skip: number;
+  errors: number;
+  warnings: number;
+};
+
+export type TeamListSource =
+  | { kind: "csvText"; csvText: string }
+  | { kind: "buffer"; buffer: Buffer; fileName: string };
+
+const HEADER_ALIASES = {
+  ageGroup: ["age group", "agegroup", "division", "division name", "program division"],
+  teamName: ["team name", "team", "teamname"],
+  mlbTeam: ["mlb team", "mlb", "mlbteam", "fall ball team"],
+  sponsor: ["sponsor", "sponsor name", "sponsorname"],
+  headCoachLastName: [
+    "head coach last name",
+    "head coach lastname",
+    "coach last name",
+    "head coach",
+    "coach",
+  ],
+} as const;
+
+function normalizeHeader(value: string): string {
+  return value
+    .replace(/^﻿/, "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Parse a Team List source (uploaded/Drive-downloaded buffer, or client-read CSV text) into headers + rows. Handles CSV, XLSX, and native Google Sheets exports uniformly via the shared SportsConnect buffer parser. */
+export function parseTeamListSource(source: TeamListSource): {
+  headers: string[];
+  rows: Array<Record<string, unknown>>;
+} {
+  const buffer =
+    source.kind === "buffer" ? source.buffer : Buffer.from(source.csvText, "utf-8");
+  const fileName = source.kind === "buffer" ? source.fileName : "team-list.csv";
+  const parsed = parseSportsConnectExportBuffer({
+    buffer,
+    fileName,
+    sampleRows: SPORTS_CONNECT_INGEST_MAX_ROWS,
+  });
+  return { headers: parsed.headers, rows: parsed.rows };
+}
+
+function buildNormalizedRow(row: Record<string, unknown>): Map<string, string> {
+  const map = new Map<string, string>();
+  for (const [key, value] of Object.entries(row)) {
+    if (value === undefined || value === null) continue;
+    const text = String(value).trim();
+    if (!text) continue;
+    map.set(normalizeHeader(key), text);
+  }
+  return map;
+}
+
+function valueFor(normalized: Map<string, string>, aliases: readonly string[]): string {
+  for (const alias of aliases) {
+    const value = normalized.get(normalizeHeader(alias));
+    if (value) return value;
+  }
+  return "";
+}
+
+function buildTeamName(sponsor: string, headCoachLastName: string) {
+  const sponsorText = sponsor.trim();
+  const coachText = headCoachLastName.trim();
+  if (sponsorText && coachText) return `${sponsorText} - ${coachText}`;
+  return "";
+}
+
+function rowKey(seasonYear: number, ageGroup: string, teamName: string) {
+  return `${seasonYear} ${ageGroup.trim().toLowerCase()} ${teamName.trim().toLowerCase()}`;
+}
+
+/**
+ * Normalizes a Team List row's Age Group column against the platform's
+ * standard Fall Ball divisions (STANDARD_DIVISIONS) so "10U" / "10 U" /
+ * "10u" across different source files resolve to one team instead of
+ * silently creating duplicates. Scoped to the `fallball` org only —
+ * STANDARD_DIVISIONS/matchStandardDivisions is Fall Ball's own division
+ * vocabulary (lib/sportsConnect/fallballCapacity.ts); applying it to other
+ * orgs' regular-season divisions (which use their own "9U"/"12U"-style
+ * naming already consistent elsewhere in the platform, e.g. TeamPlayer
+ * .allStarAgeBand) would rewrite a correct division name into a Fall
+ * Ball-specific label that doesn't match anything else on the site.
+ */
+export function normalizeTeamListAgeGroup(
+  raw: string,
+  organizationId: string,
+): { ageGroup: string; warning: string | null } {
+  const trimmed = raw.trim();
+  if (!trimmed || organizationId !== "fallball") {
+    return { ageGroup: trimmed, warning: null };
+  }
+  const matches = matchStandardDivisions(trimmed);
+  if (matches.length === 1) {
+    return matches[0] === trimmed
+      ? { ageGroup: matches[0], warning: null }
+      : {
+          ageGroup: matches[0],
+          warning: `Normalized "${trimmed}" to standard Fall Ball division "${matches[0]}".`,
+        };
+  }
+  if (matches.length > 1) {
+    return {
+      ageGroup: trimmed,
+      warning: `"${trimmed}" matches multiple standard Fall Ball divisions (${matches.join(", ")}) — kept as typed; resolve manually.`,
+    };
+  }
+  return {
+    ageGroup: trimmed,
+    warning: `Could not match "${trimmed}" to a standard Fall Ball division — kept as typed.`,
+  };
+}
+
+export function summarizeTeamListRows(rows: TeamListImportRow[]): TeamListPreviewSummary {
+  return rows.reduce(
+    (counts, row) => {
+      counts.total += 1;
+      if (row.action === "CREATE") counts.create += 1;
+      if (row.action === "UPDATE") counts.update += 1;
+      if (row.action === "SKIP") counts.skip += 1;
+      if (row.errors.length > 0) counts.errors += 1;
+      if (row.warnings.length > 0) counts.warnings += 1;
+      return counts;
+    },
+    { total: 0, create: 0, update: 0, skip: 0, errors: 0, warnings: 0 },
+  );
+}
+
+/** Builds preview rows (no writes) for a Team List source, against the target org/season's existing teams. */
+export async function buildTeamListPreviewRows(params: {
+  targetOrg: string;
+  seasonYear: number;
+  source: TeamListSource;
+}): Promise<TeamListImportRow[]> {
+  const { targetOrg, seasonYear, source } = params;
+  const { headers, rows: parsedRows } = parseTeamListSource(source);
+  const rows: TeamListImportRow[] = [];
+
+  const headerSet = new Set(headers.map(normalizeHeader));
+  const hasAgeGroup = HEADER_ALIASES.ageGroup.some((alias) => headerSet.has(normalizeHeader(alias)));
+  const hasTeamName = HEADER_ALIASES.teamName.some((alias) => headerSet.has(normalizeHeader(alias)));
+  const hasMlbTeam = HEADER_ALIASES.mlbTeam.some((alias) => headerSet.has(normalizeHeader(alias)));
+  const hasSponsor = HEADER_ALIASES.sponsor.some((alias) => headerSet.has(normalizeHeader(alias)));
+  const hasCoach = HEADER_ALIASES.headCoachLastName.some((alias) =>
+    headerSet.has(normalizeHeader(alias)),
+  );
+
+  const setupErrors: string[] = [];
+  if (headers.length === 0) setupErrors.push("Header row is required.");
+  if (!hasAgeGroup) setupErrors.push("Missing required Age Group or Division column.");
+  if (!hasTeamName && !hasMlbTeam && !(hasSponsor && hasCoach)) {
+    setupErrors.push("Missing Team Name, MLB Team, or Sponsor + Head Coach Last Name columns.");
+  }
+
+  const existingTeams = await prisma.team.findMany({
+    where: { organizationId: targetOrg, seasonYear },
+    select: { id: true, seasonYear: true, ageGroup: true, teamName: true },
+  });
+  const existingByKey = new Map(
+    existingTeams.map((team) => [rowKey(team.seasonYear, team.ageGroup, team.teamName), team]),
+  );
+  const seenInFile = new Set<string>();
+
+  if (setupErrors.length > 0 && parsedRows.length === 0) {
+    rows.push({
+      rowNumber: 1,
+      ageGroup: "",
+      rawAgeGroup: "",
+      teamName: "",
+      sponsor: null,
+      headCoachLastName: null,
+      action: "SKIP",
+      errors: setupErrors,
+      warnings: [],
+      existingTeamId: null,
+    });
+    return rows;
+  }
+
+  parsedRows.forEach((row, index) => {
+    const errors = [...setupErrors];
+    const warnings: string[] = [];
+    const normalized = buildNormalizedRow(row);
+    const rawAgeGroup = valueFor(normalized, HEADER_ALIASES.ageGroup);
+    const { ageGroup, warning: divisionWarning } = normalizeTeamListAgeGroup(rawAgeGroup, targetOrg);
+    if (divisionWarning) warnings.push(divisionWarning);
+    const teamName = valueFor(normalized, HEADER_ALIASES.teamName);
+    const mlbTeam = valueFor(normalized, HEADER_ALIASES.mlbTeam);
+    const sponsor = valueFor(normalized, HEADER_ALIASES.sponsor);
+    const headCoachLastName = valueFor(normalized, HEADER_ALIASES.headCoachLastName);
+    const resolvedTeamName = teamName || mlbTeam || buildTeamName(sponsor, headCoachLastName);
+
+    if (!ageGroup) errors.push("Age Group/Division is required.");
+    if (!resolvedTeamName) {
+      errors.push(
+        "Team Name or MLB Team is required; non-Fall Ball rows may use Sponsor and Head Coach Last Name instead.",
+      );
+    }
+    if (teamName && mlbTeam) warnings.push("Team Name was used; MLB Team was ignored.");
+    if (!teamName && mlbTeam) warnings.push("Using MLB Team as the team name.");
+    if (!teamName && !mlbTeam && resolvedTeamName) {
+      warnings.push("Team Name was built from Sponsor and Head Coach Last Name.");
+    }
+
+    const key = rowKey(seasonYear, ageGroup, resolvedTeamName);
+    const existing = existingByKey.get(key) || null;
+    if (seenInFile.has(key)) {
+      errors.push("Duplicate team in this file for the same season, age group, and team name.");
+    }
+    if (ageGroup && resolvedTeamName) seenInFile.add(key);
+
+    rows.push({
+      rowNumber: index + 1,
+      ageGroup,
+      rawAgeGroup,
+      teamName: resolvedTeamName,
+      sponsor: sponsor || null,
+      headCoachLastName: headCoachLastName || null,
+      action: errors.length > 0 ? "SKIP" : existing ? "UPDATE" : "CREATE",
+      errors,
+      warnings,
+      existingTeamId: existing?.id || null,
+    });
+  });
+
+  if (rows.length === 0) {
+    rows.push({
+      rowNumber: 1,
+      ageGroup: "",
+      rawAgeGroup: "",
+      teamName: "",
+      sponsor: null,
+      headCoachLastName: null,
+      action: "SKIP",
+      errors: setupErrors.length > 0 ? setupErrors : ["File contains no importable team rows."],
+      warnings: [],
+      existingTeamId: null,
+    });
+  }
+
+  return rows;
+}
+
+/** Applies already-previewed, error-free rows: upserts one Team per non-SKIP row. Pure write step — call buildTeamListPreviewRows first and reject if summary.errors > 0. */
+export async function applyTeamListRows(params: {
+  targetOrg: string;
+  seasonYear: number;
+  rows: TeamListImportRow[];
+  adminId: string | null;
+}): Promise<{
+  createdTeamIds: string[];
+  updatedTeamIds: string[];
+}> {
+  const { targetOrg, seasonYear, rows, adminId } = params;
+  const createdTeamIds: string[] = [];
+  const updatedTeamIds: string[] = [];
+
+  for (const row of rows) {
+    if (row.action === "SKIP") continue;
+    const team = await prisma.team.upsert({
+      where: {
+        organizationId_seasonYear_ageGroup_teamName: {
+          organizationId: targetOrg,
+          seasonYear,
+          ageGroup: row.ageGroup,
+          teamName: row.teamName,
+        },
+      },
+      create: {
+        organizationId: targetOrg,
+        seasonYear,
+        ageGroup: row.ageGroup,
+        teamName: row.teamName,
+        createdByAdminId: adminId,
+      },
+      update: {},
+      select: { id: true },
+    });
+    if (row.action === "CREATE") createdTeamIds.push(team.id);
+    else updatedTeamIds.push(team.id);
+  }
+
+  return { createdTeamIds, updatedTeamIds };
+}
+
+/**
+ * End-to-end Team List import: preview, then (if error-free) apply and
+ * record one TeamListImportBatch for undo. Used by both the legacy
+ * single-file route and the Smart Auto-Build confirm route so a Team List
+ * write always gets the same undo coverage TeamPlayerImportBatch/
+ * CoachImportBatch already have.
+ */
+export async function runTeamListImport(params: {
+  targetOrg: string;
+  seasonYear: number;
+  source: TeamListSource;
+  adminId: string | null;
+  adminEmail: string | null;
+}): Promise<{
+  batchId: string | null;
+  rows: TeamListImportRow[];
+  summary: TeamListPreviewSummary;
+  createdTeamIds: string[];
+  updatedTeamIds: string[];
+}> {
+  const { targetOrg, seasonYear, source, adminId, adminEmail } = params;
+  const rows = await buildTeamListPreviewRows({ targetOrg, seasonYear, source });
+  const summary = summarizeTeamListRows(rows);
+
+  if (summary.errors > 0) {
+    return { batchId: null, rows, summary, createdTeamIds: [], updatedTeamIds: [] };
+  }
+
+  const batch = await prisma.teamListImportBatch.create({
+    data: {
+      organizationId: targetOrg,
+      createdByAdminId: adminId,
+      createdByEmail: adminEmail,
+      undoPayload: {},
+    },
+    select: { id: true },
+  });
+
+  const { createdTeamIds, updatedTeamIds } = await applyTeamListRows({
+    targetOrg,
+    seasonYear,
+    rows,
+    adminId,
+  });
+
+  await prisma.teamListImportBatch.update({
+    where: { id: batch.id },
+    data: {
+      processedCount: summary.total,
+      createdCount: createdTeamIds.length,
+      updatedCount: updatedTeamIds.length,
+      skippedCount: summary.skip,
+      undoPayload: { createdTeamIds },
+    },
+  });
+
+  return { batchId: batch.id, rows, summary, createdTeamIds, updatedTeamIds };
+}
+
+/**
+ * Undoes a Team List import batch: deletes the teams it created. Teams it
+ * only updated are left alone, matching today's behavior where "UPDATE"
+ * confirms an existing team rather than changing any field on it. Note this
+ * shares the same cascade caveat as the player-import undo
+ * (app/api/admin/teams/import/route.ts's undoBatch): deleting a
+ * batch-created Team cascades to any players/coach assignments added to it
+ * since, which is exactly what a combined "Undo This Build" wants but is
+ * worth remembering if this is ever called standalone, well after the fact.
+ */
+export async function undoTeamListImportBatch(
+  targetOrg: string,
+  batchId?: string,
+): Promise<{ batchId: string; deletedTeams: number }> {
+  const batch = batchId
+    ? await prisma.teamListImportBatch.findFirst({
+        where: { id: batchId, organizationId: targetOrg, undoneAt: null },
+      })
+    : await prisma.teamListImportBatch.findFirst({
+        where: { organizationId: targetOrg, undoneAt: null },
+        orderBy: { createdAt: "desc" },
+      });
+  if (!batch) throw new Error("No team list import batch available to undo");
+
+  const payload = (batch.undoPayload ?? {}) as { createdTeamIds?: unknown };
+  const createdTeamIds = Array.isArray(payload.createdTeamIds)
+    ? payload.createdTeamIds.filter((id): id is string => typeof id === "string")
+    : [];
+
+  let deletedTeams = 0;
+  if (createdTeamIds.length > 0) {
+    const deleted = await prisma.team.deleteMany({
+      where: { id: { in: createdTeamIds }, organizationId: targetOrg },
+    });
+    deletedTeams = deleted.count;
+  }
+
+  await prisma.teamListImportBatch.update({
+    where: { id: batch.id },
+    data: { undoneAt: new Date() },
+  });
+
+  return { batchId: batch.id, deletedTeams };
+}

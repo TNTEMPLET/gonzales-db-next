@@ -39,8 +39,8 @@ export default async function DraftPage({
   );
   const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
-  const canTeams = canAccessAdminModule(role, "TEAMS");
-  if (!canTeams) {
+  const canDraft = canAccessAdminModule(role, "DRAFT");
+  if (!canDraft) {
     redirect("/admin?denied=draft");
   }
 

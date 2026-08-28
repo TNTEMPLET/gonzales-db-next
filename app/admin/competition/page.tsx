@@ -40,11 +40,12 @@ export default async function CompetitionPage({
   const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
   const canTeams = canAccessAdminModule(role, "TEAMS");
+  const canDraft = canAccessAdminModule(role, "DRAFT");
   const canScores = canAccessAdminModule(role, "SCORES");
   const canAssignr = canAccessAdminModule(role, "ASSIGNR");
   const canRegistration = canAccessAdminModule(role, "REGISTRATION_WINDOWS");
 
-  if (!canTeams && !canScores && !canAssignr && !canRegistration) {
+  if (!canTeams && !canDraft && !canScores && !canAssignr && !canRegistration) {
     redirect("/admin?denied=competition");
   }
 
