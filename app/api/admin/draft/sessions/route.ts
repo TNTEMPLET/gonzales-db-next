@@ -86,7 +86,7 @@ export async function GET(req: NextRequest) {
 
       const ageGroupToQuery = selectedAgeGroup || ageGroups[0] || "";
       let suggestedMatches: Awaited<ReturnType<typeof detectCoachPlayerMatches>> = [];
-      let registeredPlayerCount = 0;
+      let registeredPlayers: { id: string; fullName: string }[] = [];
 
       if (ageGroupToQuery) {
         suggestedMatches = await detectCoachPlayerMatches(
@@ -95,7 +95,7 @@ export async function GET(req: NextRequest) {
           seasonYear
         );
 
-        registeredPlayerCount = await prisma.teamPlayer.count({
+        registeredPlayers = await prisma.teamPlayer.findMany({
           where: {
             team: {
               organizationId,
@@ -103,6 +103,8 @@ export async function GET(req: NextRequest) {
               ageGroup: ageGroupToQuery,
             },
           },
+          select: { id: true, fullName: true },
+          orderBy: { fullName: "asc" },
         });
       }
 
@@ -111,7 +113,8 @@ export async function GET(req: NextRequest) {
         availableCoaches,
         availableDraftLeaders,
         suggestedMatches,
-        registeredPlayerCount,
+        registeredPlayerCount: registeredPlayers.length,
+        registeredPlayers,
       });
     } catch (e) {
       return draftApiError("sessions.context", e);

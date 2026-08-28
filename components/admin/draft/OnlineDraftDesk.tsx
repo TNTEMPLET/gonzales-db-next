@@ -35,6 +35,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
   const [teamNamesInput, setTeamNamesInput] = useState("Yankees\nRed Sox\nDodgers\nCubs");
   const [seedFromRegistered, setSeedFromRegistered] = useState(true);
   const [registeredPlayerCount, setRegisteredPlayerCount] = useState(0);
+  const [registeredPlayers, setRegisteredPlayers] = useState<{ id: string; fullName: string }[]>([]);
 
   const [pairings, setPairings] = useState<CoachPairing[]>([]);
   const [availableCoaches, setAvailableCoaches] = useState<DraftUserRef[]>([]);
@@ -81,6 +82,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
       if (data.availableDraftLeaders) setAvailableDraftLeaders(data.availableDraftLeaders);
       if (data.suggestedMatches) setSuggestedMatches(data.suggestedMatches);
       if (data.registeredPlayerCount !== undefined) setRegisteredPlayerCount(data.registeredPlayerCount);
+      if (data.registeredPlayers) setRegisteredPlayers(data.registeredPlayers);
     } catch (e) {
       console.error("Failed to load draft context:", e);
     } finally {
@@ -510,6 +512,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
             teamNames={parsedTeamNames}
             availableCoaches={availableCoaches}
             suggestedMatches={suggestedMatches}
+            registeredPlayers={registeredPlayers}
             pairings={pairings}
             onUpdatePairings={setPairings}
           />
