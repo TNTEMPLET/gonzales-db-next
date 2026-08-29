@@ -2470,6 +2470,8 @@ model SurveyResponse {
   respondentEmail String?
   divisionName   String?
   ageGroup       String?        // e.g., "6U", "8U", "10U"
+  wantsBoardContact Boolean     @default(false)
+  contactPhone   String?
   submittedAt    DateTime       @default(now())
 
   answers        SurveyAnswer[]

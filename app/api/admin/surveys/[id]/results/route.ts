@@ -124,12 +124,26 @@ export async function GET(
       ),
     }));
 
+    // Respondents who opted in to a board follow-up call, newest first —
+    // built from filteredResponses so org/division filters apply here too.
+    const contactRequests = filteredResponses
+      .filter((r) => r.wantsBoardContact)
+      .map((r) => ({
+        id: r.id,
+        phone: r.contactPhone,
+        email: r.respondentEmail,
+        organizationId: r.organizationId,
+        divisionName: r.divisionName,
+        submittedAt: r.submittedAt,
+      }));
+
     return NextResponse.json({
       survey,
       totalResponses,
       matrixScores,
       priorityCounts,
       textResponses,
+      contactRequests,
       availableOrganizations,
       availableDivisions,
       appliedFilters: { respondentOrg: respondentOrgFilter, division: divisionFilter },

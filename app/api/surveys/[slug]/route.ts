@@ -95,11 +95,13 @@ export async function POST(
 
     const body = await request.json();
 
-    const { selectedOrg, respondentEmail, divisionName, ageGroup, answers } = body as {
+    const { selectedOrg, respondentEmail, divisionName, ageGroup, wantsBoardContact, contactPhone, answers } = body as {
       selectedOrg?: string;
       respondentEmail?: string;
       divisionName?: string;
       ageGroup?: string;
+      wantsBoardContact?: boolean;
+      contactPhone?: string;
       answers: Array<{
         questionId: string;
         matrixTopic?: string;
@@ -163,6 +165,13 @@ export async function POST(
       );
     }
 
+    if (wantsBoardContact && !contactPhone?.trim()) {
+      return NextResponse.json(
+        { error: "Please provide a phone number so the board can contact you" },
+        { status: 400 }
+      );
+    }
+
     const validQuestionIds = new Set(
       survey.sections.flatMap((section) => section.questions.map((q) => q.id)),
     );
@@ -181,6 +190,8 @@ export async function POST(
         respondentEmail: respondentEmail || null,
         divisionName: divisionName || null,
         ageGroup: ageGroup || null,
+        wantsBoardContact: Boolean(wantsBoardContact),
+        contactPhone: wantsBoardContact ? contactPhone!.trim() : null,
         answers: {
           create: answers.map((ans) => ({
             questionId: ans.questionId,
