@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
-import { getDraftSessionState } from "@/lib/draft/draftEngine";
+import { getDraftSessionState, resolveAutoProtectedPicks } from "@/lib/draft/draftEngine";
 import { prisma } from "@/lib/prisma";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { draftApiError } from "@/lib/draft/apiError";
@@ -16,6 +16,7 @@ export async function GET(
 
   try {
     const { id } = await params;
+    await resolveAutoProtectedPicks(id);
     const state = await getDraftSessionState(id);
     return NextResponse.json(state);
   } catch (e) {

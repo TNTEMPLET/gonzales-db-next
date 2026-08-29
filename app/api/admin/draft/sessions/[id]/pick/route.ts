@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { makeDraftPick, undoLastDraftPick } from "@/lib/draft/draftEngine";
+import { getDraftSessionState, makeDraftPick, resolveAutoProtectedPicks, undoLastDraftPick } from "@/lib/draft/draftEngine";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { draftApiError } from "@/lib/draft/apiError";
 
@@ -21,8 +21,11 @@ export async function POST(
       return NextResponse.json({ error: "Missing playerPoolId" }, { status: 400 });
     }
 
-    const result = await makeDraftPick(id, playerPoolId, adminUserId);
-    return NextResponse.json(result);
+    await makeDraftPick(id, playerPoolId, adminUserId);
+    // If the next team(s) on the clock are also protected, cascade through
+    // them immediately rather than waiting for the next poll to catch up.
+    await resolveAutoProtectedPicks(id);
+    return NextResponse.json(await getDraftSessionState(id));
   } catch (e) {
     return draftApiError("pick.create", e, 400);
   }
