@@ -616,6 +616,17 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                 const isCurrentlyOnClock =
                   onClock && onClock.teamId === team.id && onClock.round === roundNum;
 
+                // A protection for this exact team/round that hasn't been picked
+                // yet -- the draft engine can't place it until that team's turn
+                // actually arrives, but the board should still show it's spoken
+                // for rather than looking like any other open slot.
+                const reservedProtection =
+                  !pick
+                    ? session.protections.find(
+                        (pr) => pr.draftTeamId === team.id && pr.protectedRound === roundNum && !pr.isClaimed
+                      )
+                    : undefined;
+
                 return (
                   <div
                     key={`${team.id}-r${roundNum}`}
@@ -624,6 +635,8 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                         ? "bg-emerald-500/20 border-emerald-500 ring-2 ring-emerald-500/40 animate-pulse"
                         : pick
                         ? "bg-zinc-900/90 border-zinc-700/80 text-white hover:border-zinc-500"
+                        : reservedProtection
+                        ? "bg-amber-500/10 border-amber-500/30 text-amber-200"
                         : "bg-zinc-950/40 border-zinc-800/40 text-zinc-600"
                     }`}
                   >
@@ -656,6 +669,14 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                     ) : isCurrentlyOnClock ? (
                       <div className="text-[11px] font-black text-emerald-400 animate-pulse py-1">
                         ON CLOCK ⏱️
+                      </div>
+                    ) : reservedProtection ? (
+                      <div className="mt-1">
+                        <div className="flex items-center gap-1 text-[10px] font-bold text-amber-300">
+                          <span>{reservedProtection.protectionType === "RETURNING_PLAYER" ? "🏠" : "🔒"}</span>
+                          <span className="truncate">{reservedProtection.playerName}</span>
+                        </div>
+                        <div className="text-[9px] italic text-amber-400/70">Reserved</div>
                       </div>
                     ) : (
                       <div className="text-[10px] italic text-zinc-600 py-1">Open</div>
