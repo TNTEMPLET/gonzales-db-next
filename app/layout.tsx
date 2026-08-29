@@ -5,6 +5,7 @@ import { SpeedInsights } from "@vercel/speed-insights/next";
 import "./globals.css";
 import Header from "../components/Header";
 import Footer from "../components/Footer";
+import { AdminSidebarProvider } from "@/components/admin/AdminSidebarProvider";
 import SponsorScroller from "../components/sponsors/SponsorScroller";
 import DevLiveIndicator from "../components/dev/DevLiveIndicator";
 import { getRegistrationStatus } from "@/lib/registrationStatus";
@@ -60,10 +61,12 @@ export default async function RootLayout({
       </head>
       <SpeedInsights />
       <body className={`${inter.className} bg-zinc-950 text-white antialiased`}>
-        <Suspense fallback={<div className="h-16 border-b border-zinc-800 bg-zinc-950" aria-hidden />}>
-          <Header brand={brand} />
-        </Suspense>
-        {children}
+        <AdminSidebarProvider>
+          <Suspense fallback={<div className="h-16 border-b border-zinc-800 bg-zinc-950" aria-hidden />}>
+            <Header brand={brand} />
+          </Suspense>
+          {children}
+        </AdminSidebarProvider>
         <Footer brand={brand} />
         <SponsorScroller placement={site.orgId === "ladistrict2" ? "after-footer" : "dock"} />
         {process.env.NODE_ENV === "development" ? <DevLiveIndicator /> : null}
