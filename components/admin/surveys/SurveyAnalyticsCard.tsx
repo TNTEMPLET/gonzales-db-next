@@ -38,11 +38,21 @@ type TextResponseGroup = {
   comments: TextComment[];
 };
 
+type ContactRequest = {
+  id: string;
+  phone: string | null;
+  email: string | null;
+  organizationId: string | null;
+  divisionName: string | null;
+  submittedAt: string;
+};
+
 type SurveyAnalyticsResponse = {
   totalResponses: number;
   matrixScores: Record<string, MatrixScore>;
   priorityCounts: Record<string, number>;
   textResponses: TextResponseGroup[];
+  contactRequests: ContactRequest[];
   availableOrganizations: string[];
   availableDivisions: string[];
 };
@@ -168,6 +178,7 @@ export default function SurveyAnalyticsCard({
   const totalResponses = analytics?.totalResponses || 0;
   const availableDivisions = analytics?.availableDivisions || [];
   const textResponses = analytics?.textResponses || [];
+  const contactRequests = analytics?.contactRequests || [];
 
   const selectedSurvey = surveys.find((s) => s.id === selectedSurveyId);
 
@@ -481,6 +492,42 @@ export default function SurveyAnalyticsCard({
                     </div>
                   );
                 })}
+              </div>
+            </div>
+          )}
+
+          {/* Board Contact Requests */}
+          {contactRequests.length > 0 && (
+            <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-5 space-y-3">
+              <h3 className="text-sm font-semibold text-slate-200 flex items-center gap-2">
+                📞 Board Contact Requests
+                <span className="text-[11px] font-bold text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-md">
+                  {contactRequests.length}
+                </span>
+              </h3>
+              <div className="divide-y divide-slate-800/80 border border-slate-800 rounded-lg overflow-hidden">
+                {contactRequests.map((req) => (
+                  <div
+                    key={req.id}
+                    className="px-3.5 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 bg-slate-900"
+                  >
+                    <div className="space-y-0.5">
+                      <div className="text-sm font-semibold text-white">{req.phone || "—"}</div>
+                      {req.email && <div className="text-[11px] text-slate-400">{req.email}</div>}
+                    </div>
+                    <div className="flex items-center gap-2 text-[11px] text-slate-500">
+                      <span className="font-semibold text-emerald-300/90 bg-emerald-500/10 px-1.5 py-0.5 rounded">
+                        {orgBadgeLabel(req.organizationId)}
+                      </span>
+                      {req.divisionName && (
+                        <span className="font-medium text-slate-300 bg-slate-800 px-1.5 py-0.5 rounded">
+                          {req.divisionName}
+                        </span>
+                      )}
+                      <span>{fmtCommentDate(req.submittedAt)}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

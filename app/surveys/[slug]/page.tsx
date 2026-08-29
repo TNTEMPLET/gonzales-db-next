@@ -69,6 +69,8 @@ export default function PublicSurveyPage({
   // played" survey question (Q15) so parents aren't asked the same thing twice.
   const [division, setDivision] = useState<string>("");
   const [email, setEmail] = useState<string>("");
+  const [wantsBoardContact, setWantsBoardContact] = useState(false);
+  const [contactPhone, setContactPhone] = useState<string>("");
   // Spring surveys serve both Gonzales DYB and Ascension LL — the respondent
   // picks which one. Fall surveys are fallball-only, set automatically once
   // the survey loads.
@@ -178,6 +180,11 @@ export default function PublicSurveyPage({
       return;
     }
 
+    if (wantsBoardContact && !contactPhone.trim()) {
+      setError("Please provide a phone number so the board can contact you, or uncheck the contact request.");
+      return;
+    }
+
     setSubmitting(true);
 
     try {
@@ -216,6 +223,8 @@ export default function PublicSurveyPage({
           respondentEmail: email || null,
           divisionName: division || null,
           ageGroup: division || null,
+          wantsBoardContact,
+          contactPhone: wantsBoardContact ? contactPhone.trim() : null,
           answers: formattedAnswers,
         }),
       });
@@ -580,6 +589,37 @@ export default function PublicSurveyPage({
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
                 />
               </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-800 space-y-3">
+              <label className="flex items-start gap-2.5 text-sm text-slate-200 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={wantsBoardContact}
+                  onChange={(e) => {
+                    setWantsBoardContact(e.target.checked);
+                    if (!e.target.checked) setContactPhone("");
+                  }}
+                  className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-emerald-500"
+                />
+                <span>Would you like to be contacted by the AP Baseball Board?</span>
+              </label>
+
+              {wantsBoardContact && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-400 mb-1">
+                    Phone Number
+                  </label>
+                  <input
+                    type="tel"
+                    value={contactPhone}
+                    onChange={(e) => setContactPhone(e.target.value)}
+                    placeholder="(225) 555-0100"
+                    required={wantsBoardContact}
+                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
+                  />
+                </div>
+              )}
             </div>
           </div>
 
