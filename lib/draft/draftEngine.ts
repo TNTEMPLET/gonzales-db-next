@@ -194,6 +194,29 @@ export async function makeDraftPick(
 }
 
 /**
+ * Auto-executes every consecutive protected pick (coach-linked child or
+ * returning player) starting from whoever is currently on the clock, so an
+ * admin never has to click "Auto-Lock" -- the picks just land the moment the
+ * draft naturally reaches them. Stops at the first pick that needs a human
+ * decision: draft isn't LIVE, nobody's on the clock, the on-clock team has no
+ * protection for this round, or the protection's name doesn't resolve to an
+ * actual player still in the pool.
+ */
+export async function resolveAutoProtectedPicks(sessionId: string) {
+  // Bounded to one full pass over every team/round combination so a data bug
+  // can't spin this into an infinite loop.
+  const { session: initialSession } = await getDraftSessionState(sessionId);
+  const maxIterations = Math.max(initialSession.teams.length, 1) * Math.max(initialSession.totalRounds, 1);
+
+  for (let i = 0; i < maxIterations; i++) {
+    const { session, onClock } = await getDraftSessionState(sessionId);
+    if (session.status !== "LIVE") break;
+    if (!onClock || !onClock.isProtectedPick || !onClock.protectedPlayerPoolId) break;
+    await makeDraftPick(sessionId, onClock.protectedPlayerPoolId);
+  }
+}
+
+/**
  * Undoes the last overall pick in the draft.
  */
 export async function undoLastDraftPick(sessionId: string) {
