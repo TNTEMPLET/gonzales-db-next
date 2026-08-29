@@ -13,6 +13,15 @@ import pg from "pg";
  * reason to keep the ppg-specific path — just use one adapter for every
  * PostgreSQL connection string.
  */
+/**
+ * `max: 3` caps how many connections a single pool (one per warm serverless
+ * instance) can open. node-postgres defaults to 10, and with 6 deployments
+ * all sharing one Postgres role's connection limit, a burst of concurrent
+ * instances at the default cap can exhaust it outright (this took the site
+ * down on 2026-08-28 — "too many connections for role 'prisma_migration'").
+ * Lower is safer for a shared, capacity-limited role; raise only alongside a
+ * verified higher connection limit on the database itself.
+ */
 export function createDatabaseAdapter(connectionString: string) {
-  return new PrismaPg(new pg.Pool({ connectionString }));
+  return new PrismaPg(new pg.Pool({ connectionString, max: 3 }));
 }
