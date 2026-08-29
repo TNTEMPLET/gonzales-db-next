@@ -243,8 +243,14 @@ export default function SurveyAnalyticsCard({
     }
   }
 
+  // A draft (unpublished) survey 404s on the plain public URL -- appending
+  // preview=1 routes it through the admin-only preview path instead (see
+  // app/api/surveys/[slug]/route.ts), so "View" always works regardless of
+  // publish state.
   const publicPath = selectedSurvey
-    ? `/surveys/${selectedSurvey.slug}?org=${encodeURIComponent(selectedSurvey.organizationId)}`
+    ? `/surveys/${selectedSurvey.slug}?org=${encodeURIComponent(selectedSurvey.organizationId)}${
+        selectedSurvey.isPublished ? "" : "&preview=1"
+      }`
     : null;
   // Built from the real slug + org rather than a hardcoded domain/slug —
   // this route is deployed on every SITE_ORG, so the current origin always
@@ -481,9 +487,17 @@ export default function SurveyAnalyticsCard({
 
           {/* Public Share Link Card */}
           {publicPath ? (
-            <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-              <div className="text-xs text-emerald-300">
-                <span className="font-bold">Public Survey URL:</span>{" "}
+            <div
+              className={`rounded-xl p-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 ${
+                selectedSurvey?.isPublished
+                  ? "bg-emerald-500/10 border border-emerald-500/20"
+                  : "bg-amber-500/10 border border-amber-500/20"
+              }`}
+            >
+              <div className={`text-xs ${selectedSurvey?.isPublished ? "text-emerald-300" : "text-amber-300"}`}>
+                <span className="font-bold">
+                  {selectedSurvey?.isPublished ? "Public Survey URL:" : "Draft — not publicly visible:"}
+                </span>{" "}
                 <code className="bg-slate-950 px-2 py-1 rounded text-slate-200">
                   {publicUrl}
                 </code>
@@ -491,9 +505,13 @@ export default function SurveyAnalyticsCard({
               <a
                 href={publicPath}
                 target="_blank"
-                className="inline-flex items-center justify-center text-xs font-bold text-slate-950 bg-emerald-400 hover:bg-emerald-300 px-3 py-1.5 rounded-lg transition-all"
+                className={`inline-flex items-center justify-center text-xs font-bold text-slate-950 px-3 py-1.5 rounded-lg transition-all ${
+                  selectedSurvey?.isPublished
+                    ? "bg-emerald-400 hover:bg-emerald-300"
+                    : "bg-amber-400 hover:bg-amber-300"
+                }`}
               >
-                View Live Form
+                {selectedSurvey?.isPublished ? "View Live Form" : "🔍 Preview Draft"}
               </a>
             </div>
           ) : null}

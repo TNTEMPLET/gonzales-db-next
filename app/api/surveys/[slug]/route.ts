@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 
 export async function GET(
   request: NextRequest,
@@ -13,6 +14,21 @@ export async function GET(
         { error: "org query parameter is required" },
         { status: 400 }
       );
+    }
+
+    // `preview=1` lets a logged-in admin load a draft (unpublished) survey
+    // through this same public renderer, without opening drafts up to
+    // everyone -- the flag only does anything if the request also carries a
+    // valid admin session for the TEAMS module. A normal, unauthenticated
+    // request behaves exactly as before: published surveys only.
+    const previewRequested = request.nextUrl.searchParams.get("preview") === "1";
+    let allowUnpublished = false;
+    if (previewRequested) {
+      const auth = await ensureAdminModule(request, "TEAMS");
+      // Master admins can preview any org's draft; a scoped admin only
+      // theirs -- mirrors the org check in the authenticated survey-detail
+      // route rather than trusting the `org` query param on its own.
+      allowUnpublished = auth.ok && (auth.admin.isMaster || auth.orgId === org);
     }
 
     const surveyInclude = {
@@ -33,12 +49,12 @@ export async function GET(
     // like the Spring one), fall back to any published survey with this
     // slug so the form still loads instead of 404ing.
     let survey = await prisma.survey.findFirst({
-      where: { organizationId: org, slug: slug, isPublished: true },
+      where: { organizationId: org, slug: slug, ...(allowUnpublished ? {} : { isPublished: true }) },
       include: surveyInclude,
     });
     if (!survey) {
       survey = await prisma.survey.findFirst({
-        where: { slug: slug, isPublished: true },
+        where: { slug: slug, ...(allowUnpublished ? {} : { isPublished: true }) },
         include: surveyInclude,
       });
     }

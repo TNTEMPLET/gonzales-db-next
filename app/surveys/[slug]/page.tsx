@@ -52,6 +52,10 @@ export default function PublicSurveyPage({
   const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const org = searchParams.get("org") || "fallball";
+  // Admin-only draft preview -- see app/api/surveys/[slug]/route.ts. Has no
+  // effect unless the request also carries a valid admin session, so this
+  // flag alone can't expose an unpublished survey to a random visitor.
+  const isPreview = searchParams.get("preview") === "1";
   const [survey, setSurvey] = useState<SurveyData | null>(null);
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -73,7 +77,8 @@ export default function PublicSurveyPage({
   useEffect(() => {
     async function loadSurvey() {
       try {
-        const res = await fetch(`/api/surveys/${resolvedParams.slug}?org=${encodeURIComponent(org)}`);
+        const previewQuery = isPreview ? "&preview=1" : "";
+        const res = await fetch(`/api/surveys/${resolvedParams.slug}?org=${encodeURIComponent(org)}${previewQuery}`);
         const data = await res.json();
         if (data.error) {
           setError(data.error);
@@ -91,7 +96,7 @@ export default function PublicSurveyPage({
       }
     }
     loadSurvey();
-  }, [resolvedParams.slug, org]);
+  }, [resolvedParams.slug, org, isPreview]);
 
   const handleRatingChange = (questionId: string, rating: number, matrixTopic?: string) => {
     const key = matrixTopic ? `${questionId}__${matrixTopic}` : questionId;
@@ -163,6 +168,10 @@ export default function PublicSurveyPage({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
+
+    // Belt-and-suspenders: the submit button is hidden in preview mode, but
+    // guard here too so a preview session can never write a real response.
+    if (isPreview) return;
 
     if (survey?.season === "SPRING" && !selectedOrg) {
       setError("Please select your organization (Gonzales DYB or Ascension LL) before submitting.");
@@ -276,6 +285,12 @@ export default function PublicSurveyPage({
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 py-10 px-4 sm:px-6">
       <div className="max-w-3xl mx-auto space-y-8">
+        {isPreview && (
+          <div className="sticky top-2 z-20 flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/15 px-4 py-2.5 text-sm font-semibold text-amber-200 shadow-lg">
+            <span>🔍 Draft Preview</span>
+            <span className="font-normal text-amber-200/80">— not publicly visible, submissions are disabled</span>
+          </div>
+        )}
         {/* Header Branding Card */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl" />
@@ -569,22 +584,28 @@ export default function PublicSurveyPage({
           </div>
 
           <div className="pt-4">
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-4 px-6 rounded-2xl shadow-xl hover:shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 text-base disabled:opacity-50"
-            >
-              {submitting ? (
-                <>
-                  <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                  <span>Submitting Feedback...</span>
-                </>
-              ) : (
-                <>
-                  <span>Submit 2026 Parent Survey</span>
-                </>
-              )}
-            </button>
+            {isPreview ? (
+              <div className="w-full rounded-2xl border border-dashed border-amber-500/40 bg-amber-500/5 py-4 px-6 text-center text-sm font-semibold text-amber-300">
+                Submission disabled in draft preview
+              </div>
+            ) : (
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold py-4 px-6 rounded-2xl shadow-xl hover:shadow-emerald-500/20 transition-all flex items-center justify-center space-x-2 text-base disabled:opacity-50"
+              >
+                {submitting ? (
+                  <>
+                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
+                    <span>Submitting Feedback...</span>
+                  </>
+                ) : (
+                  <>
+                    <span>Submit 2026 Parent Survey</span>
+                  </>
+                )}
+              </button>
+            )}
           </div>
         </form>
       </div>
