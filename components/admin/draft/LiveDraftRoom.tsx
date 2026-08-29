@@ -623,7 +623,11 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                 const reservedProtection =
                   !pick
                     ? session.protections.find(
-                        (pr) => pr.draftTeamId === team.id && pr.protectedRound === roundNum && !pr.isClaimed
+                        (pr) =>
+                          pr.draftTeamId === team.id &&
+                          pr.protectedRound === roundNum &&
+                          !pr.isClaimed &&
+                          !pr.isOverridden
                       )
                     : undefined;
 

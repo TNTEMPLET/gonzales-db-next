@@ -36,6 +36,7 @@ export type DraftProtection = {
   protectionType: "HEAD_COACH_CHILD" | "ASSISTANT_COACH_CHILD" | "PAIRING_REQUEST" | "RETURNING_PLAYER";
   protectedRound: number;
   isClaimed: boolean;
+  isOverridden: boolean;
 };
 
 export type DraftTeam = {

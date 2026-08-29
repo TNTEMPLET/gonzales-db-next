@@ -2574,6 +2574,7 @@ model CoachPlayerProtection {
   protectionType   DraftProtectionType @default(HEAD_COACH_CHILD)
   protectedRound   Int                 @default(1)
   isClaimed        Boolean             @default(false)
+  isOverridden     Boolean             @default(false)
   createdAt        DateTime            @default(now())
 
   draftSession     DraftSession        @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
