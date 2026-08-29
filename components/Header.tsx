@@ -5,42 +5,21 @@ import Image from "next/image";
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
-  canAccessAdminModule,
-  getMinimumRoleForModule,
-  hasAdminRoleAtLeast,
-  isAdminRole,
-  toAdminRole,
-  type AdminModule,
-  type AdminRole,
-} from "@/lib/auth/adminRoles";
-import {
   getSportsConnectRegistrationUrl,
   getSportsConnectVolunteerRegistrationUrl,
 } from "@/lib/sportsConnect/registrationUrl";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
-import {
-  isAdminModuleEnabledForOrg,
-  isContentOrgId,
-  isPublicNavEnabledForOrg,
-  type OrgId,
-} from "@/lib/siteConfig";
+import { isContentOrgId, isPublicNavEnabledForOrg, type OrgId } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import type { RegistrationStatus } from "@/lib/registrationStatus";
+import { useAdminSidebar } from "@/components/admin/AdminSidebarProvider";
 
 type DugoutMeResponse = {
   user: {
     isCoach: boolean;
     isAdmin: boolean;
   } | null;
-};
-
-type AdminMeResponse = {
-  authenticated: boolean;
-  user?: {
-    role?: string;
-    isMaster?: boolean;
-  };
 };
 
 type HeaderProps = {
@@ -56,23 +35,17 @@ type HeaderProps = {
   };
 };
 
-type MasterNavLink = { href: string; label: string };
-
-type MasterNavGroup = { id: string; label: string; items: MasterNavLink[] };
-
 export default function Header({ brand }: HeaderProps) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [openMasterMenu, setOpenMasterMenu] = useState<string | null>(null);
   const [isCoachCornerOpen, setIsCoachCornerOpen] = useState(false);
-  const masterMenuRef = useRef<HTMLDivElement | null>(null);
   const coachCornerMenuRef = useRef<HTMLDivElement | null>(null);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
   const [showAllStarLink, setShowAllStarLink] = useState(false);
   const [showParkInfoLink, setShowParkInfoLink] = useState(false);
-  const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
+  const { collapsed: sidebarCollapsed, toggleCollapsed: toggleSidebar } = useAdminSidebar();
   const currentOrgParam = searchParams.get("org");
   const isMasterHeader = brand.orgId === "master";
   const isTournamentOnly = brand.tournamentOnly ?? false;
@@ -125,12 +98,6 @@ export default function Header({ brand }: HeaderProps) {
     ? "md:hidden border-t border-red-900/60 bg-zinc-900/95"
     : "md:hidden border-t border-zinc-800 bg-zinc-900";
 
-  function masterNavTriggerClass(isActive: boolean) {
-    return isActive
-      ? "relative whitespace-nowrap px-2 py-1.5 text-red-200 transition-colors after:absolute after:-bottom-0.5 after:left-2 after:right-2 after:h-[2px] after:rounded-full after:bg-red-400"
-      : "relative whitespace-nowrap px-2 py-1.5 text-zinc-200/90 transition-colors hover:text-red-200 after:absolute after:-bottom-0.5 after:left-2 after:h-[2px] after:w-0 after:rounded-full after:bg-red-400 after:transition-all hover:after:w-[calc(100%-1rem)]";
-  }
-
   function desktopLinkClassName(href: string) {
     if (!isMasterHeader)
       return "text-white hover:text-brand-gold transition-colors";
@@ -162,26 +129,12 @@ export default function Header({ brand }: HeaderProps) {
       : "rounded-md px-3 py-2 text-zinc-200 hover:bg-red-950/30 hover:text-red-200";
   }
 
-  function masterDropdownItemClass(href: string) {
-    const pathKey = href.split("?")[0] ?? href;
-    const isActive =
-      pathKey === "/admin"
-        ? pathname === "/admin"
-        : pathname.startsWith(pathKey);
-    return isActive
-      ? "block px-3 py-2 text-left text-sm text-red-200 bg-red-950/35"
-      : "block px-3 py-2 text-left text-sm text-zinc-200 hover:bg-red-950/25 hover:text-red-100";
-  }
-
   useEffect(() => {
     let active = true;
 
     async function loadDugoutAccess() {
       try {
-        const [dugoutRes, adminRes] = await Promise.all([
-          fetch("/api/dugout/me", { cache: "no-store" }),
-          fetch("/api/admin/me", { cache: "no-store" }),
-        ]);
+        const dugoutRes = await fetch("/api/dugout/me", { cache: "no-store" });
 
         if (!dugoutRes.ok) {
           if (active) setCanSeeDugout(false);
@@ -190,26 +143,8 @@ export default function Header({ brand }: HeaderProps) {
           if (active)
             setCanSeeDugout(Boolean(json.user?.isCoach || json.user?.isAdmin));
         }
-
-        if (!adminRes.ok) {
-          if (active) setAdminRole(null);
-        } else {
-          const adminJson = (await adminRes.json()) as AdminMeResponse;
-          const roleValue = adminJson.user?.role;
-          const isMaster = Boolean(adminJson.user?.isMaster);
-          if (active) {
-            setAdminRole(
-              isMaster
-                ? "MASTER_ADMIN"
-                : isAdminRole(roleValue)
-                  ? roleValue
-                  : null,
-            );
-          }
-        }
       } catch {
         if (active) setCanSeeDugout(false);
-        if (active) setAdminRole(null);
       }
     }
 
@@ -249,17 +184,14 @@ export default function Header({ brand }: HeaderProps) {
   }, [pathname]);
 
   useEffect(() => {
-    if (!openMasterMenu && !isCoachCornerOpen) return;
+    if (!isCoachCornerOpen) return;
     function onDocMouseDown(e: MouseEvent) {
       const target = e.target as Node;
-      const masterEl = masterMenuRef.current;
       const coachCornerEl = coachCornerMenuRef.current;
-      if (masterEl && !masterEl.contains(target)) setOpenMasterMenu(null);
       if (coachCornerEl && !coachCornerEl.contains(target)) setIsCoachCornerOpen(false);
     }
     function onKey(e: KeyboardEvent) {
       if (e.key === "Escape") {
-        setOpenMasterMenu(null);
         setIsCoachCornerOpen(false);
       }
     }
@@ -269,79 +201,12 @@ export default function Header({ brand }: HeaderProps) {
       document.removeEventListener("mousedown", onDocMouseDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [openMasterMenu, isCoachCornerOpen]);
+  }, [isCoachCornerOpen]);
 
   if (pathname.startsWith("/dugout") || pathname.startsWith("/tournament-rosters")) return null;
 
-  const masterRole = adminRole ? toAdminRole(adminRole) : null;
   const masterOrgSuffix =
     isMasterHeader && currentOrgParam ? `?org=${encodeURIComponent(currentOrgParam)}` : "";
-  const currentMasterOrg = isContentOrgId(currentOrgParam) ? currentOrgParam : null;
-  const allowModule = (module: AdminModule) => {
-    if (!isAdminModuleEnabledForOrg(currentMasterOrg, module)) return false;
-    if (!masterRole) return true;
-    // isMasterDeployment() reads process.env which is unavailable client-side.
-    // Use isMasterHeader (derived from brand prop, server-provided) instead.
-    if (isMasterHeader) return hasAdminRoleAtLeast(masterRole, getMinimumRoleForModule(module));
-    return canAccessAdminModule(masterRole, module);
-  };
-
-  const masterNavGroups: MasterNavGroup[] = isMasterHeader
-    ? [
-        {
-          id: "operations",
-          label: "Operations",
-          items: [
-            ...(allowModule("USERS") || allowModule("VOLUNTEERS")
-              ? [
-                  {
-                    href: `/admin/people${masterOrgSuffix || "?org=gonzales"}`,
-                    label: "People & Access",
-                  },
-                ]
-              : []),
-            ...(allowModule("TEAMS") ||
-            allowModule("DRAFT") ||
-            allowModule("SCORES") ||
-            allowModule("ASSIGNR") ||
-            allowModule("REGISTRATION_WINDOWS")
-              ? [{ href: `/admin/competition${masterOrgSuffix}`, label: "Competition & Play" }]
-              : []),
-            ...(allowModule("TOURNAMENT_BRACKETS") ||
-            allowModule("PARK_ALERTS") ||
-            allowModule("TOURNAMENT_ALERTS") ||
-            allowModule("PARK_INFO")
-              ? [{ href: `/admin/park${masterOrgSuffix}`, label: "Park & Tournaments" }]
-              : []),
-            ...(canSeeDugout
-              ? [{ href: `/coach-corner${masterOrgSuffix}`, label: "Coach's Corner" }]
-              : []),
-          ],
-        },
-        {
-          id: "program",
-          label: "Program & Commerce",
-          items: [
-            ...(allowModule("COMMUNICATIONS") ||
-            allowModule("NEWS_ADMIN") ||
-            allowModule("SOCIAL_MEDIA") ||
-            allowModule("DUGOUT_MODERATION") ||
-            allowModule("ORG_DOCUMENTS")
-              ? [{ href: `/admin/publishing${masterOrgSuffix}`, label: "Publishing & Comms" }]
-              : []),
-            ...(allowModule("TEAMS")
-              ? [{ href: `/admin/surveys${masterOrgSuffix}`, label: "Surveys" }]
-              : []),
-            ...(allowModule("ALL_STAR_PAYMENTS") || allowModule("SPONSORS") || allowModule("REPORTS")
-              ? [{ href: `/admin/orders${masterOrgSuffix}`, label: "Orders & Commerce" }]
-              : []),
-            ...(allowModule("ALL_STAR_VAULT")
-              ? [{ href: `/admin/all-star${masterOrgSuffix}`, label: "All-Star Program" }]
-              : []),
-          ],
-        },
-      ].filter((g) => g.items.length > 0)
-    : [];
 
   const shopNavOrg = isFallBallHeader
     ? "fallball"
@@ -451,62 +316,28 @@ export default function Header({ brand }: HeaderProps) {
 
         {/* Desktop Navigation */}
         {isMasterHeader ? (
-          <div
-            ref={masterMenuRef}
-            className="hidden min-w-0 items-center justify-end gap-2 md:col-start-2 md:row-start-1 md:flex lg:gap-3"
-          >
+          <div className="hidden min-w-0 items-center justify-end gap-2 md:col-start-2 md:row-start-1 md:flex lg:gap-3">
+            <button
+              type="button"
+              onClick={toggleSidebar}
+              aria-expanded={!sidebarCollapsed}
+              aria-label={sidebarCollapsed ? "Open admin menu" : "Close admin menu"}
+              className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-md px-2 py-1.5 text-zinc-200/90 transition-colors hover:text-red-200"
+            >
+              <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+              </svg>
+              Menu
+            </button>
             <nav className={desktopNavClassName}>
-              <Link href="/admin" className={desktopLinkClassName("/admin")}>
-                Dashboard
-              </Link>
-              {masterNavGroups.map((group) => {
-                const groupActive = group.items.some((item) => {
-                  const pathKey = item.href.split("?")[0] ?? item.href;
-                  return pathname.startsWith(pathKey);
-                });
-                const open = openMasterMenu === group.id;
-                return (
-                  <div key={group.id} className="relative shrink-0">
-                    <button
-                      type="button"
-                      aria-expanded={open}
-                      aria-haspopup="true"
-                      className={`inline-flex items-center gap-0.5 rounded-md ${masterNavTriggerClass(groupActive)}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setOpenMasterMenu(open ? null : group.id);
-                      }}
-                    >
-                      {group.label}
-                      <svg
-                        className={`h-3.5 w-3.5 shrink-0 opacity-70 transition-transform ${open ? "rotate-180" : ""}`}
-                        viewBox="0 0 24 24"
-                        fill="currentColor"
-                        aria-hidden
-                      >
-                        <path d="M7 10l5 5 5-5z" />
-                      </svg>
-                    </button>
-                    {open ? (
-                      <div
-                        className="absolute right-0 top-full z-50 mt-1 min-w-50 rounded-lg border border-red-900/50 bg-zinc-900/98 py-1 shadow-xl backdrop-blur-sm"
-                        onClick={(e) => e.stopPropagation()}
-                      >
-                        {group.items.map((item) => (
-                          <Link
-                            key={item.href}
-                            href={item.href}
-                            className={masterDropdownItemClass(item.href)}
-                            onClick={() => setOpenMasterMenu(null)}
-                          >
-                            {item.label}
-                          </Link>
-                        ))}
-                      </div>
-                    ) : null}
-                  </div>
-                );
-              })}
+              {canSeeDugout ? (
+                <Link
+                  href={`/coach-corner${masterOrgSuffix}`}
+                  className={desktopLinkClassName(`/coach-corner${masterOrgSuffix}`)}
+                >
+                  Coach&apos;s Corner
+                </Link>
+              ) : null}
               {canSeeDugout ? (
                 <Link
                   href={`/dugout${masterOrgSuffix}`}
@@ -630,32 +461,28 @@ export default function Header({ brand }: HeaderProps) {
           >
             {isMasterHeader ? (
               <>
-                <Link
-                  href="/admin"
-                  onClick={() => setIsMenuOpen(false)}
-                  className={mobileLinkClassName("/admin")}
+                <button
+                  type="button"
+                  onClick={() => {
+                    toggleSidebar();
+                    setIsMenuOpen(false);
+                  }}
+                  className="flex items-center gap-2 rounded-md border border-red-800/70 bg-red-950/40 px-3 py-2 text-left text-red-200"
                 >
-                  Dashboard
-                </Link>
-                {masterNavGroups.map((group) => (
-                  <div key={group.id} className="flex flex-col gap-2">
-                    <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-red-400/90">
-                      {group.label}
-                    </p>
-                    <div className="flex flex-col gap-1 border-l border-red-900/40 pl-3">
-                      {group.items.map((item) => (
-                        <Link
-                          key={item.href}
-                          href={item.href}
-                          onClick={() => setIsMenuOpen(false)}
-                          className={mobileLinkClassName(item.href)}
-                        >
-                          {item.label}
-                        </Link>
-                      ))}
-                    </div>
-                  </div>
-                ))}
+                  <svg className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+                  </svg>
+                  Admin Menu (Dashboard, Operations, Program &amp; Commerce)
+                </button>
+                {canSeeDugout ? (
+                  <Link
+                    href={`/coach-corner${masterOrgSuffix}`}
+                    onClick={() => setIsMenuOpen(false)}
+                    className={mobileLinkClassName(`/coach-corner${masterOrgSuffix}`)}
+                  >
+                    Coach&apos;s Corner
+                  </Link>
+                ) : null}
                 {canSeeDugout ? (
                   <Link
                     href={`/dugout${masterOrgSuffix}`}
