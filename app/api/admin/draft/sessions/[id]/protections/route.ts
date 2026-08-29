@@ -103,7 +103,7 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await req.json();
-    const { protectionId, draftTeamId, playerName, guardianEmail, protectionType, protectedRound, isClaimed } = body;
+    const { protectionId, draftTeamId, playerName, guardianEmail, protectionType, protectedRound, isClaimed, isOverridden } = body;
 
     if (!protectionId) {
       return NextResponse.json({ error: "protectionId is required" }, { status: 400 });
@@ -122,6 +122,7 @@ export async function PATCH(
           protectedRound: parseInt(String(protectedRound), 10) || 1,
         }),
         ...(isClaimed !== undefined && { isClaimed: Boolean(isClaimed) }),
+        ...(isOverridden !== undefined && { isOverridden: Boolean(isOverridden) }),
       },
     });
 

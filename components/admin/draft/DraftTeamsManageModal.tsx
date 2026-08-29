@@ -223,6 +223,24 @@ export default function DraftTeamsManageModal({
     }
   };
 
+  const handleToggleProtectionOverride = async (protectionId: string, isOverridden: boolean) => {
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sessionId}/protections`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ protectionId, isOverridden }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to update override");
+      }
+      fetchTeams();
+      onUpdated();
+    } catch (e) {
+      setError(getErrorMessage(e));
+    }
+  };
+
   const handleDeleteProtection = async (protectionId: string) => {
     try {
       const res = await fetch(`/api/admin/draft/sessions/${sessionId}/protections?protectionId=${protectionId}`, {
@@ -420,6 +438,14 @@ export default function DraftTeamsManageModal({
                                   Claimed
                                 </span>
                               )}
+                              {p.isOverridden && (
+                                <span
+                                  className="rounded bg-rose-500/20 px-1.5 py-0.2 text-[9px] font-bold text-rose-300"
+                                  title="Auto-lock is disabled for this protection -- it won't be auto-drafted. Usually set automatically after an undo."
+                                >
+                                  Auto-Lock Disabled
+                                </span>
+                              )}
                             </div>
 
                             <div className="flex items-center gap-3">
@@ -438,6 +464,21 @@ export default function DraftTeamsManageModal({
                                   className="w-14 rounded bg-zinc-900 border border-zinc-700 px-1 py-0.5 text-center font-mono font-bold text-amber-400"
                                 />
                               </div>
+                              <button
+                                onClick={() => handleToggleProtectionOverride(p.id, !p.isOverridden)}
+                                className={`text-[10px] font-semibold ${
+                                  p.isOverridden
+                                    ? "text-emerald-400 hover:text-emerald-300"
+                                    : "text-zinc-500 hover:text-amber-400"
+                                }`}
+                                title={
+                                  p.isOverridden
+                                    ? "Re-enable auto-lock for this protection"
+                                    : "Disable auto-lock -- this round will stay open for a manual pick"
+                                }
+                              >
+                                {p.isOverridden ? "Re-enable" : "Disable"}
+                              </button>
                               <button
                                 onClick={() => handleDeleteProtection(p.id)}
                                 className="text-zinc-500 hover:text-rose-400 text-xs"

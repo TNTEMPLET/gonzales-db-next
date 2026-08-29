@@ -75,10 +75,12 @@ export async function getDraftSessionState(sessionId: string) {
 
   const activeTeam = session.teams[teamIndex];
 
-  // Check if active team has a protected pick for this round
+  // Check if active team has a protected pick for this round. Overridden
+  // protections (e.g. an admin undid an auto-placed pick) are treated as if
+  // they don't exist -- the round is open for a normal manual pick.
   const protection = activeTeam
     ? session.protections.find(
-        (p) => p.draftTeamId === activeTeam.id && p.protectedRound === round && !p.isClaimed
+        (p) => p.draftTeamId === activeTeam.id && p.protectedRound === round && !p.isClaimed && !p.isOverridden
       )
     : undefined;
 
@@ -238,7 +240,9 @@ export async function undoLastDraftPick(sessionId: string) {
   const lastPick = session.picks[0];
 
   await prisma.$transaction(async (tx) => {
-    // If the undone pick was a protected pick, unclaim the protection
+    // If the undone pick was a protected pick, unclaim the protection --
+    // and mark it overridden so it doesn't just get auto-drafted right back
+    // on the next poll. An admin can re-enable it from Manage Teams.
     if (lastPick.isProtectedPick) {
       await tx.coachPlayerProtection.updateMany({
         where: {
@@ -246,7 +250,7 @@ export async function undoLastDraftPick(sessionId: string) {
           draftTeamId: lastPick.draftTeamId,
           protectedRound: lastPick.round,
         },
-        data: { isClaimed: false },
+        data: { isClaimed: false, isOverridden: true },
       });
     }
 
