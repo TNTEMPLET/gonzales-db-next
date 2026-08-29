@@ -1,5 +1,6 @@
 "use client";
 
+import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import AdminSidebar from "@/components/admin/AdminSidebar";
 
@@ -22,7 +23,9 @@ export default function AdminShell({ isMasterHeader, children }: AdminShellProps
 
   return (
     <>
-      <AdminSidebar />
+      <Suspense fallback={null}>
+        <AdminSidebar />
+      </Suspense>
       {children}
     </>
   );
