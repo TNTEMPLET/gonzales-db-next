@@ -46,12 +46,24 @@ function StatTile({ label, value, tone }: { label: string; value: string; tone: 
   );
 }
 
-export default function EnrollmentKpiHub({ targetOrg }: { targetOrg: ContentOrgId }) {
+export default function EnrollmentKpiHub({
+  targetOrg,
+  onGoToImport,
+  onGoToRosterDivision,
+}: {
+  targetOrg: ContentOrgId;
+  /** Cross-link into the sibling Import tab (both now live inside Competition & Play). */
+  onGoToImport?: () => void;
+  /** Cross-link into Teams & Rosters, pre-filtered to one division. */
+  onGoToRosterDivision?: (division: string) => void;
+}) {
   const router = useRouter();
   const searchParams = useSearchParams();
 
+  // Nested inside Competition Hub's own "tab" param (tab=enrollment), so this
+  // hub's own sub-navigation uses a second query key to avoid colliding with it.
   const tab = useMemo(() => {
-    const fromUrl = searchParams.get("tab") as EnrollmentKpiTab;
+    const fromUrl = searchParams.get("subtab") as EnrollmentKpiTab;
     if (fromUrl && TAB_META[fromUrl]) return fromUrl;
     return "overview" as EnrollmentKpiTab;
   }, [searchParams]);
@@ -59,9 +71,10 @@ export default function EnrollmentKpiHub({ targetOrg }: { targetOrg: ContentOrgI
   const setTab = useCallback(
     (next: EnrollmentKpiTab) => {
       const params = new URLSearchParams(searchParams.toString());
-      params.set("tab", next);
+      params.set("tab", "enrollment");
+      params.set("subtab", next);
       params.set("org", targetOrg);
-      router.push(`/admin/enrollment?${params.toString()}`);
+      router.push(`/admin/competition?${params.toString()}`);
     },
     [router, searchParams, targetOrg],
   );
@@ -121,13 +134,24 @@ export default function EnrollmentKpiHub({ targetOrg }: { targetOrg: ContentOrgI
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
         <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-zinc-400">{TAB_META[tab].description}</p>
-          <button
-            type="button"
-            onClick={() => void fetchData()}
-            className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-white"
-          >
-            🔄 Refresh
-          </button>
+          <div className="flex items-center gap-2">
+            {onGoToImport ? (
+              <button
+                type="button"
+                onClick={onGoToImport}
+                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-800"
+              >
+                ← Import Registration Data
+              </button>
+            ) : null}
+            <button
+              type="button"
+              onClick={() => void fetchData()}
+              className="rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-1.5 text-xs font-medium text-zinc-300 hover:bg-zinc-700 hover:text-white"
+            >
+              🔄 Refresh
+            </button>
+          </div>
         </div>
 
         {loading && (
@@ -222,6 +246,7 @@ export default function EnrollmentKpiHub({ targetOrg }: { targetOrg: ContentOrgI
                       <th className="px-4 py-3 text-center">Rostered</th>
                       <th className="px-4 py-3 text-center">Unrostered</th>
                       <th className="px-4 py-3 text-right">Gross</th>
+                      {onGoToRosterDivision ? <th className="px-4 py-3" /> : null}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-zinc-800/60 bg-zinc-900/40 font-medium">
@@ -232,11 +257,22 @@ export default function EnrollmentKpiHub({ targetOrg }: { targetOrg: ContentOrgI
                         <td className="px-4 py-3 text-center text-emerald-300">{div.rostered}</td>
                         <td className="px-4 py-3 text-center text-amber-300">{div.unrostered}</td>
                         <td className="px-4 py-3 text-right text-blue-300">{formatCents(div.grossCents)}</td>
+                        {onGoToRosterDivision ? (
+                          <td className="px-4 py-3 text-right">
+                            <button
+                              type="button"
+                              onClick={() => onGoToRosterDivision(div.ageGroup)}
+                              className="text-xs font-semibold text-brand-purple hover:underline"
+                            >
+                              Go to roster →
+                            </button>
+                          </td>
+                        ) : null}
                       </tr>
                     ))}
                     {data.perDivision.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-4 py-6 text-center text-zinc-500">
+                        <td colSpan={onGoToRosterDivision ? 6 : 5} className="px-4 py-6 text-center text-zinc-500">
                           No enrollment data yet for this season.
                         </td>
                       </tr>

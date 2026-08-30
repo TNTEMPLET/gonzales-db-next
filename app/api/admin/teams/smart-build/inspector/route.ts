@@ -35,9 +35,9 @@ function decorate(run: SportsConnectImportRunView): DecoratedRun {
  * Stage 1 of the Smart Auto-Build wizard: Drive connection status + the most
  * recent detected/synced files per report kind, decorated with the human
  * catalog copy (title/summary) so the wizard doesn't show raw report-kind
- * enum strings to a non-technical admin. Folds in the read-only half of
- * AdminSportsConnectDesk's "Google Drive Sync" panel directly into Teams
- * Management instead of leaving it on a separate page.
+ * enum strings to a non-technical admin. Folds in the read-only half of the
+ * "Google Drive Sync" panel (see components/admin/competition/CompetitionImportTab.tsx)
+ * directly into the wizard flow instead of leaving it on a separate page.
  */
 export async function GET(request: NextRequest) {
   const auth = await ensureAdminModule(request, "TEAMS");

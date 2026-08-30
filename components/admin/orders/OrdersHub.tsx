@@ -25,8 +25,8 @@ const TAB_META: Record<OrdersTab, { label: string; description: string }> = {
     description: "Manage sponsorship packages, logos, and footer placements.",
   },
   reports: {
-    label: "Payment & Financial Reports",
-    description: "Audit payouts, tournament income, and operational summaries.",
+    label: "Umpire Pay Reports",
+    description: "Audit umpire game-pay payouts and operational summaries. For registration revenue, see Enrollment & KPIs under Competition & Play.",
   },
 };
 

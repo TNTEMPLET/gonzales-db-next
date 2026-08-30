@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 import type {
   SportsConnectImportRunView,
@@ -127,6 +127,8 @@ type Props = {
   seasonYear: number;
   orgQuery: string;
   onBuildComplete?: () => void;
+  /** Opens the wizard immediately on mount — for a dedicated import destination where an extra click to open it is pure friction. */
+  autoOpen?: boolean;
 };
 
 async function safeJson(response: Response) {
@@ -145,7 +147,7 @@ function actionColor(action: "CREATE" | "UPDATE" | "SKIP") {
   return "text-zinc-400";
 }
 
-export default function SmartAutoBuildWizard({ seasonYear, orgQuery, onBuildComplete }: Props) {
+export default function SmartAutoBuildWizard({ seasonYear, orgQuery, onBuildComplete, autoOpen = false }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [step, setStep] = useState<Step>("pick");
 
@@ -212,6 +214,14 @@ export default function SmartAutoBuildWizard({ seasonYear, orgQuery, onBuildComp
       setInspectorLoading(false);
     }
   }
+
+  useEffect(() => {
+    function autoOpenOnMount() {
+      if (autoOpen) void openWizard();
+    }
+    autoOpenOnMount();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function applyDriveRun(run: SportsConnectImportRunView, slot: FileSlot) {
     setFetchingRunId(run.id);

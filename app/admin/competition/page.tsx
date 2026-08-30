@@ -13,7 +13,7 @@ export function generateMetadata() {
   const site = getSiteConfig();
   return {
     title: `Competition & Play | ${site.name}`,
-    description: "Teams, scores, scheduler, Assignr umpires, SportsConnect, and registration windows.",
+    description: "Teams, scores, scheduler, Assignr umpires, registration import, enrollment KPIs, and registration windows.",
   };
 }
 
@@ -44,8 +44,9 @@ export default async function CompetitionPage({
   const canScores = canAccessAdminModule(role, "SCORES");
   const canAssignr = canAccessAdminModule(role, "ASSIGNR");
   const canRegistration = canAccessAdminModule(role, "REGISTRATION_WINDOWS");
+  const canEnrollment = canAccessAdminModule(role, "ENROLLMENT_KPI");
 
-  if (!canTeams && !canDraft && !canScores && !canAssignr && !canRegistration) {
+  if (!canTeams && !canDraft && !canScores && !canAssignr && !canRegistration && !canEnrollment) {
     redirect("/admin?denied=competition");
   }
 
@@ -66,7 +67,7 @@ export default async function CompetitionPage({
             Competition & Play Hub
           </h1>
           <p className="max-w-3xl text-zinc-400">
-            Manage teams, enter scores, run the season scheduler, assign Assignr umpires, import SportsConnect rosters, and configure registration windows in one workspace.
+            Import registration data, manage teams and rosters, view enrollment KPIs, enter scores, run the season scheduler, assign Assignr umpires, and configure registration windows in one workspace.
           </p>
         </div>
 

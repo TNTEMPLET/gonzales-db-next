@@ -78,11 +78,35 @@ export function buildAdminSidebarNav(
       ...(allowModule("TEAMS")
         ? [{ id: "teams", label: "Teams & Rosters", href: hubHref("/admin/competition", orgSuffix, "teams") }]
         : []),
+      // Scheduler / SportsConnect Import have no dedicated AdminModule in
+      // CompetitionHub.tsx today -- it gates the whole hub, not these tabs
+      // individually, so match that: show whenever the subcategory itself is.
+      ...(competitionVisible
+        ? [
+            {
+              id: "sports-connect",
+              label: "Import Registration Data",
+              href: hubHref("/admin/competition", orgSuffix, "sports-connect"),
+            },
+          ]
+        : []),
+      ...(allowModule("ENROLLMENT_KPI")
+        ? [
+            {
+              id: "enrollment-kpi",
+              label: "Enrollment & KPIs",
+              href: hubHref("/admin/competition", orgSuffix, "enrollment"),
+            },
+          ]
+        : []),
       ...(allowModule("DRAFT")
         ? [{ id: "draft", label: "Online Draft", href: hubHref("/admin/competition", orgSuffix, "draft") }]
         : []),
       ...(allowModule("SCORES")
         ? [{ id: "scores", label: "Scores & Standings", href: hubHref("/admin/competition", orgSuffix, "scores") }]
+        : []),
+      ...(competitionVisible
+        ? [{ id: "scheduler", label: "Scheduler", href: hubHref("/admin/competition", orgSuffix, "scheduler") }]
         : []),
       ...(allowModule("ASSIGNR")
         ? [{ id: "assignr", label: "Umpire Desk (Assignr)", href: hubHref("/admin/competition", orgSuffix, "assignr") }]
@@ -93,19 +117,6 @@ export function buildAdminSidebarNav(
               id: "registration",
               label: "Registration Windows",
               href: hubHref("/admin/competition", orgSuffix, "registration"),
-            },
-          ]
-        : []),
-      // Scheduler / SportsConnect Import have no dedicated AdminModule in
-      // CompetitionHub.tsx today -- it gates the whole hub, not these tabs
-      // individually, so match that: show whenever the subcategory itself is.
-      ...(competitionVisible
-        ? [
-            { id: "scheduler", label: "Scheduler", href: hubHref("/admin/competition", orgSuffix, "scheduler") },
-            {
-              id: "sports-connect",
-              label: "SportsConnect Import",
-              href: hubHref("/admin/competition", orgSuffix, "sports-connect"),
             },
           ]
         : []),
@@ -166,9 +177,6 @@ export function buildAdminSidebarNav(
       // OrdersHub.tsx's real OrdersTab type is "caps"|"shirts"|"sponsors"|"reports"
       // only -- no "shop"/"payments" tab exists, so those are deliberately
       // omitted rather than linking to a tab that would crash the page.
-      ...(allowModule("ENROLLMENT_KPI")
-        ? [{ id: "enrollment-kpi", label: "Enrollment & KPIs", href: `/admin/enrollment${orgSuffix}` }]
-        : []),
       ...(ordersVisible
         ? [
             { id: "caps", label: "Cap Orders", href: hubHref("/admin/orders", orgSuffix, "caps") },
@@ -179,7 +187,7 @@ export function buildAdminSidebarNav(
         ? [{ id: "sponsors", label: "Sponsors", href: hubHref("/admin/orders", orgSuffix, "sponsors") }]
         : []),
       ...(allowModule("REPORTS")
-        ? [{ id: "reports", label: "Reports", href: hubHref("/admin/orders", orgSuffix, "reports") }]
+        ? [{ id: "reports", label: "Umpire Pay Reports", href: hubHref("/admin/orders", orgSuffix, "reports") }]
         : []),
     ],
   };

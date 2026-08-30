@@ -7,18 +7,20 @@ import AdminTeamsManager from "@/components/admin/AdminTeamsManager";
 import AdminScoresManager from "@/components/admin/AdminScoresManager";
 import AdminSchedulerManager from "@/components/admin/AdminSchedulerManager";
 import AdminAssignrHub from "@/components/admin/AdminAssignrHub";
-import AdminSportsConnectDesk from "@/components/admin/AdminSportsConnectDesk";
+import CompetitionImportTab from "@/components/admin/competition/CompetitionImportTab";
+import EnrollmentKpiHub from "@/components/admin/enrollment/EnrollmentKpiHub";
 import AdminRegistrationWindowsManager from "@/components/admin/AdminRegistrationWindowsManager";
 import OnlineDraftDesk from "@/components/admin/draft/OnlineDraftDesk";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 export type CompetitionTab =
   | "teams"
+  | "sports-connect"
+  | "enrollment"
   | "draft"
   | "scores"
   | "scheduler"
   | "assignr"
-  | "sports-connect"
   | "registration";
 
 const TAB_META: Record<
@@ -28,6 +30,14 @@ const TAB_META: Record<
   teams: {
     label: "Teams & Rosters",
     description: "Manage team rosters, coach assignments, and player imports.",
+  },
+  "sports-connect": {
+    label: "Import Registration Data",
+    description: "Upload SportsConnect exports, review data quality, and audit past imports.",
+  },
+  enrollment: {
+    label: "Enrollment & KPIs",
+    description: "Registration counts, revenue collected vs. outstanding, fee-tier breakdown, and team rosters at a glance.",
   },
   draft: {
     label: "Online Draft",
@@ -44,10 +54,6 @@ const TAB_META: Record<
   assignr: {
     label: "Umpire Desk (Assignr)",
     description: "Sync schedules, official assignments, and umpire pay with Assignr.",
-  },
-  "sports-connect": {
-    label: "SportsConnect Import",
-    description: "Assisted SportsConnect data loads and mapping presets.",
   },
   registration: {
     label: "Registration Windows",
@@ -74,10 +80,13 @@ export default function CompetitionHub({
   }, [searchParams, initialTab]);
 
   const setTab = useCallback(
-    (next: CompetitionTab) => {
+    (next: CompetitionTab, extraParams?: Record<string, string>) => {
       const params = new URLSearchParams(searchParams.toString());
       params.set("tab", next);
       params.set("org", targetOrg);
+      for (const [key, value] of Object.entries(extraParams ?? {})) {
+        params.set(key, value);
+      }
       router.push(`/admin/competition?${params.toString()}`);
     },
     [router, searchParams, targetOrg],
@@ -108,12 +117,23 @@ export default function CompetitionHub({
 
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
         <p className="mb-6 text-sm text-zinc-400">{TAB_META[tab].description}</p>
-        {tab === "teams" && <AdminTeamsManager targetOrg={targetOrg} />}
+        {tab === "teams" && (
+          <AdminTeamsManager targetOrg={targetOrg} onGoToImport={() => setTab("sports-connect")} />
+        )}
+        {tab === "sports-connect" && (
+          <CompetitionImportTab targetOrg={targetOrg} onViewEnrollment={() => setTab("enrollment")} />
+        )}
+        {tab === "enrollment" && (
+          <EnrollmentKpiHub
+            targetOrg={targetOrg}
+            onGoToImport={() => setTab("sports-connect")}
+            onGoToRosterDivision={(division) => setTab("teams", { division })}
+          />
+        )}
         {tab === "draft" && <OnlineDraftDesk targetOrg={targetOrg} seasonYear={2026} />}
         {tab === "scores" && <AdminScoresManager targetOrg={targetOrg} />}
         {tab === "scheduler" && <AdminSchedulerManager targetOrg={targetOrg} />}
         {tab === "assignr" && <AdminAssignrHub targetOrg={targetOrg} />}
-        {tab === "sports-connect" && <AdminSportsConnectDesk targetOrg={targetOrg} />}
         {tab === "registration" && <AdminRegistrationWindowsManager organizationId={targetOrg} />}
       </div>
     </div>

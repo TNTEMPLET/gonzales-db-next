@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 
 import BulkEmailToolbar from "@/components/admin/communications/BulkEmailToolbar";
 import SendEmailModal from "@/components/admin/communications/SendEmailModal";
@@ -19,7 +20,6 @@ import {
   SyncedDriveFileMenu,
 } from "./teams/SportsConnectAssistPanels";
 import OnlineDraftDesk from "@/components/admin/draft/OnlineDraftDesk";
-import SmartAutoBuildWizard from "./teams/SmartAutoBuildWizard";
 import PlayerCardDemoPreview from "@/components/players/PlayerCardDemoPreview";
 import PlayerCardPanel, {
   playerCardFromFields,
@@ -213,12 +213,15 @@ type UndoImportStatus = {
 export default function AdminTeamsManager({
   targetOrg,
   isMaster = false,
+  onGoToImport,
 }: {
   targetOrg: ContentOrgId;
   isMaster?: boolean;
+  onGoToImport?: () => void;
 }) {
   const orgQuery = `org=${targetOrg}`;
   const isFallBall = targetOrg === "fallball";
+  const searchParams = useSearchParams();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
@@ -298,6 +301,18 @@ export default function AdminTeamsManager({
   const [pendingUndoImport, setPendingUndoImport] = useState<ImportHistoryItem | null>(null);
   const [undoConfirmText, setUndoConfirmText] = useState("");
   const [activeTeamsSection, setActiveTeamsSection] = useState<TeamWorkflowSectionId>("teams-build");
+
+  // Deep-link from Enrollment & KPIs' Rosters tab: ?division=<ageGroup> jumps
+  // straight to the roster table pre-filtered to that division, instead of
+  // landing on the generic Teams Setup section.
+  useEffect(() => {
+    const division = searchParams.get("division");
+    if (!division) return;
+    setTeamFilterAgeGroup(division);
+    setActiveTeamsSection("teams-review-rosters");
+    const el = document.getElementById("teams-review-rosters");
+    el?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [searchParams]);
   const [undoImportStatus, setUndoImportStatus] = useState<UndoImportStatus | null>(null);
   const undoProgressIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const [coachImportFile, setCoachImportFile] = useState<File | null>(null);
@@ -2117,12 +2132,22 @@ export default function AdminTeamsManager({
           onRefresh={() => void loadSportsConnectQuality()}
         />
         <div className="flex flex-wrap items-center gap-2">
-          <a
-            href={`/admin/sports-connect?${orgQuery}`}
-            className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
-          >
-            Sports Connect Ops Desk
-          </a>
+          {onGoToImport ? (
+            <button
+              type="button"
+              onClick={onGoToImport}
+              className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
+            >
+              Import Registration Data
+            </button>
+          ) : (
+            <a
+              href={`/admin/competition?tab=sports-connect&${orgQuery}`}
+              className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
+            >
+              Import Registration Data
+            </a>
+          )}
           <button
             type="button"
             disabled={!selectedTeamId}
@@ -2133,16 +2158,6 @@ export default function AdminTeamsManager({
             className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
           >
             Assign Coaches
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setActiveTeamsSection("teams-import-players");
-              setShowPlayersImportModal(true);
-            }}
-            className="rounded-lg border border-brand-purple text-brand-purple hover:bg-brand-purple/10 px-4 py-2 text-sm font-semibold"
-          >
-            Start Player Import
           </button>
           <PlayerCardDemoPreview
             organizationId={targetOrg}
@@ -2158,16 +2173,24 @@ export default function AdminTeamsManager({
       )}
 
       <div id="teams-build" className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4 scroll-mt-24">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Teams Setup</h2>
-          <SmartAutoBuildWizard
-            seasonYear={seasonYear}
-            orgQuery={orgQuery}
-            onBuildComplete={() => {
-              void loadTeams();
-              void loadSportsConnectQuality();
-            }}
-          />
+          {onGoToImport ? (
+            <button
+              type="button"
+              onClick={onGoToImport}
+              className="text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 font-semibold shadow"
+            >
+              Import players/coaches/team list →
+            </button>
+          ) : (
+            <a
+              href={`/admin/competition?tab=sports-connect&${orgQuery}`}
+              className="text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 font-semibold shadow"
+            >
+              Import players/coaches/team list →
+            </a>
+          )}
         </div>
         <details className="group">
           <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
@@ -2315,16 +2338,6 @@ export default function AdminTeamsManager({
               className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
             >
               Refresh
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setActiveTeamsSection("teams-import-players");
-                setShowPlayersImportModal(true);
-              }}
-              className="rounded-lg border border-brand-purple px-3 py-1.5 text-xs font-semibold text-brand-purple hover:bg-brand-purple/10"
-            >
-              Start Player Import
             </button>
           </div>
         </div>

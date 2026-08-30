@@ -6,7 +6,7 @@ export default async function LegacyRedirectPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const resolvedParams = await searchParams;
-  const targetBase = "/admin/orders?tab=shop";
+  const targetBase = "/admin/shop/test-order";
   const params = new URLSearchParams();
   
   if (targetBase.includes("?")) {
