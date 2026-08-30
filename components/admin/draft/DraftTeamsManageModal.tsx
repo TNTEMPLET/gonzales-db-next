@@ -42,8 +42,12 @@ export default function DraftTeamsManageModal({
     "HEAD_COACH_CHILD" | "ASSISTANT_COACH_CHILD" | "RETURNING_PLAYER"
   >("HEAD_COACH_CHILD");
 
-  const fetchTeams = async () => {
-    setLoading(true);
+  // `silent` skips the loading-spinner placeholder -- used for refetches after
+  // a save (add/edit/reorder/delete) so the team list never gets swapped out
+  // and back in, which was resetting this panel's scroll position on every
+  // save. Only the very first load (on mount) shows the spinner.
+  const fetchTeams = async (opts: { silent?: boolean } = {}) => {
+    if (!opts.silent) setLoading(true);
     try {
       const res = await fetch(`/api/admin/draft/sessions/${sessionId}/teams`);
       const data = await res.json();
@@ -53,7 +57,7 @@ export default function DraftTeamsManageModal({
     } catch (e) {
       setError(getErrorMessage(e));
     } finally {
-      setLoading(false);
+      if (!opts.silent) setLoading(false);
     }
   };
 
@@ -98,7 +102,7 @@ export default function DraftTeamsManageModal({
         throw new Error(data.error || "Failed to add team");
       }
       setNewTeamName("");
-      fetchTeams();
+      fetchTeams({ silent: true });
       onUpdated();
     } catch (e) {
       setError(getErrorMessage(e));
@@ -122,7 +126,7 @@ export default function DraftTeamsManageModal({
         const data = await res.json();
         throw new Error(data.error || "Failed to update coach");
       }
-      fetchTeams();
+      fetchTeams({ silent: true });
       onUpdated();
     } catch (e) {
       setError(getErrorMessage(e));
@@ -152,7 +156,7 @@ export default function DraftTeamsManageModal({
         const data = await res.json();
         throw new Error(data.error || "Failed to reorder teams");
       }
-      fetchTeams();
+      fetchTeams({ silent: true });
       onUpdated();
     } catch (e) {
       setError(getErrorMessage(e));
@@ -169,7 +173,7 @@ export default function DraftTeamsManageModal({
         const data = await res.json();
         throw new Error(data.error || "Failed to delete team");
       }
-      fetchTeams();
+      fetchTeams({ silent: true });
       onUpdated();
     } catch (e) {
       setError(getErrorMessage(e));
@@ -195,7 +199,7 @@ export default function DraftTeamsManageModal({
       }
       setNewChildName("");
       setAddingProtectionTeamId(null);
-      fetchTeams();
+      fetchTeams({ silent: true });
       onUpdated();
     } catch (e) {
       setError(getErrorMessage(e));
@@ -216,7 +220,7 @@ export default function DraftTeamsManageModal({
         const data = await res.json();
         throw new Error(data.error || "Failed to update round");
       }
-      fetchTeams();
+      fetchTeams({ silent: true });
       onUpdated();
     } catch (e) {
       setError(getErrorMessage(e));
@@ -234,7 +238,7 @@ export default function DraftTeamsManageModal({
         const data = await res.json();
         throw new Error(data.error || "Failed to update override");
       }
-      fetchTeams();
+      fetchTeams({ silent: true });
       onUpdated();
     } catch (e) {
       setError(getErrorMessage(e));
@@ -250,7 +254,7 @@ export default function DraftTeamsManageModal({
         const data = await res.json();
         throw new Error(data.error || "Failed to remove protection");
       }
-      fetchTeams();
+      fetchTeams({ silent: true });
       onUpdated();
     } catch (e) {
       setError(getErrorMessage(e));
