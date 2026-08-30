@@ -7,6 +7,7 @@ import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { matchStandardDivision } from "@/lib/sportsConnect/fallballDivisions";
 
 export type CsvRow = Record<string, string | number | boolean | null | undefined>;
 export type UpdatedUserSnapshot = {
@@ -308,7 +309,14 @@ export async function applyCoachImportRows(params: {
       "Division Name",
     ]);
     const mappedAgeGroup = ageGroupMappings.get(rawAgeGroup.trim().toLowerCase());
-    const ageGroup = mappedAgeGroup || normalizeAgeGroup(rawAgeGroup);
+    // Fall Ball standardizes on 10 short codes (4U TB ... 17U) regardless of
+    // how SportsConnect spells the division that row — checked before the
+    // Assignr-oriented normalizeAgeGroup() fallback, which is for
+    // gonzales/ascension's own alias vocabulary and is a no-op on Fall Ball
+    // division text anyway.
+    const standardizedAgeGroup =
+      targetOrg === "fallball" ? matchStandardDivision(rawAgeGroup) : null;
+    const ageGroup = mappedAgeGroup || standardizedAgeGroup || normalizeAgeGroup(rawAgeGroup);
     const assignedTeam =
       getRowValue(row, [
         "assigned_team",
