@@ -1,15 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { assignJerseyNumbersForTeam } from "@/lib/admin/jerseyNumbers";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
-import { sortPlayersBySize } from "@/lib/admin/jerseySizes";
 
 /**
- * Reassigns jersey numbers for every player on one team, starting at 1,
- * ordered smallest jersey size to largest (the league's usual convention),
- * tie-broken by last name. This replaces any existing numbers on the team —
- * it's a full renumber, not a fill-in-the-blanks pass.
+ * Reassigns jersey numbers for every player on one team. See
+ * lib/admin/jerseyNumbers.ts for the ordering rule — this route is the
+ * manual trigger; draft materialization calls the same function
+ * automatically when a draft finishes.
  */
 export async function POST(request: NextRequest) {
   const auth = await ensureAdminModule(request, "TEAMS");
@@ -32,28 +32,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Team not found" }, { status: 404 });
   }
 
-  const players = await prisma.teamPlayer.findMany({
-    where: { teamId },
-    select: { id: true, fullName: true, lastName: true, jerseySize: true },
-  });
-  if (players.length === 0) {
+  const result = await assignJerseyNumbersForTeam(prisma, teamId);
+  if (!result) {
     return NextResponse.json({ error: "This team has no players yet" }, { status: 400 });
   }
 
-  const { sorted, unmatched } = sortPlayersBySize(players);
-
-  await prisma.$transaction(
-    sorted.map((player, index) =>
-      prisma.teamPlayer.update({
-        where: { id: player.id },
-        data: { jerseyNumber: String(index + 1) },
-      }),
-    ),
-  );
-
   return NextResponse.json({
     success: true,
-    assigned: sorted.length,
-    unmatchedSizeNames: unmatched,
+    assigned: result.assigned,
+    unmatchedSizeNames: result.unmatchedSizeNames,
   });
 }
