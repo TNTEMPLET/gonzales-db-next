@@ -2099,6 +2099,41 @@ export default function AdminTeamsManager({
     }
   }
 
+  async function autoAssignJerseyNumbers() {
+    if (!selectedTeamId) return;
+    if (
+      !window.confirm(
+        "Assign jersey numbers 1, 2, 3... to every player on this team, smallest jersey size first? This replaces any numbers already set.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/admin/teams/players/jersey-numbers?${orgQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ teamId: selectedTeamId }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String(json.error || "Failed to assign jersey numbers"));
+      const unmatched = Array.isArray(json.unmatchedSizeNames) ? json.unmatchedSizeNames : [];
+      setNotice(
+        `Assigned jersey numbers to ${json.assigned} player${json.assigned === 1 ? "" : "s"}.` +
+          (unmatched.length > 0
+            ? ` ${unmatched.length} player${unmatched.length === 1 ? "" : "s"} had an unrecognized jersey size and were sorted last: ${unmatched.join(", ")}.`
+            : ""),
+      );
+      await loadTeamDetails(selectedTeamId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to assign jersey numbers");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <section className="space-y-6">
       {error ? (
@@ -2475,6 +2510,15 @@ export default function AdminTeamsManager({
                   title="Manage coach assignments"
                 >
                   Assign Coaches
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedTeamId || busy || players.length === 0}
+                  onClick={() => void autoAssignJerseyNumbers()}
+                  className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+                  title="Assign jersey numbers 1, 2, 3... smallest size first"
+                >
+                  Auto-Number Jerseys
                 </button>
                 <button
                   type="button"
