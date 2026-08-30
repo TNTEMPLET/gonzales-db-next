@@ -1,4 +1,9 @@
 import prisma from "@/lib/prisma";
+import {
+  describeUnmatchedJerseySize,
+  sortPlayersBySize,
+  type UnmatchedJerseySize,
+} from "@/lib/admin/jerseySizes";
 
 export type JerseyReportPlayer = {
   jerseyNumber: string | null;
@@ -27,6 +32,7 @@ export type JerseyReportDivision = {
   playerCount: number;
   missingNumberCount: number;
   missingSizeCount: number;
+  unmatchedSizes: UnmatchedJerseySize[];
 };
 
 function splitName(fullName: string): { firstName: string; lastName: string } {
@@ -70,8 +76,10 @@ export async function buildJerseyReportForDivision(params: {
   let playerCount = 0;
   let missingNumberCount = 0;
   let missingSizeCount = 0;
+  const unmatchedSizes: UnmatchedJerseySize[] = [];
 
   const reportTeams: JerseyReportTeam[] = teams.map((team) => {
+    unmatchedSizes.push(...sortPlayersBySize(team.players).unmatched);
     const players: JerseyReportPlayer[] = team.players
       .map((p) => {
         const derived = p.firstName && p.lastName ? null : splitName(p.fullName);
@@ -121,6 +129,7 @@ export async function buildJerseyReportForDivision(params: {
     playerCount,
     missingNumberCount,
     missingSizeCount,
+    unmatchedSizes,
   };
 }
 
@@ -183,6 +192,16 @@ export function jerseyReportToHtml(report: JerseyReportDivision): string {
     })
     .join("");
 
+  const unmatchedBlock =
+    report.unmatchedSizes.length > 0
+      ? `<p style="font-size:13px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 12px">` +
+        `<strong>Needs review — ${report.unmatchedSizes.length} size${report.unmatchedSizes.length === 1 ? "" : "s"} couldn't be sorted automatically:</strong><br/>` +
+        report.unmatchedSizes
+          .map((u) => escapeHtml(describeUnmatchedJerseySize(u)))
+          .join("<br/>") +
+        `</p>`
+      : "";
+
   return (
     `<div style="font-family:system-ui,sans-serif;color:#18181b">` +
     `<p><strong>Jersey Report — ${escapeHtml(report.ageGroup)}</strong> (${report.seasonYear})</p>` +
@@ -190,6 +209,7 @@ export function jerseyReportToHtml(report: JerseyReportDivision): string {
     (report.missingNumberCount > 0 ? ` — ${report.missingNumberCount} missing a jersey number` : "") +
     (report.missingSizeCount > 0 ? ` — ${report.missingSizeCount} missing a jersey size` : "") +
     `</p>` +
+    unmatchedBlock +
     teamBlocks +
     `</div>`
   );

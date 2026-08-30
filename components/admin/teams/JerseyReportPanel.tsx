@@ -2,6 +2,11 @@
 
 import { useState } from "react";
 
+import {
+  describeUnmatchedJerseySize,
+  type UnmatchedJerseySize,
+} from "@/lib/admin/jerseySizes";
+
 type JerseyReportPreview = {
   report: {
     ageGroup: string;
@@ -94,11 +99,15 @@ export default function JerseyReportPanel({
       );
       const json = await safeJson(response);
       if (!response.ok) throw new Error(String(json.error || "Failed to finalize division"));
-      const unmatched = Array.isArray(json.unmatchedSizeNames) ? json.unmatchedSizeNames : [];
+      const unmatched: UnmatchedJerseySize[] = Array.isArray(json.unmatchedSizes)
+        ? json.unmatchedSizes
+        : [];
       const skippedEmpty = Array.isArray(json.skippedEmptyTeams) ? json.skippedEmptyTeams : [];
       setNotice(
         `Numbered ${json.totalAssigned} player${json.totalAssigned === 1 ? "" : "s"} across ${json.teamsNumbered} team${json.teamsNumbered === 1 ? "" : "s"}.` +
-          (unmatched.length > 0 ? ` Unrecognized size, sorted last: ${unmatched.join(", ")}.` : "") +
+          (unmatched.length > 0
+            ? ` Sorted last: ${unmatched.map(describeUnmatchedJerseySize).join(", ")}.`
+            : "") +
           (skippedEmpty.length > 0 ? ` Skipped (no players yet): ${skippedEmpty.join(", ")}.` : ""),
       );
       await loadPreview(ageGroup);

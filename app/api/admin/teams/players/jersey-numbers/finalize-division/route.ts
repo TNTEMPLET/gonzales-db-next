@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { assignJerseyNumbersForTeam } from "@/lib/admin/jerseyNumbers";
+import type { UnmatchedJerseySize } from "@/lib/admin/jerseySizes";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
@@ -40,7 +41,7 @@ export async function POST(request: NextRequest) {
     select: { id: true, teamName: true },
   });
 
-  const results: Array<{ teamName: string; assigned: number; unmatchedSizeNames: string[] }> = [];
+  const results: Array<{ teamName: string; assigned: number; unmatchedSizes: UnmatchedJerseySize[] }> = [];
   const skippedEmpty: string[] = [];
   for (const team of teams) {
     const result = await assignJerseyNumbersForTeam(prisma, team.id);
@@ -62,7 +63,7 @@ export async function POST(request: NextRequest) {
     success: true,
     teamsNumbered: results.length,
     totalAssigned: results.reduce((sum, r) => sum + r.assigned, 0),
-    unmatchedSizeNames: [...new Set(results.flatMap((r) => r.unmatchedSizeNames))],
+    unmatchedSizes: results.flatMap((r) => r.unmatchedSizes),
     skippedEmptyTeams: skippedEmpty,
   });
 }

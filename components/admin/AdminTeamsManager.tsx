@@ -21,6 +21,10 @@ import {
 } from "./teams/SportsConnectAssistPanels";
 import OnlineDraftDesk from "@/components/admin/draft/OnlineDraftDesk";
 import JerseyReportPanel from "@/components/admin/teams/JerseyReportPanel";
+import {
+  describeUnmatchedJerseySize,
+  type UnmatchedJerseySize,
+} from "@/lib/admin/jerseySizes";
 import PlayerCardDemoPreview from "@/components/players/PlayerCardDemoPreview";
 import PlayerCardPanel, {
   playerCardFromFields,
@@ -2120,11 +2124,13 @@ export default function AdminTeamsManager({
       });
       const json = await safeJson(response);
       if (!response.ok) throw new Error(String(json.error || "Failed to assign jersey numbers"));
-      const unmatched = Array.isArray(json.unmatchedSizeNames) ? json.unmatchedSizeNames : [];
+      const unmatched: UnmatchedJerseySize[] = Array.isArray(json.unmatchedSizes)
+        ? json.unmatchedSizes
+        : [];
       setNotice(
         `Assigned jersey numbers to ${json.assigned} player${json.assigned === 1 ? "" : "s"}.` +
           (unmatched.length > 0
-            ? ` ${unmatched.length} player${unmatched.length === 1 ? "" : "s"} had an unrecognized jersey size and were sorted last: ${unmatched.join(", ")}.`
+            ? ` ${unmatched.length} player${unmatched.length === 1 ? "" : "s"} sorted last: ${unmatched.map(describeUnmatchedJerseySize).join(", ")}.`
             : ""),
       );
       await loadTeamDetails(selectedTeamId);

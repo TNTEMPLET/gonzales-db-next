@@ -61,23 +61,43 @@ export function jerseySizeRank(raw: string | null | undefined): number {
   return rank ?? SIZE_RANK_GROUPS.length;
 }
 
+export type UnmatchedJerseySize = {
+  fullName: string;
+  jerseySize: string;
+  reason: "unrecognized" | "multiple_values";
+};
+
+export function describeUnmatchedJerseySize(u: UnmatchedJerseySize): string {
+  const why =
+    u.reason === "multiple_values"
+      ? "two sizes selected on the registration form"
+      : "not a recognized size";
+  return `${u.fullName} ("${u.jerseySize}" — ${why})`;
+}
+
 /**
  * Sorts players by jersey size (smallest first), tie-broken by last name.
- * Returns the fullName of any player whose size didn't match a known alias,
- * or whose size cell held more than one value (blank sizes are treated as
- * "unknown," not flagged) so the caller can warn before numbers go out
- * based on a guess.
+ * Returns the name + raw value of any player whose size didn't match a
+ * known alias, or whose size cell held more than one value (blank sizes
+ * are treated as "unknown," not flagged) so the caller can show an admin
+ * exactly what's wrong instead of just who's affected.
  */
 export function sortPlayersBySize<
   T extends { jerseySize: string | null; lastName?: string | null; fullName: string },
->(players: T[]): { sorted: T[]; unmatched: string[] } {
-  const unmatched: string[] = [];
+>(players: T[]): { sorted: T[]; unmatched: UnmatchedJerseySize[] } {
+  const unmatched: UnmatchedJerseySize[] = [];
   for (const p of players) {
     const normalized = normalizeJerseySize(p.jerseySize);
     if (!normalized) continue;
     const hasMultipleValues = normalized.includes(",");
     const isKnown = SIZE_RANK_BY_ALIAS.has(firstSizeToken(normalized));
-    if (!isKnown || hasMultipleValues) unmatched.push(p.fullName);
+    if (!isKnown || hasMultipleValues) {
+      unmatched.push({
+        fullName: p.fullName,
+        jerseySize: p.jerseySize as string,
+        reason: hasMultipleValues ? "multiple_values" : "unrecognized",
+      });
+    }
   }
   const sorted = [...players].sort((a, b) => {
     const rankDiff = jerseySizeRank(a.jerseySize) - jerseySizeRank(b.jerseySize);
