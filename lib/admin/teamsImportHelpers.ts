@@ -2,6 +2,8 @@
  * Pure helpers for Teams admin import workflows (Phase 4a extraction).
  */
 
+import { STANDARD_DIVISIONS as FALLBALL_STANDARD_DIVISIONS } from "@/lib/sportsConnect/fallballDivisions";
+
 export const PLAYER_IMPORT_DIVISION_KEYS = [
   "Division Name",
   "Division",
@@ -146,7 +148,12 @@ export type TeamsOrgId = "gonzales" | "ascension" | "fallball";
 
 export function getTeamsManagementAgeGroupDefaults(targetOrg: TeamsOrgId) {
   if (targetOrg === "fallball") {
-    return BASEBALL_AGE_DIVISIONS.map((division) => `${division} Fall`);
+    // The league's 10 standardized division codes (4U TB ... 17U) — the
+    // same vocabulary lib/sportsConnect/fallballDivisions.ts matches import
+    // text against, so a fresh team always lines up with what imports will
+    // write to Team.ageGroup. Previously this was a placeholder "6U Fall"
+    // .. "18U Fall" list that didn't correspond to any real division.
+    return [...FALLBALL_STANDARD_DIVISIONS];
   }
   if (targetOrg === "ascension") {
     return BASEBALL_AGE_DIVISIONS.map((division) => `${division} LLB`);

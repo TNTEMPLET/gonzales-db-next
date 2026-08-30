@@ -10,6 +10,7 @@ import type { ContentOrgId } from "@/lib/siteConfig";
 import type { CoachPairing, DraftLeaderOption, DraftSessionListItem, DraftUserRef } from "@/lib/draft/types";
 import type { CoachPlayerMatchCandidate } from "@/lib/draft/coachPlayerMatcher";
 import { getErrorMessage } from "@/lib/draft/clientError";
+import { STANDARD_DIVISIONS } from "@/lib/sportsConnect/fallballDivisions";
 
 type DraftSessionItem = DraftSessionListItem;
 
@@ -26,8 +27,8 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
 
   // Create Session Form State
   const [draftName, setDraftName] = useState("");
-  const [ageGroups, setAgeGroups] = useState<string[]>(["10 year-old", "9 year-old", "11-12 year-olds"]);
-  const [selectedAgeGroup, setSelectedAgeGroup] = useState("10 year-old");
+  const [ageGroups, setAgeGroups] = useState<string[]>([...STANDARD_DIVISIONS]);
+  const [selectedAgeGroup, setSelectedAgeGroup] = useState<string>(STANDARD_DIVISIONS[0]);
   const [draftType, setDraftType] = useState<"SNAKE" | "LINEAR">("SNAKE");
   const [secondsPerPick, setSecondsPerPick] = useState(120);
   const [totalRounds, setTotalRounds] = useState(12);

@@ -5,6 +5,13 @@ import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
 import { downloadDriveFileBuffer } from "@/lib/sportsConnect/driveSync";
 import * as XLSX from "xlsx";
 
+export {
+  STANDARD_DIVISIONS,
+  matchStandardDivisions,
+  matchStandardDivision,
+} from "./fallballDivisions";
+import { STANDARD_DIVISIONS, matchStandardDivisions, matchStandardDivision } from "./fallballDivisions";
+
 /**
  * Division enrollment + matched-coach capacity for Fall Ball. Always renders
  * all 10 standard divisions, sourced in priority order per report:
@@ -36,172 +43,24 @@ import * as XLSX from "xlsx";
 
 const FALLBALL_ORG = "fallball" as const;
 
-export const STANDARD_DIVISIONS = [
-  "Tee Ball, 3-4 year-olds",
-  "Tee Ball, 5 year-olds",
-  "Modified Tee Ball, 6 year-olds",
-  "Coaches' Pitch 7 year-olds",
-  "Coaches' Pitch 8 year-olds",
-  "9 year-old",
-  "10 year-old",
-  "11-12 year-olds",
-  "13-15 year-olds",
-  "15-17 year-olds",
-] as const;
-
 /** Per-division breakdown of the same 831-player manual fallback total. */
 const MANUAL_FALLBACK_DIVISION_PLAYER_COUNTS: Record<string, number> = {
-  "Tee Ball, 3-4 year-olds": 124,
-  "Tee Ball, 5 year-olds": 109,
-  "Modified Tee Ball, 6 year-olds": 138,
-  "Coaches' Pitch 7 year-olds": 106,
-  "Coaches' Pitch 8 year-olds": 65,
-  "9 year-old": 87,
-  "10 year-old": 47,
-  "11-12 year-olds": 97,
-  "13-15 year-olds": 41,
-  "15-17 year-olds": 17,
+  "4U TB": 124,
+  "5U TB": 109,
+  "6U MOD": 138,
+  "7U CP": 106,
+  "8U CP": 65,
+  "9U": 87,
+  "10U": 47,
+  "12U": 97,
+  "15U": 41,
+  "17U": 17,
 };
 
 function recommendedRosterSize(divisionName: string): number {
-  if (divisionName.includes("15-17")) return 10;
-  if (divisionName.includes("13-15")) return 11;
+  if (divisionName === "17U") return 10;
+  if (divisionName === "15U") return 11;
   return 12;
-}
-
-/**
- * Normalizes a division-name string for matching against STANDARD_DIVISIONS —
- * case/punctuation/whitespace insensitive, and treats "9U"/"9yo"/"9 year old"
- * as equivalent. Unlike substring/`includes()` matching, this only matches
- * when the *whole* normalized string agrees, so "Tee Ball 5" can't collapse
- * into the "Tee Ball 3-4" bucket the way a `.includes("Tee Ball")` catch-all
- * would. This is the precise, high-confidence tier — real free text (coach
- * interest forms, shorthand roster imports) usually doesn't survive it, which
- * is what matchStandardDivisions()'s looser tiers below are for.
- */
-function normalizeDivisionKey(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, " ")
-    .replace(/\byears?\s*olds?\b/g, "")
-    .replace(/\byo\b/g, "")
-    .replace(/(\d)\s*u\b/g, "$1")
-    .trim()
-    .replace(/\s+/g, " ");
-}
-
-const DIVISION_KEY_LOOKUP: Map<string, string> = new Map(
-  STANDARD_DIVISIONS.map((name) => [normalizeDivisionKey(name), name]),
-);
-
-function matchStandardDivisionExact(raw: string): string | null {
-  return DIVISION_KEY_LOOKUP.get(normalizeDivisionKey(raw)) ?? null;
-}
-
-/**
- * Age (in whole years) -> owning standard division(s). 15 is the one
- * genuinely ambiguous age — "13-15 year-olds" and "15-17 year-olds" both
- * claim it in the real division names — so a bare, un-ranged "15" resolves
- * to both. Any range that actually spells out either boundary (e.g.
- * "13-15", "15-17", or the full division name) is caught by the exact-match
- * tier above before this table is ever consulted, so the ambiguity only
- * surfaces for genuinely bare input.
- */
-const AGE_TO_DIVISION: Record<number, readonly string[]> = {
-  3: ["Tee Ball, 3-4 year-olds"],
-  4: ["Tee Ball, 3-4 year-olds"],
-  5: ["Tee Ball, 5 year-olds"],
-  6: ["Modified Tee Ball, 6 year-olds"],
-  7: ["Coaches' Pitch 7 year-olds"],
-  8: ["Coaches' Pitch 8 year-olds"],
-  9: ["9 year-old"],
-  10: ["10 year-old"],
-  11: ["11-12 year-olds"],
-  12: ["11-12 year-olds"],
-  13: ["13-15 year-olds"],
-  14: ["13-15 year-olds"],
-  15: ["13-15 year-olds", "15-17 year-olds"],
-  16: ["15-17 year-olds"],
-  17: ["15-17 year-olds"],
-};
-
-/**
- * Pulls every plausible age (3-17) out of free text, regardless of how it's
- * written — "7U", "10u", "15yo", "3/4", "11-12" all reduce to bare digit
- * tokens once suffixes and non-digit separators are stripped. A bare
- * multi-digit run outside 3-17 (e.g. a "2026" season year that leaked into
- * the field) never matches because it isn't a 1-2 digit token to begin with.
- */
-function extractAgeNumbers(raw: string): number[] {
-  const withoutAgeSuffixes = raw
-    .toLowerCase()
-    // "7u", "10u", "15yo" -> "7 ", "10 ", "15 " (keep the digits, drop the suffix)
-    .replace(/(\d{1,2})\s*(?:u|yo)(?![a-z0-9])/g, "$1 ")
-    // Any remaining letters ("dyb", "tee", "ball", "year", "olds", ...) are noise.
-    .replace(/[a-z]+/g, " ");
-
-  const ages = (withoutAgeSuffixes.match(/\d{1,2}/g) ?? [])
-    .map(Number)
-    .filter((n) => n >= 3 && n <= 17);
-
-  return Array.from(new Set(ages));
-}
-
-type KeywordFallbackRule = { test: RegExp; divisions: readonly string[] };
-
-/**
- * Last-resort tier for text with no extractable age number at all — checked
- * in order so "modified tee ball" (unambiguous) is claimed before the
- * generic "tee ball" rule (ambiguous between the 3-4 and 5 year-old
- * divisions) ever gets a chance to also match the same text.
- */
-const KEYWORD_FALLBACK_RULES: readonly KeywordFallbackRule[] = [
-  { test: /modified/, divisions: ["Modified Tee Ball, 6 year-olds"] },
-  {
-    test: /coach(?:es)?\s*'?\s*pitch/,
-    divisions: ["Coaches' Pitch 7 year-olds", "Coaches' Pitch 8 year-olds"],
-  },
-  { test: /tee\s*ball/, divisions: ["Tee Ball, 3-4 year-olds", "Tee Ball, 5 year-olds"] },
-];
-
-/**
- * Flexible division matcher — resolves shorthand, multi-division, and
- * suffix-noisy free text (e.g. "7U", "6u", "3/4 tee ball", "11/12",
- * "10u DYB", "7U/8U") to every standard division it plausibly names, not
- * just one. Three tiers, most confident first:
- *  1. Exact match after normalization (unchanged from before).
- *  2. Every 3-17 age number found in the text, mapped to its division(s).
- *  3. Unambiguous keyword fallback, only when tier 2 found nothing.
- * Returns [] when nothing matches at any tier — callers should never treat
- * that as "division 0", only as "no signal".
- */
-export function matchStandardDivisions(raw: string): string[] {
-  if (!raw || !raw.trim()) return [];
-
-  const exact = matchStandardDivisionExact(raw);
-  if (exact) return [exact];
-
-  const matchedFromAges = new Set<string>();
-  for (const age of extractAgeNumbers(raw)) {
-    for (const division of AGE_TO_DIVISION[age] ?? []) {
-      matchedFromAges.add(division);
-    }
-  }
-  if (matchedFromAges.size > 0) {
-    return STANDARD_DIVISIONS.filter((division) => matchedFromAges.has(division));
-  }
-
-  const lowered = raw.toLowerCase();
-  for (const rule of KEYWORD_FALLBACK_RULES) {
-    if (rule.test.test(lowered)) return [...rule.divisions];
-  }
-
-  return [];
-}
-
-/** Single-division convenience wrapper — for callers where a value can only ever belong to one division (a player's own division, a team's ageGroup), not free text that may legitimately name several. */
-function matchStandardDivision(raw: string): string | null {
-  return matchStandardDivisions(raw)[0] ?? null;
 }
 
 export type FallBallDivisionCapacity = {

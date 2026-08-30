@@ -9,6 +9,7 @@ import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { completeImportRunSafe, recordImportRunSafe } from "@/lib/sportsConnect/importRuns";
+import { matchStandardDivision } from "@/lib/sportsConnect/fallballDivisions";
 
 export { shouldSkipDivisionImport };
 
@@ -365,7 +366,13 @@ export async function applyImportRows(params: {
       continue;
     }
     const mappedAgeGroup = divisionMappings.get(rawAgeGroup.trim().toLowerCase());
-    const ageGroup = mappedAgeGroup || rawAgeGroup;
+    // Fall Ball standardizes on 10 short codes (4U TB ... 17U) regardless of
+    // how SportsConnect spells the division that row — an explicit admin
+    // mapping (divisionMappings) still wins if one was set for this exact
+    // raw value.
+    const standardizedAgeGroup =
+      targetOrg === "fallball" ? matchStandardDivision(rawAgeGroup) : null;
+    const ageGroup = mappedAgeGroup || standardizedAgeGroup || rawAgeGroup;
     const rawTeamName = getRowValue(row, PLAYER_IMPORT_TEAM_KEYS) || "";
     const teamName = teamMappings.get(normalizeLooseName(rawTeamName)) || rawTeamName;
     const programName = getRowValue(row, ["Program Name", "Program", "Season", "season"]);

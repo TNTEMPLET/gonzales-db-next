@@ -5,6 +5,7 @@ import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { detectCoachPlayerMatches } from "@/lib/draft/coachPlayerMatcher";
 import { draftApiError } from "@/lib/draft/apiError";
 import type { CoachPairing, DraftLeaderOption } from "@/lib/draft/types";
+import { STANDARD_DIVISIONS } from "@/lib/sportsConnect/fallballDivisions";
 
 export async function GET(req: NextRequest) {
   const auth = await ensureAdminModule(req, "DRAFT");
@@ -30,18 +31,7 @@ export async function GET(req: NextRequest) {
       let ageGroups = distinctAgeGroups.map((d) => d.ageGroup).filter(Boolean);
 
       if (ageGroups.length === 0) {
-        ageGroups = [
-          "10 year-old",
-          "9 year-old",
-          "11-12 year-olds",
-          "13-15 year-olds",
-          "15-17 year-olds",
-          "Coaches' Pitch 7 year-olds",
-          "Coaches' Pitch 8 year-olds",
-          "Modified Tee Ball, 6 year-olds",
-          "Tee Ball, 3-4 year-olds",
-          "Tee Ball, 5 year-olds",
-        ];
+        ageGroups = [...STANDARD_DIVISIONS];
       }
 
       // Fetch registered users for this org (for coach and draft leader assignment)
