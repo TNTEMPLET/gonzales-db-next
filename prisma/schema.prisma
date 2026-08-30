@@ -235,8 +235,8 @@ enum ScheduleExportBatchStatus {
 }
 
 model NewsPost {
-  id             String     @id @default(cuid())
-  organizationId String     @default("gonzales")
+  id             String          @id @default(cuid())
+  organizationId String          @default("gonzales")
   title          String
   slug           String
   excerpt        String?
@@ -244,12 +244,12 @@ model NewsPost {
   /// Hero / rotator / OG cover image (single).
   imageUrl       String?
   author         String?
-  featured       Boolean    @default(false)
-  rotatorEnabled Boolean    @default(false)
-  status         NewsStatus @default(DRAFT)
+  featured       Boolean         @default(false)
+  rotatorEnabled Boolean         @default(false)
+  status         NewsStatus      @default(DRAFT)
   publishedAt    DateTime?
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
   media          NewsPostMedia[]
 
   @@unique([organizationId, slug])
@@ -272,57 +272,57 @@ model NewsPostMedia {
 }
 
 model AdminUser {
-  id                               String                            @id @default(cuid())
-  email                            String                            @unique
-  name                             String?
-  firstName                        String?
-  lastName                         String?
-  role                             AdminRole                         @default(ADMIN)
-  isMaster                         Boolean                           @default(false)
-  passwordHash                     String?
-  avatarUrl                        String?
+  id                                String                            @id @default(cuid())
+  email                             String                            @unique
+  name                              String?
+  firstName                         String?
+  lastName                          String?
+  role                              AdminRole                         @default(ADMIN)
+  isMaster                          Boolean                           @default(false)
+  passwordHash                      String?
+  avatarUrl                         String?
   /// Set when the admin signs in with Google; required to open org Drive files in the browser.
-  googleSub                        String?                           @unique
-  createdAt                        DateTime                          @default(now())
-  updatedAt                        DateTime                          @updatedAt
-  sessions                         AdminSession[]
-  auditLogs                        AdminAuditLog[]                   @relation("AdminActorLogs")
-  enteredScores                    GameScore[]
-  gameChangerScoreboardConnections GameChangerScoreboardConnection[] @relation("GameChangerScoreboardConnectionCreatedBy")
-  coachImportBatches               CoachImportBatch[]
-  teamListImportBatches            TeamListImportBatch[]
-  allStarBallotCycles              AllStarBallotCycle[]              @relation("AllStarCycleCreatedBy")
-  allStarHeadCoachAssignments      AllStarHeadCoachAssignment[]      @relation("AllStarHeadCoachAdmin")
-  allStarInvites                   AllStarInvite[]                   @relation("AllStarInviteCreatedByAdmin")
-  allStarSecondPhaseOverrides      AllStarCandidate[]                @relation("AllStarSecondPhaseOverrideByAdmin")
-  allStarFinalRosterOverrides      AllStarCandidate[]                @relation("AllStarFinalRosterOverrideByAdmin")
-  allStarVaultAccessGrants         AllStarVaultAccess[]              @relation("AllStarVaultAccessGrantedByAdmin")
-  teamsCreated                     Team[]
-  teamPlayerImportBatches          TeamPlayerImportBatch[]
-  socialPostsCreated               SocialPost[]
-  orgMemberships                   AdminOrgMembership[]
-  communicationsCreated            CommunicationCampaign[]           @relation("CommunicationCampaignCreatedBy")
-  communicationsApproved           CommunicationApproval[]           @relation("CommunicationApprovedBy")
-  communicationRecipientSnapshots  CommunicationRecipientSnapshot[]  @relation("CommunicationRecipientAdminUser")
-  communicationDeliveries          CommunicationDelivery[]           @relation("CommunicationDeliveryAdminUser")
-  communicationFromAddressesCreated CommunicationFromAddress[]       @relation("CommunicationFromAddressCreatedBy")
-  assignrSyncJobsCreated           AssignrSyncJob[]                  @relation("AssignrSyncJobCreatedBy")
-  assignrAuditLogs                 AssignrAuditLog[]                 @relation("AssignrAuditActor")
-  bracketProjectsCreated           BracketProject[]                  @relation("BracketProjectCreatedBy")
-  governingBodyTemplatesCreated    GoverningBodyTemplate[]           @relation("GoverningBodyTemplateCreatedBy")
-  scheduleManagerJobsCreated       ScheduleManagerJob[]              @relation("ScheduleManagerJobCreatedBy")
-  allStarAuditLogsActed            AllStarAuditLog[]                 @relation("AllStarAuditActor")
-  allStarAuditLogsReverted         AllStarAuditLog[]                 @relation("AllStarAuditReverter")
-  allStarPaymentsMarkedPaid        AllStarPayment[]                  @relation("AllStarPaymentMarkedPaidBy")
-  parkInfoPagesUpdated             ParkInfoPage[]                    @relation("ParkInfoUpdatedBy")
-  merchProductStatusesUpdated      MerchProductStatus[]              @relation("MerchProductStatusUpdatedBy")
-  merchProductsUpdated             MerchProduct[]                    @relation("MerchProductUpdatedBy")
-  scheduleSeasonsCreated           ScheduleSeason[]                  @relation("ScheduleSeasonCreatedBy")
-  scheduleExportBatchesCreated     ScheduleExportBatch[]             @relation("ScheduleExportBatchCreatedBy")
-  volunteerRequirementsReviewed    VolunteerRequirementStatus[]      @relation("VolunteerRequirementReviewedBy")
-  volunteerRoleDefsCreated         VolunteerRoleDef[]                @relation("VolunteerRoleDefCreatedBy")
-  sportsConnectMappingPresets      SportsConnectMappingPreset[]      @relation("SportsConnectMappingPresetCreatedBy")
-  sportsConnectImportRuns          SportsConnectImportRun[]          @relation("SportsConnectImportRunCreatedBy")
+  googleSub                         String?                           @unique
+  createdAt                         DateTime                          @default(now())
+  updatedAt                         DateTime                          @updatedAt
+  sessions                          AdminSession[]
+  auditLogs                         AdminAuditLog[]                   @relation("AdminActorLogs")
+  enteredScores                     GameScore[]
+  gameChangerScoreboardConnections  GameChangerScoreboardConnection[] @relation("GameChangerScoreboardConnectionCreatedBy")
+  coachImportBatches                CoachImportBatch[]
+  teamListImportBatches             TeamListImportBatch[]
+  allStarBallotCycles               AllStarBallotCycle[]              @relation("AllStarCycleCreatedBy")
+  allStarHeadCoachAssignments       AllStarHeadCoachAssignment[]      @relation("AllStarHeadCoachAdmin")
+  allStarInvites                    AllStarInvite[]                   @relation("AllStarInviteCreatedByAdmin")
+  allStarSecondPhaseOverrides       AllStarCandidate[]                @relation("AllStarSecondPhaseOverrideByAdmin")
+  allStarFinalRosterOverrides       AllStarCandidate[]                @relation("AllStarFinalRosterOverrideByAdmin")
+  allStarVaultAccessGrants          AllStarVaultAccess[]              @relation("AllStarVaultAccessGrantedByAdmin")
+  teamsCreated                      Team[]
+  teamPlayerImportBatches           TeamPlayerImportBatch[]
+  socialPostsCreated                SocialPost[]
+  orgMemberships                    AdminOrgMembership[]
+  communicationsCreated             CommunicationCampaign[]           @relation("CommunicationCampaignCreatedBy")
+  communicationsApproved            CommunicationApproval[]           @relation("CommunicationApprovedBy")
+  communicationRecipientSnapshots   CommunicationRecipientSnapshot[]  @relation("CommunicationRecipientAdminUser")
+  communicationDeliveries           CommunicationDelivery[]           @relation("CommunicationDeliveryAdminUser")
+  communicationFromAddressesCreated CommunicationFromAddress[]        @relation("CommunicationFromAddressCreatedBy")
+  assignrSyncJobsCreated            AssignrSyncJob[]                  @relation("AssignrSyncJobCreatedBy")
+  assignrAuditLogs                  AssignrAuditLog[]                 @relation("AssignrAuditActor")
+  bracketProjectsCreated            BracketProject[]                  @relation("BracketProjectCreatedBy")
+  governingBodyTemplatesCreated     GoverningBodyTemplate[]           @relation("GoverningBodyTemplateCreatedBy")
+  scheduleManagerJobsCreated        ScheduleManagerJob[]              @relation("ScheduleManagerJobCreatedBy")
+  allStarAuditLogsActed             AllStarAuditLog[]                 @relation("AllStarAuditActor")
+  allStarAuditLogsReverted          AllStarAuditLog[]                 @relation("AllStarAuditReverter")
+  allStarPaymentsMarkedPaid         AllStarPayment[]                  @relation("AllStarPaymentMarkedPaidBy")
+  parkInfoPagesUpdated              ParkInfoPage[]                    @relation("ParkInfoUpdatedBy")
+  merchProductStatusesUpdated       MerchProductStatus[]              @relation("MerchProductStatusUpdatedBy")
+  merchProductsUpdated              MerchProduct[]                    @relation("MerchProductUpdatedBy")
+  scheduleSeasonsCreated            ScheduleSeason[]                  @relation("ScheduleSeasonCreatedBy")
+  scheduleExportBatchesCreated      ScheduleExportBatch[]             @relation("ScheduleExportBatchCreatedBy")
+  volunteerRequirementsReviewed     VolunteerRequirementStatus[]      @relation("VolunteerRequirementReviewedBy")
+  volunteerRoleDefsCreated          VolunteerRoleDef[]                @relation("VolunteerRoleDefCreatedBy")
+  sportsConnectMappingPresets       SportsConnectMappingPreset[]      @relation("SportsConnectMappingPresetCreatedBy")
+  sportsConnectImportRuns           SportsConnectImportRun[]          @relation("SportsConnectImportRunCreatedBy")
 }
 
 enum BracketProjectStatus {
@@ -490,35 +490,35 @@ model AdminOrgMembership {
 }
 
 model RegisteredUser {
-  id                              String                             @id @default(cuid())
-  email                           String
-  name                            String?
-  firstName                       String?
-  lastName                        String?
-  isBlocked                       Boolean                            @default(false)
-  contactPhone                    String?
-  googleSub                       String?                            @unique
-  passwordHash                    String?
-  avatarUrl                       String?
+  id                                          String    @id @default(cuid())
+  email                                       String
+  name                                        String?
+  firstName                                   String?
+  lastName                                    String?
+  isBlocked                                   Boolean   @default(false)
+  contactPhone                                String?
+  googleSub                                   String?   @unique
+  passwordHash                                String?
+  avatarUrl                                   String?
   /// @deprecated Prefer VolunteerRequirementStatus (ABUSE_AWARENESS). Kept for dual-read migration; do not write from new code.
-  abuseAwarenessTrainingCertificateUrl String?
+  abuseAwarenessTrainingCertificateUrl        String?
   /// @deprecated Prefer VolunteerRequirementStatus document fields.
-  abuseAwarenessTrainingCertificateFileName String?
+  abuseAwarenessTrainingCertificateFileName   String?
   /// @deprecated Prefer VolunteerRequirementStatus document fields.
-  abuseAwarenessTrainingCertificateMimeType String?
+  abuseAwarenessTrainingCertificateMimeType   String?
   /// @deprecated Prefer VolunteerRequirementStatus uploadedAt/completedAt.
   abuseAwarenessTrainingCertificateUploadedAt DateTime?
   /**
    * True when name-based duplicate detection flagged this account for admin review.
    * Global (person-level) after the identity refactor.
    */
-  duplicateReviewPending          Boolean                            @default(false)
-  createdAt                       DateTime                           @default(now())
-  updatedAt                       DateTime                           @updatedAt
+  duplicateReviewPending                      Boolean   @default(false)
+  createdAt                                   DateTime  @default(now())
+  updatedAt                                   DateTime  @updatedAt
 
   // Per-organization state and permissions (the "child" profiles).
   // One row per (person, org) where the person has participated or been granted access.
-  orgProfiles                     RegisteredUserOrgProfile[]
+  orgProfiles RegisteredUserOrgProfile[]
 
   auditLogs                       AdminAuditLog[]
   sessions                        CoachSession[]
@@ -781,16 +781,16 @@ model CommunicationCampaign {
 
 /// Master-admin managed From identities for Communications (Resend). No redeploy needed to change options.
 model CommunicationFromAddress {
-  id              String   @id @default(cuid())
+  id               String   @id @default(cuid())
   /// Full Resend From header, e.g. "AP Baseball <noreply@apbaseball.com>"
-  fromHeader      String   @unique
-  label           String?
-  isDefault       Boolean  @default(false)
-  isActive        Boolean  @default(true)
-  sortOrder       Int      @default(0)
+  fromHeader       String   @unique
+  label            String?
+  isDefault        Boolean  @default(false)
+  isActive         Boolean  @default(true)
+  sortOrder        Int      @default(0)
   createdByAdminId String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   createdByAdmin AdminUser? @relation("CommunicationFromAddressCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
 
@@ -837,24 +837,24 @@ model CommunicationApproval {
 }
 
 model CommunicationRecipientSnapshot {
-  id                 String                     @id @default(cuid())
-  campaignId         String
-  recipientType      CommunicationRecipientType
-  registeredUserId   String?
-  adminUserId        String?
+  id                String                     @id @default(cuid())
+  campaignId        String
+  recipientType     CommunicationRecipientType
+  registeredUserId  String?
+  adminUserId       String?
   /// Trip participant when recipientType is TRIP_GUARDIAN
-  tripParticipantId  String?
+  tripParticipantId String?
   /// Display name for RAW_CONTACT rows (Sponsor contactName, guardian full name, etc).
-  contactName        String?
+  contactName       String?
   /// Generic provenance for RAW_CONTACT rows (e.g. "SPONSOR", "TEAM_PLAYER_GUARDIAN");
   /// null for all other recipientTypes, which already have their own FK columns above.
   /// Not a typed relation on purpose — traceability only, like matchReasons.
-  sourceType         String?
-  sourceId           String?
-  email              String?
-  phone              String?
-  matchReasons       String[]
-  createdAt          DateTime                   @default(now())
+  sourceType        String?
+  sourceId          String?
+  email             String?
+  phone             String?
+  matchReasons      String[]
+  createdAt         DateTime                   @default(now())
 
   campaign       CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
   registeredUser RegisteredUser?       @relation("CommunicationRecipientRegisteredUser", fields: [registeredUserId], references: [id], onDelete: SetNull)
@@ -1257,6 +1257,7 @@ model Team {
   createdByAdmin   AdminUser?            @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
   coachAssignments TeamCoachAssignment[]
   players          TeamPlayer[]
+  enrollments      Enrollment[]
   gameNotes        TeamGameNote[]
   homeDraftGames   ScheduleDraftGame[]   @relation("ScheduleDraftGameHomeTeam")
   awayDraftGames   ScheduleDraftGame[]   @relation("ScheduleDraftGameAwayTeam")
@@ -2009,32 +2010,32 @@ model ShirtOrderItem {
 /// Shop catalog SKU (PayPal NCP link, copy, image). Source of truth in DB;
 /// seed rows ship from lib/merch/catalogSeed.ts on first load / migrate.
 model MerchProduct {
-  id               String    @id
+  id                String     @id
   /// JSON string array of content org ids, e.g. ["ascension"]
-  orgsJson         String
-  name             String
-  summary          String    @default("")
-  description      String?
-  priceCents       Int
-  paypalUrl        String
-  imageUrl         String?
-  badge            String?
+  orgsJson          String
+  name              String
+  summary           String     @default("")
+  description       String?
+  priceCents        Int
+  paypalUrl         String
+  imageUrl          String?
+  badge             String?
   /// JSON string array of checkout hint strings
   checkoutHintsJson String?
-  maxQuantity      Int?
+  maxQuantity       Int?
   /// shirt-orders | cap-orders | none
-  fulfillment      String    @default("shirt-orders")
+  fulfillment       String     @default("shirt-orders")
   /// Catalog retired flag (hidden everywhere except admin includeInactive)
-  active           Boolean   @default(true)
+  active            Boolean    @default(true)
   /// Runtime open/closed — false hides from public shop
-  enabled          Boolean   @default(true)
-  activeFrom       DateTime?
-  activeTo         DateTime?
-  sortOrder        Int       @default(100)
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  updatedByAdminId String?
-  updatedByAdmin   AdminUser? @relation("MerchProductUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
+  enabled           Boolean    @default(true)
+  activeFrom        DateTime?
+  activeTo          DateTime?
+  sortOrder         Int        @default(100)
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  updatedByAdminId  String?
+  updatedByAdmin    AdminUser? @relation("MerchProductUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
 
   @@index([active, enabled, sortOrder])
 }
@@ -2042,15 +2043,15 @@ model MerchProduct {
 /// Legacy open/closed overlay (pre-DB catalog). Still applied when present so
 /// existing toggles keep working; new writes go to MerchProduct.enabled.
 model MerchProductStatus {
-  id               String    @id @default(cuid())
+  id               String     @id @default(cuid())
   /// Matches MerchProduct.id
-  productId        String    @unique
+  productId        String     @unique
   /// false = closed / not taking orders (hidden from public shop)
-  enabled          Boolean   @default(true)
+  enabled          Boolean    @default(true)
   /// Optional window — same semantics as All-Star page links
   activeFrom       DateTime?
   activeTo         DateTime?
-  updatedAt        DateTime  @updatedAt
+  updatedAt        DateTime   @updatedAt
   updatedByAdminId String?
   updatedByAdmin   AdminUser? @relation("MerchProductStatusUpdatedBy", fields: [updatedByAdminId], references: [id], onDelete: SetNull)
 
@@ -2141,7 +2142,7 @@ model VolunteerRoleDef {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  createdByAdmin AdminUser?               @relation("VolunteerRoleDefCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdByAdmin AdminUser?                @relation("VolunteerRoleDefCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
   assignments    VolunteerRoleAssignment[]
 
   @@index([isActive, sortOrder])
@@ -2160,7 +2161,7 @@ model VolunteerProfile {
   createdAt        DateTime               @default(now())
   updatedAt        DateTime               @updatedAt
 
-  registeredUser RegisteredUser              @relation(fields: [registeredUserId], references: [id], onDelete: Cascade)
+  registeredUser RegisteredUser               @relation(fields: [registeredUserId], references: [id], onDelete: Cascade)
   roles          VolunteerRoleAssignment[]
   requirements   VolunteerRequirementStatus[]
 
@@ -2170,7 +2171,7 @@ model VolunteerProfile {
 }
 
 model VolunteerRoleAssignment {
-  id                 String  @id @default(cuid())
+  id                 String   @id @default(cuid())
   volunteerProfileId String
   /// FK to VolunteerRoleDef.key (catalog managed by Master Admin).
   roleKey            String
@@ -2200,10 +2201,10 @@ model VolunteerRequirementDef {
 }
 
 model VolunteerRequirementStatus {
-  id                 String                           @id @default(cuid())
+  id                 String                          @id @default(cuid())
   volunteerProfileId String
   requirementKey     VolunteerRequirementKey
-  status             VolunteerRequirementStatusValue  @default(NOT_STARTED)
+  status             VolunteerRequirementStatusValue @default(NOT_STARTED)
   completedAt        DateTime?
   expiresAt          DateTime?
   externalRef        String?
@@ -2214,8 +2215,8 @@ model VolunteerRequirementStatus {
   reviewedByAdminId  String?
   reviewedAt         DateTime?
   notes              String?
-  createdAt          DateTime                         @default(now())
-  updatedAt          DateTime                         @updatedAt
+  createdAt          DateTime                        @default(now())
+  updatedAt          DateTime                        @updatedAt
 
   volunteerProfile VolunteerProfile @relation(fields: [volunteerProfileId], references: [id], onDelete: Cascade)
   reviewedByAdmin  AdminUser?       @relation("VolunteerRequirementReviewedBy", fields: [reviewedByAdminId], references: [id], onDelete: SetNull)
@@ -2266,22 +2267,85 @@ model SportsConnectImportRun {
   createdAt         DateTime  @default(now())
   completedAt       DateTime?
 
-  createdByAdmin AdminUser? @relation("SportsConnectImportRunCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  createdByAdmin AdminUser?   @relation("SportsConnectImportRunCreatedBy", fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  enrollments    Enrollment[]
 
+  @@unique([organizationId, seasonYear, driveFileId, revisionToken])
   @@index([organizationId, seasonYear, createdAt])
   @@index([organizationId, status, createdAt])
-  @@unique([organizationId, seasonYear, driveFileId, revisionToken])
+}
+
+/// Durable source of truth for a single SportsConnect registration row (one
+/// player, one season, one order line). Independent of Team/DraftPlayerPool
+/// so registration/revenue KPIs are correct before any roster exists.
+/// Additive alongside TeamPlayer — TeamPlayer remains the roster projection.
+model Enrollment {
+  id             String @id @default(cuid())
+  organizationId String
+  seasonYear     Int
+
+  /// Within-season idempotent re-import key: "<orderNo>::<normalizedName>" or
+  /// "<normalizedName>::<birthDateISO|nodob>" fallback. NOT a cross-season
+  /// participant identity — SportsConnect exposes no persistent one.
+  sportsConnectRowKey String
+
+  programName     String?
+  divisionNameRaw String?
+  ageGroup        String
+  teamNameRaw     String?
+  teamId          String?
+
+  firstName         String?
+  lastName          String?
+  fullName          String
+  gender            String?
+  birthDate         DateTime?
+  guardianFirstName String?
+  guardianLastName  String?
+  guardianEmail     String?
+  guardianPhone     String?
+  contactPhone      String?
+  streetAddress     String?
+  unit              String?
+  city              String?
+  state             String?
+  postalCode        String?
+
+  // Financial ledger — *Cents convention per TournamentIncomeTransaction.
+  sportsConnectOrderNo   String?
+  orderDate              DateTime?
+  orderDetailDescription String?
+  orderPaymentStatus     String?
+  amountCents            Int?
+  amountPaidCents        Int?
+  balanceCents           Int?
+
+  /// Full-fidelity escape hatch: every raw column, verbatim, so a future
+  /// report needing an unmapped column never requires a re-import.
+  rawRow Json
+
+  importRunId String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  team      Team?                   @relation(fields: [teamId], references: [id], onDelete: SetNull)
+  importRun SportsConnectImportRun? @relation(fields: [importRunId], references: [id], onDelete: SetNull)
+
+  @@unique([organizationId, seasonYear, sportsConnectRowKey])
+  @@index([organizationId, seasonYear, ageGroup])
+  @@index([organizationId, seasonYear, teamId])
+  @@index([organizationId, seasonYear, sportsConnectOrderNo])
+  @@index([guardianEmail])
 }
 
 /// Explicit mapping of content organization to Google Drive export folder ID
 model SportsConnectOrgDriveFolder {
-  id              String   @id @default(cuid())
-  organizationId  String   @unique
-  driveFolderId   String
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  organizationId String   @unique
+  driveFolderId  String
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 }
-
 
 // ── Travel / Regional trip intake (multi-org All-Star program) ───────────────
 
@@ -2345,26 +2409,26 @@ model TripEvent {
 }
 
 model TripParticipant {
-  id             String        @id @default(cuid())
-  eventId        String
-  event          TripEvent     @relation(fields: [eventId], references: [id], onDelete: Cascade)
-  organizationId String
-  playerFullName String
-  ageGroup       String?
-  team           String?
-  jerseyNumber   String?
-  candidateId    String?
-  paymentId      String?
-  inviteToken    String        @unique
+  id                String        @id @default(cuid())
+  eventId           String
+  event             TripEvent     @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  organizationId    String
+  playerFullName    String
+  ageGroup          String?
+  team              String?
+  jerseyNumber      String?
+  candidateId       String?
+  paymentId         String?
+  inviteToken       String        @unique
   /// not_started | draft | submitted
-  status         String        @default("not_started")
+  status            String        @default("not_started")
   /// Last successful invite email send (guardian)
-  inviteEmailSentAt    DateTime?
-  inviteEmailTo        String?
-  inviteEmailCount     Int           @default(0)
-  response       TripResponse?
-  createdAt      DateTime      @default(now())
-  updatedAt      DateTime      @updatedAt
+  inviteEmailSentAt DateTime?
+  inviteEmailTo     String?
+  inviteEmailCount  Int           @default(0)
+  response          TripResponse?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
 
   @@index([eventId, status])
   @@index([organizationId, eventId])
@@ -2414,82 +2478,82 @@ enum SurveySeason {
 }
 
 model Survey {
-  id              String           @id @default(cuid())
-  organizationId  String           // "fallball" | "district6" | "apbaseball"
-  season          SurveySeason     @default(SPRING)
-  seasonYear      Int              // 2026
-  title           String
-  description     String?
-  slug            String
-  isPublished     Boolean          @default(true)
-  isAnonymous     Boolean          @default(true)
-  createdAt       DateTime         @default(now())
-  updatedAt       DateTime         @updatedAt
+  id             String       @id @default(cuid())
+  organizationId String // "fallball" | "district6" | "apbaseball"
+  season         SurveySeason @default(SPRING)
+  seasonYear     Int // 2026
+  title          String
+  description    String?
+  slug           String
+  isPublished    Boolean      @default(true)
+  isAnonymous    Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
 
-  sections        SurveySection[]
-  responses       SurveyResponse[]
+  sections  SurveySection[]
+  responses SurveyResponse[]
 
   @@unique([organizationId, slug])
   @@index([organizationId, seasonYear, season])
 }
 
 model SurveySection {
-  id           String           @id @default(cuid())
-  surveyId     String
-  survey       Survey           @relation(fields: [surveyId], references: [id], onDelete: Cascade)
-  order        Int              @default(0)
-  title        String
-  description  String?
-  
-  questions    SurveyQuestion[]
+  id          String  @id @default(cuid())
+  surveyId    String
+  survey      Survey  @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  order       Int     @default(0)
+  title       String
+  description String?
+
+  questions SurveyQuestion[]
 
   @@index([surveyId, order])
 }
 
 model SurveyQuestion {
-  id             String         @id @default(cuid())
-  sectionId      String
-  section        SurveySection  @relation(fields: [sectionId], references: [id], onDelete: Cascade)
-  order          Int            @default(0)
-  questionText   String
-  type           String         // RATING | LIKERT_CHOICE | MATRIX | SINGLE_CHOICE | TEXT | CONDITIONAL_GATE
-  isRequired     Boolean        @default(true)
-  matrixTopics   String[]       @default([])
-  options        String[]       @default([])
+  id           String        @id @default(cuid())
+  sectionId    String
+  section      SurveySection @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  order        Int           @default(0)
+  questionText String
+  type         String // RATING | LIKERT_CHOICE | MATRIX | SINGLE_CHOICE | TEXT | CONDITIONAL_GATE
+  isRequired   Boolean       @default(true)
+  matrixTopics String[]      @default([])
+  options      String[]      @default([])
 
-  answers        SurveyAnswer[]
+  answers SurveyAnswer[]
 
   @@index([sectionId, order])
 }
 
 model SurveyResponse {
-  id             String         @id @default(cuid())
-  surveyId       String
-  survey         Survey         @relation(fields: [surveyId], references: [id], onDelete: Cascade)
-  organizationId String?        // "gonzales", "ascension", or "fallball" (selected by respondent)
-  respondentEmail String?
-  divisionName   String?
-  ageGroup       String?        // e.g., "6U", "8U", "10U"
-  wantsBoardContact Boolean     @default(false)
-  contactPhone   String?
-  submittedAt    DateTime       @default(now())
+  id                String   @id @default(cuid())
+  surveyId          String
+  survey            Survey   @relation(fields: [surveyId], references: [id], onDelete: Cascade)
+  organizationId    String? // "gonzales", "ascension", or "fallball" (selected by respondent)
+  respondentEmail   String?
+  divisionName      String?
+  ageGroup          String? // e.g., "6U", "8U", "10U"
+  wantsBoardContact Boolean  @default(false)
+  contactPhone      String?
+  submittedAt       DateTime @default(now())
 
-  answers        SurveyAnswer[]
+  answers SurveyAnswer[]
 
   @@index([surveyId, submittedAt])
   @@index([surveyId, organizationId, submittedAt])
 }
 
 model SurveyAnswer {
-  id             String         @id @default(cuid())
-  responseId     String
-  response       SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
-  questionId     String
-  question       SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  matrixTopic    String?
-  textValue      String?
-  numberValue    Float?
-  stringValue    String?
+  id          String         @id @default(cuid())
+  responseId  String
+  response    SurveyResponse @relation(fields: [responseId], references: [id], onDelete: Cascade)
+  questionId  String
+  question    SurveyQuestion @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  matrixTopic String?
+  textValue   String?
+  numberValue Float?
+  stringValue String?
 
   @@index([responseId])
   @@index([questionId])
@@ -2519,48 +2583,48 @@ enum DraftProtectionType {
 }
 
 model DraftSession {
-  id               String             @id @default(cuid())
-  organizationId   String
-  seasonYear       Int
-  ageGroup         String
-  name             String
-  draftType        DraftType          @default(SNAKE)
-  status           DraftSessionStatus @default(SETUP)
-  secondsPerPick   Int?               @default(120)
-  totalRounds      Int                @default(12)
-  currentRound     Int                @default(1)
-  currentPickIndex Int                @default(0)
-  createdByAdminId String?
+  id                String             @id @default(cuid())
+  organizationId    String
+  seasonYear        Int
+  ageGroup          String
+  name              String
+  draftType         DraftType          @default(SNAKE)
+  status            DraftSessionStatus @default(SETUP)
+  secondsPerPick    Int?               @default(120)
+  totalRounds       Int                @default(12)
+  currentRound      Int                @default(1)
+  currentPickIndex  Int                @default(0)
+  createdByAdminId  String?
   draftLeaderUserId String?
-  draftLeader      RegisteredUser?    @relation("DraftSessionLeader", fields: [draftLeaderUserId], references: [id], onDelete: SetNull)
-  createdAt        DateTime           @default(now())
-  updatedAt        DateTime           @updatedAt
+  draftLeader       RegisteredUser?    @relation("DraftSessionLeader", fields: [draftLeaderUserId], references: [id], onDelete: SetNull)
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
 
-  teams            DraftTeam[]
-  playerPool       DraftPlayerPool[]
-  picks            DraftPick[]
-  protections      CoachPlayerProtection[]
+  teams       DraftTeam[]
+  playerPool  DraftPlayerPool[]
+  picks       DraftPick[]
+  protections CoachPlayerProtection[]
 
   @@index([organizationId, seasonYear, ageGroup])
   @@index([organizationId, status])
 }
 
 model DraftTeam {
-  id               String       @id @default(cuid())
-  draftSessionId   String
-  teamName         String
-  draftOrder       Int
-  headCoachUserId  String?
-  assistantUserId  String?
-  targetTeamId     String?
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id              String   @id @default(cuid())
+  draftSessionId  String
+  teamName        String
+  draftOrder      Int
+  headCoachUserId String?
+  assistantUserId String?
+  targetTeamId    String?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
 
-  draftSession     DraftSession    @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
-  headCoach        RegisteredUser? @relation("DraftTeamHeadCoach", fields: [headCoachUserId], references: [id], onDelete: SetNull)
-  assistantCoach   RegisteredUser? @relation("DraftTeamAssistantCoach", fields: [assistantUserId], references: [id], onDelete: SetNull)
-  picks            DraftPick[]
-  protections      CoachPlayerProtection[]
+  draftSession   DraftSession            @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
+  headCoach      RegisteredUser?         @relation("DraftTeamHeadCoach", fields: [headCoachUserId], references: [id], onDelete: SetNull)
+  assistantCoach RegisteredUser?         @relation("DraftTeamAssistantCoach", fields: [assistantUserId], references: [id], onDelete: SetNull)
+  picks          DraftPick[]
+  protections    CoachPlayerProtection[]
 
   @@unique([draftSessionId, draftOrder])
   @@index([draftSessionId])
@@ -2579,52 +2643,50 @@ model CoachPlayerProtection {
   isOverridden     Boolean             @default(false)
   createdAt        DateTime            @default(now())
 
-  draftSession     DraftSession        @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
-  draftTeam        DraftTeam           @relation(fields: [draftTeamId], references: [id], onDelete: Cascade)
+  draftSession DraftSession @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
+  draftTeam    DraftTeam    @relation(fields: [draftTeamId], references: [id], onDelete: Cascade)
 
   @@index([draftSessionId])
   @@index([draftTeamId])
 }
 
 model DraftPlayerPool {
-  id               String       @id @default(cuid())
-  draftSessionId   String
-  firstName        String?
-  lastName         String?
-  fullName         String
-  guardianEmail    String?
-  guardianPhone    String?
-  birthDate        DateTime?
-  evaluationScore  Float?
-  pitcherRating    Int?
-  catcherRating    Int?
-  notes            String?
-  isDrafted        Boolean      @default(false)
-  draftedTeamId    String?
-  draftedPickId    String?
-  createdAt        DateTime     @default(now())
+  id              String    @id @default(cuid())
+  draftSessionId  String
+  firstName       String?
+  lastName        String?
+  fullName        String
+  guardianEmail   String?
+  guardianPhone   String?
+  birthDate       DateTime?
+  evaluationScore Float?
+  pitcherRating   Int?
+  catcherRating   Int?
+  notes           String?
+  isDrafted       Boolean   @default(false)
+  draftedTeamId   String?
+  draftedPickId   String?
+  createdAt       DateTime  @default(now())
 
-  draftSession     DraftSession @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
+  draftSession DraftSession @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
 
   @@index([draftSessionId, isDrafted])
 }
 
 model DraftPick {
-  id               String       @id @default(cuid())
-  draftSessionId   String
-  round            Int
-  overallPick      Int
-  draftTeamId      String
-  playerPoolId     String
-  isProtectedPick  Boolean      @default(false)
-  pickedAt         DateTime     @default(now())
-  pickedByAdminId  String?
+  id              String   @id @default(cuid())
+  draftSessionId  String
+  round           Int
+  overallPick     Int
+  draftTeamId     String
+  playerPoolId    String
+  isProtectedPick Boolean  @default(false)
+  pickedAt        DateTime @default(now())
+  pickedByAdminId String?
 
-  draftSession     DraftSession @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
-  draftTeam        DraftTeam    @relation(fields: [draftTeamId], references: [id], onDelete: Cascade)
+  draftSession DraftSession @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
+  draftTeam    DraftTeam    @relation(fields: [draftTeamId], references: [id], onDelete: Cascade)
 
   @@unique([draftSessionId, overallPick])
   @@index([draftSessionId])
 }
-
-

@@ -46,6 +46,7 @@ const previewModuleMinimumRole: Record<
   ROLE_ASSIGNMENT: "MASTER_ADMIN",
   REGISTRATION_WINDOWS: "MASTER_ADMIN",
   DRAFT: "ADMIN",
+  ENROLLMENT_KPI: "BOARD_MEMBER",
 };
 
 const roleRank: Record<"MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR", number> = {

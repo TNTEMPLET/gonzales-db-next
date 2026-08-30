@@ -8,6 +8,7 @@ import { shouldSkipDivisionImport } from "@/lib/admin/teamsImportHelpers";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { completeImportRunSafe, recordImportRunSafe } from "@/lib/sportsConnect/importRuns";
 
 export { shouldSkipDivisionImport };
 
@@ -73,6 +74,26 @@ export const PLAYER_IMPORT_EMAIL_KEYS = [
   "email",
 ];
 
+export const PLAYER_IMPORT_ORDER_NO_KEYS = ["Order No", "Order Number", "Order ID"];
+
+export const PLAYER_IMPORT_ORDER_DATE_KEYS = ["Order Date", "Registration Date"];
+
+export const PLAYER_IMPORT_ORDER_DETAIL_KEYS = [
+  "Order Detail Description",
+  "Order Detail",
+  "Item Description",
+];
+
+export const PLAYER_IMPORT_AMOUNT_KEYS = ["OrderItem Amount", "Order Item Amount", "Amount"];
+
+export const PLAYER_IMPORT_AMOUNT_PAID_KEYS = [
+  "OrderItem Amount Paid",
+  "Order Item Amount Paid",
+  "Amount Paid",
+];
+
+export const PLAYER_IMPORT_BALANCE_KEYS = ["OrderItem Balance", "Order Item Balance", "Balance"];
+
 export function getRowValue(row: Row, keys: string[]) {
   for (const key of keys) {
     const value = row[key];
@@ -124,6 +145,34 @@ function parseDateValue(value: string) {
   if (!trimmed) return null;
   const parsed = new Date(trimmed);
   return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+/** Parses money strings like "$85.00" or "1,234.5" into integer cents. */
+function parseMoneyToCents(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const cleaned = trimmed.replace(/[^0-9.-]/g, "");
+  if (!cleaned) return null;
+  const parsed = Number.parseFloat(cleaned);
+  if (!Number.isFinite(parsed)) return null;
+  return Math.round(parsed * 100);
+}
+
+/**
+ * Within-season idempotent re-import key for Enrollment rows. Order No groups
+ * siblings who checked out together, so it's combined with the normalized
+ * player name to disambiguate them; falls back to name+DOB when no order
+ * number is present. NOT a cross-season participant identity.
+ */
+function deriveSportsConnectRowKey(
+  orderNo: string,
+  fullName: string,
+  birthDate: Date | null,
+): string {
+  const namePart = normalizeLooseName(fullName);
+  if (orderNo.trim()) return `${orderNo.trim()}::${namePart}`;
+  const dobPart = birthDate ? birthDate.toISOString().slice(0, 10) : "nodob";
+  return `${namePart}::${dobPart}`;
 }
 
 function parseAllStarAgeBand(raw: string | null | undefined) {
@@ -240,6 +289,7 @@ export async function applyImportRows(params: {
   updateExistingOnly?: boolean;
   teamMappings?: Map<string, string>;
   allStarCutoffDate?: Date | null;
+  importRunId?: string | null;
 }) {
   const {
     rows,
@@ -253,6 +303,7 @@ export async function applyImportRows(params: {
     updateExistingOnly = false,
     teamMappings = new Map(),
     allStarCutoffDate = null,
+    importRunId = null,
   } = params;
   let processed = 0;
   let createdTeams = 0;
@@ -420,8 +471,12 @@ export async function applyImportRows(params: {
       getRowValue(row, ["Roster Status", "Status", "status"]) ||
       [orderPaymentStatus, birthCertStatus].filter(Boolean).join(" | ") ||
       null;
-    const registrationOrderNo = getRowValue(row, ["Order No", "Order Number", "Order ID"]);
-    const registrationOrderDate = parseDateValue(getRowValue(row, ["Order Date", "Registration Date"]));
+    const registrationOrderNo = getRowValue(row, PLAYER_IMPORT_ORDER_NO_KEYS);
+    const registrationOrderDate = parseDateValue(getRowValue(row, PLAYER_IMPORT_ORDER_DATE_KEYS));
+    const orderDetailDescription = getRowValue(row, PLAYER_IMPORT_ORDER_DETAIL_KEYS);
+    const amountCents = parseMoneyToCents(getRowValue(row, PLAYER_IMPORT_AMOUNT_KEYS));
+    const amountPaidCents = parseMoneyToCents(getRowValue(row, PLAYER_IMPORT_AMOUNT_PAID_KEYS));
+    const balanceCents = parseMoneyToCents(getRowValue(row, PLAYER_IMPORT_BALANCE_KEYS));
     const jerseyNumber =
       getRowValue(row, [
         "Jersey Number",
@@ -651,6 +706,61 @@ export async function applyImportRows(params: {
       createdPlayers += 1;
       undoPayload.createdPlayerIds.push(createdPlayer.id);
     }
+
+    // Enrollment is the durable source-of-truth ledger (demographics + team +
+    // financial order data), additive alongside TeamPlayer above. Wrapped in
+    // catch-and-log so a mapping bug here never blocks the roster write.
+    try {
+      const sportsConnectRowKey = deriveSportsConnectRowKey(registrationOrderNo, fullName, birthDate);
+      const enrollmentFields = {
+        programName: programName || null,
+        divisionNameRaw: rawAgeGroup || null,
+        ageGroup,
+        teamNameRaw: rawTeamName || null,
+        teamId,
+        firstName,
+        lastName,
+        fullName,
+        gender: gender || null,
+        birthDate,
+        guardianFirstName: guardianFirstName || null,
+        guardianLastName: guardianLastName || null,
+        guardianEmail: guardianEmail || null,
+        guardianPhone: guardianPhone || null,
+        contactPhone: contactPhone || null,
+        streetAddress: streetAddress || null,
+        unit: unit || null,
+        city: city || null,
+        state: state || null,
+        postalCode: postalCode || null,
+        sportsConnectOrderNo: registrationOrderNo || null,
+        orderDate: registrationOrderDate,
+        orderDetailDescription: orderDetailDescription || null,
+        orderPaymentStatus: orderPaymentStatus || null,
+        amountCents,
+        amountPaidCents,
+        balanceCents,
+        rawRow: toInputJson(row),
+        importRunId,
+      };
+      await prisma.enrollment.upsert({
+        where: {
+          organizationId_seasonYear_sportsConnectRowKey: {
+            organizationId: targetOrg,
+            seasonYear,
+            sportsConnectRowKey,
+          },
+        },
+        create: { organizationId: targetOrg, seasonYear, sportsConnectRowKey, ...enrollmentFields },
+        update: enrollmentFields,
+      });
+    } catch (err) {
+      console.error(
+        "[teams/import] Enrollment upsert failed for row",
+        row.__importRowNumber,
+        err instanceof Error ? err.message : err,
+      );
+    }
   }
 
   const nextBatch = await prisma.teamPlayerImportBatch.update({
@@ -756,6 +866,55 @@ export async function undoBatch(targetOrg: string, batchId?: string) {
     deletedTeams,
     deletedDraftPoolEntries,
     deletedDraftSessions,
+  };
+}
+
+/**
+ * Best-effort SportsConnectImportRun audit trail for a TeamPlayerImportBatch.
+ * Looks up an existing run linked via teamPlayerBatchId (idempotent across
+ * chunked "chunk" calls that share one batchId), or creates one if a season
+ * year is already known. Returns null (no audit record) rather than blocking
+ * the roster/Enrollment write when the season year isn't known yet — this
+ * mirrors recordImportRunSafe's own non-throwing, best-effort contract.
+ */
+async function ensureImportRunForBatch(input: {
+  targetOrg: string;
+  seasonYear: number | null;
+  batchId: string;
+  sourceFileName: string | null;
+  createdByAdminId: string | null;
+}): Promise<string | null> {
+  const existing = await prisma.sportsConnectImportRun.findFirst({
+    where: { teamPlayerBatchId: input.batchId },
+    orderBy: { createdAt: "desc" },
+    select: { id: true },
+  });
+  if (existing) return existing.id;
+  if (!input.seasonYear) return null;
+  const run = await recordImportRunSafe({
+    organizationId: input.targetOrg,
+    seasonYear: input.seasonYear,
+    reportKind: "PLAYER_REG",
+    status: "RUNNING",
+    sourceFileName: input.sourceFileName,
+    teamPlayerBatchId: input.batchId,
+    createdByAdminId: input.createdByAdminId,
+  });
+  return run?.id ?? null;
+}
+
+/** Aggregates the Enrollment rows written under an import run, for the run's completion summary. */
+async function summarizeEnrollmentsForRun(importRunId: string) {
+  const agg = await prisma.enrollment.aggregate({
+    where: { importRunId },
+    _count: { _all: true },
+    _sum: { amountCents: true, amountPaidCents: true, balanceCents: true },
+  });
+  return {
+    enrollmentRows: agg._count._all,
+    totalAmountCents: agg._sum.amountCents ?? 0,
+    totalAmountPaidCents: agg._sum.amountPaidCents ?? 0,
+    totalBalanceCents: agg._sum.balanceCents ?? 0,
   };
 }
 
@@ -878,6 +1037,13 @@ export async function POST(request: NextRequest) {
         typeof body.allStarCutoffDate === "string" && body.allStarCutoffDate.trim()
           ? new Date(body.allStarCutoffDate)
           : null;
+      const importRunId = await ensureImportRunForBatch({
+        targetOrg,
+        seasonYear: explicitSeasonYear,
+        batchId,
+        sourceFileName: null,
+        createdByAdminId: admin?.id || null,
+      });
       const updated = await applyImportRows({
         rows: body.rows,
         targetOrg,
@@ -895,6 +1061,7 @@ export async function POST(request: NextRequest) {
           allStarCutoffDate && !Number.isNaN(allStarCutoffDate.getTime())
             ? allStarCutoffDate
             : null,
+        importRunId,
       });
       return NextResponse.json({
         success: true,
@@ -911,6 +1078,19 @@ export async function POST(request: NextRequest) {
         where: { id: batchId },
         data: { status: "COMPLETED", completedAt: new Date() },
       });
+      const run = await prisma.sportsConnectImportRun.findFirst({
+        where: { teamPlayerBatchId: batchId },
+        select: { id: true, organizationId: true },
+      });
+      if (run) {
+        const summary = await summarizeEnrollmentsForRun(run.id);
+        await completeImportRunSafe({
+          id: run.id,
+          organizationId: run.organizationId,
+          status: "DONE",
+          summary,
+        });
+      }
       return NextResponse.json({ success: true, batch: completed });
     }
     if (body.mode === "cancel") {
@@ -920,6 +1100,13 @@ export async function POST(request: NextRequest) {
         where: { id: batchId },
         data: { status: "CANCELLED", completedAt: new Date() },
       });
+      const run = await prisma.sportsConnectImportRun.findFirst({
+        where: { teamPlayerBatchId: batchId },
+        select: { id: true, organizationId: true },
+      });
+      if (run) {
+        await completeImportRunSafe({ id: run.id, organizationId: run.organizationId, status: "CANCELLED" });
+      }
       return NextResponse.json({ success: true });
     }
     if (body.mode === "undo") {
@@ -981,6 +1168,13 @@ export async function POST(request: NextRequest) {
       undoPayload: toInputJson(emptyUndoPayload()),
     },
   });
+  const importRunId = await ensureImportRunForBatch({
+    targetOrg,
+    seasonYear: explicitSeasonYear,
+    batchId: createdBatch.id,
+    sourceFileName: file.name || null,
+    createdByAdminId: admin?.id || null,
+  });
   const batch = await applyImportRows({
     rows,
     targetOrg,
@@ -996,11 +1190,21 @@ export async function POST(request: NextRequest) {
       allStarCutoffDate && !Number.isNaN(allStarCutoffDate.getTime())
         ? allStarCutoffDate
         : null,
+    importRunId,
   });
   await prisma.teamPlayerImportBatch.update({
     where: { id: createdBatch.id },
     data: { status: "COMPLETED", completedAt: new Date() },
   });
+  if (importRunId) {
+    const summary = await summarizeEnrollmentsForRun(importRunId);
+    await completeImportRunSafe({
+      id: importRunId,
+      organizationId: targetOrg,
+      status: "DONE",
+      summary,
+    });
+  }
   return NextResponse.json({
     success: true,
     processed: batch.batch.processedRows,
