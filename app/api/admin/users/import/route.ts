@@ -368,6 +368,18 @@ export async function applyCoachImportRows(params: {
           unmatchedTeamNames.add(assignedTeam.trim());
         }
         if (targetTeam) {
+          // Drop assignments left over from an earlier import in this same
+          // division that pointed at a different team (e.g. a placeholder
+          // team before real teams existed) — otherwise a coach whose team
+          // assignment changes between imports ends up linked to both the
+          // stale team and the correct one instead of moving.
+          await prisma.teamCoachAssignment.deleteMany({
+            where: {
+              registeredUserId: existing.id,
+              teamId: { not: targetTeam.id },
+              team: { organizationId: targetOrg, ageGroup: targetTeam.ageGroup },
+            },
+          });
           const assignment = await prisma.teamCoachAssignment.findUnique({
             where: {
               teamId_registeredUserId: {

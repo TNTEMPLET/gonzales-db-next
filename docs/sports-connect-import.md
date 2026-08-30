@@ -147,6 +147,25 @@ Family registration URL constant: `lib/sportsConnect/registrationUrl.ts` (used b
 
 ---
 
+## Known duplicates note (fixed 2026-08-30)
+
+Re-importing a division after SportsConnect assigns real teams (moving
+players/coaches off a placeholder team like "Unallocated") used to clone
+every player and coach into the new team instead of moving them, because the
+existing-row lookups in `applyImportRows` (players) and
+`applyCoachImportRows` (coach team links) were scoped to the exact team just
+resolved for that row rather than to the division as a whole. A division's
+first import (before real teams exist) and every later re-import after teams
+are drafted would leave both the stale row/link and a fresh one behind.
+
+Hit in production for the fallball org's "Tee Ball, 3-4 year-olds" division
+(145 duplicate `TeamPlayer` rows, 35 stale `TeamCoachAssignment` links) —
+cleaned up manually, and both lookups now match within the same
+org+season+ageGroup and move the existing row/link to the new team instead
+of creating a second one.
+
+---
+
 ## Enrollment: the registration/revenue source of truth
 
 Every `PLAYER_REG` row imported through the player-import engine
