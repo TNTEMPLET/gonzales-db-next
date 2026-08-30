@@ -74,6 +74,7 @@ export const SPORTS_CONNECT_REPORT_CATALOG: SportsConnectReportCatalogEntry[] = 
       "assigned_team",
       "Volunteer Telephone",
       "Volunteer Cellphone",
+      "What is your jersey size? (All Positions)",
       "What is the coaches jersey size?",
       "What is the coach's jersey size?",
       "What is the volunteer's jersey size?",
