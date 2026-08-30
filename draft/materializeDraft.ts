@@ -1,3 +1,4 @@
+import { assignJerseyNumbersForTeam } from "@/lib/admin/jerseyNumbers";
 import { prisma } from "@/lib/prisma";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
@@ -119,6 +120,13 @@ export async function materializeDraftSession(draftSessionId: string) {
           });
         }
       }
+
+      // A finished draft is a finalized roster — number jerseys right away
+      // instead of leaving it as a separate manual step per team. Jersey
+      // size isn't captured in the draft pool today, so this falls back to
+      // alphabetical-by-last-name until that's added; still gives every
+      // drafted player a number.
+      await assignJerseyNumbersForTeam(tx, team.id);
     }
 
     // 5. Update session status to MATERIALIZED

@@ -71,6 +71,44 @@ export default function JerseyReportPanel({
     }
   }
 
+  async function finalizeDivision() {
+    if (!ageGroup) return;
+    if (
+      !window.confirm(
+        `Assign jersey numbers to every real team in "${ageGroup}"? Teams still named "Unallocated" are skipped. This replaces any numbers already set.`,
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(
+        `/api/admin/teams/players/jersey-numbers/finalize-division?${orgQuery}`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ seasonYear, ageGroup }),
+        },
+      );
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String(json.error || "Failed to finalize division"));
+      const unmatched = Array.isArray(json.unmatchedSizeNames) ? json.unmatchedSizeNames : [];
+      const skippedEmpty = Array.isArray(json.skippedEmptyTeams) ? json.skippedEmptyTeams : [];
+      setNotice(
+        `Numbered ${json.totalAssigned} player${json.totalAssigned === 1 ? "" : "s"} across ${json.teamsNumbered} team${json.teamsNumbered === 1 ? "" : "s"}.` +
+          (unmatched.length > 0 ? ` Unrecognized size, sorted last: ${unmatched.join(", ")}.` : "") +
+          (skippedEmpty.length > 0 ? ` Skipped (no players yet): ${skippedEmpty.join(", ")}.` : ""),
+      );
+      await loadPreview(ageGroup);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to finalize division");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function sendReport() {
     if (!ageGroup || !recipients.trim()) return;
     setBusy(true);
@@ -172,14 +210,25 @@ export default function JerseyReportPanel({
         </div>
       ) : null}
 
-      <button
-        type="button"
-        disabled={busy || !ageGroup || !recipients.trim() || !preview || preview.report.playerCount === 0}
-        onClick={() => void sendReport()}
-        className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
-      >
-        Send Jersey Report
-      </button>
+      <div className="flex flex-wrap items-center gap-2">
+        <button
+          type="button"
+          disabled={busy || !ageGroup}
+          onClick={() => void finalizeDivision()}
+          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800 disabled:opacity-60"
+          title='Number every real team in this division at once (skips teams still named "Unallocated")'
+        >
+          Finalize &amp; Number Division
+        </button>
+        <button
+          type="button"
+          disabled={busy || !ageGroup || !recipients.trim() || !preview || preview.report.playerCount === 0}
+          onClick={() => void sendReport()}
+          className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+        >
+          Send Jersey Report
+        </button>
+      </div>
     </div>
   );
 }
