@@ -6,13 +6,16 @@ import { isEmailSuppressed } from "./suppression";
 
 export const ORDER_REPORT_MAX_RECIPIENTS = 10;
 
-export type OrderReportSourceType = "SHIRT_ORDER_MANUAL" | "CAP_ORDER_MANUAL";
+export type OrderReportSourceType =
+  | "SHIRT_ORDER_MANUAL"
+  | "CAP_ORDER_MANUAL"
+  | "JERSEY_REPORT_MANUAL";
 
 /**
  * Governed replacement for a direct sendEmailViaResend() call from an admin
- * "email this report" button (Shirt/Cap Orders). Unlike the full Communications
- * campaign flow, this skips the human approval workflow entirely — it's a
- * narrow carve-out for an already-module-gated (ensureAllStarVaultAdmin),
+ * "email this report" button (Shirt/Cap Orders, Jersey Report). Unlike the
+ * full Communications campaign flow, this skips the human approval workflow
+ * entirely — it's a narrow carve-out for an already-module-gated,
  * low-volume, admin-authored transactional send, not a broadcast to an
  * audience rule. It still respects the module kill-switch and per-recipient
  * suppression, and it still writes a CommunicationCampaign/Delivery audit
@@ -28,7 +31,7 @@ export async function sendOrderReportEmail(params: {
   actorAdminId: string | null;
   actorEmail: string | null;
   organizationId: string | null;
-  campaignTitlePrefix: "Shirt Orders" | "Cap Orders";
+  campaignTitlePrefix: "Shirt Orders" | "Cap Orders" | "Jersey Report";
   sourceType: OrderReportSourceType;
   recipients: string[];
   subject: string;
