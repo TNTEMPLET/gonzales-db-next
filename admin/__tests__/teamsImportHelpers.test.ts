@@ -43,17 +43,17 @@ describe("teamsImportHelpers", () => {
     assert.equal(normalizeLooseName("  Foo--Bar  "), "foo bar");
   });
 
-  it("skips specifically excluded program divisions", () => {
+  it("skips only umpire divisions; SportsConnect is source of truth", () => {
     assert.equal(shouldSkipDivisionImport("Umpire Clinic"), true);
     assert.equal(shouldSkipDivisionImport("Volunteer Umpire"), true);
-    assert.equal(shouldSkipDivisionImport("Little League Tee Ball"), true);
+    assert.equal(shouldSkipDivisionImport("Little League Tee Ball"), false);
     assert.equal(shouldSkipDivisionImport("Modified Tee Ball"), false);
-    assert.equal(shouldSkipDivisionImport("5 Year-Old"), true);
-    assert.equal(shouldSkipDivisionImport("5 Year Olds Baseball"), true);
-    assert.equal(shouldSkipDivisionImport("3-4 Year-Old"), true);
-    assert.equal(shouldSkipDivisionImport("3/4 Year-Old Tball"), true);
-    assert.equal(shouldSkipDivisionImport("Tee Ball, 3-4 year-olds"), true);
-    assert.equal(shouldSkipDivisionImport("Tee Ball, 5 year-olds"), true);
+    assert.equal(shouldSkipDivisionImport("5 Year-Old"), false);
+    assert.equal(shouldSkipDivisionImport("5 Year Olds Baseball"), false);
+    assert.equal(shouldSkipDivisionImport("3-4 Year-Old"), false);
+    assert.equal(shouldSkipDivisionImport("3/4 Year-Old Tball"), false);
+    assert.equal(shouldSkipDivisionImport("Tee Ball, 3-4 year-olds"), false);
+    assert.equal(shouldSkipDivisionImport("Tee Ball, 5 year-olds"), false);
     assert.equal(shouldSkipDivisionImport("10U DYB"), false);
     assert.equal(shouldSkipDivisionImport("15 Year-Old"), false);
     assert.equal(shouldSkipDivisionImport("15 Year Olds"), false);
