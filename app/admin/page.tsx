@@ -173,7 +173,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "ENROLLMENT_KPI" as AdminModule,
-      href: `/admin/enrollment?org=${currentOrg || "gonzales"}`,
+      href: `/admin/competition?tab=enrollment&org=${currentOrg || "gonzales"}`,
       title: "Enrollment & KPIs",
       description: masterMode
         ? "Registration counts, revenue collected vs. outstanding, fee-tier breakdown, and team fill status across organizations."

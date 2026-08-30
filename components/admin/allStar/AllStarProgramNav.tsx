@@ -4,7 +4,6 @@ import type { ContentOrgId } from "@/lib/siteConfig";
 
 export type AllStarProgramStage =
   | "vault"
-  | "payments"
   | "cap-orders"
   | "shirt-orders"
   | "shop"
@@ -23,12 +22,6 @@ const STAGES: Array<{
     description: "Cycles, ballots, rosters",
   },
   {
-    id: "payments",
-    label: "Payments",
-    path: "/admin/payments",
-    description: "Fee tracking & PayPal",
-  },
-  {
     id: "cap-orders",
     label: "Cap Orders",
     path: "/admin/cap-orders",
@@ -43,8 +36,8 @@ const STAGES: Array<{
   {
     id: "shop",
     label: "Shop",
-    path: "/admin/shop",
-    description: "Public merch catalog",
+    path: "/admin/shop/test-order",
+    description: "Merch test order form",
   },
   {
     id: "travel",
@@ -61,7 +54,7 @@ export default function AllStarProgramNav({
 }: {
   stage: AllStarProgramStage;
   org: ContentOrgId | null;
-  /** Master All Sites mode (payments) — omit org on links where supported. */
+  /** Master All Sites mode — omit org on links where supported. */
   allSites?: boolean;
 }) {
   const orgQuery = allSites || !org ? "" : `?org=${encodeURIComponent(org)}`;
