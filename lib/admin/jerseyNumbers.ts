@@ -1,6 +1,6 @@
 import type { Prisma, PrismaClient } from "@prisma/client";
 
-import { sortPlayersBySize } from "@/lib/admin/jerseySizes";
+import { sortPlayersBySize, type UnmatchedJerseySize } from "@/lib/admin/jerseySizes";
 
 type DbClient = PrismaClient | Prisma.TransactionClient;
 
@@ -17,7 +17,7 @@ type DbClient = PrismaClient | Prisma.TransactionClient;
 export async function assignJerseyNumbersForTeam(
   db: DbClient,
   teamId: string,
-): Promise<{ assigned: number; unmatchedSizeNames: string[] } | null> {
+): Promise<{ assigned: number; unmatchedSizes: UnmatchedJerseySize[] } | null> {
   const players = await db.teamPlayer.findMany({
     where: { teamId },
     select: { id: true, fullName: true, lastName: true, jerseySize: true },
@@ -33,5 +33,5 @@ export async function assignJerseyNumbersForTeam(
     });
   }
 
-  return { assigned: sorted.length, unmatchedSizeNames: unmatched };
+  return { assigned: sorted.length, unmatchedSizes: unmatched };
 }

@@ -40,6 +40,6 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     success: true,
     assigned: result.assigned,
-    unmatchedSizeNames: result.unmatchedSizeNames,
+    unmatchedSizes: result.unmatchedSizes,
   });
 }
