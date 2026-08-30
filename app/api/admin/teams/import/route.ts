@@ -234,6 +234,7 @@ function toInputJson(value: unknown): Prisma.InputJsonValue {
 }
 
 const TEAM_PLAYER_UNDO_ALLOWED_FIELDS = new Set([
+  "teamId",
   "firstName",
   "lastName",
   "fullName",
@@ -572,8 +573,18 @@ export async function applyImportRows(params: {
       }
     }
 
+    // Matched by division (org+season+ageGroup), not the exact resolved team:
+    // a player's Team Name can change between imports (e.g. a division moves
+    // off a placeholder "Unallocated" team once real teams are drafted), and
+    // scoping this lookup to `teamId` alone made every such move look like a
+    // brand-new player, cloning them into the new team instead of relocating
+    // the existing row. See docs/sports-connect-import.md's known-duplicates
+    // note for the 2026-08-30 fallball incident this fixes.
     const existingPlayer = await prisma.teamPlayer.findFirst({
-      where: { teamId, fullName: { equals: fullName, mode: "insensitive" } },
+      where: {
+        fullName: { equals: fullName, mode: "insensitive" },
+        team: { organizationId: targetOrg, seasonYear, ageGroup },
+      },
     });
     if (updateExistingOnly && !existingPlayer) {
       skipped += 1;
@@ -624,6 +635,7 @@ export async function applyImportRows(params: {
       allStarAgeBand: explicitAllStarAgeBand || derivedAllStarAgeBand,
     };
     const updateData: Record<string, unknown> = {
+      teamId,
       firstName,
       lastName,
       fullName,
@@ -664,6 +676,7 @@ export async function applyImportRows(params: {
         undoPayload.updatedPlayers.push({
           id: existingPlayer.id,
           data: {
+            teamId: existingPlayer.teamId,
             firstName: existingPlayer.firstName,
             lastName: existingPlayer.lastName,
             fullName: existingPlayer.fullName,
