@@ -16,6 +16,7 @@ export type JerseyReportCoach = {
   role: "HEAD_COACH" | "ASSISTANT_COACH";
   firstName: string;
   lastName: string;
+  jerseySize: string | null;
 };
 
 export type JerseyReportTeam = {
@@ -67,7 +68,18 @@ export async function buildJerseyReportForDivision(params: {
       coachAssignments: {
         select: {
           role: true,
-          registeredUser: { select: { firstName: true, lastName: true, name: true } },
+          registeredUser: {
+            select: {
+              firstName: true,
+              lastName: true,
+              name: true,
+              orgProfiles: {
+                where: { organizationId },
+                select: { jerseySize: true },
+                take: 1,
+              },
+            },
+          },
         },
       },
     },
@@ -114,6 +126,7 @@ export async function buildJerseyReportForDivision(params: {
           role: a.role,
           firstName: a.registeredUser.firstName || derived?.firstName || a.registeredUser.name || "",
           lastName: a.registeredUser.lastName || derived?.lastName || "",
+          jerseySize: a.registeredUser.orgProfiles[0]?.jerseySize ?? null,
         };
       })
       .sort((a, b) => (a.role === b.role ? a.lastName.localeCompare(b.lastName) : a.role === "HEAD_COACH" ? -1 : 1));
@@ -168,7 +181,8 @@ export function jerseyReportToHtml(report: JerseyReportDivision): string {
           (c) =>
             `<tr><td style="padding:4px 10px;border:1px solid #d4d4d8">${escapeHtml(roleLabel(c.role))}</td>` +
             `<td style="padding:4px 10px;border:1px solid #d4d4d8">${escapeHtml(c.firstName)}</td>` +
-            `<td style="padding:4px 10px;border:1px solid #d4d4d8">${escapeHtml(c.lastName)}</td></tr>`,
+            `<td style="padding:4px 10px;border:1px solid #d4d4d8">${escapeHtml(c.lastName)}</td>` +
+            `<td style="padding:4px 10px;border:1px solid #d4d4d8">${escapeHtml(c.jerseySize || "—")}</td></tr>`,
         )
         .join("");
       return (
@@ -185,7 +199,8 @@ export function jerseyReportToHtml(report: JerseyReportDivision): string {
             `<thead><tr style="background:#3f3f46;color:#fff">` +
             `<th style="padding:4px 10px;border:1px solid #d4d4d8">Role</th>` +
             `<th style="padding:4px 10px;border:1px solid #d4d4d8">First Name</th>` +
-            `<th style="padding:4px 10px;border:1px solid #d4d4d8">Last Name</th></tr></thead>` +
+            `<th style="padding:4px 10px;border:1px solid #d4d4d8">Last Name</th>` +
+            `<th style="padding:4px 10px;border:1px solid #d4d4d8">Jersey Size</th></tr></thead>` +
             `<tbody>${coachRows}</tbody></table>`
           : "")
       );
@@ -216,11 +231,21 @@ export function jerseyReportToHtml(report: JerseyReportDivision): string {
 }
 
 export function jerseyReportToCsv(report: JerseyReportDivision): string {
-  const lines = [["Team", "Jersey Number", "First Name", "Last Name", "Jersey Size"].map(escapeCsv).join(",")];
+  const lines = [
+    ["Team", "Role", "Jersey Number", "First Name", "Last Name", "Jersey Size"].map(escapeCsv).join(","),
+  ];
   for (const team of report.teams) {
     for (const p of team.players) {
       lines.push(
-        [team.teamName, p.jerseyNumber || "", p.firstName, p.lastName, p.jerseySize || ""]
+        [team.teamName, "Player", p.jerseyNumber || "", p.firstName, p.lastName, p.jerseySize || ""]
+          .map(escapeCsv)
+          .join(","),
+      );
+    }
+    for (const c of team.coaches) {
+      const roleLabel = c.role === "HEAD_COACH" ? "Head Coach" : "Assistant Coach";
+      lines.push(
+        [team.teamName, roleLabel, "", c.firstName, c.lastName, c.jerseySize || ""]
           .map(escapeCsv)
           .join(","),
       );

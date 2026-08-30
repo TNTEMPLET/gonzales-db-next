@@ -13,6 +13,8 @@ type UpdatedUserSnapshot = {
   ageGroup: string | null;
   assignedTeam: string | null;
   isCoach: boolean;
+  /** Optional — absent on undo payloads written before this field existed. */
+  jerseySize?: string | null;
 };
 
 type UndoPayload = {
@@ -138,11 +140,13 @@ export async function undoCoachImportBatch(
           isCoach: item.isCoach,
           ageGroup: item.ageGroup,
           assignedTeam: item.assignedTeam,
+          jerseySize: item.jerseySize ?? null,
         },
         update: {
           isCoach: item.isCoach,
           ageGroup: item.ageGroup,
           assignedTeam: item.assignedTeam,
+          jerseySize: item.jerseySize ?? null,
         },
       });
     }

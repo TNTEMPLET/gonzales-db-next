@@ -18,6 +18,7 @@ export type UpdatedUserSnapshot = {
   ageGroup: string | null;
   assignedTeam: string | null;
   isCoach: boolean;
+  jerseySize: string | null;
 };
 
 export type AutoCoachAssignmentSnapshot = {
@@ -318,6 +319,16 @@ export async function applyCoachImportRows(params: {
       ]) ||
       null;
     const contactPhone = selectPreferredContactPhone(row);
+    const jerseySize =
+      getRowValue(row, [
+        "What is the coaches jersey size?",
+        "What is the coach's jersey size?",
+        "What is the volunteer's jersey size?",
+        "What is the players jersey size?",
+        "Jersey Size",
+        "Shirt Size",
+        "Uniform Size",
+      ]) || null;
 
     // Global identity lookup, matched by email alone (not scoped to this
     // org) — a person already known from another org, or from an earlier
@@ -368,6 +379,7 @@ export async function applyCoachImportRows(params: {
         ageGroup: profile?.ageGroup ?? null,
         assignedTeam: profile?.assignedTeam ?? null,
         isCoach: profile?.isCoach ?? false,
+        jerseySize: profile?.jerseySize ?? null,
       });
       await prisma.registeredUser.update({
         where: { id: existing.id },
@@ -378,8 +390,23 @@ export async function applyCoachImportRows(params: {
       where: {
         registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg },
       },
-      create: { registeredUserId: existing.id, organizationId: targetOrg, isCoach: true, ageGroup, assignedTeam },
-      update: { ageGroup, assignedTeam, isCoach: true },
+      create: {
+        registeredUserId: existing.id,
+        organizationId: targetOrg,
+        isCoach: true,
+        ageGroup,
+        assignedTeam,
+        jerseySize,
+      },
+      update: {
+        ageGroup,
+        assignedTeam,
+        isCoach: true,
+        // Only overwrite when the row actually has a size — most coach
+        // exports won't carry this column at all, and a blank shouldn't
+        // erase a size captured from an earlier import that did.
+        ...(jerseySize ? { jerseySize } : {}),
+      },
     });
     if (autoAssignToTeams) {
       if (assignedTeam?.trim()) autoAssignAttempts += 1;

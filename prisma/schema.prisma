@@ -559,6 +559,9 @@ model RegisteredUserOrgProfile {
   isCoach          Boolean  @default(false)
   ageGroup         String?
   assignedTeam     String?
+  /// Coach/volunteer staff shirt size, from a volunteer-registration
+  /// question if the export includes one (not present on every import).
+  jerseySize       String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
