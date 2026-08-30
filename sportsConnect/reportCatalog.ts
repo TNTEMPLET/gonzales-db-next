@@ -57,7 +57,7 @@ export const SPORTS_CONNECT_REPORT_CATALOG: SportsConnectReportCatalogEntry[] = 
     exportHint:
       "SportsConnect volunteer / coach registration export with email and role. Rows without coach roles are skipped.",
     requiredColumnGroups: [
-      ["email", "Email", "User Email", "Account Email"],
+      ["email", "Email", "User Email", "Account Email", "Volunteer Email Address", "Volunteer Email"],
       ["Volunteer Role", "Role", "role"],
     ],
     optionalColumnHints: [
@@ -68,6 +68,8 @@ export const SPORTS_CONNECT_REPORT_CATALOG: SportsConnectReportCatalogEntry[] = 
       "contact_phone",
       "age_group",
       "assigned_team",
+      "Volunteer Telephone",
+      "Volunteer Cellphone",
     ],
     adminPath: "/admin/teams",
     adminLabel: "Teams → Coach Import",

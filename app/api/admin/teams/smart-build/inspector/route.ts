@@ -61,6 +61,14 @@ export async function GET(request: NextRequest) {
       COACH_VOLUNTEER: [],
     };
     for (const run of decorated) {
+      // Only surface successfully detected runs as pickable. Runs that
+      // failed detection (status QUARANTINED/FAILED) keep the "PLAYER_REG"
+      // placeholder reportKind from acquireDriveRunLease's temporary default
+      // (see lib/sportsConnect/driveSync.ts) since it's never overwritten
+      // once detection returns null -- without this filter, those files
+      // show up as selectable under the Player Reg slot even though nothing
+      // about them was actually confirmed to be a player registration export.
+      if (run.status !== "DONE") continue;
       runsByKind[run.reportKind].push(run);
     }
 
