@@ -421,6 +421,20 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
           View Volunteer Card
         </Link>
       </div>
+      <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-emerald-800/60 bg-emerald-950/20 px-4 py-3">
+        <div>
+          <p className="text-sm font-semibold text-white">⚾ Live Draft</p>
+          <p className="text-xs text-zinc-400">
+            Watch the draft board live and pick for your team when it&apos;s your turn.
+          </p>
+        </div>
+        <Link
+          href={`/coach-corner/draft?org=${targetOrg}`}
+          className="inline-flex min-h-10 items-center rounded-xl bg-emerald-600 px-4 text-sm font-semibold text-white hover:bg-emerald-500"
+        >
+          Go to Draft Day
+        </Link>
+      </div>
       {error ? (
         <div className="rounded-lg border border-red-700 bg-red-950/40 p-3 text-sm text-red-300">
           {error}
