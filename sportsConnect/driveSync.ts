@@ -136,10 +136,7 @@ export async function acquireDriveRunLease(input: {
     });
 
     if (existingRun) {
-      if (
-        existingRun.status === "DONE" ||
-        existingRun.status === "QUARANTINED"
-      ) {
+      if (existingRun.status === "DONE") {
         return { acquired: false, reason: "ALREADY_PROCESSED" };
       }
 
@@ -151,13 +148,21 @@ export async function acquireDriveRunLease(input: {
         return { acquired: false, reason: "LEASE_ACTIVE" };
       }
 
-      // Expired lease or failed run - atomically re-acquire lock
+      // Expired lease, failed run, or quarantined run - atomically
+      // re-acquire lock. QUARANTINED is retried (not treated as permanent
+      // like DONE) because a quarantine reason like "Unrecognized
+      // SportsConnect export report type" reflects our own detection logic
+      // at the time, not a property of the file -- a detectSportsConnectReport
+      // fix (e.g. recognizing a real column name it didn't before) should
+      // get a chance to reclassify the same file on the next sync rather
+      // than leaving it stuck forever under the old verdict.
       const updated = await prisma.sportsConnectImportRun.updateMany({
         where: {
           id: existingRun.id,
           OR: [
             { status: "LEASED", leaseExpiresAt: { lt: now } },
             { status: "FAILED" },
+            { status: "QUARANTINED" },
           ],
         },
         data: {
