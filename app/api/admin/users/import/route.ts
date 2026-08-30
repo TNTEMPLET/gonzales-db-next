@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import * as XLSX from "xlsx";
+import { Prisma } from "@prisma/client";
 
 import { normalizeAgeGroup } from "@/lib/ageGroupAliases";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
@@ -318,148 +319,127 @@ export async function applyCoachImportRows(params: {
       null;
     const contactPhone = selectPreferredContactPhone(row);
 
-    // Global identity lookup + per-org profile
+    // Global identity lookup, matched by email alone (not scoped to this
+    // org) — a person already known from another org, or from an earlier
+    // row in this same file, must get a new org profile attached to their
+    // existing identity, not a second global identity. The previous version
+    // only reused `existing` when it ALSO already had a profile for this
+    // org, so a coach known from another org (or re-imported after their
+    // fallball profile momentarily lagged behind) fell into the "create a
+    // brand-new person" branch every time — this is what fragmented single
+    // volunteers into a dozen-plus rows across repeated fallball imports.
     let existing = await prisma.registeredUser.findFirst({
       where: { email: normalizedEmail },
     });
+    let justCreatedUser = false;
+    if (!existing) {
+      try {
+        existing = await prisma.registeredUser.create({
+          data: { email: normalizedEmail, firstName, lastName, name, contactPhone },
+        });
+        justCreatedUser = true;
+      } catch (e) {
+        // Two rows for a brand-new email racing each other can both miss the
+        // findFirst above; the unique constraint on `email` turns the loser
+        // into a clean conflict here instead of a duplicate row.
+        if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+          existing = await prisma.registeredUser.findFirstOrThrow({
+            where: { email: normalizedEmail },
+          });
+        } else {
+          throw e;
+        }
+      }
+    }
 
-    let profile = existing
-      ? await (prisma as any).registeredUserOrgProfile.findUnique({
-          where: { registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg } },
-        })
-      : null;
+    const profile = await (prisma as any).registeredUserOrgProfile.findUnique({
+      where: {
+        registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg },
+      },
+    });
 
-    if (existing && profile) {
+    if (!justCreatedUser) {
       updatedUsersBeforeImport.push({
         id: existing.id,
         firstName: existing.firstName,
         lastName: existing.lastName,
         name: existing.name,
         contactPhone: existing.contactPhone,
-        ageGroup: profile.ageGroup,
-        assignedTeam: profile.assignedTeam,
-        isCoach: profile.isCoach,
+        ageGroup: profile?.ageGroup ?? null,
+        assignedTeam: profile?.assignedTeam ?? null,
+        isCoach: profile?.isCoach ?? false,
       });
       await prisma.registeredUser.update({
         where: { id: existing.id },
-        data: {
-          firstName,
-          lastName,
-          name,
-          contactPhone,
-        },
+        data: { firstName, lastName, name, contactPhone },
       });
-      await (prisma as any).registeredUserOrgProfile.update({
-        where: { registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg } },
-        data: {
-          ageGroup,
-          assignedTeam,
-          isCoach: true,
-        },
+    }
+    await (prisma as any).registeredUserOrgProfile.upsert({
+      where: {
+        registeredUserId_organizationId: { registeredUserId: existing.id, organizationId: targetOrg },
+      },
+      create: { registeredUserId: existing.id, organizationId: targetOrg, isCoach: true, ageGroup, assignedTeam },
+      update: { ageGroup, assignedTeam, isCoach: true },
+    });
+    if (autoAssignToTeams) {
+      if (assignedTeam?.trim()) autoAssignAttempts += 1;
+      const targetTeam = await resolveTeamForAutoAssignment({
+        organizationId: targetOrg,
+        assignedTeam,
+        ageGroup,
       });
-      if (autoAssignToTeams) {
-        if (assignedTeam?.trim()) autoAssignAttempts += 1;
-        const targetTeam = await resolveTeamForAutoAssignment({
-          organizationId: targetOrg,
-          assignedTeam,
-          ageGroup,
+      if (!targetTeam && assignedTeam?.trim()) {
+        unmatchedTeamNames.add(assignedTeam.trim());
+      }
+      if (targetTeam) {
+        // Drop assignments left over from an earlier import in this same
+        // division that pointed at a different team (e.g. a placeholder
+        // team before real teams existed) — otherwise a coach whose team
+        // assignment changes between imports ends up linked to both the
+        // stale team and the correct one instead of moving.
+        await prisma.teamCoachAssignment.deleteMany({
+          where: {
+            registeredUserId: existing.id,
+            teamId: { not: targetTeam.id },
+            team: { organizationId: targetOrg, ageGroup: targetTeam.ageGroup },
+          },
         });
-        if (!targetTeam && assignedTeam?.trim()) {
-          unmatchedTeamNames.add(assignedTeam.trim());
-        }
-        if (targetTeam) {
-          // Drop assignments left over from an earlier import in this same
-          // division that pointed at a different team (e.g. a placeholder
-          // team before real teams existed) — otherwise a coach whose team
-          // assignment changes between imports ends up linked to both the
-          // stale team and the correct one instead of moving.
-          await prisma.teamCoachAssignment.deleteMany({
-            where: {
-              registeredUserId: existing.id,
-              teamId: { not: targetTeam.id },
-              team: { organizationId: targetOrg, ageGroup: targetTeam.ageGroup },
-            },
-          });
-          const assignment = await prisma.teamCoachAssignment.findUnique({
-            where: {
-              teamId_registeredUserId: {
-                teamId: targetTeam.id,
-                registeredUserId: existing.id,
-              },
-            },
-            select: { id: true, role: true },
-          });
-          if (!assignment) {
-            await prisma.teamCoachAssignment.create({
-              data: {
-                teamId: targetTeam.id,
-                registeredUserId: existing.id,
-                role: assignmentRole,
-              },
-            });
-            createdCoachAssignments.push({
+        const assignment = await prisma.teamCoachAssignment.findUnique({
+          where: {
+            teamId_registeredUserId: {
               teamId: targetTeam.id,
               registeredUserId: existing.id,
-            });
-            autoAssigned += 1;
-          } else if (assignment.role !== assignmentRole) {
-            await prisma.teamCoachAssignment.update({
-              where: { id: assignment.id },
-              data: { role: assignmentRole },
-            });
-            autoRoleUpdated += 1;
-          }
-        }
-      }
-      updated += 1;
-    } else {
-      // Create global identity first
-      const createdUser = await prisma.registeredUser.create({
-        data: {
-          email: normalizedEmail,
-          firstName,
-          lastName,
-          name,
-          contactPhone,
-        },
-      });
-      // Then create the org profile with the import data
-      await (prisma as any).registeredUserOrgProfile.create({
-        data: {
-          registeredUserId: createdUser.id,
-          organizationId: targetOrg,
-          isCoach: true,
-          ageGroup,
-          assignedTeam,
-        },
-      });
-      if (autoAssignToTeams) {
-        if (assignedTeam?.trim()) autoAssignAttempts += 1;
-        const targetTeam = await resolveTeamForAutoAssignment({
-          organizationId: targetOrg,
-          assignedTeam,
-          ageGroup,
+            },
+          },
+          select: { id: true, role: true },
         });
-        if (!targetTeam && assignedTeam?.trim()) {
-          unmatchedTeamNames.add(assignedTeam.trim());
-        }
-        if (targetTeam) {
+        if (!assignment) {
           await prisma.teamCoachAssignment.create({
             data: {
               teamId: targetTeam.id,
-              registeredUserId: createdUser.id,
+              registeredUserId: existing.id,
               role: assignmentRole,
             },
           });
           createdCoachAssignments.push({
             teamId: targetTeam.id,
-            registeredUserId: createdUser.id,
+            registeredUserId: existing.id,
           });
           autoAssigned += 1;
+        } else if (assignment.role !== assignmentRole) {
+          await prisma.teamCoachAssignment.update({
+            where: { id: assignment.id },
+            data: { role: assignmentRole },
+          });
+          autoRoleUpdated += 1;
         }
       }
-      createdUserIds.push(createdUser.id);
+    }
+    if (justCreatedUser) {
+      createdUserIds.push(existing.id);
       created += 1;
+    } else {
+      updated += 1;
     }
 
     if (processed % 10 === 0) {
