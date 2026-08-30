@@ -166,6 +166,9 @@ export function buildAdminSidebarNav(
       // OrdersHub.tsx's real OrdersTab type is "caps"|"shirts"|"sponsors"|"reports"
       // only -- no "shop"/"payments" tab exists, so those are deliberately
       // omitted rather than linking to a tab that would crash the page.
+      ...(allowModule("ENROLLMENT_KPI")
+        ? [{ id: "enrollment-kpi", label: "Enrollment & KPIs", href: `/admin/enrollment${orgSuffix}` }]
+        : []),
       ...(ordersVisible
         ? [
             { id: "caps", label: "Cap Orders", href: hubHref("/admin/orders", orgSuffix, "caps") },

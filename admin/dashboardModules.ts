@@ -79,6 +79,7 @@ const moduleCatalog: Record<
   SOCIAL_MEDIA: { category: "publishing", sortOrder: 30 },
   DUGOUT_MODERATION: { category: "publishing", sortOrder: 40 },
   ORG_DOCUMENTS: { category: "publishing", sortOrder: 50 },
+  ENROLLMENT_KPI: { category: "orders", sortOrder: 5 },
   ALL_STAR_PAYMENTS: { category: "orders", sortOrder: 10 },
   SPONSORS: { category: "orders", sortOrder: 20 },
   REPORTS: { category: "orders", sortOrder: 30 },

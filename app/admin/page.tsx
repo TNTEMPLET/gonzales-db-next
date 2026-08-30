@@ -172,6 +172,15 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open Publishing Center" : "Open Publishing",
     },
     {
+      module: "ENROLLMENT_KPI" as AdminModule,
+      href: `/admin/enrollment?org=${currentOrg || "gonzales"}`,
+      title: "Enrollment & KPIs",
+      description: masterMode
+        ? "Registration counts, revenue collected vs. outstanding, fee-tier breakdown, and team fill status across organizations."
+        : "Registration counts, revenue collected vs. outstanding, fee-tier breakdown, and team rosters at a glance.",
+      action: "Open Enrollment & KPIs",
+    },
+    {
       module: "ALL_STAR_PAYMENTS" as AdminModule,
       href: `/admin/orders?org=${currentOrg || "gonzales"}`,
       title: "Orders & Commerce Desk",
