@@ -491,7 +491,10 @@ model AdminOrgMembership {
 
 model RegisteredUser {
   id                                          String    @id @default(cuid())
-  email                                       String
+  /// Globally unique (person-level identity) — always store lowercased.
+  /// A missing constraint here let repeated coach re-imports fragment the
+  /// same real person into a dozen-plus rows before this was added.
+  email                                       String    @unique
   name                                        String?
   firstName                                   String?
   lastName                                    String?
@@ -546,7 +549,6 @@ model RegisteredUser {
   draftTeamsAssistantCoach        DraftTeam[]                        @relation("DraftTeamAssistantCoach")
   draftSessionsLed                DraftSession[]                     @relation("DraftSessionLeader")
 
-  @@index([email])
   @@index([duplicateReviewPending])
 }
 

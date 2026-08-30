@@ -1,3 +1,5 @@
+import { Prisma } from "@prisma/client";
+
 import prisma from "@/lib/prisma";
 import { recordDuplicateCandidatesForNewUser } from "@/lib/registeredUserDuplicates";
 import { getDefaultContentOrg, getOrgId } from "@/lib/siteConfig";
@@ -122,10 +124,16 @@ type GoogleProfileInput = {
  * Returns a shape that includes effective per-org fields for backward compatibility at call sites.
  */
 export async function upsertRegisteredUserFromGoogle(
-  input: GoogleProfileInput,
+  rawInput: GoogleProfileInput,
   explicitOrgId?: string,
 ) {
   const orgId = explicitOrgId || getDefaultOrgForProfile();
+  // Normalize before any lookup/write — RegisteredUser.email is uniquely
+  // constrained on the literal stored value, and every other identity write
+  // path (coach import, etc.) already lowercases first, so an unnormalized
+  // Google-cased email here would both miss real matches and risk a unique
+  // violation against a differently-cased row for the same person.
+  const input: GoogleProfileInput = { ...rawInput, email: rawInput.email.toLowerCase() };
 
   // 1) Find or create the GLOBAL person by strong key (googleSub) then email.
   let globalUser = await prisma.registeredUser.findUnique({
@@ -140,47 +148,62 @@ export async function upsertRegisteredUserFromGoogle(
   }
 
   if (!globalUser) {
-    // Try email match (case-insensitive) for people who previously had per-org rows.
-    const byEmail = await prisma.registeredUser.findFirst({
-      where: { email: input.email },
-      select: globalUserSelectWithIdEmail,
-    });
+    // Find-or-create by email, race-safe: two concurrent sign-ins for the
+    // same brand-new email used to be able to both miss the findFirst below
+    // and both create — the unique constraint on `email` turns that into a
+    // clean P2002 on the loser, which we resolve by re-reading the winner's
+    // row instead of duplicating it.
+    try {
+      const byEmail = await prisma.registeredUser.findFirst({
+        where: { email: input.email },
+        select: globalUserSelectWithIdEmail,
+      });
 
-    if (byEmail) {
-      if (byEmail.googleSub && byEmail.googleSub !== input.sub) {
-        throw new Error("This email is already linked to a different Google account.");
+      if (byEmail) {
+        if (byEmail.googleSub && byEmail.googleSub !== input.sub) {
+          throw new Error("This email is already linked to a different Google account.");
+        }
+        // Attach the googleSub to the global row.
+        globalUser = await prisma.registeredUser.update({
+          where: { id: byEmail.id },
+          data: {
+            googleSub: input.sub,
+            name: input.name,
+            firstName: input.firstName,
+            lastName: input.lastName,
+            contactPhone: byEmail.contactPhone ?? null,
+          },
+          select: globalUserSelectWithIdEmail,
+        });
+      } else {
+        globalUser = await prisma.registeredUser.create({
+          data: {
+            email: input.email,
+            googleSub: input.sub,
+            name: input.name,
+            firstName: input.firstName,
+            lastName: input.lastName,
+          },
+          select: globalUserSelectWithIdEmail,
+        });
+        await recordDuplicateCandidatesForNewUser(prisma, {
+          id: globalUser.id,
+          // For duplicate detection we still pass a representative org (best effort).
+          organizationId: orgId,
+          firstName: input.firstName,
+          lastName: input.lastName,
+          name: input.name,
+        });
       }
-      // Attach the googleSub to the global row.
-      globalUser = await prisma.registeredUser.update({
-        where: { id: byEmail.id },
-        data: {
-          googleSub: input.sub,
-          name: input.name,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          contactPhone: byEmail.contactPhone ?? null,
-        },
-        select: globalUserSelectWithIdEmail,
-      });
-    } else {
-      globalUser = await prisma.registeredUser.create({
-        data: {
-          email: input.email,
-          googleSub: input.sub,
-          name: input.name,
-          firstName: input.firstName,
-          lastName: input.lastName,
-        },
-        select: globalUserSelectWithIdEmail,
-      });
-      await recordDuplicateCandidatesForNewUser(prisma, {
-        id: globalUser.id,
-        // For duplicate detection we still pass a representative org (best effort).
-        organizationId: orgId,
-        firstName: input.firstName,
-        lastName: input.lastName,
-        name: input.name,
-      });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
+        globalUser = await prisma.registeredUser.findFirstOrThrow({
+          where: { email: input.email },
+          select: globalUserSelectWithIdEmail,
+        });
+      } else {
+        throw e;
+      }
     }
   } else {
     // Update basic global fields if provided.
