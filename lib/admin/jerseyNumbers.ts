@@ -35,3 +35,46 @@ export async function assignJerseyNumbersForTeam(
 
   return { assigned: sorted.length, unmatchedSizes: unmatched };
 }
+
+export type FinalizeDivisionResult = {
+  teamsNumbered: number;
+  totalAssigned: number;
+  unmatchedSizes: UnmatchedJerseySize[];
+};
+
+/**
+ * Numbers every team in a division, but only if the whole division has
+ * resolved to real teams — if any team is still the "Unallocated" catch-all
+ * (SportsConnect hasn't assigned real teams for every player yet), does
+ * nothing and returns null. Used both by the explicit "Finalize & Number
+ * Division" button and automatically at the end of a player import, so a
+ * division that becomes fully real as of this import gets numbered right
+ * away without a separate manual step.
+ */
+export async function finalizeDivisionIfReady(
+  db: DbClient,
+  params: { organizationId: string; seasonYear: number; ageGroup: string },
+): Promise<FinalizeDivisionResult | null> {
+  const teams = await db.team.findMany({
+    where: {
+      organizationId: params.organizationId,
+      seasonYear: params.seasonYear,
+      ageGroup: params.ageGroup,
+    },
+    select: { id: true, teamName: true },
+  });
+  if (teams.length === 0) return null;
+  if (teams.some((t) => t.teamName.trim().toLowerCase() === "unallocated")) return null;
+
+  let teamsNumbered = 0;
+  let totalAssigned = 0;
+  const unmatchedSizes: UnmatchedJerseySize[] = [];
+  for (const team of teams) {
+    const result = await assignJerseyNumbersForTeam(db, team.id);
+    if (!result) continue;
+    teamsNumbered += 1;
+    totalAssigned += result.assigned;
+    unmatchedSizes.push(...result.unmatchedSizes);
+  }
+  return { teamsNumbered, totalAssigned, unmatchedSizes };
+}

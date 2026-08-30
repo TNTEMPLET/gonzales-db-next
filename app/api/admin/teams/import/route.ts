@@ -10,6 +10,7 @@ import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { completeImportRunSafe, recordImportRunSafe } from "@/lib/sportsConnect/importRuns";
 import { matchStandardDivision } from "@/lib/sportsConnect/fallballDivisions";
+import { finalizeDivisionIfReady } from "@/lib/admin/jerseyNumbers";
 
 export { shouldSkipDivisionImport };
 
@@ -316,6 +317,10 @@ export async function applyImportRows(params: {
   let skippedMissingExisting = 0;
   const skippedDetails: ImportSkipDetail[] = [];
   const teamCache = new Map<string, string>();
+  // (org+season+ageGroup) -> ageGroup, for the auto-finalize pass after the
+  // row loop below. Keyed on the exact-cased ageGroup since Team.ageGroup
+  // lookups are case-sensitive, unlike teamKey/teamCache's lowercased key.
+  const touchedDivisions = new Map<string, { seasonYear: number; ageGroup: string }>();
   const batch = await prisma.teamPlayerImportBatch.findUnique({
     where: { id: batchId },
     select: { undoPayload: true, status: true, organizationId: true, undoneAt: true },
@@ -533,6 +538,7 @@ export async function applyImportRows(params: {
     const { firstName, lastName } = splitName(fullName);
 
     const teamKey = `${targetOrg}::${seasonYear}::${ageGroup.toLowerCase()}::${teamName.toLowerCase()}`;
+    touchedDivisions.set(`${seasonYear}::${ageGroup}`, { seasonYear, ageGroup });
     let teamId = teamCache.get(teamKey);
     if (!teamId) {
       const existingTeam = await prisma.team.findUnique({
@@ -778,6 +784,28 @@ export async function applyImportRows(params: {
       console.error(
         "[teams/import] Enrollment upsert failed for row",
         row.__importRowNumber,
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+
+  // Auto-finalize: any division this batch touched that has fully resolved
+  // to real teams (no "Unallocated" placeholder left) gets numbered right
+  // away — the same "a finished roster gets numbered automatically"
+  // behavior materializeDraftSession has for drafted divisions, just
+  // triggered by import completion instead of draft completion for
+  // divisions built by direct import.
+  for (const { seasonYear: divisionSeasonYear, ageGroup: divisionAgeGroup } of touchedDivisions.values()) {
+    try {
+      await finalizeDivisionIfReady(prisma, {
+        organizationId: targetOrg,
+        seasonYear: divisionSeasonYear,
+        ageGroup: divisionAgeGroup,
+      });
+    } catch (err) {
+      console.error(
+        "[teams/import] Auto-finalize jersey numbers failed for division",
+        divisionAgeGroup,
         err instanceof Error ? err.message : err,
       );
     }
