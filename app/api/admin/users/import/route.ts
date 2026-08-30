@@ -321,6 +321,7 @@ export async function applyCoachImportRows(params: {
     const contactPhone = selectPreferredContactPhone(row);
     const jerseySize =
       getRowValue(row, [
+        "What is your jersey size? (All Positions)",
         "What is the coaches jersey size?",
         "What is the coach's jersey size?",
         "What is the volunteer's jersey size?",
