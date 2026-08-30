@@ -1,12 +1,20 @@
 {
-  "description": "Synthetic SportsConnect volunteer/coach sheet headers (no PII).",
+  "description": "Real SportsConnect Volunteer_Details.xlsx export column headers (no PII) -- confirmed 2026-08-29 against a live export. The 'Volunteer '-prefixed field names (not the generic 'email'/'first_name' this fixture used before) are what real exports actually send.",
   "headers": [
-    "email",
-    "first_name",
-    "last_name",
+    "Program Name",
+    "Division Name",
+    "Team Name",
     "Volunteer Role",
-    "contact_phone",
-    "age_group",
-    "assigned_team"
+    "Volunteer First Name",
+    "Volunteer Last Name",
+    "Volunteer Street Address",
+    "Volunteer Address Unit",
+    "Volunteer City",
+    "Volunteer State",
+    "Volunteer Postal Code",
+    "Volunteer Email Address",
+    "Volunteer Telephone",
+    "Volunteer Cellphone",
+    "Volunteer Other Phone"
   ]
 }
