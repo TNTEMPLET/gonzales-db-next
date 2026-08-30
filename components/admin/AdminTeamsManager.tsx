@@ -20,6 +20,7 @@ import {
   SyncedDriveFileMenu,
 } from "./teams/SportsConnectAssistPanels";
 import OnlineDraftDesk from "@/components/admin/draft/OnlineDraftDesk";
+import JerseyReportPanel from "@/components/admin/teams/JerseyReportPanel";
 import PlayerCardDemoPreview from "@/components/players/PlayerCardDemoPreview";
 import PlayerCardPanel, {
   playerCardFromFields,
@@ -2200,6 +2201,12 @@ export default function AdminTeamsManager({
           />
         </div>
       </div>
+
+      <JerseyReportPanel
+        orgQuery={orgQuery}
+        seasonYear={Number(teamFilterSeasonYear) || seasonYear}
+        ageGroupOptions={teamFilterAgeGroupOptions}
+      />
 
       {activeTeamsSection === "online-draft" && (
         <div id="online-draft" className="scroll-mt-24">
