@@ -109,17 +109,20 @@ export function normalizeLooseName(value: string) {
 
 /**
  * SportsConnect export divisions are the source of truth for roster imports.
- * Only non-player program rows (umpire clinics / volunteer ump tracks) are skipped.
+ * Only non-player program rows (umpire clinics / volunteer ump tracks) are
+ * skipped — every real player division (including tee ball, 3-4/5 year-olds,
+ * and Little League Tee Ball) must import as-is. A prior commit (b1eaa4a,
+ * "tighten division omission logic") added skip rules for those real player
+ * divisions, silently dropping registered players in the youngest age
+ * groups from every import path (legacy + Smart Auto-Build) since
+ * 2026-08-26 — reverted here. See docs/sports-connect-import.md's
+ * "Skipped divisions (automatic)" section, which only ever documented
+ * umpire-only rows as skipped.
  */
 export function shouldSkipDivisionImport(divisionName: string) {
   const normalized = divisionName.trim().toLowerCase();
   if (!normalized) return false;
-  if (normalized.includes("modified tee ball")) return false;
-  if (normalized.includes("umpire")) return true;
-  if (normalized.includes("little league tee ball") || normalized.includes("little league teeball")) return true;
-  if (normalized.includes("3-4 year-old") || normalized.includes("3-4 year olds") || normalized.includes("3/4 year-old")) return true;
-  if (/(^|[^0-9])5 year-old/.test(normalized) || /(^|[^0-9])5 year olds/.test(normalized)) return true;
-  return false;
+  return normalized.includes("umpire");
 }
 
 export function buildTeamNameFromSponsor(
