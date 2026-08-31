@@ -76,6 +76,14 @@ export type DraftSessionStatus =
   | "COMPLETED"
   | "MATERIALIZED";
 
+/** Snapshot of the most recent "Schedule & Invite" email send, stored on DraftSession.lastInviteResult. */
+export type DraftInviteResult = {
+  sent: number;
+  skippedSuppressed: string[];
+  failed: string[];
+  noCoachEmail: string[];
+};
+
 export type DraftSession = {
   id: string;
   organizationId: string;
@@ -92,6 +100,7 @@ export type DraftSession = {
   draftLeader?: DraftUserRef | null;
   scheduledStartAt?: string | null;
   invitesSentAt?: string | null;
+  lastInviteResult?: DraftInviteResult | null;
   teams: DraftTeam[];
   playerPool: DraftPlayerPoolItem[];
   picks: DraftPick[];
