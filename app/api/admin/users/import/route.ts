@@ -228,6 +228,7 @@ export async function applyCoachImportRows(params: {
   let autoAssigned = 0;
   let autoRoleUpdated = 0;
   let autoAssignAttempts = 0;
+  let preservedCoachAssignments = 0;
   const unmatchedTeamNames = new Set<string>();
   const createdUserIds: string[] = [];
   const updatedUsersBeforeImport: UpdatedUserSnapshot[] = [];
@@ -428,6 +429,31 @@ export async function applyCoachImportRows(params: {
         unmatchedTeamNames.add(assignedTeam.trim());
       }
       if (targetTeam) {
+        // SportsConnect has no concept of an internal draft: for a division
+        // still mid-draft, its own export always says "Unallocated" for
+        // every coach's team, even one who already has a real HEAD_COACH/
+        // ASSISTANT_COACH assignment from the draft (see
+        // lib/draft/syncDraftTeamRealization.ts). Don't let a routine
+        // re-import undo that -- only skip the move when it would demote a
+        // real assignment back to the placeholder; moving between two real
+        // teams, or landing on Unallocated when there's no existing real
+        // assignment yet, is unaffected.
+        const isTargetUnallocated = targetTeam.teamName.trim().toLowerCase() === "unallocated";
+        const existingDivisionAssignments = isTargetUnallocated
+          ? await prisma.teamCoachAssignment.findMany({
+              where: {
+                registeredUserId: existing.id,
+                team: { organizationId: targetOrg, ageGroup: targetTeam.ageGroup },
+              },
+              select: { team: { select: { teamName: true } } },
+            })
+          : [];
+        const hasRealAssignment = existingDivisionAssignments.some(
+          (a) => a.team.teamName.trim().toLowerCase() !== "unallocated",
+        );
+        if (isTargetUnallocated && hasRealAssignment) {
+          preservedCoachAssignments += 1;
+        } else {
         // Drop assignments left over from an earlier import in this same
         // division that pointed at a different team (e.g. a placeholder
         // team before real teams existed) — otherwise a coach whose team
@@ -468,6 +494,7 @@ export async function applyCoachImportRows(params: {
             data: { role: assignmentRole },
           });
           autoRoleUpdated += 1;
+        }
         }
       }
     }
@@ -516,6 +543,7 @@ export async function applyCoachImportRows(params: {
     autoAssigned,
     autoRoleUpdated,
     autoAssignAttempts,
+    preservedCoachAssignments,
     unmatchedTeamNames,
     undoData,
   };
@@ -597,6 +625,7 @@ export async function POST(request: NextRequest) {
       autoAssigned,
       autoRoleUpdated,
       autoAssignAttempts,
+      preservedCoachAssignments,
       unmatchedTeamNames,
       undoData,
     } = result;
@@ -609,6 +638,7 @@ export async function POST(request: NextRequest) {
       skipped,
       autoAssigned,
       autoRoleUpdated,
+      preservedCoachAssignments,
       autoAssignToTeams,
       autoAssignDiagnostics: {
         attempts: autoAssignAttempts,
