@@ -71,13 +71,13 @@ export async function getNeedsAttentionSummary(
       key: "cap-orders",
       label: "Unfulfilled cap orders",
       count: unfulfilledCaps,
-      href: "/admin/orders",
+      href: "/admin/cap-orders",
     },
     {
       key: "shirt-orders",
       label: "Unfulfilled shirt orders",
       count: unfulfilledShirts,
-      href: "/admin/orders",
+      href: "/admin/shirt-orders",
     },
     {
       key: "coaching-leads",
