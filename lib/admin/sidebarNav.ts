@@ -171,28 +171,24 @@ export function buildAdminSidebarNav(
     ],
   };
 
-  // Cap Orders / Shirt Orders have no dedicated AdminModule (same situation
-  // as Scheduler/SportsConnect above) -- fall back to the subcategory's own
-  // visibility rather than a per-module gate.
+  // Cap Orders / Shirt Orders have no dedicated AdminModule -- fall back to
+  // the subcategory's own visibility rather than a per-module gate.
   const ordersVisible = allowModule("SPONSORS") || allowModule("REPORTS");
   const orders: AdminSidebarSubcategory = {
     id: "orders",
     label: ADMIN_DASHBOARD_CATEGORY_META.orders.label,
     leaves: [
-      // OrdersHub.tsx's real OrdersTab type is "caps"|"shirts"|"sponsors"|"reports"
-      // only -- no "shop"/"payments" tab exists, so those are deliberately
-      // omitted rather than linking to a tab that would crash the page.
       ...(ordersVisible
         ? [
-            { id: "caps", label: "Cap Orders", href: hubHref("/admin/orders", orgSuffix, "caps") },
-            { id: "shirts", label: "Shirt Orders", href: hubHref("/admin/orders", orgSuffix, "shirts") },
+            { id: "caps", label: "Cap Orders", href: leafHref("/admin/cap-orders", orgSuffix) },
+            { id: "shirts", label: "Shirt Orders", href: leafHref("/admin/shirt-orders", orgSuffix) },
           ]
         : []),
       ...(allowModule("SPONSORS")
-        ? [{ id: "sponsors", label: "Sponsors", href: hubHref("/admin/orders", orgSuffix, "sponsors") }]
+        ? [{ id: "sponsors", label: "Sponsors", href: leafHref("/admin/sponsors", orgSuffix) }]
         : []),
       ...(allowModule("REPORTS")
-        ? [{ id: "reports", label: "Umpire Pay Reports", href: hubHref("/admin/orders", orgSuffix, "reports") }]
+        ? [{ id: "reports", label: "Umpire Pay Reports", href: leafHref("/admin/reports", orgSuffix) }]
         : []),
     ],
   };
