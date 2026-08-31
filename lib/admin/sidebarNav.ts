@@ -43,6 +43,11 @@ function hubHref(basePath: string, orgSuffix: string, tabValue: string): string 
   return orgSuffix ? `${basePath}${orgSuffix}&tab=${tabValue}` : `${basePath}?tab=${tabValue}`;
 }
 
+/** A leaf that's its own real page (no ?tab=/?section= needed) -- just append the org param, if any. */
+function leafHref(basePath: string, orgSuffix: string): string {
+  return `${basePath}${orgSuffix}`;
+}
+
 export function buildAdminSidebarNav(
   allowModule: AllowModuleFn,
   canCoachingInterest: boolean,
@@ -76,17 +81,17 @@ export function buildAdminSidebarNav(
     label: ADMIN_DASHBOARD_CATEGORY_META.competition.label,
     leaves: [
       ...(allowModule("TEAMS")
-        ? [{ id: "teams", label: "Teams & Rosters", href: hubHref("/admin/competition", orgSuffix, "teams") }]
+        ? [{ id: "teams", label: "Teams & Rosters", href: leafHref("/admin/teams", orgSuffix) }]
         : []),
-      // Scheduler / SportsConnect Import have no dedicated AdminModule in
-      // CompetitionHub.tsx today -- it gates the whole hub, not these tabs
-      // individually, so match that: show whenever the subcategory itself is.
+      // Scheduler / SportsConnect Import have no dedicated AdminModule --
+      // each page gates on the same "competitionVisible" OR-check, so match
+      // that here too: show whenever the subcategory itself is.
       ...(competitionVisible
         ? [
             {
               id: "sports-connect",
               label: "Import Registration Data",
-              href: hubHref("/admin/competition", orgSuffix, "sports-connect"),
+              href: leafHref("/admin/sports-connect", orgSuffix),
             },
           ]
         : []),
@@ -95,28 +100,28 @@ export function buildAdminSidebarNav(
             {
               id: "enrollment-kpi",
               label: "Enrollment & KPIs",
-              href: hubHref("/admin/competition", orgSuffix, "enrollment"),
+              href: leafHref("/admin/enrollment", orgSuffix),
             },
           ]
         : []),
       ...(allowModule("DRAFT")
-        ? [{ id: "draft", label: "Online Draft", href: hubHref("/admin/competition", orgSuffix, "draft") }]
+        ? [{ id: "draft", label: "Online Draft", href: leafHref("/admin/draft", orgSuffix) }]
         : []),
       ...(allowModule("SCORES")
-        ? [{ id: "scores", label: "Scores & Standings", href: hubHref("/admin/competition", orgSuffix, "scores") }]
+        ? [{ id: "scores", label: "Scores & Standings", href: leafHref("/admin/scores", orgSuffix) }]
         : []),
       ...(competitionVisible
-        ? [{ id: "scheduler", label: "Scheduler", href: hubHref("/admin/competition", orgSuffix, "scheduler") }]
+        ? [{ id: "scheduler", label: "Scheduler", href: leafHref("/admin/scheduler", orgSuffix) }]
         : []),
       ...(allowModule("ASSIGNR")
-        ? [{ id: "assignr", label: "Umpire Desk (Assignr)", href: hubHref("/admin/competition", orgSuffix, "assignr") }]
+        ? [{ id: "assignr", label: "Umpire Desk (Assignr)", href: leafHref("/admin/assignr", orgSuffix) }]
         : []),
       ...(allowModule("REGISTRATION_WINDOWS")
         ? [
             {
               id: "registration",
               label: "Registration Windows",
-              href: hubHref("/admin/competition", orgSuffix, "registration"),
+              href: leafHref("/admin/registration", orgSuffix),
             },
           ]
         : []),

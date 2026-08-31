@@ -219,11 +219,9 @@ type UndoImportStatus = {
 export default function AdminTeamsManager({
   targetOrg,
   isMaster = false,
-  onGoToImport,
 }: {
   targetOrg: ContentOrgId;
   isMaster?: boolean;
-  onGoToImport?: () => void;
 }) {
   const orgQuery = `org=${targetOrg}`;
   const isFallBall = targetOrg === "fallball";
@@ -2175,22 +2173,12 @@ export default function AdminTeamsManager({
           onRefresh={() => void loadSportsConnectQuality()}
         />
         <div className="flex flex-wrap items-center gap-2">
-          {onGoToImport ? (
-            <button
-              type="button"
-              onClick={onGoToImport}
-              className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
-            >
-              Import Registration Data
-            </button>
-          ) : (
-            <a
-              href={`/admin/competition?tab=sports-connect&${orgQuery}`}
-              className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
-            >
-              Import Registration Data
-            </a>
-          )}
+          <a
+            href={`/admin/sports-connect?${orgQuery}`}
+            className="rounded-lg border border-zinc-600 px-4 py-2 text-sm font-semibold text-zinc-200 hover:bg-zinc-800"
+          >
+            Import Registration Data
+          </a>
           <button
             type="button"
             disabled={!selectedTeamId}
@@ -2230,22 +2218,12 @@ export default function AdminTeamsManager({
       <div id="teams-build" className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4 scroll-mt-24">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <h2 className="text-lg font-semibold">Teams Setup</h2>
-          {onGoToImport ? (
-            <button
-              type="button"
-              onClick={onGoToImport}
-              className="text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 font-semibold shadow"
-            >
-              Import players/coaches/team list →
-            </button>
-          ) : (
-            <a
-              href={`/admin/competition?tab=sports-connect&${orgQuery}`}
-              className="text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 font-semibold shadow"
-            >
-              Import players/coaches/team list →
-            </a>
-          )}
+          <a
+            href={`/admin/sports-connect?${orgQuery}`}
+            className="text-xs rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 font-semibold shadow"
+          >
+            Import players/coaches/team list →
+          </a>
         </div>
         <details className="group">
           <summary className="cursor-pointer text-xs text-zinc-500 hover:text-zinc-300">
