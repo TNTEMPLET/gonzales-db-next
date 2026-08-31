@@ -89,7 +89,7 @@ export async function getNeedsAttentionSummary(
       key: "park-alerts",
       label: "Active park/weather closures",
       count: activeAlerts.filter((a) => orgs.includes(a.organizationId as ContentOrgId)).length,
-      href: "/admin/park",
+      href: "/admin/alerts",
     },
     {
       key: "equipment-checkout",
