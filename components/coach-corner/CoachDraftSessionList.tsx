@@ -21,6 +21,7 @@ type SessionListItem = {
 };
 
 const STATUS_LABEL: Record<string, string> = {
+  SETUP: "Upcoming",
   PAIRED: "Not started yet",
   LIVE: "Live now",
   PAUSED: "Paused",
@@ -29,12 +30,15 @@ const STATUS_LABEL: Record<string, string> = {
 };
 
 const STATUS_CLASS: Record<string, string> = {
+  SETUP: "bg-zinc-800 text-zinc-300",
   PAIRED: "bg-zinc-800 text-zinc-300",
   LIVE: "bg-emerald-500/20 text-emerald-400 animate-pulse",
   PAUSED: "bg-amber-500/20 text-amber-400",
   COMPLETED: "bg-sky-500/20 text-sky-400",
   MATERIALIZED: "bg-zinc-700 text-zinc-300",
 };
+
+const UPCOMING_STATUSES = new Set(["SETUP", "PAIRED", "PAUSED"]);
 
 export default function CoachDraftSessionList({ orgQuery }: { orgQuery: string }) {
   const [sessions, setSessions] = useState<SessionListItem[] | null>(null);
@@ -94,7 +98,7 @@ export default function CoachDraftSessionList({ orgQuery }: { orgQuery: string }
           <div className="text-xs text-zinc-400">
             {session.ageGroup} · {session.teams.length} Teams · {session._count.picks} / {session.teams.length * session.totalRounds} picks
           </div>
-          {session.scheduledStartAt && (session.status === "PAIRED" || session.status === "PAUSED") && (
+          {session.scheduledStartAt && UPCOMING_STATUSES.has(session.status) && (
             <div className="text-[11px] text-amber-400 font-semibold">
               🕐 Starts {formatCentralDateTime(session.scheduledStartAt)}
             </div>
