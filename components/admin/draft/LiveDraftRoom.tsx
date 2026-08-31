@@ -4,6 +4,7 @@ import { useEffect, useState, useMemo, useRef } from "react";
 import DraftSessionEditModal from "./DraftSessionEditModal";
 import DraftPlayersManageModal from "./DraftPlayersManageModal";
 import DraftInviteModal from "./DraftInviteModal";
+import SportsConnectExportPanel from "./SportsConnectExportPanel";
 import type { DraftLeaderOption, DraftSessionState } from "@/lib/draft/types";
 import { getErrorMessage } from "@/lib/draft/clientError";
 import { computePlayingAge } from "@/lib/draft/playingAge";
@@ -592,6 +593,8 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
           </div>
         </div>
       </div>
+
+      {session.status === "MATERIALIZED" && <SportsConnectExportPanel sessionId={session.id} />}
 
       {/* ROSTERS DRAWER / OVERVIEW (IF TOGGLED) */}
       {showRostersDrawer && (
