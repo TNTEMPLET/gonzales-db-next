@@ -29,18 +29,22 @@ export async function getNeedsAttentionSummary(
   compliance: ComplianceSummary,
   boardContact: BoardContactSummary,
 ): Promise<NeedsAttentionSummary> {
-  const [unfulfilledCaps, unfulfilledShirts, pendingCoachingLeads, activeAlerts] = await Promise.all([
-    prisma.capOrderItem.count({
-      where: { status: { not: "fulfilled" }, order: { org: { in: orgs } } },
-    }),
-    prisma.shirtOrderItem.count({
-      where: { status: { not: "fulfilled" }, order: { org: { in: orgs } } },
-    }),
-    prisma.coachingInterestSubmission.count({
-      where: { status: "NEW", organizationId: { in: orgs } },
-    }),
-    getAllActiveOrgAlerts(),
-  ]);
+  const [unfulfilledCaps, unfulfilledShirts, pendingCoachingLeads, activeAlerts, openEquipmentCheckouts] =
+    await Promise.all([
+      prisma.capOrderItem.count({
+        where: { status: { not: "fulfilled" }, order: { org: { in: orgs } } },
+      }),
+      prisma.shirtOrderItem.count({
+        where: { status: { not: "fulfilled" }, order: { org: { in: orgs } } },
+      }),
+      prisma.coachingInterestSubmission.count({
+        where: { status: "NEW", organizationId: { in: orgs } },
+      }),
+      getAllActiveOrgAlerts(),
+      prisma.equipmentCheckout.count({
+        where: { status: "open", organizationId: { in: orgs } },
+      }),
+    ]);
 
   const items: NeedsAttentionItem[] = [
     {
@@ -78,6 +82,12 @@ export async function getNeedsAttentionSummary(
       label: "Active park/weather closures",
       count: activeAlerts.filter((a) => orgs.includes(a.organizationId as ContentOrgId)).length,
       href: "/admin/park",
+    },
+    {
+      key: "equipment-checkout",
+      label: "Coaches without equipment picked up",
+      count: openEquipmentCheckouts,
+      href: "/admin/competition?tab=teams",
     },
   ];
 

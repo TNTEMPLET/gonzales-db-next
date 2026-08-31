@@ -1259,16 +1259,41 @@ model Team {
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
-  createdByAdmin   AdminUser?            @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
-  coachAssignments TeamCoachAssignment[]
-  players          TeamPlayer[]
-  enrollments      Enrollment[]
-  gameNotes        TeamGameNote[]
-  homeDraftGames   ScheduleDraftGame[]   @relation("ScheduleDraftGameHomeTeam")
-  awayDraftGames   ScheduleDraftGame[]   @relation("ScheduleDraftGameAwayTeam")
+  createdByAdmin    AdminUser?            @relation(fields: [createdByAdminId], references: [id], onDelete: SetNull)
+  coachAssignments  TeamCoachAssignment[]
+  players           TeamPlayer[]
+  enrollments       Enrollment[]
+  gameNotes         TeamGameNote[]
+  homeDraftGames    ScheduleDraftGame[]   @relation("ScheduleDraftGameHomeTeam")
+  awayDraftGames    ScheduleDraftGame[]   @relation("ScheduleDraftGameAwayTeam")
+  equipmentCheckout EquipmentCheckout?
+  practiceSlots     TeamPracticeSlot[]
 
   @@unique([organizationId, seasonYear, ageGroup, teamName])
   @@index([organizationId, seasonYear, ageGroup])
+}
+
+/// One equipment kit (tee/balls/gear, tiered by division) checked out to a
+/// team's head coach for the season. Flat, one row per team -- unlike Cap/
+/// ShirtOrder's parent+item shape (N identical physical units needing N
+/// individual fulfillment marks), a team gets exactly one kit.
+model EquipmentCheckout {
+  id              String    @id @default(cuid())
+  organizationId  String
+  seasonYear      Int
+  ageGroup        String
+  teamId          String    @unique
+  team            Team      @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  assignedCoachId String? // RegisteredUser, resolved at creation time from TeamCoachAssignment
+  kitLabel        String
+  status          String    @default("open") // "open" | "picked_up"
+  pickedUpAt      DateTime?
+  notes           String?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([organizationId, seasonYear, ageGroup])
+  @@index([status])
 }
 
 model TeamCoachAssignment {
@@ -1482,6 +1507,7 @@ model SchedulePark {
   availabilities ScheduleFieldAvailability[]
   divisionRules  ScheduleDivisionRule[]
   draftGames     ScheduleDraftGame[]
+  practiceSlots  TeamPracticeSlot[]
 
   @@unique([organizationId, name])
   @@index([organizationId, isActive, name])
@@ -1504,10 +1530,44 @@ model ScheduleField {
   availabilities ScheduleFieldAvailability[]
   divisionRules  ScheduleDivisionRule[]
   draftGames     ScheduleDraftGame[]
+  practiceSlots  TeamPracticeSlot[]
 
   @@unique([parkId, name])
   @@index([organizationId, isActive])
   @@index([parkId, isActive, name])
+}
+
+/// A recurring weekly practice slot assigned to an already-real Team
+/// (post-draft-materialization), reusing the same SchedulePark/ScheduleField
+/// facility catalog games use. Deliberately not exploded into dated
+/// occurrences like ScheduleFieldAvailability -- Coach Corner and the
+/// Practice Matrix report only ever need "Tuesdays 5:45pm, Field 3", not a
+/// literal calendar. Writing/updating a slot regenerates the owning team's
+/// Team.practicePlan text (lib/scheduler/practicePlanText.ts) so coaches see
+/// it immediately with no new coach-facing UI.
+model TeamPracticeSlot {
+  id                 String         @id @default(cuid())
+  organizationId     String
+  seasonYear         Int
+  ageGroup           String
+  teamId             String
+  team               Team           @relation(fields: [teamId], references: [id], onDelete: Cascade)
+  parkId             String?
+  park               SchedulePark?  @relation(fields: [parkId], references: [id], onDelete: SetNull)
+  fieldId            String?
+  field              ScheduleField? @relation(fields: [fieldId], references: [id], onDelete: SetNull)
+  dayOfWeek          Int // 0 (Sunday) - 6 (Saturday), recurring weekly
+  startTime          String // "17:45"
+  durationMinutes    Int            @default(90)
+  /// Two teams sharing one field/night (first team gets the field for
+  /// durationMinutes, then swaps) share this same value.
+  sharedFieldGroupId String?
+  notes              String?
+  createdAt          DateTime       @default(now())
+  updatedAt          DateTime       @updatedAt
+
+  @@index([organizationId, seasonYear, ageGroup])
+  @@index([sharedFieldGroupId])
 }
 
 model ScheduleFieldAvailability {

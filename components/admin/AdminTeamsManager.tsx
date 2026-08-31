@@ -21,6 +21,7 @@ import {
 } from "./teams/SportsConnectAssistPanels";
 import OnlineDraftDesk from "@/components/admin/draft/OnlineDraftDesk";
 import JerseyReportPanel from "@/components/admin/teams/JerseyReportPanel";
+import EquipmentCheckoutPanel from "@/components/admin/teams/EquipmentCheckoutPanel";
 import {
   describeUnmatchedJerseySize,
   type UnmatchedJerseySize,
@@ -2209,6 +2210,12 @@ export default function AdminTeamsManager({
       </div>
 
       <JerseyReportPanel
+        orgQuery={orgQuery}
+        seasonYear={Number(teamFilterSeasonYear) || seasonYear}
+        ageGroupOptions={teamFilterAgeGroupOptions}
+      />
+
+      <EquipmentCheckoutPanel
         orgQuery={orgQuery}
         seasonYear={Number(teamFilterSeasonYear) || seasonYear}
         ageGroupOptions={teamFilterAgeGroupOptions}

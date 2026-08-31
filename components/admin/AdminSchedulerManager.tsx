@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 
 import { getOrgDisplayName, type ContentOrgId } from "@/lib/siteConfig";
+import { getTeamsManagementAgeGroupDefaults } from "@/lib/admin/teamsImportHelpers";
 
 type Season = {
   id: string;
@@ -820,6 +821,367 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
           <a href={exportHref} aria-disabled={!selectedSeasonId} className={`rounded-xl px-4 py-2 text-sm font-semibold ${selectedSeasonId ? "bg-red-600 text-white hover:bg-red-500" : "pointer-events-none bg-zinc-800 text-zinc-500"}`}>Download CSV</a>
         </div>
       </Panel>
+
+      <PracticeSlotsPanel
+        targetOrg={targetOrg}
+        orgQuery={orgQuery}
+        seasonYear={selectedSeason?.seasonYear ?? new Date().getFullYear()}
+        parks={parks}
+        allFields={allFields}
+      />
     </div>
+  );
+}
+
+type PracticeSlotView = {
+  id: string;
+  parkId: string | null;
+  fieldId: string | null;
+  dayOfWeek: number;
+  startTime: string;
+  durationMinutes: number;
+  notes: string | null;
+  pairedTeamId: string | null;
+  pairedTeamName: string | null;
+};
+
+type PracticeTeamRow = {
+  teamId: string;
+  teamName: string;
+  slot: PracticeSlotView | null;
+};
+
+type PracticeEditForm = {
+  dayOfWeek: string;
+  startTime: string;
+  durationMinutes: string;
+  parkId: string;
+  fieldId: string;
+  notes: string;
+  pairWithTeamId: string;
+};
+
+function summarizeSlot(slot: PracticeSlotView, allFields: (Field & { parkName: string })[], parks: Park[]): string {
+  const field = allFields.find((f) => f.id === slot.fieldId);
+  const park = parks.find((p) => p.id === slot.parkId);
+  const location = field ? `${field.parkName}: ${field.name}` : park?.name ?? "Location TBD";
+  const day = DAY_LABELS[slot.dayOfWeek] ?? "";
+  let text = `${day} ${slot.startTime} — ${location} (${slot.durationMinutes} min)`;
+  if (slot.pairedTeamName) {
+    text += ` · shares with ${slot.pairedTeamName}`;
+  }
+  return text;
+}
+
+/**
+ * Practice-slot assignment -- reuses this hub's already-loaded Park/Field
+ * data. Unlike the game generator above, this doesn't produce matchups; it
+ * assigns already-real Teams (post-draft-materialization) to a recurring
+ * weekly slot, and writes the result straight into Team.practicePlan so
+ * Coach Corner shows it immediately.
+ */
+function PracticeSlotsPanel({
+  targetOrg,
+  orgQuery,
+  seasonYear,
+  parks,
+  allFields,
+}: {
+  targetOrg: ContentOrgId;
+  orgQuery: string;
+  seasonYear: number;
+  parks: Park[];
+  allFields: (Field & { parkName: string })[];
+}) {
+  const divisionOptions = useMemo(() => getTeamsManagementAgeGroupDefaults(targetOrg), [targetOrg]);
+  const [ageGroup, setAgeGroup] = useState("");
+  const [rows, setRows] = useState<PracticeTeamRow[]>([]);
+  const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
+  const [form, setForm] = useState<PracticeEditForm>({
+    dayOfWeek: "2",
+    startTime: "17:45",
+    durationMinutes: "90",
+    parkId: "",
+    fieldId: "",
+    notes: "",
+    pairWithTeamId: "",
+  });
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function refreshRows(nextAgeGroup: string) {
+    setAgeGroup(nextAgeGroup);
+    setRows([]);
+    setEditingTeamId(null);
+    setError("");
+    if (!nextAgeGroup) return;
+    setBusy(true);
+    try {
+      const params = new URLSearchParams(orgQuery);
+      params.set("seasonYear", String(seasonYear));
+      params.set("ageGroup", nextAgeGroup);
+      const response = await fetch(`/api/admin/scheduler/practice-slots?${params.toString()}`, { cache: "no-store" });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String((json as { error?: unknown }).error || "Failed to load practice slots"));
+      setRows((json as { teams: PracticeTeamRow[] }).teams ?? []);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load practice slots");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function startEditing(row: PracticeTeamRow) {
+    setEditingTeamId(row.teamId);
+    setForm(
+      row.slot
+        ? {
+            dayOfWeek: String(row.slot.dayOfWeek),
+            startTime: row.slot.startTime,
+            durationMinutes: String(row.slot.durationMinutes),
+            parkId: row.slot.parkId ?? "",
+            fieldId: row.slot.fieldId ?? "",
+            notes: row.slot.notes ?? "",
+            pairWithTeamId: row.slot.pairedTeamId ?? "",
+          }
+        : { dayOfWeek: "2", startTime: "17:45", durationMinutes: "90", parkId: "", fieldId: "", notes: "", pairWithTeamId: "" },
+    );
+  }
+
+  async function saveSlot(teamId: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const params = new URLSearchParams(orgQuery);
+      const organizationId = params.get("org") || "";
+      const response = await fetch("/api/admin/scheduler/practice-slots", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          organizationId,
+          seasonYear,
+          ageGroup,
+          teamId,
+          dayOfWeek: Number(form.dayOfWeek),
+          startTime: form.startTime,
+          durationMinutes: Number(form.durationMinutes) || 90,
+          parkId: form.parkId || null,
+          fieldId: form.fieldId || null,
+          notes: form.notes || null,
+          pairWithTeamId: form.pairWithTeamId || null,
+        }),
+      });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String((json as { error?: unknown }).error || "Failed to save"));
+      setEditingTeamId(null);
+      await refreshRows(ageGroup);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeSlot(slotId: string) {
+    setBusy(true);
+    setError("");
+    try {
+      const params = new URLSearchParams(orgQuery);
+      params.set("slotId", slotId);
+      const response = await fetch(`/api/admin/scheduler/practice-slots?${params.toString()}`, { method: "DELETE" });
+      const json = await safeJson(response);
+      if (!response.ok) throw new Error(String((json as { error?: unknown }).error || "Failed to remove"));
+      await refreshRows(ageGroup);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to remove");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const fieldsForSelectedPark = form.parkId ? allFields.filter((f) => f.parkId === form.parkId) : allFields;
+  const pairableTeams = rows.filter((r) => r.teamId !== editingTeamId);
+
+  return (
+    <Panel title="Practice Slots" eyebrow="7. Practice scheduling">
+      <div className="space-y-4">
+        <p className="text-sm text-zinc-400">
+          Assign each real team a recurring weekly practice slot. Saving writes straight into that team&apos;s
+          Coach Corner practice plan -- no separate publishing step.
+        </p>
+
+        <FieldLabel label="Division">
+          <SelectInput value={ageGroup} onChange={(e) => refreshRows(e.target.value)}>
+            <option value="">Select division...</option>
+            {divisionOptions.map((ag) => (
+              <option key={ag} value={ag}>
+                {ag}
+              </option>
+            ))}
+          </SelectInput>
+        </FieldLabel>
+
+        {error && <p className="text-sm text-red-400">{error}</p>}
+
+        {ageGroup && rows.length === 0 && !busy && (
+          <p className="text-sm text-zinc-500">No teams found for this division yet.</p>
+        )}
+
+        {rows.length > 0 && (
+          <div className="space-y-2">
+            {rows.map((row) => (
+              <div key={row.teamId} className="rounded-xl border border-zinc-800 bg-zinc-950/60 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">{row.teamName}</p>
+                    <p className="text-xs text-zinc-500">
+                      {row.slot ? summarizeSlot(row.slot, allFields, parks) : "No practice slot assigned yet."}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {row.slot && (
+                      <button
+                        onClick={() => removeSlot(row.slot!.id)}
+                        disabled={busy}
+                        className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-rose-400 hover:border-rose-400 disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    )}
+                    <button
+                      onClick={() => startEditing(row)}
+                      disabled={busy}
+                      className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-100 hover:border-red-400 disabled:opacity-50"
+                    >
+                      {row.slot ? "Edit" : "Assign Slot"}
+                    </button>
+                  </div>
+                </div>
+
+                {editingTeamId === row.teamId && (
+                  <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                    <FieldLabel label="Day">
+                      <SelectInput value={form.dayOfWeek} onChange={(e) => setForm({ ...form, dayOfWeek: e.target.value })}>
+                        {DAY_LABELS.map((label, idx) => (
+                          <option key={label} value={idx}>
+                            {label}
+                          </option>
+                        ))}
+                      </SelectInput>
+                    </FieldLabel>
+                    <FieldLabel label="Start Time">
+                      <TextInput type="time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} />
+                    </FieldLabel>
+                    <FieldLabel label="Duration (min)">
+                      <TextInput
+                        type="number"
+                        value={form.durationMinutes}
+                        onChange={(e) => setForm({ ...form, durationMinutes: e.target.value })}
+                      />
+                    </FieldLabel>
+                    <FieldLabel label="Park">
+                      <SelectInput
+                        value={form.parkId}
+                        onChange={(e) => setForm({ ...form, parkId: e.target.value, fieldId: "" })}
+                      >
+                        <option value="">Unassigned</option>
+                        {parks.map((park) => (
+                          <option key={park.id} value={park.id}>
+                            {park.name}
+                          </option>
+                        ))}
+                      </SelectInput>
+                    </FieldLabel>
+                    <FieldLabel label="Field">
+                      <SelectInput value={form.fieldId} onChange={(e) => setForm({ ...form, fieldId: e.target.value })}>
+                        <option value="">Unassigned</option>
+                        {fieldsForSelectedPark.map((field) => (
+                          <option key={field.id} value={field.id}>
+                            {field.parkName}: {field.name}
+                          </option>
+                        ))}
+                      </SelectInput>
+                    </FieldLabel>
+                    <FieldLabel label="Pair with (shares field, goes second)">
+                      <SelectInput
+                        value={form.pairWithTeamId}
+                        onChange={(e) => setForm({ ...form, pairWithTeamId: e.target.value })}
+                      >
+                        <option value="">No pairing</option>
+                        {pairableTeams.map((t) => (
+                          <option key={t.teamId} value={t.teamId}>
+                            {t.teamName}
+                          </option>
+                        ))}
+                      </SelectInput>
+                    </FieldLabel>
+                    <div className="sm:col-span-2 lg:col-span-3">
+                      <FieldLabel label="Notes">
+                        <TextInput
+                          value={form.notes}
+                          onChange={(e) => setForm({ ...form, notes: e.target.value })}
+                          placeholder={'e.g. "Don\'t have to move the mound"'}
+                        />
+                      </FieldLabel>
+                    </div>
+                    <div className="sm:col-span-2 lg:col-span-3 flex justify-end gap-2">
+                      <button
+                        onClick={() => setEditingTeamId(null)}
+                        className="rounded-lg border border-zinc-700 px-3 py-2 text-sm text-zinc-300 hover:border-zinc-500"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        onClick={() => saveSlot(row.teamId)}
+                        disabled={busy}
+                        className="rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+                      >
+                        Save
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {rows.some((r) => r.slot) && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-zinc-500">Practice Matrix ({ageGroup})</p>
+            <table className="w-full text-left text-sm text-zinc-300">
+              <thead className="text-[10px] uppercase tracking-[0.2em] text-zinc-500">
+                <tr>
+                  <th className="p-2">Team</th>
+                  <th className="p-2">Day</th>
+                  <th className="p-2">Time</th>
+                  <th className="p-2">Field</th>
+                  <th className="p-2">Notes</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows
+                  .filter((r) => r.slot)
+                  .map((r) => {
+                    const field = allFields.find((f) => f.id === r.slot!.fieldId);
+                    return (
+                      <tr key={r.teamId} className="border-t border-zinc-800">
+                        <td className="p-2 font-semibold text-white">{r.teamName}</td>
+                        <td className="p-2">{DAY_LABELS[r.slot!.dayOfWeek]}</td>
+                        <td className="p-2">{r.slot!.startTime}</td>
+                        <td className="p-2">{field ? `${field.parkName}: ${field.name}` : "TBD"}</td>
+                        <td className="p-2 text-xs text-zinc-400">
+                          {r.slot!.pairedTeamName ? `Shares with ${r.slot!.pairedTeamName}. ` : ""}
+                          {r.slot!.notes ?? ""}
+                        </td>
+                      </tr>
+                    );
+                  })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+    </Panel>
   );
 }
