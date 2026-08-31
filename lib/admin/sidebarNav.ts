@@ -32,12 +32,6 @@ export type AdminSidebarNav = {
 
 type AllowModuleFn = (module: AdminModule) => boolean;
 
-/** People needs an org to render at all -- default to gonzales like the old top-nav link did. */
-function peopleHref(section: string, orgSuffix: string): string {
-  const suffix = orgSuffix || "?org=gonzales";
-  return `/admin/people${suffix}&section=${section}`;
-}
-
 /** Every other hub tolerates no org param (cross-org/default view). */
 function hubHref(basePath: string, orgSuffix: string, tabValue: string): string {
   return orgSuffix ? `${basePath}${orgSuffix}&tab=${tabValue}` : `${basePath}?tab=${tabValue}`;
@@ -57,15 +51,15 @@ export function buildAdminSidebarNav(
     id: "people",
     label: ADMIN_DASHBOARD_CATEGORY_META.people.label,
     leaves: [
-      ...(allowModule("USERS") ? [{ id: "directory", label: "Directory", href: peopleHref("directory", orgSuffix) }] : []),
+      ...(allowModule("USERS") ? [{ id: "directory", label: "Directory", href: leafHref("/admin/users", orgSuffix) }] : []),
       ...(allowModule("VOLUNTEERS")
-        ? [{ id: "volunteer-cards", label: "Volunteer Cards", href: peopleHref("volunteers", orgSuffix) }]
+        ? [{ id: "volunteer-cards", label: "Volunteer Cards", href: leafHref("/admin/volunteers", orgSuffix) }]
         : []),
       ...(allowModule("ROLE_ASSIGNMENT")
-        ? [{ id: "role-assignment", label: "Role Assignment", href: peopleHref("roles", orgSuffix) }]
+        ? [{ id: "role-assignment", label: "Role Assignment", href: leafHref("/admin/roles", orgSuffix) }]
         : []),
       ...(canCoachingInterest
-        ? [{ id: "coaching-interest", label: "Coaching Interest", href: peopleHref("coaching-interest", orgSuffix) }]
+        ? [{ id: "coaching-interest", label: "Coaching Interest", href: leafHref("/admin/coaching-interest", orgSuffix) }]
         : []),
     ],
   };

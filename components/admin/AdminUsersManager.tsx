@@ -1606,7 +1606,7 @@ export default function AdminUsersManager({
                           <p className="mt-1 text-xs text-amber-300">AAT certificate not uploaded</p>
                         )}
                         <a
-                          href={`/admin/people?section=volunteers&${orgQuery}&userId=${encodeURIComponent(user.id)}`}
+                          href={`/admin/volunteers?${orgQuery}&userId=${encodeURIComponent(user.id)}`}
                           className="mt-1 ml-1 inline-flex rounded-full border border-zinc-600 bg-zinc-900/50 px-2 py-0.5 text-[11px] text-zinc-300 hover:bg-zinc-800"
                         >
                           Volunteer card
