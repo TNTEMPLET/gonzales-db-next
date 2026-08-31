@@ -1,7 +1,6 @@
 import { assignJerseyNumbersForTeam } from "@/lib/admin/jerseyNumbers";
-import { syncCoachTeamAssignment } from "@/lib/coachCorner/syncCoachAssignment";
+import { syncDraftTeamRealization } from "@/lib/draft/syncDraftTeamRealization";
 import { prisma } from "@/lib/prisma";
-import type { ContentOrgId } from "@/lib/siteConfig";
 
 /**
  * Materializes a completed draft session into official Teams, TeamPlayer, and TeamCoachAssignment records.
@@ -25,87 +24,21 @@ export async function materializeDraftSession(draftSessionId: string) {
     throw new Error(`DraftSession not found: ${draftSessionId}`);
   }
 
-  const organizationId = session.organizationId as ContentOrgId;
-  const seasonYear = session.seasonYear;
-  const ageGroup = session.ageGroup;
-
   return await prisma.$transaction(async (tx) => {
     const createdTeams = [];
 
     for (const draftTeam of session.teams) {
-      // 1. Create or find the official Team record
-      let team = await tx.team.findFirst({
-        where: {
-          organizationId,
-          seasonYear,
-          ageGroup,
-          teamName: draftTeam.teamName,
-        },
-      });
-
-      if (!team) {
-        team = await tx.team.create({
-          data: {
-            organizationId,
-            seasonYear,
-            ageGroup,
-            teamName: draftTeam.teamName,
-            contactNotes: `Materialized from Draft Session: ${session.name}`,
-          },
-        });
-      }
-
+      // Find-or-create + rename + coach-assignment sync all live in one
+      // place now (lib/draft/syncDraftTeamRealization.ts) -- the same
+      // logic already ran when this draft team's board/coaches were set
+      // up, so by materialization time this is normally a no-op confirm;
+      // it stays here as the fallback for any draft team that somehow
+      // never got synced during setup.
+      const team = await syncDraftTeamRealization(tx, draftTeam.id);
+      if (!team) continue;
       createdTeams.push(team);
 
-      // 2. Assign Head Coach
-      if (draftTeam.headCoachUserId) {
-        await tx.teamCoachAssignment.upsert({
-          where: {
-            teamId_registeredUserId: {
-              teamId: team.id,
-              registeredUserId: draftTeam.headCoachUserId,
-            },
-          },
-          create: {
-            teamId: team.id,
-            registeredUserId: draftTeam.headCoachUserId,
-            role: "HEAD_COACH",
-          },
-          update: {},
-        });
-        await syncCoachTeamAssignment(tx, {
-          registeredUserId: draftTeam.headCoachUserId,
-          organizationId,
-          ageGroup,
-          assignedTeam: team.teamName,
-        });
-      }
-
-      // 3. Assign Assistant Coach
-      if (draftTeam.assistantUserId) {
-        await tx.teamCoachAssignment.upsert({
-          where: {
-            teamId_registeredUserId: {
-              teamId: team.id,
-              registeredUserId: draftTeam.assistantUserId,
-            },
-          },
-          create: {
-            teamId: team.id,
-            registeredUserId: draftTeam.assistantUserId,
-            role: "ASSISTANT_COACH",
-          },
-          update: {},
-        });
-        await syncCoachTeamAssignment(tx, {
-          registeredUserId: draftTeam.assistantUserId,
-          organizationId,
-          ageGroup,
-          assignedTeam: team.teamName,
-        });
-      }
-
-      // 4. Create TeamPlayer records for drafted players
+      // Create TeamPlayer records for drafted players
       for (const pick of draftTeam.picks) {
         const poolPlayer = session.playerPool.find((p) => p.id === pick.playerPoolId);
         if (!poolPlayer) continue;
