@@ -259,6 +259,7 @@ export async function POST(request: NextRequest) {
     updated: number;
     skipped: number;
     autoAssigned: number;
+    preservedCoachAssignments: number;
   } | null = null;
   let coachEmails: string[] = [];
   if (coachVolSource) {
@@ -295,6 +296,7 @@ export async function POST(request: NextRequest) {
       updated: applied.updated,
       skipped: applied.skipped,
       autoAssigned: applied.autoAssigned,
+      preservedCoachAssignments: applied.preservedCoachAssignments,
     };
   }
 
