@@ -399,6 +399,61 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
           </div>
         </div>
 
+        {/* COMMUNICATION SUMMARY -- last "Schedule & Invite" email send */}
+        {session.lastInviteResult && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-3.5 space-y-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-zinc-400 flex items-center gap-1.5">
+                <span>📧</span> Communication Summary
+              </h4>
+              {session.invitesSentAt && (
+                <span className="text-[11px] text-zinc-500">
+                  Last sent {new Date(session.invitesSentAt).toLocaleString()}
+                </span>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2 text-[11px] font-semibold">
+              <span className="rounded-full bg-emerald-500/10 px-2.5 py-1 text-emerald-400">
+                ✅ Sent: {session.lastInviteResult.sent}
+              </span>
+              {session.lastInviteResult.failed.length > 0 && (
+                <span
+                  className="rounded-full bg-rose-500/10 px-2.5 py-1 text-rose-400"
+                  title={session.lastInviteResult.failed.join(", ")}
+                >
+                  ❌ Failed: {session.lastInviteResult.failed.length}
+                </span>
+              )}
+              {session.lastInviteResult.skippedSuppressed.length > 0 && (
+                <span
+                  className="rounded-full bg-amber-500/10 px-2.5 py-1 text-amber-400"
+                  title={session.lastInviteResult.skippedSuppressed.join(", ")}
+                >
+                  🚫 Unsubscribed: {session.lastInviteResult.skippedSuppressed.length}
+                </span>
+              )}
+              {session.lastInviteResult.noCoachEmail.length > 0 && (
+                <span
+                  className="rounded-full bg-zinc-800 px-2.5 py-1 text-zinc-400"
+                  title={session.lastInviteResult.noCoachEmail.join(", ")}
+                >
+                  ⚠️ No coach email: {session.lastInviteResult.noCoachEmail.length}
+                </span>
+              )}
+            </div>
+            {(session.lastInviteResult.failed.length > 0 || session.lastInviteResult.noCoachEmail.length > 0) && (
+              <p className="text-[11px] text-zinc-500">
+                {session.lastInviteResult.failed.length > 0 && (
+                  <>Failed: {session.lastInviteResult.failed.join(", ")}. </>
+                )}
+                {session.lastInviteResult.noCoachEmail.length > 0 && (
+                  <>No coach email on file for: {session.lastInviteResult.noCoachEmail.join(", ")}.</>
+                )}
+              </p>
+            )}
+          </div>
+        )}
+
         {/* Big On-The-Clock & Timer Banner */}
         <div className="grid gap-4 lg:grid-cols-12 items-center">
           {/* On The Clock Highlight */}

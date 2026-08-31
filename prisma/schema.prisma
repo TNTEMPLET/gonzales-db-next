@@ -2671,6 +2671,14 @@ model DraftSession {
   /// Set when the "Schedule & Invite" email went out, so the admin UI can
   /// show whether coaches have already been notified.
   invitesSentAt     DateTime?
+  /// Compact snapshot of the most recent invite send's outcome (sent count,
+  /// failed/skipped/no-coach-email email lists) for the Communication
+  /// Summary card in the draft room. Each per-team send also writes a full
+  /// CommunicationCampaign/Delivery audit trail, but nothing there is
+  /// scoped back to a specific draft session -- this is the compact,
+  /// purpose-built "how did the last invite blast go" the admin actually
+  /// wants to glance at, not a substitute for that audit trail.
+  lastInviteResult  Json?
   createdByAdminId  String?
   draftLeaderUserId String?
   draftLeader       RegisteredUser?    @relation("DraftSessionLeader", fields: [draftLeaderUserId], references: [id], onDelete: SetNull)

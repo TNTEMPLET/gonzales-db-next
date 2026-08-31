@@ -144,7 +144,10 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
       }
 
       emailResult = { sent, skippedSuppressed, failed, noCoachEmail };
-      await prisma.draftSession.update({ where: { id }, data: { invitesSentAt: new Date() } });
+      await prisma.draftSession.update({
+        where: { id },
+        data: { invitesSentAt: new Date(), lastInviteResult: emailResult },
+      });
     }
 
     return NextResponse.json({
