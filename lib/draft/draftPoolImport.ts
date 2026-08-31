@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 
+import { matchStandardDivision } from "@/lib/sportsConnect/fallballDivisions";
 import {
   getRowValue,
   parseSeasonYearFromProgramName,
@@ -114,10 +115,18 @@ export async function applyDraftPoolRows(params: {
       continue;
     }
 
-    let draftSessionId = sessionIdsByAgeGroup[rawAgeGroup];
+    // Fall Ball standardizes on 10 short codes (4U TB ... 17U) and every
+    // real DraftSession already carries one of those codes as its ageGroup
+    // -- must resolve raw SportsConnect division text the same way
+    // applyImportRows()/smart-build preview do, or a fresh export's raw
+    // text (e.g. "9 year-old") never matches an in-progress session named
+    // "9U" and this silently forks off a duplicate, orphaned DraftSession.
+    const ageGroup = (targetOrg === "fallball" ? matchStandardDivision(rawAgeGroup) : null) || rawAgeGroup;
+
+    let draftSessionId = sessionIdsByAgeGroup[ageGroup];
     if (!draftSessionId) {
       const existing = await prisma.draftSession.findFirst({
-        where: { organizationId: targetOrg, seasonYear: rowSeasonYear, ageGroup: rawAgeGroup },
+        where: { organizationId: targetOrg, seasonYear: rowSeasonYear, ageGroup },
         orderBy: { createdAt: "desc" },
         select: { id: true },
       });
@@ -128,8 +137,8 @@ export async function applyDraftPoolRows(params: {
           data: {
             organizationId: targetOrg,
             seasonYear: rowSeasonYear,
-            ageGroup: rawAgeGroup,
-            name: `${rowSeasonYear} ${rawAgeGroup} Draft`,
+            ageGroup,
+            name: `${rowSeasonYear} ${ageGroup} Draft`,
             status: "SETUP",
             createdByAdminId: adminId,
           },
@@ -139,7 +148,7 @@ export async function applyDraftPoolRows(params: {
         createdSessions += 1;
         createdSessionIds.push(created.id);
       }
-      sessionIdsByAgeGroup[rawAgeGroup] = draftSessionId;
+      sessionIdsByAgeGroup[ageGroup] = draftSessionId;
     }
 
     const { firstName, lastName } = splitName(fullName);

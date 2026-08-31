@@ -9,6 +9,7 @@ import { downloadDriveFileBuffer } from "@/lib/sportsConnect/driveSync";
 import { markCoachingInterestConverted } from "@/lib/sportsConnect/fallballCapacity";
 import { parseSportsConnectExportBuffer, SPORTS_CONNECT_INGEST_MAX_ROWS } from "@/lib/sportsConnect/parseExportBuffer";
 import { runTeamListImport } from "@/lib/sportsConnect/teamListPreview";
+import { matchStandardDivision } from "@/lib/sportsConnect/fallballDivisions";
 import { applyDraftPoolRows } from "@/lib/draft/draftPoolImport";
 import {
   applyImportRows,
@@ -96,8 +97,10 @@ export async function POST(request: NextRequest) {
   // Age groups whose Player Registration rows should seed a DraftPlayerPool
   // (Roster build method: DRAFT) instead of writing straight to TeamPlayer
   // (the default, DIRECT_IMPORT) — plan-teams-smart-auto-build.md Stage 1's
-  // per-age-group seam. Raw age-group strings, matched case-insensitively
-  // against the same PLAYER_IMPORT_DIVISION_KEYS value applyImportRows uses.
+  // per-age-group seam. The wizard's checkboxes are keyed by the preview's
+  // (standardized, for fallball) ageGroup values, so this set holds those
+  // same standardized strings, lowercased — matched below against each
+  // row's own standardized ageGroup, not its raw division text.
   const draftAgeGroupsRaw =
     (formData?.get("draftAgeGroups") as string | null) ??
     (typeof jsonBody?.draftAgeGroups === "string" ? (jsonBody.draftAgeGroups as string) : null);
@@ -189,7 +192,8 @@ export async function POST(request: NextRequest) {
     const draftPoolRows: Row[] = [];
     for (const row of allRows) {
       const rawAgeGroup = getRowValue(row, PLAYER_IMPORT_DIVISION_KEYS) || "";
-      if (draftAgeGroups.has(rawAgeGroup.trim().toLowerCase())) {
+      const ageGroup = (targetOrg === "fallball" ? matchStandardDivision(rawAgeGroup) : null) || rawAgeGroup;
+      if (draftAgeGroups.has(ageGroup.trim().toLowerCase())) {
         draftPoolRows.push(row);
       } else {
         directRows.push(row);
