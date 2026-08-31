@@ -14,14 +14,15 @@ import pg from "pg";
  * PostgreSQL connection string.
  */
 /**
- * `max: 3` caps how many connections a single pool (one per warm serverless
+ * `max: 1` caps how many connections a single pool (one per warm serverless
  * instance) can open. node-postgres defaults to 10, and with 6 deployments
  * all sharing one Postgres role's connection limit, a burst of concurrent
- * instances at the default cap can exhaust it outright (this took the site
- * down on 2026-08-28 — "too many connections for role 'prisma_migration'").
+ * instances at the cap can exhaust it outright — this took the site down on
+ * 2026-08-28 ("too many connections for role 'prisma_migration'") and again
+ * on 2026-08-31 under live-draft-night traffic, both times at `max: 3`.
  * Lower is safer for a shared, capacity-limited role; raise only alongside a
  * verified higher connection limit on the database itself.
  */
 export function createDatabaseAdapter(connectionString: string) {
-  return new PrismaPg(new pg.Pool({ connectionString, max: 3 }));
+  return new PrismaPg(new pg.Pool({ connectionString, max: 1 }));
 }
