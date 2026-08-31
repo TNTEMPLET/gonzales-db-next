@@ -32,11 +32,6 @@ export type AdminSidebarNav = {
 
 type AllowModuleFn = (module: AdminModule) => boolean;
 
-/** Every other hub tolerates no org param (cross-org/default view). */
-function hubHref(basePath: string, orgSuffix: string, tabValue: string): string {
-  return orgSuffix ? `${basePath}${orgSuffix}&tab=${tabValue}` : `${basePath}?tab=${tabValue}`;
-}
-
 /** A leaf that's its own real page (no ?tab=/?section= needed) -- just append the org param, if any. */
 function leafHref(basePath: string, orgSuffix: string): string {
   return `${basePath}${orgSuffix}`;
@@ -143,19 +138,19 @@ export function buildAdminSidebarNav(
     label: ADMIN_DASHBOARD_CATEGORY_META.publishing.label,
     leaves: [
       ...(allowModule("COMMUNICATIONS")
-        ? [{ id: "comms", label: "Communications", href: hubHref("/admin/publishing", orgSuffix, "comms") }]
+        ? [{ id: "comms", label: "Communications", href: leafHref("/admin/communications", orgSuffix) }]
         : []),
       ...(allowModule("NEWS_ADMIN")
-        ? [{ id: "news", label: "News Publishing", href: hubHref("/admin/publishing", orgSuffix, "news") }]
+        ? [{ id: "news", label: "News Publishing", href: leafHref("/admin/news", orgSuffix) }]
         : []),
       ...(allowModule("SOCIAL_MEDIA")
-        ? [{ id: "social", label: "Social Media", href: hubHref("/admin/publishing", orgSuffix, "social") }]
+        ? [{ id: "social", label: "Social Media", href: leafHref("/admin/social", orgSuffix) }]
         : []),
       ...(allowModule("DUGOUT_MODERATION")
-        ? [{ id: "dugout", label: "Dugout Moderation", href: hubHref("/admin/publishing", orgSuffix, "dugout") }]
+        ? [{ id: "dugout", label: "Dugout Moderation", href: leafHref("/admin/dugout", orgSuffix) }]
         : []),
       ...(allowModule("ORG_DOCUMENTS")
-        ? [{ id: "drive", label: "Org Documents", href: hubHref("/admin/publishing", orgSuffix, "drive") }]
+        ? [{ id: "drive", label: "Org Documents", href: leafHref("/admin/documents", orgSuffix) }]
         : []),
       // Surveys shares TEAMS' gate today (no dedicated module) -- placed
       // here per explicit product decision, not a Competition & Play leaf.
