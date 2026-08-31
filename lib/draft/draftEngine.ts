@@ -196,15 +196,18 @@ export async function makeDraftPick(
 }
 
 /**
- * Auto-executes every consecutive protected pick (coach-linked child or
- * returning player) starting from whoever is currently on the clock, so an
- * admin never has to click "Auto-Lock" -- the picks just land the moment the
- * draft naturally reaches them. Stops at the first pick that needs a human
- * decision: draft isn't LIVE, nobody's on the clock, the on-clock team has no
- * protection for this round, or the protection's name doesn't resolve to an
- * actual player still in the pool.
+ * Auto-executes every consecutive pick that doesn't need a human, starting
+ * from whoever is currently on the clock: a protected pick (coach-linked
+ * child or returning player) first, then -- if the on-clock team has opted
+ * into auto-draft (DraftTeam.autoDraftEnabled, set via the "Schedule &
+ * Invite" flow for a coach who can't attend live) -- the best remaining
+ * player by evaluation score. So an admin never has to click "Auto-Lock",
+ * and an absent auto-draft coach's team keeps moving instead of stalling
+ * the whole draft. Stops at the first pick that genuinely needs a human:
+ * draft isn't LIVE, nobody's on the clock, or the on-clock team is neither
+ * protected for this round nor auto-draft-enabled.
  */
-export async function resolveAutoProtectedPicks(sessionId: string) {
+export async function resolveAutoPicks(sessionId: string) {
   // Bounded to one full pass over every team/round combination so a data bug
   // can't spin this into an infinite loop.
   const { session: initialSession } = await getDraftSessionState(sessionId);
@@ -213,8 +216,23 @@ export async function resolveAutoProtectedPicks(sessionId: string) {
   for (let i = 0; i < maxIterations; i++) {
     const { session, onClock } = await getDraftSessionState(sessionId);
     if (session.status !== "LIVE") break;
-    if (!onClock || !onClock.isProtectedPick || !onClock.protectedPlayerPoolId) break;
-    await makeDraftPick(sessionId, onClock.protectedPlayerPoolId);
+    if (!onClock) break;
+
+    if (onClock.isProtectedPick && onClock.protectedPlayerPoolId) {
+      await makeDraftPick(sessionId, onClock.protectedPlayerPoolId);
+      continue;
+    }
+    if (onClock.isProtectedPick) break; // protected but unresolved -- needs a human
+
+    const onClockTeam = session.teams.find((t) => t.id === onClock.teamId);
+    if (!onClockTeam?.autoDraftEnabled) break;
+
+    const bestAvailable = session.playerPool
+      .filter((p) => !p.isDrafted)
+      .sort((a, b) => (b.evaluationScore ?? 0) - (a.evaluationScore ?? 0))[0];
+    if (!bestAvailable) break;
+
+    await makeDraftPick(sessionId, bestAvailable.id);
   }
 }
 

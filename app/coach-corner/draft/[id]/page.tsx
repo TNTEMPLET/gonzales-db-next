@@ -33,11 +33,11 @@ export default async function CoachDraftSessionPage({
     getAdminUserByToken(adminToken),
   ]);
 
-  if (!coach && !admin) {
-    redirect("/");
-  }
-
   const orgQuery = `org=${targetOrg}`;
+
+  if (!coach && !admin) {
+    redirect(`/?next=${encodeURIComponent(`/coach-corner/draft/${id}?${orgQuery}`)}`);
+  }
 
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">

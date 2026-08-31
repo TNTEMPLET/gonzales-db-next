@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCoachCornerActor } from "@/lib/coachCorner/auth";
-import { getDraftSessionState, resolveAutoProtectedPicks } from "@/lib/draft/draftEngine";
+import { getDraftSessionState, resolveAutoPicks } from "@/lib/draft/draftEngine";
 import { draftApiError } from "@/lib/draft/apiError";
 
 /**
@@ -21,7 +21,7 @@ export async function GET(
 
   try {
     const { id } = await params;
-    await resolveAutoProtectedPicks(id);
+    await resolveAutoPicks(id);
     const state = await getDraftSessionState(id);
 
     if (state.session.organizationId !== actor.targetOrg) {

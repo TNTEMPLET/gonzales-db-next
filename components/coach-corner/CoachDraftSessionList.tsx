@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { getErrorMessage } from "@/lib/draft/clientError";
+import { formatCentralDateTime } from "@/lib/draft/centralTime";
 
 type SessionListItem = {
   id: string;
@@ -12,6 +13,7 @@ type SessionListItem = {
   status: string;
   draftType: string;
   totalRounds: number;
+  scheduledStartAt: string | null;
   _count: { playerPool: number; picks: number };
   teams: { id: string; teamName: string; draftOrder: number; headCoach: { name: string | null } | null }[];
   myTeamId: string | null;
@@ -92,6 +94,11 @@ export default function CoachDraftSessionList({ orgQuery }: { orgQuery: string }
           <div className="text-xs text-zinc-400">
             {session.ageGroup} · {session.teams.length} Teams · {session._count.picks} / {session.teams.length * session.totalRounds} picks
           </div>
+          {session.scheduledStartAt && (session.status === "PAIRED" || session.status === "PAUSED") && (
+            <div className="text-[11px] text-amber-400 font-semibold">
+              🕐 Starts {formatCentralDateTime(session.scheduledStartAt)}
+            </div>
+          )}
           {session.myTeamName ? (
             <div className="inline-flex items-center gap-1 rounded-lg bg-emerald-500/10 border border-emerald-500/30 px-2 py-1 text-[11px] text-emerald-400 font-semibold">
               🛡️ Your team: {session.myTeamName}

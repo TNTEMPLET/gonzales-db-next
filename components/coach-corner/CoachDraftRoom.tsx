@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import type { DraftSessionState } from "@/lib/draft/types";
 import { getErrorMessage } from "@/lib/draft/clientError";
 import { computePlayingAge } from "@/lib/draft/playingAge";
+import { formatCentralDateTime } from "@/lib/draft/centralTime";
 
 type Props = {
   sessionId: string;
@@ -316,8 +317,13 @@ export default function CoachDraftRoom({ sessionId, orgQuery, onBack }: Props) {
                 </div>
               </div>
             ) : (
-              <div className="text-center py-2 text-sm text-zinc-400">
-                Draft session is in {session.status} mode.
+              <div className="text-center py-2 text-sm text-zinc-400 space-y-1">
+                <div>Draft session is in {session.status} mode.</div>
+                {session.scheduledStartAt && (
+                  <div className="text-amber-400 font-semibold">
+                    🕐 Scheduled to start {formatCentralDateTime(session.scheduledStartAt)}
+                  </div>
+                )}
               </div>
             )}
           </div>
