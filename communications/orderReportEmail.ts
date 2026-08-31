@@ -9,7 +9,8 @@ export const ORDER_REPORT_MAX_RECIPIENTS = 10;
 export type OrderReportSourceType =
   | "SHIRT_ORDER_MANUAL"
   | "CAP_ORDER_MANUAL"
-  | "JERSEY_REPORT_MANUAL";
+  | "JERSEY_REPORT_MANUAL"
+  | "DRAFT_INVITE_MANUAL";
 
 /**
  * Governed replacement for a direct sendEmailViaResend() call from an admin
@@ -31,7 +32,7 @@ export async function sendOrderReportEmail(params: {
   actorAdminId: string | null;
   actorEmail: string | null;
   organizationId: string | null;
-  campaignTitlePrefix: "Shirt Orders" | "Cap Orders" | "Jersey Report";
+  campaignTitlePrefix: "Shirt Orders" | "Cap Orders" | "Jersey Report" | "Draft Invite";
   sourceType: OrderReportSourceType;
   recipients: string[];
   subject: string;

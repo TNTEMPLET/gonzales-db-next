@@ -2664,6 +2664,13 @@ model DraftSession {
   totalRounds       Int                @default(12)
   currentRound      Int                @default(1)
   currentPickIndex  Int                @default(0)
+  /// Admin-scheduled start time, always stored in UTC. Entered/displayed in
+  /// Central time everywhere (lib/draft/centralTime.ts) -- this league runs
+  /// exclusively in that timezone, so no per-org timezone concept exists.
+  scheduledStartAt  DateTime?
+  /// Set when the "Schedule & Invite" email went out, so the admin UI can
+  /// show whether coaches have already been notified.
+  invitesSentAt     DateTime?
   createdByAdminId  String?
   draftLeaderUserId String?
   draftLeader       RegisteredUser?    @relation("DraftSessionLeader", fields: [draftLeaderUserId], references: [id], onDelete: SetNull)
@@ -2680,15 +2687,19 @@ model DraftSession {
 }
 
 model DraftTeam {
-  id              String   @id @default(cuid())
-  draftSessionId  String
-  teamName        String
-  draftOrder      Int
-  headCoachUserId String?
-  assistantUserId String?
-  targetTeamId    String?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id               String   @id @default(cuid())
+  draftSessionId   String
+  teamName         String
+  draftOrder       Int
+  headCoachUserId  String?
+  assistantUserId  String?
+  targetTeamId     String?
+  /// When true, the draft engine auto-picks the best available player
+  /// (highest evaluationScore) for this team the instant it's on the clock,
+  /// instead of waiting for a human -- for a coach who can't attend live.
+  autoDraftEnabled Boolean  @default(false)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
 
   draftSession   DraftSession            @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
   headCoach      RegisteredUser?         @relation("DraftTeamHeadCoach", fields: [headCoachUserId], references: [id], onDelete: SetNull)

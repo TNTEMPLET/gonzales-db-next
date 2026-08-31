@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCoachCornerActor } from "@/lib/coachCorner/auth";
-import { getDraftSessionState, makeDraftPick, resolveAutoProtectedPicks } from "@/lib/draft/draftEngine";
+import { getDraftSessionState, makeDraftPick, resolveAutoPicks } from "@/lib/draft/draftEngine";
 import { draftApiError } from "@/lib/draft/apiError";
 
 /**
@@ -54,7 +54,7 @@ export async function POST(
     }
 
     await makeDraftPick(id, playerPoolId, actor.registeredUserId);
-    await resolveAutoProtectedPicks(id);
+    await resolveAutoPicks(id);
 
     const nextState = await getDraftSessionState(id);
     const myTeam = nextState.session.teams.find(

@@ -3,9 +3,11 @@
 import { useEffect, useState, useMemo, useRef } from "react";
 import DraftSessionEditModal from "./DraftSessionEditModal";
 import DraftPlayersManageModal from "./DraftPlayersManageModal";
+import DraftInviteModal from "./DraftInviteModal";
 import type { DraftLeaderOption, DraftSessionState } from "@/lib/draft/types";
 import { getErrorMessage } from "@/lib/draft/clientError";
 import { computePlayingAge } from "@/lib/draft/playingAge";
+import { getSiteConfigForOrg, isContentOrgId } from "@/lib/siteConfig";
 
 type Props = {
   sessionId: string;
@@ -18,6 +20,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submittingPick, setSubmittingPick] = useState(false);
+  const [linkCopied, setLinkCopied] = useState(false);
 
   // Search & Filter for Player Pool
   const [searchQuery, setSearchQuery] = useState("");
@@ -33,6 +36,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
   // Modals & Panels
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPlayersModal, setShowPlayersModal] = useState(false);
+  const [showInviteModal, setShowInviteModal] = useState(false);
   const [showRostersDrawer, setShowRostersDrawer] = useState(false);
   const [availableDraftLeaders, setAvailableDraftLeaders] = useState<DraftLeaderOption[]>([]);
 
@@ -173,6 +177,25 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
       }
     } catch (e) {
       alert(`Error: ${getErrorMessage(e)}`);
+    }
+  };
+
+  const getCoachLink = () => {
+    if (!data) return "";
+    const org = data.session.organizationId;
+    const baseUrl = isContentOrgId(org) ? getSiteConfigForOrg(org).siteUrl : window.location.origin;
+    return `${baseUrl}/coach-corner/draft/${sessionId}`;
+  };
+
+  const handleCopyCoachLink = async () => {
+    const link = getCoachLink();
+    if (!link) return;
+    try {
+      await navigator.clipboard.writeText(link);
+      setLinkCopied(true);
+      setTimeout(() => setLinkCopied(false), 2000);
+    } catch {
+      window.prompt("Copy this link to share with coaches:", link);
     }
   };
 
@@ -352,6 +375,26 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
               }`}
             >
               🛡️ Team Rosters
+            </button>
+
+            <button
+              onClick={handleCopyCoachLink}
+              className={`rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-colors ${
+                linkCopied
+                  ? "bg-emerald-600 text-white"
+                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white"
+              }`}
+              title="Copy the link coaches use to watch and pick in this draft"
+            >
+              {linkCopied ? "✅ Link Copied" : "🔗 Copy Coach Link"}
+            </button>
+
+            <button
+              onClick={() => setShowInviteModal(true)}
+              className="rounded-lg bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white"
+              title="Schedule the start time and email coaches the draft link"
+            >
+              📅 Schedule &amp; Invite
             </button>
           </div>
         </div>
@@ -855,6 +898,17 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
           sessionId={session.id}
           onClose={() => setShowPlayersModal(false)}
           onUpdated={fetchState}
+        />
+      )}
+
+      {/* SCHEDULE & INVITE MODAL */}
+      {showInviteModal && (
+        <DraftInviteModal
+          sessionId={session.id}
+          session={session}
+          coachLink={getCoachLink()}
+          onClose={() => setShowInviteModal(false)}
+          onSaved={fetchState}
         />
       )}
     </div>

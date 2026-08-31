@@ -9,7 +9,7 @@ import {
 } from "react";
 import { createPortal } from "react-dom";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 
 import {
   ACCOUNT_SETUP_PREFILL_KEY,
@@ -56,7 +56,14 @@ function getInitial(user: CoachUser): string {
   return (user.firstName?.[0] ?? user.name?.[0] ?? "?").toUpperCase();
 }
 
-function getPostLoginHref(loginResponse: LoginResponse): string {
+function isSafeNextPath(path: string | null): path is string {
+  // Relative paths only -- guards against an open redirect via a
+  // protocol-relative ("//evil.com") or absolute-URL "next" value.
+  return !!path && path.startsWith("/") && !path.startsWith("//");
+}
+
+function getPostLoginHref(loginResponse: LoginResponse, nextParam: string | null): string {
+  if (isSafeNextPath(nextParam)) return nextParam;
   return loginResponse.isCoach ? "/dugout" : "/";
 }
 
@@ -122,6 +129,8 @@ export default function CoachAuthButton({
   avatarSize = 48,
 }: CoachAuthButtonProps) {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const nextParam = searchParams.get("next");
   const googleButtonRef = useRef<HTMLDivElement | null>(null);
   const avatarInputRef = useRef<HTMLInputElement | null>(null);
   const [open, setOpen] = useState(false);
@@ -209,7 +218,7 @@ export default function CoachAuthButton({
             setOpen(false);
             notifyAuthChanged();
             onAuthenticated?.();
-            router.push(getPostLoginHref(json));
+            router.push(getPostLoginHref(json, nextParam));
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Sign-in failed");
           } finally {
@@ -245,7 +254,7 @@ export default function CoachAuthButton({
       script.onload = renderButton;
       document.head.appendChild(script);
     }
-  }, [open, user, router]);
+  }, [open, user, router, nextParam]);
 
   function openModal() {
     setError("");
@@ -301,7 +310,7 @@ export default function CoachAuthButton({
       setOpen(false);
       notifyAuthChanged();
       onAuthenticated?.();
-      router.push(getPostLoginHref(json));
+      router.push(getPostLoginHref(json, nextParam));
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Local auth failed");
     } finally {

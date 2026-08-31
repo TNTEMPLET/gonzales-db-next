@@ -47,6 +47,7 @@ export type DraftTeam = {
   assistantUserId?: string | null;
   headCoach?: DraftUserRef | null;
   assistantCoach?: DraftUserRef | null;
+  autoDraftEnabled: boolean;
   picks?: DraftPick[];
   protections?: DraftProtection[];
 };
@@ -89,6 +90,8 @@ export type DraftSession = {
   currentPickIndex: number;
   draftLeaderUserId?: string | null;
   draftLeader?: DraftUserRef | null;
+  scheduledStartAt?: string | null;
+  invitesSentAt?: string | null;
   teams: DraftTeam[];
   playerPool: DraftPlayerPoolItem[];
   picks: DraftPick[];

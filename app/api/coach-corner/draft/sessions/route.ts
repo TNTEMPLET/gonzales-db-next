@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
       status: true,
       draftType: true,
       totalRounds: true,
+      scheduledStartAt: true,
       _count: { select: { playerPool: true, picks: true } },
       teams: {
         orderBy: { draftOrder: "asc" },
