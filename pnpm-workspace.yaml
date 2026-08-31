@@ -1,0 +1,16 @@
+allowBuilds:
+  '@prisma/engines': true
+  core-js: true
+  esbuild: true
+  prisma: true
+  sharp: true
+  tesseract.js: true
+  unrs-resolver: true
+onlyBuiltDependencies:
+  - '@prisma/engines'
+  - core-js
+  - esbuild
+  - prisma
+  - sharp
+  - tesseract.js
+  - unrs-resolver
