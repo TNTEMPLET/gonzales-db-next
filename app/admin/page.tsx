@@ -32,6 +32,16 @@ import {
   getAdminDashboardCategory,
   sortAdminDashboardCards,
 } from "@/lib/admin/dashboardModules";
+import { getRegistrationSummary } from "@/lib/admin/dashboard/registrationSummary";
+import { getComplianceSummary } from "@/lib/admin/dashboard/complianceSummary";
+import { getEngagementSummary } from "@/lib/admin/dashboard/engagementSummary";
+import { getBoardContactSummary } from "@/lib/admin/dashboard/boardContactSummary";
+import { getNeedsAttentionSummary } from "@/lib/admin/dashboard/needsAttentionSummary";
+import RegistrationRevenueSection from "@/components/admin/dashboard/RegistrationRevenueSection";
+import ComplianceSection from "@/components/admin/dashboard/ComplianceSection";
+import EngagementSection from "@/components/admin/dashboard/EngagementSection";
+import BoardContactWidget from "@/components/admin/dashboard/BoardContactWidget";
+import NeedsAttentionPanel from "@/components/admin/dashboard/NeedsAttentionPanel";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -133,6 +143,36 @@ export default async function AdminDashboardPage({
 
   const moduleHref = (basePath: string, module: AdminModule) =>
     `${basePath}?org=${preferredOrgForModule(module)}`;
+
+  // "State of the organization" dashboard section -- scorecards/charts/
+  // leaderboards above the module-launcher grid. Board Member+ only (same
+  // bar as allowRolePreview); a Park Director still gets the plain grid.
+  const showStateOfOrg = hasAdminRoleAtLeast(adminRole, "BOARD_MEMBER");
+  const dashboardOrgs: ContentOrgId[] = currentOrg ? [currentOrg] : CONTENT_ORGS;
+  let stateOfOrg: {
+    registration: Awaited<ReturnType<typeof getRegistrationSummary>>;
+    compliance: Awaited<ReturnType<typeof getComplianceSummary>>;
+    engagement: Awaited<ReturnType<typeof getEngagementSummary>>;
+    boardContact: Awaited<ReturnType<typeof getBoardContactSummary>>;
+    needsAttention: Awaited<ReturnType<typeof getNeedsAttentionSummary>>;
+  } | null = null;
+  if (showStateOfOrg) {
+    try {
+      const registration = await getRegistrationSummary(dashboardOrgs);
+      const [compliance, engagement, boardContact] = await Promise.all([
+        getComplianceSummary(dashboardOrgs, registration.perDivision),
+        getEngagementSummary(dashboardOrgs),
+        getBoardContactSummary(dashboardOrgs),
+      ]);
+      const needsAttention = await getNeedsAttentionSummary(dashboardOrgs, compliance, boardContact);
+      stateOfOrg = { registration, compliance, engagement, boardContact, needsAttention };
+    } catch (err) {
+      console.error(
+        "Admin dashboard state-of-org summary failed (continuing with plain module grid):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
 
   const cards = sortAdminDashboardCards([
     {
@@ -381,6 +421,20 @@ export default async function AdminDashboardPage({
                   )}
                 </div>
               ))}
+            </div>
+          </div>
+        ) : null}
+
+        {stateOfOrg ? (
+          <div className="mb-8 space-y-6">
+            <RegistrationRevenueSection summary={stateOfOrg.registration} />
+            <div className="grid gap-6 lg:grid-cols-2">
+              <ComplianceSection summary={stateOfOrg.compliance} />
+              <EngagementSection summary={stateOfOrg.engagement} />
+            </div>
+            <div className="grid gap-6 lg:grid-cols-2">
+              <BoardContactWidget summary={stateOfOrg.boardContact} />
+              <NeedsAttentionPanel summary={stateOfOrg.needsAttention} />
             </div>
           </div>
         ) : null}

@@ -2543,6 +2543,11 @@ model SurveyResponse {
   contactPhone      String?
   submittedAt       DateTime @default(now())
 
+  /// Set when an admin marks this board-contact request as handled, via the
+  /// cross-survey Board Contact Requests panel. Null means still open.
+  contactedAt        DateTime?
+  contactedByAdminId String?
+
   answers SurveyAnswer[]
 
   @@index([surveyId, submittedAt])
