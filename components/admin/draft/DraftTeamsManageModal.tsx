@@ -133,15 +133,8 @@ export default function DraftTeamsManageModal({
     }
   };
 
-  const handleMoveOrder = async (index: number, direction: "UP" | "DOWN") => {
-    const targetIndex = direction === "UP" ? index - 1 : index + 1;
-    if (targetIndex < 0 || targetIndex >= teams.length) return;
-
-    const newTeams = [...teams];
-    const [moved] = newTeams.splice(index, 1);
-    newTeams.splice(targetIndex, 0, moved);
-
-    const teamOrders = newTeams.map((t, idx) => ({
+  const submitReorder = async (orderedTeams: DraftTeam[]) => {
+    const teamOrders = orderedTeams.map((t, idx) => ({
       teamId: t.id,
       draftOrder: idx + 1,
     }));
@@ -162,6 +155,30 @@ export default function DraftTeamsManageModal({
       setError(getErrorMessage(e));
     }
   };
+
+  const handleMoveOrder = async (index: number, direction: "UP" | "DOWN") => {
+    const targetIndex = direction === "UP" ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= teams.length) return;
+
+    const newTeams = [...teams];
+    const [moved] = newTeams.splice(index, 1);
+    newTeams.splice(targetIndex, 0, moved);
+    await submitReorder(newTeams);
+  };
+
+  // Coach-linked player protections (CoachPlayerProtection.draftTeamId) key
+  // off a team's permanent id, never its draftOrder -- reshuffling pick
+  // order here cannot move a reserved player to a different team.
+  const handleRandomizeOrder = async () => {
+    const shuffled = [...teams];
+    for (let i = shuffled.length - 1; i > 0; i -= 1) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    await submitReorder(shuffled);
+  };
+
+  const hasAnyPicks = teams.some((t) => (t.picks?.length || 0) > 0);
 
   const handleDeleteTeam = async (teamId: string) => {
     if (!confirm("Are you sure you want to remove this team from the draft?")) return;
@@ -306,6 +323,18 @@ export default function DraftTeamsManageModal({
           >
             {addingTeam ? "Adding..." : "+ Add Team"}
           </button>
+          <button
+            onClick={handleRandomizeOrder}
+            disabled={hasAnyPicks || teams.length < 2}
+            title={
+              hasAnyPicks
+                ? "Locked once the draft has started -- reorder before the first pick"
+                : "Shuffle draft order -- reserved/linked players stay locked to their teams, only pick order changes"
+            }
+            className="rounded-lg bg-zinc-800 border border-zinc-700 px-4 py-1.5 text-xs font-bold text-white hover:bg-zinc-700 disabled:opacity-40"
+          >
+            🎲 Randomize Order
+          </button>
         </div>
 
         {/* Teams List */}
@@ -328,14 +357,16 @@ export default function DraftTeamsManageModal({
                       <div className="flex flex-col gap-1">
                         <button
                           onClick={() => handleMoveOrder(idx, "UP")}
-                          disabled={idx === 0}
+                          disabled={idx === 0 || hasAnyPicks}
+                          title={hasAnyPicks ? "Locked once the draft has started" : undefined}
                           className="rounded bg-zinc-800 px-1 text-[10px] text-zinc-400 hover:text-white disabled:opacity-20"
                         >
                           ▲
                         </button>
                         <button
                           onClick={() => handleMoveOrder(idx, "DOWN")}
-                          disabled={idx === teams.length - 1}
+                          disabled={idx === teams.length - 1 || hasAnyPicks}
+                          title={hasAnyPicks ? "Locked once the draft has started" : undefined}
                           className="rounded bg-zinc-800 px-1 text-[10px] text-zinc-400 hover:text-white disabled:opacity-20"
                         >
                           ▼

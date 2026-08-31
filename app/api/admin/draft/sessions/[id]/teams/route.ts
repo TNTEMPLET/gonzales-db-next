@@ -96,6 +96,14 @@ export async function PATCH(
       // [{ teamId, draftOrder }]
       const orders = body.teamOrders as { teamId: string; draftOrder: number }[];
 
+      const existingPickCount = await prisma.draftPick.count({ where: { draftSessionId: id } });
+      if (existingPickCount > 0) {
+        return NextResponse.json(
+          { error: "Cannot reorder teams after the draft has started. Undo or reset the draft first." },
+          { status: 400 },
+        );
+      }
+
       // DraftTeam has a @@unique([draftSessionId, draftOrder]) constraint that
       // Postgres checks per-statement (not deferred), so swapping two teams'
       // order in one pass collides mid-transaction. Move everyone to unique
