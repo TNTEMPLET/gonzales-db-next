@@ -315,6 +315,7 @@ export async function applyImportRows(params: {
   let skipped = 0;
   let skippedByScope = 0;
   let skippedMissingExisting = 0;
+  let preservedTeamAssignments = 0;
   const skippedDetails: ImportSkipDetail[] = [];
   const teamCache = new Map<string, string>();
   // (org+season+ageGroup) -> ageGroup, for the auto-finalize pass after the
@@ -598,6 +599,7 @@ export async function applyImportRows(params: {
         fullName: { equals: fullName, mode: "insensitive" },
         team: { organizationId: targetOrg, seasonYear, ageGroup },
       },
+      include: { team: { select: { teamName: true } } },
     });
     if (updateExistingOnly && !existingPlayer) {
       skipped += 1;
@@ -613,6 +615,22 @@ export async function applyImportRows(params: {
       birthDate || existingPlayer?.birthDate || null,
       allStarCutoffDate,
     );
+    // Don't let a routine data-refresh import undo a completed draft: the
+    // spreadsheet's Team Name column is registration-time only (Fall Ball
+    // rows are "Unallocated" until manually drafted internally -- SportsConnect
+    // has no concept of our draft, so a fresh export always still says
+    // Unallocated for players who've since been drafted onto a real team).
+    // Moving a player OFF Unallocated via import is the intended, already-
+    // shipped behavior (see the comment above existingPlayer's lookup); this
+    // only blocks the dangerous reverse case -- a real team getting silently
+    // reset back to Unallocated because the source file hasn't caught up.
+    const isDowngradeToUnallocated =
+      !!existingPlayer &&
+      existingPlayer.team.teamName.trim().toLowerCase() !== "unallocated" &&
+      teamName.trim().toLowerCase() === "unallocated" &&
+      existingPlayer.teamId !== teamId;
+    if (isDowngradeToUnallocated) preservedTeamAssignments += 1;
+    const teamIdForUpdate = isDowngradeToUnallocated ? existingPlayer!.teamId : teamId;
     const createData = {
       teamId,
       firstName,
@@ -648,7 +666,7 @@ export async function applyImportRows(params: {
       allStarAgeBand: explicitAllStarAgeBand || derivedAllStarAgeBand,
     };
     const updateData: Record<string, unknown> = {
-      teamId,
+      teamId: teamIdForUpdate,
       firstName,
       lastName,
       fullName,
@@ -833,7 +851,7 @@ export async function applyImportRows(params: {
       completedAt: true,
     },
   });
-  return { batch: nextBatch, skippedByScope, skippedMissingExisting, skippedDetails };
+  return { batch: nextBatch, skippedByScope, skippedMissingExisting, skippedDetails, preservedTeamAssignments };
 }
 
 export async function undoBatch(targetOrg: string, batchId?: string) {
@@ -1117,6 +1135,7 @@ export async function POST(request: NextRequest) {
         skippedByScope: updated.skippedByScope,
         skippedMissingExisting: updated.skippedMissingExisting,
         skippedDetails: updated.skippedDetails,
+        preservedTeamAssignments: updated.preservedTeamAssignments,
       });
     }
     if (body.mode === "complete") {
@@ -1262,6 +1281,7 @@ export async function POST(request: NextRequest) {
     skipped: batch.batch.skippedRows,
     skippedByScope: batch.skippedByScope,
     skippedMissingExisting: batch.skippedMissingExisting,
+    preservedTeamAssignments: batch.preservedTeamAssignments,
     batchId: createdBatch.id,
   });
 }

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { syncCoachTeamAssignment } from "@/lib/coachCorner/syncCoachAssignment";
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAdminModule(request, "TEAMS");
@@ -95,7 +96,7 @@ export async function POST(request: NextRequest) {
   const [team, globalCoach] = await Promise.all([
     prisma.team.findUnique({
       where: { id: body.teamId },
-      select: { id: true, organizationId: true },
+      select: { id: true, organizationId: true, ageGroup: true, teamName: true },
     }),
     prisma.registeredUser.findUnique({
       where: { id: body.registeredUserId },
@@ -150,6 +151,13 @@ export async function POST(request: NextRequest) {
         },
       },
     },
+  });
+
+  await syncCoachTeamAssignment(prisma, {
+    registeredUserId: globalCoach.id,
+    organizationId: team.organizationId,
+    ageGroup: team.ageGroup,
+    assignedTeam: team.teamName,
   });
 
   return NextResponse.json({ success: true, assignment });

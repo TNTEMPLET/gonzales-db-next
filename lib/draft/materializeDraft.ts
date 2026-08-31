@@ -1,4 +1,5 @@
 import { assignJerseyNumbersForTeam } from "@/lib/admin/jerseyNumbers";
+import { syncCoachTeamAssignment } from "@/lib/coachCorner/syncCoachAssignment";
 import { prisma } from "@/lib/prisma";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
@@ -72,6 +73,12 @@ export async function materializeDraftSession(draftSessionId: string) {
           },
           update: {},
         });
+        await syncCoachTeamAssignment(tx, {
+          registeredUserId: draftTeam.headCoachUserId,
+          organizationId,
+          ageGroup,
+          assignedTeam: team.teamName,
+        });
       }
 
       // 3. Assign Assistant Coach
@@ -89,6 +96,12 @@ export async function materializeDraftSession(draftSessionId: string) {
             role: "ASSISTANT_COACH",
           },
           update: {},
+        });
+        await syncCoachTeamAssignment(tx, {
+          registeredUserId: draftTeam.assistantUserId,
+          organizationId,
+          ageGroup,
+          assignedTeam: team.teamName,
         });
       }
 
