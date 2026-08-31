@@ -95,13 +95,13 @@ export async function getNeedsAttentionSummary(
       key: "equipment-checkout",
       label: "Coaches without equipment picked up",
       count: openEquipmentCheckouts,
-      href: "/admin/competition?tab=teams",
+      href: "/admin/teams",
     },
     {
       key: "player-name-collisions",
       label: "Player names to review",
       count: openPlayerNameCollisions,
-      href: "/admin/competition?tab=sports-connect",
+      href: "/admin/sports-connect",
     },
   ];
 
