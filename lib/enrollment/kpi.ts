@@ -84,7 +84,11 @@ export async function getEnrollmentKpiSummary(input: {
         _sum: { amountCents: true, amountPaidCents: true },
       }),
       prisma.team.findMany({
-        where: { organizationId, seasonYear },
+        // Excludes the "Unallocated" catch-all team (same convention as
+        // lib/admin/jerseyNumbers.ts / the finalize-division route) --
+        // players sitting there haven't actually been placed on a real
+        // team yet, so they shouldn't count as "rostered".
+        where: { organizationId, seasonYear, NOT: { teamName: { equals: "Unallocated", mode: "insensitive" } } },
         select: { ageGroup: true, _count: { select: { players: true } } },
       }),
       prisma.enrollment.aggregate({
