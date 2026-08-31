@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/prisma";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { draftApiError } from "@/lib/draft/apiError";
-import { syncCoachTeamAssignment } from "@/lib/coachCorner/syncCoachAssignment";
+import { syncDraftTeamRealization } from "@/lib/draft/syncDraftTeamRealization";
 
 export async function GET(
   req: NextRequest,
@@ -68,22 +68,10 @@ export async function POST(
       include: {
         headCoach: { select: { id: true, name: true, email: true } },
         assistantCoach: { select: { id: true, name: true, email: true } },
-        draftSession: { select: { organizationId: true, ageGroup: true } },
       },
     });
 
-    await Promise.all(
-      [headCoachUserId, assistantUserId]
-        .filter((userId): userId is string => !!userId)
-        .map((userId) =>
-          syncCoachTeamAssignment(prisma, {
-            registeredUserId: userId,
-            organizationId: team.draftSession.organizationId,
-            ageGroup: team.draftSession.ageGroup,
-            assignedTeam: team.teamName,
-          }),
-        ),
-    );
+    await syncDraftTeamRealization(prisma, team.id);
 
     return NextResponse.json({ team }, { status: 201 });
   } catch (e) {
@@ -145,24 +133,15 @@ export async function PATCH(
       include: {
         headCoach: { select: { id: true, name: true, email: true } },
         assistantCoach: { select: { id: true, name: true, email: true } },
-        draftSession: { select: { organizationId: true, ageGroup: true } },
       },
     });
 
-    const newlyAssignedCoachIds = [
-      headCoachUserId !== undefined ? headCoachUserId : null,
-      assistantUserId !== undefined ? assistantUserId : null,
-    ].filter((userId): userId is string => !!userId);
-    await Promise.all(
-      newlyAssignedCoachIds.map((userId) =>
-        syncCoachTeamAssignment(prisma, {
-          registeredUserId: userId,
-          organizationId: updated.draftSession.organizationId,
-          ageGroup: updated.draftSession.ageGroup,
-          assignedTeam: updated.teamName,
-        }),
-      ),
-    );
+    // Re-sync whenever anything that feeds the real team's name or coach
+    // assignment changed -- teamName, or either coach slot (including
+    // being cleared back to null).
+    if (teamName !== undefined || headCoachUserId !== undefined || assistantUserId !== undefined) {
+      await syncDraftTeamRealization(prisma, updated.id);
+    }
 
     return NextResponse.json({ team: updated });
   } catch (e) {
