@@ -6,6 +6,7 @@ import {
   CREDIT_CARD_PROCESSING_FEE_RATE,
   ONLINE_REGISTRATION_FEE_CENTS_PER_PLAYER,
 } from "./feeConstants";
+import { sortTeamsManagementAgeGroups } from "@/lib/admin/teamsImportHelpers";
 
 export type EnrollmentFeeTierBreakdown = {
   orderDetailDescription: string;
@@ -119,7 +120,11 @@ export async function getEnrollmentKpiSummary(input: {
         collectedCents: row._sum.amountPaidCents ?? 0,
       };
     })
-    .sort((a, b) => b.enrolled - a.enrolled);
+    // Youngest to oldest by default -- a division report reads naturally in
+    // age order, not by enrollment count. Reuses the same age-extraction
+    // sort as the Team-setup division dropdown (lib/admin/teamsImportHelpers.ts)
+    // so both surfaces agree on ordering for the same division codes.
+    .sort((a, b) => sortTeamsManagementAgeGroups(a.ageGroup, b.ageGroup));
 
   const feeTierBreakdown: EnrollmentFeeTierBreakdown[] = byFeeTier
     .map((row) => ({
