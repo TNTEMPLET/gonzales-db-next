@@ -133,13 +133,13 @@ export function buildAdminSidebarNav(
     label: ADMIN_DASHBOARD_CATEGORY_META.park.label,
     leaves: [
       ...(allowModule("TOURNAMENT_BRACKETS")
-        ? [{ id: "brackets", label: "Tournament Brackets", href: hubHref("/admin/park", orgSuffix, "brackets") }]
+        ? [{ id: "brackets", label: "Tournament Brackets", href: leafHref("/admin/tournament-brackets", orgSuffix) }]
         : []),
       ...(allowModule("PARK_ALERTS") || allowModule("TOURNAMENT_ALERTS")
-        ? [{ id: "alerts", label: "Park & Tournament Alerts", href: hubHref("/admin/park", orgSuffix, "alerts") }]
+        ? [{ id: "alerts", label: "Park & Tournament Alerts", href: leafHref("/admin/alerts", orgSuffix) }]
         : []),
       ...(allowModule("PARK_INFO")
-        ? [{ id: "facilities", label: "Park Info", href: hubHref("/admin/park", orgSuffix, "facilities") }]
+        ? [{ id: "facilities", label: "Park Info", href: leafHref("/admin/park-info", orgSuffix) }]
         : []),
     ],
   };
