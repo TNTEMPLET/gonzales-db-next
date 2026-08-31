@@ -65,7 +65,7 @@ export async function getNeedsAttentionSummary(
       key: "volunteer-compliance",
       label: "Coaches/volunteers expired or blocked",
       count: compliance.readiness.EXPIRED + compliance.readiness.BLOCKED,
-      href: "/admin/people",
+      href: "/admin/volunteers",
     },
     {
       key: "cap-orders",
@@ -83,7 +83,7 @@ export async function getNeedsAttentionSummary(
       key: "coaching-leads",
       label: "New coaching interest leads",
       count: pendingCoachingLeads,
-      href: "/admin/people",
+      href: "/admin/coaching-interest",
     },
     {
       key: "park-alerts",
