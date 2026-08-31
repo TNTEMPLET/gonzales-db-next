@@ -6,6 +6,7 @@ import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { downloadDriveFileBuffer } from "@/lib/sportsConnect/driveSync";
 import { estimateMissingGuardianEmailFromRows } from "@/lib/sportsConnect/guardianEstimate";
 import { detectSportsConnectReport } from "@/lib/sportsConnect/columnProfiles";
+import { matchStandardDivision } from "@/lib/sportsConnect/fallballDivisions";
 import { parseSportsConnectExportBuffer, SPORTS_CONNECT_INGEST_MAX_ROWS } from "@/lib/sportsConnect/parseExportBuffer";
 import {
   buildTeamListPreviewRows,
@@ -154,6 +155,12 @@ async function buildPlayerPreview(
     const guardianEmail = getRowValue(row, PLAYER_IMPORT_EMAIL_KEYS) || null;
     const programName = getRowValue(row, ["Program Name", "Program", "Season", "season"]);
     const rowSeasonYear = seasonYear || parseSeasonYearFromProgramName(programName);
+    // Fall Ball standardizes on 10 short codes (4U TB ... 17U) regardless of
+    // how SportsConnect spells the division that row -- must match the same
+    // resolution applyImportRows() uses (app/api/admin/teams/import/route.ts)
+    // or every row looks brand-new here even when the confirm step would
+    // correctly recognize it as an update.
+    const ageGroup = (targetOrg === "fallball" ? matchStandardDivision(rawAgeGroup) : null) || rawAgeGroup;
 
     let action: PlayerPreviewRow["action"] = "CREATE";
     let reason: string | null = null;
@@ -161,30 +168,23 @@ async function buildPlayerPreview(
     if (shouldSkipDivisionImport(rawAgeGroup)) {
       action = "SKIP";
       reason = "Division is excluded from player imports";
-    } else if (!rawAgeGroup || !teamName || !fullName || !rowSeasonYear) {
+    } else if (!ageGroup || !teamName || !fullName || !rowSeasonYear) {
       action = "SKIP";
       reason = "Missing required age group, team name, or player name";
     } else {
-      const existingTeam = await prisma.team.findUnique({
+      // Scoped to org+season+division, not exact team name -- a player's
+      // Team Name can legitimately differ between imports (e.g. moving off
+      // a placeholder "Unallocated" team once real teams are drafted), same
+      // scoping applyImportRows() uses so this preview matches what confirm
+      // will actually do.
+      const existingPlayer = await prisma.teamPlayer.findFirst({
         where: {
-          organizationId_seasonYear_ageGroup_teamName: {
-            organizationId: targetOrg,
-            seasonYear: rowSeasonYear,
-            ageGroup: rawAgeGroup,
-            teamName,
-          },
+          fullName: { equals: fullName, mode: "insensitive" },
+          team: { organizationId: targetOrg, seasonYear: rowSeasonYear, ageGroup },
         },
         select: { id: true },
       });
-      if (existingTeam) {
-        const existingPlayer = await prisma.teamPlayer.findFirst({
-          where: { teamId: existingTeam.id, fullName: { equals: fullName, mode: "insensitive" } },
-          select: { id: true },
-        });
-        action = existingPlayer ? "UPDATE" : "CREATE";
-      } else {
-        action = "CREATE";
-      }
+      action = existingPlayer ? "UPDATE" : "CREATE";
     }
 
     const matchesTeamList = teamListKeys
@@ -197,7 +197,7 @@ async function buildPlayerPreview(
 
     rows.push({
       rowNumber: i + 1,
-      ageGroup: rawAgeGroup,
+      ageGroup,
       teamName,
       fullName,
       guardianEmail,
