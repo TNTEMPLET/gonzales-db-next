@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { SportsConnectQualityPanel } from "@/components/admin/teams/SportsConnectAssistPanels";
+import PlayerNameCollisionsPanel from "@/components/admin/teams/PlayerNameCollisionsPanel";
 import SmartAutoBuildWizard from "@/components/admin/teams/SmartAutoBuildWizard";
 import FallBallCapacityCard from "@/components/admin/FallBallCapacityCard";
 import type { RosterQualitySummary, SportsConnectImportRunView } from "@/lib/sportsConnect/types";
@@ -257,6 +258,8 @@ export default function CompetitionImportTab({
           onRefresh={() => void loadQuality()}
         />
       </div>
+
+      <PlayerNameCollisionsPanel orgQuery={orgQuery} seasonYear={seasonYear} />
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-2">

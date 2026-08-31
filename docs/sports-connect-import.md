@@ -164,6 +164,49 @@ cleaned up manually, and both lookups now match within the same
 org+season+ageGroup and move the existing row/link to the new team instead
 of creating a second one.
 
+## Known duplicates note #2: two different kids, one name (fixed 2026-09-01)
+
+The opposite problem from the incident above: a division-scoped existing-row
+lookup that matches on `fullName` alone can't tell two *different* real kids
+with the same name apart. If a division already has a `TeamPlayer` row named
+e.g. "John Smith" and a fresh import brings in a *different* John Smith
+registration, the old lookup would treat it as an UPDATE to the existing
+row instead of a CREATE — silently collapsing two real registrations into
+one roster row. Site player counts then run lower than the source
+spreadsheet's row count, with no error anywhere.
+
+**Fix — Player ID as the real identity key.** If your SportsConnect export
+includes a **Player ID** column (per-registrant, persistent — add it to your
+export if it isn't already there), the import now matches existing players
+by that ID first, only falling back to name matching for legacy rows that
+predate it. A same-named row that already carries a *different* recorded
+Player ID is never matched. See `lib/sportsConnect/playerIdentity.ts`.
+
+**Finding damage from before this fix.** Because the bug produces exactly
+*one* surviving row (not two), scanning `TeamPlayer` for duplicate names
+finds nothing. The `Enrollment` table (one row per real registration, keyed
+by order number/DOB — see `deriveSportsConnectRowKey` — so it does **not**
+suffer this collapse) is the ground truth for how many real registrations
+exist per name. **Competition & Play → Import Registration Data → Player
+name collisions** (`components/admin/teams/PlayerNameCollisionsPanel.tsx`,
+`GET/POST /api/admin/sports-connect/player-name-collisions`) compares
+Enrollment counts against TeamPlayer counts per division and surfaces two
+finding types: a likely collapsed registration (add the missing kid as a
+separate roster row, or dismiss if it's a real duplicate/cancelled order),
+or a genuine duplicate roster row (merge into one, or dismiss if they're
+really two different kids). Dismissed/resolved findings stay suppressed
+until the underlying row set for that name changes again.
+
+**Not yet done:** `Enrollment.sportsConnectRowKey`'s own dedupe key
+(`orderNo::name` / `name::DOB`) still doesn't use Player ID, even though the
+column is now captured (`Enrollment.sportsConnectPlayerId`). It already
+avoids this specific collapse via order number, so this wasn't required —
+flagged here as a natural follow-up if a future case shows Enrollment needs
+Player ID in its own identity too. `DraftPlayerPool` (draft-board entries,
+pre-materialization) has the same name-only matching gap as the pre-fix
+`TeamPlayer` lookup but is out of scope for this fix — only rostered
+players were reported affected.
+
 ---
 
 ## Enrollment: the registration/revenue source of truth

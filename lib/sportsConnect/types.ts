@@ -79,6 +79,46 @@ export type RosterQualitySummary = {
   lastCoachImportAt: string | null;
 };
 
+export type PlayerNameCollisionFindingType = "COLLAPSED_REGISTRATION" | "DUPLICATE_ROSTER_ROW";
+
+export type PlayerNameCollisionEnrollmentRow = {
+  id: string;
+  fullName: string;
+  guardianEmail: string | null;
+  guardianPhone: string | null;
+  birthDate: string | null;
+  sportsConnectOrderNo: string | null;
+  sportsConnectPlayerId: string | null;
+  teamNameRaw: string | null;
+};
+
+export type PlayerNameCollisionTeamPlayerRow = {
+  id: string;
+  fullName: string;
+  guardianEmail: string | null;
+  guardianPhone: string | null;
+  birthDate: string | null;
+  sportsConnectPlayerId: string | null;
+  teamId: string;
+  teamName: string;
+};
+
+export type PlayerNameCollisionFinding = {
+  organizationId: string;
+  seasonYear: number;
+  ageGroup: string;
+  normalizedName: string;
+  findingType: PlayerNameCollisionFindingType;
+  enrollmentRows: PlayerNameCollisionEnrollmentRow[];
+  teamPlayerRows: PlayerNameCollisionTeamPlayerRow[];
+};
+
+export type PlayerNameCollisionReport = {
+  organizationId: string;
+  seasonYear: number;
+  findings: PlayerNameCollisionFinding[];
+};
+
 export type SportsConnectImportRunView = {
   id: string;
   organizationId: string;
