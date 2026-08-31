@@ -2,6 +2,8 @@ import "server-only";
 
 import prisma from "@/lib/prisma";
 import { getAllActiveOrgAlerts } from "@/lib/orgAlerts";
+import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
+import { countOpenPlayerNameCollisions } from "@/lib/sportsConnect/playerNameCollisions";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import type { ComplianceSummary } from "./complianceSummary";
 import type { BoardContactSummary } from "./boardContactSummary";
@@ -29,7 +31,7 @@ export async function getNeedsAttentionSummary(
   compliance: ComplianceSummary,
   boardContact: BoardContactSummary,
 ): Promise<NeedsAttentionSummary> {
-  const [unfulfilledCaps, unfulfilledShirts, pendingCoachingLeads, activeAlerts, openEquipmentCheckouts] =
+  const [unfulfilledCaps, unfulfilledShirts, pendingCoachingLeads, activeAlerts, openEquipmentCheckouts, playerNameCollisionCounts] =
     await Promise.all([
       prisma.capOrderItem.count({
         where: { status: { not: "fulfilled" }, order: { org: { in: orgs } } },
@@ -44,7 +46,13 @@ export async function getNeedsAttentionSummary(
       prisma.equipmentCheckout.count({
         where: { status: "open", organizationId: { in: orgs } },
       }),
+      Promise.all(
+        orgs.map((org) =>
+          countOpenPlayerNameCollisions({ organizationId: org, seasonYear: getSeasonConfigForOrg(org).year }),
+        ),
+      ),
     ]);
+  const openPlayerNameCollisions = playerNameCollisionCounts.reduce((sum, n) => sum + n, 0);
 
   const items: NeedsAttentionItem[] = [
     {
@@ -88,6 +96,12 @@ export async function getNeedsAttentionSummary(
       label: "Coaches without equipment picked up",
       count: openEquipmentCheckouts,
       href: "/admin/competition?tab=teams",
+    },
+    {
+      key: "player-name-collisions",
+      label: "Player names to review",
+      count: openPlayerNameCollisions,
+      href: "/admin/competition?tab=sports-connect",
     },
   ];
 

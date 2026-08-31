@@ -10,6 +10,7 @@ import prisma from "@/lib/prisma";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { completeImportRunSafe, recordImportRunSafe } from "@/lib/sportsConnect/importRuns";
 import { matchStandardDivision } from "@/lib/sportsConnect/fallballDivisions";
+import { resolveTeamPlayerIdentityMatch } from "@/lib/sportsConnect/playerIdentity";
 import { finalizeDivisionIfReady } from "@/lib/admin/jerseyNumbers";
 
 export { shouldSkipDivisionImport };
@@ -76,6 +77,9 @@ export const PLAYER_IMPORT_EMAIL_KEYS = [
   "email",
 ];
 
+/** SportsConnect's own per-registrant identifier -- see TeamPlayer.sportsConnectPlayerId. */
+export const PLAYER_IMPORT_PLAYER_ID_KEYS = ["Player ID", "Participant ID", "PlayerID"];
+
 export const PLAYER_IMPORT_ORDER_NO_KEYS = ["Order No", "Order Number", "Order ID"];
 
 export const PLAYER_IMPORT_ORDER_DATE_KEYS = ["Order Date", "Registration Date"];
@@ -106,7 +110,7 @@ export function getRowValue(row: Row, keys: string[]) {
   return "";
 }
 
-function normalizeLooseName(value: string) {
+export function normalizeLooseName(value: string) {
   return value
     .trim()
     .toLowerCase()
@@ -485,6 +489,7 @@ export async function applyImportRows(params: {
       getRowValue(row, ["Roster Status", "Status", "status"]) ||
       [orderPaymentStatus, birthCertStatus].filter(Boolean).join(" | ") ||
       null;
+    const sportsConnectPlayerId = getRowValue(row, PLAYER_IMPORT_PLAYER_ID_KEYS) || null;
     const registrationOrderNo = getRowValue(row, PLAYER_IMPORT_ORDER_NO_KEYS);
     const registrationOrderDate = parseDateValue(getRowValue(row, PLAYER_IMPORT_ORDER_DATE_KEYS));
     const orderDetailDescription = getRowValue(row, PLAYER_IMPORT_ORDER_DETAIL_KEYS);
@@ -593,13 +598,15 @@ export async function applyImportRows(params: {
     // scoping this lookup to `teamId` alone made every such move look like a
     // brand-new player, cloning them into the new team instead of relocating
     // the existing row. See docs/sports-connect-import.md's known-duplicates
-    // note for the 2026-08-30 fallball incident this fixes.
-    const existingPlayer = await prisma.teamPlayer.findFirst({
-      where: {
-        fullName: { equals: fullName, mode: "insensitive" },
-        team: { organizationId: targetOrg, seasonYear, ageGroup },
-      },
-      include: { team: { select: { teamName: true } } },
+    // note for the 2026-08-30 fallball incident this fixes. Prefers Player ID
+    // over name when present -- see lib/sportsConnect/playerIdentity.ts for
+    // why (two different real kids can share a name in one division).
+    const existingPlayer = await resolveTeamPlayerIdentityMatch({
+      fullName,
+      sportsConnectPlayerId,
+      organizationId: targetOrg,
+      seasonYear,
+      ageGroup,
     });
     if (updateExistingOnly && !existingPlayer) {
       skipped += 1;
@@ -664,6 +671,7 @@ export async function applyImportRows(params: {
       rosterStatus,
       jerseyNumber,
       allStarAgeBand: explicitAllStarAgeBand || derivedAllStarAgeBand,
+      sportsConnectPlayerId,
     };
     const updateData: Record<string, unknown> = {
       teamId: teamIdForUpdate,
@@ -671,6 +679,7 @@ export async function applyImportRows(params: {
       lastName,
       fullName,
     };
+    if (sportsConnectPlayerId) updateData.sportsConnectPlayerId = sportsConnectPlayerId;
     if (contactPhone) updateData.contactPhone = contactPhone;
     if (gender) updateData.gender = gender;
     if (birthDate) updateData.birthDate = birthDate;
@@ -739,6 +748,7 @@ export async function applyImportRows(params: {
             rosterStatus: existingPlayer.rosterStatus,
             jerseyNumber: existingPlayer.jerseyNumber,
             allStarAgeBand: existingPlayer.allStarAgeBand,
+            sportsConnectPlayerId: existingPlayer.sportsConnectPlayerId,
           },
         });
         updatedSeen.add(existingPlayer.id);
@@ -784,6 +794,7 @@ export async function applyImportRows(params: {
         amountCents,
         amountPaidCents,
         balanceCents,
+        sportsConnectPlayerId,
         rawRow: toInputJson(row),
         importRunId,
       };

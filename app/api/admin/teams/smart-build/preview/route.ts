@@ -7,6 +7,7 @@ import { downloadDriveFileBuffer } from "@/lib/sportsConnect/driveSync";
 import { estimateMissingGuardianEmailFromRows } from "@/lib/sportsConnect/guardianEstimate";
 import { detectSportsConnectReport } from "@/lib/sportsConnect/columnProfiles";
 import { matchStandardDivision } from "@/lib/sportsConnect/fallballDivisions";
+import { resolveTeamPlayerIdentityMatch } from "@/lib/sportsConnect/playerIdentity";
 import { parseSportsConnectExportBuffer, SPORTS_CONNECT_INGEST_MAX_ROWS } from "@/lib/sportsConnect/parseExportBuffer";
 import {
   buildTeamListPreviewRows,
@@ -19,6 +20,7 @@ import {
   PLAYER_IMPORT_DIVISION_KEYS,
   PLAYER_IMPORT_EMAIL_KEYS,
   PLAYER_IMPORT_NAME_KEYS,
+  PLAYER_IMPORT_PLAYER_ID_KEYS,
   PLAYER_IMPORT_TEAM_KEYS,
   shouldSkipDivisionImport,
   type Row,
@@ -161,6 +163,7 @@ async function buildPlayerPreview(
     // or every row looks brand-new here even when the confirm step would
     // correctly recognize it as an update.
     const ageGroup = (targetOrg === "fallball" ? matchStandardDivision(rawAgeGroup) : null) || rawAgeGroup;
+    const sportsConnectPlayerId = getRowValue(row, PLAYER_IMPORT_PLAYER_ID_KEYS) || null;
 
     let action: PlayerPreviewRow["action"] = "CREATE";
     let reason: string | null = null;
@@ -176,13 +179,14 @@ async function buildPlayerPreview(
       // Team Name can legitimately differ between imports (e.g. moving off
       // a placeholder "Unallocated" team once real teams are drafted), same
       // scoping applyImportRows() uses so this preview matches what confirm
-      // will actually do.
-      const existingPlayer = await prisma.teamPlayer.findFirst({
-        where: {
-          fullName: { equals: fullName, mode: "insensitive" },
-          team: { organizationId: targetOrg, seasonYear: rowSeasonYear, ageGroup },
-        },
-        select: { id: true },
+      // will actually do. Same Player-ID-first identity resolution too --
+      // see lib/sportsConnect/playerIdentity.ts.
+      const existingPlayer = await resolveTeamPlayerIdentityMatch({
+        fullName,
+        sportsConnectPlayerId,
+        organizationId: targetOrg,
+        seasonYear: rowSeasonYear,
+        ageGroup,
       });
       action = existingPlayer ? "UPDATE" : "CREATE";
     }

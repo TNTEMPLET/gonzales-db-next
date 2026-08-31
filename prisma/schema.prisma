@@ -1345,12 +1345,19 @@ model TeamPlayer {
   rosterStatus               String?
   jerseyNumber               String?
   allStarAgeBand             String?
+  /// SportsConnect's own per-registrant identifier (export column "Player
+  /// ID"), when the org's export includes it -- the real identity anchor
+  /// for import matching, since fullName alone can't tell two different
+  /// kids with the same name apart. Null for rows imported before an org
+  /// added this column.
+  sportsConnectPlayerId      String?
   createdAt                  DateTime  @default(now())
   updatedAt                  DateTime  @updatedAt
 
   team Team @relation(fields: [teamId], references: [id], onDelete: Cascade)
 
   @@index([teamId, fullName])
+  @@index([sportsConnectPlayerId])
 }
 
 model TeamAllStarAgeCutoff {
@@ -2385,6 +2392,11 @@ model Enrollment {
   amountPaidCents        Int?
   balanceCents           Int?
 
+  /// SportsConnect's own per-registrant identifier (export column "Player
+  /// ID"), when present -- see TeamPlayer.sportsConnectPlayerId. Not (yet)
+  /// part of sportsConnectRowKey's dedupe logic.
+  sportsConnectPlayerId String?
+
   /// Full-fidelity escape hatch: every raw column, verbatim, so a future
   /// report needing an unmapped column never requires a re-import.
   rawRow Json
@@ -2401,6 +2413,39 @@ model Enrollment {
   @@index([organizationId, seasonYear, teamId])
   @@index([organizationId, seasonYear, sportsConnectOrderNo])
   @@index([guardianEmail])
+  @@index([sportsConnectPlayerId])
+}
+
+/// Tracks admin review of a same-name group within one org+season+division:
+/// either two real kids whose registrations collapsed into one TeamPlayer
+/// row (COLLAPSED_REGISTRATION), or two real TeamPlayer rows that turned
+/// out to represent the same kid (DUPLICATE_ROSTER_ROW). No FK to
+/// TeamPlayer/Enrollment (plain id strings, same soft-reference convention
+/// as DraftPick.playerPoolId) since a resolved merge's loser id no longer
+/// exists.
+model PlayerNameCollisionReview {
+  id             String    @id @default(cuid())
+  organizationId String
+  seasonYear     Int
+  ageGroup       String
+  normalizedName String
+  findingType    String // "COLLAPSED_REGISTRATION" | "DUPLICATE_ROSTER_ROW"
+  status         String    @default("OPEN") // OPEN | DISMISSED | RESOLVED
+
+  /// Sorted id snapshot at review time -- if a later scan finds a
+  /// different set of rows for this name, the finding is treated as OPEN
+  /// again even though a stale review row exists here.
+  reviewedTeamPlayerIds String[]
+  reviewedEnrollmentIds String[]
+  reviewedByAdminId     String?
+  reviewedAt            DateTime?
+  resolutionNote        String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, seasonYear, ageGroup, normalizedName, findingType])
+  @@index([organizationId, seasonYear, status])
 }
 
 /// Explicit mapping of content organization to Google Drive export folder ID
