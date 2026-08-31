@@ -51,7 +51,20 @@ export default function AdminSidebar() {
     };
   }, []);
 
-  if (collapsed) return null;
+  if (collapsed) {
+    return (
+      <button
+        type="button"
+        onClick={toggleCollapsed}
+        aria-label="Open admin menu"
+        className="fixed left-0 top-1/2 z-40 flex h-12 w-6 -translate-y-1/2 items-center justify-center rounded-r-full border border-l-0 border-zinc-800 bg-zinc-900/90 text-zinc-500 shadow-lg backdrop-blur transition-colors hover:border-red-900/50 hover:text-red-200"
+      >
+        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M9 6l6 6-6 6" />
+        </svg>
+      </button>
+    );
+  }
 
   const masterRole = adminRole ? toAdminRole(adminRole) : null;
   const orgSuffix = currentOrgParam ? `?org=${encodeURIComponent(currentOrgParam)}` : "";
@@ -84,6 +97,16 @@ export default function AdminSidebar() {
           narrow screens where the sidebar overlays page content. */}
       <div className="fixed inset-0 z-30 bg-black/50 md:hidden" onClick={toggleCollapsed} aria-hidden />
       <aside className="fixed left-0 top-16 z-40 h-[calc(100vh-4rem)] w-64 overflow-y-auto border-r border-red-900/40 bg-zinc-950 shadow-2xl">
+        <button
+          type="button"
+          onClick={toggleCollapsed}
+          aria-label="Collapse admin menu"
+          className="absolute -right-3 top-1/2 z-50 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-full border border-zinc-800 bg-zinc-900 text-zinc-500 shadow-lg transition-colors hover:border-red-900/50 hover:text-red-200"
+        >
+          <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} aria-hidden>
+            <path strokeLinecap="round" strokeLinejoin="round" d="M15 6l-6 6 6 6" />
+          </svg>
+        </button>
         <nav className="px-3 py-4 text-sm">
         <Link
           href={nav.dashboardHref}
