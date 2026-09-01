@@ -278,6 +278,10 @@ export default async function Home({
   const homepageCopy = getHomepageCopy(contentOrg);
   const orgCaps = getOrgCapabilities(contentOrg);
   const volunteerRegistrationUrl = getSportsConnectVolunteerRegistrationUrl();
+  // The SportsConnect volunteer form is Fall Ball-specific -- orgs that
+  // register internally have no equivalent link to send coaches to here,
+  // regardless of whether Coaching Interest itself is enabled for them.
+  const showVolunteerRegistrationCta = orgCaps.registration === "sportsconnect";
   const scReg =
     orgCaps.registration === "sportsconnect"
       ? getSportsConnectRegistrationUrl(contentOrg)
@@ -431,7 +435,7 @@ export default async function Home({
       }
     >
       {/* CTA priority for compact-ops: volunteer registration → registration → schedule (if live) */}
-      {orgCaps.coachingInterest ? (
+      {showVolunteerRegistrationCta ? (
         <a
           href={volunteerRegistrationUrl}
           target="_blank"
@@ -557,7 +561,7 @@ export default async function Home({
                     },
                   ]
                 : []),
-            ...(orgCaps.coachingInterest
+            ...(showVolunteerRegistrationCta
               ? [
                   {
                     label: "Volunteer Registration (Coaches & Umpires)",
@@ -733,7 +737,7 @@ export default async function Home({
             ) : (
               <p className="text-brand-gold">Closed</p>
             )}
-            {orgCaps.coachingInterest ? (
+            {showVolunteerRegistrationCta ? (
               <a
                 href={volunteerRegistrationUrl}
                 target="_blank"

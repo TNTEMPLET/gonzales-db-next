@@ -217,6 +217,16 @@ export default function Header({ brand }: HeaderProps) {
   // shop link is always offered for content orgs; empty catalog still shows "coming soon".
   const showShopLink = Boolean(shopNavOrg) && !isTournamentOnly;
 
+  const contentOrgForCaps = isFallBallHeader
+    ? "fallball"
+    : isContentOrgId(brand.orgId)
+      ? brand.orgId
+      : null;
+  const coachingInterestPublic =
+    Boolean(contentOrgForCaps) &&
+    isCoachingInterestEnabled(contentOrgForCaps) &&
+    isPublicNavEnabledForOrg(contentOrgForCaps, "coaching-interest");
+
   const publicNavLinks = (isTournamentOnly
     ? [
         { href: "/", label: "Home" },
@@ -233,6 +243,9 @@ export default function Header({ brand }: HeaderProps) {
         { href: "/news", label: "News" },
         ...(showShopLink ? [{ href: "/shop", label: "Shop", key: "shop" }] : []),
         ...(regOpen || regWaitlist ? [{ href: "/registration", label: "Registration" }] : []),
+        ...(!isFallBallHeader && coachingInterestPublic
+          ? [{ href: "/coaching-interest", label: "Coaching Interest" }]
+          : []),
         ...(!isFallBallHeader && canSeeDugout ? [{ href: "/coach-corner", label: "Coaches" }] : []),
         ...(!isFallBallHeader && canSeeDugout
           ? [{ href: "/volunteer-card", label: "Volunteer Card" }]
@@ -242,15 +255,6 @@ export default function Header({ brand }: HeaderProps) {
         isPublicNavEnabledForOrg(isFallBallHeader ? "fallball" : shopNavOrg, link.key ?? link.label.toLowerCase()),
       );
 
-  const contentOrgForCaps = isFallBallHeader
-    ? "fallball"
-    : isContentOrgId(brand.orgId)
-      ? brand.orgId
-      : null;
-  const coachingInterestPublic =
-    Boolean(contentOrgForCaps) &&
-    isCoachingInterestEnabled(contentOrgForCaps) &&
-    isPublicNavEnabledForOrg(contentOrgForCaps, "coaching-interest");
   const fallBallCoachCornerLinks = isFallBallHeader
     ? [
         {

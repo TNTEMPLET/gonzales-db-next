@@ -2,7 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import CoachingInterestForm from "@/components/coaching-interest/CoachingInterestForm";
-import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
+import { getOrgCapabilities, isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import { getDefaultContentOrg, getSiteConfig } from "@/lib/siteConfig";
 import { getSportsConnectVolunteerRegistrationUrl } from "@/lib/sportsConnect/registrationUrl";
 
@@ -18,6 +18,9 @@ export default function CoachingInterestPage() {
   const site = getSiteConfig();
   const org = getDefaultContentOrg();
   const volunteerRegistrationUrl = getSportsConnectVolunteerRegistrationUrl();
+  // The SportsConnect volunteer form is Fall Ball-specific -- orgs that
+  // register internally have no equivalent link to send coaches to here.
+  const showVolunteerRegistrationCta = getOrgCapabilities(org).registration === "sportsconnect";
 
   if (!isCoachingInterestEnabled(org)) redirect("/");
 
@@ -30,34 +33,36 @@ export default function CoachingInterestPage() {
           </Link>
           <div className="space-y-4">
             <p className="inline-flex rounded-full bg-brand-purple/10 px-3 py-1 text-xs font-bold uppercase tracking-[0.2em] text-brand-purple">
-              Fall Ball Coach Pipeline
+              Coach Interest Form
             </p>
             <h1 className="text-4xl font-black tracking-tight sm:text-5xl">
-              Interested in coaching this Fall?
+              Interested in coaching this season?
             </h1>
             <p className="max-w-xl text-lg leading-8 text-zinc-600">
-              Tell us where you are interested in helping this Fall so we can include you
+              Tell us where you are interested in helping this season so we can include you
               in coach communications as registration gets closer and teams begin to form.
             </p>
           </div>
 
-          <div className="rounded-3xl border border-brand-gold/40 bg-brand-gold/10 p-5">
-            <h2 className="text-lg font-bold text-zinc-900">
-              Ready to officially register?
-            </h2>
-            <p className="mt-2 text-sm leading-6 text-zinc-700">
-              This form is just to raise your hand early. Official Volunteer
-              Registration for Coaches &amp; Umpires happens on APBaseball.com.
-            </p>
-            <a
-              href={volunteerRegistrationUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="mt-4 inline-flex rounded-xl bg-brand-purple px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-purple-dark"
-            >
-              Volunteer Registration (Coaches &amp; Umpires)
-            </a>
-          </div>
+          {showVolunteerRegistrationCta && (
+            <div className="rounded-3xl border border-brand-gold/40 bg-brand-gold/10 p-5">
+              <h2 className="text-lg font-bold text-zinc-900">
+                Ready to officially register?
+              </h2>
+              <p className="mt-2 text-sm leading-6 text-zinc-700">
+                This form is just to raise your hand early. Official Volunteer
+                Registration for Coaches &amp; Umpires happens on APBaseball.com.
+              </p>
+              <a
+                href={volunteerRegistrationUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="mt-4 inline-flex rounded-xl bg-brand-purple px-5 py-3 text-sm font-semibold text-white transition-colors hover:bg-brand-purple-dark"
+              >
+                Volunteer Registration (Coaches &amp; Umpires)
+              </a>
+            </div>
+          )}
 
           <div className="rounded-3xl border border-zinc-200 bg-white p-5 shadow-sm">
             <h2 className="text-lg font-bold">What happens next?</h2>
