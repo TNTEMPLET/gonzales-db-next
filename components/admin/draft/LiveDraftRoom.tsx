@@ -1020,7 +1020,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                       e.dataTransfer.effectAllowed = "move";
                     }}
                     className={`hover:bg-zinc-900/60 transition-colors ${
-                      session?.status === "LIVE" ? "cursor-grab active:cursor-grabbing" : ""
+                      session?.status === "LIVE" ? "cursor-grab active:cursor-grabbing select-none" : ""
                     }`}
                     title={session?.status === "LIVE" ? "Drag onto a pick slot in the matrix above to draft this player" : undefined}
                   >
