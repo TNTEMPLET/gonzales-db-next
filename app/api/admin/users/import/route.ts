@@ -186,21 +186,30 @@ export async function resolveTeamForAutoAssignment(params: {
   });
   if (allCandidates.length === 0) return null;
 
+  // Team names like "Unallocated" (and some real team names) repeat
+  // identically across every age group in an org. Matching by name across
+  // ALL divisions and only checking ageGroup afterward let a coach's row
+  // land on a *different* division's team of the same name -- e.g. every
+  // "Unallocated"-assigned coach org-wide collapsing onto whichever
+  // division's Unallocated team happened to come back first, regardless of
+  // the coach's own division. Scope to the coach's own division first
+  // whenever it's known, and only fall back to an org-wide search when
+  // that yields nothing.
+  const normalizedAgeGroup = ageGroup?.trim().toLowerCase();
+  if (normalizedAgeGroup) {
+    const sameDivision = allCandidates.filter(
+      (team) => team.ageGroup.trim().toLowerCase() === normalizedAgeGroup,
+    );
+    const sameDivisionMatchId = pickTeamMatch(normalizedTeam, sameDivision);
+    if (sameDivisionMatchId) {
+      const matched = sameDivision.find((team) => team.id === sameDivisionMatchId);
+      if (matched) return matched;
+    }
+  }
+
   const matchedTeamId = pickTeamMatch(normalizedTeam, allCandidates);
   if (!matchedTeamId) return null;
-
-  const candidates = allCandidates.filter((team) => team.id === matchedTeamId);
-  if (candidates.length === 0) return null;
-  if (ageGroup?.trim()) {
-    const normalizedAgeGroup = ageGroup.trim().toLowerCase();
-    const matched = allCandidates.find(
-      (team) =>
-        team.id === matchedTeamId &&
-        team.ageGroup.trim().toLowerCase() === normalizedAgeGroup,
-    );
-    if (matched) return matched;
-  }
-  return candidates[0] || null;
+  return allCandidates.find((team) => team.id === matchedTeamId) || null;
 }
 
 /**
