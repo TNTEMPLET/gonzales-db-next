@@ -78,7 +78,7 @@ export default function DraftInviteModal({ sessionId, session, coachLink, onClos
               <span>📅</span> Schedule & Invite Coaches
             </h3>
             <p className="text-xs text-zinc-400">
-              Set the start time, choose which teams auto-draft, and email coaches the live draft link.
+              Set the start time, choose which teams use autopick, and email coaches the live draft link.
             </p>
           </div>
           <button onClick={onClose} className="rounded-lg p-1 text-zinc-400 hover:bg-zinc-800 hover:text-white">
@@ -119,7 +119,7 @@ export default function DraftInviteModal({ sessionId, session, coachLink, onClos
           </div>
 
           <div>
-            <label className="block text-xs font-semibold text-zinc-300 mb-2">Teams & Auto-Draft</label>
+            <label className="block text-xs font-semibold text-zinc-300 mb-2">Teams & Autopick (Coach Absent)</label>
             <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
               {session.teams.map((team) => {
                 const emails = [team.headCoach?.email, team.assistantCoach?.email].filter(Boolean);
@@ -140,7 +140,7 @@ export default function DraftInviteModal({ sessionId, session, coachLink, onClos
                         checked={autoDraftTeamIds.has(team.id)}
                         onChange={() => toggleAutoDraft(team.id)}
                       />
-                      Auto-draft
+                      Autopick
                     </label>
                   </div>
                 );
