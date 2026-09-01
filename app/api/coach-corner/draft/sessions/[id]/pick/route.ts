@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { resolveCoachCornerActor } from "@/lib/coachCorner/auth";
 import { getDraftSessionState, makeDraftPick, resolveAutoPicks } from "@/lib/draft/draftEngine";
 import { draftApiError } from "@/lib/draft/apiError";
+import { withTransientDbRetry } from "@/lib/prismaRetry";
 
 /**
  * Coach-facing pick endpoint. Unlike the admin route, this enforces that the
@@ -29,7 +30,7 @@ export async function POST(
       return NextResponse.json({ error: "Missing playerPoolId" }, { status: 400 });
     }
 
-    const { session, onClock } = await getDraftSessionState(id);
+    const { session, onClock } = await withTransientDbRetry(() => getDraftSessionState(id));
     if (session.organizationId !== actor.targetOrg) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
@@ -53,10 +54,10 @@ export async function POST(
       }
     }
 
-    await makeDraftPick(id, playerPoolId, actor.registeredUserId);
-    await resolveAutoPicks(id);
+    await withTransientDbRetry(() => makeDraftPick(id, playerPoolId, actor.registeredUserId));
+    await withTransientDbRetry(() => resolveAutoPicks(id));
 
-    const nextState = await getDraftSessionState(id);
+    const nextState = await withTransientDbRetry(() => getDraftSessionState(id));
     const myTeam = nextState.session.teams.find(
       (team) =>
         team.headCoachUserId === actor.registeredUserId ||
