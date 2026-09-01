@@ -43,15 +43,44 @@ export async function materializeDraftSession(draftSessionId: string) {
         const poolPlayer = session.playerPool.find((p) => p.id === pick.playerPoolId);
         if (!poolPlayer) continue;
 
-        // Check if player already exists on this team
+        // Matched by division (org+season+ageGroup), not the specific new
+        // team: a player registered before the draft (e.g. sitting on the
+        // "Unallocated" placeholder team from a plain SportsConnect import)
+        // must be *relocated* onto their drafted team here, not duplicated
+        // -- the exact same reasoning app/api/admin/teams/import/route.ts's
+        // resolveTeamPlayerIdentityMatch already documents for its own
+        // division-scoped lookup. Scoping this to `teamId: team.id` alone
+        // (the previous behavior) always missed since the new team never
+        // has any players yet, so every drafted player who'd already been
+        // imported got a second, duplicate row instead of moved.
         const existingPlayer = await tx.teamPlayer.findFirst({
           where: {
-            teamId: team.id,
-            fullName: poolPlayer.fullName,
+            fullName: { equals: poolPlayer.fullName, mode: "insensitive" },
+            team: {
+              organizationId: session.organizationId,
+              seasonYear: session.seasonYear,
+              ageGroup: session.ageGroup,
+            },
           },
         });
 
-        if (!existingPlayer) {
+        if (existingPlayer) {
+          await tx.teamPlayer.update({
+            where: { id: existingPlayer.id },
+            data: {
+              teamId: team.id,
+              rosterStatus: "DRAFTED",
+              // Only fill in what the existing (pre-draft registration) row
+              // doesn't already have -- never overwrite real registration
+              // data with the lighter-weight draft pool entry's copy of it.
+              ...(existingPlayer.guardianEmail == null ? { guardianEmail: poolPlayer.guardianEmail } : {}),
+              ...(existingPlayer.guardianPhone == null ? { guardianPhone: poolPlayer.guardianPhone } : {}),
+              ...(existingPlayer.birthDate == null && poolPlayer.birthDate
+                ? { birthDate: poolPlayer.birthDate.toISOString() }
+                : {}),
+            },
+          });
+        } else {
           await tx.teamPlayer.create({
             data: {
               teamId: team.id,
