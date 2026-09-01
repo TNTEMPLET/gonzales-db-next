@@ -205,6 +205,14 @@ export async function resolveTeamForAutoAssignment(params: {
       const matched = sameDivision.find((team) => team.id === sameDivisionMatchId);
       if (matched) return matched;
     }
+
+    // "Unallocated" isn't a real team identity -- it's a generic
+    // placeholder name that means "no team yet," repeated verbatim in
+    // every division. If the coach's own division doesn't have one (or
+    // nothing else in it matches), there's nothing correct to fall back
+    // to: an org-wide search would only ever relink them to some other
+    // division's unrelated placeholder team.
+    if (normalizeTeamToken(normalizedTeam) === "unallocated") return null;
   }
 
   const matchedTeamId = pickTeamMatch(normalizedTeam, allCandidates);
