@@ -13,7 +13,7 @@ export function generateMetadata() {
   const site = getSiteConfig();
   return {
     title: `Coaching Interest | ${site.name}`,
-    description: "Fall Ball coach leads, follow-up status, and export for registration planning.",
+    description: "Coach leads, follow-up status, and export for registration planning.",
   };
 }
 
@@ -58,7 +58,7 @@ export default async function CoachingInterestPage({
           />
           <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Coaching Interest</h1>
           <p className="max-w-3xl text-zinc-400">
-            Fall Ball coach leads, follow-up status, and export for registration planning.
+            Coach leads, follow-up status, and export for registration planning.
           </p>
         </div>
 

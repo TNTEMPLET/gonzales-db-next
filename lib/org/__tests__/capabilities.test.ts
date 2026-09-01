@@ -24,10 +24,10 @@ describe("fallball capabilities (Phase 3 smoke)", () => {
     assert.equal(caps.teamNameMode, "mlb");
   });
 
-  it("enables coaching interest only for fallball by default", () => {
+  it("enables coaching interest for all three orgs", () => {
     assert.equal(isCoachingInterestEnabled("fallball"), true);
-    assert.equal(isCoachingInterestEnabled("gonzales"), false);
-    assert.equal(isCoachingInterestEnabled("ascension"), false);
+    assert.equal(isCoachingInterestEnabled("gonzales"), true);
+    assert.equal(isCoachingInterestEnabled("ascension"), true);
     assert.equal(isCoachingInterestEnabled(null), false);
   });
 

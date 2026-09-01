@@ -50,8 +50,8 @@ const SPRING_LEAGUE_DEFAULTS: OrgCapabilities = {
 };
 
 const CAPABILITIES: Record<ContentOrgId, OrgCapabilities> = {
-  gonzales: { ...SPRING_LEAGUE_DEFAULTS },
-  ascension: { ...SPRING_LEAGUE_DEFAULTS },
+  gonzales: { ...SPRING_LEAGUE_DEFAULTS, coachingInterest: true },
+  ascension: { ...SPRING_LEAGUE_DEFAULTS, coachingInterest: true },
   fallball: {
     registration: "sportsconnect",
     // Assignr site 18601 / league 515713 (AP Fall Ball) — see siteConfig.
