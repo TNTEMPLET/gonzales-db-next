@@ -2448,6 +2448,31 @@ model PlayerNameCollisionReview {
   @@index([organizationId, seasonYear, status])
 }
 
+/// Manual completion state for the handful of Season Setup Checklist items
+/// with no clean auto-detect signal (e.g. "registration window set",
+/// "jersey orders submitted"). Most checklist items need no row here at all
+/// -- their status is computed live from existing data (SportsConnectImportRun,
+/// DraftSession, ScheduleSeason, etc.) at read time. `ageGroup` defaults to
+/// "" rather than being nullable so the compound unique constraint actually
+/// blocks duplicate org-wide rows -- Postgres treats multiple NULLs in a
+/// unique constraint as non-conflicting, which a bare-string default avoids.
+model SeasonSetupChecklistItem {
+  id                 String    @id @default(cuid())
+  organizationId     String
+  seasonYear         Int
+  itemKey            String // e.g. "REGISTRATION_WINDOW_SET" | "JERSEY_ORDERS_SUBMITTED"
+  ageGroup           String    @default("")
+  isComplete         Boolean   @default(false)
+  completedByAdminId String?
+  completedAt        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([organizationId, seasonYear, itemKey, ageGroup])
+  @@index([organizationId, seasonYear])
+}
+
 /// Explicit mapping of content organization to Google Drive export folder ID
 model SportsConnectOrgDriveFolder {
   id             String   @id @default(cuid())
