@@ -22,6 +22,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
   const [error, setError] = useState<string | null>(null);
   const [submittingPick, setSubmittingPick] = useState(false);
   const [linkCopied, setLinkCopied] = useState(false);
+  const [dragOverCellKey, setDragOverCellKey] = useState<string | null>(null);
 
   // Search & Filter for Player Pool
   const [searchQuery, setSearchQuery] = useState("");
@@ -109,6 +110,52 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
       }
     } catch (e) {
       alert(`Error submitting pick: ${getErrorMessage(e)}`);
+    } finally {
+      setSubmittingPick(false);
+    }
+  };
+
+  const handleMakePickForSlot = async (draftTeamId: string, round: number, playerPoolId: string) => {
+    if (submittingPick) return;
+    setSubmittingPick(true);
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sessionId}/pick`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ playerPoolId, draftTeamId, round }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Pick failed: ${err.error}`);
+      } else {
+        await fetchState();
+      }
+    } catch (e) {
+      alert(`Error submitting pick: ${getErrorMessage(e)}`);
+    } finally {
+      setSubmittingPick(false);
+    }
+  };
+
+  const handleSkipPick = async () => {
+    if (submittingPick) return;
+    setSubmittingPick(true);
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sessionId}/pick`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "skip" }),
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Skip failed: ${err.error}`);
+      } else {
+        await fetchState();
+      }
+    } catch (e) {
+      alert(`Error skipping pick: ${getErrorMessage(e)}`);
     } finally {
       setSubmittingPick(false);
     }
@@ -543,6 +590,15 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                   </button>
 
                   <button
+                    onClick={handleSkipPick}
+                    disabled={session.status !== "LIVE" || !onClock || submittingPick}
+                    className="rounded-xl bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white disabled:opacity-30"
+                    title="Skip This Pick (comes back open later)"
+                  >
+                    ⏭️ Skip Pick
+                  </button>
+
+                  <button
                     onClick={handleUndoPick}
                     disabled={totalPicksMade === 0}
                     className="rounded-xl bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white disabled:opacity-30"
@@ -732,11 +788,35 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                       )
                     : undefined;
 
+                const cellKey = `${team.id}-r${roundNum}`;
+                const isDroppable = !pick && session.status === "LIVE";
+                const isDragOver = isDroppable && dragOverCellKey === cellKey;
+
                 return (
                   <div
-                    key={`${team.id}-r${roundNum}`}
+                    key={cellKey}
+                    onDragOver={(e) => {
+                      if (!isDroppable) return;
+                      e.preventDefault();
+                      e.dataTransfer.dropEffect = "move";
+                      if (dragOverCellKey !== cellKey) setDragOverCellKey(cellKey);
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverCellKey === cellKey) setDragOverCellKey(null);
+                    }}
+                    onDrop={(e) => {
+                      if (!isDroppable) return;
+                      e.preventDefault();
+                      setDragOverCellKey(null);
+                      const droppedPlayerPoolId = e.dataTransfer.getData("text/draft-player-pool-id");
+                      if (droppedPlayerPoolId) {
+                        handleMakePickForSlot(team.id, roundNum, droppedPlayerPoolId);
+                      }
+                    }}
                     className={`min-h-[60px] rounded-lg p-2 text-xs border flex flex-col justify-between transition-all ${
-                      isCurrentlyOnClock
+                      isDragOver
+                        ? "bg-sky-500/20 border-sky-400 ring-2 ring-sky-400/50"
+                        : isCurrentlyOnClock
                         ? "bg-emerald-500/20 border-emerald-500 ring-2 ring-emerald-500/40 animate-pulse"
                         : pick
                         ? "bg-zinc-900/90 border-zinc-700/80 text-white hover:border-zinc-500"
@@ -889,7 +969,18 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                 </tr>
               ) : (
                 availablePlayers.map((player) => (
-                  <tr key={player.id} className="hover:bg-zinc-900/60 transition-colors">
+                  <tr
+                    key={player.id}
+                    draggable={session?.status === "LIVE"}
+                    onDragStart={(e) => {
+                      e.dataTransfer.setData("text/draft-player-pool-id", player.id);
+                      e.dataTransfer.effectAllowed = "move";
+                    }}
+                    className={`hover:bg-zinc-900/60 transition-colors ${
+                      session?.status === "LIVE" ? "cursor-grab active:cursor-grabbing" : ""
+                    }`}
+                    title={session?.status === "LIVE" ? "Drag onto a pick slot in the matrix above to draft this player" : undefined}
+                  >
                     <td className="px-4 py-3 font-semibold text-white">
                       <div className="text-sm">{player.fullName}</div>
                       {player.guardianEmail && (

@@ -2817,6 +2817,15 @@ model DraftPick {
   isProtectedPick Boolean  @default(false)
   pickedAt        DateTime @default(now())
   pickedByAdminId String?
+  /// True only if this pick was made for the slot that was the live
+  /// session cursor at the moment of creation (a normal on-the-clock pick,
+  /// or a skip-driven scan landing here) -- as opposed to a backfill (drag
+  /// onto an already-skipped or future slot) or a pre-claimed protection.
+  /// Undo uses this to decide whether removing this pick should rewind the
+  /// session's cursor: comparing slot position to the *current* cursor
+  /// value alone is ambiguous once a pick's own creation can jump the
+  /// cursor forward past several already-filled slots in one step.
+  advancedCursor  Boolean  @default(false)
 
   draftSession DraftSession @relation(fields: [draftSessionId], references: [id], onDelete: Cascade)
   draftTeam    DraftTeam    @relation(fields: [draftTeamId], references: [id], onDelete: Cascade)
