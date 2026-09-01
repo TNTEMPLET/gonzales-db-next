@@ -6,11 +6,25 @@ import LiveDraftRoom from "./LiveDraftRoom";
 import DraftSessionEditModal from "./DraftSessionEditModal";
 import DraftTeamsManageModal from "./DraftTeamsManageModal";
 import DraftPlayersManageModal from "./DraftPlayersManageModal";
-import type { ContentOrgId } from "@/lib/siteConfig";
-import type { CoachPairing, DraftLeaderOption, DraftSessionListItem, DraftUserRef } from "@/lib/draft/types";
+import DraftInviteModal from "./DraftInviteModal";
+import { getSiteConfigForOrg, isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
+import type {
+  CoachPairing,
+  DraftLeaderOption,
+  DraftSession,
+  DraftSessionListItem,
+  DraftUserRef,
+} from "@/lib/draft/types";
 import type { CoachPlayerMatchCandidate } from "@/lib/draft/coachPlayerMatcher";
 import { getErrorMessage } from "@/lib/draft/clientError";
+import { formatCentralDateTime } from "@/lib/draft/centralTime";
 import { STANDARD_DIVISIONS } from "@/lib/sportsConnect/fallballDivisions";
+
+type InvitingSession = {
+  sessionId: string;
+  session: Pick<DraftSession, "name" | "ageGroup" | "scheduledStartAt" | "invitesSentAt" | "teams">;
+  coachLink: string;
+};
 
 type DraftSessionItem = DraftSessionListItem;
 
@@ -50,6 +64,9 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
   const [editingSession, setEditingSession] = useState<DraftSessionItem | null>(null);
   const [managingTeamsSessionId, setManagingTeamsSessionId] = useState<string | null>(null);
   const [managingPlayersSessionId, setManagingPlayersSessionId] = useState<string | null>(null);
+  const [invitingSession, setInvitingSession] = useState<InvitingSession | null>(null);
+  const [invitingSessionLoading, setInvitingSessionLoading] = useState<string | null>(null);
+  const [openOverflowId, setOpenOverflowId] = useState<string | null>(null);
 
   const parsedTeamNames = teamNamesInput
     .split("\n")
@@ -97,6 +114,15 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
     fetchSessions();
     fetchContext(selectedAgeGroup);
   }, [targetOrg, seasonYear]);
+
+  useEffect(() => {
+    if (!openOverflowId) return;
+    function onDocMouseDown(e: MouseEvent) {
+      if (!(e.target as HTMLElement).closest("[data-draft-overflow]")) setOpenOverflowId(null);
+    }
+    document.addEventListener("mousedown", onDocMouseDown);
+    return () => document.removeEventListener("mousedown", onDocMouseDown);
+  }, [openOverflowId]);
 
   const handleStartCreate = (ageGroup?: string) => {
     setError(null);
@@ -195,6 +221,33 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
     }
   };
 
+  const handleOpenInvite = async (sess: DraftSessionItem) => {
+    setError(null);
+    setNotice(null);
+    setOpenOverflowId(null);
+    setInvitingSessionLoading(sess.id);
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sess.id}`);
+      const data = await res.json();
+      if (!res.ok) {
+        setError(data.error || "Failed to load session for scheduling");
+        return;
+      }
+      const baseUrl = isContentOrgId(sess.organizationId)
+        ? getSiteConfigForOrg(sess.organizationId).siteUrl
+        : window.location.origin;
+      setInvitingSession({
+        sessionId: sess.id,
+        session: data.session,
+        coachLink: `${baseUrl}/coach-corner/draft/${sess.id}`,
+      });
+    } catch (e) {
+      setError(`Error loading session: ${getErrorMessage(e)}`);
+    } finally {
+      setInvitingSessionLoading(null);
+    }
+  };
+
   return (
     <div className="space-y-6">
       {/* Top Title & Navigation */}
@@ -284,6 +337,15 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                       </span>
                     </div>
 
+                    {sess.scheduledStartAt && (
+                      <div className="flex items-center gap-1.5 text-xs text-emerald-300 bg-emerald-500/10 rounded-lg p-2 border border-emerald-500/20">
+                        <span>📅</span>
+                        <span className="truncate font-medium">
+                          Scheduled for {formatCentralDateTime(sess.scheduledStartAt)}
+                        </span>
+                      </div>
+                    )}
+
                     <div className="grid grid-cols-3 gap-2 rounded-lg bg-zinc-950 p-2.5 text-center text-xs border border-zinc-800/60">
                       <div>
                         <div className="font-mono font-bold text-white">{sess.teams.length}</div>
@@ -324,13 +386,14 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                       🚀 Enter Draft Room ➔
                     </button>
 
-                    <div className="grid grid-cols-4 gap-1">
+                    <div className="grid grid-cols-3 gap-1">
                       <button
-                        onClick={() => setEditingSession(sess)}
-                        className="rounded-lg bg-zinc-800 px-2 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white text-center"
-                        title="Edit Session & Leader"
+                        onClick={() => handleOpenInvite(sess)}
+                        disabled={invitingSessionLoading === sess.id}
+                        className="rounded-lg bg-zinc-800 px-2 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white text-center disabled:opacity-50"
+                        title="Schedule the start time and email coaches the draft link"
                       >
-                        ⚙️ Edit
+                        {invitingSessionLoading === sess.id ? "Loading..." : "📅 Schedule"}
                       </button>
                       <button
                         onClick={() => setManagingTeamsSessionId(sess.id)}
@@ -346,21 +409,41 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                       >
                         👥 Pool
                       </button>
-                      <button
-                        onClick={() => handleResetSession(sess.id, sess.name)}
-                        className="rounded-lg bg-zinc-800 px-2 py-1.5 text-[11px] font-semibold text-amber-400 hover:bg-amber-500/20 text-center"
-                        title="Reset Draft Picks"
-                      >
-                        🔄 Reset
-                      </button>
                     </div>
 
-                    <button
-                      onClick={() => handleDeleteSession(sess.id, sess.name)}
-                      className="w-full text-center text-[10px] text-zinc-500 hover:text-rose-400 py-1 transition-colors"
-                    >
-                      🗑️ Delete Draft Session
-                    </button>
+                    <div className="relative flex items-center gap-1" data-draft-overflow>
+                      <button
+                        onClick={() => setEditingSession(sess)}
+                        className="flex-1 rounded-lg bg-zinc-800 px-2 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white text-center"
+                        title="Edit Session & Leader"
+                      >
+                        ⚙️ Edit
+                      </button>
+                      <button
+                        onClick={() => setOpenOverflowId(openOverflowId === sess.id ? null : sess.id)}
+                        className="rounded-lg bg-zinc-800 px-2.5 py-1.5 text-xs font-bold text-zinc-300 hover:bg-zinc-700 hover:text-white"
+                        title="More actions"
+                      >
+                        ⋯
+                      </button>
+
+                      {openOverflowId === sess.id && (
+                        <div className="absolute right-0 bottom-full z-10 mb-1 w-40 rounded-lg border border-zinc-700 bg-zinc-900 shadow-xl overflow-hidden">
+                          <button
+                            onClick={() => handleResetSession(sess.id, sess.name)}
+                            className="block w-full px-3 py-2 text-left text-[11px] font-semibold text-amber-400 hover:bg-amber-500/20"
+                          >
+                            🔄 Reset Picks
+                          </button>
+                          <button
+                            onClick={() => handleDeleteSession(sess.id, sess.name)}
+                            className="block w-full px-3 py-2 text-left text-[11px] font-semibold text-rose-400 hover:bg-rose-500/20"
+                          >
+                            🗑️ Delete Session
+                          </button>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
               ))}
@@ -601,6 +684,18 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
           sessionId={managingPlayersSessionId}
           onClose={() => setManagingPlayersSessionId(null)}
           onUpdated={fetchSessions}
+        />
+      )}
+
+      {invitingSession && (
+        <DraftInviteModal
+          sessionId={invitingSession.sessionId}
+          session={invitingSession.session}
+          coachLink={invitingSession.coachLink}
+          onClose={() => setInvitingSession(null)}
+          onSaved={() => {
+            fetchSessions();
+          }}
         />
       )}
     </div>

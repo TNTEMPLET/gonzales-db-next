@@ -56,8 +56,18 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
 
     const autoDraftSet = new Set(autoDraftTeamIds ?? []);
 
+    // Scheduling & inviting coaches is the natural "I'm done setting up"
+    // signal now that this is reachable directly from the session list (not
+    // just mid-draft) -- bump SETUP -> PAIRED here instead of via a raw
+    // status dropdown. Never touch any other status (LIVE/PAUSED/etc.).
     await prisma.$transaction([
-      prisma.draftSession.update({ where: { id }, data: { scheduledStartAt } }),
+      prisma.draftSession.update({
+        where: { id },
+        data: {
+          scheduledStartAt,
+          ...(session.status === "SETUP" ? { status: "PAIRED" } : {}),
+        },
+      }),
       ...session.teams.map((team) =>
         prisma.draftTeam.update({
           where: { id: team.id },
@@ -100,7 +110,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
           "",
           `Join here: ${link}`,
           autoDraftOn
-            ? "Auto-draft is turned ON for your team -- if you're not there when it's your turn, we'll automatically draft the best available player for you."
+            ? "Autopick is turned ON for your team -- if you're not there when it's your turn, we'll automatically draft the best available player for you."
             : null,
         ]
           .filter((line): line is string => line !== null)
@@ -115,7 +125,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
             <p style="font-size:13px;color:#4b5563">Or copy this link: ${link}</p>
             ${
               autoDraftOn
-                ? `<p style="font-size:13px;color:#92400e">Auto-draft is turned ON for your team -- if you're not there when it's your turn, we'll automatically draft the best available player for you.</p>`
+                ? `<p style="font-size:13px;color:#92400e">Autopick is turned ON for your team -- if you're not there when it's your turn, we'll automatically draft the best available player for you.</p>`
                 : ""
             }
           </div>

@@ -129,6 +129,7 @@ export type DraftSessionState = {
 /** Summary shape used by the session list view (OnlineDraftDesk). */
 export type DraftSessionListItem = {
   id: string;
+  organizationId: string;
   name: string;
   ageGroup: string;
   seasonYear: number;
@@ -136,6 +137,7 @@ export type DraftSessionListItem = {
   draftType: string;
   secondsPerPick: number | null;
   totalRounds: number;
+  scheduledStartAt?: string | null;
   draftLeaderUserId?: string | null;
   draftLeader?: DraftUserRef | null;
   _count: { playerPool: number; picks: number };
