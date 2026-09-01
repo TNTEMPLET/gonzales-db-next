@@ -72,11 +72,18 @@ export async function POST(
     const body = await req.json();
 
     if (body.action === "import" && Array.isArray(body.players)) {
-      // Batch import
-      const created = await prisma.draftPlayerPool.createMany({
-        data: (body.players as PlayerPayload[]).map((p) => toPlayerPoolCreateData(id, p)),
-      });
-      return NextResponse.json({ count: created.count }, { status: 201 });
+      // Batch import -- unlike the single-create path below, a bad row here
+      // shouldn't fail the whole batch. Rows with no name at all are
+      // dropped rather than silently inserted as a blank roster entry.
+      const rows = (body.players as PlayerPayload[]).map((p) => toPlayerPoolCreateData(id, p));
+      const validRows = rows.filter((r) => r.fullName);
+      const skipped = rows.length - validRows.length;
+
+      const created =
+        validRows.length > 0
+          ? await prisma.draftPlayerPool.createMany({ data: validRows })
+          : { count: 0 };
+      return NextResponse.json({ count: created.count, skipped }, { status: 201 });
     }
 
     const playerData = toPlayerPoolCreateData(id, body as PlayerPayload);
