@@ -586,7 +586,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                         <span>
                           {onClock.protectedPlayerProtectionType === "RETURNING_PLAYER"
                             ? "Returning Player"
-                            : "Coach Child Protection"}
+                            : "Reserved Pick"}
                           : <strong>{onClock.protectedPlayerName}</strong>
                         </span>
                       </div>
@@ -603,7 +603,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                   ) : (
                     <div className="mt-2 inline-flex items-center gap-1.5 rounded-lg bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-1 text-xs text-emerald-400 font-medium">
                       <span>⚾</span>
-                      <span>Open Draft Pick (No coach protection in Round {onClock.round})</span>
+                      <span>Open Draft Pick (No reservation in Round {onClock.round})</span>
                     </div>
                   )}
                 </div>
@@ -887,7 +887,7 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                               );
                               const isReturning = matchedProtection?.protectionType === "RETURNING_PLAYER";
                               return (
-                                <span className="text-amber-400" title={isReturning ? "Returning Player" : "Coach Protection"}>
+                                <span className="text-amber-400" title={isReturning ? "Returning Player" : "Reserved Pick"}>
                                   {isReturning ? "🏠" : "🔒"}
                                 </span>
                               );

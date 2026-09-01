@@ -24,6 +24,8 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [viewMode, setViewMode] = useState<"LIST" | "CREATE" | "ROOM">("LIST");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
 
   // Create Session Form State
   const [draftName, setDraftName] = useState("");
@@ -97,6 +99,8 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
   }, [targetOrg, seasonYear]);
 
   const handleStartCreate = (ageGroup?: string) => {
+    setError(null);
+    setNotice(null);
     const ag = ageGroup || selectedAgeGroup;
     setSelectedAgeGroup(ag);
     setDraftName(`${seasonYear} ${ag} Draft`);
@@ -105,8 +109,10 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
   };
 
   const handleCreateSession = async () => {
+    setError(null);
+    setNotice(null);
     if (!draftName.trim() || parsedTeamNames.length === 0) {
-      alert("Please enter draft name and at least one team");
+      setError("Please enter draft name and at least one team");
       return;
     }
 
@@ -131,7 +137,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
 
       if (!res.ok) {
         const data = await res.json();
-        alert(`Error: ${data.error || "Failed to create draft session"}`);
+        setError(data.error || "Failed to create draft session");
         return;
       }
 
@@ -140,12 +146,14 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
       setSelectedSessionId(data.session.id);
       setViewMode("ROOM");
     } catch (e) {
-      alert(`Error creating session: ${getErrorMessage(e)}`);
+      setError(`Error creating session: ${getErrorMessage(e)}`);
     }
   };
 
   const handleDeleteSession = async (sessionId: string, sessionName: string) => {
     if (!confirm(`Are you sure you want to permanently delete draft session: "${sessionName}"?\nAll teams, draft picks, and session records will be deleted.`)) return;
+    setError(null);
+    setNotice(null);
 
     try {
       const res = await fetch(`/api/admin/draft/sessions/${sessionId}`, {
@@ -153,7 +161,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
       });
       if (!res.ok) {
         const data = await res.json();
-        alert(`Failed to delete session: ${data.error}`);
+        setError(`Failed to delete session: ${data.error}`);
         return;
       }
       fetchSessions();
@@ -162,12 +170,14 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
         setViewMode("LIST");
       }
     } catch (e) {
-      alert(`Error deleting session: ${getErrorMessage(e)}`);
+      setError(`Error deleting session: ${getErrorMessage(e)}`);
     }
   };
 
   const handleResetSession = async (sessionId: string, sessionName: string) => {
     if (!confirm(`Reset all picks for "${sessionName}"?\nThis clears all picks and returns players to the available pool.`)) return;
+    setError(null);
+    setNotice(null);
 
     try {
       const res = await fetch(`/api/admin/draft/sessions/${sessionId}/reset`, {
@@ -175,13 +185,13 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
       });
       if (!res.ok) {
         const data = await res.json();
-        alert(`Reset failed: ${data.error}`);
+        setError(`Reset failed: ${data.error}`);
         return;
       }
       fetchSessions();
-      alert("Draft board reset successfully!");
+      setNotice("Draft board reset successfully!");
     } catch (e) {
-      alert(`Error resetting draft: ${getErrorMessage(e)}`);
+      setError(`Error resetting draft: ${getErrorMessage(e)}`);
     }
   };
 
@@ -194,14 +204,18 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
             <span>⚾</span> Online Draft Manager
           </h2>
           <p className="text-xs text-zinc-400">
-            Live Snake / Linear drafting, coach-child auto-protection locks, draft leader controls, and real-time board
+            Live Snake / Linear drafting, coach-child reservations, draft leader controls, and real-time board
           </p>
         </div>
 
         <div className="flex items-center gap-2">
           {viewMode !== "LIST" && (
             <button
-              onClick={() => setViewMode("LIST")}
+              onClick={() => {
+                setError(null);
+                setNotice(null);
+                setViewMode("LIST");
+              }}
               className="rounded-lg bg-zinc-800 px-3 py-2 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white"
             >
               ← All Drafts
@@ -217,6 +231,15 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
           )}
         </div>
       </div>
+
+      {error && (
+        <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-xs text-rose-400">{error}</div>
+      )}
+      {notice && (
+        <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-300">
+          {notice}
+        </div>
+      )}
 
       {/* VIEW 1: SESSIONS LIST */}
       {viewMode === "LIST" && (
@@ -520,7 +543,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
 
           <div className="flex items-center justify-between rounded-xl border border-zinc-800 bg-zinc-950/80 p-4">
             <div className="text-xs text-zinc-400">
-              {parsedTeamNames.length} Teams · {pairings.length} Coach Protections · {seedFromRegistered ? registeredPlayerCount : 0} Pool Players
+              {parsedTeamNames.length} Teams · {pairings.length} Coach Reservations · {seedFromRegistered ? registeredPlayerCount : 0} Pool Players
             </div>
             <button
               onClick={handleCreateSession}
@@ -541,7 +564,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
             fetchSessions();
           }}
           onMaterializeComplete={() => {
-            alert("Teams materialized successfully! Redirecting to Teams Management list.");
+            setNotice("Teams materialized successfully! Redirecting to Teams Management list.");
             setViewMode("LIST");
             fetchSessions();
           }}

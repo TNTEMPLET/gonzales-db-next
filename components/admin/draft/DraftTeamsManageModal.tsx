@@ -284,10 +284,10 @@ export default function DraftTeamsManageModal({
         <div className="flex items-center justify-between border-b border-zinc-800 pb-3">
           <div>
             <h3 className="text-lg font-bold text-white flex items-center gap-2">
-              <span>🛡️</span> Manage Teams, Coaches & Linked Player Protections
+              <span>🛡️</span> Manage Teams, Coaches & Reservations
             </h3>
             <p className="text-xs text-zinc-400">
-              Assign coaches to draft positions and lock their linked players to specific draft rounds.
+              Assign coaches to draft positions and reserve their linked players for specific draft rounds.
               Unlinked rounds remain open for normal draft picks.
             </p>
           </div>
@@ -380,7 +380,7 @@ export default function DraftTeamsManageModal({
                       <div>
                         <h4 className="font-bold text-white text-sm">{team.teamName}</h4>
                         <span className="text-[10px] text-zinc-500">
-                          {team.picks?.length || 0} Picks Made · {teamProtections.length} Locked Protections
+                          {team.picks?.length || 0} Picks Made · {teamProtections.length} Reservations
                         </span>
                       </div>
                     </div>
@@ -433,7 +433,7 @@ export default function DraftTeamsManageModal({
                   <div className="rounded-lg bg-zinc-900/60 p-3 border border-zinc-800/80 space-y-2">
                     <div className="flex items-center justify-between">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1">
-                        <span>🔒</span> Coach-Linked Players & Lock Rounds
+                        <span>🔒</span> Coach-Linked Players & Reserved Rounds
                       </span>
                       {addingProtectionTeamId !== team.id && (
                         <button
@@ -444,7 +444,7 @@ export default function DraftTeamsManageModal({
                           }}
                           className="text-[11px] font-semibold text-emerald-400 hover:text-emerald-300"
                         >
-                          + Add Linked Player Protection
+                          + Add Reservation
                         </button>
                       )}
                     </div>
@@ -485,7 +485,7 @@ export default function DraftTeamsManageModal({
 
                             <div className="flex items-center gap-3">
                               <div className="flex items-center gap-1.5">
-                                <span className="text-[10px] text-zinc-400">Auto-load Round:</span>
+                                <span className="text-[10px] text-zinc-400">Reserved Round:</span>
                                 <input
                                   type="number"
                                   min={1}
@@ -508,7 +508,7 @@ export default function DraftTeamsManageModal({
                                 }`}
                                 title={
                                   p.isOverridden
-                                    ? "Re-enable auto-lock for this protection"
+                                    ? "Re-enable auto-lock for this reservation"
                                     : "Disable auto-lock -- this round will stay open for a manual pick"
                                 }
                               >
@@ -517,7 +517,7 @@ export default function DraftTeamsManageModal({
                               <button
                                 onClick={() => handleDeleteProtection(p.id)}
                                 className="text-zinc-500 hover:text-rose-400 text-xs"
-                                title="Remove protection"
+                                title="Remove reservation"
                               >
                                 ✕
                               </button>

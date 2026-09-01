@@ -101,8 +101,8 @@ export default function CoachPairingDesk({
   /**
    * Fills every team's Head Coach and then Assistant Coach slot from the
    * unassigned coach list. Any coach with a detected linked child gets that
-   * child auto-attached at the current Protected Round; coaches with no
-   * linked child are still assigned to a team, just with nothing protected
+   * child auto-attached at the current Reserved Round; coaches with no
+   * linked child are still assigned to a team, just with nothing reserved
    * — that round stays open to draft normally for their team.
    */
   const handleAssignAllCoaches = () => {
@@ -181,7 +181,7 @@ export default function CoachPairingDesk({
             <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/20 text-emerald-400 font-bold text-xs">
               2
             </span>
-            Coach-to-Team Assignments & Child Protections ({ageGroup})
+            Coach-to-Team Assignments & Reservations ({ageGroup})
           </h3>
           <p className="text-xs text-slate-400 mt-1">
             Assign every coach to a draft team. If a coach has a linked child, it auto-loads at the round below —
@@ -197,7 +197,7 @@ export default function CoachPairingDesk({
       <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-slate-950/60 p-4 border border-slate-800">
         <div className="flex items-center gap-2">
           <label className="text-xs font-semibold text-slate-300">
-            Protected Round for Coaches&apos; Linked Children
+            Reserved Round for Coaches&apos; Linked Children
           </label>
           <input
             type="number"
@@ -301,7 +301,7 @@ export default function CoachPairingDesk({
               onChange={(e) => setPlayerNameInput(e.target.value)}
               className="w-full rounded-md bg-slate-900 border border-slate-700 px-3 py-1.5 text-sm text-white focus:border-emerald-500"
             >
-              <option value="">-- No protected pick --</option>
+              <option value="">-- No reservation --</option>
               {linkablePlayers.map((p) => (
                 <option key={p.id} value={p.fullName}>
                   {p.fullName}
@@ -359,8 +359,8 @@ export default function CoachPairingDesk({
                 <th className="px-3 py-2.5">Coach Name</th>
                 <th className="px-3 py-2.5">Role</th>
                 <th className="px-3 py-2.5">Assigned Draft Team</th>
-                <th className="px-3 py-2.5">Protected Child</th>
-                <th className="px-3 py-2.5 text-center">Lock Round</th>
+                <th className="px-3 py-2.5">Reserved Child</th>
+                <th className="px-3 py-2.5 text-center">Reserved Round</th>
                 <th className="px-3 py-2.5 text-right">Action</th>
               </tr>
             </thead>
