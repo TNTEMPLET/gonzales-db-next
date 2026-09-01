@@ -29,7 +29,6 @@ export default function DraftSessionEditModal({
 }: Props) {
   const [name, setName] = useState(session.name);
   const [draftType, setDraftType] = useState(session.draftType || "SNAKE");
-  const [status, setStatus] = useState(session.status || "SETUP");
   const [secondsPerPick, setSecondsPerPick] = useState(session.secondsPerPick || 120);
   const [totalRounds, setTotalRounds] = useState(session.totalRounds || 12);
   const [draftLeaderUserId, setDraftLeaderUserId] = useState(session.draftLeaderUserId || session.draftLeader?.id || "");
@@ -46,7 +45,6 @@ export default function DraftSessionEditModal({
         body: JSON.stringify({
           name,
           draftType,
-          status,
           secondsPerPick: secondsPerPick ? parseInt(String(secondsPerPick), 10) : null,
           totalRounds: parseInt(String(totalRounds), 10),
           draftLeaderUserId: draftLeaderUserId || null,
@@ -121,34 +119,16 @@ export default function DraftSessionEditModal({
             </p>
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">Draft Format</label>
-              <select
-                value={draftType}
-                onChange={(e) => setDraftType(e.target.value)}
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-white focus:border-emerald-500"
-              >
-                <option value="SNAKE">Snake (1..N, N..1)</option>
-                <option value="LINEAR">Linear (1..N, 1..N)</option>
-              </select>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-zinc-300 mb-1">Session Status</label>
-              <select
-                value={status}
-                onChange={(e) => setStatus(e.target.value)}
-                className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-white focus:border-emerald-500"
-              >
-                <option value="SETUP">SETUP</option>
-                <option value="PAIRED">PAIRED (Ready)</option>
-                <option value="LIVE">LIVE (In Progress)</option>
-                <option value="PAUSED">PAUSED</option>
-                <option value="COMPLETED">COMPLETED</option>
-                <option value="MATERIALIZED">MATERIALIZED</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs font-semibold text-zinc-300 mb-1">Draft Format</label>
+            <select
+              value={draftType}
+              onChange={(e) => setDraftType(e.target.value)}
+              className="w-full rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-2 text-sm text-white focus:border-emerald-500"
+            >
+              <option value="SNAKE">Snake (1..N, N..1)</option>
+              <option value="LINEAR">Linear (1..N, 1..N)</option>
+            </select>
           </div>
 
           <div className="grid grid-cols-2 gap-3">
