@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import type { CoachPairing, DraftUserRef } from "@/lib/draft/types";
+import type { CoachPairing, DraftCoachOption } from "@/lib/draft/types";
 import type { CoachPlayerMatchCandidate } from "@/lib/draft/coachPlayerMatcher";
 
 export type { CoachPairing };
@@ -9,7 +9,7 @@ export type { CoachPairing };
 type Props = {
   ageGroup: string;
   teamNames: string[];
-  availableCoaches: DraftUserRef[];
+  availableCoaches: DraftCoachOption[];
   suggestedMatches: CoachPlayerMatchCandidate[];
   registeredPlayers: { id: string; fullName: string }[];
   pairings: CoachPairing[];

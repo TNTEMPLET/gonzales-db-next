@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { DraftPlayerPoolItem, DraftTeam, DraftUserRef } from "@/lib/draft/types";
+import type { DraftCoachOption, DraftPlayerPoolItem, DraftTeam } from "@/lib/draft/types";
+import type { CoachPlayerMatchCandidate } from "@/lib/draft/coachPlayerMatcher";
 import { getErrorMessage } from "@/lib/draft/clientError";
 
-type CoachOption = DraftUserRef;
+type CoachOption = DraftCoachOption;
 
 function protectionTypeLabel(type: string): string {
   if (type === "ASSISTANT_COACH_CHILD") return "Assistant Child";
@@ -14,6 +15,9 @@ function protectionTypeLabel(type: string): string {
 
 type Props = {
   sessionId: string;
+  organizationId: string;
+  seasonYear: number;
+  ageGroup: string;
   availableCoaches: CoachOption[];
   totalRounds: number;
   onClose: () => void;
@@ -22,6 +26,9 @@ type Props = {
 
 export default function DraftTeamsManageModal({
   sessionId,
+  organizationId,
+  seasonYear,
+  ageGroup,
   availableCoaches,
   totalRounds,
   onClose,
@@ -41,6 +48,10 @@ export default function DraftTeamsManageModal({
   const [newChildRole, setNewChildRole] = useState<
     "HEAD_COACH_CHILD" | "ASSISTANT_COACH_CHILD" | "RETURNING_PLAYER"
   >("HEAD_COACH_CHILD");
+
+  const [suggestedMatches, setSuggestedMatches] = useState<CoachPlayerMatchCandidate[]>([]);
+  const [suggestedRoundInput, setSuggestedRoundInput] = useState(1);
+  const [acceptingSuggestionFor, setAcceptingSuggestionFor] = useState<string | null>(null);
 
   // `silent` skips the loading-spinner placeholder -- used for refetches after
   // a save (add/edit/reorder/delete) so the team list never gets swapped out
@@ -73,9 +84,26 @@ export default function DraftTeamsManageModal({
     }
   };
 
+  // Same division-scoped auto-detected coach/player matches CoachPairingDesk
+  // shows at creation time -- reused here so a coach added *after* setup
+  // (via the Head/Assistant Coach dropdowns below) can still get their
+  // linked child suggested instead of typed in by hand.
+  const fetchSuggestedMatches = async () => {
+    try {
+      const res = await fetch(
+        `/api/admin/draft/sessions?org=${organizationId}&seasonYear=${seasonYear}&context=true&ageGroup=${encodeURIComponent(ageGroup)}`,
+      );
+      const data = await res.json();
+      if (data.suggestedMatches) setSuggestedMatches(data.suggestedMatches);
+    } catch (e) {
+      console.error("Failed to load suggested matches:", e);
+    }
+  };
+
   useEffect(() => {
     fetchTeams();
     fetchPoolPlayers();
+    fetchSuggestedMatches();
   }, [sessionId]);
 
   // Players already linked to a protection anywhere in this session, so the
@@ -223,6 +251,56 @@ export default function DraftTeamsManageModal({
     }
   };
 
+  /**
+   * Finds the team a suggested match's coach is already assigned to (as
+   * either coach role) and reserves their linked child there directly --
+   * no team-assignment step needed, since that's the actual gap this panel
+   * fills: the coach was already added via the dropdowns above, they're
+   * just missing the reservation a fresh draft setup would have suggested.
+   * A coach not yet on any team in this session isn't actionable here; the
+   * suggestion still lists them so the admin knows to assign them first.
+   */
+  const findTeamForCoach = (coachUserId: string) => {
+    for (const team of teams) {
+      if ((team.headCoachUserId || team.headCoach?.id) === coachUserId) {
+        return { team, protectionType: "HEAD_COACH_CHILD" as const };
+      }
+      if ((team.assistantUserId || team.assistantCoach?.id) === coachUserId) {
+        return { team, protectionType: "ASSISTANT_COACH_CHILD" as const };
+      }
+    }
+    return null;
+  };
+
+  const handleAcceptSuggestedReservation = async (match: CoachPlayerMatchCandidate) => {
+    const target = findTeamForCoach(match.coachUserId);
+    if (!target) return;
+    setAcceptingSuggestionFor(match.coachUserId);
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sessionId}/protections`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          draftTeamId: target.team.id,
+          playerName: match.playerName,
+          protectedRound: suggestedRoundInput,
+          protectionType: target.protectionType,
+        }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to add reservation");
+      }
+      fetchTeams({ silent: true });
+      onUpdated();
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setAcceptingSuggestionFor(null);
+    }
+  };
+
   const handleUpdateProtectionRound = async (protectionId: string, round: number) => {
     try {
       const res = await fetch(`/api/admin/draft/sessions/${sessionId}/protections`, {
@@ -303,6 +381,62 @@ export default function DraftTeamsManageModal({
           <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-xs text-rose-400 flex items-center justify-between">
             <span>{error}</span>
             <button onClick={() => setError(null)} className="text-rose-300 hover:text-white font-bold ml-2">✕</button>
+          </div>
+        )}
+
+        {/* Suggested Reservations -- same auto-detected coach/child matches
+            shown at creation time, for coaches assigned after the fact. */}
+        {suggestedMatches.length > 0 && (
+          <div className="rounded-lg bg-amber-500/10 border border-amber-500/20 p-4 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-xs font-bold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                ⚡ Suggested Reservations ({suggestedMatches.length})
+              </h4>
+              <div className="flex items-center gap-2">
+                <label className="text-[11px] font-semibold text-zinc-300">Reserved Round</label>
+                <input
+                  type="number"
+                  min={1}
+                  max={20}
+                  value={suggestedRoundInput}
+                  onChange={(e) => setSuggestedRoundInput(parseInt(e.target.value, 10) || 1)}
+                  className="w-14 rounded bg-zinc-950 border border-zinc-800 px-1 py-0.5 text-center font-mono font-bold text-amber-400 text-xs"
+                />
+              </div>
+            </div>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {suggestedMatches.map((match, idx) => {
+                const target = findTeamForCoach(match.coachUserId);
+                const alreadyReserved = protectedPlayerNames.has(match.playerName);
+                return (
+                  <div
+                    key={idx}
+                    className="flex items-center justify-between rounded-lg bg-zinc-950/70 p-3 border border-zinc-800"
+                  >
+                    <div className="min-w-0 pr-2">
+                      <div className="text-sm font-semibold text-zinc-200 truncate">
+                        {match.coachName} ➔ <span className="text-emerald-400 font-bold">{match.playerName}</span>
+                      </div>
+                      <div className="text-xs text-zinc-400 truncate">
+                        {target ? `Team: ${target.team.teamName}` : "Not yet assigned to a team"}
+                      </div>
+                    </div>
+                    <button
+                      disabled={!target || alreadyReserved || acceptingSuggestionFor === match.coachUserId}
+                      onClick={() => handleAcceptSuggestedReservation(match)}
+                      title={!target ? "Assign this coach to a team first" : undefined}
+                      className="shrink-0 rounded-md bg-amber-500 px-3 py-1.5 text-xs font-bold text-zinc-950 hover:bg-amber-400 disabled:opacity-40 disabled:bg-zinc-800 disabled:text-zinc-500 transition-all shadow"
+                    >
+                      {alreadyReserved
+                        ? "✓ Reserved"
+                        : acceptingSuggestionFor === match.coachUserId
+                          ? "Adding..."
+                          : "Add Reservation"}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
           </div>
         )}
 
