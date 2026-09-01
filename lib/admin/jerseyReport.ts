@@ -58,7 +58,11 @@ export async function buildJerseyReportForDivision(params: {
   const { organizationId, seasonYear, ageGroup } = params;
 
   const teams = await prisma.team.findMany({
-    where: { organizationId, seasonYear, ageGroup },
+    // Excludes the "Unallocated" catch-all team (same convention as
+    // lib/enrollment/kpi.ts / lib/admin/jerseyNumbers.ts) -- players sitting
+    // there haven't been placed on a real roster yet, so they don't belong
+    // in a jersey order report.
+    where: { organizationId, seasonYear, ageGroup, NOT: { teamName: { equals: "Unallocated", mode: "insensitive" } } },
     orderBy: { teamName: "asc" },
     select: {
       teamName: true,
