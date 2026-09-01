@@ -430,57 +430,62 @@ export async function resolveAutoPicks(sessionId: string) {
 }
 
 /**
- * Undoes the most recently made pick, by actual creation time (pickedAt) --
- * not by overallPick position, since picks can now exist out of order
- * (pre-claimed protections in future rounds, drag-filled backfills). Only
- * rewinds the session's cursor if the undone pick actually advanced it when
- * it was created (`advancedCursor`) -- comparing the pick's slot to the
- * *current* cursor value isn't reliable on its own, since a cursor-advancing
- * pick can jump the cursor forward past several already-filled slots in one
- * step, making its own slot look identical to an old, unrelated backfill's.
- * Undoing an old backfill leaves the cursor untouched. For the everyday
- * all-sequential case this is identical to before, since every pick is a
- * cursor advance when nothing's ever been skipped or backfilled.
+ * Undoes one specific pick, by id, regardless of when it was made -- an
+ * early-round pick can be undone without touching anything made after it.
+ * Always frees the player and unclaims/overrides the protection if it was a
+ * protected pick, leaving the vacated slot open (fillable again later via
+ * drag-and-drop, exactly like a skipped slot).
+ *
+ * Only rewinds the session's cursor if this pick is *both* the single most
+ * recently created pick in the session (by pickedAt) *and* actually advanced
+ * the cursor when it was created (`advancedCursor`). `advancedCursor` alone
+ * isn't enough to check: several earlier picks can each have been
+ * cursor-advancing at the moment they were made, but only the most recent
+ * one still reflects where the live cursor currently sits -- rewinding for
+ * an older one would yank the live clock backward through every pick made
+ * since, which is exactly what undoing a single earlier pick must not do.
  */
-export async function undoLastDraftPick(sessionId: string) {
+export async function undoPickById(sessionId: string, pickId: string) {
   const session = await prisma.draftSession.findUnique({
     where: { id: sessionId },
     include: {
-      picks: {
-        orderBy: { pickedAt: "desc" },
-        take: 1,
-      },
+      picks: { orderBy: { pickedAt: "desc" } },
       teams: true,
     },
   });
 
-  if (!session || session.picks.length === 0) {
-    throw new Error("No picks to undo");
+  if (!session) {
+    throw new Error(`DraftSession not found: ${sessionId}`);
   }
 
-  const lastPick = session.picks[0];
+  const targetPick = session.picks.find((p) => p.id === pickId);
+  if (!targetPick) {
+    throw new Error("Pick not found in this draft session");
+  }
+
+  const isMostRecentPick = session.picks[0]?.id === targetPick.id;
 
   await prisma.$transaction(async (tx) => {
     // If the undone pick was a protected pick, unclaim the protection --
     // and mark it overridden so it doesn't just get auto-drafted right back
     // on the next poll. An admin can re-enable it from Manage Teams.
-    if (lastPick.isProtectedPick) {
+    if (targetPick.isProtectedPick) {
       await tx.coachPlayerProtection.updateMany({
         where: {
           draftSessionId: sessionId,
-          draftTeamId: lastPick.draftTeamId,
-          protectedRound: lastPick.round,
+          draftTeamId: targetPick.draftTeamId,
+          protectedRound: targetPick.round,
         },
         data: { isClaimed: false, isOverridden: true },
       });
     }
 
     // Delete the pick
-    await tx.draftPick.delete({ where: { id: lastPick.id } });
+    await tx.draftPick.delete({ where: { id: targetPick.id } });
 
     // Restore player pool status
     await tx.draftPlayerPool.update({
-      where: { id: lastPick.playerPoolId },
+      where: { id: targetPick.playerPoolId },
       data: {
         isDrafted: false,
         draftedTeamId: null,
@@ -488,14 +493,14 @@ export async function undoLastDraftPick(sessionId: string) {
       },
     });
 
-    const undonePickIndex = lastPick.overallPick - 1;
+    const undonePickIndex = targetPick.overallPick - 1;
     const prevRound = Math.floor(undonePickIndex / (session.teams.length || 1)) + 1;
 
     await tx.draftSession.update({
       where: { id: sessionId },
       data: {
         status: "LIVE",
-        ...(lastPick.advancedCursor
+        ...(isMostRecentPick && targetPick.advancedCursor
           ? { currentPickIndex: undonePickIndex, currentRound: prevRound }
           : {}),
       },
@@ -503,6 +508,26 @@ export async function undoLastDraftPick(sessionId: string) {
   });
 
   return await getDraftSessionState(sessionId);
+}
+
+/**
+ * Undoes the most recently made pick, by actual creation time (pickedAt) --
+ * not by overallPick position, since picks can exist out of order
+ * (pre-claimed protections in future rounds, drag-filled backfills, or an
+ * earlier pick undone via undoPickById). Thin wrapper over undoPickById so
+ * the existing "Undo Pick" button keeps its exact behavior.
+ */
+export async function undoLastDraftPick(sessionId: string) {
+  const lastPick = await prisma.draftPick.findFirst({
+    where: { draftSessionId: sessionId },
+    orderBy: { pickedAt: "desc" },
+  });
+
+  if (!lastPick) {
+    throw new Error("No picks to undo");
+  }
+
+  return undoPickById(sessionId, lastPick.id);
 }
 
 /**
