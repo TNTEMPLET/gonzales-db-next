@@ -4,7 +4,17 @@ import { getDraftSessionState, preClaimAllProtections, resolveAutoPicks } from "
 import { prisma } from "@/lib/prisma";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { draftApiError } from "@/lib/draft/apiError";
+import { withTransientDbRetry } from "@/lib/prismaRetry";
 
+/**
+ * Note: GET deliberately does NOT call resolveAutoPicks -- this route is
+ * polled every few seconds by every open admin tab, and running an extra
+ * read-modify-write pass on every single poll (instead of only right after a
+ * pick/skip/status change actually happens) was a meaningful, unnecessary
+ * source of load on live draft night. Every mutation that can leave an
+ * auto-resolvable pick pending (pick, skip, the LIVE transition, undo)
+ * already triggers resolveAutoPicks itself.
+ */
 export async function GET(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -16,8 +26,7 @@ export async function GET(
 
   try {
     const { id } = await params;
-    await resolveAutoPicks(id);
-    const state = await getDraftSessionState(id);
+    const state = await withTransientDbRetry(() => getDraftSessionState(id));
     return NextResponse.json(state);
   } catch (e) {
     return draftApiError("session.get", e, 404);
@@ -76,7 +85,11 @@ export async function PATCH(
     });
 
     if (status === "LIVE" && previousStatus !== "LIVE") {
-      await preClaimAllProtections(id);
+      await withTransientDbRetry(() => preClaimAllProtections(id));
+      // Covers a team on the clock from the very start with no protection
+      // but auto-draft enabled -- every other case is covered by the pick
+      // and skip routes calling this themselves right after they mutate.
+      await withTransientDbRetry(() => resolveAutoPicks(id));
     }
 
     return NextResponse.json({ session: updated });

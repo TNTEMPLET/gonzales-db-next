@@ -9,6 +9,7 @@ import {
 } from "@/lib/draft/draftEngine";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { draftApiError } from "@/lib/draft/apiError";
+import { withTransientDbRetry } from "@/lib/prismaRetry";
 
 export async function POST(
   req: NextRequest,
@@ -32,14 +33,14 @@ export async function POST(
     // onto an arbitrary open cell). Absent -> today's "pick for whoever's on
     // the clock" (unchanged for the existing click-to-draft flow).
     if (draftTeamId && round) {
-      await makeDraftPickForSlot(id, { draftTeamId, round, playerPoolId }, adminUserId);
+      await withTransientDbRetry(() => makeDraftPickForSlot(id, { draftTeamId, round, playerPoolId }, adminUserId));
     } else {
-      await makeDraftPick(id, playerPoolId, adminUserId);
+      await withTransientDbRetry(() => makeDraftPick(id, playerPoolId, adminUserId));
     }
     // If the next team(s) on the clock are also protected, cascade through
     // them immediately rather than waiting for the next poll to catch up.
-    await resolveAutoPicks(id);
-    return NextResponse.json(await getDraftSessionState(id));
+    await withTransientDbRetry(() => resolveAutoPicks(id));
+    return NextResponse.json(await withTransientDbRetry(() => getDraftSessionState(id)));
   } catch (e) {
     return draftApiError("pick.create", e, 400);
   }
@@ -61,11 +62,11 @@ export async function PATCH(
       return NextResponse.json({ error: "Unsupported action" }, { status: 400 });
     }
 
-    await skipCurrentPick(id);
+    await withTransientDbRetry(() => skipCurrentPick(id));
     // The next slot might itself be a protected/auto-draft pick -- cascade
     // through those immediately, same as after a normal pick.
-    await resolveAutoPicks(id);
-    return NextResponse.json(await getDraftSessionState(id));
+    await withTransientDbRetry(() => resolveAutoPicks(id));
+    return NextResponse.json(await withTransientDbRetry(() => getDraftSessionState(id)));
   } catch (e) {
     return draftApiError("pick.skip", e, 400);
   }
@@ -82,8 +83,12 @@ export async function DELETE(
 
   try {
     const { id } = await params;
-    const result = await undoLastDraftPick(id);
-    return NextResponse.json(result);
+    await withTransientDbRetry(() => undoLastDraftPick(id));
+    // The rewound cursor could land back on an auto-draft-enabled team's
+    // slot -- cascade through it immediately rather than leaving the draft
+    // silently stalled until someone happens to act.
+    await withTransientDbRetry(() => resolveAutoPicks(id));
+    return NextResponse.json(await withTransientDbRetry(() => getDraftSessionState(id)));
   } catch (e) {
     return draftApiError("pick.undo", e, 400);
   }

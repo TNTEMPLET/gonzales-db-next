@@ -5,6 +5,7 @@ import type { DraftSessionState } from "@/lib/draft/types";
 import { getErrorMessage } from "@/lib/draft/clientError";
 import { computePlayingAge } from "@/lib/draft/playingAge";
 import { formatCentralDateTime } from "@/lib/draft/centralTime";
+import { jitteredPollDelayMs } from "@/lib/draft/pollSchedule";
 
 type Props = {
   sessionId: string;
@@ -62,9 +63,21 @@ export default function CoachDraftRoom({ sessionId, orgQuery, onBack }: Props) {
   };
 
   useEffect(() => {
-    fetchState();
-    const interval = setInterval(fetchState, 5000);
-    return () => clearInterval(interval);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+
+    const loop = async () => {
+      await fetchState();
+      if (cancelled) return;
+      // 6-8s, jittered so every open tab doesn't poll in lock-step.
+      timer = setTimeout(loop, jitteredPollDelayMs(6000, 2000));
+    };
+    loop();
+
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sessionId]);
 
