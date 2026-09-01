@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Prisma } from "@prisma/client";
-import { getDraftSessionState, resolveAutoPicks } from "@/lib/draft/draftEngine";
+import { getDraftSessionState, preClaimAllProtections, resolveAutoPicks } from "@/lib/draft/draftEngine";
 import { prisma } from "@/lib/prisma";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { draftApiError } from "@/lib/draft/apiError";
@@ -57,6 +57,16 @@ export async function PATCH(
     if (currentRound !== undefined) dataToUpdate.currentRound = parseInt(String(currentRound), 10);
     if (currentPickIndex !== undefined) dataToUpdate.currentPickIndex = parseInt(String(currentPickIndex), 10);
 
+    // Pre-claim every unclaimed reserved player the instant the draft goes
+    // (or resumes) live, rather than lazily as the live sequence reaches
+    // each round -- run before the status flip so a client polling right
+    // after this PATCH already sees the pre-claimed picks.
+    let previousStatus: string | undefined;
+    if (status === "LIVE") {
+      const current = await prisma.draftSession.findUnique({ where: { id }, select: { status: true } });
+      previousStatus = current?.status;
+    }
+
     const updated = await prisma.draftSession.update({
       where: { id },
       data: dataToUpdate,
@@ -64,6 +74,10 @@ export async function PATCH(
         draftLeader: { select: { id: true, name: true, email: true } },
       },
     });
+
+    if (status === "LIVE" && previousStatus !== "LIVE") {
+      await preClaimAllProtections(id);
+    }
 
     return NextResponse.json({ session: updated });
   } catch (e) {
