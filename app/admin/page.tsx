@@ -185,6 +185,13 @@ export default async function AdminDashboardPage({
       action: masterMode ? "Open People Hub" : "Open People",
     },
     {
+      module: "SEASON_SETUP" as AdminModule,
+      href: `/admin/season-setup?org=${currentOrg || "gonzales"}`,
+      title: "Season Setup",
+      description: "Track season-setup progress: registration, coaches, drafts, jerseys, and schedule.",
+      action: "Open Season Setup",
+    },
+    {
       module: "TEAMS" as AdminModule,
       href: `/admin/competition?org=${currentOrg || "gonzales"}`,
       title: "Competition & Play Hub",

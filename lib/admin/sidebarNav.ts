@@ -69,6 +69,9 @@ export function buildAdminSidebarNav(
     id: "competition",
     label: ADMIN_DASHBOARD_CATEGORY_META.competition.label,
     leaves: [
+      ...(allowModule("SEASON_SETUP")
+        ? [{ id: "season-setup", label: "Season Setup", href: leafHref("/admin/season-setup", orgSuffix) }]
+        : []),
       ...(allowModule("TEAMS")
         ? [{ id: "teams", label: "Teams & Rosters", href: leafHref("/admin/teams", orgSuffix) }]
         : []),
