@@ -193,6 +193,24 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
     }
   };
 
+  const handleUndoPickById = async (pickId: string, playerName: string) => {
+    if (!confirm(`Undo ${playerName}'s pick? This reopens just that slot -- picks made since are left alone.`)) return;
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sessionId}/pick/${pickId}`, {
+        method: "DELETE",
+      });
+
+      if (!res.ok) {
+        const err = await res.json();
+        alert(`Undo failed: ${err.error}`);
+      } else {
+        await fetchState();
+      }
+    } catch (e) {
+      alert(`Error undoing pick: ${getErrorMessage(e)}`);
+    }
+  };
+
   const handleResetDraft = async () => {
     if (!confirm("⚠️ WARNING: This will delete all picks and restore the entire player pool to open status. Proceed?")) return;
     try {
@@ -841,7 +859,18 @@ export default function LiveDraftRoom({ sessionId, onMaterializeComplete, onBack
                   >
                     <div className="flex items-center justify-between text-[10px] text-zinc-500">
                       <span>R{roundNum}</span>
-                      {pick && <span className="font-mono text-zinc-400 font-bold">#{pick.overallPick}</span>}
+                      {pick && (
+                        <span className="flex items-center gap-1">
+                          <span className="font-mono text-zinc-400 font-bold">#{pick.overallPick}</span>
+                          <button
+                            onClick={() => handleUndoPickById(pick.id, player?.fullName ?? "this player")}
+                            className="leading-none text-zinc-600 hover:text-rose-400"
+                            title="Undo this pick"
+                          >
+                            ✕
+                          </button>
+                        </span>
+                      )}
                     </div>
 
                     {player ? (
