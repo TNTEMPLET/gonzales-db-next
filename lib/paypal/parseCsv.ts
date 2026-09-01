@@ -1,3 +1,5 @@
+import { parseCsvLine, splitCsvLines } from "@/lib/csv/parseCsv";
+
 export type PaypalCsvRow = {
   date: string;
   time: string;
@@ -127,49 +129,3 @@ export function scoreNameMatch(note: string, playerFullName: string): number {
   return 0;
 }
 
-// ─── Internal CSV parsing helpers ────────────────────────────────────────────
-
-function splitCsvLines(text: string): string[] {
-  const lines: string[] = [];
-  let cur = "";
-  let inQ = false;
-  for (let i = 0; i < text.length; i++) {
-    const ch = text[i];
-    if (ch === '"') {
-      inQ = !inQ;
-      cur += ch;
-    } else if ((ch === "\n" || ch === "\r") && !inQ) {
-      if (ch === "\r" && text[i + 1] === "\n") i++;
-      if (cur) lines.push(cur);
-      cur = "";
-    } else {
-      cur += ch;
-    }
-  }
-  if (cur) lines.push(cur);
-  return lines;
-}
-
-function parseCsvLine(line: string): string[] {
-  const cols: string[] = [];
-  let cur = "";
-  let inQ = false;
-  for (let i = 0; i < line.length; i++) {
-    const ch = line[i];
-    if (ch === '"') {
-      if (inQ && line[i + 1] === '"') {
-        cur += '"';
-        i++;
-      } else {
-        inQ = !inQ;
-      }
-    } else if (ch === "," && !inQ) {
-      cols.push(cur);
-      cur = "";
-    } else {
-      cur += ch;
-    }
-  }
-  cols.push(cur);
-  return cols;
-}

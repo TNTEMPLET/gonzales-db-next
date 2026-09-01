@@ -1,10 +1,93 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { DraftPlayerPoolItem } from "@/lib/draft/types";
 import { getErrorMessage } from "@/lib/draft/clientError";
+import { parseCsvLine, splitCsvLines } from "@/lib/csv/parseCsv";
+import { toCsvDocument } from "@/lib/export/csv";
 
 type DraftPlayer = DraftPlayerPoolItem;
+
+type ImportRow = {
+  firstName: string | null;
+  lastName: string | null;
+  fullName: string;
+  guardianEmail: string | null;
+  guardianPhone: string | null;
+  birthDate: string | null;
+  evaluationScore: string | null;
+  pitcherRating: string | null;
+  catcherRating: string | null;
+  notes: string | null;
+};
+
+const IMPORT_TEMPLATE_HEADERS = [
+  "First Name",
+  "Last Name",
+  "Guardian Email",
+  "Guardian Phone",
+  "Birth Date",
+  "Evaluation Score",
+  "Pitcher Rating",
+  "Catcher Rating",
+  "Notes",
+];
+
+/** Matches a CSV header cell against one of several accepted spellings, case/space/underscore-insensitive. */
+function matchHeader(header: string, candidates: string[]): boolean {
+  const normalized = header.trim().toLowerCase().replace(/[\s_]+/g, "");
+  return candidates.some((c) => c.toLowerCase().replace(/[\s_]+/g, "") === normalized);
+}
+
+function parsePlayersCsv(text: string): { rows: ImportRow[]; blankNameCount: number } {
+  const lines = splitCsvLines(text.replace(/^﻿/, ""));
+  if (lines.length === 0) return { rows: [], blankNameCount: 0 };
+
+  const header = parseCsvLine(lines[0]);
+  const colIndex = (candidates: string[]) => header.findIndex((h) => matchHeader(h, candidates));
+
+  const idx = {
+    firstName: colIndex(["First Name", "firstName", "First"]),
+    lastName: colIndex(["Last Name", "lastName", "Last"]),
+    fullName: colIndex(["Full Name", "fullName", "Name"]),
+    guardianEmail: colIndex(["Guardian Email", "guardianEmail", "Email"]),
+    guardianPhone: colIndex(["Guardian Phone", "guardianPhone", "Phone"]),
+    birthDate: colIndex(["Birth Date", "birthDate", "DOB"]),
+    evaluationScore: colIndex(["Evaluation Score", "evaluationScore", "Score"]),
+    pitcherRating: colIndex(["Pitcher Rating", "pitcherRating"]),
+    catcherRating: colIndex(["Catcher Rating", "catcherRating"]),
+    notes: colIndex(["Notes", "notes"]),
+  };
+
+  const cell = (cols: string[], i: number) => (i >= 0 ? (cols[i] || "").trim() || null : null);
+
+  let blankNameCount = 0;
+  const rows: ImportRow[] = [];
+  for (const line of lines.slice(1)) {
+    const cols = parseCsvLine(line);
+    const firstName = cell(cols, idx.firstName);
+    const lastName = cell(cols, idx.lastName);
+    const explicitFullName = cell(cols, idx.fullName);
+    const fullName = explicitFullName || `${firstName || ""} ${lastName || ""}`.trim();
+    if (!fullName) {
+      blankNameCount++;
+      continue;
+    }
+    rows.push({
+      firstName,
+      lastName,
+      fullName,
+      guardianEmail: cell(cols, idx.guardianEmail),
+      guardianPhone: cell(cols, idx.guardianPhone),
+      birthDate: cell(cols, idx.birthDate),
+      evaluationScore: cell(cols, idx.evaluationScore),
+      pitcherRating: cell(cols, idx.pitcherRating),
+      catcherRating: cell(cols, idx.catcherRating),
+      notes: cell(cols, idx.notes),
+    });
+  }
+  return { rows, blankNameCount };
+}
 
 type Props = {
   sessionId: string;
@@ -34,6 +117,15 @@ export default function DraftPlayersManageModal({
   const [catcherRating, setCatcherRating] = useState("");
   const [notes, setNotes] = useState("");
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
+
+  // CSV import state
+  const [showImportForm, setShowImportForm] = useState(false);
+  const [importRows, setImportRows] = useState<ImportRow[]>([]);
+  const [importBlankNameCount, setImportBlankNameCount] = useState(0);
+  const [importFileName, setImportFileName] = useState("");
+  const [importing, setImporting] = useState(false);
+  const importFileInputRef = useRef<HTMLInputElement>(null);
 
   const fetchPlayers = async () => {
     setLoading(true);
@@ -163,6 +255,63 @@ export default function DraftPlayersManageModal({
     }
   };
 
+  const handleDownloadTemplate = () => {
+    const csv = toCsvDocument(IMPORT_TEMPLATE_HEADERS, [
+      ["Jordan", "Smith", "parent@example.com", "555-123-4567", "2016-04-12", "85.5", "3", "2", "Left-handed"],
+    ]);
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "draft-player-pool-template.csv";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImportFileSelected = async (file: File) => {
+    setError(null);
+    setNotice(null);
+    const text = await file.text();
+    const { rows, blankNameCount } = parsePlayersCsv(text);
+    setImportRows(rows);
+    setImportBlankNameCount(blankNameCount);
+    setImportFileName(file.name);
+  };
+
+  const handleConfirmImport = async () => {
+    if (importRows.length === 0) return;
+    setImporting(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const res = await fetch(`/api/admin/draft/sessions/${sessionId}/players`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "import", players: importRows }),
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Failed to import players");
+      }
+      const data = await res.json();
+      const skippedNote = data.skipped > 0 ? ` (${data.skipped} row${data.skipped === 1 ? "" : "s"} skipped -- no name)` : "";
+      setNotice(`Imported ${data.count} player${data.count === 1 ? "" : "s"}${skippedNote}.`);
+      setShowImportForm(false);
+      setImportRows([]);
+      setImportBlankNameCount(0);
+      setImportFileName("");
+      if (importFileInputRef.current) importFileInputRef.current.value = "";
+      fetchPlayers();
+      onUpdated();
+    } catch (e) {
+      setError(getErrorMessage(e));
+    } finally {
+      setImporting(false);
+    }
+  };
+
   const filteredPlayers = players.filter(
     (p) =>
       p.fullName.toLowerCase().includes(search.toLowerCase()) ||
@@ -193,6 +342,11 @@ export default function DraftPlayersManageModal({
             {error}
           </div>
         )}
+        {notice && (
+          <div className="rounded-lg bg-emerald-500/10 border border-emerald-500/30 p-3 text-xs text-emerald-300">
+            {notice}
+          </div>
+        )}
 
         {/* Action Header / Search */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
@@ -204,16 +358,103 @@ export default function DraftPlayersManageModal({
             className="w-full sm:w-72 rounded-lg bg-zinc-950 border border-zinc-800 px-3 py-1.5 text-xs text-white focus:border-emerald-500"
           />
 
-          <button
-            onClick={() => {
-              resetForm();
-              setShowAddForm(true);
-            }}
-            className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 shadow"
-          >
-            + Add Walk-up / Late Player
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              onClick={handleDownloadTemplate}
+              className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white"
+              title="Download a CSV template with the expected columns"
+            >
+              ⬇️ Download Template
+            </button>
+            <button
+              onClick={() => {
+                setShowAddForm(false);
+                setShowImportForm(true);
+              }}
+              className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white"
+            >
+              ⬆️ Import CSV
+            </button>
+            <button
+              onClick={() => {
+                setShowImportForm(false);
+                resetForm();
+                setShowAddForm(true);
+              }}
+              className="rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white hover:bg-emerald-500 shadow"
+            >
+              + Add Walk-up / Late Player
+            </button>
+          </div>
         </div>
+
+        {/* CSV Import Drawer */}
+        {showImportForm && (
+          <div className="rounded-xl border border-emerald-500/30 bg-zinc-950 p-4 space-y-3">
+            <div className="flex items-center justify-between border-b border-zinc-800 pb-2">
+              <h4 className="text-sm font-bold text-emerald-400">⬆️ Import Players from CSV</h4>
+              <button
+                onClick={() => {
+                  setShowImportForm(false);
+                  setImportRows([]);
+                  setImportBlankNameCount(0);
+                  setImportFileName("");
+                  if (importFileInputRef.current) importFileInputRef.current.value = "";
+                }}
+                className="text-xs text-zinc-400 hover:text-white"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <input
+              ref={importFileInputRef}
+              type="file"
+              accept=".csv,text/csv"
+              onChange={(e) => {
+                const file = e.target.files?.[0];
+                if (file) handleImportFileSelected(file);
+              }}
+              className="w-full text-xs text-zinc-300 file:mr-3 file:rounded file:border-0 file:bg-zinc-800 file:px-3 file:py-1.5 file:text-xs file:font-semibold file:text-zinc-300 hover:file:bg-zinc-700"
+            />
+
+            {importFileName && (
+              <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3 text-xs text-zinc-300 space-y-1">
+                <div>
+                  <span className="font-semibold text-white">{importFileName}</span> --{" "}
+                  {importRows.length} player{importRows.length === 1 ? "" : "s"} ready to import
+                  {importBlankNameCount > 0 && (
+                    <span className="text-amber-400">
+                      {" "}
+                      ({importBlankNameCount} row{importBlankNameCount === 1 ? "" : "s"} skipped -- no name)
+                    </span>
+                  )}
+                </div>
+                {importRows.length > 0 && (
+                  <div className="max-h-32 overflow-y-auto text-[11px] text-zinc-400 space-y-0.5 pt-1">
+                    {importRows.slice(0, 8).map((r, i) => (
+                      <div key={i}>
+                        {r.fullName}
+                        {r.guardianEmail ? ` -- ${r.guardianEmail}` : ""}
+                      </div>
+                    ))}
+                    {importRows.length > 8 && <div>...and {importRows.length - 8} more</div>}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="flex justify-end gap-2 pt-2 border-t border-zinc-800/60">
+              <button
+                onClick={handleConfirmImport}
+                disabled={importing || importRows.length === 0}
+                className="rounded bg-emerald-600 px-4 py-1 text-xs font-bold text-white hover:bg-emerald-500 disabled:opacity-50"
+              >
+                {importing ? "Importing..." : `Import ${importRows.length} Player${importRows.length === 1 ? "" : "s"}`}
+              </button>
+            </div>
+          </div>
+        )}
 
         {/* Add / Edit Player Drawer/Form */}
         {showAddForm && (
