@@ -10,6 +10,12 @@ export type DraftUserRef = {
   email: string;
 };
 
+/** A coach available for assignment, from `GET /sessions?context=true` -- carries the coach's own division so callers can scope the picker to a specific draft's age group. */
+export type DraftCoachOption = DraftUserRef & {
+  ageGroup: string | null;
+  assignedTeam: string | null;
+};
+
 /** A candidate for Draft Leader assignment, from `GET /sessions?context=true`. */
 export type DraftLeaderOption = DraftUserRef & {
   isBoardMember?: boolean;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import CoachPairingDesk from "./CoachPairingDesk";
 import LiveDraftRoom from "./LiveDraftRoom";
 import DraftSessionEditModal from "./DraftSessionEditModal";
@@ -10,10 +10,10 @@ import DraftInviteModal from "./DraftInviteModal";
 import { getSiteConfigForOrg, isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 import type {
   CoachPairing,
+  DraftCoachOption,
   DraftLeaderOption,
   DraftSession,
   DraftSessionListItem,
-  DraftUserRef,
 } from "@/lib/draft/types";
 import type { CoachPlayerMatchCandidate } from "@/lib/draft/coachPlayerMatcher";
 import { getErrorMessage } from "@/lib/draft/clientError";
@@ -55,7 +55,12 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
   const [registeredPlayers, setRegisteredPlayers] = useState<{ id: string; fullName: string }[]>([]);
 
   const [pairings, setPairings] = useState<CoachPairing[]>([]);
-  const [availableCoaches, setAvailableCoaches] = useState<DraftUserRef[]>([]);
+  const [availableCoaches, setAvailableCoaches] = useState<DraftCoachOption[]>([]);
+  // The division to scope `availableCoaches` down to -- `selectedAgeGroup`
+  // while creating a session, or a specific existing session's own
+  // ageGroup while managing its teams. Coaches carry their ageGroup from
+  // the API but the org-wide list isn't pre-filtered by it server-side.
+  const [coachScopeAgeGroup, setCoachScopeAgeGroup] = useState<string>(STANDARD_DIVISIONS[0]);
   const [availableDraftLeaders, setAvailableDraftLeaders] = useState<DraftLeaderOption[]>([]);
   const [suggestedMatches, setSuggestedMatches] = useState<CoachPlayerMatchCandidate[]>([]);
   const [contextLoading, setContextLoading] = useState(false);
@@ -72,6 +77,15 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
     .split("\n")
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
+
+  // Scoped to the current division, falling back to the full org-wide list
+  // when a division has no coach profiles tagged with that ageGroup yet
+  // (never show an empty picker just because the tagging is incomplete).
+  const scopedAvailableCoaches = useMemo(() => {
+    const normalized = coachScopeAgeGroup.trim().toLowerCase();
+    const filtered = availableCoaches.filter((c) => (c.ageGroup || "").trim().toLowerCase() === normalized);
+    return filtered.length > 0 ? filtered : availableCoaches;
+  }, [availableCoaches, coachScopeAgeGroup]);
 
   const fetchSessions = async () => {
     setLoading(true);
@@ -129,6 +143,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
     setNotice(null);
     const ag = ageGroup || selectedAgeGroup;
     setSelectedAgeGroup(ag);
+    setCoachScopeAgeGroup(ag);
     setDraftName(`${seasonYear} ${ag} Draft`);
     fetchContext(ag);
     setViewMode("CREATE");
@@ -396,7 +411,11 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                         {invitingSessionLoading === sess.id ? "Loading..." : "📅 Schedule"}
                       </button>
                       <button
-                        onClick={() => setManagingTeamsSessionId(sess.id)}
+                        onClick={() => {
+                          setCoachScopeAgeGroup(sess.ageGroup);
+                          fetchContext(sess.ageGroup);
+                          setManagingTeamsSessionId(sess.id);
+                        }}
                         className="rounded-lg bg-zinc-800 px-2 py-1.5 text-[11px] font-semibold text-zinc-300 hover:bg-zinc-700 hover:text-white text-center"
                         title="Manage Teams & Draft Order"
                       >
@@ -490,6 +509,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
                   onChange={(e) => {
                     const group = e.target.value;
                     setSelectedAgeGroup(group);
+                    setCoachScopeAgeGroup(group);
                     setDraftName(`${seasonYear} ${group} Draft`);
                     fetchContext(group);
                   }}
@@ -617,7 +637,7 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
           <CoachPairingDesk
             ageGroup={selectedAgeGroup}
             teamNames={parsedTeamNames}
-            availableCoaches={availableCoaches}
+            availableCoaches={scopedAvailableCoaches}
             suggestedMatches={suggestedMatches}
             registeredPlayers={registeredPlayers}
             pairings={pairings}
@@ -670,7 +690,10 @@ export default function OnlineDraftDesk({ targetOrg, seasonYear }: Props) {
       {managingTeamsSessionId && (
         <DraftTeamsManageModal
           sessionId={managingTeamsSessionId}
-          availableCoaches={availableCoaches}
+          organizationId={targetOrg}
+          seasonYear={seasonYear}
+          ageGroup={sessions.find((s) => s.id === managingTeamsSessionId)?.ageGroup || coachScopeAgeGroup}
+          availableCoaches={scopedAvailableCoaches}
           totalRounds={
             sessions.find((s) => s.id === managingTeamsSessionId)?.totalRounds || 12
           }
