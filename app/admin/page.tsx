@@ -26,6 +26,11 @@ import {
   isAdminModuleEnabledForOrg,
   type ContentOrgId,
 } from "@/lib/siteConfig";
+import {
+  getPrimaryLiveContentOrg,
+  getSeasonConfigForOrg,
+  isSeasonLiveForOrg,
+} from "@/lib/seasonConfig";
 import { isCommunicationsModuleEnabled } from "@/lib/communications/config";
 import prisma from "@/lib/prisma";
 import {
@@ -63,16 +68,28 @@ export default async function AdminDashboardPage({
     org && CONTENT_ORGS.includes(org as ContentOrgId)
       ? (org as ContentOrgId)
       : null;
+  const allSitesRequested = masterMode && org === "all";
 
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
 
   if (!adminUser) {
-    redirect("/admin/login?next=/admin");
+    const nextOrg =
+      requestedOrg ?? (allSitesRequested ? "all" : getPrimaryLiveContentOrg());
+    redirect(`/admin/login?next=/admin?org=${nextOrg}`);
+  }
+
+  // Bare /admin on master used to land on All Sites, which forced a click
+  // into the live org every visit. Redirect onto that org so the switcher,
+  // sidebar, and module links share the same target. Explicit ?org=all
+  // still opens the aggregate view.
+  if (masterMode && !requestedOrg && !allSitesRequested) {
+    redirect(`/admin?org=${getPrimaryLiveContentOrg()}`);
   }
 
   const currentOrg = masterMode ? requestedOrg : getDefaultContentOrg();
+  const moduleOrgFallback = currentOrg ?? getPrimaryLiveContentOrg();
 
   const displayName =
     [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") ||
@@ -177,7 +194,7 @@ export default async function AdminDashboardPage({
   const cards = sortAdminDashboardCards([
     {
       module: "USERS" as AdminModule,
-      href: `/admin/people?org=${currentOrg || "gonzales"}`,
+      href: `/admin/people?org=${moduleOrgFallback}`,
       title: "People & Access Hub",
       description: masterMode
         ? "Accounts, volunteer compliance cards (JDP / Abuse Awareness), coaching interest, and Master Role Assignments."
@@ -186,14 +203,14 @@ export default async function AdminDashboardPage({
     },
     {
       module: "SEASON_SETUP" as AdminModule,
-      href: `/admin/season-setup?org=${currentOrg || "gonzales"}`,
+      href: `/admin/season-setup?org=${moduleOrgFallback}`,
       title: "Season Setup",
       description: "Track season-setup progress: registration, coaches, drafts, jerseys, and schedule.",
       action: "Open Season Setup",
     },
     {
       module: "TEAMS" as AdminModule,
-      href: `/admin/competition?org=${currentOrg || "gonzales"}`,
+      href: `/admin/competition?org=${moduleOrgFallback}`,
       title: "Competition & Play Hub",
       description: masterMode
         ? "Teams & rosters, game scores, Fall Ball scheduler, Assignr umpires, SportsConnect imports, and registration windows."
@@ -202,7 +219,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "TOURNAMENT_BRACKETS" as AdminModule,
-      href: `/admin/park?org=${currentOrg || "gonzales"}`,
+      href: `/admin/park?org=${moduleOrgFallback}`,
       title: "Park & Tournament Hub",
       description: masterMode
         ? "Bracket creator, tournament monitor readiness, rainout alerts, and park rules/field layouts."
@@ -211,7 +228,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "COMMUNICATIONS" as AdminModule,
-      href: `/admin/publishing?org=${currentOrg || "gonzales"}`,
+      href: `/admin/publishing?org=${moduleOrgFallback}`,
       title: "Publishing & Comms Center",
       description: masterMode
         ? "Email broadcast campaigns (Resend), news announcements, Facebook post drafts, Dugout moderation, and shared Drive files."
@@ -220,7 +237,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "ENROLLMENT_KPI" as AdminModule,
-      href: `/admin/enrollment?org=${currentOrg || "gonzales"}`,
+      href: `/admin/enrollment?org=${moduleOrgFallback}`,
       title: "Enrollment & KPIs",
       description: masterMode
         ? "Registration counts, revenue collected vs. outstanding, fee-tier breakdown, and team fill status across organizations."
@@ -229,7 +246,7 @@ export default async function AdminDashboardPage({
     },
     {
       module: "ALL_STAR_PAYMENTS" as AdminModule,
-      href: `/admin/orders?org=${currentOrg || "gonzales"}`,
+      href: `/admin/orders?org=${moduleOrgFallback}`,
       title: "Orders & Commerce Desk",
       description: masterMode
         ? "Fulfill cap orders, manage championship shirt orders, review merch catalog PayPal links, sponsors, and payment reports."
@@ -251,8 +268,14 @@ export default async function AdminDashboardPage({
   })));
 
   const visibleModuleCount = cards.length;
+  const liveSeasonLabel = currentOrg
+    ? getSeasonConfigForOrg(currentOrg).label
+    : null;
+  const currentOrgIsLive = currentOrg ? isSeasonLiveForOrg(currentOrg) : false;
   const targetExplanation = currentOrg
-    ? `Operating on behalf of ${getOrgDisplayName(currentOrg)}.`
+    ? currentOrgIsLive
+      ? `Operating on behalf of ${getOrgDisplayName(currentOrg)} — ${liveSeasonLabel} is the live season.`
+      : `Operating on behalf of ${getOrgDisplayName(currentOrg)} (${liveSeasonLabel}).`
     : "Showing tools available across all sites.";
 
   const statusChips = [

@@ -13,6 +13,7 @@ import {
 } from "@/lib/auth/adminRoles";
 import { isAdminModuleEnabledForOrg, isContentOrgId } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
+import { getPrimaryLiveContentOrg } from "@/lib/seasonConfig";
 import { buildAdminSidebarNav, type AdminSidebarSubcategory } from "@/lib/admin/sidebarNav";
 import { useAdminSidebar } from "@/components/admin/AdminSidebarProvider";
 
@@ -67,8 +68,9 @@ export default function AdminSidebar() {
   }
 
   const masterRole = adminRole ? toAdminRole(adminRole) : null;
-  const orgSuffix = currentOrgParam ? `?org=${encodeURIComponent(currentOrgParam)}` : "";
-  const currentMasterOrg = isContentOrgId(currentOrgParam) ? currentOrgParam : null;
+  const effectiveOrgParam = currentOrgParam ?? getPrimaryLiveContentOrg();
+  const orgSuffix = `?org=${encodeURIComponent(effectiveOrgParam)}`;
+  const currentMasterOrg = isContentOrgId(effectiveOrgParam) ? effectiveOrgParam : null;
 
   const allowModule = (module: AdminModule) => {
     if (!isAdminModuleEnabledForOrg(currentMasterOrg, module)) return false;

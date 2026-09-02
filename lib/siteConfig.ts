@@ -2,6 +2,7 @@ import {
   isAdminModuleEnabledInCapabilities,
   isPublicNavEnabledInCapabilities,
 } from "@/lib/org/capabilities";
+import { getPrimaryLiveContentOrg } from "@/lib/seasonConfig";
 
 export type OrgId =
   | "gonzales"
@@ -224,6 +225,9 @@ export function resolveAdminTargetOrg(
 ): ContentOrgId {
   if (isMasterDeployment() && isContentOrgId(requestedOrg)) {
     return requestedOrg;
+  }
+  if (isMasterDeployment()) {
+    return getPrimaryLiveContentOrg();
   }
   return getDefaultContentOrg();
 }
