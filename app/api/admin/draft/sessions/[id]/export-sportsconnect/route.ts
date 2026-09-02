@@ -5,11 +5,25 @@ import { draftApiError } from "@/lib/draft/apiError";
 import { normalizeLooseName } from "@/app/api/admin/teams/import/route";
 import { toCsvDocument } from "@/lib/export/csv";
 import prisma from "@/lib/prisma";
+import type { TeamCoachRole } from "@prisma/client";
 
 type ExportRow = {
   teamName: string;
   fullName: string;
   playerId: string | null;
+};
+
+type PersonnelRow = {
+  teamName: string;
+  personnelName: string;
+  personnelRole: string;
+  volunteerId: string | null;
+  volunteerTypeId: string | null;
+};
+
+const TEAM_COACH_ROLE_LABELS: Record<TeamCoachRole, string> = {
+  HEAD_COACH: "Head Coach",
+  ASSISTANT_COACH: "Assistant Coach",
 };
 
 /**
@@ -27,7 +41,14 @@ async function buildExportRows(session: {
   organizationId: string;
   seasonYear: number;
   ageGroup: string;
-}): Promise<{ rows: ExportRow[]; totalPlayers: number; unresolvedCount: number }> {
+}): Promise<{
+  rows: ExportRow[];
+  totalPlayers: number;
+  unresolvedCount: number;
+  personnelRows: PersonnelRow[];
+  totalPersonnel: number;
+  unresolvedPersonnelCount: number;
+}> {
   const draftTeams = await prisma.draftTeam.findMany({
     where: { draftSessionId: session.id, targetTeamId: { not: null } },
     select: { targetTeamId: true },
@@ -40,6 +61,12 @@ async function buildExportRows(session: {
     select: {
       teamName: true,
       players: { select: { fullName: true, sportsConnectPlayerId: true } },
+      coachAssignments: {
+        select: {
+          role: true,
+          registeredUser: { select: { id: true, name: true, firstName: true, lastName: true } },
+        },
+      },
     },
   });
 
@@ -59,8 +86,21 @@ async function buildExportRows(session: {
     else enrollmentsByName.set(key, [e]);
   }
 
+  const registeredUserIds = Array.from(
+    new Set(teams.flatMap((t) => t.coachAssignments.map((a) => a.registeredUser.id))),
+  );
+  const orgProfiles = registeredUserIds.length
+    ? await prisma.registeredUserOrgProfile.findMany({
+        where: { registeredUserId: { in: registeredUserIds }, organizationId: session.organizationId },
+        select: { registeredUserId: true, sportsConnectVolunteerId: true, sportsConnectVolunteerTypeId: true },
+      })
+    : [];
+  const orgProfileByUserId = new Map(orgProfiles.map((p) => [p.registeredUserId, p]));
+
   const rows: ExportRow[] = [];
   let unresolvedCount = 0;
+  const personnelRows: PersonnelRow[] = [];
+  let unresolvedPersonnelCount = 0;
 
   for (const team of teams) {
     const teamName = team.teamName;
@@ -75,11 +115,37 @@ async function buildExportRows(session: {
       if (!playerId) unresolvedCount += 1;
       rows.push({ teamName, fullName: player.fullName, playerId: playerId ?? null });
     }
+    for (const assignment of team.coachAssignments) {
+      const profile = orgProfileByUserId.get(assignment.registeredUser.id);
+      const volunteerId = profile?.sportsConnectVolunteerId ?? null;
+      const volunteerTypeId = profile?.sportsConnectVolunteerTypeId ?? null;
+      if (!volunteerId) unresolvedPersonnelCount += 1;
+      const personnelName =
+        assignment.registeredUser.name ||
+        [assignment.registeredUser.firstName, assignment.registeredUser.lastName].filter(Boolean).join(" ");
+      personnelRows.push({
+        teamName,
+        personnelName,
+        personnelRole: TEAM_COACH_ROLE_LABELS[assignment.role],
+        volunteerId,
+        volunteerTypeId,
+      });
+    }
   }
 
   rows.sort((a, b) => a.teamName.localeCompare(b.teamName) || a.fullName.localeCompare(b.fullName));
+  personnelRows.sort(
+    (a, b) => a.teamName.localeCompare(b.teamName) || a.personnelName.localeCompare(b.personnelName),
+  );
 
-  return { rows, totalPlayers: rows.length, unresolvedCount };
+  return {
+    rows,
+    totalPlayers: rows.length,
+    unresolvedCount,
+    personnelRows,
+    totalPersonnel: personnelRows.length,
+    unresolvedPersonnelCount,
+  };
 }
 
 export async function GET(
@@ -107,11 +173,25 @@ export async function GET(
       );
     }
 
-    const { rows, totalPlayers, unresolvedCount } = await buildExportRows(session);
+    const {
+      rows,
+      totalPlayers,
+      unresolvedCount,
+      personnelRows,
+      totalPersonnel,
+      unresolvedPersonnelCount,
+    } = await buildExportRows(session);
 
     const isPreview = req.nextUrl.searchParams.get("preview") === "1";
     if (isPreview) {
-      return NextResponse.json({ rows, totalPlayers, unresolvedCount });
+      return NextResponse.json({
+        rows,
+        totalPlayers,
+        unresolvedCount,
+        personnelRows,
+        totalPersonnel,
+        unresolvedPersonnelCount,
+      });
     }
 
     const header = [
@@ -123,10 +203,18 @@ export async function GET(
       "Team Personnel Name",
       "Team Personnel Role",
     ];
-    const csv = toCsvDocument(
-      header,
-      rows.map((r) => [r.teamName, r.playerId ?? "", "", "", r.fullName, "", ""]),
-    );
+    const csv = toCsvDocument(header, [
+      ...rows.map((r) => [r.teamName, r.playerId ?? "", "", "", r.fullName, "", ""]),
+      ...personnelRows.map((r) => [
+        r.teamName,
+        "",
+        r.volunteerId ?? "",
+        r.volunteerTypeId ?? "",
+        "",
+        r.personnelName,
+        r.personnelRole,
+      ]),
+    ]);
 
     return new NextResponse(csv, {
       status: 200,
