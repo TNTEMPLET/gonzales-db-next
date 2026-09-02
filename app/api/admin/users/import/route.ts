@@ -35,10 +35,27 @@ export function emptyUndoPayload() {
   };
 }
 
+const rowHeaderCache = new WeakMap<CsvRow, Map<string, string>>();
+
 export function getRowValue(row: CsvRow, keys: string[]) {
   for (const key of keys) {
     if (row[key] !== undefined && row[key] !== null) {
       return String(row[key]).trim();
+    }
+  }
+  // Fallback: SportsConnect export headers vary in casing across files/orgs
+  // (e.g. "Volunteer Id" vs "Volunteer ID") -- exact match above is
+  // intentionally tried first to keep behavior stable, this only fires on a miss.
+  let lowerMap = rowHeaderCache.get(row);
+  if (!lowerMap) {
+    lowerMap = new Map();
+    for (const k of Object.keys(row)) lowerMap.set(k.toLowerCase(), k);
+    rowHeaderCache.set(row, lowerMap);
+  }
+  for (const key of keys) {
+    const actualKey = lowerMap.get(key.toLowerCase());
+    if (actualKey !== undefined && row[actualKey] !== undefined && row[actualKey] !== null) {
+      return String(row[actualKey]).trim();
     }
   }
   return "";
@@ -356,6 +373,10 @@ export async function applyCoachImportRows(params: {
         "Shirt Size",
         "Uniform Size",
       ]) || null;
+    const sportsConnectVolunteerId =
+      getRowValue(row, ["Volunteer Id", "VolunteerId"]) || null;
+    const sportsConnectVolunteerTypeId =
+      getRowValue(row, ["Volunteer Type Id", "Volunteer Role Type Id", "VolunteerTypeId"]) || null;
 
     // Global identity lookup, matched by email alone (not scoped to this
     // org) — a person already known from another org, or from an earlier
@@ -424,6 +445,8 @@ export async function applyCoachImportRows(params: {
         ageGroup,
         assignedTeam,
         jerseySize,
+        sportsConnectVolunteerId,
+        sportsConnectVolunteerTypeId,
       },
       update: {
         ageGroup,
@@ -433,6 +456,9 @@ export async function applyCoachImportRows(params: {
         // exports won't carry this column at all, and a blank shouldn't
         // erase a size captured from an earlier import that did.
         ...(jerseySize ? { jerseySize } : {}),
+        // Same reasoning as jerseySize -- not every export includes these.
+        ...(sportsConnectVolunteerId ? { sportsConnectVolunteerId } : {}),
+        ...(sportsConnectVolunteerTypeId ? { sportsConnectVolunteerTypeId } : {}),
       },
     });
     if (autoAssignToTeams) {

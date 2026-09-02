@@ -562,6 +562,15 @@ model RegisteredUserOrgProfile {
   /// Coach/volunteer staff shirt size, from a volunteer-registration
   /// question if the export includes one (not present on every import).
   jerseySize       String?
+  /// SportsConnect's own volunteer identifier (export column "Volunteer
+  /// Id"), when the org's export includes it -- see
+  /// TeamPlayer.sportsConnectPlayerId for the equivalent on the player side.
+  sportsConnectVolunteerId     String?
+  /// SportsConnect's raw volunteer role/type code (export column "Volunteer
+  /// Type Id"). Stored verbatim, no mapping table -- the code-to-role-name
+  /// mapping isn't reliably known; "Volunteer Role" free text already
+  /// captures the human-readable role.
+  sportsConnectVolunteerTypeId String?
   createdAt        DateTime @default(now())
   updatedAt        DateTime @updatedAt
 
@@ -570,6 +579,7 @@ model RegisteredUserOrgProfile {
   @@unique([registeredUserId, organizationId])
   @@index([organizationId])
   @@index([registeredUserId])
+  @@index([sportsConnectVolunteerId])
 }
 
 model CoachingInterestSubmission {
@@ -1268,6 +1278,7 @@ model Team {
   awayDraftGames    ScheduleDraftGame[]   @relation("ScheduleDraftGameAwayTeam")
   equipmentCheckout EquipmentCheckout?
   practiceSlots     TeamPracticeSlot[]
+  roleAssignments   VolunteerRoleAssignment[]
 
   @@unique([organizationId, seasonYear, ageGroup, teamName])
   @@index([organizationId, seasonYear, ageGroup])
@@ -2253,6 +2264,7 @@ model VolunteerRoleAssignment {
 
   volunteerProfile VolunteerProfile @relation(fields: [volunteerProfileId], references: [id], onDelete: Cascade)
   roleDef          VolunteerRoleDef @relation(fields: [roleKey], references: [key], onDelete: Restrict)
+  team             Team?            @relation(fields: [teamId], references: [id], onDelete: SetNull)
 
   @@unique([volunteerProfileId, roleKey, teamId])
   @@index([volunteerProfileId])

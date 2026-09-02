@@ -100,9 +100,28 @@ export const PLAYER_IMPORT_AMOUNT_PAID_KEYS = [
 
 export const PLAYER_IMPORT_BALANCE_KEYS = ["OrderItem Balance", "Order Item Balance", "Balance"];
 
+const rowHeaderCache = new WeakMap<Row, Map<string, string>>();
+
 export function getRowValue(row: Row, keys: string[]) {
   for (const key of keys) {
     const value = row[key];
+    if (value === undefined || value === null) continue;
+    const parsed = String(value).trim();
+    if (parsed) return parsed;
+  }
+  // Fallback: SportsConnect export headers vary in casing across files/orgs
+  // (e.g. "Player Id" vs "Player ID") -- exact match above is intentionally
+  // tried first to keep behavior stable, this only fires on a miss.
+  let lowerMap = rowHeaderCache.get(row);
+  if (!lowerMap) {
+    lowerMap = new Map();
+    for (const k of Object.keys(row)) lowerMap.set(k.toLowerCase(), k);
+    rowHeaderCache.set(row, lowerMap);
+  }
+  for (const key of keys) {
+    const actualKey = lowerMap.get(key.toLowerCase());
+    if (!actualKey) continue;
+    const value = row[actualKey];
     if (value === undefined || value === null) continue;
     const parsed = String(value).trim();
     if (parsed) return parsed;

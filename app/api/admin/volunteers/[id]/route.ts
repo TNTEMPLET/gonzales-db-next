@@ -77,7 +77,12 @@ export async function PATCH(
         const key = (r.roleKey || r.role || "").trim().toUpperCase();
         if (!key) continue;
         await assertRoleKeyActive(key);
-        roles.push({ roleKey: key, teamId: r.teamId ?? null });
+        const teamId = r.teamId ?? null;
+        if (teamId) {
+          const team = await prisma.team.findFirst({ where: { id: teamId, organizationId } });
+          if (!team) return jsonError(`Invalid teamId: ${teamId}`, 400);
+        }
+        roles.push({ roleKey: key, teamId });
       }
 
       await prisma.volunteerRoleAssignment.deleteMany({
