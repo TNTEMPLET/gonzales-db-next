@@ -9,6 +9,8 @@ type SubItem = {
   label: string;
   status: "COMPLETE" | "INCOMPLETE";
   href: string;
+  method?: "DRAFT" | "DIRECT_IMPORT" | null;
+  methodLabel?: string | null;
 };
 
 type ChecklistItem = {
@@ -42,7 +44,7 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [expandedKey, setExpandedKey] = useState<string | null>(null);
+  const [expandedKey, setExpandedKey] = useState<string | null>("ROSTERS_BUILT");
   const [savingKey, setSavingKey] = useState<string | null>(null);
 
   const fetchChecklist = async () => {
@@ -176,7 +178,7 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
                           key={sub.label}
                           className="flex items-center justify-between rounded-lg bg-zinc-900 px-3 py-1.5 text-xs"
                         >
-                          <div className="flex items-center gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
                             {item.manual ? (
                               <input
                                 type="checkbox"
@@ -186,12 +188,23 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
                                 className="h-3.5 w-3.5 rounded border-zinc-700 bg-zinc-950"
                               />
                             ) : null}
-                            <a href={`${sub.href}?org=${targetOrg}`} className="text-zinc-300 hover:text-emerald-400">
+                            <a href={`${sub.href}?org=${targetOrg}`} className="truncate text-zinc-300 hover:text-emerald-400">
                               {sub.label}
                             </a>
+                            {sub.methodLabel ? (
+                              <span
+                                className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                                  sub.method === "DRAFT"
+                                    ? "bg-sky-500/15 text-sky-300"
+                                    : "bg-violet-500/15 text-violet-300"
+                                }`}
+                              >
+                                {sub.methodLabel}
+                              </span>
+                            ) : null}
                           </div>
                           <span
-                            className={`rounded px-1.5 py-0.5 text-[10px] font-bold ${
+                            className={`shrink-0 rounded px-1.5 py-0.5 text-[10px] font-bold ${
                               sub.status === "COMPLETE"
                                 ? "bg-emerald-500/20 text-emerald-400"
                                 : "bg-zinc-800 text-zinc-500"
