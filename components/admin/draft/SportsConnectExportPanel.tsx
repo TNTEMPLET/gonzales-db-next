@@ -4,7 +4,21 @@ import { useEffect, useState } from "react";
 import { getErrorMessage } from "@/lib/draft/clientError";
 
 type PreviewRow = { teamName: string; fullName: string; playerId: string | null };
-type Preview = { rows: PreviewRow[]; totalPlayers: number; unresolvedCount: number };
+type PreviewPersonnelRow = {
+  teamName: string;
+  personnelName: string;
+  personnelRole: string;
+  volunteerId: string | null;
+  volunteerTypeId: string | null;
+};
+type Preview = {
+  rows: PreviewRow[];
+  totalPlayers: number;
+  unresolvedCount: number;
+  personnelRows: PreviewPersonnelRow[];
+  totalPersonnel: number;
+  unresolvedPersonnelCount: number;
+};
 
 export default function SportsConnectExportPanel({ sessionId }: { sessionId: string }) {
   const [preview, setPreview] = useState<Preview | null>(null);
@@ -34,6 +48,8 @@ export default function SportsConnectExportPanel({ sessionId }: { sessionId: str
   }, [sessionId]);
 
   const unresolvedNames = preview?.rows.filter((r) => !r.playerId).map((r) => r.fullName) ?? [];
+  const unresolvedPersonnelNames =
+    preview?.personnelRows.filter((r) => !r.volunteerId).map((r) => r.personnelName) ?? [];
 
   return (
     <div className="rounded-xl bg-zinc-950 border border-zinc-800 p-4 space-y-3">
@@ -74,6 +90,23 @@ export default function SportsConnectExportPanel({ sessionId }: { sessionId: str
           </p>
           {unresolvedNames.length > 0 && (
             <p className="mt-1 text-amber-300/90">Missing: {unresolvedNames.join(", ")}</p>
+          )}
+          <p className="mt-2">
+            <span className="font-semibold text-zinc-200">
+              {preview.totalPersonnel - preview.unresolvedPersonnelCount}
+            </span>{" "}
+            of <span className="font-semibold text-zinc-200">{preview.totalPersonnel}</span> coaches have a
+            Volunteer ID ready to import.
+            {preview.unresolvedPersonnelCount > 0 && (
+              <span className="text-amber-400">
+                {" "}
+                {preview.unresolvedPersonnelCount} need a Volunteer ID fixed manually in SportsConnect after
+                import.
+              </span>
+            )}
+          </p>
+          {unresolvedPersonnelNames.length > 0 && (
+            <p className="mt-1 text-amber-300/90">Missing: {unresolvedPersonnelNames.join(", ")}</p>
           )}
         </div>
       ) : null}
