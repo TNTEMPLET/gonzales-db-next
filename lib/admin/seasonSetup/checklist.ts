@@ -4,6 +4,12 @@ import { prisma } from "@/lib/prisma";
 import { listVolunteerCards } from "@/lib/volunteers/service";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { STANDARD_DIVISIONS } from "@/lib/sportsConnect/fallballDivisions";
+import { sortTeamsManagementAgeGroups } from "@/lib/admin/teamsImportHelpers";
+import {
+  classifyDivisionRosterBuild,
+  type DraftSessionStatusLike,
+  type RosterBuildMethod,
+} from "@/lib/admin/seasonSetup/divisionRosterStatus";
 
 /** The two items with no clean auto-detect signal -- an admin checks these off manually. */
 export const MANUAL_CHECKLIST_ITEM_KEYS = [
@@ -20,6 +26,8 @@ export type SeasonSetupSubItem = {
   label: string;
   status: "COMPLETE" | "INCOMPLETE";
   href: string;
+  method?: RosterBuildMethod | null;
+  methodLabel?: string | null;
 };
 
 export type SeasonSetupItem = {
@@ -70,8 +78,11 @@ export async function getSeasonSetupChecklist(
     listVolunteerCards({ organizationId, seasonYear, status: "ACTIVE" }),
     prisma.team.findMany({
       where: { organizationId, seasonYear },
-      select: { ageGroup: true },
-      distinct: ["ageGroup"],
+      select: {
+        ageGroup: true,
+        teamName: true,
+        _count: { select: { players: true } },
+      },
     }),
     prisma.draftSession.findMany({
       where: { organizationId, seasonYear },
@@ -91,18 +102,36 @@ export async function getSeasonSetupChecklist(
       ...draftSessions.map((d) => d.ageGroup),
       ...(divisionTeams.length === 0 && draftSessions.length === 0 ? STANDARD_DIVISIONS : []),
     ]),
-  ).sort();
-  const draftByAgeGroup = new Map(draftSessions.map((d) => [d.ageGroup, d.status]));
-  const draftSubItems: SeasonSetupSubItem[] = divisions.map((ageGroup) => {
-    const status = draftByAgeGroup.get(ageGroup);
-    const complete = status === "COMPLETED" || status === "MATERIALIZED";
+  ).sort(sortTeamsManagementAgeGroups);
+  const draftByAgeGroup = new Map(
+    draftSessions.map((d) => [d.ageGroup, d.status as DraftSessionStatusLike]),
+  );
+  const teamsByAgeGroup = new Map<string, { teamName: string; playerCount: number }[]>();
+  for (const team of divisionTeams) {
+    const list = teamsByAgeGroup.get(team.ageGroup) ?? [];
+    list.push({ teamName: team.teamName, playerCount: team._count.players });
+    teamsByAgeGroup.set(team.ageGroup, list);
+  }
+  const rosterSubItems: SeasonSetupSubItem[] = divisions.map((ageGroup) => {
+    const classified = classifyDivisionRosterBuild({
+      ageGroup,
+      teams: teamsByAgeGroup.get(ageGroup) ?? [],
+      draftStatus: draftByAgeGroup.get(ageGroup),
+    });
     return {
-      label: ageGroup,
-      status: complete ? "COMPLETE" : "INCOMPLETE",
-      href: "/admin/draft",
+      label: classified.ageGroup,
+      status: classified.status,
+      href: classified.href,
+      method: classified.method,
+      methodLabel: classified.methodLabel,
     };
   });
-  const draftsComplete = draftSubItems.filter((d) => d.status === "COMPLETE").length;
+  const rostersComplete = rosterSubItems.filter((d) => d.status === "COMPLETE").length;
+  const draftedCount = rosterSubItems.filter((d) => d.method === "DRAFT" && d.status === "COMPLETE").length;
+  const importedCount = rosterSubItems.filter(
+    (d) => d.method === "DIRECT_IMPORT" && d.status === "COMPLETE",
+  ).length;
+  const rosterOpenCount = rosterSubItems.length - rostersComplete;
 
   const jerseyOrderSubItems: SeasonSetupSubItem[] = divisions.map((ageGroup) => {
     const complete = manualByKey.get(`JERSEY_ORDERS_SUBMITTED|${ageGroup}`)?.isComplete ?? false;
@@ -152,18 +181,21 @@ export async function getSeasonSetupChecklist(
       manual: false,
     },
     {
-      key: "DRAFT_COMPLETED",
-      label: "Draft completed",
+      key: "ROSTERS_BUILT",
+      label: "Rosters built",
       status:
-        draftSubItems.length === 0
+        rosterSubItems.length === 0
           ? "INCOMPLETE"
-          : draftsComplete === draftSubItems.length
+          : rostersComplete === rosterSubItems.length
             ? "COMPLETE"
             : "PARTIAL",
-      progressLabel: `${draftsComplete}/${draftSubItems.length} divisions`,
-      href: "/admin/draft",
+      progressLabel:
+        rosterSubItems.length === 0
+          ? undefined
+          : `${draftedCount} drafted · ${importedCount} imported · ${rosterOpenCount} open`,
+      href: "/admin/teams",
       manual: false,
-      subItems: draftSubItems,
+      subItems: rosterSubItems,
     },
     {
       key: "JERSEY_ORDERS_SUBMITTED",
