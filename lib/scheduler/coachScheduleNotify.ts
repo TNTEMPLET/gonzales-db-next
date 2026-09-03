@@ -26,6 +26,7 @@ import {
 import { buildCoachScheduleAttachments } from "@/lib/scheduler/coachScheduleAttachments";
 import { formatPracticePlanText, type TeamPracticeSlotView } from "@/lib/scheduler/practicePlanText";
 import { parseSeasonDateWindows } from "@/lib/scheduler/seasonWindows";
+import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
 import { dateKey } from "@/lib/scheduler/validation";
 
 export {
@@ -85,7 +86,7 @@ export async function loadCoachScheduleNotify(params: {
       where: {
         organizationId: params.organizationId,
         seasonYear: season.seasonYear,
-        NOT: { teamName: { equals: "Unallocated", mode: "insensitive" } },
+        NOT: { teamName: UNALLOCATED_TEAM_NAME_EQUALS },
       },
       orderBy: [{ ageGroup: "asc" }, { teamName: "asc" }],
       include: {

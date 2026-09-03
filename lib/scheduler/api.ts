@@ -4,6 +4,7 @@ import type { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import { ensureAdminModule } from "@/lib/news/auth";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { UNALLOCATED_TEAM_NAME_EQUALS } from "./realTeams";
 import { SchedulerError } from "./types";
 import { parseStringArray, schedulerErrorResponse } from "./validation";
 
@@ -69,6 +70,7 @@ export async function loadGenerationContext(params: {
         organizationId: params.organizationId,
         seasonYear: season.seasonYear,
         ...(ageGroups.length ? { ageGroup: { in: ageGroups } } : {}),
+        NOT: { teamName: UNALLOCATED_TEAM_NAME_EQUALS },
       },
       orderBy: [{ ageGroup: "asc" }, { teamName: "asc" }],
     }),

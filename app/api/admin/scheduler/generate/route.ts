@@ -3,6 +3,7 @@ import { NextResponse, type NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { jsonError, loadGenerationContext, requestId, requireSchedulerAdmin, requireSeason } from "@/lib/scheduler/api";
 import { generateSchedule } from "@/lib/scheduler/generator";
+import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
 import { SchedulerError } from "@/lib/scheduler/types";
 import { parseStringArray, requireString } from "@/lib/scheduler/validation";
 
@@ -52,7 +53,7 @@ export async function GET(request: NextRequest) {
       where: {
         organizationId: auth.organizationId,
         seasonYear,
-        NOT: { teamName: { equals: "Unallocated", mode: "insensitive" } },
+        NOT: { teamName: UNALLOCATED_TEAM_NAME_EQUALS },
       },
       _count: { _all: true },
     });

@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import prisma from "@/lib/prisma";
 import { formatPracticePlanText } from "@/lib/scheduler/practicePlanText";
+import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
 
 export const dynamic = "force-dynamic";
 
@@ -70,7 +71,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!ageGroup) {
-    const unallocated = { teamName: { equals: "Unallocated", mode: "insensitive" as const } };
+    const unallocated = { teamName: UNALLOCATED_TEAM_NAME_EQUALS };
     const [teamCount, teamsByDivision, assignedTeams] = await Promise.all([
       prisma.team.count({
         where: { organizationId, seasonYear, NOT: unallocated },
@@ -110,7 +111,7 @@ export async function GET(request: NextRequest) {
       organizationId,
       seasonYear,
       ageGroup,
-      NOT: { teamName: { equals: "Unallocated", mode: "insensitive" } },
+      NOT: { teamName: UNALLOCATED_TEAM_NAME_EQUALS },
     },
     orderBy: { teamName: "asc" },
     select: {
