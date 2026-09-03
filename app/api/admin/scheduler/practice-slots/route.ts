@@ -65,14 +65,59 @@ export async function GET(request: NextRequest) {
   const seasonYearParam = request.nextUrl.searchParams.get("seasonYear");
   const ageGroup = request.nextUrl.searchParams.get("ageGroup");
   const seasonYear = seasonYearParam ? Number(seasonYearParam) : Number.NaN;
-  if (!organizationId || !Number.isFinite(seasonYear) || !ageGroup) {
-    return NextResponse.json({ error: "org, seasonYear, and ageGroup are required" }, { status: 400 });
+  if (!organizationId || !Number.isFinite(seasonYear)) {
+    return NextResponse.json({ error: "org and seasonYear are required" }, { status: 400 });
+  }
+
+  if (!ageGroup) {
+    const unallocated = { teamName: { equals: "Unallocated", mode: "insensitive" as const } };
+    const [teamCount, teamsByDivision, assignedTeams] = await Promise.all([
+      prisma.team.count({
+        where: { organizationId, seasonYear, NOT: unallocated },
+      }),
+      prisma.team.groupBy({
+        by: ["ageGroup"],
+        where: { organizationId, seasonYear, NOT: unallocated },
+        _count: { _all: true },
+      }),
+      prisma.teamPracticeSlot.groupBy({
+        by: ["ageGroup", "teamId"],
+        where: { organizationId, seasonYear },
+      }),
+    ]);
+    const assignedMap = new Map<string, number>();
+    for (const row of assignedTeams) {
+      assignedMap.set(row.ageGroup, (assignedMap.get(row.ageGroup) ?? 0) + 1);
+    }
+    const divisions = teamsByDivision
+      .map((row) => ({
+        ageGroup: row.ageGroup,
+        teamCount: row._count._all,
+        assignedCount: assignedMap.get(row.ageGroup) ?? 0,
+      }))
+      .sort((a, b) => {
+        const ageA = Number.parseInt(a.ageGroup, 10);
+        const ageB = Number.parseInt(b.ageGroup, 10);
+        if (Number.isFinite(ageA) && Number.isFinite(ageB) && ageA !== ageB) return ageA - ageB;
+        return a.ageGroup.localeCompare(b.ageGroup);
+      });
+    const assignedCount = assignedTeams.length;
+    return NextResponse.json({ assignedCount, teamCount, divisions });
   }
 
   const teams = await prisma.team.findMany({
-    where: { organizationId, seasonYear, ageGroup },
+    where: {
+      organizationId,
+      seasonYear,
+      ageGroup,
+      NOT: { teamName: { equals: "Unallocated", mode: "insensitive" } },
+    },
     orderBy: { teamName: "asc" },
-    select: { id: true, teamName: true, practiceSlots: true },
+    select: {
+      id: true,
+      teamName: true,
+      practiceSlots: { orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }] },
+    },
   });
 
   const groupIds = Array.from(
@@ -92,15 +137,13 @@ export async function GET(request: NextRequest) {
   }
 
   return NextResponse.json({
-    teams: teams.map((t) => {
-      const slot = t.practiceSlots[0];
-      if (!slot) return { teamId: t.id, teamName: t.teamName, slot: null };
-      const siblings = slot.sharedFieldGroupId ? siblingsByGroup.get(slot.sharedFieldGroupId) ?? [] : [];
-      const pairedTeam = siblings.find((s) => s.teamId !== t.id) ?? null;
-      return {
-        teamId: t.id,
-        teamName: t.teamName,
-        slot: {
+    teams: teams.map((t) => ({
+      teamId: t.id,
+      teamName: t.teamName,
+      slots: t.practiceSlots.map((slot) => {
+        const siblings = slot.sharedFieldGroupId ? siblingsByGroup.get(slot.sharedFieldGroupId) ?? [] : [];
+        const pairedTeam = siblings.find((s) => s.teamId !== t.id) ?? null;
+        return {
           id: slot.id,
           parkId: slot.parkId,
           fieldId: slot.fieldId,
@@ -110,18 +153,17 @@ export async function GET(request: NextRequest) {
           notes: slot.notes,
           pairedTeamId: pairedTeam?.teamId ?? null,
           pairedTeamName: pairedTeam?.teamName ?? null,
-        },
-      };
-    }),
+        };
+      }),
+    })),
   });
 }
 
 /**
- * POST creates/replaces the one practice slot for a team (an upsert, not an
- * append -- this MVP models exactly one primary weekly slot per team, which
- * matches the granularity Coach Corner and the Practice Matrix report both
- * need). Optionally pairs it with a second team who shares the same field
- * and goes on second, durationMinutes later.
+ * POST creates one weekly practice day for a team, or updates that day when
+ * slotId is sent. Extra days append; other nights on the same team (and the
+ * partner's other nights) stay put. Pairing shares this one field/night --
+ * the partner goes second, durationMinutes later.
  */
 export async function POST(request: NextRequest) {
   const auth = await ensureAdminModule(request, "TEAMS");
@@ -135,6 +177,7 @@ export async function POST(request: NextRequest) {
     seasonYear,
     ageGroup,
     teamId,
+    slotId,
     dayOfWeek,
     startTime,
     durationMinutes,
@@ -147,6 +190,7 @@ export async function POST(request: NextRequest) {
     seasonYear?: number;
     ageGroup?: string;
     teamId?: string;
+    slotId?: string | null;
     dayOfWeek?: number;
     startTime?: string;
     durationMinutes?: number;
@@ -163,61 +207,89 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const duration = durationMinutes || 90;
+  if (pairWithTeamId && pairWithTeamId === teamId) {
+    return NextResponse.json({ error: "A team cannot pair with itself" }, { status: 400 });
+  }
 
-  // Clear this team's existing slot(s); if it was previously paired, free
-  // the old partner's group id too (they keep their own slot, just unpaired).
-  const existing = await prisma.teamPracticeSlot.findMany({ where: { teamId } });
-  const existingGroupIds = existing.map((s) => s.sharedFieldGroupId).filter((v): v is string => !!v);
-  await prisma.teamPracticeSlot.deleteMany({ where: { teamId } });
-  if (existingGroupIds.length > 0) {
-    await prisma.teamPracticeSlot.updateMany({
-      where: { sharedFieldGroupId: { in: existingGroupIds } },
+  const duration = durationMinutes || 90;
+  const park = parkId || null;
+  const field = fieldId || null;
+  const slotNotes = notes || null;
+  const pairId = pairWithTeamId || null;
+  const affectedTeamIds = new Set<string>([teamId]);
+
+  const current = slotId ? await prisma.teamPracticeSlot.findUnique({ where: { id: slotId } }) : null;
+  if (slotId && (!current || current.teamId !== teamId)) {
+    return NextResponse.json({ error: "Practice slot not found" }, { status: 404 });
+  }
+
+  let previousSibling: { id: string; teamId: string } | null = null;
+  if (current?.sharedFieldGroupId) {
+    previousSibling = await prisma.teamPracticeSlot.findFirst({
+      where: { sharedFieldGroupId: current.sharedFieldGroupId, teamId: { not: teamId } },
+      select: { id: true, teamId: true },
+    });
+    if (previousSibling) affectedTeamIds.add(previousSibling.teamId);
+  }
+
+  const pairUnchanged = Boolean(pairId && previousSibling && previousSibling.teamId === pairId);
+  const sharedFieldGroupId = pairId
+    ? pairUnchanged && current?.sharedFieldGroupId
+      ? current.sharedFieldGroupId
+      : `pair-${teamId}-${pairId}-${Date.now()}`
+    : null;
+
+  if (previousSibling && !pairUnchanged) {
+    await prisma.teamPracticeSlot.update({
+      where: { id: previousSibling.id },
       data: { sharedFieldGroupId: null },
     });
   }
 
-  const sharedFieldGroupId = pairWithTeamId ? `pair-${teamId}-${pairWithTeamId}-${Date.now()}` : null;
+  const slotData = {
+    organizationId,
+    seasonYear,
+    ageGroup,
+    teamId,
+    parkId: park,
+    fieldId: field,
+    dayOfWeek,
+    startTime,
+    durationMinutes: duration,
+    sharedFieldGroupId,
+    notes: slotNotes,
+  };
 
-  await prisma.teamPracticeSlot.create({
-    data: {
+  if (current) {
+    await prisma.teamPracticeSlot.update({ where: { id: current.id }, data: slotData });
+  } else {
+    await prisma.teamPracticeSlot.create({ data: slotData });
+  }
+
+  if (pairId) {
+    affectedTeamIds.add(pairId);
+    const partnerStart = addMinutes(startTime, duration);
+    const partnerData = {
       organizationId,
       seasonYear,
       ageGroup,
-      teamId,
-      parkId: parkId || null,
-      fieldId: fieldId || null,
+      teamId: pairId,
+      parkId: park,
+      fieldId: field,
       dayOfWeek,
-      startTime,
+      startTime: partnerStart,
       durationMinutes: duration,
       sharedFieldGroupId,
-      notes: notes || null,
-    },
-  });
-
-  const affectedTeamIds = [teamId];
-
-  if (pairWithTeamId) {
-    await prisma.teamPracticeSlot.deleteMany({ where: { teamId: pairWithTeamId } });
-    await prisma.teamPracticeSlot.create({
-      data: {
-        organizationId,
-        seasonYear,
-        ageGroup,
-        teamId: pairWithTeamId,
-        parkId: parkId || null,
-        fieldId: fieldId || null,
-        dayOfWeek,
-        startTime: addMinutes(startTime, duration),
-        durationMinutes: duration,
-        sharedFieldGroupId,
-        notes: notes || null,
-      },
-    });
-    affectedTeamIds.push(pairWithTeamId);
+      notes: slotNotes,
+    };
+    if (pairUnchanged && previousSibling) {
+      await prisma.teamPracticeSlot.update({ where: { id: previousSibling.id }, data: partnerData });
+    } else {
+      await prisma.teamPracticeSlot.create({ data: partnerData });
+    }
   }
 
-  await Promise.all(affectedTeamIds.map(regenerateTeamPracticePlan));
+  await Promise.all([...affectedTeamIds].map(regenerateTeamPracticePlan));
 
   return NextResponse.json({ ok: true });
 }

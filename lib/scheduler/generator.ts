@@ -1,5 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
+import { parseSeasonDateWindows, parseUtcDateOnly } from "./seasonWindows";
+import { isEarlyStart } from "./earlyLate";
 import { addMinutes, dateKey, jsonStringArray, timeToMinutes } from "./validation";
 import type {
   GeneratedDraftGame,
@@ -36,10 +38,23 @@ function seasonGameTimes(season: SchedulerSeason): string[] {
   return jsonStringArray(season.defaultGameTimes);
 }
 
+function seasonGameDateRange(season: SchedulerSeason): { start: Date | null; end: Date | null } {
+  const windows = parseSeasonDateWindows(
+    season.settings,
+    season.startsOn ? dateKey(season.startsOn) : "",
+    season.endsOn ? dateKey(season.endsOn) : "",
+  );
+  return {
+    start: parseUtcDateOnly(windows.gamesStartsOn) ?? season.startsOn,
+    end: parseUtcDateOnly(windows.gamesEndsOn) ?? season.endsOn,
+  };
+}
+
 function availabilityDates(season: SchedulerSeason, availability: SchedulerAvailability): Date[] {
   if (availability.date) return [availability.date];
   if (availability.dayOfWeek === null) return [];
-  return enumerateDates(season.startsOn, season.endsOn).filter((date) => availability.dayOfWeek === dayOfWeekUtc(date));
+  const { start, end } = seasonGameDateRange(season);
+  return enumerateDates(start, end).filter((date) => availability.dayOfWeek === dayOfWeekUtc(date));
 }
 
 function slotTimesForAvailability(
@@ -198,6 +213,9 @@ export function buildSchedulerSlots(params: {
           if (blackouts.has(blackoutKey(date, field.id, startTime)) || blackouts.has(blackoutKey(date, field.id, null))) {
             continue;
           }
+          const noteDivisions = availability.notes
+            ? availability.notes.split(",").map((part) => part.trim()).filter(Boolean)
+            : [];
           slots.push({
             id: blackoutKey(date, field.id, startTime),
             date,
@@ -208,8 +226,8 @@ export function buildSchedulerSlots(params: {
             fieldId: field.id,
             parkName: field.park?.name,
             fieldName: field.name,
-            supportedAgeGroups: jsonStringArray(field.supportedAgeGroups),
-            supportedDivisions: jsonStringArray(field.supportedDivisions),
+            supportedAgeGroups: noteDivisions.length ? noteDivisions : jsonStringArray(field.supportedAgeGroups),
+            supportedDivisions: noteDivisions.length ? noteDivisions : jsonStringArray(field.supportedDivisions),
           });
         }
       }
@@ -217,6 +235,139 @@ export function buildSchedulerSlots(params: {
   }
 
   return slots.sort((a, b) => `${a.gameDate} ${a.startTime} ${a.fieldName || ""}`.localeCompare(`${b.gameDate} ${b.startTime} ${b.fieldName || ""}`));
+}
+
+function allowDoubleHeaders(rule?: SchedulerDivisionRule): boolean {
+  const meta = rule?.ruleMetadata;
+  if (!meta || typeof meta !== "object" || Array.isArray(meta)) return false;
+  return (meta as { allowDoubleHeaders?: unknown }).allowDoubleHeaders === true;
+}
+
+function restDaysRequired(rule?: SchedulerDivisionRule): number {
+  if (!rule) return 0;
+  return Math.max(rule.minDaysBetweenGames ?? 0, rule.avoidBackToBack ? 2 : 0);
+}
+
+function mondayWeekKey(date: Date): string {
+  const day = date.getUTCDay();
+  const offset = day === 0 ? 6 : day - 1;
+  return dateKey(new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate() - offset)));
+}
+
+function utcDayDiff(a: Date, b: Date): number {
+  const first = Date.UTC(a.getUTCFullYear(), a.getUTCMonth(), a.getUTCDate());
+  const second = Date.UTC(b.getUTCFullYear(), b.getUTCMonth(), b.getUTCDate());
+  return Math.round(Math.abs(first - second) / 86_400_000);
+}
+
+function parseDateKey(value: string): Date {
+  const [year, month, day] = value.split("-").map(Number);
+  return new Date(Date.UTC(year, (month || 1) - 1, day || 1));
+}
+
+function teamRestConflict(teamId: string, slotDate: Date, restDays: number, teamDates: Set<string>): boolean {
+  if (restDays <= 0) return false;
+  const prefix = `${teamId}:`;
+  for (const key of teamDates) {
+    if (!key.startsWith(prefix)) continue;
+    const diff = utcDayDiff(parseDateKey(key.slice(prefix.length)), slotDate);
+    if (diff > 0 && diff < restDays) return true;
+  }
+  return false;
+}
+
+function divisionSlotTimes(slots: SchedulerSlot[], division: string): string[] {
+  const times = new Set<string>();
+  for (const slot of slots) {
+    if (!slot.supportedDivisions.length || slot.supportedDivisions.includes(division)) {
+      times.add(slot.startTime);
+    }
+  }
+  return [...times];
+}
+
+function earlyLateScore(
+  teamIds: string[],
+  slotIsEarly: boolean,
+  teamEarly: Map<string, number>,
+  teamLate: Map<string, number>,
+): number {
+  let score = 0;
+  for (const teamId of teamIds) {
+    const early = (teamEarly.get(teamId) ?? 0) + (slotIsEarly ? 1 : 0);
+    const late = (teamLate.get(teamId) ?? 0) + (slotIsEarly ? 0 : 1);
+    score += Math.abs(early - late);
+  }
+  return score;
+}
+
+function chooseEligibleSlot(params: {
+  matchup: RoundRobinMatchup;
+  rule?: SchedulerDivisionRule;
+  slots: SchedulerSlot[];
+  usedSlotIds: Set<string>;
+  teamSlotTimes: Set<string>;
+  teamDates: Set<string>;
+  teamWeeks: Map<string, number>;
+  teamEarly: Map<string, number>;
+  teamLate: Map<string, number>;
+}): SchedulerSlot | undefined {
+  const times = divisionSlotTimes(params.slots, params.matchup.division);
+  const teamIds = [params.matchup.homeTeamId, params.matchup.awayTeamId];
+  let best: SchedulerSlot | undefined;
+  let bestScore = Number.POSITIVE_INFINITY;
+  for (const candidate of params.slots) {
+    if (params.usedSlotIds.has(candidate.id)) continue;
+    if (ruleAllowsSlot(params.rule, params.matchup, candidate).length) continue;
+    if (
+      teamPlacementConflicts({
+        matchup: params.matchup,
+        rule: params.rule,
+        slot: candidate,
+        teamSlotTimes: params.teamSlotTimes,
+        teamDates: params.teamDates,
+        teamWeeks: params.teamWeeks,
+      }).length
+    ) {
+      continue;
+    }
+    const score = earlyLateScore(teamIds, isEarlyStart(candidate.startTime, times), params.teamEarly, params.teamLate);
+    if (score < bestScore) {
+      bestScore = score;
+      best = candidate;
+    }
+  }
+  return best;
+}
+
+function teamPlacementConflicts(params: {
+  matchup: RoundRobinMatchup;
+  rule?: SchedulerDivisionRule;
+  slot: SchedulerSlot;
+  teamSlotTimes: Set<string>;
+  teamDates: Set<string>;
+  teamWeeks: Map<string, number>;
+}): string[] {
+  const conflicts: string[] = [];
+  const slotTime = `${dateKey(params.slot.date)}:${params.slot.startTime}`;
+  const dayKey = dateKey(params.slot.date);
+  const weekKey = mondayWeekKey(params.slot.date);
+  const restDays = restDaysRequired(params.rule);
+  const maxPerWeek = params.rule?.maxGamesPerWeek ?? null;
+
+  for (const teamId of [params.matchup.homeTeamId, params.matchup.awayTeamId]) {
+    if (params.teamSlotTimes.has(`${teamId}:${slotTime}`)) conflicts.push("team_already_scheduled_in_slot");
+    if (!allowDoubleHeaders(params.rule) && params.teamDates.has(`${teamId}:${dayKey}`)) {
+      conflicts.push("double_header_not_allowed");
+    }
+    if (teamRestConflict(teamId, params.slot.date, restDays, params.teamDates)) {
+      conflicts.push(params.rule?.avoidBackToBack && restDays <= 2 ? "back_to_back_not_allowed" : "min_days_between_games");
+    }
+    if (maxPerWeek != null && (params.teamWeeks.get(`${teamId}:${weekKey}`) ?? 0) >= maxPerWeek) {
+      conflicts.push("max_games_per_week");
+    }
+  }
+  return conflicts;
 }
 
 function ruleAllowsSlot(rule: SchedulerDivisionRule | undefined, matchup: RoundRobinMatchup, slot: SchedulerSlot): string[] {
@@ -245,6 +396,8 @@ function unscheduledReasons(params: {
   slots: SchedulerSlot[];
   usedSlotIds: Set<string>;
   teamSlotTimes: Set<string>;
+  teamDates: Set<string>;
+  teamWeeks: Map<string, number>;
 }): string[] {
   if (!params.slots.length) return ["no_available_slots_defined"];
 
@@ -261,12 +414,16 @@ function unscheduledReasons(params: {
       continue;
     }
 
-    const slotTime = `${dateKey(slot.date)}:${slot.startTime}`;
-    if (
-      params.teamSlotTimes.has(`${params.matchup.homeTeamId}:${slotTime}`) ||
-      params.teamSlotTimes.has(`${params.matchup.awayTeamId}:${slotTime}`)
-    ) {
-      reasons.add("team_already_scheduled_in_slot");
+    const teamConflicts = teamPlacementConflicts({
+      matchup: params.matchup,
+      rule: params.rule,
+      slot,
+      teamSlotTimes: params.teamSlotTimes,
+      teamDates: params.teamDates,
+      teamWeeks: params.teamWeeks,
+    });
+    if (teamConflicts.length) {
+      teamConflicts.forEach((reason) => reasons.add(reason));
     }
   }
 
@@ -296,9 +453,13 @@ export function checkDraftGameConflicts(games: GeneratedDraftGame[]): GeneratedD
 }
 
 export function summarizeFairness(games: GeneratedDraftGame[], teams: SchedulerTeam[]): SchedulerFairnessSummary {
-  const starts = games.map((game) => timeToMinutes(game.startTime)).filter((value): value is number => value !== null);
-  const earliest = starts.length ? Math.min(...starts) : null;
-  const latest = starts.length ? Math.max(...starts) : null;
+  const timesByDivision = new Map<string, string[]>();
+  for (const game of games) {
+    if (!game.startTime) continue;
+    const times = timesByDivision.get(game.division) ?? [];
+    times.push(game.startTime);
+    timesByDivision.set(game.division, times);
+  }
   const teamStats = new Map<string, SchedulerFairnessSummary["teams"][number]>();
 
   for (const team of teams) {
@@ -329,7 +490,7 @@ export function summarizeFairness(games: GeneratedDraftGame[], teams: SchedulerT
       continue;
     }
 
-    const start = timeToMinutes(game.startTime);
+    const early = isEarlyStart(game.startTime, timesByDivision.get(game.division) ?? []);
     for (const item of [
       { teamId: game.homeTeamId, side: "home" as const },
       { teamId: game.awayTeamId, side: "away" as const },
@@ -339,8 +500,8 @@ export function summarizeFairness(games: GeneratedDraftGame[], teams: SchedulerT
       stat.totalGames += 1;
       if (item.side === "home") stat.homeGames += 1;
       if (item.side === "away") stat.awayGames += 1;
-      if (start !== null && earliest !== null && start === earliest) stat.earlyGames += 1;
-      if (start !== null && latest !== null && start === latest) stat.lateGames += 1;
+      if (early) stat.earlyGames += 1;
+      else stat.lateGames += 1;
     }
   }
 
@@ -380,15 +541,24 @@ export function generateSchedule(params: {
   const matchups = generateRoundRobinMatchups({ teamsByDivision, gamesPerTeam: params.gamesPerTeam });
   const usedSlotIds = new Set<string>();
   const teamSlotTimes = new Set<string>();
+  const teamDates = new Set<string>();
+  const teamWeeks = new Map<string, number>();
+  const teamEarly = new Map<string, number>();
+  const teamLate = new Map<string, number>();
   const games: GeneratedDraftGame[] = [];
 
   for (const matchup of matchups) {
     const rule = params.rules.find((entry) => entry.division === matchup.division);
-    const slot = slots.find((candidate) => {
-      if (usedSlotIds.has(candidate.id)) return false;
-      if (ruleAllowsSlot(rule, matchup, candidate).length > 0) return false;
-      const slotTime = `${dateKey(candidate.date)}:${candidate.startTime}`;
-      return !teamSlotTimes.has(`${matchup.homeTeamId}:${slotTime}`) && !teamSlotTimes.has(`${matchup.awayTeamId}:${slotTime}`);
+    const slot = chooseEligibleSlot({
+      matchup,
+      rule,
+      slots,
+      usedSlotIds,
+      teamSlotTimes,
+      teamDates,
+      teamWeeks,
+      teamEarly,
+      teamLate,
     });
     if (!slot) {
       games.push({
@@ -400,7 +570,7 @@ export function generateSchedule(params: {
         fieldId: null,
         status: "CONFLICT",
         sortOrder: matchup.gameNumber,
-        conflictFlags: unscheduledReasons({ matchup, rule, slots, usedSlotIds, teamSlotTimes }),
+        conflictFlags: unscheduledReasons({ matchup, rule, slots, usedSlotIds, teamSlotTimes, teamDates, teamWeeks }),
         fairnessMetadata: {},
         schedulerNotes: "No eligible slot was available for this generated matchup.",
       });
@@ -409,8 +579,19 @@ export function generateSchedule(params: {
 
     usedSlotIds.add(slot.id);
     const slotTime = `${dateKey(slot.date)}:${slot.startTime}`;
+    const dayKey = dateKey(slot.date);
+    const weekKey = mondayWeekKey(slot.date);
     teamSlotTimes.add(`${matchup.homeTeamId}:${slotTime}`);
     teamSlotTimes.add(`${matchup.awayTeamId}:${slotTime}`);
+    teamDates.add(`${matchup.homeTeamId}:${dayKey}`);
+    teamDates.add(`${matchup.awayTeamId}:${dayKey}`);
+    teamWeeks.set(`${matchup.homeTeamId}:${weekKey}`, (teamWeeks.get(`${matchup.homeTeamId}:${weekKey}`) ?? 0) + 1);
+    teamWeeks.set(`${matchup.awayTeamId}:${weekKey}`, (teamWeeks.get(`${matchup.awayTeamId}:${weekKey}`) ?? 0) + 1);
+    const early = isEarlyStart(slot.startTime, divisionSlotTimes(slots, matchup.division));
+    for (const teamId of [matchup.homeTeamId, matchup.awayTeamId]) {
+      if (early) teamEarly.set(teamId, (teamEarly.get(teamId) ?? 0) + 1);
+      else teamLate.set(teamId, (teamLate.get(teamId) ?? 0) + 1);
+    }
     games.push({
       ...matchup,
       gameDate: slot.date,
@@ -431,7 +612,7 @@ export function generateSchedule(params: {
   if (fairness.unscheduledGames.length) {
     errors.push({
       code: "INSUFFICIENT_SLOTS",
-      message: `${fairness.unscheduledGames.length} games could not be scheduled with the available slots`,
+      message: `${fairness.unscheduledGames.length} games could not be placed. No open field time fit Limits for those matchups.`,
       details: fairness.unscheduledGames,
     });
   }

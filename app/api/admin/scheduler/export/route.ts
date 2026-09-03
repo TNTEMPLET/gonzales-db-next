@@ -1,7 +1,8 @@
 import { type NextRequest, NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
-import { exportDraftGamesCsv } from "@/lib/scheduler/export";
+import { getSiteConfigForOrg, type ContentOrgId } from "@/lib/siteConfig";
+import { exportVendorWorkbook } from "@/lib/scheduler/export";
 import { jsonError, requireSchedulerAdmin, requestId, requireSeason } from "@/lib/scheduler/api";
 
 export async function GET(request: NextRequest) {
@@ -18,12 +19,13 @@ export async function GET(request: NextRequest) {
       include: { park: true, field: true },
       orderBy: [{ gameDate: "asc" }, { startTime: "asc" }, { sortOrder: "asc" }],
     });
-    const csv = exportDraftGamesCsv(games);
-    const filename = `${season.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-draft-games.csv`;
-    return new NextResponse(csv, {
+    const leagueName = getSiteConfigForOrg(auth.organizationId as ContentOrgId).shortName;
+    const workbook = exportVendorWorkbook(games, { leagueName });
+    const filename = `${season.name.replace(/[^a-z0-9]+/gi, "-").toLowerCase()}-uploads.xlsx`;
+    return new NextResponse(new Uint8Array(workbook), {
       status: 200,
       headers: {
-        "Content-Type": "text/csv; charset=utf-8",
+        "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Content-Disposition": `attachment; filename="${filename}"`,
       },
     });
