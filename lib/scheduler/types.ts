@@ -148,6 +148,17 @@ export type SchedulerFairnessSummary = {
   }>;
 };
 
+export type ScheduleRepairStop = "complete" | "no_progress" | "max_steps" | "cycle";
+
+export type ScheduleRepairSummary = {
+  steps: number;
+  maxSteps: number;
+  placed: number;
+  moved: number;
+  remaining: number;
+  stopped: ScheduleRepairStop;
+};
+
 export type SchedulerGenerationResult = {
   seasonId: string;
   organizationId: string;
@@ -155,5 +166,6 @@ export type SchedulerGenerationResult = {
   slots: SchedulerSlot[];
   games: GeneratedDraftGame[];
   fairness: SchedulerFairnessSummary;
+  repair?: ScheduleRepairSummary;
   errors: Array<{ code: SchedulerErrorCode; message: string; details?: unknown }>;
 };

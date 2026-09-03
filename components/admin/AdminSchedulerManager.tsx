@@ -132,6 +132,14 @@ type GenerationResult = {
   };
   errors: Array<{ code: string; message: string }>;
   savedGames?: DraftGame[];
+  repair?: {
+    steps: number;
+    maxSteps: number;
+    placed: number;
+    moved: number;
+    remaining: number;
+    stopped: string;
+  };
 };
 
 type SeasonForm = {
@@ -1005,8 +1013,64 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
             : "Preview generated.",
       );
       if (replace) await refreshDraftGames();
+      const repair = json.data?.repair;
+      if (replace && repair?.placed) {
+        setNotice(
+          repair.remaining
+            ? `Generated draft replaced · placed ${repair.placed} leftover game${repair.placed === 1 ? "" : "s"} by rearranging (${repair.steps} steps). ${repair.remaining} still unassigned.`
+            : `Generated draft replaced · leftover games were rearranged so every matchup has a slot (${repair.steps} steps).`,
+        );
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to generate schedule");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function repairConflicts() {
+    if (!selectedSeasonId) return;
+    if (
+      !window.confirm(
+        "Rearrange already-placed games so leftover matchups can get a slot? Locked games stay put. Limits (max per week, rest, no doubleheaders) still apply.",
+      )
+    ) {
+      return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const divisions = reviewDivision === "all" ? [] : [reviewDivision];
+      const response = await fetch(`/api/admin/scheduler/generate?${orgQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seasonId: selectedSeasonId, divisions, repair: true }),
+      });
+      const json = (await safeJson(response)) as { data?: GenerationResult; error?: string };
+      if (!response.ok && !json.data) throw new Error(json.error || "Failed to fix conflicts");
+      const repair = json.data?.repair;
+      await refreshDraftGames();
+      if (!repair) {
+        setNotice("Conflict check finished.");
+        return;
+      }
+      if (repair.stopped === "max_steps") {
+        setError(`Stopped after ${repair.maxSteps} steps to avoid an infinite loop. ${repair.remaining} games still unassigned.`);
+      } else if (repair.stopped === "cycle") {
+        setError(`Rearrange repeated a previous layout after ${repair.steps} steps. ${repair.remaining} games still unassigned.`);
+      }
+      if (repair.remaining === 0) {
+        setNotice(`All leftover games were placed (${repair.steps} step${repair.steps === 1 ? "" : "s"} · ${repair.moved} moved).`);
+      } else if (repair.placed > 0) {
+        setNotice(
+          `Placed ${repair.placed} leftover game${repair.placed === 1 ? "" : "s"} by moving ${repair.moved} already-scheduled game${repair.moved === 1 ? "" : "s"}. ${repair.remaining} still unassigned.`,
+        );
+      } else {
+        setNotice("No rearrangement fit Limits. Empty holes are in weeks where those leftover teams already have their max games.");
+      }
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to fix conflicts");
     } finally {
       setBusy(false);
     }
@@ -1491,6 +1555,14 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
             </button>
             <button type="button" onClick={() => void refreshDraftGames()} className="rounded-xl border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-red-400">
               Refresh
+            </button>
+            <button
+              type="button"
+              onClick={() => void repairConflicts()}
+              disabled={busy || (reviewSummary.unassigned === 0 && reviewSummary.conflicts === 0)}
+              className="rounded-xl bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+            >
+              Fix conflicts
             </button>
           </div>
         </div>

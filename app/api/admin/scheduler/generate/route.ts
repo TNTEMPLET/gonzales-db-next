@@ -2,10 +2,11 @@ import { NextResponse, type NextRequest } from "next/server";
 
 import prisma from "@/lib/prisma";
 import { jsonError, loadGenerationContext, requestId, requireSchedulerAdmin, requireSeason } from "@/lib/scheduler/api";
-import { generateSchedule } from "@/lib/scheduler/generator";
+import { buildSchedulerSlots, generateSchedule, repairUnplacedGames, summarizeFairness } from "@/lib/scheduler/generator";
 import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
+import type { GeneratedDraftGame } from "@/lib/scheduler/types";
 import { SchedulerError } from "@/lib/scheduler/types";
-import { parseStringArray, requireString } from "@/lib/scheduler/validation";
+import { jsonStringArray, parseStringArray, requireString } from "@/lib/scheduler/validation";
 
 type GeneratePayload = {
   seasonId?: unknown;
@@ -14,6 +15,7 @@ type GeneratePayload = {
   confirmReplace?: unknown;
   allowConflicts?: unknown;
   gamesPerTeam?: unknown;
+  repair?: unknown;
 };
 
 const MAX_GAMES_PER_TEAM = 30;
@@ -79,6 +81,95 @@ export async function POST(request: NextRequest) {
     const confirmReplace = body.confirmReplace === true;
     const allowConflicts = body.allowConflicts === true;
     const gamesPerTeam = parseGamesPerTeam(body.gamesPerTeam);
+    const repair = body.repair === true;
+
+    if (repair) {
+      const context = await loadGenerationContext({ organizationId: auth.organizationId, seasonId, divisions });
+      const existing = await prisma.scheduleDraftGame.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          seasonId,
+          ...(divisions.length ? { division: { in: divisions } } : {}),
+          NOT: { status: "CANCELED" },
+        },
+        orderBy: [{ gameNumber: "asc" }, { sortOrder: "asc" }],
+      });
+      const slots = buildSchedulerSlots({
+        season: context.season,
+        fields: context.fields,
+        availabilities: context.availabilities,
+      });
+      const games: GeneratedDraftGame[] = existing.map((row) => ({
+        division: row.division,
+        ageGroup: row.ageGroup || row.division,
+        homeTeamId: row.homeTeamId || "",
+        awayTeamId: row.awayTeamId || "",
+        homeTeamName: row.homeTeamName,
+        awayTeamName: row.awayTeamName,
+        roundLabel: row.roundLabel || "",
+        gameNumber: row.gameNumber ?? row.sortOrder ?? 0,
+        gameDate: row.gameDate,
+        startTime: row.startTime,
+        endTime: row.endTime,
+        parkId: row.parkId,
+        fieldId: row.fieldId,
+        status: row.status === "CONFLICT" || !row.gameDate ? "CONFLICT" : "DRAFT",
+        sortOrder: row.sortOrder ?? row.gameNumber ?? 0,
+        conflictFlags: jsonStringArray(row.conflictFlags),
+        fairnessMetadata:
+          row.fairnessMetadata && typeof row.fairnessMetadata === "object" && !Array.isArray(row.fairnessMetadata)
+            ? (row.fairnessMetadata as GeneratedDraftGame["fairnessMetadata"])
+            : {},
+        schedulerNotes: row.schedulerNotes,
+      }));
+      const lockedIds = existing
+        .filter((row) => row.status === "LOCKED" || row.status === "EXPORTED")
+        .map((row) => `${row.division}:${row.gameNumber ?? row.sortOrder ?? 0}`);
+      const repaired = repairUnplacedGames({ games, slots, rules: context.rules, lockedIds });
+      const updates = existing.flatMap((row) => {
+        if (row.status === "LOCKED" || row.status === "EXPORTED") return [];
+        const next = repaired.games.find((game) => game.division === row.division && game.gameNumber === row.gameNumber);
+        if (!next) return [];
+        return [
+          prisma.scheduleDraftGame.update({
+            where: { id: row.id },
+            data: {
+              gameDate: next.gameDate,
+              startTime: next.startTime,
+              endTime: next.endTime,
+              parkId: next.parkId,
+              fieldId: next.fieldId,
+              status: next.status,
+              conflictFlags: next.conflictFlags,
+              fairnessMetadata: next.fairnessMetadata,
+              schedulerNotes: next.schedulerNotes,
+            },
+          }),
+        ];
+      });
+      if (updates.length) await prisma.$transaction(updates);
+      const saved = await prisma.scheduleDraftGame.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          seasonId,
+          ...(divisions.length ? { division: { in: divisions } } : {}),
+        },
+        include: { park: true, field: true, homeTeam: true, awayTeam: true },
+        orderBy: [{ gameDate: "asc" }, { startTime: "asc" }, { sortOrder: "asc" }],
+      });
+      return NextResponse.json({
+        mode: "repair",
+        data: {
+          requestedDivisions: divisions,
+          slots,
+          games: repaired.games,
+          fairness: summarizeFairness(repaired.games, context.teams),
+          repair: repaired.summary,
+          errors: [],
+          savedGames: saved,
+        },
+      });
+    }
 
     if (replace && !confirmReplace) {
       return NextResponse.json(
