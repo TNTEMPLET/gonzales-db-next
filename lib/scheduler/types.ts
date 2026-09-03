@@ -68,6 +68,7 @@ export type SchedulerAvailability = {
   dayOfWeek: number | null;
   startTime: string | null;
   endTime: string | null;
+  notes: string | null;
 };
 
 export type SchedulerDivisionRule = {
