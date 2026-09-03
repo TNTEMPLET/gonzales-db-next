@@ -713,12 +713,21 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
     setDraftGames(json.data ?? []);
   }
 
-  async function refreshTeamCounts(seasonId = selectedSeasonId) {
-    if (!seasonId) {
+  function workingSeasonYear(seasonYear = seasonForm.seasonYear) {
+    const fromSeason = selectedSeason?.seasonYear;
+    if (fromSeason) return fromSeason;
+    const parsed = Number(seasonYear);
+    return Number.isInteger(parsed) ? parsed : new Date().getFullYear();
+  }
+
+  async function refreshTeamCounts(seasonYear = workingSeasonYear()) {
+    if (!Number.isInteger(seasonYear) || seasonYear < 2020) {
       setTeamCounts({});
       return;
     }
-    const json = (await api(`/api/admin/scheduler/generate?seasonId=${encodeURIComponent(seasonId)}`)) as {
+    const json = (await api(
+      `/api/admin/scheduler/generate?seasonYear=${encodeURIComponent(String(seasonYear))}`,
+    )) as {
       data?: { teamCounts?: Record<string, number> };
     };
     setTeamCounts(json.data?.teamCounts ?? {});
@@ -774,7 +783,12 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
-      void Promise.all([refreshSeasons(), refreshParks()]).catch((err: unknown) => {
+      void Promise.all([
+        refreshSeasons(),
+        refreshParks(),
+        refreshTeamCounts(workingSeasonYear()),
+        refreshPracticeSummary(workingSeasonYear()),
+      ]).catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Failed to load scheduler data");
       });
     }, 0);
@@ -784,8 +798,9 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
 
   useEffect(() => {
     if (!selectedSeason) {
-      setPracticeAssignedCount(0);
-      setPracticeTeamCount(0);
+      const year = workingSeasonYear();
+      void refreshTeamCounts(year).catch(() => undefined);
+      void refreshPracticeSummary(year).catch(() => undefined);
       setNotifySentCount(0);
       return;
     }
@@ -814,7 +829,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         refreshMatrix(selectedSeason.id),
         refreshDraftGames(selectedSeason.id),
         refreshPracticeSummary(selectedSeason.seasonYear),
-        refreshTeamCounts(selectedSeason.id),
+        refreshTeamCounts(selectedSeason.seasonYear),
       ]).catch((err: unknown) => {
         setError(err instanceof Error ? err.message : "Failed to load season details");
       });
@@ -822,6 +837,15 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedSeason?.id]);
+
+  useEffect(() => {
+    if (selectedSeason) return;
+    const year = Number(seasonForm.seasonYear);
+    if (!Number.isInteger(year) || year < 2020) return;
+    void refreshTeamCounts(year).catch(() => undefined);
+    void refreshPracticeSummary(year).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seasonForm.seasonYear, selectedSeason?.id]);
 
   useEffect(() => {
     const nodes = SCHEDULER_WIZARD_STEPS.map((step) => document.getElementById(step.id)).filter(
@@ -1285,8 +1309,9 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       >
         <p className="mb-4 text-sm text-zinc-400">
           Parks already placed each division on a field and night. Limits already cap how often they play.
-          Pick which of those divisions to build, set the season target per team, then preview. Games are
-          generated only between {seasonForm.gamesStartsOn || seasonForm.startsOn || "the season start"} and{" "}
+          Team counts come from Teams & Rosters for {workingSeasonYear()}, including before a schedule season
+          is saved. Pick which of those divisions to build, set the season target per team, then preview. Games
+          are generated only between {seasonForm.gamesStartsOn || seasonForm.startsOn || "the season start"} and{" "}
           {seasonForm.gamesEndsOn || seasonForm.endsOn || "the season end"}.
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
@@ -1702,7 +1727,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
 
       <PracticeSlotsPanel
         orgQuery={orgQuery}
-        seasonYear={selectedSeason?.seasonYear ?? new Date().getFullYear()}
+        seasonYear={workingSeasonYear()}
         parks={parks}
         allFields={allFields}
         practiceStartsOn={seasonForm.practiceStartsOn || seasonForm.startsOn}
@@ -1710,7 +1735,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         complete={wizardCompleteById["scheduler-practice"]}
         onEditDates={() => jumpToStep("scheduler-season")}
         onPracticeChanged={() => {
-          if (selectedSeason) void refreshPracticeSummary(selectedSeason.seasonYear);
+          void refreshPracticeSummary(workingSeasonYear());
         }}
       />
 
