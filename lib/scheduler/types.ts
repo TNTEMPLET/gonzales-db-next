@@ -35,6 +35,7 @@ export type SchedulerSeason = {
   startsOn: Date | null;
   endsOn: Date | null;
   defaultGameTimes: Prisma.JsonValue;
+  settings?: Prisma.JsonValue;
 };
 
 export type SchedulerPark = {
@@ -83,6 +84,7 @@ export type SchedulerDivisionRule = {
   minDaysBetweenGames: number | null;
   maxGamesPerWeek: number | null;
   avoidBackToBack: boolean;
+  ruleMetadata: Prisma.JsonValue;
 };
 
 export type SchedulerSlot = {

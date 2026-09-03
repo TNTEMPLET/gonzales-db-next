@@ -1,7 +1,7 @@
 import { NextResponse, type NextRequest } from "next/server";
 
 import prisma from "@/lib/prisma";
-import { jsonError, loadGenerationContext, requireSchedulerAdmin } from "@/lib/scheduler/api";
+import { jsonError, loadGenerationContext, requestId, requireSchedulerAdmin, requireSeason } from "@/lib/scheduler/api";
 import { generateSchedule } from "@/lib/scheduler/generator";
 import { SchedulerError } from "@/lib/scheduler/types";
 import { parseStringArray, requireString } from "@/lib/scheduler/validation";
@@ -26,6 +26,33 @@ function parseGamesPerTeam(value: unknown): number | undefined {
     throw new SchedulerError(`gamesPerTeam must be between 1 and ${MAX_GAMES_PER_TEAM}`, "INVALID_INPUT", { field: "gamesPerTeam", max: MAX_GAMES_PER_TEAM });
   }
   return value;
+}
+
+export async function GET(request: NextRequest) {
+  const auth = await requireSchedulerAdmin(request);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const seasonId = requestId(request, "seasonId");
+    if (!seasonId) return NextResponse.json({ error: "seasonId is required" }, { status: 400 });
+    const season = await requireSeason(auth.organizationId, seasonId);
+    const teams = await prisma.team.groupBy({
+      by: ["ageGroup"],
+      where: {
+        organizationId: auth.organizationId,
+        seasonYear: season.seasonYear,
+        NOT: { teamName: { equals: "Unallocated", mode: "insensitive" } },
+      },
+      _count: { _all: true },
+    });
+    const teamCounts: Record<string, number> = {};
+    for (const row of teams) {
+      if (row.ageGroup) teamCounts[row.ageGroup] = row._count._all;
+    }
+    return NextResponse.json({ data: { teamCounts } });
+  } catch (error) {
+    return jsonError(error);
+  }
 }
 
 export async function POST(request: NextRequest) {
