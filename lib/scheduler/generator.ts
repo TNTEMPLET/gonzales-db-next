@@ -7,6 +7,7 @@ import { addMinutes, dateKey, jsonStringArray, timeToMinutes } from "./validatio
 import type {
   GeneratedDraftGame,
   RoundRobinMatchup,
+  ScheduleRepairSummary,
   SchedulerAvailability,
   SchedulerDivisionRule,
   SchedulerFairnessSummary,
@@ -18,6 +19,7 @@ import type {
 } from "./types";
 
 const DEFAULT_GAME_MINUTES = 90;
+export const MAX_SCHEDULE_REPAIR_STEPS = 400;
 
 function dayOfWeekUtc(date: Date): number {
   return date.getUTCDay();
@@ -453,6 +455,308 @@ export function checkDraftGameConflicts(games: GeneratedDraftGame[]): GeneratedD
   });
 }
 
+function gameIdentity(game: { division: string; gameNumber: number }): string {
+  return `${game.division}:${game.gameNumber}`;
+}
+
+function slotIdForGame(game: GeneratedDraftGame): string | null {
+  if (!game.gameDate || !game.fieldId || !game.startTime) return null;
+  return blackoutKey(game.gameDate, game.fieldId, game.startTime);
+}
+
+function placementStateKey(games: GeneratedDraftGame[]): string {
+  return games
+    .map((game) => `${gameIdentity(game)}=${slotIdForGame(game) ?? ""}`)
+    .sort()
+    .join("|");
+}
+
+function applySlotToGame(game: GeneratedDraftGame, slot: SchedulerSlot): GeneratedDraftGame {
+  const meta = game.fairnessMetadata && typeof game.fairnessMetadata === "object" ? { ...game.fairnessMetadata } : {};
+  return {
+    ...game,
+    gameDate: slot.date,
+    startTime: slot.startTime,
+    endTime: slot.endTime,
+    parkId: slot.parkId,
+    fieldId: slot.fieldId,
+    status: "DRAFT",
+    conflictFlags: [],
+    fairnessMetadata: { ...meta, slotId: slot.id, repaired: true },
+    schedulerNotes: null,
+  };
+}
+
+function occupancyFromGames(games: GeneratedDraftGame[], slots: SchedulerSlot[]) {
+  const usedSlotIds = new Set<string>();
+  const teamSlotTimes = new Set<string>();
+  const teamDates = new Set<string>();
+  const teamWeeks = new Map<string, number>();
+  const teamEarly = new Map<string, number>();
+  const teamLate = new Map<string, number>();
+
+  for (const game of games) {
+    const slotId = slotIdForGame(game);
+    if (!slotId || !game.gameDate || !game.startTime) continue;
+    usedSlotIds.add(slotId);
+    const slotTime = `${dateKey(game.gameDate)}:${game.startTime}`;
+    const dayKey = dateKey(game.gameDate);
+    const weekKey = mondayWeekKey(game.gameDate);
+    const early = isEarlyStart(game.startTime, divisionSlotTimes(slots, game.division));
+    for (const teamId of [game.homeTeamId, game.awayTeamId]) {
+      if (!teamId) continue;
+      teamSlotTimes.add(`${teamId}:${slotTime}`);
+      teamDates.add(`${teamId}:${dayKey}`);
+      teamWeeks.set(`${teamId}:${weekKey}`, (teamWeeks.get(`${teamId}:${weekKey}`) ?? 0) + 1);
+      if (early) teamEarly.set(teamId, (teamEarly.get(teamId) ?? 0) + 1);
+      else teamLate.set(teamId, (teamLate.get(teamId) ?? 0) + 1);
+    }
+  }
+
+  return { usedSlotIds, teamSlotTimes, teamDates, teamWeeks, teamEarly, teamLate };
+}
+
+function matchupFromGame(game: GeneratedDraftGame): RoundRobinMatchup {
+  return {
+    division: game.division,
+    ageGroup: game.ageGroup,
+    homeTeamId: game.homeTeamId,
+    awayTeamId: game.awayTeamId,
+    homeTeamName: game.homeTeamName,
+    awayTeamName: game.awayTeamName,
+    roundLabel: game.roundLabel,
+    gameNumber: game.gameNumber,
+  };
+}
+
+function annotateUnplaced(
+  games: GeneratedDraftGame[],
+  slots: SchedulerSlot[],
+  rules: SchedulerDivisionRule[],
+): GeneratedDraftGame[] {
+  const occupancy = occupancyFromGames(games, slots);
+  return games.map((game) => {
+    if (game.gameDate && game.startTime && game.fieldId) return game;
+    const rule = rules.find((entry) => entry.division === game.division);
+    return {
+      ...game,
+      gameDate: null,
+      startTime: null,
+      endTime: null,
+      parkId: null,
+      fieldId: null,
+      status: "CONFLICT",
+      conflictFlags: unscheduledReasons({
+        matchup: matchupFromGame(game),
+        rule,
+        slots,
+        ...occupancy,
+      }),
+      schedulerNotes: "No eligible slot was available for this generated matchup.",
+    };
+  });
+}
+
+function tryDirectPlace(params: {
+  games: GeneratedDraftGame[];
+  slots: SchedulerSlot[];
+  rules: SchedulerDivisionRule[];
+  lockedIds: Set<string>;
+}): { games: GeneratedDraftGame[]; placed: number } {
+  let placed = 0;
+  let next = params.games;
+  for (const game of params.games) {
+    if (game.gameDate || params.lockedIds.has(gameIdentity(game))) continue;
+    const occupancy = occupancyFromGames(next, params.slots);
+    const slot = chooseEligibleSlot({
+      matchup: matchupFromGame(game),
+      rule: params.rules.find((entry) => entry.division === game.division),
+      slots: params.slots,
+      ...occupancy,
+    });
+    if (!slot) continue;
+    next = next.map((entry) => (gameIdentity(entry) === gameIdentity(game) ? applySlotToGame(entry, slot) : entry));
+    placed += 1;
+  }
+  return { games: next, placed };
+}
+
+function tryDisplaceOne(params: {
+  games: GeneratedDraftGame[];
+  slots: SchedulerSlot[];
+  rules: SchedulerDivisionRule[];
+  lockedIds: Set<string>;
+}): { games: GeneratedDraftGame[]; moved: boolean } {
+  const unplaced = params.games.filter((game) => !game.gameDate && !params.lockedIds.has(gameIdentity(game)));
+  for (const game of unplaced) {
+    const rule = params.rules.find((entry) => entry.division === game.division);
+    const occupancy = occupancyFromGames(params.games, params.slots);
+    const fieldLegalEmpty = params.slots.filter(
+      (slot) => !occupancy.usedSlotIds.has(slot.id) && ruleAllowsSlot(rule, matchupFromGame(game), slot).length === 0,
+    );
+    for (const target of fieldLegalEmpty) {
+      const teamConflicts = teamPlacementConflicts({
+        matchup: matchupFromGame(game),
+        rule,
+        slot: target,
+        teamSlotTimes: occupancy.teamSlotTimes,
+        teamDates: occupancy.teamDates,
+        teamWeeks: occupancy.teamWeeks,
+      });
+      if (!teamConflicts.length) {
+        return { games: params.games.map((entry) => (gameIdentity(entry) === gameIdentity(game) ? applySlotToGame(entry, target) : entry)), moved: true };
+      }
+      if (
+        !teamConflicts.some(
+          (code) =>
+            code === "max_games_per_week" ||
+            code === "double_header_not_allowed" ||
+            code === "back_to_back_not_allowed" ||
+            code === "min_days_between_games" ||
+            code === "team_already_scheduled_in_slot",
+        )
+      ) {
+        continue;
+      }
+
+      const weekKey = mondayWeekKey(target.date);
+      const dayKey = dateKey(target.date);
+      const blockers = params.games.filter((candidate) => {
+        if (!candidate.gameDate || !candidate.startTime) return false;
+        if (params.lockedIds.has(gameIdentity(candidate))) return false;
+        if (candidate.division !== game.division) return false;
+        const involves =
+          candidate.homeTeamId === game.homeTeamId ||
+          candidate.homeTeamId === game.awayTeamId ||
+          candidate.awayTeamId === game.homeTeamId ||
+          candidate.awayTeamId === game.awayTeamId;
+        if (!involves) return false;
+        const candidateWeek = mondayWeekKey(candidate.gameDate);
+        const candidateDay = dateKey(candidate.gameDate);
+        return candidateWeek === weekKey || candidateDay === dayKey;
+      });
+
+      for (const blocker of blockers) {
+        const withoutBlocker = params.games.map((entry) =>
+          gameIdentity(entry) === gameIdentity(blocker)
+            ? {
+                ...entry,
+                gameDate: null,
+                startTime: null,
+                endTime: null,
+                parkId: null,
+                fieldId: null,
+                status: "CONFLICT" as const,
+                conflictFlags: [],
+              }
+            : entry,
+        );
+        const occupancyWithout = occupancyFromGames(withoutBlocker, params.slots);
+        occupancyWithout.usedSlotIds.add(target.id);
+        const alt = chooseEligibleSlot({
+          matchup: matchupFromGame(blocker),
+          rule: params.rules.find((entry) => entry.division === blocker.division),
+          slots: params.slots,
+          ...occupancyWithout,
+        });
+        if (!alt || alt.id === target.id) continue;
+        const moved = withoutBlocker.map((entry) =>
+          gameIdentity(entry) === gameIdentity(blocker) ? applySlotToGame(entry, alt) : entry,
+        );
+        const occupancyMoved = occupancyFromGames(moved, params.slots);
+        if (
+          teamPlacementConflicts({
+            matchup: matchupFromGame(game),
+            rule,
+            slot: target,
+            teamSlotTimes: occupancyMoved.teamSlotTimes,
+            teamDates: occupancyMoved.teamDates,
+            teamWeeks: occupancyMoved.teamWeeks,
+          }).length
+        ) {
+          continue;
+        }
+        return {
+          games: moved.map((entry) => (gameIdentity(entry) === gameIdentity(game) ? applySlotToGame(entry, target) : entry)),
+          moved: true,
+        };
+      }
+    }
+  }
+  return { games: params.games, moved: false };
+}
+
+export function repairUnplacedGames(params: {
+  games: GeneratedDraftGame[];
+  slots: SchedulerSlot[];
+  rules: SchedulerDivisionRule[];
+  lockedIds?: Iterable<string>;
+  maxSteps?: number;
+}): { games: GeneratedDraftGame[]; summary: ScheduleRepairSummary } {
+  const maxSteps = Math.max(1, Math.min(params.maxSteps ?? MAX_SCHEDULE_REPAIR_STEPS, MAX_SCHEDULE_REPAIR_STEPS));
+  const lockedIds = new Set(params.lockedIds ?? []);
+  const unplacedAtStart = params.games.filter((game) => !game.gameDate && !lockedIds.has(gameIdentity(game))).length;
+  if (!unplacedAtStart) {
+    return {
+      games: params.games,
+      summary: { steps: 0, maxSteps, placed: 0, moved: 0, remaining: 0, stopped: "complete" },
+    };
+  }
+  let games = params.games;
+  let moved = 0;
+  const seen = new Set<string>();
+
+  let steps = 0;
+  let stopped: ScheduleRepairSummary["stopped"] = "complete";
+  for (steps = 1; steps <= maxSteps; steps += 1) {
+    if (!games.some((game) => !game.gameDate && !lockedIds.has(gameIdentity(game)))) {
+      stopped = "complete";
+      break;
+    }
+    const key = placementStateKey(games);
+    if (seen.has(key)) {
+      stopped = "cycle";
+      break;
+    }
+    seen.add(key);
+
+    const direct = tryDirectPlace({ games, slots: params.slots, rules: params.rules, lockedIds });
+    if (direct.placed > 0) {
+      games = direct.games;
+      continue;
+    }
+    const displaced = tryDisplaceOne({ games, slots: params.slots, rules: params.rules, lockedIds });
+    if (displaced.moved) {
+      games = displaced.games;
+      moved += 1;
+      continue;
+    }
+    stopped = "no_progress";
+    break;
+  }
+  if (steps > maxSteps) {
+    stopped = "max_steps";
+    steps = maxSteps;
+  } else if (stopped === "complete" && games.some((game) => !game.gameDate && !lockedIds.has(gameIdentity(game)))) {
+    stopped = "no_progress";
+  }
+
+  const annotated = annotateUnplaced(games, params.slots, params.rules);
+  const remaining = annotated.filter((game) => !game.gameDate).length;
+  if (remaining === 0) stopped = "complete";
+  return {
+    games: annotated,
+    summary: {
+      steps: Math.min(steps, maxSteps),
+      maxSteps,
+      placed: Math.max(0, unplacedAtStart - remaining),
+      moved,
+      remaining,
+      stopped,
+    },
+  };
+}
+
 export function summarizeFairness(games: GeneratedDraftGame[], teams: SchedulerTeam[]): SchedulerFairnessSummary {
   const timesByDivision = new Map<string, string[]>();
   for (const game of games) {
@@ -608,7 +912,8 @@ export function generateSchedule(params: {
     });
   }
 
-  const checkedGames = checkDraftGameConflicts(games);
+  const repaired = repairUnplacedGames({ games, slots, rules: params.rules });
+  const checkedGames = checkDraftGameConflicts(repaired.games);
   const fairness = summarizeFairness(checkedGames, params.teams);
   if (fairness.unscheduledGames.length) {
     errors.push({
@@ -625,6 +930,7 @@ export function generateSchedule(params: {
     slots,
     games: checkedGames,
     fairness,
+    repair: repaired.summary,
     errors,
   };
 }
