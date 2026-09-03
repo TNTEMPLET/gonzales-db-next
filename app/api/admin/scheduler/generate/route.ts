@@ -28,19 +28,30 @@ function parseGamesPerTeam(value: unknown): number | undefined {
   return value;
 }
 
+function parseSeasonYearParam(value: string | null): number | null {
+  if (!value?.trim()) return null;
+  const year = Number(value);
+  if (!Number.isInteger(year) || year < 2020 || year > 2100) return null;
+  return year;
+}
+
 export async function GET(request: NextRequest) {
   const auth = await requireSchedulerAdmin(request);
   if (!auth.ok) return auth.response;
 
   try {
     const seasonId = requestId(request, "seasonId");
-    if (!seasonId) return NextResponse.json({ error: "seasonId is required" }, { status: 400 });
-    const season = await requireSeason(auth.organizationId, seasonId);
+    const seasonYear = seasonId
+      ? (await requireSeason(auth.organizationId, seasonId)).seasonYear
+      : parseSeasonYearParam(request.nextUrl.searchParams.get("seasonYear"));
+    if (!seasonYear) {
+      return NextResponse.json({ error: "seasonId or seasonYear is required" }, { status: 400 });
+    }
     const teams = await prisma.team.groupBy({
       by: ["ageGroup"],
       where: {
         organizationId: auth.organizationId,
-        seasonYear: season.seasonYear,
+        seasonYear,
         NOT: { teamName: { equals: "Unallocated", mode: "insensitive" } },
       },
       _count: { _all: true },
@@ -49,7 +60,7 @@ export async function GET(request: NextRequest) {
     for (const row of teams) {
       if (row.ageGroup) teamCounts[row.ageGroup] = row._count._all;
     }
-    return NextResponse.json({ data: { teamCounts } });
+    return NextResponse.json({ data: { teamCounts, seasonYear } });
   } catch (error) {
     return jsonError(error);
   }
