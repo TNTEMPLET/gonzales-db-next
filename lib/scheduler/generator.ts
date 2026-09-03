@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { parseSeasonDateWindows, parseUtcDateOnly } from "./seasonWindows";
+import { playableSchedulerTeams } from "./realTeams";
 import { isEarlyStart } from "./earlyLate";
 import { addMinutes, dateKey, jsonStringArray, timeToMinutes } from "./validation";
 import type {
@@ -529,7 +530,7 @@ export function generateSchedule(params: {
       continue;
     }
     const ageGroup = rule.ageGroup || division;
-    const teams = params.teams.filter((team) => team.ageGroup === ageGroup);
+    const teams = playableSchedulerTeams(params.teams.filter((team) => team.ageGroup === ageGroup));
     if (teams.length < 2) {
       errors.push({ code: "MISSING_TEAMS", message: `At least two teams are required for ${division}`, details: { division, ageGroup, teamCount: teams.length } });
       continue;
