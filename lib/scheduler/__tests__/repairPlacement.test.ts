@@ -129,6 +129,9 @@ describe("repairUnplacedGames", () => {
         assert.ok(count <= 2, `${teamId} has ${count} games in ${week}`);
       }
     }
+    const blocker = repaired.games.find((entry) => entry.gameNumber === 3);
+    assert.ok(blocker?.gameDate);
+    assert.notEqual(dateKey(blocker.gameDate), dateKey(week1Thu));
   });
 
   it("stops when nothing can move instead of looping", () => {
