@@ -3,6 +3,12 @@ import type { Prisma } from "@prisma/client";
 import { parseSeasonDateWindows, parseSeasonGamesPerTeam, parseUtcDateOnly } from "./seasonWindows";
 import { playableSchedulerTeams } from "./realTeams";
 import { isEarlyStart, projectedEarlyLateCost } from "./earlyLate";
+import {
+  fieldClaimsForNight,
+  fieldPriorityRank,
+  fieldsClaimedByOthers,
+  parseFieldPriorityIds,
+} from "./fieldPriority";
 import { addMinutes, dateKey, jsonStringArray, timeToMinutes } from "./validation";
 import type {
   GeneratedDraftGame,
@@ -312,13 +318,17 @@ function chooseEligibleSlot(params: {
   teamWeeks: Map<string, number>;
   teamEarly: Map<string, number>;
   teamLate: Map<string, number>;
+  blockedFieldIds?: Set<string>;
 }): SchedulerSlot | undefined {
   const times = divisionSlotTimes(params.slots, params.matchup.division);
   const teamIds = [params.matchup.homeTeamId, params.matchup.awayTeamId];
+  const priorityIds = parseFieldPriorityIds(params.rule?.ruleMetadata);
   let best: SchedulerSlot | undefined;
+  let bestRank = Number.POSITIVE_INFINITY;
   let bestScore = Number.POSITIVE_INFINITY;
   for (const candidate of params.slots) {
     if (params.usedSlotIds.has(candidate.id)) continue;
+    if (params.blockedFieldIds?.has(candidate.fieldId)) continue;
     if (ruleAllowsSlot(params.rule, params.matchup, candidate).length) continue;
     if (
       teamPlacementConflicts({
@@ -332,8 +342,10 @@ function chooseEligibleSlot(params: {
     ) {
       continue;
     }
+    const rank = fieldPriorityRank(candidate.fieldId, priorityIds);
     const score = earlyLateScore(teamIds, isEarlyStart(candidate.startTime, times), params.teamEarly, params.teamLate);
-    if (score < bestScore) {
+    if (rank < bestRank || (rank === bestRank && score < bestScore)) {
+      bestRank = rank;
       bestScore = score;
       best = candidate;
     }
@@ -917,10 +929,14 @@ function assignOneFactorToNight(params: {
   teamDates: Set<string>;
   teamWeeks: Map<string, number>;
   teamSlotTimes: Set<string>;
-}): GeneratedDraftGame[] {
+  blockedFieldIds?: Set<string>;
+  emitUnplaced?: boolean;
+}): { games: GeneratedDraftGame[]; leftover: Array<[SchedulerTeam, SchedulerTeam]> } {
   const games: GeneratedDraftGame[] = [];
+  const leftover: Array<[SchedulerTeam, SchedulerTeam]> = [];
   let gameNumber = params.gameNumberStart;
   const remaining = [...params.nightSlots].filter((slot) => !params.usedSlotIds.has(slot.id));
+  const emitUnplaced = params.emitUnplaced !== false;
 
   params.pairs.forEach((pair, pairIndex) => {
     const { home, away } = chooseHomeAway({
@@ -951,8 +967,11 @@ function assignOneFactorToNight(params: {
       teamWeeks: params.teamWeeks,
       teamEarly: params.teamEarly,
       teamLate: params.teamLate,
+      blockedFieldIds: params.blockedFieldIds,
     });
     if (!slot) {
+      leftover.push(pair);
+      if (!emitUnplaced) return;
       games.push({
         ...matchup,
         gameDate: null,
@@ -1010,7 +1029,7 @@ function assignOneFactorToNight(params: {
     gameNumber += 1;
   });
 
-  return games;
+  return { games, leftover };
 }
 
 function packOneFactorSchedule(params: {
@@ -1077,33 +1096,58 @@ function packOneFactorSchedule(params: {
   const dates = [...byDate.keys()].sort();
   for (const date of dates) {
     const tonight = (byDate.get(date) ?? []).sort((a, b) => b.plan.pairsNeeded - a.plan.pairsNeeded);
-    for (const { plan, roundIndex } of tonight) {
-      const round = plan.rounds[roundIndex];
-      const probe = probeMatchup(plan.division, plan.ageGroup);
-      const nightSlots = params.slots.filter(
-        (slot) => dateKey(slot.date) === date && ruleAllowsSlot(plan.rule, probe, slot).length === 0,
-      );
-      const placed = assignOneFactorToNight({
-        pairs: round,
-        nightSlots,
-        rule: plan.rule,
-        division: plan.division,
-        ageGroup: plan.ageGroup,
-        roundLabel: `Round ${roundIndex + 1}`,
-        gameNumberStart: gameNumber,
-        cycleIndex: Math.floor(roundIndex / uniqueRoundCount(plan.teamCount)),
-        roundIndex,
-        homeCounts,
-        usedSlotIds,
-        teamEarly,
-        teamLate,
-        teamDates,
-        teamWeeks,
-        teamSlotTimes,
-      });
-      games.push(...placed);
-      gameNumber += placed.length;
-    }
+    const claimants = tonight.map(({ plan }) => ({
+      division: plan.division,
+      pairsNeeded: plan.pairsNeeded,
+      priorityIds: parseFieldPriorityIds(plan.rule?.ruleMetadata),
+    }));
+    const nightFieldIds = [
+      ...new Set(
+        params.slots.filter((slot) => dateKey(slot.date) === date).map((slot) => slot.fieldId),
+      ),
+    ];
+    const claims = fieldClaimsForNight(nightFieldIds, claimants);
+    const pending = tonight.map(({ plan, roundIndex }) => ({
+      plan,
+      roundIndex,
+      pairs: [...plan.rounds[roundIndex]],
+    }));
+
+    const packPass = (blockClaimed: boolean, emitUnplaced: boolean) => {
+      for (const item of pending) {
+        if (!item.pairs.length) continue;
+        const probe = probeMatchup(item.plan.division, item.plan.ageGroup);
+        const nightSlots = params.slots.filter(
+          (slot) => dateKey(slot.date) === date && ruleAllowsSlot(item.plan.rule, probe, slot).length === 0,
+        );
+        const placed = assignOneFactorToNight({
+          pairs: item.pairs,
+          nightSlots,
+          rule: item.plan.rule,
+          division: item.plan.division,
+          ageGroup: item.plan.ageGroup,
+          roundLabel: `Round ${item.roundIndex + 1}`,
+          gameNumberStart: gameNumber,
+          cycleIndex: Math.floor(item.roundIndex / uniqueRoundCount(item.plan.teamCount)),
+          roundIndex: item.roundIndex,
+          homeCounts,
+          usedSlotIds,
+          teamEarly,
+          teamLate,
+          teamDates,
+          teamWeeks,
+          teamSlotTimes,
+          blockedFieldIds: blockClaimed ? fieldsClaimedByOthers(item.plan.division, claims) : undefined,
+          emitUnplaced,
+        });
+        games.push(...placed.games);
+        gameNumber += placed.games.length;
+        item.pairs = placed.leftover;
+      }
+    };
+
+    packPass(true, false);
+    packPass(false, true);
   }
 
   for (const { plan, roundIndex } of leftover) {
@@ -1125,8 +1169,8 @@ function packOneFactorSchedule(params: {
       teamWeeks,
       teamSlotTimes,
     });
-    games.push(...placed);
-    gameNumber += placed.length;
+    games.push(...placed.games);
+    gameNumber += placed.games.length;
   }
 
   return games;
