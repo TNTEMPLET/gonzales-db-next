@@ -13,6 +13,7 @@ import {
   schedulerStepStatus,
   type SchedulerWizardStepId,
 } from "@/lib/admin/schedulerWizard";
+import FieldCapacityHeatmapModal from "@/components/admin/scheduler/FieldCapacityHeatmapModal";
 import FieldSetupPanel from "@/components/admin/scheduler/FieldSetupPanel";
 import { weekDivisionsFromMeta } from "@/lib/admin/fieldBoardWeek";
 import { parseDivisionSlotTimes, withSuggestedDivisionTimes } from "@/lib/admin/divisionSlotTimes";
@@ -399,10 +400,12 @@ function SchedulerWizardStepper({
   completeById,
   activeId,
   onJump,
+  onOpenHeatmap,
 }: {
   completeById: Record<SchedulerWizardStepId, boolean>;
   activeId: SchedulerWizardStepId;
   onJump: (id: SchedulerWizardStepId) => void;
+  onOpenHeatmap: () => void;
 }) {
   const doneCount = SCHEDULER_WIZARD_STEPS.filter((step) => completeById[step.id]).length;
   return (
@@ -411,9 +414,18 @@ function SchedulerWizardStepper({
         <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
           Schedule wizard
         </p>
-        <p className="text-xs text-zinc-400">
-          {doneCount}/{SCHEDULER_WIZARD_STEPS.length} complete
-        </p>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onOpenHeatmap}
+            className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] font-semibold text-zinc-200 hover:border-red-400"
+          >
+            Heatmap
+          </button>
+          <p className="text-xs text-zinc-400">
+            {doneCount}/{SCHEDULER_WIZARD_STEPS.length} complete
+          </p>
+        </div>
       </div>
       <div className="flex flex-wrap gap-2">
         {SCHEDULER_WIZARD_STEPS.map((step) => {
@@ -521,6 +533,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
   const [reviewFairnessOpen, setReviewFairnessOpen] = useState(false);
   const [editingGameId, setEditingGameId] = useState<string | null>(null);
   const [activeStepId, setActiveStepId] = useState<SchedulerWizardStepId>("scheduler-season");
+  const [heatmapOpen, setHeatmapOpen] = useState(false);
 
   const selectedSeason = useMemo(
     () => seasons.find((season) => season.id === selectedSeasonId) ?? null,
@@ -655,6 +668,28 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       return divisionSort || a.teamName.localeCompare(b.teamName);
     });
   }, [draftGames, reviewDivision]);
+  const heatmapGames = useMemo(() => {
+    const source = preview?.games.length ? preview.games : draftGames;
+    return source.map((game) => ({
+      fieldId: game.fieldId,
+      gameDate: game.gameDate,
+      startTime: game.startTime,
+      division: game.division,
+      homeTeamName: game.homeTeamName,
+      awayTeamName: game.awayTeamName,
+    }));
+  }, [draftGames, preview]);
+  const heatmapTeamCounts = useMemo(() => {
+    const counts: Record<string, number> = { ...teamCounts };
+    for (const rule of rules) {
+      const value = teamCounts[rule.ageGroup || rule.division] ?? teamCounts[rule.division] ?? 0;
+      if (rule.division) counts[rule.division] = value;
+    }
+    return counts;
+  }, [rules, teamCounts]);
+  const heatmapSourceLabel = preview?.games.some((game) => game.gameDate && game.fieldId)
+    ? "Showing the last generate preview"
+    : "Showing saved draft games";
   const exportHref = selectedSeasonId
     ? `/api/admin/scheduler/export?seasonId=${encodeURIComponent(selectedSeasonId)}&${orgQuery}`
     : "#";
@@ -1116,7 +1151,20 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         completeById={wizardCompleteById}
         activeId={activeStepId}
         onJump={jumpToStep}
+        onOpenHeatmap={() => setHeatmapOpen(true)}
       />
+      {heatmapOpen ? (
+        <FieldCapacityHeatmapModal
+          parks={parks}
+          gamesStartsOn={seasonForm.gamesStartsOn || seasonForm.startsOn}
+          gamesEndsOn={seasonForm.gamesEndsOn || seasonForm.endsOn}
+          games={heatmapGames}
+          teamCounts={heatmapTeamCounts}
+          gamesPerTeam={Number.parseInt(gamesPerTeam, 10) || 8}
+          sourceLabel={heatmapSourceLabel}
+          onClose={() => setHeatmapOpen(false)}
+        />
+      ) : null}
 
       <Panel
         id="scheduler-season"
