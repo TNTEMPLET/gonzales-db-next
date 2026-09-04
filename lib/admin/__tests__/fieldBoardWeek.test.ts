@@ -4,12 +4,15 @@ import { describe, it } from "node:test";
 import {
   divisionsUsedInWeek,
   emptyFieldWeek,
+  parkBoardDivisionsFromFields,
+  parseBoardDivisions,
   parseCellDivisions,
   parseFieldWeek,
   resolveSharedSlotTime,
   serializeCellDivisions,
   toggleCellDivision,
   weekDivisionsFromMeta,
+  weeklyBoardDivisionOptions,
 } from "../fieldBoardWeek";
 
 describe("field board week cells", () => {
@@ -82,5 +85,44 @@ describe("field board week cells", () => {
 
   it("starts from an empty week with no phantom divisions", () => {
     assert.deepEqual(divisionsUsedInWeek(emptyFieldWeek()), []);
+  });
+});
+
+describe("weekly board division filter", () => {
+  const all = ["6U MOD", "7U CP", "8U CP", "9U", "10U"];
+
+  it("reads boardDivisions from field metadata", () => {
+    assert.deepEqual(parseBoardDivisions({ boardDivisions: ["6U MOD", "7U CP", "8U CP"] }), [
+      "6U MOD",
+      "7U CP",
+      "8U CP",
+    ]);
+    assert.deepEqual(
+      parkBoardDivisionsFromFields([
+        { fieldMetadata: { boardDivisions: ["7U CP"] } },
+        { fieldMetadata: { boardDivisions: ["6U MOD", "7U CP", "8U CP"] } },
+      ]).sort(),
+      ["6U MOD", "7U CP", "8U CP"],
+    );
+  });
+
+  it("shows every division when the park filter is empty", () => {
+    assert.deepEqual(weeklyBoardDivisionOptions(all, []), all);
+  });
+
+  it("limits JLS-style boards to the park filter", () => {
+    assert.deepEqual(weeklyBoardDivisionOptions(all, ["6U MOD", "7U CP", "8U CP"]), [
+      "6U MOD",
+      "7U CP",
+      "8U CP",
+    ]);
+  });
+
+  it("keeps an already-checked division visible after it is filtered off", () => {
+    assert.deepEqual(weeklyBoardDivisionOptions(all, ["7U CP", "8U CP"], ["9U", "7U CP"]), [
+      "7U CP",
+      "8U CP",
+      "9U",
+    ]);
   });
 });

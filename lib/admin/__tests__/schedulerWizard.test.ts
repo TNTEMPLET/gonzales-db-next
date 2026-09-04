@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   SCHEDULER_WIZARD_STEPS,
   schedulerStepStatus,
+  wizardStepIsOpen,
   type SchedulerWizardSnapshot,
 } from "../schedulerWizard";
 
@@ -73,5 +74,17 @@ describe("schedulerStepStatus", () => {
       schedulerStepStatus("scheduler-notify", { ...empty, notifySentCount: 12 }),
       "COMPLETE",
     );
+  });
+});
+
+describe("wizardStepIsOpen", () => {
+  it("keeps incomplete steps expanded", () => {
+    assert.equal(wizardStepIsOpen(false, false), true);
+    assert.equal(wizardStepIsOpen(false, true), true);
+  });
+
+  it("collapses complete steps until they are reopened", () => {
+    assert.equal(wizardStepIsOpen(true, false), false);
+    assert.equal(wizardStepIsOpen(true, true), true);
   });
 });

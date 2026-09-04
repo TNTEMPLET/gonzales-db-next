@@ -83,6 +83,39 @@ export function weekDivisionsFromMeta(fieldMetadata: unknown): string[] {
   return divisionsUsedInWeek(parseFieldWeek((fieldMetadata as { week?: unknown }).week));
 }
 
+/** Park-level weekly-board allowlist stored on field metadata. */
+export function parseBoardDivisions(fieldMetadata: unknown): string[] {
+  if (!fieldMetadata || typeof fieldMetadata !== "object") return [];
+  return parseCellDivisions((fieldMetadata as { boardDivisions?: unknown }).boardDivisions);
+}
+
+export function parkBoardDivisionsFromFields(
+  fields: readonly { fieldMetadata?: unknown }[],
+): string[] {
+  const found = new Set<string>();
+  for (const field of fields) {
+    for (const division of parseBoardDivisions(field.fieldMetadata)) found.add(division);
+  }
+  return [...found];
+}
+
+/**
+ * Empty filter = every org division. Non-empty = only those chips.
+ * Divisions already checked on a cell still appear so they can be turned off.
+ */
+export function weeklyBoardDivisionOptions(
+  allDivisions: readonly string[],
+  filter: readonly string[],
+  selectedInCell: readonly string[] = [],
+): string[] {
+  const all = uniqueTrimmed([...allDivisions]);
+  const allowed = uniqueTrimmed([...filter]);
+  const selected = uniqueTrimmed([...selectedInCell]);
+  const core = allowed.length ? all.filter((division) => allowed.includes(division)) : all;
+  const extras = selected.filter((division) => !core.includes(division));
+  return [...core, ...extras];
+}
+
 export function resolveSharedSlotTime(
   divisions: readonly string[],
   slotIndex: 0 | 1,

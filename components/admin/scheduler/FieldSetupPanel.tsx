@@ -6,11 +6,13 @@ import {
   divisionsUsedInWeek,
   emptyFieldWeek,
   FIELD_BOARD_DAYS,
+  parkBoardDivisionsFromFields,
   parseCellDivisions,
   parseFieldWeek,
   resolveSharedSlotTime,
   serializeCellDivisions,
   toggleCellDivision,
+  weeklyBoardDivisionOptions,
   type FieldWeek,
 } from "@/lib/admin/fieldBoardWeek";
 import { getTeamsManagementAgeGroupDefaults } from "@/lib/admin/teamsImportHelpers";
@@ -120,6 +122,7 @@ export default function FieldSetupPanel({
   const [extraFieldName, setExtraFieldName] = useState("");
   const [selectedParkId, setSelectedParkId] = useState("");
   const [plans, setPlans] = useState<Record<string, FieldPlan>>({});
+  const [parkBoardDivisions, setParkBoardDivisions] = useState<Record<string, string[]>>({});
 
   const selectedPark = parks.find((park) => park.id === selectedParkId) ?? parks[0] ?? null;
   const parkHydrateKey = parks
@@ -135,12 +138,15 @@ export default function FieldSetupPanel({
 
   useEffect(() => {
     const next: Record<string, FieldPlan> = {};
+    const nextFilters: Record<string, string[]> = {};
     for (const park of parks) {
+      nextFilters[park.id] = parkBoardDivisionsFromFields(park.fields);
       for (const field of park.fields) {
         next[field.id] = readFieldPlan(field, seasonTimes, park.availabilities);
       }
     }
     setPlans(next);
+    setParkBoardDivisions(nextFilters);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [parkHydrateKey]);
 
@@ -163,6 +169,16 @@ export default function FieldSetupPanel({
       ...current,
       [fieldId]: { ...current[fieldId], ...patch },
     }));
+  }
+
+  function toggleParkBoardDivision(parkId: string, division: string) {
+    setParkBoardDivisions((current) => {
+      const list = current[parkId] ?? [];
+      return {
+        ...current,
+        [parkId]: list.includes(division) ? list.filter((item) => item !== division) : [...list, division],
+      };
+    });
   }
 
   function toggleCell(fieldId: string, dayOfWeek: number, slotIndex: 0 | 1, division: string) {
@@ -284,6 +300,7 @@ export default function FieldSetupPanel({
                   fieldMetadata: {
                     slotTimes: plan?.slotTimes ?? ["", ""],
                     week: plan?.week ?? emptyFieldWeek(),
+                    boardDivisions: parkBoardDivisions[park.id] ?? [],
                   },
                   isActive: field.isActive,
                 };
@@ -382,6 +399,50 @@ export default function FieldSetupPanel({
             <p className="mt-3 text-sm text-amber-200">Save default game times in Season setup so the slot dropdowns have values.</p>
           ) : null}
 
+          {selectedPark ? (
+            <div className="mt-4 rounded-xl border border-zinc-800 bg-zinc-950/80 p-3">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <p className="text-sm font-medium text-zinc-200">Divisions at this park</p>
+                  <p className="mt-1 text-xs text-zinc-500">
+                    {parkBoardDivisions[selectedPark.id]?.length
+                      ? `Board chips show ${parkBoardDivisions[selectedPark.id].length} of ${divisionOptions.length}.`
+                      : "None selected = every division. Turn on only the divisions that play at this park."}
+                  </p>
+                </div>
+                {parkBoardDivisions[selectedPark.id]?.length ? (
+                  <button
+                    type="button"
+                    onClick={() => setParkBoardDivisions((current) => ({ ...current, [selectedPark.id]: [] }))}
+                    className="rounded-xl border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-red-400"
+                  >
+                    Show all
+                  </button>
+                ) : null}
+              </div>
+              <div className="mt-3 flex flex-wrap gap-1.5">
+                {divisionOptions.map((division) => {
+                  const on = (parkBoardDivisions[selectedPark.id] ?? []).includes(division);
+                  return (
+                    <button
+                      key={division}
+                      type="button"
+                      aria-pressed={on}
+                      onClick={() => toggleParkBoardDivision(selectedPark.id, division)}
+                      className={
+                        on
+                          ? "rounded-md bg-red-600 px-2 py-1 text-[11px] font-semibold text-white"
+                          : "rounded-md border border-zinc-700 bg-zinc-950 px-2 py-1 text-[11px] font-semibold text-zinc-400 hover:border-red-400 hover:text-zinc-200"
+                      }
+                    >
+                      {division}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+
           <div className="mt-4 flex flex-wrap gap-2">
             <input
               value={extraFieldName}
@@ -458,7 +519,11 @@ export default function FieldSetupPanel({
                             return (
                               <td key={day.dayOfWeek} className="p-2 align-top">
                                 <div className="flex flex-wrap gap-1">
-                                  {divisionOptions.map((division) => {
+                                  {weeklyBoardDivisionOptions(
+                                    divisionOptions,
+                                    parkBoardDivisions[selectedPark.id] ?? [],
+                                    selected,
+                                  ).map((division) => {
                                     const on = selected.includes(division);
                                     return (
                                       <button

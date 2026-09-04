@@ -11,6 +11,7 @@ import {
 import {
   SCHEDULER_WIZARD_STEPS,
   schedulerStepStatus,
+  wizardStepIsOpen,
   type SchedulerWizardStepId,
 } from "@/lib/admin/schedulerWizard";
 import FieldCapacityHeatmapModal from "@/components/admin/scheduler/FieldCapacityHeatmapModal";
@@ -370,37 +371,68 @@ function Panel({
   title,
   eyebrow,
   complete,
+  open = true,
+  onToggle,
   children,
 }: {
   id?: string;
   title: string;
   eyebrow: string;
   complete?: boolean;
+  open?: boolean;
+  onToggle?: () => void;
   children: ReactNode;
 }) {
-  return (
-    <section
-      id={id}
-      className="scroll-mt-36 rounded-3xl border border-zinc-800 bg-zinc-900/70 p-5 shadow-xl shadow-black/20 sm:p-6"
-    >
+  const collapsed = Boolean(complete) && !open;
+  const canToggle = Boolean(complete) && Boolean(onToggle);
+  const header = (
+    <>
       <div className="flex flex-wrap items-center justify-between gap-2">
         <p className="text-[10px] font-semibold uppercase tracking-[0.28em] text-red-200">
           {eyebrow}
         </p>
-        {complete != null ? (
-          <span
-            className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
-              complete
-                ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
-                : "border-zinc-700 bg-zinc-950 text-zinc-500"
-            }`}
-          >
-            {complete ? "Complete" : "Needs work"}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {complete != null ? (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider ${
+                complete
+                  ? "border-emerald-500/30 bg-emerald-500/15 text-emerald-300"
+                  : "border-zinc-700 bg-zinc-950 text-zinc-500"
+              }`}
+            >
+              {complete ? "Complete" : "Needs work"}
+            </span>
+          ) : null}
+          {canToggle ? (
+            <span className="rounded-xl border border-zinc-700 px-3 py-1 text-xs font-semibold text-zinc-200 group-hover:border-red-400">
+              {collapsed ? "Edit" : "Collapse"}
+            </span>
+          ) : null}
+        </div>
       </div>
-      <h2 className="mt-2 text-2xl font-semibold text-white">{title}</h2>
-      <div className="mt-5">{children}</div>
+      <h2 className={`font-semibold text-white ${collapsed ? "mt-1 text-lg" : "mt-2 text-2xl"}`}>{title}</h2>
+    </>
+  );
+  return (
+    <section
+      id={id}
+      className={`scroll-mt-36 rounded-3xl border border-zinc-800 bg-zinc-900/70 shadow-xl shadow-black/20 ${
+        collapsed ? "p-4" : "p-5 sm:p-6"
+      }`}
+    >
+      {canToggle ? (
+        <button
+          type="button"
+          className="group block w-full text-left"
+          aria-expanded={!collapsed}
+          onClick={onToggle}
+        >
+          {header}
+        </button>
+      ) : (
+        header
+      )}
+      <div className={collapsed ? "hidden" : "mt-5"}>{children}</div>
     </section>
   );
 }
@@ -543,6 +575,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
   const [reviewFairnessOpen, setReviewFairnessOpen] = useState(false);
   const [editingGameId, setEditingGameId] = useState<string | null>(null);
   const [activeStepId, setActiveStepId] = useState<SchedulerWizardStepId>("scheduler-season");
+  const [reopenedStepIds, setReopenedStepIds] = useState<Set<SchedulerWizardStepId>>(() => new Set());
   const [heatmapOpen, setHeatmapOpen] = useState(false);
 
   const selectedSeason = useMemo(
@@ -906,9 +939,32 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
     return () => observer.disconnect();
   }, []);
 
+  function stepOpen(id: SchedulerWizardStepId) {
+    return wizardStepIsOpen(wizardCompleteById[id], reopenedStepIds.has(id));
+  }
+
+  function toggleStepOpen(id: SchedulerWizardStepId) {
+    if (!wizardCompleteById[id]) return;
+    setReopenedStepIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
   function jumpToStep(id: SchedulerWizardStepId) {
     setActiveStepId(id);
-    document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    if (wizardCompleteById[id]) {
+      setReopenedStepIds((current) => {
+        const next = new Set(current);
+        next.add(id);
+        return next;
+      });
+    }
+    window.setTimeout(() => {
+      document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }, 50);
   }
 
   useEffect(() => {
@@ -1182,6 +1238,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         title="Setup Season"
         eyebrow="1. Foundation"
         complete={wizardCompleteById["scheduler-season"]}
+        open={stepOpen("scheduler-season")}
+        onToggle={() => toggleStepOpen("scheduler-season")}
       >
         <div className="grid gap-4 lg:grid-cols-[1fr_1.4fr]">
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4 text-sm text-zinc-300">
@@ -1321,6 +1379,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         title="Parks & Fields"
         eyebrow="2. Facilities"
         complete={wizardCompleteById["scheduler-parks"]}
+        open={stepOpen("scheduler-parks")}
+        onToggle={() => toggleStepOpen("scheduler-parks")}
       >
         <FieldSetupPanel
           targetOrg={targetOrg}
@@ -1344,6 +1404,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         title="Division constraints"
         eyebrow="3. Limits"
         complete={wizardCompleteById["scheduler-matrix"]}
+        open={stepOpen("scheduler-matrix")}
+        onToggle={() => toggleStepOpen("scheduler-matrix")}
       >
         <p className="mb-4 text-sm text-zinc-400">
           Who plays where is already on the weekly field board. Here you only set how often each division can play.
@@ -1426,6 +1488,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         title="Generate Schedule"
         eyebrow="4. Draft builder"
         complete={wizardCompleteById["scheduler-generate"]}
+        open={stepOpen("scheduler-generate")}
+        onToggle={() => toggleStepOpen("scheduler-generate")}
       >
         <p className="mb-4 text-sm text-zinc-400">
           Parks already placed each division on a field and night. Limits already cap how often they play.
@@ -1590,6 +1654,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         title="Review & Fix"
         eyebrow="5. Draft QA"
         complete={wizardCompleteById["scheduler-review"]}
+        open={stepOpen("scheduler-review")}
+        onToggle={() => toggleStepOpen("scheduler-review")}
       >
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-400">
           <p>
@@ -1831,6 +1897,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         title="Export"
         eyebrow="6. Upload files"
         complete={wizardCompleteById["scheduler-export"]}
+        open={stepOpen("scheduler-export")}
+        onToggle={() => toggleStepOpen("scheduler-export")}
       >
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl space-y-2 text-sm text-zinc-400">
@@ -1858,6 +1926,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         practiceStartsOn={seasonForm.practiceStartsOn || seasonForm.startsOn}
         practiceEndsOn={seasonForm.practiceEndsOn || seasonForm.endsOn}
         complete={wizardCompleteById["scheduler-practice"]}
+        open={stepOpen("scheduler-practice")}
+        onToggle={() => toggleStepOpen("scheduler-practice")}
         onEditDates={() => jumpToStep("scheduler-season")}
         onPracticeChanged={() => {
           void refreshPracticeSummary(workingSeasonYear());
@@ -1868,6 +1938,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         orgQuery={orgQuery}
         seasonId={selectedSeasonId}
         complete={wizardCompleteById["scheduler-notify"]}
+        open={stepOpen("scheduler-notify")}
+        onToggle={() => toggleStepOpen("scheduler-notify")}
         onSent={(sentCount) => setNotifySentCount(sentCount)}
       />
     </div>
@@ -1990,6 +2062,8 @@ function PracticeSlotsPanel({
   practiceStartsOn,
   practiceEndsOn,
   complete,
+  open,
+  onToggle,
   onEditDates,
   onPracticeChanged,
 }: {
@@ -2000,6 +2074,8 @@ function PracticeSlotsPanel({
   practiceStartsOn: string;
   practiceEndsOn: string;
   complete: boolean;
+  open: boolean;
+  onToggle: () => void;
   onEditDates?: () => void;
   onPracticeChanged?: () => void;
 }) {
@@ -2190,6 +2266,8 @@ function PracticeSlotsPanel({
       title="Practice Slots"
       eyebrow="7. Practice scheduling"
       complete={complete}
+      open={open}
+      onToggle={onToggle}
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-400">
         <p>
@@ -2462,11 +2540,15 @@ function CoachNotifyPanel({
   orgQuery,
   seasonId,
   complete,
+  open,
+  onToggle,
   onSent,
 }: {
   orgQuery: string;
   seasonId: string;
   complete: boolean;
+  open: boolean;
+  onToggle: () => void;
   onSent?: (sentCount: number) => void;
 }) {
   const [summary, setSummary] = useState<CoachNotifySummary | null>(null);
@@ -2566,6 +2648,8 @@ function CoachNotifyPanel({
       title="Notify Coaches"
       eyebrow="8. Head coach emails"
       complete={complete}
+      open={open}
+      onToggle={onToggle}
     >
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-400">
         <p>
