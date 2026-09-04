@@ -637,6 +637,7 @@ function tryDisplaceOne(params: {
       });
 
       for (const blocker of blockers) {
+        const originalSlotId = slotIdForGame(blocker);
         const withoutBlocker = params.games.map((entry) =>
           gameIdentity(entry) === gameIdentity(blocker)
             ? {
@@ -653,13 +654,14 @@ function tryDisplaceOne(params: {
         );
         const occupancyWithout = occupancyFromGames(withoutBlocker, params.slots);
         occupancyWithout.usedSlotIds.add(target.id);
+        if (originalSlotId) occupancyWithout.usedSlotIds.add(originalSlotId);
         const alt = chooseEligibleSlot({
           matchup: matchupFromGame(blocker),
           rule: params.rules.find((entry) => entry.division === blocker.division),
           slots: params.slots,
           ...occupancyWithout,
         });
-        if (!alt || alt.id === target.id) continue;
+        if (!alt || alt.id === target.id || alt.id === originalSlotId) continue;
         const moved = withoutBlocker.map((entry) =>
           gameIdentity(entry) === gameIdentity(blocker) ? applySlotToGame(entry, alt) : entry,
         );
