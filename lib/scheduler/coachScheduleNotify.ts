@@ -10,7 +10,6 @@ import { reconnectPrisma } from "@/lib/prismaRetry";
 import { getOrgDisplayName, getSiteConfigForOrg, type ContentOrgId } from "@/lib/siteConfig";
 import {
   COACH_NOTIFY_SOURCE_TYPE,
-  NOTIFY_DAY_LABELS,
   buildCoachScheduleEmail,
   coachDisplayName,
   coachNotifyStatus,
@@ -152,7 +151,12 @@ export async function loadCoachScheduleNotify(params: {
       };
     });
     const practicePlan = formatPracticePlanText(practiceViews);
-    const practices = practiceViews.map((slot) =>
+    const sortedViews = [...practiceViews].sort((a, b) => {
+      const weekA = Number(/^Week (\d+)/.exec(a.notes ?? "")?.[1] ?? 0);
+      const weekB = Number(/^Week (\d+)/.exec(b.notes ?? "")?.[1] ?? 0);
+      return weekA - weekB || a.dayOfWeek - b.dayOfWeek || a.startTime.localeCompare(b.startTime);
+    });
+    const practices = sortedViews.map((slot) =>
       formatNotifyPracticeLine({
         dayOfWeek: slot.dayOfWeek,
         startTime: slot.startTime,
@@ -201,7 +205,8 @@ export async function loadCoachScheduleNotify(params: {
       coachEmail,
       registeredUserId: head?.id ?? null,
       practiceCount: team.practiceSlots.length,
-      practiceSummary: practiceViews.map((slot) => NOTIFY_DAY_LABELS[slot.dayOfWeek] ?? "").filter(Boolean).join(", ") || "—",
+      practiceSummary:
+        practices.map((slot) => slot.day.replace(" · ", " ")).filter(Boolean).join(", ") || "—",
       practicePlan,
       practices,
       gameCount: teamGames.length,

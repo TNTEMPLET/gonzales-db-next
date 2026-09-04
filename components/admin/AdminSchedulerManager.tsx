@@ -16,6 +16,7 @@ import {
 } from "@/lib/admin/schedulerWizard";
 import FieldCapacityHeatmapModal from "@/components/admin/scheduler/FieldCapacityHeatmapModal";
 import FieldSetupPanel from "@/components/admin/scheduler/FieldSetupPanel";
+import PracticeAssignWizard from "@/components/admin/scheduler/PracticeAssignWizard";
 import { weekDivisionsFromMeta } from "@/lib/admin/fieldBoardWeek";
 import { parseDivisionSlotTimes, withSuggestedDivisionTimes } from "@/lib/admin/divisionSlotTimes";
 import { formatConflictSummary, formatGenerationError } from "@/lib/scheduler/conflictCopy";
@@ -174,7 +175,7 @@ const PRACTICE_START_TIMES = Array.from({ length: 51 }, (_, i) => {
   const minutes = total % 60;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 });
-const PRACTICE_DURATIONS = ["60", "75", "90", "105", "120"];
+const PRACTICE_DURATIONS = ["45", "60", "75", "90", "105", "120"];
 
 function withCurrentOption(options: string[], current: string): string[] {
   if (!current || options.includes(current)) return options;
@@ -2305,6 +2306,7 @@ function PracticeSlotsPanel({
   const [unassignedOnly, setUnassignedOnly] = useState(false);
   const [unassignedTouched, setUnassignedTouched] = useState(false);
   const [form, setForm] = useState<PracticeEditForm>(EMPTY_PRACTICE_FORM);
+  const [assignOpen, setAssignOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -2504,6 +2506,13 @@ function PracticeSlotsPanel({
           ) : null}
           <button
             type="button"
+            onClick={() => setAssignOpen(true)}
+            className="rounded-xl border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-red-400"
+          >
+            Assign wizard
+          </button>
+          <button
+            type="button"
             onClick={() => void refreshAll(ageGroup)}
             className="rounded-xl border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-red-400"
           >
@@ -2512,8 +2521,29 @@ function PracticeSlotsPanel({
         </div>
       </div>
       <p className="mb-3 text-sm text-zinc-400">
-        Weekly nights per team — add a second day if they practice twice. Saving writes the Coach Corner practice plan.
+        Weekly nights per team — add a second day if they practice twice. Use Assign wizard to place a whole division on
+        fields and nights (including a 3-week rotate). Saving writes the Coach Corner practice plan.
       </p>
+      {assignOpen ? (
+        <PracticeAssignWizard
+          orgQuery={orgQuery}
+          seasonYear={seasonYear}
+          fields={allFields.map((field) => ({
+            id: field.id,
+            parkId: field.parkId,
+            parkName: field.parkName,
+            name: field.name,
+          }))}
+          divisions={divisions}
+          initialAgeGroup={ageGroup}
+          onClose={() => setAssignOpen(false)}
+          onApplied={() => {
+            setAssignOpen(false);
+            void refreshAll(ageGroup);
+            onPracticeChanged?.();
+          }}
+        />
+      ) : null}
       <div className="mb-3 flex flex-wrap gap-2">
         {divisions.map((row) => {
           const selected = ageGroup === row.ageGroup;
