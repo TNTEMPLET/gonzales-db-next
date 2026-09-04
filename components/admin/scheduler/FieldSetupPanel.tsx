@@ -2,8 +2,19 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import {
+  divisionsUsedInWeek,
+  emptyFieldWeek,
+  FIELD_BOARD_DAYS,
+  parseCellDivisions,
+  parseFieldWeek,
+  resolveSharedSlotTime,
+  serializeCellDivisions,
+  toggleCellDivision,
+  type FieldWeek,
+} from "@/lib/admin/fieldBoardWeek";
 import { getTeamsManagementAgeGroupDefaults } from "@/lib/admin/teamsImportHelpers";
-import { resolveDivisionSlotTime, type DivisionSlotTimes } from "@/lib/admin/divisionSlotTimes";
+import { type DivisionSlotTimes } from "@/lib/admin/divisionSlotTimes";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type Field = {
@@ -37,24 +48,6 @@ type Park = {
   availabilities: Availability[];
 };
 
-const MATRIX_DAYS = [
-  { dayOfWeek: 1, label: "Monday" },
-  { dayOfWeek: 2, label: "Tuesday" },
-  { dayOfWeek: 3, label: "Wednesday" },
-  { dayOfWeek: 4, label: "Thursday" },
-  { dayOfWeek: 5, label: "Friday" },
-] as const;
-
-function asStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((entry): entry is string => typeof entry === "string") : [];
-}
-
-function firstDivision(value: unknown): string {
-  if (typeof value === "string") return value;
-  const list = asStringArray(value);
-  return list[0] ?? "";
-}
-
 function formatSlotLabel(hhmm: string): string {
   const [hours, minutes] = hhmm.split(":").map(Number);
   if (!Number.isFinite(hours)) return hhmm || "Select time";
@@ -63,24 +56,10 @@ function formatSlotLabel(hhmm: string): string {
   return `${hour12}:${String(minutes || 0).padStart(2, "0")} ${suffix}`;
 }
 
-function emptyWeek(): Record<number, [string, string]> {
-  return { 1: ["", ""], 2: ["", ""], 3: ["", ""], 4: ["", ""], 5: ["", ""] };
-}
-
 type FieldPlan = {
   slotTimes: [string, string];
-  week: Record<number, [string, string]>;
+  week: FieldWeek;
 };
-
-function divisionsUsedInWeek(week: Record<number, [string, string]>): string[] {
-  const found = new Set<string>();
-  for (const day of MATRIX_DAYS) {
-    for (const division of week[day.dayOfWeek]) {
-      if (division) found.add(division);
-    }
-  }
-  return [...found];
-}
 
 function readFieldPlan(field: Field, seasonTimes: string[], availabilities: Availability[]): FieldPlan {
   const meta =
@@ -94,24 +73,17 @@ function readFieldPlan(field: Field, seasonTimes: string[], availabilities: Avai
     slotTimesRaw[0] || seasonTimes[0] || "",
     slotTimesRaw[1] || seasonTimes[1] || seasonTimes[0] || "",
   ];
-  const week = emptyWeek();
-  const metaWeek = meta.week && typeof meta.week === "object" ? (meta.week as Record<string, unknown>) : null;
-  if (metaWeek) {
-    for (const day of MATRIX_DAYS) {
-      const row = metaWeek[String(day.dayOfWeek)];
-      if (Array.isArray(row) && row.length >= 2) {
-        week[day.dayOfWeek] = [firstDivision(row[0]), firstDivision(row[1])];
-      }
+  const metaWeek = meta.week && typeof meta.week === "object" ? meta.week : null;
+  if (metaWeek) return { slotTimes, week: parseFieldWeek(metaWeek) };
+
+  const week = emptyFieldWeek();
+  for (const slot of availabilities) {
+    if (slot.fieldId !== field.id || slot.availabilityType !== "AVAILABLE" || slot.dayOfWeek == null || !slot.startTime) {
+      continue;
     }
-  } else {
-    for (const slot of availabilities) {
-      if (slot.fieldId !== field.id || slot.availabilityType !== "AVAILABLE" || slot.dayOfWeek == null || !slot.startTime) {
-        continue;
-      }
-      if (!MATRIX_DAYS.some((day) => day.dayOfWeek === slot.dayOfWeek)) continue;
-      const slotIndex = slot.startTime === slotTimes[1] ? 1 : 0;
-      week[slot.dayOfWeek][slotIndex] = firstDivision(slot.notes ? slot.notes.split(",") : []);
-    }
+    if (!FIELD_BOARD_DAYS.some((day) => day.dayOfWeek === slot.dayOfWeek)) continue;
+    const slotIndex = slot.startTime === slotTimes[1] ? 1 : 0;
+    week[slot.dayOfWeek][slotIndex] = parseCellDivisions(slot.notes);
   }
   return { slotTimes, week };
 }
@@ -193,12 +165,18 @@ export default function FieldSetupPanel({
     }));
   }
 
-  function setCell(fieldId: string, dayOfWeek: number, slotIndex: 0 | 1, division: string) {
-    const plan = plans[fieldId];
-    if (!plan) return;
-    const slots: [string, string] = [plan.week[dayOfWeek][0], plan.week[dayOfWeek][1]];
-    slots[slotIndex] = division;
-    updatePlan(fieldId, { week: { ...plan.week, [dayOfWeek]: slots } });
+  function toggleCell(fieldId: string, dayOfWeek: number, slotIndex: 0 | 1, division: string) {
+    setPlans((current) => {
+      const plan = current[fieldId];
+      if (!plan) return current;
+      const day = plan.week[dayOfWeek];
+      const nextCell = toggleCellDivision(day[slotIndex], division);
+      const nextDay: [string[], string[]] = slotIndex === 0 ? [nextCell, [...day[1]]] : [[...day[0]], nextCell];
+      return {
+        ...current,
+        [fieldId]: { ...plan, week: { ...plan.week, [dayOfWeek]: nextDay } },
+      };
+    });
   }
 
   async function createParkWithFields() {
@@ -267,23 +245,24 @@ export default function FieldSetupPanel({
           for (const field of park.fields) {
             const plan = plans[field.id];
             if (!plan) continue;
-            for (const day of MATRIX_DAYS) {
+            for (const day of FIELD_BOARD_DAYS) {
               plan.slotTimes.forEach((startTime, slotIndex) => {
-                const division = plan.week[day.dayOfWeek][slotIndex as 0 | 1];
-                if (!startTime || !division) return;
+                const divisions = plan.week[day.dayOfWeek][slotIndex as 0 | 1];
+                const notes = serializeCellDivisions(divisions);
+                if (!startTime || !notes) return;
                 availabilities.push({
                   seasonId: selectedSeasonId || null,
                   parkId: park.id,
                   fieldId: field.id,
                   availabilityType: "AVAILABLE",
                   dayOfWeek: day.dayOfWeek,
-                  startTime: resolveDivisionSlotTime(
-                    division,
+                  startTime: resolveSharedSlotTime(
+                    divisions,
                     slotIndex as 0 | 1,
                     startTime,
                     divisionSlotTimes,
-                  ),
-                  notes: division,
+                  ).time,
+                  notes,
                 });
               });
             }
@@ -304,7 +283,7 @@ export default function FieldSetupPanel({
                   supportedAgeGroups: divisions,
                   fieldMetadata: {
                     slotTimes: plan?.slotTimes ?? ["", ""],
-                    week: plan?.week ?? emptyWeek(),
+                    week: plan?.week ?? emptyFieldWeek(),
                   },
                   isActive: field.isActive,
                 };
@@ -386,7 +365,7 @@ export default function FieldSetupPanel({
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-zinc-500">Weekly field board</p>
               <p className="mt-1 max-w-2xl text-sm text-zinc-400">
-                Two slots per field. Start times come from Season setup. Each cell is one division for that night — leave blank if the field is dark. Save writes every park, not only the one on screen.
+                Two slots per field. Start times come from Season setup. Check every division that may play that night — 7U and 8U can share a cell. Still one game; leave blank if the field is dark. Save writes every park, not only the one on screen.
               </p>
             </div>
             <label className="block min-w-56 text-sm font-medium text-zinc-300">
@@ -452,7 +431,7 @@ export default function FieldSetupPanel({
                     <thead className="bg-zinc-950 text-[10px] uppercase tracking-[0.18em] text-zinc-500">
                       <tr>
                         <th className="p-3">Time slot</th>
-                        {MATRIX_DAYS.map((day) => (
+                        {FIELD_BOARD_DAYS.map((day) => (
                           <th key={day.dayOfWeek} className="p-3">{day.label}</th>
                         ))}
                       </tr>
@@ -466,32 +445,51 @@ export default function FieldSetupPanel({
                               {plan.slotTimes[slotIndex] ? formatSlotLabel(plan.slotTimes[slotIndex]) : "Pick a start time"}
                             </div>
                           </td>
-                          {MATRIX_DAYS.map((day) => (
-                            <td key={day.dayOfWeek} className="p-2">
-                              <select
-                                value={plan.week[day.dayOfWeek][slotIndex]}
-                                onChange={(e) => setCell(field.id, day.dayOfWeek, slotIndex, e.target.value)}
-                                className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1.5 text-sm text-white"
-                              >
-                                <option value="">—</option>
-                                {divisionOptions.map((division) => (
-                                  <option key={division} value={division}>{division}</option>
-                                ))}
-                              </select>
-                              {plan.week[day.dayOfWeek][slotIndex] ? (
-                                <p className="mt-1 text-[11px] text-zinc-500">
-                                  {formatSlotLabel(
-                                    resolveDivisionSlotTime(
-                                      plan.week[day.dayOfWeek][slotIndex],
-                                      slotIndex,
-                                      plan.slotTimes[slotIndex],
-                                      divisionSlotTimes,
-                                    ),
-                                  )}
-                                </p>
-                              ) : null}
-                            </td>
-                          ))}
+                          {FIELD_BOARD_DAYS.map((day) => {
+                            const selected = plan.week[day.dayOfWeek][slotIndex];
+                            const clock = selected.length
+                              ? resolveSharedSlotTime(
+                                  selected,
+                                  slotIndex,
+                                  plan.slotTimes[slotIndex],
+                                  divisionSlotTimes,
+                                )
+                              : null;
+                            return (
+                              <td key={day.dayOfWeek} className="p-2 align-top">
+                                <div className="flex flex-wrap gap-1">
+                                  {divisionOptions.map((division) => {
+                                    const on = selected.includes(division);
+                                    return (
+                                      <button
+                                        key={division}
+                                        type="button"
+                                        aria-pressed={on}
+                                        onClick={() => toggleCell(field.id, day.dayOfWeek, slotIndex, division)}
+                                        className={
+                                          on
+                                            ? "rounded-md bg-red-600 px-1.5 py-0.5 text-[10px] font-semibold text-white"
+                                            : "rounded-md border border-zinc-700 bg-zinc-950 px-1.5 py-0.5 text-[10px] font-semibold text-zinc-400 hover:border-red-400 hover:text-zinc-200"
+                                        }
+                                      >
+                                        {division}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                                {clock ? (
+                                  <p className={`mt-1 text-[11px] ${clock.conflict ? "text-amber-200" : "text-zinc-500"}`}>
+                                    {formatSlotLabel(clock.time)}
+                                    {clock.conflict
+                                      ? ` · ${clock.conflictDivisions.join(", ")} use a different start time`
+                                      : null}
+                                  </p>
+                                ) : (
+                                  <p className="mt-1 text-[11px] text-zinc-600">Dark</p>
+                                )}
+                              </td>
+                            );
+                          })}
                         </tr>
                       ))}
                     </tbody>
