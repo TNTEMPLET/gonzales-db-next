@@ -87,6 +87,7 @@ type Rule = {
   maxGamesPerWeek: number | null;
   avoidBackToBack: boolean;
   allowDoubleHeaders: boolean;
+  fieldPriorityIds: string[];
   ruleMetadata?: unknown;
 };
 
@@ -217,7 +218,31 @@ function emptyLimitRule(division: string): Rule {
     maxGamesPerWeek: null,
     avoidBackToBack: true,
     allowDoubleHeaders: false,
+    fieldPriorityIds: [],
   };
+}
+
+function boardFieldsForDivision(parks: Park[], division: string): Array<{ id: string; parkName: string; name: string }> {
+  const found = new Map<string, { id: string; parkName: string; name: string }>();
+  for (const park of parks) {
+    for (const field of park.fields) {
+      if (weekDivisionsFromMeta(field.fieldMetadata).includes(division)) {
+        found.set(field.id, { id: field.id, parkName: park.shortName || park.name, name: field.name });
+      }
+    }
+    for (const slot of park.availabilities) {
+      if (slot.availabilityType !== "AVAILABLE" || !slot.fieldId || !slot.notes) continue;
+      if (!slot.notes.split(",").map((part) => part.trim()).includes(division)) continue;
+      const field = park.fields.find((item) => item.id === slot.fieldId);
+      if (!field || found.has(field.id)) continue;
+      found.set(field.id, { id: field.id, parkName: park.shortName || park.name, name: field.name });
+    }
+  }
+  return [...found.values()];
+}
+
+function fieldLabel(field: { parkName: string; name: string }): string {
+  return `${field.parkName} · ${field.name}`;
 }
 
 function seasonSlotCountsByDivision(parks: Park[], startsOn: string, endsOn: string): Map<string, number> {
@@ -833,6 +858,15 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                 typeof rule.ruleMetadata === "object" &&
                 (rule.ruleMetadata as { allowDoubleHeaders?: unknown }).allowDoubleHeaders === true,
             ),
+      fieldPriorityIds:
+        Array.isArray(rule.fieldPriorityIds) && rule.fieldPriorityIds.length
+          ? asStringArray(rule.fieldPriorityIds)
+          : asStringArray(
+              rule.ruleMetadata &&
+                typeof rule.ruleMetadata === "object"
+                ? (rule.ruleMetadata as { fieldPriorityIds?: unknown }).fieldPriorityIds
+                : [],
+            ),
     };
   }
 
@@ -1023,11 +1057,14 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
           ...rule,
           ageGroup: rule.ageGroup || rule.division,
           preferredParkId: null,
-          preferredFieldId: null,
+          preferredFieldId: rule.fieldPriorityIds[0] ?? null,
           allowedParkIds: [],
           allowedFieldIds: [],
           allowedGameTimes: [],
-          ruleMetadata: { allowDoubleHeaders: rule.allowDoubleHeaders === true },
+          ruleMetadata: {
+            allowDoubleHeaders: rule.allowDoubleHeaders === true,
+            fieldPriorityIds: rule.fieldPriorityIds,
+          },
         })),
       }),
     });
@@ -1408,8 +1445,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         onToggle={() => toggleStepOpen("scheduler-matrix")}
       >
         <p className="mb-4 text-sm text-zinc-400">
-          Who plays where is already on the weekly field board. Here you only set how often each division can play.
-          Rows are every Parks division — both parks, same names as the weekly board — plus any extra names used on the board.
+          Who plays where is already on the weekly field board. Here you set how often each division can play, and the
+          field order Generate should try first. Higher rank wins a shared field; unlisted board fields are used last.
         </p>
         <div className="overflow-x-auto rounded-2xl border border-zinc-800">
           <table className="min-w-[640px] w-full text-left text-sm text-zinc-300">
@@ -1424,49 +1461,149 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
               </tr>
             </thead>
             <tbody>
-              {rules.map((rule, index) => (
-                <tr key={`${rule.id ?? "new"}-${rule.division}-${index}`} className="border-t border-zinc-800">
-                  <td className="p-3 font-semibold text-white">{rule.division || "—"}</td>
-                  <td className="p-3">
-                    <TextInput
-                      placeholder="e.g. 2"
-                      value={rule.maxGamesPerWeek ?? ""}
-                      onChange={(e) => updateRule(index, { maxGamesPerWeek: numberOrNull(e.target.value) })}
-                    />
-                  </td>
-                  <td className="p-3">
-                    <TextInput
-                      placeholder="e.g. 2"
-                      value={rule.minDaysBetweenGames ?? ""}
-                      onChange={(e) => updateRule(index, { minDaysBetweenGames: numberOrNull(e.target.value) })}
-                    />
-                  </td>
-                  <td className="p-3">
-                    <label className="flex items-center gap-2">
-                      <input
-                        type="checkbox"
-                        checked={rule.avoidBackToBack}
-                        onChange={(e) => updateRule(index, { avoidBackToBack: e.target.checked })}
-                      />
-                      Yes
-                    </label>
-                  </td>
-                  <td className="p-3">
-                    <SelectInput
-                      value={rule.allowDoubleHeaders ? "yes" : "no"}
-                      onChange={(e) => updateRule(index, { allowDoubleHeaders: e.target.value === "yes" })}
-                    >
-                      <option value="no">No</option>
-                      <option value="yes">Yes</option>
-                    </SelectInput>
-                  </td>
-                  <td className="p-3 text-right">
-                    <button type="button" onClick={() => setRules(rules.filter((_, i) => i !== index))} className="text-red-200 hover:text-red-100">
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {rules.map((rule, index) => {
+                const boardFields = boardFieldsForDivision(parks, rule.division);
+                const fieldById = new Map(boardFields.map((field) => [field.id, field]));
+                for (const park of parks) {
+                  for (const field of park.fields) {
+                    if (!fieldById.has(field.id)) {
+                      fieldById.set(field.id, {
+                        id: field.id,
+                        parkName: park.shortName || park.name,
+                        name: field.name,
+                      });
+                    }
+                  }
+                }
+                const ordered = rule.fieldPriorityIds
+                  .map((id) => fieldById.get(id))
+                  .filter((field): field is { id: string; parkName: string; name: string } => Boolean(field));
+                const remaining = boardFields.filter((field) => !rule.fieldPriorityIds.includes(field.id));
+                return (
+                  <Fragment key={`${rule.id ?? "new"}-${rule.division}-${index}`}>
+                    <tr className="border-t border-zinc-800">
+                      <td className="p-3 font-semibold text-white">{rule.division || "—"}</td>
+                      <td className="p-3">
+                        <TextInput
+                          placeholder="e.g. 2"
+                          value={rule.maxGamesPerWeek ?? ""}
+                          onChange={(e) => updateRule(index, { maxGamesPerWeek: numberOrNull(e.target.value) })}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <TextInput
+                          placeholder="e.g. 2"
+                          value={rule.minDaysBetweenGames ?? ""}
+                          onChange={(e) => updateRule(index, { minDaysBetweenGames: numberOrNull(e.target.value) })}
+                        />
+                      </td>
+                      <td className="p-3">
+                        <label className="flex items-center gap-2">
+                          <input
+                            type="checkbox"
+                            checked={rule.avoidBackToBack}
+                            onChange={(e) => updateRule(index, { avoidBackToBack: e.target.checked })}
+                          />
+                          Yes
+                        </label>
+                      </td>
+                      <td className="p-3">
+                        <SelectInput
+                          value={rule.allowDoubleHeaders ? "yes" : "no"}
+                          onChange={(e) => updateRule(index, { allowDoubleHeaders: e.target.value === "yes" })}
+                        >
+                          <option value="no">No</option>
+                          <option value="yes">Yes</option>
+                        </SelectInput>
+                      </td>
+                      <td className="p-3 text-right">
+                        <button type="button" onClick={() => setRules(rules.filter((_, i) => i !== index))} className="text-red-200 hover:text-red-100">
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                    <tr className="border-t border-zinc-800/60 bg-zinc-950/40">
+                      <td colSpan={6} className="px-3 py-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Field order</p>
+                          {!ordered.length ? (
+                            <p className="text-xs text-zinc-500">None = any board field.</p>
+                          ) : null}
+                          {ordered.map((field, fieldIndex) => (
+                            <span
+                              key={field.id}
+                              className="inline-flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-900 px-2 py-1 text-xs text-zinc-200"
+                            >
+                              <span className="tabular-nums text-zinc-500">{fieldIndex + 1}.</span>
+                              {fieldLabel(field)}
+                              <button
+                                type="button"
+                                aria-label={`Move ${field.name} up`}
+                                disabled={fieldIndex === 0}
+                                onClick={() => {
+                                  const next = [...rule.fieldPriorityIds];
+                                  const swap = next[fieldIndex - 1];
+                                  next[fieldIndex - 1] = next[fieldIndex];
+                                  next[fieldIndex] = swap;
+                                  updateRule(index, { fieldPriorityIds: next });
+                                }}
+                                className="text-zinc-400 hover:text-white disabled:opacity-30"
+                              >
+                                ↑
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Move ${field.name} down`}
+                                disabled={fieldIndex === ordered.length - 1}
+                                onClick={() => {
+                                  const next = [...rule.fieldPriorityIds];
+                                  const swap = next[fieldIndex + 1];
+                                  next[fieldIndex + 1] = next[fieldIndex];
+                                  next[fieldIndex] = swap;
+                                  updateRule(index, { fieldPriorityIds: next });
+                                }}
+                                className="text-zinc-400 hover:text-white disabled:opacity-30"
+                              >
+                                ↓
+                              </button>
+                              <button
+                                type="button"
+                                aria-label={`Remove ${field.name}`}
+                                onClick={() =>
+                                  updateRule(index, {
+                                    fieldPriorityIds: rule.fieldPriorityIds.filter((id) => id !== field.id),
+                                  })
+                                }
+                                className="text-zinc-500 hover:text-red-200"
+                              >
+                                ×
+                              </button>
+                            </span>
+                          ))}
+                          {remaining.length ? (
+                            <select
+                              value=""
+                              onChange={(event) => {
+                                const id = event.target.value;
+                                if (!id || rule.fieldPriorityIds.includes(id)) return;
+                                updateRule(index, { fieldPriorityIds: [...rule.fieldPriorityIds, id] });
+                              }}
+                              className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1 text-xs text-zinc-200 outline-none focus:border-red-400"
+                            >
+                              <option value="">Add field</option>
+                              {remaining.map((field) => (
+                                <option key={field.id} value={field.id}>
+                                  {fieldLabel(field)}
+                                </option>
+                              ))}
+                            </select>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  </Fragment>
+                );
+              })}
             </tbody>
           </table>
           {!rules.length ? (

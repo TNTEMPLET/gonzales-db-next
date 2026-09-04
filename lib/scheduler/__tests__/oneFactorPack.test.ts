@@ -193,4 +193,100 @@ describe("one-factor generate", () => {
       assert.equal(count, 1);
     }
   });
+
+  it("gives Gauthier to 8U when 8U ranked it higher than 7U", () => {
+    const season: SchedulerSeason = {
+      id: "season",
+      organizationId: "fallball",
+      seasonYear: 2026,
+      name: "Fall",
+      startsOn: utcDate(2026, 9, 29),
+      endsOn: utcDate(2026, 9, 29),
+      defaultGameTimes: ["17:45", "19:15"],
+      settings: { gamesPerTeam: 1 },
+    };
+    const seven: SchedulerTeam[] = ["7A", "7B", "7C", "7D"].map((name) => ({
+      id: name,
+      organizationId: "fallball",
+      seasonYear: 2026,
+      ageGroup: "7U CP",
+      teamName: name,
+    }));
+    const eight: SchedulerTeam[] = ["8A", "8B"].map((name) => ({
+      id: name,
+      organizationId: "fallball",
+      seasonYear: 2026,
+      ageGroup: "8U CP",
+      teamName: name,
+    }));
+    const fields: SchedulerField[] = [
+      {
+        id: "gauthier",
+        organizationId: "fallball",
+        parkId: "jls",
+        name: "3 - Gauthier",
+        shortName: "3",
+        supportedAgeGroups: ["7U CP", "8U CP"],
+        supportedDivisions: ["7U CP", "8U CP"],
+        isActive: true,
+      },
+      {
+        id: "velo",
+        organizationId: "fallball",
+        parkId: "jls",
+        name: "4 - Velo",
+        shortName: "4",
+        supportedAgeGroups: ["7U CP", "8U CP"],
+        supportedDivisions: ["7U CP", "8U CP"],
+        isActive: true,
+      },
+    ];
+    const availabilities: SchedulerAvailability[] = fields.flatMap((field) =>
+      ["17:45", "19:15"].map((startTime) => ({
+        id: `${field.id}-${startTime}`,
+        organizationId: "fallball",
+        seasonId: "season",
+        parkId: "jls",
+        fieldId: field.id,
+        availabilityType: "AVAILABLE" as const,
+        date: null,
+        dayOfWeek: 2,
+        startTime,
+        endTime: null,
+        notes: "7U CP, 8U CP",
+      })),
+    );
+    const rule7: SchedulerDivisionRule = {
+      ...RULE,
+      id: "rule-7u",
+      division: "7U CP",
+      ageGroup: "7U CP",
+      ruleMetadata: { allowDoubleHeaders: false },
+    };
+    const rule8: SchedulerDivisionRule = {
+      ...RULE,
+      id: "rule-8u",
+      division: "8U CP",
+      ageGroup: "8U CP",
+      ruleMetadata: { allowDoubleHeaders: false, fieldPriorityIds: ["gauthier", "velo"] },
+    };
+
+    const result = generateSchedule({
+      organizationId: "fallball",
+      season,
+      teams: [...seven, ...eight],
+      fields,
+      availabilities,
+      rules: [rule7, rule8],
+      divisions: ["7U CP", "8U CP"],
+    });
+
+    const eightGames = result.games.filter((game) => game.division === "8U CP" && game.fieldId);
+    const sevenOnGauthier = result.games.filter(
+      (game) => game.division === "7U CP" && game.fieldId === "gauthier",
+    );
+    assert.equal(eightGames.length, 1);
+    assert.equal(eightGames[0]?.fieldId, "gauthier");
+    assert.equal(sevenOnGauthier.length, 0);
+  });
 });
