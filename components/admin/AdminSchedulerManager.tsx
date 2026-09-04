@@ -408,8 +408,8 @@ function Panel({
   onToggle?: () => void;
   children: ReactNode;
 }) {
-  const collapsed = Boolean(complete) && !open;
-  const canToggle = Boolean(complete) && Boolean(onToggle);
+  const collapsed = Boolean(onToggle) && !open;
+  const canToggle = Boolean(onToggle);
   const header = (
     <>
       <div className="flex flex-wrap items-center justify-between gap-2">
@@ -465,13 +465,17 @@ function Panel({
 function SchedulerWizardStepper({
   completeById,
   activeId,
+  anyOpen,
   onJump,
   onOpenHeatmap,
+  onToggleAll,
 }: {
   completeById: Record<SchedulerWizardStepId, boolean>;
   activeId: SchedulerWizardStepId;
+  anyOpen: boolean;
   onJump: (id: SchedulerWizardStepId) => void;
   onOpenHeatmap: () => void;
+  onToggleAll: () => void;
 }) {
   const doneCount = SCHEDULER_WIZARD_STEPS.filter((step) => completeById[step.id]).length;
   return (
@@ -481,6 +485,13 @@ function SchedulerWizardStepper({
           Schedule wizard
         </p>
         <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={onToggleAll}
+            className="rounded-lg border border-zinc-700 px-2.5 py-1 text-[11px] font-semibold text-zinc-200 hover:border-red-400"
+          >
+            {anyOpen ? "Collapse all" : "Expand all"}
+          </button>
           <button
             type="button"
             onClick={onOpenHeatmap}
@@ -601,6 +612,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
   const [editingGameId, setEditingGameId] = useState<string | null>(null);
   const [activeStepId, setActiveStepId] = useState<SchedulerWizardStepId>("scheduler-season");
   const [reopenedStepIds, setReopenedStepIds] = useState<Set<SchedulerWizardStepId>>(() => new Set());
+  const [collapsedStepIds, setCollapsedStepIds] = useState<Set<SchedulerWizardStepId>>(() => new Set());
   const [heatmapOpen, setHeatmapOpen] = useState(false);
 
   const selectedSeason = useMemo(
@@ -974,31 +986,68 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
   }, []);
 
   function stepOpen(id: SchedulerWizardStepId) {
+    if (collapsedStepIds.has(id)) return false;
     return wizardStepIsOpen(wizardCompleteById[id], reopenedStepIds.has(id));
   }
 
+  function collapseStep(id: SchedulerWizardStepId) {
+    setCollapsedStepIds((current) => {
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
+    setReopenedStepIds((current) => {
+      if (!current.has(id)) return current;
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+  }
+
   function toggleStepOpen(id: SchedulerWizardStepId) {
-    if (!wizardCompleteById[id]) return;
+    if (stepOpen(id)) {
+      collapseStep(id);
+      return;
+    }
+    setCollapsedStepIds((current) => {
+      if (!current.has(id)) return current;
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
     setReopenedStepIds((current) => {
       const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      next.add(id);
       return next;
     });
   }
 
   function jumpToStep(id: SchedulerWizardStepId) {
     setActiveStepId(id);
-    if (wizardCompleteById[id]) {
-      setReopenedStepIds((current) => {
-        const next = new Set(current);
-        next.add(id);
-        return next;
-      });
-    }
+    setCollapsedStepIds((current) => {
+      if (!current.has(id)) return current;
+      const next = new Set(current);
+      next.delete(id);
+      return next;
+    });
+    setReopenedStepIds((current) => {
+      const next = new Set(current);
+      next.add(id);
+      return next;
+    });
     window.setTimeout(() => {
       document.getElementById(id)?.scrollIntoView({ behavior: "smooth", block: "start" });
     }, 50);
+  }
+
+  function collapseAllSteps() {
+    setCollapsedStepIds(new Set(SCHEDULER_WIZARD_STEPS.map((step) => step.id)));
+    setReopenedStepIds(new Set());
+  }
+
+  function expandAllSteps() {
+    setCollapsedStepIds(new Set());
+    setReopenedStepIds(new Set(SCHEDULER_WIZARD_STEPS.map((step) => step.id)));
   }
 
   useEffect(() => {
@@ -1036,6 +1085,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       await refreshSeasons();
       setSelectedSeasonId(json.data.id);
       setNotice(seasonForm.id ? "Season updated." : "Season created.");
+      collapseStep("scheduler-season");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to save season");
     } finally {
@@ -1079,6 +1129,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       await persistMatrix();
       await refreshMatrix();
       setNotice("Constraints saved.");
+      collapseStep("scheduler-matrix");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to save matrix");
     } finally {
@@ -1137,6 +1188,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
             : "Preview generated.",
       );
       if (replace) await refreshDraftGames();
+      if (replace && response.ok && !json.error) collapseStep("scheduler-generate");
       const repair = json.data?.repair;
       if (replace && repair?.placed) {
         setNotice(
@@ -1254,8 +1306,13 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       <SchedulerWizardStepper
         completeById={wizardCompleteById}
         activeId={activeStepId}
+        anyOpen={SCHEDULER_WIZARD_STEPS.some((step) => stepOpen(step.id))}
         onJump={jumpToStep}
         onOpenHeatmap={() => setHeatmapOpen(true)}
+        onToggleAll={() => {
+          if (SCHEDULER_WIZARD_STEPS.some((step) => stepOpen(step.id))) collapseAllSteps();
+          else expandAllSteps();
+        }}
       />
       {heatmapOpen ? (
         <FieldCapacityHeatmapModal
@@ -1402,9 +1459,16 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                 Add division times
               </button>
             </div>
-            <div className="sm:col-span-2">
+            <div className="sm:col-span-2 flex flex-wrap gap-2">
               <button type="button" disabled={busy} onClick={saveSeason} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60">
                 {seasonForm.id ? "Save Season" : "Create Season"}
+              </button>
+              <button
+                type="button"
+                onClick={() => collapseStep("scheduler-season")}
+                className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-red-400"
+              >
+                Close
               </button>
             </div>
           </div>
@@ -1433,6 +1497,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
           onNotice={setNotice}
           onError={setError}
           onRefresh={refreshParks}
+          onSaved={() => collapseStep("scheduler-parks")}
+          onClose={() => collapseStep("scheduler-parks")}
         />
       </Panel>
 
@@ -1610,14 +1676,23 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
             <p className="p-4 text-sm text-zinc-500">Save the weekly field board first so divisions appear here.</p>
           ) : null}
         </div>
-        <button
-          type="button"
-          onClick={saveMatrix}
-          disabled={!selectedSeasonId || busy || !rules.length}
-          className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
-        >
-          Save constraints
-        </button>
+        <div className="mt-4 flex flex-wrap gap-2">
+          <button
+            type="button"
+            onClick={saveMatrix}
+            disabled={!selectedSeasonId || busy || !rules.length}
+            className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+          >
+            Save constraints
+          </button>
+          <button
+            type="button"
+            onClick={() => collapseStep("scheduler-matrix")}
+            className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-red-400"
+          >
+            Close
+          </button>
+        </div>
       </Panel>
 
       <Panel
@@ -1746,6 +1821,13 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
               >
                 Replace generated draft
+              </button>
+              <button
+                type="button"
+                onClick={() => collapseStep("scheduler-generate")}
+                className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-red-400"
+              >
+                Close
               </button>
             </div>
           </div>

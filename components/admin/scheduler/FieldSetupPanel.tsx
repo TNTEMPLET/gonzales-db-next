@@ -102,6 +102,8 @@ export default function FieldSetupPanel({
   onNotice,
   onError,
   onRefresh,
+  onSaved,
+  onClose,
 }: {
   targetOrg: ContentOrgId;
   orgQuery: string;
@@ -114,6 +116,8 @@ export default function FieldSetupPanel({
   onNotice: (message: string) => void;
   onError: (message: string) => void;
   onRefresh: () => Promise<void>;
+  onSaved?: () => void;
+  onClose?: () => void;
 }) {
   const divisionOptions = useMemo(() => getTeamsManagementAgeGroupDefaults(targetOrg), [targetOrg]);
   const [parkName, setParkName] = useState("");
@@ -312,6 +316,7 @@ export default function FieldSetupPanel({
       );
       await onRefresh();
       onNotice("Weekly field board saved for every park.");
+      onSaved?.();
     } catch (err: unknown) {
       onError(err instanceof Error ? err.message : "Failed to save field board");
     } finally {
@@ -564,9 +569,20 @@ export default function FieldSetupPanel({
             })}
           </div>
 
-          <button type="button" disabled={busy || !parks.some((park) => park.fields.length)} onClick={() => void saveParkSetup()} className="mt-4 rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60">
-            Save weekly boards
-          </button>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <button type="button" disabled={busy || !parks.some((park) => park.fields.length)} onClick={() => void saveParkSetup()} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60">
+              Save weekly boards
+            </button>
+            {onClose ? (
+              <button
+                type="button"
+                onClick={onClose}
+                className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-red-400"
+              >
+                Close
+              </button>
+            ) : null}
+          </div>
         </div>
       )}
     </div>
