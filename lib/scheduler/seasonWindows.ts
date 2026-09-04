@@ -25,6 +25,17 @@ export function parseSeasonDateWindows(
   };
 }
 
+export const DEFAULT_SEASON_GAMES_PER_TEAM = 10;
+export const MAX_SEASON_GAMES_PER_TEAM = 30;
+
+export function parseSeasonGamesPerTeam(settings: unknown): number {
+  if (!settings || typeof settings !== "object") return DEFAULT_SEASON_GAMES_PER_TEAM;
+  const raw = (settings as { gamesPerTeam?: unknown }).gamesPerTeam;
+  const value = typeof raw === "number" ? raw : typeof raw === "string" ? Number(raw) : NaN;
+  if (!Number.isInteger(value) || value < 1) return DEFAULT_SEASON_GAMES_PER_TEAM;
+  return Math.min(value, MAX_SEASON_GAMES_PER_TEAM);
+}
+
 export function withSeasonDateWindows(
   existing: unknown,
   windows: SeasonDateWindows,

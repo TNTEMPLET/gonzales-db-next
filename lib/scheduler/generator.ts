@@ -1,8 +1,8 @@
 import type { Prisma } from "@prisma/client";
 
-import { parseSeasonDateWindows, parseUtcDateOnly } from "./seasonWindows";
+import { parseSeasonDateWindows, parseSeasonGamesPerTeam, parseUtcDateOnly } from "./seasonWindows";
 import { playableSchedulerTeams } from "./realTeams";
-import { isEarlyStart } from "./earlyLate";
+import { isEarlyStart, projectedEarlyLateCost } from "./earlyLate";
 import { addMinutes, dateKey, jsonStringArray, timeToMinutes } from "./validation";
 import type {
   GeneratedDraftGame,
@@ -297,9 +297,7 @@ function earlyLateScore(
 ): number {
   let score = 0;
   for (const teamId of teamIds) {
-    const early = (teamEarly.get(teamId) ?? 0) + (slotIsEarly ? 1 : 0);
-    const late = (teamLate.get(teamId) ?? 0) + (slotIsEarly ? 0 : 1);
-    score += Math.abs(early - late);
+    score += projectedEarlyLateCost(slotIsEarly, teamEarly.get(teamId) ?? 0, teamLate.get(teamId) ?? 0);
   }
   return score;
 }
@@ -853,6 +851,287 @@ export function summarizeFairness(games: GeneratedDraftGame[], teams: SchedulerT
   return { teams: [...teamStats.values()], unscheduledGames };
 }
 
+function probeMatchup(division: string, ageGroup: string): RoundRobinMatchup {
+  return {
+    division,
+    ageGroup,
+    homeTeamId: "",
+    awayTeamId: "",
+    homeTeamName: "",
+    awayTeamName: "",
+    roundLabel: "",
+    gameNumber: 0,
+  };
+}
+
+function expandOneFactorRounds(
+  teams: SchedulerTeam[],
+  gamesPerTeam: number,
+): Array<Array<[SchedulerTeam, SchedulerTeam]>> {
+  const rounds = buildRoundRobinRounds(teams);
+  if (!rounds.length || gamesPerTeam < 1) return [];
+  const needed = gamesPerTeam;
+  const expanded: Array<Array<[SchedulerTeam, SchedulerTeam]>> = [];
+  for (let index = 0; index < needed; index += 1) {
+    expanded.push(rounds[index % rounds.length]);
+  }
+  return expanded;
+}
+
+function oneFactorNights(params: {
+  slots: SchedulerSlot[];
+  rule?: SchedulerDivisionRule;
+  division: string;
+  ageGroup: string;
+  pairsNeeded: number;
+  nightsNeeded: number;
+}): string[] {
+  const probe = probeMatchup(params.division, params.ageGroup);
+  const countByDate = new Map<string, number>();
+  for (const slot of params.slots) {
+    if (ruleAllowsSlot(params.rule, probe, slot).length) continue;
+    const key = dateKey(slot.date);
+    countByDate.set(key, (countByDate.get(key) ?? 0) + 1);
+  }
+  return [...countByDate.entries()]
+    .filter(([, count]) => count >= params.pairsNeeded)
+    .map(([key]) => key)
+    .sort()
+    .slice(0, params.nightsNeeded);
+}
+
+function assignOneFactorToNight(params: {
+  pairs: Array<[SchedulerTeam, SchedulerTeam]>;
+  nightSlots: SchedulerSlot[];
+  rule?: SchedulerDivisionRule;
+  division: string;
+  ageGroup: string;
+  roundLabel: string;
+  gameNumberStart: number;
+  cycleIndex: number;
+  roundIndex: number;
+  homeCounts: Map<string, number>;
+  usedSlotIds: Set<string>;
+  teamEarly: Map<string, number>;
+  teamLate: Map<string, number>;
+  teamDates: Set<string>;
+  teamWeeks: Map<string, number>;
+  teamSlotTimes: Set<string>;
+}): GeneratedDraftGame[] {
+  const games: GeneratedDraftGame[] = [];
+  let gameNumber = params.gameNumberStart;
+  const remaining = [...params.nightSlots].filter((slot) => !params.usedSlotIds.has(slot.id));
+
+  params.pairs.forEach((pair, pairIndex) => {
+    const { home, away } = chooseHomeAway({
+      first: pair[0],
+      second: pair[1],
+      homeCounts: params.homeCounts,
+      roundIndex: params.roundIndex,
+      cycleIndex: params.cycleIndex,
+      pairIndex,
+    });
+    const matchup: RoundRobinMatchup = {
+      division: params.division,
+      ageGroup: params.ageGroup,
+      homeTeamId: home.id,
+      awayTeamId: away.id,
+      homeTeamName: home.teamName,
+      awayTeamName: away.teamName,
+      roundLabel: params.roundLabel,
+      gameNumber,
+    };
+    const slot = chooseEligibleSlot({
+      matchup,
+      rule: params.rule,
+      slots: remaining,
+      usedSlotIds: params.usedSlotIds,
+      teamSlotTimes: params.teamSlotTimes,
+      teamDates: params.teamDates,
+      teamWeeks: params.teamWeeks,
+      teamEarly: params.teamEarly,
+      teamLate: params.teamLate,
+    });
+    if (!slot) {
+      games.push({
+        ...matchup,
+        gameDate: null,
+        startTime: null,
+        endTime: null,
+        parkId: null,
+        fieldId: null,
+        status: "CONFLICT",
+        sortOrder: gameNumber,
+        conflictFlags: unscheduledReasons({
+          matchup,
+          rule: params.rule,
+          slots: params.nightSlots,
+          usedSlotIds: params.usedSlotIds,
+          teamSlotTimes: params.teamSlotTimes,
+          teamDates: params.teamDates,
+          teamWeeks: params.teamWeeks,
+        }),
+        fairnessMetadata: { pack: "one-factor" },
+        schedulerNotes: "No eligible slot was available for this generated matchup.",
+      });
+      gameNumber += 1;
+      return;
+    }
+
+    params.usedSlotIds.add(slot.id);
+    const slotTime = `${dateKey(slot.date)}:${slot.startTime}`;
+    const day = dateKey(slot.date);
+    const week = mondayWeekKey(slot.date);
+    params.teamSlotTimes.add(`${home.id}:${slotTime}`);
+    params.teamSlotTimes.add(`${away.id}:${slotTime}`);
+    params.teamDates.add(`${home.id}:${day}`);
+    params.teamDates.add(`${away.id}:${day}`);
+    params.teamWeeks.set(`${home.id}:${week}`, (params.teamWeeks.get(`${home.id}:${week}`) ?? 0) + 1);
+    params.teamWeeks.set(`${away.id}:${week}`, (params.teamWeeks.get(`${away.id}:${week}`) ?? 0) + 1);
+    const early = isEarlyStart(slot.startTime, divisionSlotTimes(params.nightSlots, params.division));
+    for (const teamId of [home.id, away.id]) {
+      if (early) params.teamEarly.set(teamId, (params.teamEarly.get(teamId) ?? 0) + 1);
+      else params.teamLate.set(teamId, (params.teamLate.get(teamId) ?? 0) + 1);
+    }
+    params.homeCounts.set(home.id, (params.homeCounts.get(home.id) ?? 0) + 1);
+    games.push({
+      ...matchup,
+      gameDate: slot.date,
+      startTime: slot.startTime,
+      endTime: slot.endTime,
+      parkId: slot.parkId,
+      fieldId: slot.fieldId,
+      status: "DRAFT",
+      sortOrder: gameNumber,
+      conflictFlags: [],
+      fairnessMetadata: { slotId: slot.id, pack: "one-factor" } satisfies Prisma.JsonObject,
+      schedulerNotes: null,
+    });
+    gameNumber += 1;
+  });
+
+  return games;
+}
+
+function packOneFactorSchedule(params: {
+  slots: SchedulerSlot[];
+  teamsByDivision: Map<string, SchedulerTeam[]>;
+  rules: SchedulerDivisionRule[];
+  gamesPerTeam: number;
+}): GeneratedDraftGame[] | null {
+  type Plan = {
+    division: string;
+    ageGroup: string;
+    rule?: SchedulerDivisionRule;
+    rounds: Array<Array<[SchedulerTeam, SchedulerTeam]>>;
+    nights: string[];
+    pairsNeeded: number;
+    teamCount: number;
+  };
+  const plans: Plan[] = [];
+  for (const [division, teams] of params.teamsByDivision.entries()) {
+    if (teams.length < 2) continue;
+    const sorted = [...teams].sort((a, b) => a.teamName.localeCompare(b.teamName));
+    const rule = params.rules.find((entry) => entry.division === division);
+    const ageGroup = rule?.ageGroup || division;
+    const pairsNeeded = Math.floor(sorted.length / 2);
+    const rounds = expandOneFactorRounds(sorted, params.gamesPerTeam);
+    const nights = oneFactorNights({
+      slots: params.slots,
+      rule,
+      division,
+      ageGroup,
+      pairsNeeded,
+      nightsNeeded: params.gamesPerTeam,
+    });
+    plans.push({ division, ageGroup, rule, rounds, nights, pairsNeeded, teamCount: sorted.length });
+  }
+  if (!plans.length) return [];
+
+  const usedSlotIds = new Set<string>();
+  const teamSlotTimes = new Set<string>();
+  const teamDates = new Set<string>();
+  const teamWeeks = new Map<string, number>();
+  const teamEarly = new Map<string, number>();
+  const teamLate = new Map<string, number>();
+  const homeCounts = new Map<string, number>();
+  const games: GeneratedDraftGame[] = [];
+  let gameNumber = 1;
+
+  const uniqueRoundCount = (teamCount: number) => (teamCount % 2 === 1 ? teamCount : Math.max(1, teamCount - 1));
+  const byDate = new Map<string, Array<{ plan: Plan; roundIndex: number }>>();
+  const leftover: Array<{ plan: Plan; roundIndex: number }> = [];
+  for (const plan of plans) {
+    plan.rounds.forEach((_round, roundIndex) => {
+      const date = plan.nights[roundIndex];
+      if (!date) {
+        leftover.push({ plan, roundIndex });
+        return;
+      }
+      const list = byDate.get(date) ?? [];
+      list.push({ plan, roundIndex });
+      byDate.set(date, list);
+    });
+  }
+
+  const dates = [...byDate.keys()].sort();
+  for (const date of dates) {
+    const tonight = (byDate.get(date) ?? []).sort((a, b) => b.plan.pairsNeeded - a.plan.pairsNeeded);
+    for (const { plan, roundIndex } of tonight) {
+      const round = plan.rounds[roundIndex];
+      const probe = probeMatchup(plan.division, plan.ageGroup);
+      const nightSlots = params.slots.filter(
+        (slot) => dateKey(slot.date) === date && ruleAllowsSlot(plan.rule, probe, slot).length === 0,
+      );
+      const placed = assignOneFactorToNight({
+        pairs: round,
+        nightSlots,
+        rule: plan.rule,
+        division: plan.division,
+        ageGroup: plan.ageGroup,
+        roundLabel: `Round ${roundIndex + 1}`,
+        gameNumberStart: gameNumber,
+        cycleIndex: Math.floor(roundIndex / uniqueRoundCount(plan.teamCount)),
+        roundIndex,
+        homeCounts,
+        usedSlotIds,
+        teamEarly,
+        teamLate,
+        teamDates,
+        teamWeeks,
+        teamSlotTimes,
+      });
+      games.push(...placed);
+      gameNumber += placed.length;
+    }
+  }
+
+  for (const { plan, roundIndex } of leftover) {
+    const placed = assignOneFactorToNight({
+      pairs: plan.rounds[roundIndex],
+      nightSlots: [],
+      rule: plan.rule,
+      division: plan.division,
+      ageGroup: plan.ageGroup,
+      roundLabel: `Round ${roundIndex + 1}`,
+      gameNumberStart: gameNumber,
+      cycleIndex: 0,
+      roundIndex,
+      homeCounts,
+      usedSlotIds,
+      teamEarly,
+      teamLate,
+      teamDates,
+      teamWeeks,
+      teamSlotTimes,
+    });
+    games.push(...placed);
+    gameNumber += placed.length;
+  }
+
+  return games;
+}
+
 export function generateSchedule(params: {
   organizationId: string;
   season: SchedulerSeason;
@@ -883,76 +1162,14 @@ export function generateSchedule(params: {
   }
 
   const slots = buildSchedulerSlots(params);
-  const matchups = generateRoundRobinMatchups({ teamsByDivision, gamesPerTeam: params.gamesPerTeam });
-  const usedSlotIds = new Set<string>();
-  const teamSlotTimes = new Set<string>();
-  const teamDates = new Set<string>();
-  const teamWeeks = new Map<string, number>();
-  const teamEarly = new Map<string, number>();
-  const teamLate = new Map<string, number>();
-  const games: GeneratedDraftGame[] = [];
-
-  for (const matchup of matchups) {
-    const rule = params.rules.find((entry) => entry.division === matchup.division);
-    const slot = chooseEligibleSlot({
-      matchup,
-      rule,
-      slots,
-      usedSlotIds,
-      teamSlotTimes,
-      teamDates,
-      teamWeeks,
-      teamEarly,
-      teamLate,
-    });
-    if (!slot) {
-      games.push({
-        ...matchup,
-        gameDate: null,
-        startTime: null,
-        endTime: null,
-        parkId: null,
-        fieldId: null,
-        status: "CONFLICT",
-        sortOrder: matchup.gameNumber,
-        conflictFlags: unscheduledReasons({ matchup, rule, slots, usedSlotIds, teamSlotTimes, teamDates, teamWeeks }),
-        fairnessMetadata: {},
-        schedulerNotes: "No eligible slot was available for this generated matchup.",
-      });
-      continue;
-    }
-
-    usedSlotIds.add(slot.id);
-    const slotTime = `${dateKey(slot.date)}:${slot.startTime}`;
-    const dayKey = dateKey(slot.date);
-    const weekKey = mondayWeekKey(slot.date);
-    teamSlotTimes.add(`${matchup.homeTeamId}:${slotTime}`);
-    teamSlotTimes.add(`${matchup.awayTeamId}:${slotTime}`);
-    teamDates.add(`${matchup.homeTeamId}:${dayKey}`);
-    teamDates.add(`${matchup.awayTeamId}:${dayKey}`);
-    teamWeeks.set(`${matchup.homeTeamId}:${weekKey}`, (teamWeeks.get(`${matchup.homeTeamId}:${weekKey}`) ?? 0) + 1);
-    teamWeeks.set(`${matchup.awayTeamId}:${weekKey}`, (teamWeeks.get(`${matchup.awayTeamId}:${weekKey}`) ?? 0) + 1);
-    const early = isEarlyStart(slot.startTime, divisionSlotTimes(slots, matchup.division));
-    for (const teamId of [matchup.homeTeamId, matchup.awayTeamId]) {
-      if (early) teamEarly.set(teamId, (teamEarly.get(teamId) ?? 0) + 1);
-      else teamLate.set(teamId, (teamLate.get(teamId) ?? 0) + 1);
-    }
-    games.push({
-      ...matchup,
-      gameDate: slot.date,
-      startTime: slot.startTime,
-      endTime: slot.endTime,
-      parkId: slot.parkId,
-      fieldId: slot.fieldId,
-      status: "DRAFT",
-      sortOrder: matchup.gameNumber,
-      conflictFlags: [],
-      fairnessMetadata: { slotId: slot.id } satisfies Prisma.JsonObject,
-      schedulerNotes: null,
-    });
-  }
-
-  const repaired = repairUnplacedGames({ games, slots, rules: params.rules });
+  const gamesPerTeam = params.gamesPerTeam ?? parseSeasonGamesPerTeam(params.season.settings);
+  const packed = packOneFactorSchedule({
+    slots,
+    teamsByDivision,
+    rules: params.rules,
+    gamesPerTeam,
+  });
+  const repaired = repairUnplacedGames({ games: packed, slots, rules: params.rules });
   const checkedGames = checkDraftGameConflicts(repaired.games);
   const fairness = summarizeFairness(checkedGames, params.teams);
   if (fairness.unscheduledGames.length) {
