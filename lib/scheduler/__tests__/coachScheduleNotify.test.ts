@@ -42,6 +42,20 @@ describe("coachScheduleNotify formatters", () => {
     assert.equal(coachNotifyStatus({ coachEmail: "a@b.com", registeredUserId: "u1" }), "ready");
   });
 
+  it("puts the 12U rotation week on the day, not buried in notes", () => {
+    const line = formatNotifyPracticeLine({
+      dayOfWeek: 1,
+      startTime: "17:45",
+      parkName: "Tee-Joe Gonzales Park",
+      fieldName: "Bourque Field",
+      pairedTeamName: "Yankees - Mumphrey",
+      notes: "Week 2 of 3",
+    });
+    assert.equal(line.day, "Week 2 · Monday");
+    assert.equal(line.notes, "");
+    assert.match(line.text, /^Week 2 · Mondays 5:45 PM/);
+  });
+
   it("includes practice, games, and Coach Corner in the email body", () => {
     const email = buildCoachScheduleEmail({
       coachName: "Trent Smith",

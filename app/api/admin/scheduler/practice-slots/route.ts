@@ -2,58 +2,11 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import prisma from "@/lib/prisma";
-import { formatPracticePlanText } from "@/lib/scheduler/practicePlanText";
+import { partnerStartTime } from "@/lib/scheduler/practiceBoard";
+import { regenerateTeamPracticePlan } from "@/lib/scheduler/practiceSlotWrite";
 import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
 
 export const dynamic = "force-dynamic";
-
-function addMinutes(time: string, minutes: number): string {
-  const [h, m] = time.split(":").map(Number);
-  const total = h * 60 + m + minutes;
-  const nextHour = Math.floor(total / 60) % 24;
-  const nextMinute = total % 60;
-  return `${String(nextHour).padStart(2, "0")}:${String(nextMinute).padStart(2, "0")}`;
-}
-
-/** Recomputes and persists Team.practicePlan from that team's current TeamPracticeSlot rows. */
-async function regenerateTeamPracticePlan(teamId: string) {
-  const slots = await prisma.teamPracticeSlot.findMany({
-    where: { teamId },
-    include: { park: { select: { name: true } }, field: { select: { name: true } } },
-    orderBy: { dayOfWeek: "asc" },
-  });
-
-  const views = await Promise.all(
-    slots.map(async (slot) => {
-      let pairedTeamName: string | null = null;
-      let isFirst: boolean | null = null;
-      if (slot.sharedFieldGroupId) {
-        const sibling = await prisma.teamPracticeSlot.findFirst({
-          where: { sharedFieldGroupId: slot.sharedFieldGroupId, teamId: { not: teamId } },
-          include: { team: { select: { teamName: true } } },
-        });
-        if (sibling) {
-          pairedTeamName = sibling.team.teamName;
-          isFirst = slot.startTime <= sibling.startTime;
-        }
-      }
-      return {
-        dayOfWeek: slot.dayOfWeek,
-        startTime: slot.startTime,
-        parkName: slot.park?.name ?? null,
-        fieldName: slot.field?.name ?? null,
-        pairedTeamName,
-        isFirst,
-        notes: slot.notes,
-      };
-    }),
-  );
-
-  await prisma.team.update({
-    where: { id: teamId },
-    data: { practicePlan: formatPracticePlanText(views) || null },
-  });
-}
 
 /** GET ?org=&seasonYear=&ageGroup= -- every real team in the division plus its current practice slot, if any. */
 export async function GET(request: NextRequest) {
@@ -269,7 +222,7 @@ export async function POST(request: NextRequest) {
 
   if (pairId) {
     affectedTeamIds.add(pairId);
-    const partnerStart = addMinutes(startTime, duration);
+    const partnerStart = partnerStartTime(startTime, duration);
     const partnerData = {
       organizationId,
       seasonYear,

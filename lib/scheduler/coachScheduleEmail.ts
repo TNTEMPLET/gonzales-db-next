@@ -1,3 +1,4 @@
+import { parseRotationNote } from "@/lib/scheduler/practiceBoard";
 import { dateKey } from "@/lib/scheduler/validation";
 
 export const COACH_NOTIFY_SOURCE_TYPE = "SCHEDULER_COACH_NOTIFY";
@@ -140,14 +141,18 @@ export function formatNotifyPracticeLine(input: {
   pairedTeamName: string | null;
   notes: string | null;
 }): CoachNotifyPracticeLine {
-  const day = NOTIFY_DAY_NAMES[input.dayOfWeek] ?? "";
+  const rotation = parseRotationNote(input.notes);
+  const dayName = NOTIFY_DAY_NAMES[input.dayOfWeek] ?? "";
+  const weekLabel = rotation ? `Week ${rotation.week}` : "";
+  const day = weekLabel ? `${weekLabel} · ${dayName}` : dayName;
   const startTime = formatNotifyClock(input.startTime);
   const parkName = input.parkName?.trim() || "";
   const fieldName = input.fieldName?.trim() || "";
   const pairedTeamName = input.pairedTeamName?.trim() || "";
-  const notes = input.notes?.trim() || "";
+  const leftover = input.notes?.replace(/^(Week \d+(?: of \d+)?)\s*[—\-:]*\s*/, "").trim() || "";
+  const notes = leftover;
   const location = [fieldName, parkName].filter(Boolean).join(", ") || "Location TBD";
-  let text = `${day}s ${startTime} — ${location}`;
+  let text = weekLabel ? `${weekLabel} · ${dayName}s ${startTime} — ${location}` : `${dayName}s ${startTime} — ${location}`;
   if (pairedTeamName) text += ` (shares with ${pairedTeamName})`;
   if (notes) text += ` — ${notes}`;
   return { day, startTime, parkName, fieldName, pairedTeamName, notes, text };
