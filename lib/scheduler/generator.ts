@@ -581,6 +581,121 @@ function tryDirectPlace(params: {
   return { games: next, placed };
 }
 
+function blockersForTarget(params: {
+  games: GeneratedDraftGame[];
+  leftover: GeneratedDraftGame;
+  target: SchedulerSlot;
+  lockedIds: Set<string>;
+}): GeneratedDraftGame[] {
+  const weekKey = mondayWeekKey(params.target.date);
+  const dayKey = dateKey(params.target.date);
+  return params.games.filter((candidate) => {
+    if (!candidate.gameDate || !candidate.startTime) return false;
+    if (params.lockedIds.has(gameIdentity(candidate))) return false;
+    if (candidate.division !== params.leftover.division) return false;
+    const involves =
+      candidate.homeTeamId === params.leftover.homeTeamId ||
+      candidate.homeTeamId === params.leftover.awayTeamId ||
+      candidate.awayTeamId === params.leftover.homeTeamId ||
+      candidate.awayTeamId === params.leftover.awayTeamId;
+    if (!involves) return false;
+    return mondayWeekKey(candidate.gameDate) === weekKey || dateKey(candidate.gameDate) === dayKey;
+  });
+}
+
+function moveBlockerOffSlot(params: {
+  games: GeneratedDraftGame[];
+  blocker: GeneratedDraftGame;
+  slots: SchedulerSlot[];
+  rules: SchedulerDivisionRule[];
+  reservedSlotIds: Set<string>;
+}): GeneratedDraftGame[] | null {
+  const originalSlotId = slotIdForGame(params.blocker);
+  const withoutBlocker = params.games.map((entry) =>
+    gameIdentity(entry) === gameIdentity(params.blocker)
+      ? {
+          ...entry,
+          gameDate: null,
+          startTime: null,
+          endTime: null,
+          parkId: null,
+          fieldId: null,
+          status: "CONFLICT" as const,
+          conflictFlags: [],
+        }
+      : entry,
+  );
+  const occupancyWithout = occupancyFromGames(withoutBlocker, params.slots);
+  for (const reserved of params.reservedSlotIds) occupancyWithout.usedSlotIds.add(reserved);
+  if (originalSlotId) occupancyWithout.usedSlotIds.add(originalSlotId);
+  const alt = chooseEligibleSlot({
+    matchup: matchupFromGame(params.blocker),
+    rule: params.rules.find((entry) => entry.division === params.blocker.division),
+    slots: params.slots,
+    ...occupancyWithout,
+  });
+  if (!alt || params.reservedSlotIds.has(alt.id) || alt.id === originalSlotId) return null;
+  return withoutBlocker.map((entry) =>
+    gameIdentity(entry) === gameIdentity(params.blocker) ? applySlotToGame(entry, alt) : entry,
+  );
+}
+
+function tryPlaceWithHops(params: {
+  games: GeneratedDraftGame[];
+  leftover: GeneratedDraftGame;
+  target: SchedulerSlot;
+  slots: SchedulerSlot[];
+  rules: SchedulerDivisionRule[];
+  lockedIds: Set<string>;
+  hopsLeft: number;
+  reservedSlotIds: Set<string>;
+}): GeneratedDraftGame[] | null {
+  const rule = params.rules.find((entry) => entry.division === params.leftover.division);
+  const occupancy = occupancyFromGames(params.games, params.slots);
+  if (
+    !occupancy.usedSlotIds.has(params.target.id) &&
+    teamPlacementConflicts({
+      matchup: matchupFromGame(params.leftover),
+      rule,
+      slot: params.target,
+      teamSlotTimes: occupancy.teamSlotTimes,
+      teamDates: occupancy.teamDates,
+      teamWeeks: occupancy.teamWeeks,
+    }).length === 0
+  ) {
+    return params.games.map((entry) =>
+      gameIdentity(entry) === gameIdentity(params.leftover) ? applySlotToGame(entry, params.target) : entry,
+    );
+  }
+  if (params.hopsLeft <= 0) return null;
+
+  const reserved = new Set(params.reservedSlotIds);
+  reserved.add(params.target.id);
+  for (const blocker of blockersForTarget({
+    games: params.games,
+    leftover: params.leftover,
+    target: params.target,
+    lockedIds: params.lockedIds,
+  })) {
+    const moved = moveBlockerOffSlot({
+      games: params.games,
+      blocker,
+      slots: params.slots,
+      rules: params.rules,
+      reservedSlotIds: reserved,
+    });
+    if (!moved) continue;
+    const placed = tryPlaceWithHops({
+      ...params,
+      games: moved,
+      hopsLeft: params.hopsLeft - 1,
+      reservedSlotIds: reserved,
+    });
+    if (placed) return placed;
+  }
+  return null;
+}
+
 function tryDisplaceOne(params: {
   games: GeneratedDraftGame[];
   slots: SchedulerSlot[];
@@ -595,94 +710,17 @@ function tryDisplaceOne(params: {
       (slot) => !occupancy.usedSlotIds.has(slot.id) && ruleAllowsSlot(rule, matchupFromGame(game), slot).length === 0,
     );
     for (const target of fieldLegalEmpty) {
-      const teamConflicts = teamPlacementConflicts({
-        matchup: matchupFromGame(game),
-        rule,
-        slot: target,
-        teamSlotTimes: occupancy.teamSlotTimes,
-        teamDates: occupancy.teamDates,
-        teamWeeks: occupancy.teamWeeks,
+      const placed = tryPlaceWithHops({
+        games: params.games,
+        leftover: game,
+        target,
+        slots: params.slots,
+        rules: params.rules,
+        lockedIds: params.lockedIds,
+        hopsLeft: 2,
+        reservedSlotIds: new Set([target.id]),
       });
-      if (!teamConflicts.length) {
-        return { games: params.games.map((entry) => (gameIdentity(entry) === gameIdentity(game) ? applySlotToGame(entry, target) : entry)), moved: true };
-      }
-      if (
-        !teamConflicts.some(
-          (code) =>
-            code === "max_games_per_week" ||
-            code === "double_header_not_allowed" ||
-            code === "back_to_back_not_allowed" ||
-            code === "min_days_between_games" ||
-            code === "team_already_scheduled_in_slot",
-        )
-      ) {
-        continue;
-      }
-
-      const weekKey = mondayWeekKey(target.date);
-      const dayKey = dateKey(target.date);
-      const blockers = params.games.filter((candidate) => {
-        if (!candidate.gameDate || !candidate.startTime) return false;
-        if (params.lockedIds.has(gameIdentity(candidate))) return false;
-        if (candidate.division !== game.division) return false;
-        const involves =
-          candidate.homeTeamId === game.homeTeamId ||
-          candidate.homeTeamId === game.awayTeamId ||
-          candidate.awayTeamId === game.homeTeamId ||
-          candidate.awayTeamId === game.awayTeamId;
-        if (!involves) return false;
-        const candidateWeek = mondayWeekKey(candidate.gameDate);
-        const candidateDay = dateKey(candidate.gameDate);
-        return candidateWeek === weekKey || candidateDay === dayKey;
-      });
-
-      for (const blocker of blockers) {
-        const originalSlotId = slotIdForGame(blocker);
-        const withoutBlocker = params.games.map((entry) =>
-          gameIdentity(entry) === gameIdentity(blocker)
-            ? {
-                ...entry,
-                gameDate: null,
-                startTime: null,
-                endTime: null,
-                parkId: null,
-                fieldId: null,
-                status: "CONFLICT" as const,
-                conflictFlags: [],
-              }
-            : entry,
-        );
-        const occupancyWithout = occupancyFromGames(withoutBlocker, params.slots);
-        occupancyWithout.usedSlotIds.add(target.id);
-        if (originalSlotId) occupancyWithout.usedSlotIds.add(originalSlotId);
-        const alt = chooseEligibleSlot({
-          matchup: matchupFromGame(blocker),
-          rule: params.rules.find((entry) => entry.division === blocker.division),
-          slots: params.slots,
-          ...occupancyWithout,
-        });
-        if (!alt || alt.id === target.id || alt.id === originalSlotId) continue;
-        const moved = withoutBlocker.map((entry) =>
-          gameIdentity(entry) === gameIdentity(blocker) ? applySlotToGame(entry, alt) : entry,
-        );
-        const occupancyMoved = occupancyFromGames(moved, params.slots);
-        if (
-          teamPlacementConflicts({
-            matchup: matchupFromGame(game),
-            rule,
-            slot: target,
-            teamSlotTimes: occupancyMoved.teamSlotTimes,
-            teamDates: occupancyMoved.teamDates,
-            teamWeeks: occupancyMoved.teamWeeks,
-          }).length
-        ) {
-          continue;
-        }
-        return {
-          games: moved.map((entry) => (gameIdentity(entry) === gameIdentity(game) ? applySlotToGame(entry, target) : entry)),
-          moved: true,
-        };
-      }
+      if (placed) return { games: placed, moved: true };
     }
   }
   return { games: params.games, moved: false };
