@@ -24,6 +24,11 @@ export type SchedulerWizardSnapshot = {
   notifySentCount: number;
 };
 
+/** Complete steps stay collapsed unless the user reopened them to edit. */
+export function wizardStepIsOpen(complete: boolean, reopened: boolean): boolean {
+  return !complete || reopened;
+}
+
 export function schedulerStepStatus(
   stepId: SchedulerWizardStepId,
   snap: SchedulerWizardSnapshot,
