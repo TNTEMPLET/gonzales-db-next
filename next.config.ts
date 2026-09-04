@@ -15,6 +15,7 @@ const ALLOWED_DEV_ORIGIN_HOSTS = [
   "ladistrict6-dev.duckroostdigital.com",
   "fallball-dev.duckroostdigital.com",
   "192.168.100.156",
+  "10.42.10.171",
   "localhost",
   "127.0.0.1",
 ] as const;

@@ -14,6 +14,7 @@ import {
   type SchedulerWizardStepId,
 } from "@/lib/admin/schedulerWizard";
 import FieldSetupPanel from "@/components/admin/scheduler/FieldSetupPanel";
+import { weekDivisionsFromMeta } from "@/lib/admin/fieldBoardWeek";
 import { parseDivisionSlotTimes, withSuggestedDivisionTimes } from "@/lib/admin/divisionSlotTimes";
 import { formatConflictSummary, formatGenerationError } from "@/lib/scheduler/conflictCopy";
 import { isEarlyStart } from "@/lib/scheduler/earlyLate";
@@ -175,22 +176,6 @@ function asStringArray(value: unknown): string[] {
   return Array.isArray(value)
     ? value.filter((entry): entry is string => typeof entry === "string")
     : [];
-}
-
-function weekDivisionsFromMeta(fieldMetadata: unknown): string[] {
-  if (!fieldMetadata || typeof fieldMetadata !== "object") return [];
-  const week = (fieldMetadata as { week?: unknown }).week;
-  if (!week || typeof week !== "object") return [];
-  const found: string[] = [];
-  for (const row of Object.values(week as Record<string, unknown>)) {
-    if (!Array.isArray(row)) continue;
-    for (const cell of row) {
-      if (typeof cell !== "string") continue;
-      const division = cell.trim();
-      if (division) found.push(division);
-    }
-  }
-  return found;
 }
 
 function divisionsFromWeeklyBoard(parks: Park[]): string[] {
