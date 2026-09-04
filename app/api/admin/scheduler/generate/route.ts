@@ -5,7 +5,6 @@ import { jsonError, loadGenerationContext, requestId, requireSchedulerAdmin, req
 import { buildSchedulerSlots, generateSchedule, repairUnplacedGames, summarizeFairness } from "@/lib/scheduler/generator";
 import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
 import type { GeneratedDraftGame } from "@/lib/scheduler/types";
-import { SchedulerError } from "@/lib/scheduler/types";
 import { jsonStringArray, parseStringArray, requireString } from "@/lib/scheduler/validation";
 
 type GeneratePayload = {
@@ -14,22 +13,8 @@ type GeneratePayload = {
   replace?: unknown;
   confirmReplace?: unknown;
   allowConflicts?: unknown;
-  gamesPerTeam?: unknown;
   repair?: unknown;
 };
-
-const MAX_GAMES_PER_TEAM = 30;
-
-function parseGamesPerTeam(value: unknown): number | undefined {
-  if (value === null || value === undefined || value === "") return undefined;
-  if (typeof value !== "number" || !Number.isInteger(value)) {
-    throw new SchedulerError("gamesPerTeam must be a whole number", "INVALID_INPUT", { field: "gamesPerTeam" });
-  }
-  if (value < 1 || value > MAX_GAMES_PER_TEAM) {
-    throw new SchedulerError(`gamesPerTeam must be between 1 and ${MAX_GAMES_PER_TEAM}`, "INVALID_INPUT", { field: "gamesPerTeam", max: MAX_GAMES_PER_TEAM });
-  }
-  return value;
-}
 
 function parseSeasonYearParam(value: string | null): number | null {
   if (!value?.trim()) return null;
@@ -80,7 +65,6 @@ export async function POST(request: NextRequest) {
     const replace = body.replace === true;
     const confirmReplace = body.confirmReplace === true;
     const allowConflicts = body.allowConflicts === true;
-    const gamesPerTeam = parseGamesPerTeam(body.gamesPerTeam);
     const repair = body.repair === true;
 
     if (repair) {
@@ -187,7 +171,6 @@ export async function POST(request: NextRequest) {
       availabilities: context.availabilities,
       rules: context.rules,
       divisions,
-      gamesPerTeam,
     });
 
     if (!replace) {

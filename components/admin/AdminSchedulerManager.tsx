@@ -20,7 +20,12 @@ import { parseDivisionSlotTimes, withSuggestedDivisionTimes } from "@/lib/admin/
 import { formatConflictSummary, formatGenerationError } from "@/lib/scheduler/conflictCopy";
 import { isEarlyStart } from "@/lib/scheduler/earlyLate";
 import { parseCoachNotifyState, type CoachNotifyPreviewRow, type CoachNotifySummary } from "@/lib/scheduler/coachScheduleEmail";
-import { parseSeasonDateWindows, withSeasonDateWindows } from "@/lib/scheduler/seasonWindows";
+import {
+  DEFAULT_SEASON_GAMES_PER_TEAM,
+  parseSeasonDateWindows,
+  parseSeasonGamesPerTeam,
+  withSeasonDateWindows,
+} from "@/lib/scheduler/seasonWindows";
 
 type Season = {
   id: string;
@@ -155,6 +160,7 @@ type SeasonForm = {
   practiceStartsOn: string;
   practiceEndsOn: string;
   defaultGameTimes: string;
+  gamesPerTeam: string;
   divisionTimeOverrides: Array<{ division: string; slot1: string; slot2: string }>;
 };
 
@@ -315,12 +321,15 @@ function settingsWithDivisionTimes(
 }
 
 function settingsFromSeasonForm(existing: unknown, form: SeasonForm): Record<string, unknown> {
-  return withSeasonDateWindows(settingsWithDivisionTimes(existing, form.divisionTimeOverrides), {
+  const settings = withSeasonDateWindows(settingsWithDivisionTimes(existing, form.divisionTimeOverrides), {
     gamesStartsOn: form.gamesStartsOn,
     gamesEndsOn: form.gamesEndsOn,
     practiceStartsOn: form.practiceStartsOn,
     practiceEndsOn: form.practiceEndsOn,
   });
+  const gamesPerTeam = Number.parseInt(form.gamesPerTeam, 10);
+  settings.gamesPerTeam = Number.isInteger(gamesPerTeam) && gamesPerTeam > 0 ? gamesPerTeam : DEFAULT_SEASON_GAMES_PER_TEAM;
+  return settings;
 }
 
 function splitList(value: string): string[] {
@@ -510,12 +519,13 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
     practiceStartsOn: "",
     practiceEndsOn: "",
     defaultGameTimes: DEFAULT_GAME_TIMES,
+    gamesPerTeam: String(DEFAULT_SEASON_GAMES_PER_TEAM),
     divisionTimeOverrides: withSuggestedDivisionTimes([], targetOrg, splitList(DEFAULT_GAME_TIMES)),
   });
   const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
   const [divisionSelectTouched, setDivisionSelectTouched] = useState(false);
   const [teamCounts, setTeamCounts] = useState<Record<string, number>>({});
-  const [gamesPerTeam, setGamesPerTeam] = useState("8");
+
   const [allowConflicts, setAllowConflicts] = useState(false);
   const [preview, setPreview] = useState<GenerationResult | null>(null);
   const [busy, setBusy] = useState(false);
@@ -805,6 +815,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       practiceStartsOn: "",
       practiceEndsOn: "",
       defaultGameTimes: DEFAULT_GAME_TIMES,
+      gamesPerTeam: String(DEFAULT_SEASON_GAMES_PER_TEAM),
       divisionTimeOverrides: withSuggestedDivisionTimes([], targetOrg, splitList(DEFAULT_GAME_TIMES)),
     });
   }
@@ -844,6 +855,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         endsOn: seasonEnd,
         ...windows,
         defaultGameTimes: toTextList(selectedSeason.defaultGameTimes) || DEFAULT_GAME_TIMES,
+        gamesPerTeam: String(parseSeasonGamesPerTeam(selectedSeason.settings)),
         divisionTimeOverrides: withSuggestedDivisionTimes(
           divisionOverrideRows(selectedSeason.settings),
           targetOrg,
@@ -1015,7 +1027,6 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         body: JSON.stringify({
           seasonId: selectedSeasonId,
           divisions,
-          gamesPerTeam: numberOrNull(gamesPerTeam),
           replace,
           confirmReplace: replace,
           allowConflicts,
@@ -1160,7 +1171,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
           gamesEndsOn={seasonForm.gamesEndsOn || seasonForm.endsOn}
           games={heatmapGames}
           teamCounts={heatmapTeamCounts}
-          gamesPerTeam={Number.parseInt(gamesPerTeam, 10) || 8}
+          gamesPerTeam={parseSeasonGamesPerTeam({ gamesPerTeam: Number.parseInt(seasonForm.gamesPerTeam, 10) })}
           sourceLabel={heatmapSourceLabel}
           onClose={() => setHeatmapOpen(false)}
         />
@@ -1186,6 +1197,18 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
             <FieldLabel label="Season name"><TextInput value={seasonForm.name} onChange={(e) => setSeasonForm({ ...seasonForm, name: e.target.value })} /></FieldLabel>
             <FieldLabel label="Full season start"><TextInput type="date" value={seasonForm.startsOn} onChange={(e) => setSeasonForm({ ...seasonForm, startsOn: e.target.value })} /></FieldLabel>
             <FieldLabel label="Full season end"><TextInput type="date" value={seasonForm.endsOn} onChange={(e) => setSeasonForm({ ...seasonForm, endsOn: e.target.value })} /></FieldLabel>
+            <FieldLabel label="Games per team">
+              <TextInput
+                type="number"
+                min={1}
+                max={30}
+                value={seasonForm.gamesPerTeam}
+                onChange={(e) => setSeasonForm({ ...seasonForm, gamesPerTeam: e.target.value })}
+              />
+            </FieldLabel>
+            <p className="sm:col-span-2 text-xs text-zinc-500">
+              Every selected division targets this many games per team. Generate uses 1-factor nights (bye if a division has an odd number of teams). If the board has fewer nights, leftover games stay unplaced.
+            </p>
             <FieldLabel label="Games start"><TextInput type="date" value={seasonForm.gamesStartsOn} onChange={(e) => setSeasonForm({ ...seasonForm, gamesStartsOn: e.target.value })} /></FieldLabel>
             <FieldLabel label="Games end"><TextInput type="date" value={seasonForm.gamesEndsOn} onChange={(e) => setSeasonForm({ ...seasonForm, gamesEndsOn: e.target.value })} /></FieldLabel>
             <FieldLabel label="Practices start"><TextInput type="date" value={seasonForm.practiceStartsOn} onChange={(e) => setSeasonForm({ ...seasonForm, practiceStartsOn: e.target.value })} /></FieldLabel>
@@ -1498,12 +1521,9 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-[0.9fr_1.5fr]">
           <div className="space-y-3">
-            <FieldLabel label="Games per team">
-              <TextInput value={gamesPerTeam} onChange={(e) => setGamesPerTeam(e.target.value)} />
-            </FieldLabel>
-            <p className="text-xs text-zinc-500">
-              Season target per team. Limits still cap games in one week, rest days, and double headers.
-              Odd team counts, byes, and thin boards can leave teams short of the exact number.
+            <p className="text-sm text-zinc-300">
+              Games per team: <span className="font-semibold text-white">{seasonForm.gamesPerTeam || DEFAULT_SEASON_GAMES_PER_TEAM}</span>
+              <span className="ml-2 text-xs text-zinc-500">Set on Season setup. 1-factor packer; odd divisions get a bye.</span>
             </p>
             <label className="flex items-center gap-2 text-sm text-zinc-300">
               <input type="checkbox" checked={allowConflicts} onChange={(e) => setAllowConflicts(e.target.checked)} />
