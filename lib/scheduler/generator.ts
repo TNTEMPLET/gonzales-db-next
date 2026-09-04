@@ -1018,7 +1018,7 @@ function packOneFactorSchedule(params: {
   teamsByDivision: Map<string, SchedulerTeam[]>;
   rules: SchedulerDivisionRule[];
   gamesPerTeam: number;
-}): GeneratedDraftGame[] | null {
+}): GeneratedDraftGame[] {
   type Plan = {
     division: string;
     ageGroup: string;
