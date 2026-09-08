@@ -2,10 +2,10 @@ export const SCHEDULER_WIZARD_STEPS = [
   { id: "scheduler-season", number: 1, shortLabel: "Season", title: "Setup Season" },
   { id: "scheduler-parks", number: 2, shortLabel: "Parks", title: "Parks & Fields" },
   { id: "scheduler-matrix", number: 3, shortLabel: "Limits", title: "Division constraints" },
-  { id: "scheduler-generate", number: 4, shortLabel: "Generate", title: "Generate Schedule" },
-  { id: "scheduler-review", number: 5, shortLabel: "Review", title: "Review & Fix" },
-  { id: "scheduler-export", number: 6, shortLabel: "Export", title: "Export" },
-  { id: "scheduler-practice", number: 7, shortLabel: "Practice", title: "Practice Slots" },
+  { id: "scheduler-practice", number: 4, shortLabel: "Practice", title: "Practice Slots" },
+  { id: "scheduler-generate", number: 5, shortLabel: "Generate", title: "Generate Schedule" },
+  { id: "scheduler-review", number: 6, shortLabel: "Review", title: "Review & Fix" },
+  { id: "scheduler-export", number: 7, shortLabel: "Export", title: "Export" },
   { id: "scheduler-notify", number: 8, shortLabel: "Notify", title: "Notify Coaches" },
 ] as const;
 

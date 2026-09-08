@@ -1,15 +1,16 @@
 ---
-description: Ask clarifying questions with clickable options (AskQuestion), not prose-only
+description: Ask clarifying questions with the native selectable UI only — never lettered Markdown
 alwaysApply: true
 ---
 
-# Clarifying questions (clickable options)
+# Clarifying questions (selectable UI only)
 
-When requirements are ambiguous, under-specified, or have multiple valid approaches, **do not** close with open-ended, prose-only questions (“Which do you prefer?” with no UI).
+When requirements are ambiguous, under-specified, or have multiple valid approaches, **do not** close with open-ended, prose-only questions (“Which do you prefer?” with no UI). **Never** fall back to lettered Markdown (`1A`, `A/B/C`) or “reply with the option title”.
 
-1. **Use the `AskQuestion` tool** with **2–6 labeled options** so the user gets **clickable choices** in Cursor (same idea as Plan Mode).
-2. Each option needs a stable **`id`** and a short human **`label`**. Use **`allow_multiple: true`** only when more than one answer can apply.
-3. Prefer **several focused `AskQuestion` calls** over one long mixed list.
-4. If free-form input might still be needed, include an explicit option such as **“Other — I’ll reply in chat”** alongside concrete choices—do not rely on that as the only path.
-
-If `AskQuestion` is not available in the environment, use a **compact Markdown list** of lettered/numbered choices and ask the user to reply with the letter(s)—still avoid optionless prompts.
+1. **Use the native selectable question tool** so the user gets clickable choices:
+   - Grok Build: `ask_user_question`
+   - Cursor: `AskQuestion`
+2. Each option needs a short human **`label`** (Cursor also wants a stable **`id`**). Use **`allow_multiple` / `multi_select`** only when more than one answer can apply.
+3. Prefer **several focused questions** over one long mixed list. Put the recommended option first and mark it `(Recommended)`.
+4. If free-form input might still be needed, include **“Other — I’ll reply in chat”** as a last choice — do not rely on that as the only path.
+5. If the tool errors, **retry it**. If it is still unavailable, say so in one sentence and stop. Do not invent a Markdown quiz.

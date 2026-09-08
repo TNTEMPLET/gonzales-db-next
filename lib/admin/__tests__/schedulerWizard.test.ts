@@ -77,6 +77,19 @@ describe("schedulerStepStatus", () => {
   });
 });
 
+describe("wizard order", () => {
+  it("places practice before generate so games can follow practice pairs", () => {
+    const ids = SCHEDULER_WIZARD_STEPS.map((step) => step.id);
+    assert.ok(ids.indexOf("scheduler-practice") < ids.indexOf("scheduler-generate"));
+    assert.deepEqual(
+      SCHEDULER_WIZARD_STEPS.map((step) => step.number),
+      [1, 2, 3, 4, 5, 6, 7, 8],
+    );
+    assert.equal(SCHEDULER_WIZARD_STEPS[3]?.id, "scheduler-practice");
+    assert.equal(SCHEDULER_WIZARD_STEPS[4]?.id, "scheduler-generate");
+  });
+});
+
 describe("wizardStepIsOpen", () => {
   it("keeps incomplete steps expanded", () => {
     assert.equal(wizardStepIsOpen(false, false), true);

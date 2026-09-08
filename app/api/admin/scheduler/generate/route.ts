@@ -3,8 +3,12 @@ import { NextResponse, type NextRequest } from "next/server";
 import prisma from "@/lib/prisma";
 import { jsonError, loadGenerationContext, requestId, requireSchedulerAdmin, requireSeason } from "@/lib/scheduler/api";
 import { buildSchedulerSlots, generateSchedule, repairUnplacedGames, summarizeFairness } from "@/lib/scheduler/generator";
+import { generateGamesFromPracticeNights, type PracticeNightSlot } from "@/lib/scheduler/practiceNightGames";
+import { canLoadTeeballFixture, loadFallball2026Teeball } from "@/lib/scheduler/loadTeeballFixture";
+import { parseScheduleMode, type ScheduleMode } from "@/lib/scheduler/scheduleMode";
+import { generateThreeTeamDoubleheaders } from "@/lib/scheduler/threeTeamDoubleheaders";
 import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
-import type { GeneratedDraftGame } from "@/lib/scheduler/types";
+import type { GeneratedDraftGame, SchedulerGenerationResult } from "@/lib/scheduler/types";
 import { jsonStringArray, parseStringArray, requireString } from "@/lib/scheduler/validation";
 
 type GeneratePayload = {
@@ -14,7 +18,50 @@ type GeneratePayload = {
   confirmReplace?: unknown;
   allowConflicts?: unknown;
   repair?: unknown;
+  packer?: unknown;
 };
+
+function parsePacker(value: unknown): "oneFactor" | "doubleheaders" | "practiceGames" | "teeballFixture" {
+  if (value === "doubleheaders" || value === "practiceGames" || value === "teeballFixture") return value;
+  return "oneFactor";
+}
+
+function requiredMode(packer: ReturnType<typeof parsePacker>): ScheduleMode | null {
+  if (packer === "doubleheaders") return "manual";
+  if (packer === "practiceGames") return "practiceGames";
+  if (packer === "teeballFixture") return null;
+  return "auto";
+}
+
+async function loadPracticeNightSlots(params: {
+  organizationId: string;
+  seasonYear: number;
+  divisions: string[];
+}): Promise<PracticeNightSlot[]> {
+  const slots = await prisma.teamPracticeSlot.findMany({
+    where: {
+      organizationId: params.organizationId,
+      seasonYear: params.seasonYear,
+      ageGroup: { in: params.divisions },
+    },
+    include: { team: { select: { id: true, teamName: true, ageGroup: true, organizationId: true, seasonYear: true } } },
+    orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
+  });
+  return slots.map((slot) => ({
+    ageGroup: slot.ageGroup,
+    dayOfWeek: slot.dayOfWeek,
+    startTime: slot.startTime,
+    parkId: slot.parkId,
+    fieldId: slot.fieldId,
+    team: {
+      id: slot.team.id,
+      organizationId: slot.team.organizationId,
+      seasonYear: slot.team.seasonYear,
+      ageGroup: slot.team.ageGroup,
+      teamName: slot.team.teamName,
+    },
+  }));
+}
 
 function parseSeasonYearParam(value: string | null): number | null {
   if (!value?.trim()) return null;
@@ -66,6 +113,14 @@ export async function POST(request: NextRequest) {
     const confirmReplace = body.confirmReplace === true;
     const allowConflicts = body.allowConflicts === true;
     const repair = body.repair === true;
+    const packer = parsePacker(body.packer);
+
+    if (!repair && packer !== "teeballFixture" && !divisions.length) {
+      return NextResponse.json(
+        { error: "divisions is required so Generate cannot wipe other divisions", code: "INVALID_INPUT" },
+        { status: 400 },
+      );
+    }
 
     if (repair) {
       const context = await loadGenerationContext({ organizationId: auth.organizationId, seasonId, divisions });
@@ -162,16 +217,90 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (packer === "teeballFixture") {
+      const season = await requireSeason(auth.organizationId, seasonId);
+      if (!canLoadTeeballFixture(auth.organizationId, season.seasonYear)) {
+        return NextResponse.json(
+          { error: "Tee-ball Fall 2026 sheets are only available for Fall Ball 2026", code: "INVALID_INPUT" },
+          { status: 400 },
+        );
+      }
+      const loaded = await loadFallball2026Teeball({
+        organizationId: auth.organizationId,
+        seasonId: season.id,
+        seasonYear: season.seasonYear,
+      });
+      return NextResponse.json({
+        mode: "replace",
+        data: {
+          requestedDivisions: loaded.divisions,
+          slots: [],
+          games: [],
+          fairness: { teams: [], unscheduledGames: [] },
+          errors: [],
+          loaded,
+        },
+      });
+    }
+
     const context = await loadGenerationContext({ organizationId: auth.organizationId, seasonId, divisions });
-    const result = generateSchedule({
-      organizationId: auth.organizationId,
-      season: context.season,
-      teams: context.teams,
-      fields: context.fields,
-      availabilities: context.availabilities,
-      rules: context.rules,
-      divisions,
+    const mode = requiredMode(packer);
+    const scopedDivisions = divisions.filter((division) => {
+      const rule = context.rules.find((entry) => entry.division === division);
+      return mode === null || parseScheduleMode(rule?.ruleMetadata, division) === mode;
     });
+    if (!scopedDivisions.length) {
+      return NextResponse.json(
+        {
+          error:
+            packer === "oneFactor"
+              ? "Pick at least one Auto division. Manual and Practice-as-games are not 1-factor."
+              : packer === "doubleheaders"
+                ? "Pick at least one Manual / DH division."
+                : "Pick at least one Practice-as-games division.",
+          code: "INVALID_INPUT",
+        },
+        { status: 400 },
+      );
+    }
+
+    let result: SchedulerGenerationResult;
+    if (packer === "doubleheaders") {
+      result = generateThreeTeamDoubleheaders({
+        organizationId: auth.organizationId,
+        season: context.season,
+        teams: context.teams,
+        fields: context.fields,
+        availabilities: context.availabilities,
+        rules: context.rules,
+        divisions: scopedDivisions,
+      });
+    } else if (packer === "practiceGames") {
+      const nightSlots = await loadPracticeNightSlots({
+        organizationId: auth.organizationId,
+        seasonYear: context.season.seasonYear,
+        divisions: scopedDivisions,
+      });
+      result = generateGamesFromPracticeNights({
+        organizationId: auth.organizationId,
+        season: context.season,
+        teams: context.teams,
+        fields: context.fields,
+        rules: context.rules,
+        slots: nightSlots,
+        divisions: scopedDivisions,
+      });
+    } else {
+      result = generateSchedule({
+        organizationId: auth.organizationId,
+        season: context.season,
+        teams: context.teams,
+        fields: context.fields,
+        availabilities: context.availabilities,
+        rules: context.rules,
+        divisions: scopedDivisions,
+      });
+    }
 
     if (!replace) {
       return NextResponse.json({ mode: "preview", data: result }, { status: result.errors.length ? 422 : 200 });
@@ -194,7 +323,8 @@ export async function POST(request: NextRequest) {
           organizationId: auth.organizationId,
           seasonId,
           source: "generated",
-          ...(divisions.length ? { division: { in: divisions } } : {}),
+          division: { in: scopedDivisions },
+          NOT: { status: { in: ["LOCKED", "EXPORTED"] } },
         },
       });
       if (result.games.length) {
@@ -232,7 +362,7 @@ export async function POST(request: NextRequest) {
         organizationId: auth.organizationId,
         seasonId,
         source: "generated",
-        ...(divisions.length ? { division: { in: divisions } } : {}),
+        division: { in: scopedDivisions },
       },
       include: { park: true, field: true, homeTeam: true, awayTeam: true },
       orderBy: [{ gameDate: "asc" }, { startTime: "asc" }, { sortOrder: "asc" }],
