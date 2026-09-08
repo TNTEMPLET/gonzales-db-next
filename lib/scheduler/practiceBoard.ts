@@ -13,6 +13,8 @@ export type PracticeAssignment = {
   dayOfWeek: number;
   startTime: string;
   durationMinutes: number;
+  /** Minutes the second team waits. 0 = both start together and share the field. */
+  swapMinutes?: number;
   parkId: string | null;
   fieldId: string | null;
   pairWithTeamId: string | null;
@@ -44,6 +46,7 @@ export function assignmentsFromBoard(
   cells: readonly PracticeBoardCell[],
   durationMinutes: number,
   cycleWeeks: number,
+  swapMinutes: number = durationMinutes,
 ): PracticeAssignment[] {
   const assignments: PracticeAssignment[] = [];
   const seenPairs = new Set<string>();
@@ -60,6 +63,7 @@ export function assignmentsFromBoard(
       dayOfWeek: cell.dayOfWeek,
       startTime: cell.startTime,
       durationMinutes,
+      swapMinutes,
       parkId: cell.parkId || null,
       fieldId: cell.fieldId || null,
       pairWithTeamId: second || null,
@@ -69,8 +73,9 @@ export function assignmentsFromBoard(
   return assignments;
 }
 
-export function partnerStartTime(startTime: string, durationMinutes: number): string {
-  return addMinutes(startTime, durationMinutes);
+export function partnerStartTime(startTime: string, swapMinutes: number): string {
+  if (!Number.isFinite(swapMinutes) || swapMinutes <= 0) return startTime;
+  return addMinutes(startTime, swapMinutes);
 }
 
 export function mlbNickname(teamName: string): string {

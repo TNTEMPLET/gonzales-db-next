@@ -146,7 +146,13 @@ export async function loadCoachScheduleNotify(params: {
         parkName: slot.park?.name ?? null,
         fieldName: slot.field?.name ?? null,
         pairedTeamName: paired?.teamName ?? null,
-        isFirst: paired ? slot.startTime <= paired.startTime : null,
+        isFirst: paired
+          ? slot.startTime < paired.startTime
+            ? true
+            : slot.startTime > paired.startTime
+              ? false
+              : null
+          : null,
         notes: slot.notes,
       };
     });

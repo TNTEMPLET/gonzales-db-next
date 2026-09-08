@@ -11,6 +11,28 @@ import {
 import { formatPracticePlanText } from "../practicePlanText";
 
 describe("practice board", () => {
+  it("keeps both teams on the same start when swap is 0", () => {
+    const rows = assignmentsFromBoard(
+      [
+        {
+          cycleWeek: 1,
+          fieldId: "f4",
+          parkId: "paula",
+          dayOfWeek: 1,
+          startTime: "17:45",
+          firstTeamId: "yankees",
+          secondTeamId: "dodgers",
+        },
+      ],
+      90,
+      1,
+      0,
+    );
+    assert.equal(rows[0]?.swapMinutes, 0);
+    assert.equal(rows[0]?.durationMinutes, 90);
+    assert.equal(partnerStartTime(rows[0]!.startTime, rows[0]!.swapMinutes ?? 0), "17:45");
+  });
+
   it("pairs two teams on one cell and leaves the partner start 45 minutes later", () => {
     const rows = assignmentsFromBoard(
       [
@@ -30,6 +52,7 @@ describe("practice board", () => {
     assert.equal(rows.length, 1);
     assert.equal(rows[0]?.pairWithTeamId, "yankees");
     assert.equal(partnerStartTime("17:45", 45), "18:30");
+    assert.equal(partnerStartTime("17:45", 0), "17:45");
     assert.equal(rows[0]?.notes, null);
   });
 

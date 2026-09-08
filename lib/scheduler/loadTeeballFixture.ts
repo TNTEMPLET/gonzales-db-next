@@ -85,6 +85,7 @@ export async function loadFallball2026Teeball(params: {
           dayOfWeek,
           startTime: TEEBALL_START_TIME,
           durationMinutes: TEEBALL_DURATION_MINUTES,
+          swapMinutes: 0,
           parkId: field.parkId,
           fieldId: field.id,
           pairWithTeamId: second.id,

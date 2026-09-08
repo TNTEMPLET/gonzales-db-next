@@ -20,7 +20,8 @@ export async function regenerateTeamPracticePlan(teamId: string) {
         });
         if (sibling) {
           pairedTeamName = sibling.team.teamName;
-          isFirst = slot.startTime <= sibling.startTime;
+          isFirst =
+            slot.startTime < sibling.startTime ? true : slot.startTime > sibling.startTime ? false : null;
         }
       }
       return {
@@ -97,7 +98,7 @@ export async function replaceDivisionPracticeSlots(params: {
           parkId: assignment.parkId,
           fieldId: assignment.fieldId,
           dayOfWeek: assignment.dayOfWeek,
-          startTime: partnerStartTime(assignment.startTime, assignment.durationMinutes),
+          startTime: partnerStartTime(assignment.startTime, assignment.swapMinutes ?? assignment.durationMinutes),
           durationMinutes: assignment.durationMinutes,
           sharedFieldGroupId,
           notes: assignment.notes,

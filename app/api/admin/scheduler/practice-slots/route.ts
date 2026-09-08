@@ -135,6 +135,7 @@ export async function POST(request: NextRequest) {
     dayOfWeek,
     startTime,
     durationMinutes,
+    swapMinutes,
     parkId,
     fieldId,
     notes,
@@ -148,6 +149,7 @@ export async function POST(request: NextRequest) {
     dayOfWeek?: number;
     startTime?: string;
     durationMinutes?: number;
+    swapMinutes?: number;
     parkId?: string | null;
     fieldId?: string | null;
     notes?: string | null;
@@ -165,7 +167,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "A team cannot pair with itself" }, { status: 400 });
   }
 
-  const duration = durationMinutes || 90;
+  const duration =
+    typeof durationMinutes === "number" && Number.isFinite(durationMinutes) && durationMinutes > 0
+      ? durationMinutes
+      : 90;
+  const swap =
+    typeof swapMinutes === "number" && Number.isFinite(swapMinutes)
+      ? swapMinutes
+      : durationMinutes === 0
+        ? 0
+        : duration;
   const park = parkId || null;
   const field = fieldId || null;
   const slotNotes = notes || null;
@@ -222,7 +233,7 @@ export async function POST(request: NextRequest) {
 
   if (pairId) {
     affectedTeamIds.add(pairId);
-    const partnerStart = partnerStartTime(startTime, duration);
+    const partnerStart = partnerStartTime(startTime, swap);
     const partnerData = {
       organizationId,
       seasonYear,

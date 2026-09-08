@@ -59,6 +59,10 @@ export default function PracticeAssignWizard({
   const [error, setError] = useState("");
 
   useEffect(() => {
+    if (/TB/i.test(ageGroup)) setDurationMinutes(0);
+  }, [ageGroup]);
+
+  useEffect(() => {
     if (!ageGroup) return;
     const params = new URLSearchParams(orgQuery);
     params.set("seasonYear", String(seasonYear));
@@ -136,7 +140,8 @@ export default function PracticeAssignWizard({
           organizationId,
           seasonYear,
           ageGroup,
-          durationMinutes,
+          durationMinutes: durationMinutes === 0 ? 90 : durationMinutes,
+          swapMinutes: durationMinutes,
           cycleWeeks,
           cells: boardCells,
         }),
@@ -161,9 +166,12 @@ export default function PracticeAssignWizard({
             <p className="text-[10px] font-semibold uppercase tracking-[0.24em] text-red-200">Practice assignment wizard</p>
             <h3 className="mt-1 text-xl font-semibold text-white">Place teams on fields and nights</h3>
             <p className="mt-1 text-sm text-zinc-400">
-              No spreadsheet. Pick nights and fields, drop one or two teams in a cell. Two teams share the field — first
-              listed goes first for {durationMinutes} minutes, then they swap. A 3-week cycle stores Week 1 / 2 / 3 on
-              the coach plan.
+              No spreadsheet. Pick nights and fields, drop one or two teams in a cell.
+              {durationMinutes === 0
+                ? " Swap 0 keeps both teams on the field the whole practice."
+                : ` Two teams share the field — first listed goes first for ${durationMinutes} minutes, then they swap.`}
+              {" "}
+              A 3-week cycle stores Week 1 / 2 / 3 on the coach plan.
             </p>
           </div>
           <button
@@ -216,6 +224,7 @@ export default function PracticeAssignWizard({
                 onChange={(e) => setDurationMinutes(Number(e.target.value))}
                 className="mt-1 w-full rounded-xl border border-zinc-700 bg-zinc-900 px-3 py-2 text-sm text-white"
               >
+                <option value={0}>0 — share field, no swap</option>
                 {[45, 60, 75, 90].map((n) => (
                   <option key={n} value={n}>
                     {n} minutes
