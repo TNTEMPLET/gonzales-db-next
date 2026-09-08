@@ -17,6 +17,7 @@ export async function POST(request: NextRequest) {
     seasonYear?: number;
     ageGroup?: string;
     durationMinutes?: number;
+    swapMinutes?: number;
     cycleWeeks?: number;
     cells?: PracticeBoardCell[];
   };
@@ -24,7 +25,10 @@ export async function POST(request: NextRequest) {
   const organizationId = body.organizationId?.trim() || "";
   const seasonYear = Number(body.seasonYear);
   const ageGroup = body.ageGroup?.trim() || "";
-  const durationMinutes = Number(body.durationMinutes) || 45;
+  const rawDuration = Number(body.durationMinutes);
+  const rawSwap = body.swapMinutes == null ? rawDuration : Number(body.swapMinutes);
+  const swapMinutes = Number.isFinite(rawSwap) ? rawSwap : 45;
+  const durationMinutes = Number.isFinite(rawDuration) && rawDuration > 0 ? rawDuration : swapMinutes === 0 ? 90 : 45;
   const cycleWeeks = Math.max(1, Number(body.cycleWeeks) || 1);
   const cells = Array.isArray(body.cells) ? body.cells : [];
 
@@ -32,7 +36,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "organizationId, seasonYear, and ageGroup are required" }, { status: 400 });
   }
 
-  const assignments = assignmentsFromBoard(cells, durationMinutes, cycleWeeks);
+  const assignments = assignmentsFromBoard(cells, durationMinutes, cycleWeeks, swapMinutes);
   const result = await replaceDivisionPracticeSlots({
     organizationId,
     seasonYear,

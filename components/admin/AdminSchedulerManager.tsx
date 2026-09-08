@@ -191,7 +191,7 @@ const PRACTICE_START_TIMES = Array.from({ length: 51 }, (_, i) => {
   const minutes = total % 60;
   return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}`;
 });
-const PRACTICE_DURATIONS = ["45", "60", "75", "90", "105", "120"];
+const PRACTICE_DURATIONS = ["0", "45", "60", "75", "90", "105", "120"];
 
 function withCurrentOption(options: string[], current: string): string[] {
   if (!current || options.includes(current)) return options;
@@ -2556,7 +2556,8 @@ function PracticeSlotsPanel({
           slotId: edit?.slotId || null,
           dayOfWeek: Number(form.dayOfWeek),
           startTime: form.startTime,
-          durationMinutes: Number(form.durationMinutes) || 90,
+          durationMinutes: Number(form.durationMinutes) === 0 ? 90 : Number(form.durationMinutes) || 90,
+          swapMinutes: Number(form.durationMinutes) === 0 ? 0 : Number(form.durationMinutes) || 90,
           parkId: form.parkId || null,
           fieldId: form.fieldId || null,
           notes: form.notes || null,
@@ -2783,7 +2784,7 @@ function PracticeSlotsPanel({
                             >
                               {durationOptions.map((minutes) => (
                                 <option key={minutes} value={minutes}>
-                                  {minutes} min
+                                  {minutes === "0" ? "0 — share field, no swap" : `${minutes} min`}
                                 </option>
                               ))}
                             </SelectInput>

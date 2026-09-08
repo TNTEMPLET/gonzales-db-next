@@ -42,7 +42,9 @@ function formatSlotLine(slot: TeamPracticeSlotView, notes: string | null): strin
     line +=
       slot.isFirst === false
         ? ` (shares the field with ${slot.pairedTeamName} — you're second)`
-        : ` (shares the field with ${slot.pairedTeamName} — you're first)`;
+        : slot.isFirst === true
+          ? ` (shares the field with ${slot.pairedTeamName} — you're first)`
+          : ` (shares the field with ${slot.pairedTeamName})`;
   }
   if (notes) line += ` — ${notes}`;
   return line;
