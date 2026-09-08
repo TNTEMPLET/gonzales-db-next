@@ -47,6 +47,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     seasonId?: string;
     teamIds?: string[];
+    ageGroups?: string[];
     sampleEmail?: string;
     teamId?: string;
   };
@@ -72,6 +73,9 @@ export async function POST(request: NextRequest) {
       organizationId: organizationIdFrom(request),
       seasonId,
       teamIds: Array.isArray(body.teamIds) ? body.teamIds : null,
+      ageGroups: Array.isArray(body.ageGroups)
+        ? body.ageGroups.map((value) => String(value).trim()).filter(Boolean)
+        : null,
       actorAdminId: auth.admin.id,
       replyTo: auth.admin.email,
     });

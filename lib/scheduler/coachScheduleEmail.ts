@@ -176,6 +176,34 @@ export function coachNotifyStatusLabel(status: CoachNotifyStatus): string {
   return "Suppressed";
 }
 
+export function sortNotifyAgeGroups(ageGroups: string[]): string[] {
+  return [...ageGroups].sort((a, b) => {
+    const ageA = Number.parseInt(a, 10);
+    const ageB = Number.parseInt(b, 10);
+    if (Number.isFinite(ageA) && Number.isFinite(ageB) && ageA !== ageB) return ageA - ageB;
+    return a.localeCompare(b);
+  });
+}
+
+export function uniqueNotifyAgeGroups(rows: Array<{ ageGroup: string }>): string[] {
+  return sortNotifyAgeGroups([...new Set(rows.map((row) => row.ageGroup).filter(Boolean))]);
+}
+
+export function coachNotifyAudience(
+  rows: Array<{ teamId: string; ageGroup: string; status: string }>,
+  selectedAgeGroups: string[],
+): { teamIds: string[]; readyCount: number; teamCount: number; labels: string[] } {
+  const wanted = new Set(selectedAgeGroups);
+  const selected = rows.filter((row) => wanted.has(row.ageGroup));
+  const ready = selected.filter((row) => row.status === "ready");
+  return {
+    teamIds: ready.map((row) => row.teamId),
+    readyCount: ready.length,
+    teamCount: selected.length,
+    labels: uniqueNotifyAgeGroups(selected),
+  };
+}
+
 export function parseCoachNotifyState(settings: unknown): {
   lastSentAt: string | null;
   lastSentCount: number;
