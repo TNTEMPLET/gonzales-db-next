@@ -246,6 +246,7 @@ export async function sendCoachScheduleEmails(params: {
   organizationId: string;
   seasonId: string;
   teamIds?: string[] | null;
+  ageGroups?: string[] | null;
   actorAdminId: string | null;
   replyTo?: string | null;
 }): Promise<{
@@ -263,8 +264,14 @@ export async function sendCoachScheduleEmails(params: {
     organizationId: params.organizationId,
     seasonId: params.seasonId,
   });
-  const wanted = params.teamIds?.length ? new Set(params.teamIds) : null;
-  const pending = rows.filter((row) => row.status === "ready" && (!wanted || wanted.has(row.teamId)));
+  const wantedTeams = params.teamIds?.length ? new Set(params.teamIds) : null;
+  const wantedGroups = Array.isArray(params.ageGroups) ? new Set(params.ageGroups) : null;
+  const pending = rows.filter((row) => {
+    if (row.status !== "ready") return false;
+    if (wantedTeams && !wantedTeams.has(row.teamId)) return false;
+    if (wantedGroups && !wantedGroups.has(row.ageGroup)) return false;
+    return true;
+  });
   if (!pending.length) {
     return { campaignId: null, sent: 0, failed: 0, skipped: summary.teamCount, readyCount: 0 };
   }

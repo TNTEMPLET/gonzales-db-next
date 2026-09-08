@@ -21,7 +21,14 @@ import { weekDivisionsFromMeta } from "@/lib/admin/fieldBoardWeek";
 import { parseDivisionSlotTimes, withSuggestedDivisionTimes } from "@/lib/admin/divisionSlotTimes";
 import { formatConflictSummary, formatGenerationError } from "@/lib/scheduler/conflictCopy";
 import { isEarlyStart } from "@/lib/scheduler/earlyLate";
-import { parseCoachNotifyState, type CoachNotifyPreviewRow, type CoachNotifySummary } from "@/lib/scheduler/coachScheduleEmail";
+import {
+  coachNotifyAudience,
+  parseCoachNotifyState,
+  sortNotifyAgeGroups,
+  uniqueNotifyAgeGroups,
+  type CoachNotifyPreviewRow,
+  type CoachNotifySummary,
+} from "@/lib/scheduler/coachScheduleEmail";
 import {
   DEFAULT_SEASON_GAMES_PER_TEAM,
   parseSeasonDateWindows,
@@ -2802,12 +2809,14 @@ function CoachNotifyPanel({
 }) {
   const [summary, setSummary] = useState<CoachNotifySummary | null>(null);
   const [rows, setRows] = useState<CoachNotifyPreviewRow[]>([]);
-  const [division, setDivision] = useState("all");
+  const [selectedAgeGroups, setSelectedAgeGroups] = useState<string[]>([]);
   const [readyOnly, setReadyOnly] = useState(false);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const seededSeasonRef = useRef<string | null>(null);
+  const seenAgeGroupsRef = useRef(new Set<string>());
 
   async function refresh() {
     if (!seasonId) {
@@ -2839,10 +2848,56 @@ function CoachNotifyPanel({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [orgQuery, seasonId]);
 
+  const divisions = useMemo(() => {
+    const found = new Map<string, { count: number; readyCount: number }>();
+    for (const row of rows) {
+      const current = found.get(row.ageGroup) ?? { count: 0, readyCount: 0 };
+      current.count += 1;
+      if (row.status === "ready") current.readyCount += 1;
+      found.set(row.ageGroup, current);
+    }
+    return uniqueNotifyAgeGroups(rows).map((ageGroup) => ({
+      ageGroup,
+      count: found.get(ageGroup)?.count ?? 0,
+      readyCount: found.get(ageGroup)?.readyCount ?? 0,
+    }));
+  }, [rows]);
+
+  useEffect(() => {
+    if (!seasonId) {
+      seededSeasonRef.current = null;
+      seenAgeGroupsRef.current = new Set();
+      setSelectedAgeGroups([]);
+      return;
+    }
+    const groups = uniqueNotifyAgeGroups(rows);
+    if (!groups.length) return;
+    if (seededSeasonRef.current !== seasonId) {
+      seededSeasonRef.current = seasonId;
+      seenAgeGroupsRef.current = new Set(groups);
+      setSelectedAgeGroups(groups);
+      return;
+    }
+    const newcomers = groups.filter((ageGroup) => !seenAgeGroupsRef.current.has(ageGroup));
+    for (const ageGroup of groups) seenAgeGroupsRef.current.add(ageGroup);
+    setSelectedAgeGroups((prev) => sortNotifyAgeGroups([...prev.filter((ageGroup) => groups.includes(ageGroup)), ...newcomers]));
+  }, [rows, seasonId]);
+
+  const audience = useMemo(() => coachNotifyAudience(rows, selectedAgeGroups), [rows, selectedAgeGroups]);
+  const allDivisionsSelected = divisions.length > 0 && selectedAgeGroups.length === divisions.length;
+
+  function toggleAgeGroup(ageGroup: string, checked: boolean) {
+    setSelectedAgeGroups((prev) => {
+      if (checked) return sortNotifyAgeGroups([...prev, ageGroup]);
+      return prev.filter((value) => value !== ageGroup);
+    });
+  }
+
   async function sendReady() {
-    if (!seasonId || !summary?.readyCount) return;
+    if (!seasonId || !audience.readyCount) return;
+    const labels = audience.labels.join(", ");
     const confirmed = window.confirm(
-      `Email ${summary.readyCount} head coach${summary.readyCount === 1 ? "" : "es"}? Teams without a coach are skipped.`,
+      `Email ${audience.readyCount} head coach${audience.readyCount === 1 ? "" : "es"} in ${labels}? Teams without a coach are skipped.`,
     );
     if (!confirmed) return;
     setBusy(true);
@@ -2853,7 +2908,11 @@ function CoachNotifyPanel({
       const response = await fetch(`/api/admin/scheduler/notify?${params.toString()}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ seasonId }),
+        body: JSON.stringify({
+          seasonId,
+          ageGroups: selectedAgeGroups,
+          teamIds: audience.teamIds,
+        }),
       });
       const json = await safeJson(response);
       if (!response.ok) throw new Error(String((json as { error?: unknown }).error || "Failed to email coaches"));
@@ -2873,20 +2932,8 @@ function CoachNotifyPanel({
     }
   }
 
-  const divisions = useMemo(() => {
-    const found = new Map<string, number>();
-    for (const row of rows) found.set(row.ageGroup, (found.get(row.ageGroup) ?? 0) + 1);
-    return [...found.entries()]
-      .map(([ageGroup, count]) => ({ ageGroup, count }))
-      .sort((a, b) => {
-        const ageA = Number.parseInt(a.ageGroup, 10);
-        const ageB = Number.parseInt(b.ageGroup, 10);
-        if (Number.isFinite(ageA) && Number.isFinite(ageB) && ageA !== ageB) return ageA - ageB;
-        return a.ageGroup.localeCompare(b.ageGroup);
-      });
-  }, [rows]);
   const visibleRows = rows.filter((row) => {
-    if (division !== "all" && row.ageGroup !== division) return false;
+    if (!selectedAgeGroups.includes(row.ageGroup)) return false;
     if (readyOnly && row.status !== "ready") return false;
     return true;
   });
@@ -2920,7 +2967,7 @@ function CoachNotifyPanel({
           <button
             type="button"
             onClick={() => void sendReady()}
-            disabled={!seasonId || busy || !summary?.canSend || !summary.readyCount}
+            disabled={!seasonId || busy || !summary?.canSend || !audience.readyCount}
             className="rounded-xl bg-red-600 px-4 py-1.5 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50"
           >
             {summary?.lastSentCount ? "Send again" : "Email ready coaches"}
@@ -2928,37 +2975,52 @@ function CoachNotifyPanel({
         </div>
       </div>
       <p className="mb-3 text-sm text-zinc-400">
-        Each head coach gets their team&apos;s practices and placed draft games, plus a PDF attachment.
-        Click a row to preview the email. Teams without a head coach are skipped.
+        Check the divisions to email. Unchecked divisions are skipped. Each head coach gets their team&apos;s
+        practices and placed draft games, plus a PDF attachment. Click a row to preview the email.
       </p>
       <div className="mb-3 flex flex-wrap gap-2">
         <button
           type="button"
-          onClick={() => setDivision("all")}
-          className={`rounded-xl border px-3 py-1.5 text-xs font-semibold ${
-            division === "all" ? "border-red-500/60 bg-red-500/10 text-red-100" : "border-zinc-700 text-zinc-200 hover:border-red-400"
-          }`}
+          onClick={() => setSelectedAgeGroups(divisions.map((row) => row.ageGroup))}
+          className="rounded-xl border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-red-400"
         >
-          All ({rows.length})
+          All
         </button>
-        {divisions.map((row) => (
-          <button
-            key={row.ageGroup}
-            type="button"
-            onClick={() => setDivision(row.ageGroup)}
-            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold ${
-              division === row.ageGroup ? "border-red-500/60 bg-red-500/10 text-red-100" : "border-zinc-700 text-zinc-200 hover:border-red-400"
-            }`}
-          >
-            {row.ageGroup} ({row.count})
-          </button>
-        ))}
+        <button
+          type="button"
+          onClick={() => setSelectedAgeGroups([])}
+          className="rounded-xl border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-red-400"
+        >
+          None
+        </button>
       </div>
-      <div className="mb-3 flex flex-wrap items-center gap-2">
-        <label className="flex items-center gap-2 text-sm text-zinc-300">
+      <div className="mb-3 flex flex-wrap gap-x-4 gap-y-2">
+        {divisions.map((row) => {
+          const checked = selectedAgeGroups.includes(row.ageGroup);
+          return (
+            <label key={row.ageGroup} className="flex items-center gap-2 text-sm text-zinc-300">
+              <input
+                type="checkbox"
+                checked={checked}
+                onChange={(event) => toggleAgeGroup(row.ageGroup, event.target.checked)}
+              />
+              <span className={checked ? "text-white" : ""}>
+                {row.ageGroup} ({row.readyCount} ready / {row.count})
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      <div className="mb-3 flex flex-wrap items-center gap-3 text-sm text-zinc-300">
+        <label className="flex items-center gap-2">
           <input type="checkbox" checked={readyOnly} onChange={(event) => setReadyOnly(event.target.checked)} />
           Ready only
         </label>
+        <span className="text-zinc-500">
+          {selectedAgeGroups.length
+            ? `${audience.readyCount} ready in ${allDivisionsSelected ? "all divisions" : audience.labels.join(", ")}`
+            : "No divisions selected"}
+        </span>
       </div>
       {notice ? <p className="mb-3 text-sm text-emerald-200">{notice}</p> : null}
       {error ? <p className="mb-3 text-sm text-red-400">{error}</p> : null}
@@ -3021,6 +3083,8 @@ function CoachNotifyPanel({
           <p className="p-4 text-sm text-zinc-500">Select a season first.</p>
         ) : !rows.length && !busy ? (
           <p className="p-4 text-sm text-zinc-500">No real teams in this season yet.</p>
+        ) : !selectedAgeGroups.length && rows.length ? (
+          <p className="p-4 text-sm text-zinc-500">Select at least one division to notify.</p>
         ) : !visibleRows.length && rows.length ? (
           <p className="p-4 text-sm text-zinc-500">No teams match this filter.</p>
         ) : null}

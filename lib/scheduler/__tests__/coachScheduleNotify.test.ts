@@ -4,11 +4,13 @@ import { describe, it } from "node:test";
 import {
   buildCoachScheduleEmail,
   coachDisplayName,
+  coachNotifyAudience,
   coachNotifyStatus,
   formatNotifyClock,
   formatNotifyDate,
   formatNotifyGameLine,
   formatNotifyPracticeLine,
+  uniqueNotifyAgeGroups,
 } from "../coachScheduleEmail";
 
 describe("coachScheduleNotify formatters", () => {
@@ -101,5 +103,25 @@ describe("coachScheduleNotify formatters", () => {
     assert.match(email.html, /<th[^>]*>Opponent</);
     assert.match(email.html, /Bourque/);
     assert.doesNotMatch(email.html, /Assignr|SportsConnect|GameChanger/);
+  });
+
+  it("orders notify divisions by age and builds a send audience from checkboxes", () => {
+    const rows = [
+      { teamId: "t-12", ageGroup: "12U", status: "ready" },
+      { teamId: "t-7", ageGroup: "7U CP", status: "ready" },
+      { teamId: "t-7b", ageGroup: "7U CP", status: "no_head_coach" },
+      { teamId: "t-6", ageGroup: "6U MOD", status: "ready" },
+    ];
+    assert.deepEqual(uniqueNotifyAgeGroups(rows), ["6U MOD", "7U CP", "12U"]);
+
+    const selected = coachNotifyAudience(rows, ["7U CP", "12U"]);
+    assert.deepEqual(selected.labels, ["7U CP", "12U"]);
+    assert.equal(selected.teamCount, 3);
+    assert.equal(selected.readyCount, 2);
+    assert.deepEqual(selected.teamIds, ["t-12", "t-7"]);
+
+    const none = coachNotifyAudience(rows, []);
+    assert.equal(none.readyCount, 0);
+    assert.deepEqual(none.teamIds, []);
   });
 });
