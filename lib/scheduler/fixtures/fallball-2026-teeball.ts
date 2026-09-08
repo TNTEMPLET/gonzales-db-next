@@ -1,0 +1,185 @@
+export const TEEBALL_FIXTURE_ORG = "fallball";
+export const TEEBALL_FIXTURE_YEAR = 2026;
+export const TEEBALL_START_TIME = "17:45";
+export const TEEBALL_DURATION_MINUTES = 90;
+export const TEEBALL_DIVISIONS = ["4U TB", "5U TB"] as const;
+
+export type TeeballPracticePair = {
+  ageGroup: "4U TB" | "5U TB";
+  fieldNumber: number;
+  days: "MW" | "TTh";
+  mascots: [string, string];
+};
+
+export type TeeballGameRow = {
+  ageGroup: "4U TB" | "5U TB";
+  date: string;
+  fieldNumber: number;
+  home: string;
+  away: string;
+  roundLabel: string;
+};
+
+const MW = "MW" as const;
+const TTH = "TTh" as const;
+
+export const TEEBALL_PRACTICE: TeeballPracticePair[] = [
+  { ageGroup: "4U TB", fieldNumber: 4, days: MW, mascots: ["Yankees", "Dodgers"] },
+  { ageGroup: "4U TB", fieldNumber: 5, days: MW, mascots: ["Padres", "Rockies"] },
+  { ageGroup: "4U TB", fieldNumber: 6, days: MW, mascots: ["Phillies", "A's"] },
+  { ageGroup: "4U TB", fieldNumber: 4, days: TTH, mascots: ["Pirates", "Red Sox"] },
+  { ageGroup: "4U TB", fieldNumber: 5, days: TTH, mascots: ["Cubs", "Marlins"] },
+  { ageGroup: "4U TB", fieldNumber: 6, days: TTH, mascots: ["Rangers", "Astros"] },
+  { ageGroup: "5U TB", fieldNumber: 1, days: MW, mascots: ["Red Sox", "Dodgers"] },
+  { ageGroup: "5U TB", fieldNumber: 2, days: MW, mascots: ["Astros", "Padres"] },
+  { ageGroup: "5U TB", fieldNumber: 3, days: MW, mascots: ["Phillies", "A's"] },
+  { ageGroup: "5U TB", fieldNumber: 2, days: TTH, mascots: ["Yankees", "Cubs"] },
+  { ageGroup: "5U TB", fieldNumber: 3, days: TTH, mascots: ["Pirates", "Rockies"] },
+];
+
+function g(
+  ageGroup: "4U TB" | "5U TB",
+  date: string,
+  fieldNumber: number,
+  home: string,
+  away: string,
+  roundLabel: string,
+): TeeballGameRow {
+  return { ageGroup, date, fieldNumber, home, away, roundLabel };
+}
+
+export const TEEBALL_GAMES: TeeballGameRow[] = [
+  g("4U TB", "2026-09-28", 4, "Yankees", "Dodgers", "Scrimmage"),
+  g("4U TB", "2026-09-28", 5, "Padres", "Rockies", "Scrimmage"),
+  g("4U TB", "2026-09-28", 6, "Phillies", "A's", "Scrimmage"),
+  g("4U TB", "2026-09-29", 4, "Pirates", "Red Sox", "Scrimmage"),
+  g("4U TB", "2026-09-29", 5, "Cubs", "Marlins", "Scrimmage"),
+  g("4U TB", "2026-09-29", 6, "Rangers", "Astros", "Scrimmage"),
+  g("4U TB", "2026-09-30", 4, "Padres", "Yankees", "Scrimmage"),
+  g("4U TB", "2026-09-30", 5, "Phillies", "Dodgers", "Scrimmage"),
+  g("4U TB", "2026-09-30", 6, "Rockies", "A's", "Scrimmage"),
+  g("4U TB", "2026-10-01", 4, "Pirates", "Cubs", "Scrimmage"),
+  g("4U TB", "2026-10-01", 5, "Rangers", "Red Sox", "Scrimmage"),
+  g("4U TB", "2026-10-01", 6, "Marlins", "Astros", "Scrimmage"),
+  g("4U TB", "2026-10-05", 4, "Padres", "Phillies", "Game 1"),
+  g("4U TB", "2026-10-05", 5, "Rockies", "Yankees", "Game 1"),
+  g("4U TB", "2026-10-05", 6, "Dodgers", "A's", "Game 1"),
+  g("4U TB", "2026-10-06", 4, "Astros", "Pirates", "Game 1"),
+  g("4U TB", "2026-10-06", 5, "Marlins", "Rangers", "Game 1"),
+  g("4U TB", "2026-10-06", 6, "Red Sox", "Cubs", "Game 1"),
+  g("4U TB", "2026-10-07", 4, "Padres", "A's", "Game 1"),
+  g("4U TB", "2026-10-07", 5, "Phillies", "Yankees", "Game 1"),
+  g("4U TB", "2026-10-07", 6, "Dodgers", "Rockies", "Game 1"),
+  g("4U TB", "2026-10-08", 4, "Astros", "Red Sox", "Game 1"),
+  g("4U TB", "2026-10-08", 5, "Pirates", "Marlins", "Game 1"),
+  g("4U TB", "2026-10-08", 6, "Rangers", "Cubs", "Game 1"),
+  g("4U TB", "2026-10-12", 4, "Yankees", "A's", "Game 2"),
+  g("4U TB", "2026-10-12", 5, "Rockies", "Phillies", "Game 2"),
+  g("4U TB", "2026-10-12", 6, "Padres", "Dodgers", "Game 2"),
+  g("4U TB", "2026-10-13", 4, "Pirates", "Rangers", "Game 2"),
+  g("4U TB", "2026-10-13", 5, "Astros", "Cubs", "Game 2"),
+  g("4U TB", "2026-10-13", 6, "Marlins", "Red Sox", "Game 2"),
+  g("4U TB", "2026-10-14", 4, "Yankees", "Dodgers", "Game 2"),
+  g("4U TB", "2026-10-14", 5, "Padres", "Rockies", "Game 2"),
+  g("4U TB", "2026-10-14", 6, "Phillies", "A's", "Game 2"),
+  g("4U TB", "2026-10-15", 4, "Pirates", "Red Sox", "Game 2"),
+  g("4U TB", "2026-10-15", 5, "Cubs", "Marlins", "Game 2"),
+  g("4U TB", "2026-10-15", 6, "Rangers", "Astros", "Game 2"),
+  g("4U TB", "2026-10-19", 4, "Padres", "Yankees", "Game 3"),
+  g("4U TB", "2026-10-19", 5, "Phillies", "Dodgers", "Game 3"),
+  g("4U TB", "2026-10-19", 6, "Rockies", "A's", "Game 3"),
+  g("4U TB", "2026-10-20", 4, "Pirates", "Cubs", "Game 3"),
+  g("4U TB", "2026-10-20", 5, "Rangers", "Red Sox", "Game 3"),
+  g("4U TB", "2026-10-20", 6, "Marlins", "Astros", "Game 3"),
+  g("4U TB", "2026-10-21", 4, "Padres", "Phillies", "Game 3"),
+  g("4U TB", "2026-10-21", 5, "Rockies", "Yankees", "Game 3"),
+  g("4U TB", "2026-10-21", 6, "Dodgers", "A's", "Game 3"),
+  g("4U TB", "2026-10-22", 4, "Astros", "Pirates", "Game 3"),
+  g("4U TB", "2026-10-22", 5, "Marlins", "Rangers", "Game 3"),
+  g("4U TB", "2026-10-22", 6, "Red Sox", "Cubs", "Game 3"),
+  g("4U TB", "2026-10-26", 4, "Padres", "A's", "Game 4"),
+  g("4U TB", "2026-10-26", 5, "Phillies", "Yankees", "Game 4"),
+  g("4U TB", "2026-10-26", 6, "Dodgers", "Rockies", "Game 4"),
+  g("4U TB", "2026-10-27", 4, "Astros", "Red Sox", "Game 4"),
+  g("4U TB", "2026-10-27", 5, "Pirates", "Marlins", "Game 4"),
+  g("4U TB", "2026-10-27", 6, "Rangers", "Cubs", "Game 4"),
+  g("4U TB", "2026-10-28", 4, "Yankees", "A's", "Game 4"),
+  g("4U TB", "2026-10-28", 5, "Rockies", "Phillies", "Game 4"),
+  g("4U TB", "2026-10-28", 6, "Padres", "Dodgers", "Game 4"),
+  g("4U TB", "2026-10-29", 4, "Pirates", "Rangers", "Game 4"),
+  g("4U TB", "2026-10-29", 5, "Astros", "Cubs", "Game 4"),
+  g("4U TB", "2026-10-29", 6, "Marlins", "Red Sox", "Game 4"),
+  g("4U TB", "2026-11-02", 4, "Yankees", "Dodgers", "Game 5"),
+  g("4U TB", "2026-11-02", 5, "Padres", "Rockies", "Game 5"),
+  g("4U TB", "2026-11-02", 6, "Phillies", "A's", "Game 5"),
+  g("4U TB", "2026-11-03", 4, "Pirates", "Red Sox", "Game 5"),
+  g("4U TB", "2026-11-03", 5, "Cubs", "Marlins", "Game 5"),
+  g("4U TB", "2026-11-03", 6, "Rangers", "Astros", "Game 5"),
+  g("4U TB", "2026-11-04", 4, "Padres", "Yankees", "Game 5"),
+  g("4U TB", "2026-11-04", 5, "Phillies", "Dodgers", "Game 5"),
+  g("4U TB", "2026-11-04", 6, "Rockies", "A's", "Game 5"),
+  g("4U TB", "2026-11-05", 4, "Pirates", "Cubs", "Game 5"),
+  g("4U TB", "2026-11-05", 5, "Rangers", "Red Sox", "Game 5"),
+  g("4U TB", "2026-11-05", 6, "Marlins", "Astros", "Game 5"),
+
+  g("5U TB", "2026-09-28", 1, "Red Sox", "Dodgers", "Scrimmage"),
+  g("5U TB", "2026-09-28", 2, "Astros", "Padres", "Scrimmage"),
+  g("5U TB", "2026-09-28", 3, "Phillies", "A's", "Scrimmage"),
+  g("5U TB", "2026-09-29", 2, "Yankees", "Cubs", "Scrimmage"),
+  g("5U TB", "2026-09-29", 3, "Pirates", "Rockies", "Scrimmage"),
+  g("5U TB", "2026-09-30", 1, "Red Sox", "Dodgers", "Scrimmage"),
+  g("5U TB", "2026-09-30", 2, "Astros", "Padres", "Scrimmage"),
+  g("5U TB", "2026-09-30", 3, "Phillies", "A's", "Scrimmage"),
+  g("5U TB", "2026-10-01", 2, "Yankees", "Cubs", "Scrimmage"),
+  g("5U TB", "2026-10-01", 3, "Pirates", "Rockies", "Scrimmage"),
+  g("5U TB", "2026-10-05", 1, "Red Sox", "Astros", "Game 1"),
+  g("5U TB", "2026-10-05", 2, "Phillies", "Dodgers", "Game 1"),
+  g("5U TB", "2026-10-05", 3, "Padres", "A's", "Game 1"),
+  g("5U TB", "2026-10-06", 2, "Yankees", "Rockies", "Game 1"),
+  g("5U TB", "2026-10-06", 3, "Cubs", "Pirates", "Game 1"),
+  g("5U TB", "2026-10-07", 1, "Red Sox", "Phillies", "Game 1"),
+  g("5U TB", "2026-10-07", 2, "Dodgers", "Padres", "Game 1"),
+  g("5U TB", "2026-10-07", 3, "A's", "Astros", "Game 1"),
+  g("5U TB", "2026-10-08", 2, "Cubs", "Rockies", "Game 1"),
+  g("5U TB", "2026-10-08", 3, "Yankees", "Pirates", "Game 1"),
+  g("5U TB", "2026-10-12", 1, "Phillies", "Astros", "Game 2"),
+  g("5U TB", "2026-10-12", 2, "Dodgers", "A's", "Game 2"),
+  g("5U TB", "2026-10-12", 3, "Red Sox", "Padres", "Game 2"),
+  g("5U TB", "2026-10-13", 2, "Yankees", "Cubs", "Game 2"),
+  g("5U TB", "2026-10-13", 3, "Pirates", "Rockies", "Game 2"),
+  g("5U TB", "2026-10-14", 1, "Astros", "Dodgers", "Game 2"),
+  g("5U TB", "2026-10-14", 2, "Red Sox", "A's", "Game 2"),
+  g("5U TB", "2026-10-14", 3, "Padres", "Phillies", "Game 2"),
+  g("5U TB", "2026-10-15", 2, "Yankees", "Rockies", "Game 2"),
+  g("5U TB", "2026-10-15", 3, "Cubs", "Pirates", "Game 2"),
+  g("5U TB", "2026-10-19", 1, "Red Sox", "Dodgers", "Game 3"),
+  g("5U TB", "2026-10-19", 2, "Astros", "Padres", "Game 3"),
+  g("5U TB", "2026-10-19", 3, "Phillies", "A's", "Game 3"),
+  g("5U TB", "2026-10-20", 2, "Cubs", "Rockies", "Game 3"),
+  g("5U TB", "2026-10-20", 3, "Yankees", "Pirates", "Game 3"),
+  g("5U TB", "2026-10-21", 1, "Red Sox", "Astros", "Game 3"),
+  g("5U TB", "2026-10-21", 2, "Phillies", "Dodgers", "Game 3"),
+  g("5U TB", "2026-10-21", 3, "Padres", "A's", "Game 3"),
+  g("5U TB", "2026-10-22", 2, "Yankees", "Cubs", "Game 3"),
+  g("5U TB", "2026-10-22", 3, "Pirates", "Rockies", "Game 3"),
+  g("5U TB", "2026-10-26", 1, "Red Sox", "Phillies", "Game 4"),
+  g("5U TB", "2026-10-26", 2, "Dodgers", "Padres", "Game 4"),
+  g("5U TB", "2026-10-26", 3, "A's", "Astros", "Game 4"),
+  g("5U TB", "2026-10-27", 2, "Yankees", "Rockies", "Game 4"),
+  g("5U TB", "2026-10-27", 3, "Cubs", "Pirates", "Game 4"),
+  g("5U TB", "2026-10-28", 1, "Phillies", "Astros", "Game 4"),
+  g("5U TB", "2026-10-28", 2, "Dodgers", "A's", "Game 4"),
+  g("5U TB", "2026-10-28", 3, "Red Sox", "Padres", "Game 4"),
+  g("5U TB", "2026-10-29", 2, "Cubs", "Rockies", "Game 4"),
+  g("5U TB", "2026-10-29", 3, "Yankees", "Pirates", "Game 4"),
+  g("5U TB", "2026-11-02", 1, "Astros", "Dodgers", "Game 5"),
+  g("5U TB", "2026-11-02", 2, "Red Sox", "A's", "Game 5"),
+  g("5U TB", "2026-11-02", 3, "Padres", "Phillies", "Game 5"),
+  g("5U TB", "2026-11-03", 2, "Yankees", "Cubs", "Game 5"),
+  g("5U TB", "2026-11-03", 3, "Pirates", "Rockies", "Game 5"),
+  g("5U TB", "2026-11-04", 1, "Red Sox", "Dodgers", "Game 5"),
+  g("5U TB", "2026-11-04", 2, "Astros", "Padres", "Game 5"),
+  g("5U TB", "2026-11-04", 3, "Phillies", "A's", "Game 5"),
+  g("5U TB", "2026-11-05", 2, "Yankees", "Cubs", "Game 5"),
+  g("5U TB", "2026-11-05", 3, "Pirates", "Rockies", "Game 5"),
+];

@@ -1,6 +1,7 @@
 import type { Prisma } from "@prisma/client";
 
 import { parseSeasonDateWindows, parseSeasonGamesPerTeam, parseUtcDateOnly } from "./seasonWindows";
+import { parseScheduleMode } from "./scheduleMode";
 import { playableSchedulerTeams } from "./realTeams";
 import { isEarlyStart, projectedEarlyLateCost } from "./earlyLate";
 import {
@@ -1032,7 +1033,7 @@ function assignOneFactorToNight(params: {
   return { games, leftover };
 }
 
-function packOneFactorSchedule(params: {
+export function packOneFactorSchedule(params: {
   slots: SchedulerSlot[];
   teamsByDivision: Map<string, SchedulerTeam[]>;
   rules: SchedulerDivisionRule[];
@@ -1186,9 +1187,21 @@ export function generateSchedule(params: {
   divisions?: string[];
   gamesPerTeam?: number;
 }): SchedulerGenerationResult {
-  const requestedDivisions = params.divisions?.length ? params.divisions : [...new Set(params.rules.map((rule) => rule.division))];
+  const requestedDivisions = (params.divisions?.length ? params.divisions : [...new Set(params.rules.map((rule) => rule.division))]).filter(
+    (division) => {
+      const rule = params.rules.find((entry) => entry.division === division);
+      return parseScheduleMode(rule?.ruleMetadata, division) === "auto";
+    },
+  );
   const errors: SchedulerGenerationResult["errors"] = [];
   const teamsByDivision = new Map<string, SchedulerTeam[]>();
+
+  if (params.divisions?.length && !requestedDivisions.length) {
+    errors.push({
+      code: "INVALID_INPUT",
+      message: "1-factor Generate only runs Auto divisions. Manual and Practice-as-games are skipped.",
+    });
+  }
 
   for (const division of requestedDivisions) {
     const rule = params.rules.find((entry) => entry.division === division);

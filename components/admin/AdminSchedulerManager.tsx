@@ -20,6 +20,12 @@ import PracticeAssignWizard from "@/components/admin/scheduler/PracticeAssignWiz
 import { weekDivisionsFromMeta } from "@/lib/admin/fieldBoardWeek";
 import { parseDivisionSlotTimes, withSuggestedDivisionTimes } from "@/lib/admin/divisionSlotTimes";
 import { formatConflictSummary, formatGenerationError } from "@/lib/scheduler/conflictCopy";
+import {
+  defaultScheduleMode,
+  parseScheduleMode,
+  scheduleModeLabel,
+  type ScheduleMode,
+} from "@/lib/scheduler/scheduleMode";
 import { isEarlyStart } from "@/lib/scheduler/earlyLate";
 import {
   coachNotifyAudience,
@@ -96,6 +102,7 @@ type Rule = {
   avoidBackToBack: boolean;
   allowDoubleHeaders: boolean;
   fieldPriorityIds: string[];
+  scheduleMode: ScheduleMode;
   ruleMetadata?: unknown;
 };
 
@@ -108,6 +115,8 @@ type DraftGame = {
   fieldId: string | null;
   division: string;
   ageGroup: string | null;
+  homeTeamId: string | null;
+  awayTeamId: string | null;
   homeTeamName: string;
   awayTeamName: string;
   status: string;
@@ -227,6 +236,7 @@ function emptyLimitRule(division: string): Rule {
     avoidBackToBack: true,
     allowDoubleHeaders: false,
     fieldPriorityIds: [],
+    scheduleMode: defaultScheduleMode(division),
   };
 }
 
@@ -251,6 +261,16 @@ function boardFieldsForDivision(parks: Park[], division: string): Array<{ id: st
 
 function fieldLabel(field: { parkName: string; name: string }): string {
   return `${field.parkName} · ${field.name}`;
+}
+
+function divisionTeamsFromDrafts(games: DraftGame[], division: string): Array<{ id: string; name: string }> {
+  const found = new Map<string, string>();
+  for (const game of games) {
+    if (game.division !== division) continue;
+    if (game.homeTeamId) found.set(game.homeTeamId, game.homeTeamName);
+    if (game.awayTeamId) found.set(game.awayTeamId, game.awayTeamName);
+  }
+  return [...found.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 function seasonSlotCountsByDivision(parks: Park[], startsOn: string, endsOn: string): Map<string, number> {
@@ -887,6 +907,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                 ? (rule.ruleMetadata as { fieldPriorityIds?: unknown }).fieldPriorityIds
                 : [],
             ),
+      scheduleMode: parseScheduleMode(rule.scheduleMode ?? rule.ruleMetadata, rule.division ?? ""),
     };
   }
 
@@ -1122,6 +1143,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
           ruleMetadata: {
             allowDoubleHeaders: rule.allowDoubleHeaders === true,
             fieldPriorityIds: rule.fieldPriorityIds,
+            scheduleMode: rule.scheduleMode,
           },
         })),
       }),
@@ -1158,14 +1180,51 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
     setSelectedDivisions(next);
   }
 
-  async function generate(replace: boolean) {
+  const selectedAutoDivisions = selectedDivisions.filter((division) =>
+    rules.some((rule) => rule.division === division && rule.scheduleMode === "auto"),
+  );
+  const selectedManualDivisions = selectedDivisions.filter((division) =>
+    rules.some((rule) => rule.division === division && rule.scheduleMode === "manual"),
+  );
+  const selectedPracticeDivisions = selectedDivisions.filter((division) =>
+    rules.some((rule) => rule.division === division && rule.scheduleMode === "practiceGames"),
+  );
+
+  async function generate(
+    replace: boolean,
+    packer: "oneFactor" | "doubleheaders" | "practiceGames" | "teeballFixture" = "oneFactor",
+  ) {
     if (!selectedSeasonId) return;
-    const divisions = selectedDivisions.filter(Boolean);
+    const divisions =
+      packer === "teeballFixture"
+        ? ["4U TB", "5U TB"]
+        : packer === "doubleheaders"
+          ? selectedManualDivisions
+          : packer === "practiceGames"
+            ? selectedPracticeDivisions
+            : selectedAutoDivisions;
     if (!divisions.length) {
-      setError("Pick at least one division to generate.");
+      setError(
+        packer === "doubleheaders"
+          ? "Pick at least one Manual / DH division."
+          : packer === "practiceGames"
+            ? "Pick at least one Practice-as-games division."
+            : "Pick at least one Auto division to generate.",
+      );
       return;
     }
-    if (replace && !window.confirm("Replace generated draft games for the selected divisions? Manual and locked games are not deleted by this action.")) {
+    const others = rules
+      .map((rule) => rule.division)
+      .filter((division) => division && !divisions.includes(division));
+    const confirmText =
+      packer === "teeballFixture"
+        ? "Replace 4U TB and 5U TB practice and games from the 2026 Tee-ball sheets? 6U–17U stay unchanged."
+        : packer === "practiceGames"
+          ? `Create games from practice nights for ${divisions.join(", ")} only? ${others.length ? `${others.join(", ")} stay unchanged.` : ""}`.trim()
+          : packer === "doubleheaders"
+            ? `Replace ${divisions.join(" and ")} doubleheader drafts only? ${others.length ? `${others.join(", ")} stay unchanged.` : ""}`.trim()
+            : `Replace ${divisions.join(" and ")} only? ${others.length ? `${others.join(", ")} stay unchanged.` : ""} Locked games are not deleted.`.trim();
+    if (replace && !window.confirm(confirmText)) {
       return;
     }
     setBusy(true);
@@ -1182,6 +1241,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
           replace,
           confirmReplace: replace,
           allowConflicts,
+          packer,
         }),
       });
       const json = (await safeJson(response)) as { data?: GenerationResult; error?: string };
@@ -1195,7 +1255,10 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
             ? "Preview finished with warnings."
             : "Preview generated.",
       );
-      if (replace) await refreshDraftGames();
+      if (replace) {
+        await refreshDraftGames();
+        await refreshPracticeSummary(workingSeasonYear());
+      }
       if (replace && response.ok && !json.error) collapseStep("scheduler-generate");
       const repair = json.data?.repair;
       if (replace && repair?.placed) {
@@ -1265,6 +1328,10 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
     setError("");
     setNotice("");
     try {
+      const existing = draftGames.find((game) => game.id === gameId);
+      const homeTeamId = nullable(formData.get("homeTeamId"));
+      const awayTeamId = nullable(formData.get("awayTeamId"));
+      const roster = existing ? divisionTeamsFromDrafts(draftGames, existing.division) : [];
       await api("/api/admin/scheduler/draft-games", {
         method: "PATCH",
         body: JSON.stringify({
@@ -1274,6 +1341,10 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
           endTime: nullable(formData.get("endTime")),
           parkId: nullable(formData.get("parkId")),
           fieldId: nullable(formData.get("fieldId")),
+          homeTeamId,
+          homeTeamName: roster.find((team) => team.id === homeTeamId)?.name ?? existing?.homeTeamName ?? undefined,
+          awayTeamId,
+          awayTeamName: roster.find((team) => team.id === awayTeamId)?.name ?? existing?.awayTeamName ?? undefined,
           status: nullable(formData.get("status")),
           schedulerNotes: nullable(formData.get("schedulerNotes")),
         }),
@@ -1527,6 +1598,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
             <thead className="bg-zinc-950 text-[10px] uppercase tracking-[0.2em] text-zinc-500">
               <tr>
                 <th className="p-3">Division</th>
+                <th className="p-3">Mode</th>
                 <th className="p-3">Max games / week</th>
                 <th className="p-3">Min days between</th>
                 <th className="p-3">Avoid back-to-back</th>
@@ -1557,6 +1629,16 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                   <Fragment key={`${rule.id ?? "new"}-${rule.division}-${index}`}>
                     <tr className="border-t border-zinc-800">
                       <td className="p-3 font-semibold text-white">{rule.division || "—"}</td>
+                      <td className="p-3">
+                        <SelectInput
+                          value={rule.scheduleMode}
+                          onChange={(e) => updateRule(index, { scheduleMode: e.target.value as ScheduleMode })}
+                        >
+                          <option value="auto">Auto</option>
+                          <option value="manual">Manual / DH</option>
+                          <option value="practiceGames">Practice games</option>
+                        </SelectInput>
+                      </td>
                       <td className="p-3">
                         <TextInput
                           placeholder="e.g. 2"
@@ -1597,7 +1679,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                       </td>
                     </tr>
                     <tr className="border-t border-zinc-800/60 bg-zinc-950/40">
-                      <td colSpan={6} className="px-3 py-2">
+                      <td colSpan={7} className="px-3 py-2">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="text-[10px] font-semibold uppercase tracking-[0.18em] text-zinc-500">Field order</p>
                           {!ordered.length ? (
@@ -1703,19 +1785,35 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         </div>
       </Panel>
 
+      <PracticeSlotsPanel
+        orgQuery={orgQuery}
+        seasonYear={workingSeasonYear()}
+        parks={parks}
+        allFields={allFields}
+        practiceStartsOn={seasonForm.practiceStartsOn || seasonForm.startsOn}
+        practiceEndsOn={seasonForm.practiceEndsOn || seasonForm.endsOn}
+        complete={wizardCompleteById["scheduler-practice"]}
+        open={stepOpen("scheduler-practice")}
+        onToggle={() => toggleStepOpen("scheduler-practice")}
+        onEditDates={() => jumpToStep("scheduler-season")}
+        onPracticeChanged={() => {
+          void refreshPracticeSummary(workingSeasonYear());
+        }}
+      />
+
       <Panel
         id="scheduler-generate"
         title="Generate Schedule"
-        eyebrow="4. Draft builder"
+        eyebrow="5. Draft builder"
         complete={wizardCompleteById["scheduler-generate"]}
         open={stepOpen("scheduler-generate")}
         onToggle={() => toggleStepOpen("scheduler-generate")}
       >
         <p className="mb-4 text-sm text-zinc-400">
-          Parks already placed each division on a field and night. Limits already cap how often they play.
-          Team counts come from Teams & Rosters for {workingSeasonYear()}, including before a schedule season
-          is saved. Pick which of those divisions to build, set the season target per team, then preview. Games
-          are generated only between {seasonForm.gamesStartsOn || seasonForm.startsOn || "the season start"} and{" "}
+          Practice is set first. Then check only the divisions you are working on — Replace never wipes the others.
+          Auto uses 1-factor; Manual / DH builds 3-team doubleheaders; Practice-as-games turns shared-field
+          practice pairs into games.
+          Games land between {seasonForm.gamesStartsOn || seasonForm.startsOn || "the season start"} and{" "}
           {seasonForm.gamesEndsOn || seasonForm.endsOn || "the season end"}.
         </p>
         <div className="mb-3 flex flex-wrap gap-2">
@@ -1747,6 +1845,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
               <tr>
                 <th className="p-3">Build</th>
                 <th className="p-3">Division</th>
+                <th className="p-3">Mode</th>
                 <th className="p-3">Teams</th>
                 <th className="p-3">Season slots</th>
                 <th className="p-3">Max / week</th>
@@ -1771,6 +1870,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                       />
                     </td>
                     <td className="p-3 font-semibold text-white">{rule.division}</td>
+                    <td className="p-3 text-xs text-zinc-400">{scheduleModeLabel(rule.scheduleMode)}</td>
                     <td className="p-3">{teams}</td>
                     <td className="p-3">
                       {slots}
@@ -1816,20 +1916,47 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
             <div className="flex flex-wrap gap-2">
               <button
                 type="button"
-                disabled={!selectedSeasonId || busy || !selectedDivisions.length}
+                disabled={!selectedSeasonId || busy || !selectedAutoDivisions.length}
                 onClick={() => void generate(false)}
                 className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-100 hover:border-red-400 disabled:opacity-60"
               >
-                Preview
+                Preview Auto
               </button>
               <button
                 type="button"
-                disabled={!selectedSeasonId || busy || !selectedDivisions.length}
+                disabled={!selectedSeasonId || busy || !selectedAutoDivisions.length}
                 onClick={() => void generate(true)}
                 className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
               >
-                Replace generated draft
+                Replace Auto draft
               </button>
+              <button
+                type="button"
+                disabled={!selectedSeasonId || busy || !selectedManualDivisions.length}
+                onClick={() => void generate(true, "doubleheaders")}
+                className="rounded-xl border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-100 hover:border-red-400 disabled:opacity-60"
+              >
+                Build doubleheaders
+              </button>
+              <button
+                type="button"
+                disabled={!selectedSeasonId || busy || !selectedPracticeDivisions.length || practiceAssignedCount === 0}
+                title={practiceAssignedCount === 0 ? "Assign practice pairs first." : undefined}
+                onClick={() => void generate(true, "practiceGames")}
+                className="rounded-xl border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-100 hover:border-red-400 disabled:opacity-60"
+              >
+                Create games from practice nights
+              </button>
+              {targetOrg === "fallball" && workingSeasonYear() === 2026 ? (
+                <button
+                  type="button"
+                  disabled={!selectedSeasonId || busy}
+                  onClick={() => void generate(true, "teeballFixture")}
+                  className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-60"
+                >
+                  Load Tee-ball Fall 2026 sheets
+                </button>
+              ) : null}
               <button
                 type="button"
                 onClick={() => collapseStep("scheduler-generate")}
@@ -1879,7 +2006,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       <Panel
         id="scheduler-review"
         title="Review & Fix"
-        eyebrow="5. Draft QA"
+        eyebrow="6. Draft QA"
         complete={wizardCompleteById["scheduler-review"]}
         open={stepOpen("scheduler-review")}
         onToggle={() => toggleStepOpen("scheduler-review")}
@@ -2089,6 +2216,20 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                                 ))}
                               </SelectInput>
                             </FieldLabel>
+                            <FieldLabel label="Home">
+                              <SelectInput name="homeTeamId" defaultValue={game.homeTeamId ?? ""}>
+                                {divisionTeamsFromDrafts(draftGames, game.division).map((team) => (
+                                  <option key={`home-${team.id}`} value={team.id}>{team.name}</option>
+                                ))}
+                              </SelectInput>
+                            </FieldLabel>
+                            <FieldLabel label="Away">
+                              <SelectInput name="awayTeamId" defaultValue={game.awayTeamId ?? ""}>
+                                {divisionTeamsFromDrafts(draftGames, game.division).map((team) => (
+                                  <option key={`away-${team.id}`} value={team.id}>{team.name}</option>
+                                ))}
+                              </SelectInput>
+                            </FieldLabel>
                             <div className="md:col-span-2">
                               <FieldLabel label="Notes">
                                 <TextArea name="schedulerNotes" rows={2} defaultValue={game.schedulerNotes ?? ""} />
@@ -2122,7 +2263,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       <Panel
         id="scheduler-export"
         title="Export"
-        eyebrow="6. Upload files"
+        eyebrow="7. Upload files"
         complete={wizardCompleteById["scheduler-export"]}
         open={stepOpen("scheduler-export")}
         onToggle={() => toggleStepOpen("scheduler-export")}
@@ -2144,22 +2285,6 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
           </a>
         </div>
       </Panel>
-
-      <PracticeSlotsPanel
-        orgQuery={orgQuery}
-        seasonYear={workingSeasonYear()}
-        parks={parks}
-        allFields={allFields}
-        practiceStartsOn={seasonForm.practiceStartsOn || seasonForm.startsOn}
-        practiceEndsOn={seasonForm.practiceEndsOn || seasonForm.endsOn}
-        complete={wizardCompleteById["scheduler-practice"]}
-        open={stepOpen("scheduler-practice")}
-        onToggle={() => toggleStepOpen("scheduler-practice")}
-        onEditDates={() => jumpToStep("scheduler-season")}
-        onPracticeChanged={() => {
-          void refreshPracticeSummary(workingSeasonYear());
-        }}
-      />
 
       <CoachNotifyPanel
         orgQuery={orgQuery}
@@ -2492,7 +2617,7 @@ function PracticeSlotsPanel({
     <Panel
       id="scheduler-practice"
       title="Practice Slots"
-      eyebrow="7. Practice scheduling"
+      eyebrow="4. Practice scheduling"
       complete={complete}
       open={open}
       onToggle={onToggle}

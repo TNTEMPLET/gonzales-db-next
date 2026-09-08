@@ -51,4 +51,4 @@ For local work, Prisma CLI and dev servers use the **DEV** database: `prisma.con
 
 ## Clarifying questions
 
-When the agent needs user choices on ambiguous work, it should use **clickable options** via the `AskQuestion` tool (see `.cursor/rules/clarifying-questions.mdc`), not prose-only questions.
+When the agent needs user choices on ambiguous work, it must use the **native selectable UI** (`ask_user_question` in Grok, `AskQuestion` in Cursor). Never fall back to lettered Markdown (`1A`). See `.cursor/rules/clarifying-questions.mdc`.
