@@ -1361,6 +1361,30 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
     }
   }
 
+  async function deleteDraftGame(game: DraftGame) {
+    if (game.status !== "DRAFT") return;
+    const when = [formatReviewDate(game.gameDate), game.startTime ? formatClock(game.startTime) : ""]
+      .filter(Boolean)
+      .join(" · ");
+    const confirmed = window.confirm(
+      `Delete this Draft game? ${game.homeTeamName} vs ${game.awayTeamName}${when ? ` · ${when}` : ""}`,
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await api(`/api/admin/scheduler/draft-games?id=${encodeURIComponent(game.id)}`, { method: "DELETE" });
+      setEditingGameId(null);
+      await refreshDraftGames();
+      setNotice("Draft game deleted.");
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to delete draft game");
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="space-y-6">
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/80 p-4 text-sm text-zinc-300">
@@ -2237,12 +2261,22 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                                 <TextArea name="schedulerNotes" rows={2} defaultValue={game.schedulerNotes ?? ""} />
                               </FieldLabel>
                             </div>
-                            <div className="flex items-end gap-2">
-                              <button type="submit" className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500">
+                            <div className="flex flex-wrap items-end gap-2">
+                              <button type="submit" disabled={busy} className="rounded-xl bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50">
                                 Save
                               </button>
+                              {game.status === "DRAFT" ? (
+                                <button
+                                  type="button"
+                                  disabled={busy}
+                                  onClick={() => void deleteDraftGame(game)}
+                                  className="rounded-xl border border-red-500/50 px-4 py-2 text-sm font-semibold text-red-200 hover:border-red-400 disabled:opacity-50"
+                                >
+                                  Delete
+                                </button>
+                              ) : null}
                               <button type="button" onClick={() => setEditingGameId(null)} className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-200 hover:border-red-400">
-                                Cancel
+                                Close
                               </button>
                             </div>
                           </form>
