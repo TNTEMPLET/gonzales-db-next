@@ -168,7 +168,18 @@ export async function DELETE(request: NextRequest) {
   try {
     const id = requestId(request, "id");
     if (id) {
-      const deleted = await prisma.scheduleDraftGame.deleteMany({ where: { id, organizationId: auth.organizationId } });
+      const existing = await prisma.scheduleDraftGame.findFirst({
+        where: { id, organizationId: auth.organizationId },
+        select: { id: true, status: true },
+      });
+      if (!existing) return NextResponse.json({ error: "Draft game not found" }, { status: 404 });
+      if (existing.status !== "DRAFT") {
+        return NextResponse.json(
+          { error: "Only games in Draft status can be deleted. Set Ready or Locked games to Draft first, or cancel them." },
+          { status: 409 },
+        );
+      }
+      const deleted = await prisma.scheduleDraftGame.deleteMany({ where: { id, organizationId: auth.organizationId, status: "DRAFT" } });
       return NextResponse.json({ deleted: deleted.count });
     }
 
