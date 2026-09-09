@@ -229,11 +229,16 @@ export function generateThreeTeamDoubleheaders(params: {
     let nightIndex = 0;
     let fairnessCounts = emptyDhCounts();
     for (const date of nights) {
+      if (teams.every((team) => (totals.get(team.id) ?? 0) >= gamesPerTeam)) break;
       const pair = pickNightSlots(byDate.get(date) ?? [], priorityIds);
       if (!pair) continue;
-      const dh = teams[nightIndex % 3]!;
+      const dh = [...teams].sort((a, b) => {
+        const gamesA = totals.get(a.id) ?? 0;
+        const gamesB = totals.get(b.id) ?? 0;
+        if (gamesA !== gamesB) return gamesA - gamesB;
+        return teams.indexOf(a) - teams.indexOf(b);
+      })[0]!;
       const others = teams.filter((team) => team.id !== dh.id) as [SchedulerTeam, SchedulerTeam];
-      if ((totals.get(dh.id) ?? 0) + 2 > gamesPerTeam) break;
       const [early, late] = pair;
       const sides = pickDhNightAssignment(dh, others, fairnessCounts);
       fairnessCounts = applyDhNight(fairnessCounts, sides);

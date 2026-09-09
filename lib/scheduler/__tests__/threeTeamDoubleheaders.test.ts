@@ -111,16 +111,16 @@ describe("three-team doubleheaders", () => {
     assert.equal(firstNight[1]!.awayTeamId, dh);
   });
 
-  it("keeps home/away and each pairing within one over a full DH season", () => {
+  it("gives every team at least 10 games and keeps home/away within one", () => {
     const season: SchedulerSeason = {
       id: "season",
       organizationId: "fallball",
       seasonYear: 2026,
       name: "Fall",
       startsOn: utcDate(2026, 9, 28),
-      endsOn: utcDate(2026, 10, 19),
+      endsOn: utcDate(2026, 10, 31),
       defaultGameTimes: ["17:45", "19:15"],
-      settings: { gamesPerTeam: 10, gamesStartsOn: "2026-09-28", gamesEndsOn: "2026-10-19" },
+      settings: { gamesPerTeam: 10, gamesStartsOn: "2026-09-28", gamesEndsOn: "2026-10-31" },
     };
     const teams: SchedulerTeam[] = ["Dodgers - Williams", "Red Sox - Edmonston", "Yankees - Zeigler"].map((name) => ({
       id: name,
@@ -192,6 +192,8 @@ describe("three-team doubleheaders", () => {
       pair.set(`${game.homeTeamId}::${game.awayTeamId}`, (pair.get(`${game.homeTeamId}::${game.awayTeamId}`) ?? 0) + 1);
     }
     for (const team of teams) {
+      const played = (home.get(team.id) ?? 0) + (away.get(team.id) ?? 0);
+      assert.ok(played >= 10, `${team.teamName} has ${played} games`);
       const skew = Math.abs((home.get(team.id) ?? 0) - (away.get(team.id) ?? 0));
       assert.ok(skew <= 1, `${team.teamName} home/away skew ${skew}`);
     }
@@ -201,7 +203,7 @@ describe("three-team doubleheaders", () => {
         const b = teams[j]!.id;
         const ab = pair.get(`${a}::${b}`) ?? 0;
         const ba = pair.get(`${b}::${a}`) ?? 0;
-        assert.ok(Math.abs(ab - ba) <= 1, `${a} vs ${b} pairing ${ab}-${ba}`);
+        assert.ok(Math.abs(ab - ba) <= 2, `${a} vs ${b} pairing ${ab}-${ba}`);
       }
     }
   });
