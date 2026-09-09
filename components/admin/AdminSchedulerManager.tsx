@@ -17,6 +17,7 @@ import {
 import FieldCapacityHeatmapModal from "@/components/admin/scheduler/FieldCapacityHeatmapModal";
 import FieldSetupPanel from "@/components/admin/scheduler/FieldSetupPanel";
 import PracticeAssignWizard from "@/components/admin/scheduler/PracticeAssignWizard";
+import DirectorNotifySection from "@/components/admin/scheduler/DirectorNotifySection";
 import { weekDivisionsFromMeta } from "@/lib/admin/fieldBoardWeek";
 import { parseDivisionSlotTimes, withSuggestedDivisionTimes } from "@/lib/admin/divisionSlotTimes";
 import { formatConflictSummary, formatGenerationError } from "@/lib/scheduler/conflictCopy";
@@ -35,6 +36,7 @@ import {
   type CoachNotifyPreviewRow,
   type CoachNotifySummary,
 } from "@/lib/scheduler/coachScheduleEmail";
+import type { DirectorNotifyPayload } from "@/lib/scheduler/directorScheduleEmail";
 import {
   DEFAULT_SEASON_GAMES_PER_TEAM,
   parseSeasonDateWindows,
@@ -2935,6 +2937,7 @@ function CoachNotifyPanel({
 }) {
   const [summary, setSummary] = useState<CoachNotifySummary | null>(null);
   const [rows, setRows] = useState<CoachNotifyPreviewRow[]>([]);
+  const [directors, setDirectors] = useState<DirectorNotifyPayload | null>(null);
   const [selectedAgeGroups, setSelectedAgeGroups] = useState<string[]>([]);
   const [readyOnly, setReadyOnly] = useState(false);
   const [editingTeamId, setEditingTeamId] = useState<string | null>(null);
@@ -2948,6 +2951,7 @@ function CoachNotifyPanel({
     if (!seasonId) {
       setSummary(null);
       setRows([]);
+      setDirectors(null);
       return;
     }
     setBusy(true);
@@ -2958,9 +2962,14 @@ function CoachNotifyPanel({
       const response = await fetch(`/api/admin/scheduler/notify?${params.toString()}`, { cache: "no-store" });
       const json = await safeJson(response);
       if (!response.ok) throw new Error(String((json as { error?: unknown }).error || "Failed to load notify preview"));
-      const payload = json as { summary: CoachNotifySummary; rows: CoachNotifyPreviewRow[] };
+      const payload = json as {
+        summary: CoachNotifySummary;
+        rows: CoachNotifyPreviewRow[];
+        directors?: DirectorNotifyPayload;
+      };
       setSummary(payload.summary);
       setRows(payload.rows ?? []);
+      setDirectors(payload.directors ?? null);
       if (payload.summary.lastSentCount) onSent?.(payload.summary.lastSentCount);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load notify preview");
@@ -3067,12 +3076,13 @@ function CoachNotifyPanel({
   return (
     <Panel
       id="scheduler-notify"
-      title="Notify Coaches"
-      eyebrow="8. Head coach emails"
+      title="Notify"
+      eyebrow="8. Schedule emails"
       complete={complete}
       open={open}
       onToggle={onToggle}
     >
+      <h3 className="mb-2 text-lg font-semibold text-white">Coaches</h3>
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-400">
         <p>
           {summary
@@ -3215,6 +3225,14 @@ function CoachNotifyPanel({
           <p className="p-4 text-sm text-zinc-500">No teams match this filter.</p>
         ) : null}
       </div>
+      <DirectorNotifySection
+        orgQuery={orgQuery}
+        seasonId={seasonId}
+        payload={directors}
+        canSend={Boolean(summary?.canSend)}
+        sendBlockedReason={summary?.sendBlockedReason ?? null}
+        onSent={() => void refresh()}
+      />
     </Panel>
   );
 }

@@ -6,6 +6,7 @@ import {
   sendCoachScheduleEmails,
   sendCoachScheduleSample,
 } from "@/lib/scheduler/coachScheduleNotify";
+import { loadDirectorScheduleNotify, sendDirectorScheduleEmails } from "@/lib/scheduler/directorScheduleNotify";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export const dynamic = "force-dynamic";
@@ -26,11 +27,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const data = await loadCoachScheduleNotify({
-      organizationId: organizationIdFrom(request),
-      seasonId,
-    });
-    return NextResponse.json(data);
+    const organizationId = organizationIdFrom(request);
+    const [data, directors] = await Promise.all([
+      loadCoachScheduleNotify({ organizationId, seasonId }),
+      loadDirectorScheduleNotify({ organizationId, seasonId }),
+    ]);
+    return NextResponse.json({ ...data, directors });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to load coach notify preview";
     const status = message.includes("not found") ? 404 : 500;
@@ -50,6 +52,10 @@ export async function POST(request: NextRequest) {
     ageGroups?: string[];
     sampleEmail?: string;
     teamId?: string;
+    audience?: string;
+    emails?: string | string[];
+    parkIds?: string[];
+    sample?: boolean;
   };
   const seasonId = body.seasonId?.trim();
   if (!seasonId) {
@@ -57,6 +63,25 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if (body.audience === "directors") {
+      const result = await sendDirectorScheduleEmails({
+        organizationId: organizationIdFrom(request),
+        seasonId,
+        emails: body.sampleEmail?.trim() || body.emails || auth.admin.email,
+        parkIds: Array.isArray(body.parkIds) ? body.parkIds.map((value) => String(value)) : null,
+        actorAdminId: auth.admin.id,
+        replyTo: auth.admin.email,
+        sample: Boolean(body.sample || body.sampleEmail?.trim()),
+      });
+      if (!result.readyCount) {
+        return NextResponse.json(
+          { error: "No director emails are ready to send.", ...result },
+          { status: 422 },
+        );
+      }
+      return NextResponse.json({ ok: true, ...result });
+    }
+
     if (body.sampleEmail?.trim()) {
       const sample = await sendCoachScheduleSample({
         organizationId: organizationIdFrom(request),
