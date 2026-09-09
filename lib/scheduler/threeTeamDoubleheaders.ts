@@ -47,6 +47,111 @@ function pickNightSlots(slots: SchedulerSlot[], priorityIds: string[]): Schedule
   return [sorted[0]!, sorted[1]!];
 }
 
+export type DhNightSides = {
+  earlyHome: SchedulerTeam;
+  earlyAway: SchedulerTeam;
+  lateHome: SchedulerTeam;
+  lateAway: SchedulerTeam;
+};
+
+type DhFairnessCounts = {
+  home: Map<string, number>;
+  away: Map<string, number>;
+  early: Map<string, number>;
+  late: Map<string, number>;
+  pairHome: Map<string, number>;
+};
+
+function emptyDhCounts(): DhFairnessCounts {
+  return {
+    home: new Map(),
+    away: new Map(),
+    early: new Map(),
+    late: new Map(),
+    pairHome: new Map(),
+  };
+}
+
+function bump(map: Map<string, number>, key: string, by = 1) {
+  map.set(key, (map.get(key) ?? 0) + by);
+}
+
+function cloneCounts(counts: DhFairnessCounts): DhFairnessCounts {
+  return {
+    home: new Map(counts.home),
+    away: new Map(counts.away),
+    early: new Map(counts.early),
+    late: new Map(counts.late),
+    pairHome: new Map(counts.pairHome),
+  };
+}
+
+function applyDhNight(counts: DhFairnessCounts, night: DhNightSides): DhFairnessCounts {
+  const next = cloneCounts(counts);
+  bump(next.home, night.earlyHome.id);
+  bump(next.away, night.earlyAway.id);
+  bump(next.early, night.earlyHome.id);
+  bump(next.early, night.earlyAway.id);
+  bump(next.pairHome, `${night.earlyHome.id}::${night.earlyAway.id}`);
+  bump(next.home, night.lateHome.id);
+  bump(next.away, night.lateAway.id);
+  bump(next.late, night.lateHome.id);
+  bump(next.late, night.lateAway.id);
+  bump(next.pairHome, `${night.lateHome.id}::${night.lateAway.id}`);
+  return next;
+}
+
+function dhFairnessCost(counts: DhFairnessCounts, teamIds: string[]): number {
+  let cost = 0;
+  for (const id of teamIds) {
+    cost += 4 * Math.abs((counts.home.get(id) ?? 0) - (counts.away.get(id) ?? 0));
+    cost += 2 * Math.abs((counts.early.get(id) ?? 0) - (counts.late.get(id) ?? 0));
+  }
+  for (let i = 0; i < teamIds.length; i += 1) {
+    for (let j = i + 1; j < teamIds.length; j += 1) {
+      const a = teamIds[i]!;
+      const b = teamIds[j]!;
+      const ab = counts.pairHome.get(`${a}::${b}`) ?? 0;
+      const ba = counts.pairHome.get(`${b}::${a}`) ?? 0;
+      cost += 3 * Math.abs(ab - ba);
+    }
+  }
+  return cost;
+}
+
+function dhNightCandidates(dh: SchedulerTeam, first: SchedulerTeam, second: SchedulerTeam): DhNightSides[] {
+  return [
+    { earlyHome: dh, earlyAway: first, lateHome: second, lateAway: dh },
+    { earlyHome: dh, earlyAway: second, lateHome: first, lateAway: dh },
+    { earlyHome: first, earlyAway: dh, lateHome: dh, lateAway: second },
+    { earlyHome: second, earlyAway: dh, lateHome: dh, lateAway: first },
+  ];
+}
+
+export function pickDhNightAssignment(
+  dh: SchedulerTeam,
+  others: [SchedulerTeam, SchedulerTeam],
+  counts: DhFairnessCounts,
+): DhNightSides {
+  const teamIds = [dh.id, others[0].id, others[1].id];
+  const candidates = dhNightCandidates(dh, others[0], others[1]);
+  const preferred = dhNightCandidates(dh, others[0], others[1])[0]!;
+  let best = preferred;
+  let bestCost = Number.POSITIVE_INFINITY;
+  for (const candidate of candidates) {
+    const cost = dhFairnessCost(applyDhNight(counts, candidate), teamIds);
+    const isPreferred =
+      candidate.earlyHome.id === preferred.earlyHome.id &&
+      candidate.earlyAway.id === preferred.earlyAway.id &&
+      candidate.lateHome.id === preferred.lateHome.id;
+    if (cost < bestCost || (cost === bestCost && isPreferred)) {
+      best = candidate;
+      bestCost = cost;
+    }
+  }
+  return best;
+}
+
 function toGame(params: {
   division: string;
   ageGroup: string;
@@ -122,19 +227,22 @@ export function generateThreeTeamDoubleheaders(params: {
     const totals = new Map(teams.map((team) => [team.id, 0]));
     const priorityIds = parseFieldPriorityIds(rule.ruleMetadata);
     let nightIndex = 0;
+    let fairnessCounts = emptyDhCounts();
     for (const date of nights) {
       const pair = pickNightSlots(byDate.get(date) ?? [], priorityIds);
       if (!pair) continue;
       const dh = teams[nightIndex % 3]!;
-      const others = teams.filter((team) => team.id !== dh.id);
+      const others = teams.filter((team) => team.id !== dh.id) as [SchedulerTeam, SchedulerTeam];
       if ((totals.get(dh.id) ?? 0) + 2 > gamesPerTeam) break;
       const [early, late] = pair;
+      const sides = pickDhNightAssignment(dh, others, fairnessCounts);
+      fairnessCounts = applyDhNight(fairnessCounts, sides);
       games.push(
         toGame({
           division,
           ageGroup,
-          home: dh,
-          away: others[0]!,
+          home: sides.earlyHome,
+          away: sides.earlyAway,
           slot: early,
           gameNumber,
           roundLabel: `DH ${dateKey(early.date)} early`,
@@ -145,8 +253,8 @@ export function generateThreeTeamDoubleheaders(params: {
         toGame({
           division,
           ageGroup,
-          home: others[1]!,
-          away: dh,
+          home: sides.lateHome,
+          away: sides.lateAway,
           slot: late,
           gameNumber,
           roundLabel: `DH ${dateKey(late.date)} late`,
@@ -154,8 +262,8 @@ export function generateThreeTeamDoubleheaders(params: {
       );
       gameNumber += 1;
       totals.set(dh.id, (totals.get(dh.id) ?? 0) + 2);
-      totals.set(others[0]!.id, (totals.get(others[0]!.id) ?? 0) + 1);
-      totals.set(others[1]!.id, (totals.get(others[1]!.id) ?? 0) + 1);
+      totals.set(others[0].id, (totals.get(others[0].id) ?? 0) + 1);
+      totals.set(others[1].id, (totals.get(others[1].id) ?? 0) + 1);
       nightIndex += 1;
     }
     if (nightIndex === 0) {
@@ -177,4 +285,76 @@ export function generateThreeTeamDoubleheaders(params: {
     fairness: summarizeFairness(checked, params.teams),
     errors,
   };
+}
+
+export function rebalanceThreeTeamDhGames<
+  T extends {
+    gameDate: Date | string | null;
+    startTime: string | null;
+    homeTeamId: string | null;
+    awayTeamId: string | null;
+    homeTeamName: string;
+    awayTeamName: string;
+  },
+>(games: T[]): T[] {
+  const nights = new Map<string, T[]>();
+  for (const game of games) {
+    if (!game.gameDate || !game.startTime || !game.homeTeamId || !game.awayTeamId) continue;
+    const key = typeof game.gameDate === "string" ? game.gameDate.slice(0, 10) : dateKey(game.gameDate);
+    const list = nights.get(key) ?? [];
+    list.push(game);
+    nights.set(key, list);
+  }
+  const next = games.map((game) => ({ ...game }));
+  const byRef = new Map<T, T>();
+  for (let i = 0; i < games.length; i += 1) byRef.set(games[i]!, next[i]!);
+  let counts = emptyDhCounts();
+  for (const date of [...nights.keys()].sort()) {
+    const night = [...(nights.get(date) ?? [])].sort((a, b) => (a.startTime ?? "").localeCompare(b.startTime ?? ""));
+    if (night.length !== 2) continue;
+    const ids = [night[0]!.homeTeamId, night[0]!.awayTeamId, night[1]!.homeTeamId, night[1]!.awayTeamId].filter(
+      (id): id is string => Boolean(id),
+    );
+    const appear = new Map<string, number>();
+    for (const id of ids) bump(appear, id);
+    const dhId = [...appear.entries()].find(([, count]) => count === 2)?.[0];
+    if (!dhId) continue;
+    const teamById = new Map<string, SchedulerTeam>();
+    for (const game of night) {
+      if (game.homeTeamId) {
+        teamById.set(game.homeTeamId, {
+          id: game.homeTeamId,
+          organizationId: "",
+          seasonYear: 0,
+          ageGroup: "",
+          teamName: game.homeTeamName,
+        });
+      }
+      if (game.awayTeamId) {
+        teamById.set(game.awayTeamId, {
+          id: game.awayTeamId,
+          organizationId: "",
+          seasonYear: 0,
+          ageGroup: "",
+          teamName: game.awayTeamName,
+        });
+      }
+    }
+    const dh = teamById.get(dhId);
+    const others = [...teamById.values()].filter((team) => team.id !== dhId);
+    if (!dh || others.length !== 2) continue;
+    const sides = pickDhNightAssignment(dh, [others[0]!, others[1]!], counts);
+    counts = applyDhNight(counts, sides);
+    const early = byRef.get(night[0]!)!;
+    const late = byRef.get(night[1]!)!;
+    early.homeTeamId = sides.earlyHome.id;
+    early.homeTeamName = sides.earlyHome.teamName;
+    early.awayTeamId = sides.earlyAway.id;
+    early.awayTeamName = sides.earlyAway.teamName;
+    late.homeTeamId = sides.lateHome.id;
+    late.homeTeamName = sides.lateHome.teamName;
+    late.awayTeamId = sides.lateAway.id;
+    late.awayTeamName = sides.lateAway.teamName;
+  }
+  return next;
 }
