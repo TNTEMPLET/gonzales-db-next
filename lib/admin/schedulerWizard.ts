@@ -6,7 +6,7 @@ export const SCHEDULER_WIZARD_STEPS = [
   { id: "scheduler-generate", number: 5, shortLabel: "Generate", title: "Generate Schedule" },
   { id: "scheduler-review", number: 6, shortLabel: "Review", title: "Review & Fix" },
   { id: "scheduler-export", number: 7, shortLabel: "Export", title: "Export" },
-  { id: "scheduler-notify", number: 8, shortLabel: "Notify", title: "Notify Coaches" },
+  { id: "scheduler-notify", number: 8, shortLabel: "Notify", title: "Notify" },
 ] as const;
 
 export type SchedulerWizardStepId = (typeof SCHEDULER_WIZARD_STEPS)[number]["id"];
