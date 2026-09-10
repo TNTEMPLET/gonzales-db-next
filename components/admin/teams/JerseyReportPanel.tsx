@@ -150,7 +150,7 @@ export default function JerseyReportPanel({
   }
 
   return (
-    <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
+    <div id="jersey-report" className="scroll-mt-36 rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
       <div>
         <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">Uniforms</p>
         <h2 className="text-lg font-semibold">Jersey Report</h2>

@@ -1,21 +1,23 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import AdminReportsManager from "@/components/admin/AdminReportsManager";
+import AdminReportsHub from "@/components/admin/AdminReportsHub";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import { canSeeReportsHub, reportsForRole } from "@/lib/admin/reportCatalog";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
+import { isAllSitesReportRequest } from "@/lib/admin/reportOrg";
 import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
   return {
-    title: `Reporting | ${site.name}`,
-    description: "Generate umpire reports and payout summaries.",
+    title: `Reports | ${site.name}`,
+    description: "Open umpire pay, tournament income, enrollment, jersey, and schedule reports.",
   };
 }
 
@@ -25,6 +27,7 @@ export default async function AdminReportsPage({
   searchParams: Promise<{ org?: string }>;
 }) {
   const { org } = await searchParams;
+  const allSites = isAllSitesReportRequest(org);
   const orgId = resolveAdminTargetOrg(org);
 
   const cookieStore = await cookies();
@@ -32,7 +35,7 @@ export default async function AdminReportsPage({
   const adminUser = await getAdminUserFromCookieToken(token);
 
   if (!adminUser) {
-    redirect("/admin/login?next=/admin/reports");
+    redirect(`/admin/login?next=/admin/reports?org=${orgId}`);
   }
 
   const effectiveRole = await getEffectiveAdminRoleForOrg(
@@ -41,7 +44,9 @@ export default async function AdminReportsPage({
     orgId,
   );
   const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
-  if (!canAccessAdminModule(role, "REPORTS")) {
+  const allowModule = (module: Parameters<typeof canAccessAdminModule>[1]) =>
+    canAccessAdminModule(role, module);
+  if (!canSeeReportsHub(allowModule)) {
     redirect("/admin?denied=reports");
   }
 
@@ -51,22 +56,19 @@ export default async function AdminReportsPage({
         <div className="mb-8">
           <AdminSectionHeader
             badge="REPORTING"
-            currentOrg={orgId}
+            currentOrg={allSites ? null : orgId}
             currentPath="/admin/reports"
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
           />
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
-            Umpire Reports
-          </h1>
-          <p className="text-zinc-400 max-w-2xl">
-            Use this when you need game assignment totals, umpire pay summaries,
-            or exports for review. Choose the site, date range, and league first,
-            then generate the report before downloading files.
+          <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Reports</h1>
+          <p className="max-w-2xl text-zinc-400">
+            Every report you can generate lives here. Open one to run it, download a file, or send
+            it. Money reports stay on one organization at a time — Gonzales, Ascension, or Fall Ball.
           </p>
         </div>
 
-        <AdminReportsManager targetOrg={orgId} />
+        <AdminReportsHub org={orgId} allSites={allSites} cards={reportsForRole(allowModule)} />
       </section>
     </main>
   );

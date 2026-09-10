@@ -10,7 +10,7 @@ declare global {
 }
 
 /** Bump when Prisma schema/models change so dev HMR does not reuse a stale PrismaClient. */
-const PRISMA_SCHEMA_VERSION = "2026-09-01-volunteer-sportsconnect-ids-v1";
+const PRISMA_SCHEMA_VERSION = "2026-09-10-season-org-settings";
 
 function createClient() {
   const connectionString = process.env.DATABASE_URL!;
@@ -29,7 +29,8 @@ const hasRequiredDelegates =
   "draftTeam" in cachedDelegates &&
   "draftPlayerPool" in cachedDelegates &&
   "draftPick" in cachedDelegates &&
-  "coachPlayerProtection" in cachedDelegates;
+  "coachPlayerProtection" in cachedDelegates &&
+  "seasonOrgSettings" in cachedDelegates;
 const schemaVersionMatches =
   global.prismaSchemaVersion === PRISMA_SCHEMA_VERSION;
 

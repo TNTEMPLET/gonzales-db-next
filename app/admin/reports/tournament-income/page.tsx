@@ -1,6 +1,8 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
+import Link from "next/link";
+
 import TournamentIncomeReportManager from "@/components/admin/TournamentIncomeReportManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import {
@@ -75,6 +77,11 @@ export default async function TournamentIncomeReportPage({
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
           />
+          <p className="mb-3">
+            <Link href={`/admin/reports?org=${reportOrg}`} className="text-sm font-semibold text-red-300 hover:text-red-200">
+              All reports
+            </Link>
+          </p>
           <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">
             Tournament Income Report
           </h1>
