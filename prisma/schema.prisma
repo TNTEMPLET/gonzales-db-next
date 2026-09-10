@@ -2485,6 +2485,19 @@ model SeasonSetupChecklistItem {
   @@index([organizationId, seasonYear])
 }
 
+/// Per-org season knobs used by parish reports (registration fee cap, etc.).
+model SeasonOrgSettings {
+  id                           String   @id @default(cuid())
+  organizationId               String
+  seasonYear                   Int
+  parishRegistrationFeeCents   Int?
+  createdAt                    DateTime @default(now())
+  updatedAt                    DateTime @updatedAt
+
+  @@unique([organizationId, seasonYear])
+  @@index([organizationId, seasonYear])
+}
+
 /// Explicit mapping of content organization to Google Drive export folder ID
 model SportsConnectOrgDriveFolder {
   id             String   @id @default(cuid())

@@ -6,7 +6,15 @@ import EnrollmentKpiHub from "@/components/admin/enrollment/EnrollmentKpiHub";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import ReportOrgPicker from "@/components/admin/ReportOrgPicker";
+import { parseReportContentOrg } from "@/lib/admin/reportOrg";
+import {
+  getDefaultContentOrg,
+  getOrgDisplayName,
+  getSiteConfig,
+  isMasterDeployment,
+  resolveAdminTargetOrg,
+} from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -22,13 +30,14 @@ export default async function EnrollmentPage({
   searchParams: Promise<{ org?: string }>;
 }) {
   const { org } = await searchParams;
-  const currentOrg = resolveAdminTargetOrg(org);
+  const selectedOrg = parseReportContentOrg(org) ?? (isMasterDeployment() ? null : getDefaultContentOrg());
+  const currentOrg = selectedOrg ?? resolveAdminTargetOrg(org);
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
 
   if (!adminUser) {
-    redirect(`/admin/login?next=/admin/enrollment?org=${currentOrg}`);
+    redirect(`/admin/login?next=/admin/enrollment${org ? `?org=${org}` : ""}`);
   }
 
   const effectiveRole = await getEffectiveAdminRoleForOrg(
@@ -48,21 +57,29 @@ export default async function EnrollmentPage({
         <div className="mb-8">
           <AdminSectionHeader
             badge="ENROLLMENT & KPIS"
-            currentOrg={currentOrg}
-            currentPath={`/admin/enrollment?org=${currentOrg}`}
+            currentOrg={selectedOrg}
+            currentPath="/admin/enrollment"
+            orgSwitcherShowAllSites={false}
             allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
           />
           <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Enrollment & KPIs</h1>
           <p className="max-w-3xl text-zinc-400">
             Registration counts, revenue collected vs. outstanding, fee-tier breakdown, and team
-            rosters at a glance.
+            rosters for one organization.
           </p>
         </div>
 
-        <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
-          <EnrollmentKpiHub targetOrg={currentOrg} />
-        </div>
+        {selectedOrg ? (
+          <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
+            <p className="mb-4 text-sm text-zinc-300">
+              Showing <span className="font-semibold text-white">{getOrgDisplayName(selectedOrg)}</span> only.
+            </p>
+            <EnrollmentKpiHub targetOrg={selectedOrg} />
+          </div>
+        ) : (
+          <ReportOrgPicker path="/admin/enrollment" title="Enrollment & KPIs" />
+        )}
       </section>
     </main>
   );

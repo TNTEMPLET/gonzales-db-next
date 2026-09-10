@@ -46,6 +46,10 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [expandedKey, setExpandedKey] = useState<string | null>("ROSTERS_BUILT");
   const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [feeDollars, setFeeDollars] = useState("");
+  const [feePlaceholder, setFeePlaceholder] = useState("");
+  const [feeBusy, setFeeBusy] = useState(false);
+  const [feeNotice, setFeeNotice] = useState("");
 
   const fetchChecklist = async () => {
     setLoading(true);
@@ -64,10 +68,60 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
     }
   };
 
+  const fetchFee = async () => {
+    try {
+      const res = await fetch(
+        `/api/admin/season-setup/settings?org=${targetOrg}&seasonYear=${seasonYear}`,
+      );
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to load parish fee");
+      const stored = data.parishRegistrationFeeCents;
+      const fallback = data.defaultParishRegistrationFeeCents;
+      setFeeDollars(
+        typeof stored === "number" && stored > 0 ? (stored / 100).toFixed(0) : "",
+      );
+      setFeePlaceholder(
+        typeof fallback === "number" && fallback > 0 ? String(fallback / 100) : "",
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to load parish fee");
+    }
+  };
+
   useEffect(() => {
     fetchChecklist();
+    void fetchFee();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetOrg, seasonYear]);
+
+  const saveFee = async () => {
+    setFeeBusy(true);
+    setFeeNotice("");
+    setError(null);
+    try {
+      const res = await fetch(`/api/admin/season-setup/settings?org=${targetOrg}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seasonYear,
+          parishRegistrationFeeDollars: feeDollars.trim(),
+        }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to save parish fee");
+      const effective = data.effectiveParishRegistrationFeeCents;
+      setFeeNotice(
+        typeof effective === "number" && effective > 0
+          ? `Parish packet will cap registration at $${(effective / 100).toFixed(0)}.`
+          : "Parish packet will use SportsConnect amounts with no cap.",
+      );
+      await fetchFee();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save parish fee");
+    } finally {
+      setFeeBusy(false);
+    }
+  };
 
   const toggleManual = async (itemKey: string, ageGroup: string | undefined, next: boolean) => {
     setSavingKey(`${itemKey}|${ageGroup ?? ""}`);
@@ -107,6 +161,39 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
             {completeCount}/{items.length} steps complete
           </span>
         )}
+      </div>
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
+        <p className="text-sm font-semibold text-white">Parish registration fee</p>
+        <p className="mt-1 text-xs text-zinc-400">
+          The parish enrollment report hides late fees by capping each player at this amount.
+          Leave blank to use the default{feePlaceholder ? ` ($${feePlaceholder} for this org)` : " (no cap)"}.
+        </p>
+        <div className="mt-3 flex flex-wrap items-end gap-3">
+          <label className="block">
+            <span className="mb-1 block text-xs font-semibold uppercase tracking-[0.18em] text-zinc-500">
+              Dollars
+            </span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              value={feeDollars}
+              placeholder={feePlaceholder}
+              onChange={(e) => setFeeDollars(e.target.value)}
+              className="w-28 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-1.5 text-sm text-white focus:border-emerald-500"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void saveFee()}
+            disabled={feeBusy}
+            className="rounded-lg bg-red-600 px-3 py-1.5 text-sm font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+          >
+            Save fee
+          </button>
+        </div>
+        {feeNotice ? <p className="mt-2 text-xs text-emerald-300">{feeNotice}</p> : null}
       </div>
 
       {error && (

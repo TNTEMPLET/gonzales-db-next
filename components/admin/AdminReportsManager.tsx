@@ -4,6 +4,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import type { ContentOrgId } from "@/lib/siteConfig";
+import ReportSendPanel from "@/components/admin/ReportSendPanel";
 import autoTable from "jspdf-autotable";
 
 type LeagueFilter = "all" | "littleleague" | "diamond";
@@ -173,6 +174,11 @@ export default function AdminReportsManager({ targetOrg }: Props) {
   const [activeMode, setActiveMode] = useState<ReportMode | null>(null);
   const [generatingMode, setGeneratingMode] = useState<ReportMode | null>(null);
   const [rows, setRows] = useState<MainReportRow[] | UmpireReportRow[]>([]);
+  const [generatedRange, setGeneratedRange] = useState<{
+    startDate: string;
+    endDate: string;
+    league: LeagueFilter;
+  } | null>(null);
   const [busy, setBusy] = useState(false);
   const [exportBusy, setExportBusy] = useState(false);
   const [error, setError] = useState("");
@@ -292,6 +298,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
       setMode(nextMode);
       setActiveMode(nextMode);
       setRows(json.data.rows);
+      setGeneratedRange({ startDate, endDate, league });
       setNotice(
         nextMode === "main"
           ? `Main report generated (${json.data.rows.length} rows).`
@@ -302,6 +309,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
         err instanceof Error ? err.message : "Failed to generate report",
       );
       setRows([]);
+      setGeneratedRange(null);
     } finally {
       setGeneratingMode(null);
       setBusy(false);
@@ -1153,6 +1161,22 @@ export default function AdminReportsManager({ targetOrg }: Props) {
           ))}
         </div>
       )}
+
+      <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-6">
+        <h2 className="mb-2 text-lg font-semibold text-zinc-100">Email to treasurer</h2>
+        <p className="mb-4 text-sm text-zinc-400">
+          Generate the report above, review the AP Baseball PDFs, then send to the person who
+          gathers and distributes umpire pay. The email uses the date range you just generated.
+        </p>
+        <ReportSendPanel
+          kind="umpire-pay"
+          org={targetOrg}
+          startDate={generatedRange?.startDate}
+          endDate={generatedRange?.endDate}
+          league={generatedRange?.league}
+          requireRange={!generatedRange}
+        />
+      </div>
     </div>
   );
 }

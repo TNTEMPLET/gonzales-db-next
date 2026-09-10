@@ -179,8 +179,8 @@ export function buildAdminSidebarNav(
       ...(allowModule("SPONSORS")
         ? [{ id: "sponsors", label: "Sponsors", href: leafHref("/admin/sponsors", orgSuffix) }]
         : []),
-      ...(allowModule("REPORTS")
-        ? [{ id: "reports", label: "Umpire Pay Reports", href: leafHref("/admin/reports", orgSuffix) }]
+      ...(allowModule("REPORTS") || allowModule("ENROLLMENT_KPI") || allowModule("TEAMS") || allowModule("VOLUNTEERS")
+        ? [{ id: "reports", label: "Reports", href: leafHref("/admin/reports", orgSuffix) }]
         : []),
     ],
   };

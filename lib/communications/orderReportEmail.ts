@@ -10,7 +10,10 @@ export type OrderReportSourceType =
   | "SHIRT_ORDER_MANUAL"
   | "CAP_ORDER_MANUAL"
   | "JERSEY_REPORT_MANUAL"
-  | "DRAFT_INVITE_MANUAL";
+  | "DRAFT_INVITE_MANUAL"
+  | "PARISH_FIELD_PREP"
+  | "PARISH_ENROLLMENT"
+  | "UMPIRE_PAY";
 
 /**
  * Governed replacement for a direct sendEmailViaResend() call from an admin
@@ -32,7 +35,14 @@ export async function sendOrderReportEmail(params: {
   actorAdminId: string | null;
   actorEmail: string | null;
   organizationId: string | null;
-  campaignTitlePrefix: "Shirt Orders" | "Cap Orders" | "Jersey Report" | "Draft Invite";
+  campaignTitlePrefix:
+    | "Shirt Orders"
+    | "Cap Orders"
+    | "Jersey Report"
+    | "Draft Invite"
+    | "Parish Field Prep"
+    | "Parish Enrollment"
+    | "Umpire Pay";
   sourceType: OrderReportSourceType;
   recipients: string[];
   subject: string;
