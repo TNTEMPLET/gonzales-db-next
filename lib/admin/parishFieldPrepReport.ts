@@ -1,4 +1,5 @@
 import { jsPDF } from "jspdf";
+import type { CellHookData } from "jspdf-autotable";
 
 import {
   buildFieldCapacityHeatmap,
@@ -82,11 +83,7 @@ export function parishPrepDayCell(
   return { booked: divisions.length > 0, divisions };
 }
 
-function colorHeatmapCell(data: {
-  section: string;
-  column: { index: number };
-  cell: { raw: unknown; styles: { fillColor?: number[]; textColor?: number | number[] } };
-}) {
+function colorHeatmapCell(data: CellHookData) {
   if (data.section !== "body" || data.column.index < 1) return;
   const raw = String(data.cell.raw ?? "").trim();
   if (!raw || raw === "—") {
