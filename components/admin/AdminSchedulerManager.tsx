@@ -1896,7 +1896,8 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       >
         <p className="mb-4 text-sm text-zinc-400">
           Practice is set first. Then check only the divisions you are working on — Replace never wipes the others.
-          Auto uses 1-factor; Manual / DH builds 3-team doubleheaders; Practice-as-games turns shared-field
+          Auto uses 1-factor and then rebalances early/late on shared fields (so 7U/8U do not all land at 7:15).
+          Manual / DH builds 3-team doubleheaders; Practice-as-games turns shared-field
           practice pairs into games.
           Games land between {seasonForm.gamesStartsOn || seasonForm.startsOn || "the season start"} and{" "}
           {seasonForm.gamesEndsOn || seasonForm.endsOn || "the season end"}.

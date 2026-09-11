@@ -4,6 +4,7 @@ import { parseSeasonDateWindows, parseSeasonGamesPerTeam, parseUtcDateOnly } fro
 import { parseScheduleMode } from "./scheduleMode";
 import { playableSchedulerTeams } from "./realTeams";
 import { isEarlyStart, projectedEarlyLateCost } from "./earlyLate";
+import { rebalanceEarlyLateSlots } from "./rebalanceEarlyLate";
 import {
   fieldClaimsForNight,
   fieldPriorityRank,
@@ -1227,7 +1228,11 @@ export function generateSchedule(params: {
     gamesPerTeam,
   });
   const repaired = repairUnplacedGames({ games: packed, slots, rules: params.rules });
-  const checkedGames = checkDraftGameConflicts(repaired.games);
+  const balanced = rebalanceEarlyLateSlots({
+    games: repaired.games,
+    fields: params.fields,
+  });
+  const checkedGames = checkDraftGameConflicts(balanced.games);
   const fairness = summarizeFairness(checkedGames, params.teams);
   if (fairness.unscheduledGames.length) {
     errors.push({
