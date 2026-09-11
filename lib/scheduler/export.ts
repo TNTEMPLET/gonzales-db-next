@@ -2,6 +2,7 @@ import * as XLSX from "xlsx";
 
 import { ASSIGNR_GAMES_IMPORT_HEADERS } from "@/lib/assignr/gamesImportTypes";
 import { formatConflictSummary } from "./conflictCopy";
+import { assignrUmpirePattern } from "./umpirePattern";
 import { dateKey, timeToMinutes } from "./validation";
 
 export type SchedulerExportGame = {
@@ -115,7 +116,7 @@ function assignrSheet(games: SchedulerExportGame[], leagueName: string): unknown
       game.awayTeamName,
       leagueName,
       "Regular",
-      "",
+      assignrUmpirePattern(game.division),
       "",
       "",
       game.schedulerNotes ?? "",
