@@ -67,7 +67,8 @@ export async function pruneStaleEnrollments(input: {
     ...new Set(
       stale
         .map((row) => row.sportsConnectPlayerId)
-        .filter((id): id is string => Boolean(id) && !keptPlayerIds.has(id)),
+        .filter((id): id is string => Boolean(id))
+        .filter((id) => !keptPlayerIds.has(id)),
     ),
   ];
 
