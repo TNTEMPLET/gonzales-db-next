@@ -25,6 +25,8 @@ export async function snapshotCampaignAudience(campaignId: string) {
       explicitContacts: (rule.explicitContacts as unknown as
         | { email: string; name?: string | null; sourceType?: string | null; sourceId?: string | null }[]
         | null) ?? null,
+      ageGroups: rule.ageGroups,
+      seasonYear: rule.seasonYear,
     })),
     logicalMode: campaign.logicalMode,
   });

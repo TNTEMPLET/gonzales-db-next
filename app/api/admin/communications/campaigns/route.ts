@@ -7,6 +7,13 @@ import {
   getDefaultFromAddress,
   resolveFromAddress,
 } from "@/lib/communications/fromAddresses";
+import {
+  parseCampaignRuleBody,
+  toAudienceRuleWrite,
+  validateCampaignRules,
+  type CampaignRuleBody,
+} from "@/lib/communications/campaignRuleWrite";
+import { logicalModeForRules } from "@/lib/communications/divisionAudience";
 import { canSendForOrg } from "@/lib/communications/policy";
 import { EXPLICIT_CONTACTS_MAX, normalizeRawContacts, type RawContactInput } from "@/lib/communications/rawContacts";
 import { EXPLICIT_USERS_MAX } from "@/lib/communications/types";
@@ -26,22 +33,7 @@ type CreateCampaignBody = {
   registeredUserIds?: string[];
   /** Shortcut: create EXPLICIT_CONTACTS rule from raw email/name pairs (Sponsors, guardians, etc). */
   contacts?: RawContactInput[];
-  rules?: Array<{
-    ruleType:
-      | "ALL_USERS"
-      | "ORGANIZATION"
-      | "ALL_COACHES"
-      | "ORGANIZATION_COACHES"
-      | "COACHING_INTEREST"
-      | "ADMIN_ROLE"
-      | "EXPLICIT_USERS"
-      | "EXPLICIT_CONTACTS";
-    organizationId?: string | null;
-    adminRole?: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR" | null;
-    coachingInterestStatus?: "NEW" | "CONTACTED" | "NOT_INTERESTED" | "CONVERTED" | "ARCHIVED" | null;
-    explicitRegisteredUserIds?: string[] | null;
-    explicitContacts?: RawContactInput[] | null;
-  }>;
+  rules?: CampaignRuleBody[];
 };
 
 export async function GET(request: NextRequest) {
@@ -128,7 +120,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let rules = body.rules ?? [];
+  let rules = (body.rules ?? []).map(parseCampaignRuleBody);
   if (explicitIdsFromBody.length > 0) {
     rules = [
       {
@@ -147,27 +139,15 @@ export async function POST(request: NextRequest) {
     ];
   }
 
-  for (const rule of rules) {
-    const ids = rule.explicitRegisteredUserIds || [];
-    if (rule.ruleType === "EXPLICIT_USERS" && ids.length > EXPLICIT_USERS_MAX) {
-      return NextResponse.json(
-        { error: `Too many recipients (max ${EXPLICIT_USERS_MAX})` },
-        { status: 400 },
-      );
-    }
-    const contacts = rule.explicitContacts || [];
-    if (rule.ruleType === "EXPLICIT_CONTACTS" && contacts.length > EXPLICIT_CONTACTS_MAX) {
-      return NextResponse.json(
-        { error: `Too many recipients (max ${EXPLICIT_CONTACTS_MAX})` },
-        { status: 400 },
-      );
-    }
+  const ruleError = validateCampaignRules(rules);
+  if (ruleError) {
+    return NextResponse.json({ error: ruleError }, { status: 400 });
   }
 
   const created = await prisma.communicationCampaign.create({
     data: {
       organizationId: requestedOrg,
-      logicalMode: "AND",
+      logicalMode: logicalModeForRules(rules),
       channels,
       title,
       messageSubject: body.messageSubject?.trim() || null,
@@ -179,22 +159,7 @@ export async function POST(request: NextRequest) {
         typeof body.quietHoursEnd === "number" ? Math.max(0, Math.min(23, body.quietHoursEnd)) : null,
       createdByAdminId: actor.admin.id,
       audienceRules: {
-        create: rules.map((rule) => ({
-          ruleType: rule.ruleType,
-          organizationId: rule.organizationId ?? null,
-          adminRole: rule.adminRole ?? null,
-          coachingInterestStatus: rule.coachingInterestStatus ?? null,
-          explicitRegisteredUserIds:
-            rule.ruleType === "EXPLICIT_USERS"
-              ? Array.from(
-                  new Set((rule.explicitRegisteredUserIds || []).map((id) => id.trim()).filter(Boolean)),
-                )
-              : [],
-          explicitContacts:
-            rule.ruleType === "EXPLICIT_CONTACTS"
-              ? normalizeRawContacts(rule.explicitContacts).contacts
-              : undefined,
-        })),
+        create: rules.map((rule) => toAudienceRuleWrite(rule)),
       },
     },
     include: {

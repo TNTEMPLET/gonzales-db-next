@@ -157,6 +157,10 @@ enum CommunicationAudienceRuleType {
   /// Raw (non-RegisteredUser) contacts — Sponsors, roster guardians, Coaching Interest
   /// per-record selection, All-Star ballot invites, Shirt/Cap Orders manual recipients.
   EXPLICIT_CONTACTS
+  /// TeamCoachAssignment on teams in ageGroups / seasonYear / organizationId.
+  DIVISION_COACHES
+  /// Enrollment.guardianEmail in ageGroups / seasonYear / organizationId.
+  DIVISION_PARENTS
 }
 
 enum CommunicationRecipientType {
@@ -826,6 +830,10 @@ model CommunicationAudienceRule {
   /// { email: string; name?: string|null; sourceType?: string|null; sourceId?: string|null }.
   /// Normalized + capped at EXPLICIT_CONTACTS_MAX (lib/communications/rawContacts.ts) before write.
   explicitContacts          Json?
+  /// Division labels when ruleType is DIVISION_COACHES or DIVISION_PARENTS.
+  ageGroups                 String[]                      @default([])
+  /// Season the division rules target. Null for non-division rule types.
+  seasonYear                Int?
   createdAt                 DateTime                      @default(now())
 
   campaign CommunicationCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)

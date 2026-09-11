@@ -1,9 +1,16 @@
 import type { CommunicationChannel } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
+import {
+  parseCampaignRuleBody,
+  toAudienceRuleWrite,
+  validateCampaignRules,
+  type CampaignRuleBody,
+} from "@/lib/communications/campaignRuleWrite";
+import { logicalModeForRules } from "@/lib/communications/divisionAudience";
 import { resolveCommunicationActor } from "@/lib/communications/authz";
 import { resolveFromAddress } from "@/lib/communications/fromAddresses";
-import { canSendForOrg } from "@/lib/communications/policy";
+import { canDeleteCampaign, canSendForOrg } from "@/lib/communications/policy";
 import prisma from "@/lib/prisma";
 
 type UpdateCampaignBody = {
@@ -15,18 +22,7 @@ type UpdateCampaignBody = {
   organizationId?: string | null;
   quietHoursStart?: number | null;
   quietHoursEnd?: number | null;
-  rules?: Array<{
-    ruleType:
-      | "ALL_USERS"
-      | "ORGANIZATION"
-      | "ALL_COACHES"
-      | "ORGANIZATION_COACHES"
-      | "COACHING_INTEREST"
-      | "ADMIN_ROLE";
-    organizationId?: string | null;
-    adminRole?: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR" | null;
-    coachingInterestStatus?: "NEW" | "CONTACTED" | "NOT_INTERESTED" | "CONVERTED" | "ARCHIVED" | null;
-  }>;
+  rules?: CampaignRuleBody[];
 };
 
 export async function GET(
@@ -94,6 +90,14 @@ export async function PATCH(
     }
   }
 
+  const parsedRules = body.rules ? body.rules.map(parseCampaignRuleBody) : null;
+  if (parsedRules) {
+    const ruleError = validateCampaignRules(parsedRules);
+    if (ruleError) {
+      return NextResponse.json({ error: ruleError }, { status: 400 });
+    }
+  }
+
   const updated = await prisma.$transaction(async (tx) => {
     const campaign = await tx.communicationCampaign.update({
       where: { id },
@@ -103,7 +107,7 @@ export async function PATCH(
         messageBody: body.messageBody?.trim() || existing.messageBody,
         fromEmail,
         channels: body.channels && body.channels.length > 0 ? body.channels : existing.channels,
-        logicalMode: "AND",
+        logicalMode: parsedRules ? logicalModeForRules(parsedRules) : existing.logicalMode,
         organizationId: requestedOrg,
         quietHoursStart:
           typeof body.quietHoursStart === "number"
@@ -121,16 +125,13 @@ export async function PATCH(
       },
     });
 
-    if (body.rules) {
+    if (parsedRules) {
       await tx.communicationAudienceRule.deleteMany({ where: { campaignId: campaign.id } });
-      if (body.rules.length > 0) {
+      if (parsedRules.length > 0) {
         await tx.communicationAudienceRule.createMany({
-          data: body.rules.map((rule) => ({
+          data: parsedRules.map((rule) => ({
             campaignId: campaign.id,
-            ruleType: rule.ruleType,
-            organizationId: rule.organizationId ?? null,
-            adminRole: rule.adminRole ?? null,
-            coachingInterestStatus: rule.coachingInterestStatus ?? null,
+            ...toAudienceRuleWrite(rule),
           })),
         });
       }
@@ -143,4 +144,31 @@ export async function PATCH(
   });
 
   return NextResponse.json({ success: true, data: updated });
+}
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: Promise<{ id: string }> },
+) {
+  const actor = await resolveCommunicationActor(request);
+  if (!actor.ok) return NextResponse.json({ error: actor.message }, { status: actor.status });
+  const { id } = await params;
+  const existing = await prisma.communicationCampaign.findUnique({ where: { id } });
+  if (!existing) return NextResponse.json({ error: "Campaign not found" }, { status: 404 });
+  if (!canSendForOrg(actor.role, existing.organizationId, actor.targetOrg)) {
+    return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+  }
+  if (!canDeleteCampaign(existing.status)) {
+    return NextResponse.json(
+      {
+        error:
+          existing.status === "SCHEDULED"
+            ? "Cancel the schedule before deleting this campaign"
+            : "Sent or in-flight campaigns cannot be deleted",
+      },
+      { status: 409 },
+    );
+  }
+  await prisma.communicationCampaign.delete({ where: { id } });
+  return NextResponse.json({ success: true });
 }

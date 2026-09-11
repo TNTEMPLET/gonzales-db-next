@@ -3,6 +3,11 @@
 import { useEffect, useMemo, useState } from "react";
 
 import {
+  buildDivisionAudienceRules,
+  formatAudienceSummary,
+  summarizeDivisionAudience,
+} from "@/lib/communications/divisionAudience";
+import {
   DEFAULT_COMMUNICATIONS_FROM,
   getClientFromAddressOptions,
 } from "@/lib/communications/fromAddressConstants";
@@ -41,10 +46,16 @@ type Campaign = {
       | "ALL_COACHES"
       | "ORGANIZATION_COACHES"
       | "COACHING_INTEREST"
-      | "ADMIN_ROLE";
+      | "ADMIN_ROLE"
+      | "EXPLICIT_USERS"
+      | "EXPLICIT_CONTACTS"
+      | "DIVISION_COACHES"
+      | "DIVISION_PARENTS";
     organizationId: string | null;
     adminRole: "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR" | null;
     coachingInterestStatus: "NEW" | "CONTACTED" | "NOT_INTERESTED" | "CONVERTED" | "ARCHIVED" | null;
+    ageGroups?: string[];
+    seasonYear?: number | null;
   }>;
   _count?: {
     recipientSnapshots: number;
@@ -65,7 +76,31 @@ export default function AdminCommunicationsManager({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
-  const [previewByCampaign, setPreviewByCampaign] = useState<Record<string, number>>({});
+  const [previewByCampaign, setPreviewByCampaign] = useState<
+    Record<string, { total: number; sample: PreviewSample[] }>
+  >({});
+  const [reviewingId, setReviewingId] = useState<string | null>(null);
+  const [editingId, setEditingId] = useState<string | null>(null);
+
+  type PreviewSample = {
+    email: string | null;
+    contactName: string | null;
+    matchReasons: string[];
+    recipientType: string;
+    isCoach: boolean;
+  };
+  type AudienceDivisionOption = {
+    ageGroup: string;
+    coachCount: number;
+    parentCount: number;
+  };
+  const [audienceDivisions, setAudienceDivisions] = useState<AudienceDivisionOption[]>([]);
+  const [seasonYear, setSeasonYear] = useState(new Date().getFullYear());
+  const [seasonLabel, setSeasonLabel] = useState("");
+  const [selectedDivisions, setSelectedDivisions] = useState<string[]>([]);
+  const [includeCoaches, setIncludeCoaches] = useState(true);
+  const [includeParents, setIncludeParents] = useState(true);
+  const [advancedOpen, setAdvancedOpen] = useState(false);
 
   const [title, setTitle] = useState("");
   const [subject, setSubject] = useState("");
@@ -95,7 +130,7 @@ export default function AdminCommunicationsManager({
   const [fromFormSort, setFromFormSort] = useState("0");
   const [fromSettingsBusy, setFromSettingsBusy] = useState(false);
 
-  const [ruleAllUsers, setRuleAllUsers] = useState(true);
+  const [ruleAllUsers, setRuleAllUsers] = useState(false);
   const [ruleOrgUsers, setRuleOrgUsers] = useState(false);
   const [ruleAllCoaches, setRuleAllCoaches] = useState(false);
   const [ruleOrgCoaches, setRuleOrgCoaches] = useState(false);
@@ -135,7 +170,14 @@ export default function AdminCommunicationsManager({
     };
   }, [campaigns]);
 
-  const canCreate = title.trim().length > 0 && body.trim().length > 0;
+  const divisionAudienceReady =
+    selectedDivisions.length > 0 && (includeCoaches || includeParents);
+  const advancedAudienceReady =
+    ruleAllUsers || ruleOrgUsers || ruleAllCoaches || ruleOrgCoaches || ruleCoachingInterest || Boolean(roleRule);
+  const canCreate =
+    title.trim().length > 0 &&
+    body.trim().length > 0 &&
+    (divisionAudienceReady || (selectedDivisions.length === 0 && advancedAudienceReady));
 
   async function loadCampaigns() {
     setBusy(true);
@@ -168,6 +210,26 @@ export default function AdminCommunicationsManager({
       setError(err instanceof Error ? err.message : "Failed to load campaigns");
     } finally {
       setBusy(false);
+    }
+  }
+
+  async function loadAudienceOptions() {
+    try {
+      const response = await fetch(`/api/admin/communications/audience-options?${orgQuery}`, {
+        cache: "no-store",
+      });
+      const json = (await response.json()) as {
+        seasonYear?: number;
+        seasonLabel?: string;
+        divisions?: AudienceDivisionOption[];
+        error?: string;
+      };
+      if (!response.ok) throw new Error(json.error || "Failed to load audience options");
+      if (typeof json.seasonYear === "number") setSeasonYear(json.seasonYear);
+      if (json.seasonLabel) setSeasonLabel(json.seasonLabel);
+      setAudienceDivisions(Array.isArray(json.divisions) ? json.divisions : []);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to load audience options");
     }
   }
 
@@ -271,12 +333,22 @@ export default function AdminCommunicationsManager({
   useEffect(() => {
     const timer = window.setTimeout(() => {
       void loadCampaigns();
+      void loadAudienceOptions();
     }, 0);
     return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [targetOrg]);
 
   const rulePayload = useMemo(() => {
+    const divisionRules = buildDivisionAudienceRules({
+      organizationId: targetOrg,
+      seasonYear,
+      ageGroups: selectedDivisions,
+      includeCoaches,
+      includeParents,
+    });
+    if (divisionRules.length > 0) return divisionRules;
+
     const rules: Array<{
       ruleType:
         | "ALL_USERS"
@@ -305,48 +377,160 @@ export default function AdminCommunicationsManager({
   }, [
     coachingInterestStatus,
     coachingInterestEnabled,
+    includeCoaches,
+    includeParents,
     roleRule,
     ruleAllCoaches,
     ruleAllUsers,
     ruleCoachingInterest,
     ruleOrgCoaches,
     ruleOrgUsers,
+    seasonYear,
+    selectedDivisions,
     targetOrg,
   ]);
 
-  async function createCampaign() {
+  function resetComposer() {
+    setEditingId(null);
+    setTitle("");
+    setSubject("");
+    setBody("");
+    setFromEmail(defaultFrom || fromOptions[0] || DEFAULT_COMMUNICATIONS_FROM);
+    setScope("ORG");
+    setQuietStart("");
+    setQuietEnd("");
+    setSelectedDivisions([]);
+    setIncludeCoaches(true);
+    setIncludeParents(true);
+    setRuleAllUsers(false);
+    setRuleOrgUsers(false);
+    setRuleAllCoaches(false);
+    setRuleOrgCoaches(false);
+    setRuleCoachingInterest(false);
+    setCoachingInterestStatus("");
+    setRoleRule("");
+    setAdvancedOpen(false);
+  }
+
+  function startEdit(campaign: Campaign) {
+    setEditingId(campaign.id);
+    setReviewingId(null);
+    setTitle(campaign.title);
+    setSubject(campaign.messageSubject || "");
+    setBody(campaign.messageBody);
+    setFromEmail(campaign.fromEmail || defaultFrom);
+    setScope(campaign.organizationId ? "ORG" : "GLOBAL");
+    setQuietStart(campaign.quietHoursStart != null ? String(campaign.quietHoursStart) : "");
+    setQuietEnd(campaign.quietHoursEnd != null ? String(campaign.quietHoursEnd) : "");
+    const division = summarizeDivisionAudience(campaign.audienceRules);
+    if (division) {
+      setSelectedDivisions(division.ageGroups);
+      setIncludeCoaches(division.includeCoaches);
+      setIncludeParents(division.includeParents);
+      if (division.seasonYear) setSeasonYear(division.seasonYear);
+      setAdvancedOpen(false);
+    } else {
+      setSelectedDivisions([]);
+      setIncludeCoaches(true);
+      setIncludeParents(true);
+      setAdvancedOpen(true);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  }
+
+  async function saveCampaign() {
     if (!canCreate) return;
     setBusy(true);
     setError("");
     setNotice("");
     try {
-      const response = await fetch(`/api/admin/communications/campaigns?${orgQuery}`, {
-        method: "POST",
+      const payload = {
+        title,
+        messageSubject: subject || null,
+        messageBody: body,
+        fromEmail,
+        channels: ["EMAIL"] as const,
+        organizationId: scope === "GLOBAL" && selectedDivisions.length === 0 ? null : targetOrg,
+        quietHoursStart: quietStart ? Number(quietStart) : null,
+        quietHoursEnd: quietEnd ? Number(quietEnd) : null,
+        rules: rulePayload,
+      };
+      const url = editingId
+        ? `/api/admin/communications/campaigns/${editingId}?${orgQuery}`
+        : `/api/admin/communications/campaigns?${orgQuery}`;
+      const response = await fetch(url, {
+        method: editingId ? "PATCH" : "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title,
-          messageSubject: subject || null,
-          messageBody: body,
-          fromEmail,
-          channels: ["EMAIL"],
-          organizationId: scope === "GLOBAL" ? null : targetOrg,
-          quietHoursStart: quietStart ? Number(quietStart) : null,
-          quietHoursEnd: quietEnd ? Number(quietEnd) : null,
-          rules: rulePayload,
-        }),
+        body: JSON.stringify(payload),
+      });
+      const json = (await response.json()) as { error?: string; data?: { id: string } };
+      if (!response.ok) throw new Error(json.error || "Failed to save campaign");
+      const savedId = json.data?.id || editingId;
+      setNotice(editingId ? "Draft updated. Review it before send." : "Campaign draft created. Review it before send.");
+      resetComposer();
+      await loadCampaigns();
+      if (savedId) await openReview(savedId);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to save campaign");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function deleteCampaign(campaign: Campaign, label: string) {
+    const ok = window.confirm(
+      `${label} "${campaign.title}"?\n\nThis removes the campaign. It will not be sent.`,
+    );
+    if (!ok) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/admin/communications/campaigns/${campaign.id}?${orgQuery}`, {
+        method: "DELETE",
       });
       const json = (await response.json()) as { error?: string };
-      if (!response.ok) throw new Error(json.error || "Failed to create campaign");
-      setNotice("Campaign draft created.");
-      setTitle("");
-      setSubject("");
-      setBody("");
-      setFromEmail(defaultFrom || fromOptions[0] || DEFAULT_COMMUNICATIONS_FROM);
-      setRuleCoachingInterest(false);
-      setCoachingInterestStatus("");
+      if (!response.ok) throw new Error(json.error || "Failed to delete campaign");
+      setNotice("Campaign deleted.");
+      if (reviewingId === campaign.id) setReviewingId(null);
+      if (editingId === campaign.id) resetComposer();
       await loadCampaigns();
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to create campaign");
+      setError(err instanceof Error ? err.message : "Failed to delete campaign");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function openReview(id: string) {
+    setReviewingId(id);
+    setBusy(true);
+    setError("");
+    try {
+      const [detailRes, previewRes] = await Promise.all([
+        fetch(`/api/admin/communications/campaigns/${id}?${orgQuery}`, { cache: "no-store" }),
+        fetch(`/api/admin/communications/campaigns/${id}/preview?${orgQuery}`, { method: "POST" }),
+      ]);
+      const detailJson = (await detailRes.json()) as { data?: Campaign; error?: string };
+      const previewJson = (await previewRes.json()) as {
+        total?: number;
+        sample?: PreviewSample[];
+        error?: string;
+      };
+      if (!detailRes.ok) throw new Error(detailJson.error || "Failed to load campaign");
+      if (!previewRes.ok) throw new Error(previewJson.error || "Failed to preview audience");
+      if (detailJson.data) {
+        setCampaigns((prev) => prev.map((row) => (row.id === id ? { ...row, ...detailJson.data } : row)));
+      }
+      setPreviewByCampaign((prev) => ({
+        ...prev,
+        [id]: {
+          total: previewJson.total ?? 0,
+          sample: Array.isArray(previewJson.sample) ? previewJson.sample : [],
+        },
+      }));
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to review campaign");
     } finally {
       setBusy(false);
     }
@@ -365,8 +549,15 @@ export default function AdminCommunicationsManager({
       const json = (await response.json()) as { error?: string; total?: number; result?: { sent: number; failed: number } };
       if (!response.ok) throw new Error(json.error || `Failed to ${endpoint}`);
       if (endpoint === "preview") {
-        setPreviewByCampaign((prev) => ({ ...prev, [id]: json.total ?? 0 }));
-        setNotice(`Audience preview: ${json.total ?? 0} recipients.`);
+        const previewJson = json as { total?: number; sample?: PreviewSample[] };
+        setPreviewByCampaign((prev) => ({
+          ...prev,
+          [id]: {
+            total: previewJson.total ?? 0,
+            sample: Array.isArray(previewJson.sample) ? previewJson.sample : [],
+          },
+        }));
+        setNotice(`Audience preview: ${previewJson.total ?? 0} recipients.`);
       } else if (endpoint === "send-now") {
         setNotice(`Send complete. Sent ${(json.result?.sent ?? 0)}; failed ${(json.result?.failed ?? 0)}.`);
       } else {
@@ -388,9 +579,10 @@ export default function AdminCommunicationsManager({
             Communication workflow for {targetOrgLabel}
           </p>
           <p className="mt-1 text-sm text-zinc-400">
-            Build the audience first, preview how many people will receive it,
-            submit for approval, then schedule or send. Global messages should be
-            used only when families across AP Baseball need the same update.
+            Pick divisions and Coaches and/or Parents, save a draft, then Review
+            the full message before approve, send, or delete. Global messages
+            should be used only when families across AP Baseball need the same
+            update.
           </p>
         </div>
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
@@ -581,10 +773,11 @@ export default function AdminCommunicationsManager({
       ) : null}
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-4">
-        <h2 className="text-lg font-semibold">Create campaign</h2>
+        <h2 className="text-lg font-semibold">{editingId ? "Update draft" : "Create campaign"}</h2>
         <p className="text-sm text-zinc-400">
-          Start as a draft. Non-master admins must get Board Member+ approval before
-          send. Master Admin can Preview then Send now without a second approver.
+          Creates a draft. Open Review to read the message and audience before
+          approve, send, or delete. Master Admin does not need a second approver,
+          but must review first.
         </p>
         <input
           value={title}
@@ -632,7 +825,7 @@ export default function AdminCommunicationsManager({
               value={scope}
               onChange={(e) => setScope(e.target.value as "ORG" | "GLOBAL")}
               className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-2 text-sm"
-              disabled={!isMaster}
+              disabled={!isMaster || selectedDivisions.length > 0}
             >
               <option value="ORG">Organization only ({targetOrgLabel})</option>
               <option value="GLOBAL">Global (all orgs)</option>
@@ -658,87 +851,189 @@ export default function AdminCommunicationsManager({
           </div>
         </div>
 
-        <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 space-y-2">
-          <p className="text-sm font-medium">Audience rules</p>
-          <p className="text-xs text-zinc-500">
-            Audience choices are combined together: recipients must match every
-            option you enable. Select fewer boxes for a broader audience and more
-            boxes for a narrower list.
-          </p>
-          <div className="grid md:grid-cols-2 gap-2 text-sm">
-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllUsers} onChange={(e) => setRuleAllUsers(e.target.checked)} />All users</label>
-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgUsers} onChange={(e) => setRuleOrgUsers(e.target.checked)} />Users in {targetOrgLabel}</label>
-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllCoaches} onChange={(e) => setRuleAllCoaches(e.target.checked)} />All coaches</label>
-            <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgCoaches} onChange={(e) => setRuleOrgCoaches(e.target.checked)} />Coaches in {targetOrgLabel}</label>
-            {coachingInterestEnabled ? (
-              <label className="inline-flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  checked={ruleCoachingInterest}
-                  onChange={(e) => {
-                    const checked = e.target.checked;
-                    setRuleCoachingInterest(checked);
-                    if (checked) {
-                      setRuleAllUsers(false);
-                      setRuleOrgUsers(false);
-                      setRuleAllCoaches(false);
-                      setRuleOrgCoaches(false);
-                      setRoleRule("");
-                    }
-                  }}
-                />
-                Coaching Interest
-              </label>
-            ) : null}
-          </div>
-          {coachingInterestEnabled && ruleCoachingInterest ? (
+        <div className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 space-y-3">
+          <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
-              <label className="text-xs text-zinc-500">Coaching interest status</label>
-              <select
-                value={coachingInterestStatus}
-                onChange={(e) => setCoachingInterestStatus(e.target.value as typeof coachingInterestStatus)}
-                className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-2 text-sm"
+              <p className="text-sm font-medium">Who gets this email</p>
+              <p className="text-xs text-zinc-500">
+                {seasonLabel || `Season ${seasonYear}`}. Pick one or more divisions, then
+                Coaches and/or Parents. Combined as a union — one email per address.
+              </p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="rounded border border-zinc-700 px-2 py-1 text-xs"
+                onClick={() => setSelectedDivisions(audienceDivisions.map((row) => row.ageGroup))}
               >
-                <option value="">New + Contacted</option>
-                <option value="NEW">New only</option>
-                <option value="CONTACTED">Contacted only</option>
-                <option value="NOT_INTERESTED">Not interested</option>
-                <option value="CONVERTED">Converted</option>
-                <option value="ARCHIVED">Archived</option>
-              </select>
+                Select all
+              </button>
+              <button
+                type="button"
+                className="rounded border border-zinc-700 px-2 py-1 text-xs"
+                onClick={() => setSelectedDivisions([])}
+              >
+                Clear
+              </button>
+            </div>
+          </div>
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2 text-sm max-h-64 overflow-y-auto pr-1">
+            {audienceDivisions.length === 0 ? (
+              <p className="text-xs text-zinc-500 col-span-full">Loading divisions…</p>
+            ) : (
+              audienceDivisions.map((row) => {
+                const checked = selectedDivisions.includes(row.ageGroup);
+                return (
+                  <label
+                    key={row.ageGroup}
+                    className={`inline-flex items-start gap-2 rounded-lg border px-2 py-1.5 ${
+                      checked ? "border-brand-purple bg-brand-purple/10" : "border-zinc-800"
+                    }`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="mt-0.5"
+                      checked={checked}
+                      onChange={(e) => {
+                        const on = e.target.checked;
+                        setSelectedDivisions((prev) =>
+                          on ? [...prev, row.ageGroup] : prev.filter((value) => value !== row.ageGroup),
+                        );
+                      }}
+                    />
+                    <span>
+                      <span className="font-medium">{row.ageGroup}</span>
+                      <span className="block text-[11px] text-zinc-500">
+                        {row.coachCount} coaches · {row.parentCount} parents
+                      </span>
+                    </span>
+                  </label>
+                );
+              })
+            )}
+          </div>
+          <div className="flex flex-wrap gap-4 text-sm">
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={includeCoaches}
+                onChange={(e) => setIncludeCoaches(e.target.checked)}
+              />
+              Coaches
+            </label>
+            <label className="inline-flex items-center gap-2">
+              <input
+                type="checkbox"
+                checked={includeParents}
+                onChange={(e) => setIncludeParents(e.target.checked)}
+              />
+              Parents
+            </label>
+          </div>
+          {!divisionAudienceReady ? (
+            <p className="text-xs text-amber-300/90">Pick at least one division and Coaches and/or Parents.</p>
+          ) : null}
+
+          <button
+            type="button"
+            className="text-xs text-zinc-400 underline"
+            onClick={() => setAdvancedOpen((open) => !open)}
+          >
+            {advancedOpen ? "Hide advanced audience" : "Advanced audience"}
+          </button>
+          {advancedOpen ? (
+            <div className="space-y-2 border-t border-zinc-800 pt-3">
+              <p className="text-xs text-zinc-500">
+                Used only when no divisions are selected. Recipients must match every option.
+              </p>
+              <div className="grid md:grid-cols-2 gap-2 text-sm">
+                <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllUsers} onChange={(e) => setRuleAllUsers(e.target.checked)} />All users</label>
+                <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgUsers} onChange={(e) => setRuleOrgUsers(e.target.checked)} />Users in {targetOrgLabel}</label>
+                <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleAllCoaches} onChange={(e) => setRuleAllCoaches(e.target.checked)} />All coaches</label>
+                <label className="inline-flex items-center gap-2"><input type="checkbox" checked={ruleOrgCoaches} onChange={(e) => setRuleOrgCoaches(e.target.checked)} />Coaches in {targetOrgLabel}</label>
+                {coachingInterestEnabled ? (
+                  <label className="inline-flex items-center gap-2">
+                    <input
+                      type="checkbox"
+                      checked={ruleCoachingInterest}
+                      onChange={(e) => {
+                        const checked = e.target.checked;
+                        setRuleCoachingInterest(checked);
+                        if (checked) {
+                          setRuleAllUsers(false);
+                          setRuleOrgUsers(false);
+                          setRuleAllCoaches(false);
+                          setRuleOrgCoaches(false);
+                          setRoleRule("");
+                        }
+                      }}
+                    />
+                    Coaching Interest
+                  </label>
+                ) : null}
+              </div>
+              {coachingInterestEnabled && ruleCoachingInterest ? (
+                <div>
+                  <label className="text-xs text-zinc-500">Coaching interest status</label>
+                  <select
+                    value={coachingInterestStatus}
+                    onChange={(e) => setCoachingInterestStatus(e.target.value as typeof coachingInterestStatus)}
+                    className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-2 text-sm"
+                  >
+                    <option value="">New + Contacted</option>
+                    <option value="NEW">New only</option>
+                    <option value="CONTACTED">Contacted only</option>
+                    <option value="NOT_INTERESTED">Not interested</option>
+                    <option value="CONVERTED">Converted</option>
+                    <option value="ARCHIVED">Archived</option>
+                  </select>
+                </div>
+              ) : null}
+              <div>
+                <label className="text-xs text-zinc-500">Include admin role (optional)</label>
+                <select
+                  value={roleRule}
+                  onChange={(e) => setRoleRule(e.target.value as "" | "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR")}
+                  className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-2 text-sm"
+                >
+                  <option value="">No role filter</option>
+                  <option value="PARK_DIRECTOR">Park Director+</option>
+                  <option value="BOARD_MEMBER">Board Member+</option>
+                  <option value="ADMIN">Admin+</option>
+                  <option value="MASTER_ADMIN">Master Admin only</option>
+                </select>
+              </div>
             </div>
           ) : null}
-          <div>
-            <label className="text-xs text-zinc-500">Include admin role (optional)</label>
-            <select
-              value={roleRule}
-              onChange={(e) => setRoleRule(e.target.value as "" | "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR")}
-              className="mt-1 w-full rounded-lg bg-zinc-950 border border-zinc-700 px-2 py-2 text-sm"
-            >
-              <option value="">No role filter</option>
-              <option value="PARK_DIRECTOR">Park Director+</option>
-              <option value="BOARD_MEMBER">Board Member+</option>
-              <option value="ADMIN">Admin+</option>
-              <option value="MASTER_ADMIN">Master Admin only</option>
-            </select>
-          </div>
         </div>
 
-        <button
-          type="button"
-          disabled={busy || !canCreate}
-          onClick={() => void createCampaign()}
-          className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
-        >
-          {busy ? "Working..." : "Create draft"}
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button
+            type="button"
+            disabled={busy || !canCreate}
+            onClick={() => void saveCampaign()}
+            className="rounded-lg bg-brand-purple hover:bg-brand-purple-dark px-4 py-2 text-sm font-semibold disabled:opacity-60"
+          >
+            {busy ? "Working..." : editingId ? "Update draft" : "Create draft"}
+          </button>
+          {editingId ? (
+            <button
+              type="button"
+              disabled={busy}
+              onClick={() => resetComposer()}
+              className="rounded-lg border border-zinc-600 px-4 py-2 text-sm"
+            >
+              Cancel edit
+            </button>
+          ) : null}
+        </div>
       </div>
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
         <h2 className="text-lg font-semibold">Campaigns</h2>
         <p className="text-sm text-zinc-400">
-          Use Preview to confirm the recipient count before send. Master Admin can
-          Send now from Draft; other admins need approval first.
+          Review the full message before approve or send. Reject &amp; delete
+          removes a pending campaign so it cannot go out.
         </p>
         {campaigns.length === 0 ? (
           <p className="text-sm text-zinc-500">No campaigns yet.</p>
@@ -750,7 +1045,15 @@ export default function AdminCommunicationsManager({
                 campaign.status === "SCHEDULED" ||
                 (isMaster &&
                   (campaign.status === "DRAFT" || campaign.status === "PENDING_APPROVAL"));
-              const previewCount = previewByCampaign[campaign.id];
+              const preview = previewByCampaign[campaign.id];
+              const isReviewing = reviewingId === campaign.id;
+              const canEdit = campaign.status === "DRAFT" || campaign.status === "REJECTED";
+              const canDeleteRow =
+                campaign.status === "DRAFT" ||
+                campaign.status === "REJECTED" ||
+                campaign.status === "PENDING_APPROVAL" ||
+                campaign.status === "CANCELED";
+              const audienceLabel = formatAudienceSummary(campaign.audienceRules);
               return (
               <div key={campaign.id} className="rounded-lg border border-zinc-800 bg-zinc-950/40 p-3 space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
@@ -761,56 +1064,156 @@ export default function AdminCommunicationsManager({
                 </div>
                 <p className="text-xs text-zinc-400">
                   Scope: {formatOrganizationIdDisplay(campaign.organizationId)} · From:{" "}
-                  {campaign.fromEmail || defaultFrom} · Audience: all rules (AND) · Channels:{" "}
-                  {campaign.channels.join(", ")}
-                </p>
-                <p className="text-xs text-zinc-500">
-                  Snapshots: {campaign._count?.recipientSnapshots ?? 0} · Deliveries: {campaign._count?.deliveries ?? 0}
-                  {previewCount != null ? ` · Preview: ${previewCount}` : ""}
+                  {campaign.fromEmail || defaultFrom} · {audienceLabel}
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  <button className="rounded border border-zinc-700 px-2 py-1 text-xs" onClick={() => void action(campaign.id, "preview")}>Preview</button>
-                  <button className="rounded border border-zinc-700 px-2 py-1 text-xs" onClick={() => void action(campaign.id, "submit-approval")} disabled={busy || campaign.status !== "DRAFT" && campaign.status !== "REJECTED"}>Submit approval</button>
-                  <button className="rounded border border-zinc-700 px-2 py-1 text-xs" onClick={() => void action(campaign.id, "approve")} disabled={busy || campaign.status !== "PENDING_APPROVAL"}>Approve</button>
-                  <button className="rounded border border-zinc-700 px-2 py-1 text-xs" onClick={() => void action(campaign.id, "reject", "POST", { note: "Rejected from manager UI" })} disabled={busy || campaign.status !== "PENDING_APPROVAL"}>Reject</button>
-                  <button
-                    className="rounded border border-emerald-700 text-emerald-200 px-2 py-1 text-xs disabled:opacity-50"
-                    onClick={() => {
-                      const count =
-                        previewCount ??
-                        campaign._count?.recipientSnapshots ??
-                        0;
-                      const subject = campaign.messageSubject || campaign.title;
-                      const ok = window.confirm(
-                        `Send "${subject}" now to ~${count || "all matching"} recipient(s)?\n\nThis cannot be undone.`,
-                      );
-                      if (ok) void action(campaign.id, "send-now");
-                    }}
-                    disabled={busy || !canSendNow}
-                  >
-                    Send now{isMaster && (campaign.status === "DRAFT" || campaign.status === "PENDING_APPROVAL") ? " (Master)" : ""}
-                  </button>
-                </div>
-                <div className="flex flex-wrap gap-2 items-center">
-                  <input
-                    type="datetime-local"
-                    value={scheduleAtById[campaign.id] || ""}
-                    onChange={(e) => setScheduleAtById((prev) => ({ ...prev, [campaign.id]: e.target.value }))}
-                    className="rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-xs"
-                  />
                   <button
                     className="rounded border border-zinc-700 px-2 py-1 text-xs"
-                    disabled={busy || !scheduleAtById[campaign.id]}
-                    onClick={() =>
-                      void action(campaign.id, "schedule", "POST", {
-                        sendAt: new Date(scheduleAtById[campaign.id]).toISOString(),
-                        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-                      })
-                    }
+                    onClick={() => {
+                      if (isReviewing) setReviewingId(null);
+                      else void openReview(campaign.id);
+                    }}
                   >
-                    Schedule
+                    {isReviewing ? "Close review" : "Review"}
                   </button>
+                  {canEdit ? (
+                    <button
+                      className="rounded border border-zinc-700 px-2 py-1 text-xs"
+                      onClick={() => startEdit(campaign)}
+                      disabled={busy}
+                    >
+                      Edit
+                    </button>
+                  ) : null}
+                  {campaign.status === "PENDING_APPROVAL" ? (
+                    <button
+                      className="rounded border border-red-800 px-2 py-1 text-xs text-red-300"
+                      onClick={() => void deleteCampaign(campaign, "Reject and delete")}
+                      disabled={busy}
+                    >
+                      Reject &amp; delete
+                    </button>
+                  ) : null}
+                  {canDeleteRow && campaign.status !== "PENDING_APPROVAL" ? (
+                    <button
+                      className="rounded border border-red-800 px-2 py-1 text-xs text-red-300"
+                      onClick={() => void deleteCampaign(campaign, "Delete")}
+                      disabled={busy}
+                    >
+                      Delete
+                    </button>
+                  ) : null}
+                  {campaign.status === "SCHEDULED" ? (
+                    <button
+                      className="rounded border border-zinc-700 px-2 py-1 text-xs"
+                      onClick={() => void action(campaign.id, "cancel")}
+                      disabled={busy}
+                    >
+                      Cancel schedule
+                    </button>
+                  ) : null}
                 </div>
+                {isReviewing ? (
+                  <div className="rounded-lg border border-zinc-700 bg-zinc-900/80 p-3 space-y-3">
+                    <div className="grid gap-2 text-sm">
+                      <p>
+                        <span className="text-zinc-500">Subject: </span>
+                        {campaign.messageSubject || campaign.title}
+                      </p>
+                      <p className="text-xs text-zinc-500">
+                        From {campaign.fromEmail || defaultFrom} · {audienceLabel}
+                        {preview ? ` · ${preview.total} recipients` : busy ? " · Loading audience…" : ""}
+                      </p>
+                      <div className="whitespace-pre-wrap rounded-lg border border-zinc-800 bg-zinc-950 p-3 text-sm text-zinc-200 max-h-80 overflow-y-auto">
+                        {campaign.messageBody}
+                      </div>
+                    </div>
+                    {preview && preview.sample.length > 0 ? (
+                      <div>
+                        <p className="text-xs uppercase tracking-wide text-zinc-500 mb-1">
+                          Sample recipients
+                        </p>
+                        <ul className="text-xs text-zinc-400 space-y-0.5 max-h-40 overflow-y-auto">
+                          {preview.sample.slice(0, 25).map((row, index) => (
+                            <li key={`${row.email || "none"}-${index}`}>
+                              {row.email || "(no email)"}
+                              {row.contactName ? ` · ${row.contactName}` : ""}
+                              {row.isCoach ? " · coach" : ""}
+                            </li>
+                          ))}
+                          {preview.total > 25 ? (
+                            <li className="text-zinc-500">…and {preview.total - 25} more</li>
+                          ) : null}
+                        </ul>
+                      </div>
+                    ) : null}
+                    <div className="flex flex-wrap gap-2">
+                      {campaign.status === "DRAFT" || campaign.status === "REJECTED" ? (
+                        <button
+                          className="rounded border border-zinc-700 px-2 py-1 text-xs"
+                          onClick={() => void action(campaign.id, "submit-approval")}
+                          disabled={busy}
+                        >
+                          Submit approval
+                        </button>
+                      ) : null}
+                      {campaign.status === "PENDING_APPROVAL" ? (
+                        <button
+                          className="rounded border border-zinc-700 px-2 py-1 text-xs"
+                          onClick={() => void action(campaign.id, "approve")}
+                          disabled={busy}
+                        >
+                          Approve
+                        </button>
+                      ) : null}
+                      {canSendNow ? (
+                        <button
+                          className="rounded border border-emerald-700 text-emerald-200 px-2 py-1 text-xs disabled:opacity-50"
+                          onClick={() => {
+                            const count = preview?.total ?? 0;
+                            const subjectLine = campaign.messageSubject || campaign.title;
+                            const snippet = campaign.messageBody.trim().slice(0, 200);
+                            const ok = window.confirm(
+                              `Send "${subjectLine}" now to ${count} recipient(s)?\n\n${audienceLabel}\n\n${snippet}${campaign.messageBody.trim().length > 200 ? "…" : ""}\n\nThis cannot be undone.`,
+                            );
+                            if (ok) void action(campaign.id, "send-now");
+                          }}
+                          disabled={busy || preview == null}
+                        >
+                          Send now{isMaster && (campaign.status === "DRAFT" || campaign.status === "PENDING_APPROVAL") ? " (Master)" : ""}
+                        </button>
+                      ) : null}
+                    </div>
+                    {canSendNow ? (
+                      <div className="flex flex-wrap gap-2 items-center">
+                        <input
+                          type="datetime-local"
+                          value={scheduleAtById[campaign.id] || ""}
+                          onChange={(e) => setScheduleAtById((prev) => ({ ...prev, [campaign.id]: e.target.value }))}
+                          className="rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-xs"
+                        />
+                        <button
+                          className="rounded border border-zinc-700 px-2 py-1 text-xs"
+                          disabled={busy || !scheduleAtById[campaign.id] || preview == null}
+                          onClick={() => {
+                            const when = scheduleAtById[campaign.id];
+                            const subjectLine = campaign.messageSubject || campaign.title;
+                            const ok = window.confirm(
+                              `Schedule "${subjectLine}" for ${when}?\n\n${audienceLabel}\n\n${preview?.total ?? 0} recipient(s).`,
+                            );
+                            if (!ok) return;
+                            void action(campaign.id, "schedule", "POST", {
+                              sendAt: new Date(when).toISOString(),
+                              timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+                            });
+                          }}
+                        >
+                          Schedule
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               );
             })}

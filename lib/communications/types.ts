@@ -16,6 +16,9 @@ export type AudienceRuleInput = {
   explicitRegisteredUserIds?: string[] | null;
   /** When ruleType is EXPLICIT_CONTACTS — raw email/name pairs (max enforced at API). */
   explicitContacts?: RawContactInput[] | null;
+  /** When ruleType is DIVISION_COACHES or DIVISION_PARENTS. */
+  ageGroups?: string[] | null;
+  seasonYear?: number | null;
 };
 
 /** Hard cap for Users-page multi-select / EXPLICIT_USERS campaigns. */
