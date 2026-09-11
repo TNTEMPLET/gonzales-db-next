@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 
 import { ASSIGNR_GAMES_IMPORT_HEADERS } from "@/lib/assignr/gamesImportTypes";
+import { STANDARD_DIVISIONS } from "@/lib/sportsConnect/fallballDivisions";
 import { formatConflictSummary } from "./conflictCopy";
 import { assignrUmpirePattern } from "./umpirePattern";
 import { dateKey, timeToMinutes } from "./validation";
@@ -140,6 +141,32 @@ function sportsConnectSheet(games: SchedulerExportGame[]): unknown[][] {
   ];
 }
 
+function excelSheetName(raw: string, used: Set<string>): string {
+  const cleaned = raw.replace(/[\\/?*[\]:]/g, " ").replace(/\s+/g, " ").trim() || "Division";
+  let name = cleaned.slice(0, 31);
+  let n = 2;
+  while (used.has(name)) {
+    const suffix = ` ${n}`;
+    name = `${cleaned.slice(0, Math.max(1, 31 - suffix.length))}${suffix}`;
+    n += 1;
+  }
+  used.add(name);
+  return name;
+}
+
+function sportsConnectDivisions(games: SchedulerExportGame[]): string[] {
+  const present = [...new Set(placedGames(games).map((game) => game.division).filter(Boolean))];
+  const rank = new Map(STANDARD_DIVISIONS.map((division, index) => [division, index]));
+  return present.sort((a, b) => {
+    const aRank = rank.get(a as (typeof STANDARD_DIVISIONS)[number]);
+    const bRank = rank.get(b as (typeof STANDARD_DIVISIONS)[number]);
+    if (aRank != null && bRank != null) return aRank - bRank;
+    if (aRank != null) return -1;
+    if (bRank != null) return 1;
+    return a.localeCompare(b);
+  });
+}
+
 function gameChangerSheet(games: SchedulerExportGame[]): unknown[][] {
   return [
     ["division", "date", "time", "home", "away", "location", "duration"],
@@ -164,8 +191,12 @@ export function exportVendorWorkbook(
 ): Buffer {
   const workbook = XLSX.utils.book_new();
   const leagueName = options?.leagueName?.trim() || "AP Fall Ball";
+  const usedNames = new Set<string>(["Assignr", "GameChanger"]);
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(assignrSheet(games, leagueName)), "Assignr");
-  XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(sportsConnectSheet(games)), "SportsConnect");
+  for (const division of sportsConnectDivisions(games)) {
+    const rows = sportsConnectSheet(placedGames(games).filter((game) => game.division === division));
+    XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(rows), excelSheetName(division, usedNames));
+  }
   XLSX.utils.book_append_sheet(workbook, XLSX.utils.aoa_to_sheet(gameChangerSheet(games)), "GameChanger");
   return XLSX.write(workbook, { type: "buffer", bookType: "xlsx" }) as Buffer;
 }

@@ -2411,12 +2411,12 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="max-w-2xl space-y-2 text-sm text-zinc-400">
             <p>
-              One Excel file, three tabs — Assignr, SportsConnect, and GameChanger. Only placed games are included.
-              Team and field names must match each site exactly.
+              One Excel file: Assignr, one SportsConnect tab per division, and GameChanger. Only placed games are
+              included. Team and field names must match each site exactly.
             </p>
             <ul className="list-disc space-y-1 pl-5">
               <li>Assignr: Games → Import a spreadsheet</li>
-              <li>SportsConnect: Schedules → Manage Schedules → Importing → Download Game Sample columns</li>
+              <li>SportsConnect: upload one division tab at a time (Schedules → Manage Schedules → Importing)</li>
               <li>GameChanger: Organization → Schedule → Add games → Import Teams&apos; Schedule from Spreadsheet. Filter the division column, then delete that column before upload if the importer wants only date/time/home/away/location/duration.</li>
             </ul>
           </div>

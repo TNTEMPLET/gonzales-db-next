@@ -66,4 +66,47 @@ describe("exportVendorWorkbook Assignr Pattern", () => {
     assert.equal(rows[1]?.[patternIndex], "2 Umpires");
     assert.equal(rows[2]?.[patternIndex], "0 Umpires");
   });
+
+  it("splits SportsConnect into one sheet per division", () => {
+    const games: SchedulerExportGame[] = [
+      {
+        gameNumber: 1,
+        gameDate: new Date(Date.UTC(2026, 9, 6)),
+        startTime: "18:00",
+        endTime: "19:15",
+        division: "8U CP",
+        ageGroup: "8U CP",
+        homeTeamName: "Astros",
+        awayTeamName: "Yankees",
+        park: { name: "J Leo Stevens Park", shortName: "JLS" },
+        field: { name: "Field 3", shortName: "3" },
+        status: "DRAFT",
+        conflictFlags: [],
+        schedulerNotes: null,
+      },
+      {
+        gameNumber: 2,
+        gameDate: new Date(Date.UTC(2026, 9, 6)),
+        startTime: "17:45",
+        endTime: "19:15",
+        division: "4U TB",
+        ageGroup: "4U TB",
+        homeTeamName: "Tigers",
+        awayTeamName: "Cubs",
+        park: { name: "J Leo Stevens Park", shortName: "JLS" },
+        field: { name: "Field 1", shortName: "1" },
+        status: "DRAFT",
+        conflictFlags: [],
+        schedulerNotes: null,
+      },
+    ];
+    const workbook = XLSX.read(exportVendorWorkbook(games), { type: "buffer" });
+    assert.deepEqual(workbook.SheetNames, ["Assignr", "4U TB", "8U CP", "GameChanger"]);
+    const fourU = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets["4U TB"], { header: 1, raw: false }) as string[][];
+    const eightU = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets["8U CP"], { header: 1, raw: false }) as string[][];
+    assert.equal(fourU.length, 2);
+    assert.equal(eightU.length, 2);
+    assert.equal(fourU[1]?.[3], "Tigers");
+    assert.equal(eightU[1]?.[3], "Astros");
+  });
 });
