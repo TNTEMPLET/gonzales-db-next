@@ -16,6 +16,8 @@ import {
 } from "./parseExportBuffer";
 import { previewSportsConnectFile } from "./preview";
 import { createImportRun, updateImportRun } from "./importRuns";
+import { enrollmentKeysFromPlayerRegRows } from "./enrollmentRowKey";
+import { pruneStaleEnrollments } from "./pruneStaleEnrollments";
 import type { SportsConnectReportKind, SportsConnectRunStatus } from "./types";
 
 const LEASE_DURATION_MS = 5 * 60 * 1000; // 5 minute lock timeout
@@ -386,7 +388,9 @@ export async function syncOrgDriveFolder(input: {
         continue;
       }
 
-      // Record successful dry-run / preview detection with real detected reportKind
+      // Record successful dry-run / preview detection with real detected reportKind.
+      // Enrollment prune happens after the folder scan against the latest full
+      // PLAYER_REG file — this parse only keeps a 50-row sample.
       await updateImportRun({
         id: lease.runId,
         organizationId: input.organizationId,
@@ -420,5 +424,62 @@ export async function syncOrgDriveFolder(input: {
     }
   }
 
+  await pruneEnrollmentsFromLatestDrivePlayerReg(input.organizationId, input.seasonYear);
   return result;
+}
+
+async function pruneEnrollmentsFromLatestDrivePlayerReg(
+  organizationId: string,
+  seasonYear: number,
+) {
+  const runs = await prisma.sportsConnectImportRun.findMany({
+    where: {
+      organizationId,
+      seasonYear,
+      reportKind: "PLAYER_REG",
+      status: "DONE",
+      driveFileId: { not: null },
+    },
+    orderBy: { completedAt: "desc" },
+    take: 20,
+    select: { id: true, driveFileId: true, sourceFileName: true, summary: true },
+  });
+  const run =
+    runs.find((row) => /enrollment/i.test(row.sourceFileName || "")) || runs[0];
+  if (!run?.driveFileId) return;
+  const buffer = await downloadDriveFileBuffer(run.driveFileId);
+  if (!buffer) {
+    console.warn(
+      `[driveSync] Could not download latest player-reg file to prune enrollments for ${organizationId}`,
+    );
+    return;
+  }
+  const parsed = parseSportsConnectExportBuffer({
+    buffer,
+    fileName: run.sourceFileName || "Enrollment_Details.xlsx",
+    sampleRows: SPORTS_CONNECT_INGEST_MAX_ROWS,
+  });
+  const prune = await pruneStaleEnrollments({
+    organizationId,
+    seasonYear,
+    keepKeys: enrollmentKeysFromPlayerRegRows(parsed.rows),
+  });
+  const existingSummary =
+    run.summary && typeof run.summary === "object" && !Array.isArray(run.summary)
+      ? (run.summary as Record<string, unknown>)
+      : {};
+  await updateImportRun({
+    id: run.id,
+    organizationId,
+    summary: { ...existingSummary, prune },
+  });
+  if (prune.skipped) {
+    console.warn(`[driveSync] ${organizationId} prune skipped: ${prune.skipped}`);
+    return;
+  }
+  if (prune.deletedEnrollments || prune.deletedTeamPlayers) {
+    console.info(
+      `[driveSync] ${organizationId} dropped ${prune.deletedEnrollments} enrollment(s) and ${prune.deletedTeamPlayers} roster row(s) missing from the latest file`,
+    );
+  }
 }

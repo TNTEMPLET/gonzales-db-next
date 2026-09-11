@@ -7,8 +7,14 @@ import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { shouldSkipDivisionImport } from "@/lib/admin/teamsImportHelpers";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
+import { isContentOrgId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { completeImportRunSafe, recordImportRunSafe } from "@/lib/sportsConnect/importRuns";
+import { deriveSportsConnectRowKey } from "@/lib/sportsConnect/enrollmentRowKey";
+import {
+  pruneStaleEnrollments,
+  type PruneStaleEnrollmentsResult,
+} from "@/lib/sportsConnect/pruneStaleEnrollments";
 import { matchStandardDivision } from "@/lib/sportsConnect/fallballDivisions";
 import { resolveTeamPlayerIdentityMatch } from "@/lib/sportsConnect/playerIdentity";
 import { finalizeDivisionIfReady } from "@/lib/admin/jerseyNumbers";
@@ -27,6 +33,9 @@ export type UndoSnapshot = {
   createdDraftPoolEntryIds: string[];
   /** DraftSessions auto-created (not found-existing) alongside those pool entries — deleted on undo only if still empty. */
   createdDraftSessionIds: string[];
+  /** SportsConnect enrollment keys seen in this batch (full-file PLAYER_REG prune). */
+  enrollmentKeys?: string[];
+  enrollmentImportScoped?: boolean;
 };
 type ImportSkipDetail = {
   rowNumber: number | null;
@@ -183,23 +192,6 @@ function parseMoneyToCents(value: string): number | null {
   return Math.round(parsed * 100);
 }
 
-/**
- * Within-season idempotent re-import key for Enrollment rows. Order No groups
- * siblings who checked out together, so it's combined with the normalized
- * player name to disambiguate them; falls back to name+DOB when no order
- * number is present. NOT a cross-season participant identity.
- */
-function deriveSportsConnectRowKey(
-  orderNo: string,
-  fullName: string,
-  birthDate: Date | null,
-): string {
-  const namePart = normalizeLooseName(fullName);
-  if (orderNo.trim()) return `${orderNo.trim()}::${namePart}`;
-  const dobPart = birthDate ? birthDate.toISOString().slice(0, 10) : "nodob";
-  return `${namePart}::${dobPart}`;
-}
-
 function parseAllStarAgeBand(raw: string | null | undefined) {
   const value = String(raw || "").trim().toUpperCase();
   if (!value) return null;
@@ -251,7 +243,40 @@ export function emptyUndoPayload(): UndoSnapshot {
     updatedPlayers: [],
     createdDraftPoolEntryIds: [],
     createdDraftSessionIds: [],
+    enrollmentKeys: [],
+    enrollmentImportScoped: false,
   };
+}
+
+function hydrateUndoEnrollmentTracking(
+  undoPayload: UndoSnapshot,
+  scope?: { confirmedAgeGroup?: string | null; confirmedTeamName?: string | null },
+) {
+  if (!Array.isArray(undoPayload.enrollmentKeys)) undoPayload.enrollmentKeys = [];
+  undoPayload.enrollmentImportScoped = undoPayload.enrollmentImportScoped === true;
+  if (scope?.confirmedAgeGroup?.trim() || scope?.confirmedTeamName?.trim()) {
+    undoPayload.enrollmentImportScoped = true;
+  }
+}
+
+async function pruneStaleEnrollmentsAfterImport(input: {
+  targetOrg: string;
+  undoPayload: UndoSnapshot;
+  seasonYear: number | null;
+}): Promise<PruneStaleEnrollmentsResult | null> {
+  hydrateUndoEnrollmentTracking(input.undoPayload);
+  if (input.undoPayload.enrollmentImportScoped) return null;
+  const keys = input.undoPayload.enrollmentKeys ?? [];
+  if (keys.length === 0) return null;
+  const seasonYear =
+    input.seasonYear ||
+    (isContentOrgId(input.targetOrg) ? getSeasonConfigForOrg(input.targetOrg).year : null);
+  if (!seasonYear) return null;
+  return pruneStaleEnrollments({
+    organizationId: input.targetOrg,
+    seasonYear,
+    keepKeys: new Set(keys),
+  });
 }
 
 function toInputJson(value: unknown): Prisma.InputJsonValue {
@@ -356,6 +381,7 @@ export async function applyImportRows(params: {
     throw new Error("Import batch is not running");
   }
   const undoPayload = (batch.undoPayload ?? emptyUndoPayload()) as UndoSnapshot;
+  hydrateUndoEnrollmentTracking(undoPayload, { confirmedAgeGroup, confirmedTeamName });
   const updatedSeen = new Set(undoPayload.updatedPlayers.map((entry) => entry.id));
   const pushSkipDetail = (
     row: Row,
@@ -785,6 +811,11 @@ export async function applyImportRows(params: {
     // catch-and-log so a mapping bug here never blocks the roster write.
     try {
       const sportsConnectRowKey = deriveSportsConnectRowKey(registrationOrderNo, fullName, birthDate);
+      const enrollmentKeys = undoPayload.enrollmentKeys ?? [];
+      undoPayload.enrollmentKeys = enrollmentKeys;
+      if (!enrollmentKeys.includes(sportsConnectRowKey)) {
+        enrollmentKeys.push(sportsConnectRowKey);
+      }
       const enrollmentFields = {
         programName: programName || null,
         divisionNameRaw: rawAgeGroup || null,
@@ -1175,9 +1206,15 @@ export async function POST(request: NextRequest) {
         where: { id: batchId },
         data: { status: "COMPLETED", completedAt: new Date() },
       });
+      const payload = (completed.undoPayload ?? emptyUndoPayload()) as UndoSnapshot;
       const run = await prisma.sportsConnectImportRun.findFirst({
         where: { teamPlayerBatchId: batchId },
-        select: { id: true, organizationId: true },
+        select: { id: true, organizationId: true, seasonYear: true },
+      });
+      const prune = await pruneStaleEnrollmentsAfterImport({
+        targetOrg,
+        undoPayload: payload,
+        seasonYear: run?.seasonYear ?? null,
       });
       if (run) {
         const summary = await summarizeEnrollmentsForRun(run.id);
@@ -1185,10 +1222,10 @@ export async function POST(request: NextRequest) {
           id: run.id,
           organizationId: run.organizationId,
           status: "DONE",
-          summary,
+          summary: { ...summary, ...(prune ? { prune } : {}) },
         });
       }
-      return NextResponse.json({ success: true, batch: completed });
+      return NextResponse.json({ success: true, batch: completed, prune });
     }
     if (body.mode === "cancel") {
       const batchId = typeof body.batchId === "string" ? body.batchId : "";
@@ -1289,9 +1326,14 @@ export async function POST(request: NextRequest) {
         : null,
     importRunId,
   });
-  await prisma.teamPlayerImportBatch.update({
+  const completed = await prisma.teamPlayerImportBatch.update({
     where: { id: createdBatch.id },
     data: { status: "COMPLETED", completedAt: new Date() },
+  });
+  const prune = await pruneStaleEnrollmentsAfterImport({
+    targetOrg,
+    undoPayload: (completed.undoPayload ?? emptyUndoPayload()) as UndoSnapshot,
+    seasonYear: explicitSeasonYear,
   });
   if (importRunId) {
     const summary = await summarizeEnrollmentsForRun(importRunId);
@@ -1299,7 +1341,7 @@ export async function POST(request: NextRequest) {
       id: importRunId,
       organizationId: targetOrg,
       status: "DONE",
-      summary,
+      summary: { ...summary, ...(prune ? { prune } : {}) },
     });
   }
   return NextResponse.json({
@@ -1313,5 +1355,6 @@ export async function POST(request: NextRequest) {
     skippedMissingExisting: batch.skippedMissingExisting,
     preservedTeamAssignments: batch.preservedTeamAssignments,
     batchId: createdBatch.id,
+    prune,
   });
 }
