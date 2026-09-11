@@ -30,6 +30,24 @@ export function canSendNowWithoutApproval(
   return false;
 }
 
+const DELETABLE_STATUSES: CommunicationCampaignStatus[] = [
+  "DRAFT",
+  "REJECTED",
+  "PENDING_APPROVAL",
+  "CANCELED",
+];
+
+export function canDeleteCampaign(status: CommunicationCampaignStatus) {
+  return DELETABLE_STATUSES.includes(status);
+}
+
+export function canScheduleCampaign(
+  actorRole: AdminRole | null,
+  status: CommunicationCampaignStatus,
+) {
+  return canSendNowWithoutApproval(actorRole, status);
+}
+
 export function canApproveCampaign(params: {
   approverRole: AdminRole | null;
   approverAdminId: string;

@@ -2,6 +2,12 @@ import type { AdminRole, CommunicationAudienceLogicalMode, CommunicationAudience
 
 import prisma from "@/lib/prisma";
 
+import {
+  dedupeRecipientsByEmail,
+  mapDivisionCoachRows,
+  mapDivisionParentRows,
+  normalizeAgeGroups,
+} from "./divisionAudience";
 import { normalizeRawContacts } from "./rawContacts";
 import type {
   AudienceRecipient,
@@ -253,6 +259,56 @@ function fetchExplicitContactCandidates(rule: AudienceRuleInput): AudienceRecipi
   }));
 }
 
+async function fetchDivisionCoachCandidates(rule: AudienceRuleInput): Promise<AudienceRecipient[]> {
+  const ageGroups = normalizeAgeGroups(rule.ageGroups);
+  const seasonYear = rule.seasonYear;
+  const organizationId = rule.organizationId ?? undefined;
+  if (!organizationId || !seasonYear || ageGroups.length === 0) return [];
+
+  const assignments = await prisma.teamCoachAssignment.findMany({
+    where: {
+      team: {
+        organizationId,
+        seasonYear,
+        ageGroup: { in: ageGroups },
+      },
+      registeredUser: { isBlocked: false },
+    },
+    include: {
+      team: { select: { ageGroup: true, organizationId: true } },
+      registeredUser: { select: { id: true, email: true, contactPhone: true } },
+    },
+  });
+
+  return mapDivisionCoachRows(assignments, rule);
+}
+
+async function fetchDivisionParentCandidates(rule: AudienceRuleInput): Promise<AudienceRecipient[]> {
+  const ageGroups = normalizeAgeGroups(rule.ageGroups);
+  const seasonYear = rule.seasonYear;
+  const organizationId = rule.organizationId ?? undefined;
+  if (!organizationId || !seasonYear || ageGroups.length === 0) return [];
+
+  const enrollments = await prisma.enrollment.findMany({
+    where: {
+      organizationId,
+      seasonYear,
+      ageGroup: { in: ageGroups },
+      guardianEmail: { not: null },
+    },
+    select: {
+      id: true,
+      organizationId: true,
+      ageGroup: true,
+      guardianEmail: true,
+      guardianFirstName: true,
+      guardianLastName: true,
+    },
+  });
+
+  return mapDivisionParentRows(enrollments, rule);
+}
+
 async function resolveRuleRecipients(rule: AudienceRuleInput): Promise<AudienceRecipient[]> {
   switch (rule.ruleType as CommunicationAudienceRuleType) {
     case "ALL_USERS":
@@ -268,6 +324,10 @@ async function resolveRuleRecipients(rule: AudienceRuleInput): Promise<AudienceR
       return fetchCoachingInterestCandidates(rule);
     case "ADMIN_ROLE":
       return fetchAdminRoleCandidates(rule);
+    case "DIVISION_COACHES":
+      return fetchDivisionCoachCandidates(rule);
+    case "DIVISION_PARENTS":
+      return fetchDivisionParentCandidates(rule);
     default:
       return [];
   }
@@ -332,7 +392,7 @@ export async function resolveAudienceRecipients(options: {
     }
   }
 
-  const recipients = Array.from(out.values()).sort((a, b) =>
+  const recipients = dedupeRecipientsByEmail(Array.from(out.values())).sort((a, b) =>
     (a.email || "").localeCompare(b.email || "", undefined, { sensitivity: "base" }),
   );
   return { recipients, total: recipients.length };

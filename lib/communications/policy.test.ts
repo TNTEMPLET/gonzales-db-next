@@ -1,6 +1,8 @@
 import {
   canApproveCampaign,
+  canDeleteCampaign,
   canMasterBypassApproval,
+  canScheduleCampaign,
   canSendForOrg,
   canSendNowWithoutApproval,
   isWithinQuietHours,
@@ -22,6 +24,20 @@ export function runCommunicationsPolicySmokeTests() {
   assert(!canSendNowWithoutApproval("ADMIN", "DRAFT"), "admin cannot send draft");
   assert(canSendNowWithoutApproval("ADMIN", "APPROVED"), "admin can send approved");
   assert(!canSendNowWithoutApproval("MASTER_ADMIN", "SENT"), "cannot re-send sent campaign");
+
+  assert(canDeleteCampaign("DRAFT"), "drafts can be deleted");
+  assert(canDeleteCampaign("REJECTED"), "rejected can be deleted");
+  assert(canDeleteCampaign("PENDING_APPROVAL"), "pending can be deleted");
+  assert(canDeleteCampaign("CANCELED"), "canceled can be deleted");
+  assert(!canDeleteCampaign("SCHEDULED"), "scheduled must be canceled first");
+  assert(!canDeleteCampaign("APPROVED"), "approved is not deleted");
+  assert(!canDeleteCampaign("SENT"), "sent history is kept");
+  assert(!canDeleteCampaign("SENDING"), "sending is not deleted");
+  assert(!canDeleteCampaign("FAILED"), "failed history is kept");
+
+  assert(canScheduleCampaign("ADMIN", "APPROVED"), "admin can schedule approved");
+  assert(!canScheduleCampaign("ADMIN", "DRAFT"), "admin cannot schedule draft");
+  assert(canScheduleCampaign("MASTER_ADMIN", "DRAFT"), "master can schedule draft");
 
   assert(
     canApproveCampaign({

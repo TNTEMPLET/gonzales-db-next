@@ -29,6 +29,11 @@ export async function POST(
       adminRole: rule.adminRole,
       coachingInterestStatus: rule.coachingInterestStatus,
       explicitRegisteredUserIds: rule.explicitRegisteredUserIds,
+      explicitContacts: (rule.explicitContacts as
+        | { email: string; name?: string | null; sourceType?: string | null; sourceId?: string | null }[]
+        | null) ?? null,
+      ageGroups: rule.ageGroups,
+      seasonYear: rule.seasonYear,
     })),
     logicalMode: campaign.logicalMode,
   });

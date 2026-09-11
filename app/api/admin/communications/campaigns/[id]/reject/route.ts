@@ -20,6 +20,9 @@ export async function POST(
   if (!canSendForOrg(actor.role, campaign.organizationId, actor.targetOrg)) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  if (campaign.status !== "PENDING_APPROVAL") {
+    return NextResponse.json({ error: "Only pending campaigns can be rejected" }, { status: 409 });
+  }
   if (
     !canApproveCampaign({
       approverRole: actor.role,
