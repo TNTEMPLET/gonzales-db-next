@@ -183,6 +183,183 @@ function toGame(params: {
   };
 }
 
+export function occupyingSlotKey(game: {
+  fieldId: string | null;
+  gameDate: Date | string | null;
+  startTime: string | null;
+}): string | null {
+  if (!game.fieldId || !game.gameDate || !game.startTime) return null;
+  const day = typeof game.gameDate === "string" ? game.gameDate.slice(0, 10) : dateKey(game.gameDate);
+  return `${game.fieldId}|${day}|${game.startTime}`;
+}
+
+function slotOccupyingKey(slot: SchedulerSlot): string {
+  return `${slot.fieldId}|${slot.gameDate}|${slot.startTime}`;
+}
+
+function countsFromExistingGames(games: GeneratedDraftGame[]): DhFairnessCounts {
+  const counts = emptyDhCounts();
+  const byDate = new Map<string, GeneratedDraftGame[]>();
+  for (const game of games) {
+    if (!game.gameDate || !game.startTime) continue;
+    const key = dateKey(game.gameDate);
+    const list = byDate.get(key) ?? [];
+    list.push(game);
+    byDate.set(key, list);
+  }
+  for (const night of byDate.values()) {
+    const times = [...new Set(night.map((game) => game.startTime).filter((time): time is string => Boolean(time)))].sort();
+    const earlyTime = times[0];
+    for (const game of night) {
+      if (!game.homeTeamId || !game.awayTeamId) continue;
+      bump(counts.home, game.homeTeamId);
+      bump(counts.away, game.awayTeamId);
+      bump(counts.pairHome, `${game.homeTeamId}::${game.awayTeamId}`);
+      if (game.startTime === earlyTime) {
+        bump(counts.early, game.homeTeamId);
+        bump(counts.early, game.awayTeamId);
+      } else {
+        bump(counts.late, game.homeTeamId);
+        bump(counts.late, game.awayTeamId);
+      }
+    }
+  }
+  return counts;
+}
+
+export function continueThreeTeamDoubleheaders(params: {
+  organizationId: string;
+  season: SchedulerSeason;
+  teams: SchedulerTeam[];
+  fields: SchedulerField[];
+  availabilities: SchedulerAvailability[];
+  rules: SchedulerDivisionRule[];
+  divisions: string[];
+  existingGames: GeneratedDraftGame[];
+  occupiedKeys: Set<string>;
+  fillStartsOn: string;
+  fillEndsOn: string;
+  extraGamesPerTeam: number | null;
+}): SchedulerGenerationResult {
+  const errors: SchedulerGenerationResult["errors"] = [];
+  const slots = buildSchedulerSlots(params);
+  const added: GeneratedDraftGame[] = [];
+  const occupied = new Set(params.occupiedKeys);
+  let gameNumber =
+    Math.max(0, ...params.existingGames.map((game) => game.gameNumber || 0), ...added.map((game) => game.gameNumber || 0)) + 1;
+
+  for (const division of params.divisions) {
+    const rule = params.rules.find((entry) => entry.division === division);
+    if (!rule) {
+      errors.push({ code: "MISSING_MATRIX_RULES", message: `Missing matrix rule for ${division}` });
+      continue;
+    }
+    const ageGroup = rule.ageGroup || division;
+    const teams = playableSchedulerTeams(params.teams.filter((team) => team.ageGroup === ageGroup)).sort((a, b) =>
+      a.teamName.localeCompare(b.teamName),
+    );
+    if (teams.length !== 3) {
+      errors.push({
+        code: "MISSING_TEAMS",
+        message: `${division} doubleheaders need exactly 3 teams (found ${teams.length})`,
+        details: { division, teamCount: teams.length },
+      });
+      continue;
+    }
+    const divisionExisting = params.existingGames.filter((game) => game.division === division);
+    const totals = new Map(teams.map((team) => [team.id, 0]));
+    const baseline = new Map(teams.map((team) => [team.id, 0]));
+    for (const game of divisionExisting) {
+      if (game.homeTeamId) totals.set(game.homeTeamId, (totals.get(game.homeTeamId) ?? 0) + 1);
+      if (game.awayTeamId) totals.set(game.awayTeamId, (totals.get(game.awayTeamId) ?? 0) + 1);
+    }
+    for (const team of teams) baseline.set(team.id, totals.get(team.id) ?? 0);
+    const existingDates = new Set(
+      divisionExisting.filter((game) => game.gameDate).map((game) => dateKey(game.gameDate!)),
+    );
+    const divisionSlots = slots.filter((slot) => {
+      if (!slotMatchesDivision(slot, division, ageGroup)) return false;
+      if (slot.gameDate < params.fillStartsOn || slot.gameDate > params.fillEndsOn) return false;
+      if (existingDates.has(slot.gameDate)) return false;
+      return !occupied.has(slotOccupyingKey(slot));
+    });
+    const byDate = new Map<string, SchedulerSlot[]>();
+    for (const slot of divisionSlots) {
+      const list = byDate.get(slot.gameDate) ?? [];
+      list.push(slot);
+      byDate.set(slot.gameDate, list);
+    }
+    const nights = [...byDate.keys()].sort();
+    const priorityIds = parseFieldPriorityIds(rule.ruleMetadata);
+    let nightIndex = 0;
+    let fairnessCounts = countsFromExistingGames(divisionExisting);
+    const extra = params.extraGamesPerTeam;
+    for (const date of nights) {
+      if (extra != null && teams.every((team) => (totals.get(team.id) ?? 0) >= (baseline.get(team.id) ?? 0) + extra)) {
+        break;
+      }
+      const pair = pickNightSlots(byDate.get(date) ?? [], priorityIds);
+      if (!pair) continue;
+      if (occupied.has(slotOccupyingKey(pair[0])) || occupied.has(slotOccupyingKey(pair[1]))) continue;
+      const dh = [...teams].sort((a, b) => {
+        const gamesA = totals.get(a.id) ?? 0;
+        const gamesB = totals.get(b.id) ?? 0;
+        if (gamesA !== gamesB) return gamesA - gamesB;
+        return teams.indexOf(a) - teams.indexOf(b);
+      })[0]!;
+      const others = teams.filter((team) => team.id !== dh.id) as [SchedulerTeam, SchedulerTeam];
+      const [early, late] = pair;
+      const sides = pickDhNightAssignment(dh, others, fairnessCounts);
+      fairnessCounts = applyDhNight(fairnessCounts, sides);
+      const earlyGame = toGame({
+        division,
+        ageGroup,
+        home: sides.earlyHome,
+        away: sides.earlyAway,
+        slot: early,
+        gameNumber,
+        roundLabel: `DH ${dateKey(early.date)} early`,
+      });
+      gameNumber += 1;
+      const lateGame = toGame({
+        division,
+        ageGroup,
+        home: sides.lateHome,
+        away: sides.lateAway,
+        slot: late,
+        gameNumber,
+        roundLabel: `DH ${dateKey(late.date)} late`,
+      });
+      gameNumber += 1;
+      added.push(earlyGame, lateGame);
+      occupied.add(slotOccupyingKey(early));
+      occupied.add(slotOccupyingKey(late));
+      totals.set(dh.id, (totals.get(dh.id) ?? 0) + 2);
+      totals.set(others[0].id, (totals.get(others[0].id) ?? 0) + 1);
+      totals.set(others[1].id, (totals.get(others[1].id) ?? 0) + 1);
+      nightIndex += 1;
+    }
+    if (nightIndex === 0 && extra == null) {
+      errors.push({
+        code: "INSUFFICIENT_SLOTS" satisfies SchedulerErrorCode,
+        message: `${division} has no open doubleheader night in the fill window`,
+        details: { division },
+      });
+    }
+  }
+
+  const checked = checkDraftGameConflicts(added);
+  return {
+    seasonId: params.season.id,
+    organizationId: params.organizationId,
+    requestedDivisions: params.divisions,
+    slots,
+    games: checked,
+    fairness: summarizeFairness(checked, params.teams),
+    errors,
+  };
+}
+
 export function generateThreeTeamDoubleheaders(params: {
   organizationId: string;
   season: SchedulerSeason;

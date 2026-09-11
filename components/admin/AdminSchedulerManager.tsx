@@ -625,6 +625,9 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
   const [teamCounts, setTeamCounts] = useState<Record<string, number>>({});
 
   const [allowConflicts, setAllowConflicts] = useState(false);
+  const [fillStartsOn, setFillStartsOn] = useState("");
+  const [fillEndsOn, setFillEndsOn] = useState("");
+  const [fillExtraGamesPerTeam, setFillExtraGamesPerTeam] = useState("");
   const [preview, setPreview] = useState<GenerationResult | null>(null);
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
@@ -1191,6 +1194,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
   const selectedPracticeDivisions = selectedDivisions.filter((division) =>
     rules.some((rule) => rule.division === division && rule.scheduleMode === "practiceGames"),
   );
+  const selectedFillDivisions = [...selectedAutoDivisions, ...selectedManualDivisions];
 
   async function generate(
     replace: boolean,
@@ -1272,6 +1276,61 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to generate schedule");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function fillExtra(commit: boolean) {
+    if (!selectedSeasonId) return;
+    if (!selectedFillDivisions.length) {
+      setError("Pick at least one Auto or Manual / DH division to fill.");
+      return;
+    }
+    const extra = Number.parseInt(fillExtraGamesPerTeam, 10);
+    const extraLabel = Number.isInteger(extra) && extra > 0 ? `at least +${extra} games per team` : "no extra-game cap";
+    const fromLabel = fillStartsOn || "after the last existing game";
+    const throughLabel = fillEndsOn || seasonForm.gamesEndsOn || seasonForm.endsOn || "season Games end";
+    if (commit) {
+      const confirmed = window.confirm(
+        `Add extra games for ${selectedFillDivisions.join(", ")} from ${fromLabel} through ${throughLabel} (${extraLabel})? Existing drafts stay. Locked games stay.`,
+      );
+      if (!confirmed) return;
+    }
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetch(`/api/admin/scheduler/generate?${orgQuery}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          seasonId: selectedSeasonId,
+          divisions: selectedFillDivisions,
+          replace: commit,
+          confirmReplace: commit,
+          allowConflicts,
+          packer: "fill",
+          fillStartsOn: fillStartsOn || null,
+          fillEndsOn: fillEndsOn || null,
+          extraGamesPerTeam: Number.isInteger(extra) && extra > 0 ? extra : null,
+        }),
+      });
+      const json = (await safeJson(response)) as { data?: GenerationResult; error?: string };
+      if (!response.ok && !json.data) throw new Error(json.error || "Failed to fill extra games");
+      if (json.data) setPreview(json.data);
+      if (!response.ok && json.error) setError(json.error);
+      const added = json.data?.games?.length ?? 0;
+      setNotice(
+        commit
+          ? `Added ${added} extra game${added === 1 ? "" : "s"} without replacing the existing draft.`
+          : added
+            ? `Fill preview: ${added} extra game${added === 1 ? "" : "s"} would be added.`
+            : "Fill preview: no open nights in that window.",
+      );
+      if (commit) await refreshDraftGames();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to fill extra games");
     } finally {
       setBusy(false);
     }
@@ -1990,6 +2049,50 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
               >
                 Close
               </button>
+            </div>
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-950/40 p-3 space-y-3">
+              <p className="text-sm font-semibold text-white">Fill extra games</p>
+              <p className="text-xs text-zinc-500">
+                Keeps the current draft. Use this when a short division (17U doubleheaders) finishes its 10 games
+                before Games end. Blank dates default to after the last existing game through Games end. Blank extra
+                games means fill the whole window.
+              </p>
+              <div className="grid gap-2 sm:grid-cols-3">
+                <FieldLabel label="Fill from">
+                  <TextInput type="date" value={fillStartsOn} onChange={(e) => setFillStartsOn(e.target.value)} />
+                </FieldLabel>
+                <FieldLabel label="Fill through">
+                  <TextInput type="date" value={fillEndsOn} onChange={(e) => setFillEndsOn(e.target.value)} />
+                </FieldLabel>
+                <FieldLabel label="Extra games / team">
+                  <TextInput
+                    type="number"
+                    min={1}
+                    max={30}
+                    placeholder="optional"
+                    value={fillExtraGamesPerTeam}
+                    onChange={(e) => setFillExtraGamesPerTeam(e.target.value)}
+                  />
+                </FieldLabel>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  type="button"
+                  disabled={!selectedSeasonId || busy || !selectedFillDivisions.length}
+                  onClick={() => void fillExtra(false)}
+                  className="rounded-xl border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-100 hover:border-red-400 disabled:opacity-60"
+                >
+                  Preview fill
+                </button>
+                <button
+                  type="button"
+                  disabled={!selectedSeasonId || busy || !selectedFillDivisions.length}
+                  onClick={() => void fillExtra(true)}
+                  className="rounded-xl border border-red-500/40 px-4 py-2 text-sm font-semibold text-red-100 hover:border-red-400 disabled:opacity-60"
+                >
+                  Add fill games
+                </button>
+              </div>
             </div>
           </div>
           <div className="rounded-2xl border border-zinc-800 bg-zinc-950/60 p-4">

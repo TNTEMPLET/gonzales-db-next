@@ -7,6 +7,7 @@ import { generateGamesFromPracticeNights, type PracticeNightSlot } from "@/lib/s
 import { canLoadTeeballFixture, loadFallball2026Teeball } from "@/lib/scheduler/loadTeeballFixture";
 import { parseScheduleMode, type ScheduleMode } from "@/lib/scheduler/scheduleMode";
 import { generateThreeTeamDoubleheaders } from "@/lib/scheduler/threeTeamDoubleheaders";
+import { fillExtraGames } from "@/lib/scheduler/fillExtraGames";
 import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
 import type { GeneratedDraftGame, SchedulerGenerationResult } from "@/lib/scheduler/types";
 import { jsonStringArray, parseStringArray, requireString } from "@/lib/scheduler/validation";
@@ -19,18 +20,88 @@ type GeneratePayload = {
   allowConflicts?: unknown;
   repair?: unknown;
   packer?: unknown;
+  fillStartsOn?: unknown;
+  fillEndsOn?: unknown;
+  extraGamesPerTeam?: unknown;
 };
 
-function parsePacker(value: unknown): "oneFactor" | "doubleheaders" | "practiceGames" | "teeballFixture" {
-  if (value === "doubleheaders" || value === "practiceGames" || value === "teeballFixture") return value;
+function parsePacker(
+  value: unknown,
+): "oneFactor" | "doubleheaders" | "practiceGames" | "teeballFixture" | "fill" {
+  if (
+    value === "doubleheaders" ||
+    value === "practiceGames" ||
+    value === "teeballFixture" ||
+    value === "fill"
+  ) {
+    return value;
+  }
   return "oneFactor";
+}
+
+function parseOptionalIsoDate(value: unknown): string | null {
+  if (typeof value !== "string" || !value.trim()) return null;
+  const day = value.trim().slice(0, 10);
+  return /^\d{4}-\d{2}-\d{2}$/.test(day) ? day : null;
+}
+
+function parseOptionalExtraGames(value: unknown): number | null {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number.parseInt(String(value), 10);
+  if (!Number.isInteger(parsed) || parsed < 1) return null;
+  return Math.min(parsed, 30);
 }
 
 function requiredMode(packer: ReturnType<typeof parsePacker>): ScheduleMode | null {
   if (packer === "doubleheaders") return "manual";
   if (packer === "practiceGames") return "practiceGames";
-  if (packer === "teeballFixture") return null;
+  if (packer === "teeballFixture" || packer === "fill") return null;
   return "auto";
+}
+
+function toGeneratedDraftGame(row: {
+  division: string;
+  ageGroup: string | null;
+  homeTeamId: string | null;
+  awayTeamId: string | null;
+  homeTeamName: string;
+  awayTeamName: string;
+  roundLabel: string | null;
+  gameNumber: number | null;
+  gameDate: Date | null;
+  startTime: string | null;
+  endTime: string | null;
+  parkId: string | null;
+  fieldId: string | null;
+  status: string;
+  sortOrder: number | null;
+  conflictFlags: unknown;
+  fairnessMetadata: unknown;
+  schedulerNotes: string | null;
+}): GeneratedDraftGame {
+  return {
+    division: row.division,
+    ageGroup: row.ageGroup || row.division,
+    homeTeamId: row.homeTeamId || "",
+    awayTeamId: row.awayTeamId || "",
+    homeTeamName: row.homeTeamName,
+    awayTeamName: row.awayTeamName,
+    roundLabel: row.roundLabel || "",
+    gameNumber: row.gameNumber ?? row.sortOrder ?? 0,
+    gameDate: row.gameDate,
+    startTime: row.startTime,
+    endTime: row.endTime,
+    parkId: row.parkId,
+    fieldId: row.fieldId,
+    status: row.status === "CONFLICT" || !row.gameDate ? "CONFLICT" : "DRAFT",
+    sortOrder: row.sortOrder ?? row.gameNumber ?? 0,
+    conflictFlags: jsonStringArray(row.conflictFlags),
+    fairnessMetadata:
+      row.fairnessMetadata && typeof row.fairnessMetadata === "object" && !Array.isArray(row.fairnessMetadata)
+        ? (row.fairnessMetadata as GeneratedDraftGame["fairnessMetadata"])
+        : {},
+    schedulerNotes: row.schedulerNotes,
+  };
 }
 
 async function loadPracticeNightSlots(params: {
@@ -138,29 +209,7 @@ export async function POST(request: NextRequest) {
         fields: context.fields,
         availabilities: context.availabilities,
       });
-      const games: GeneratedDraftGame[] = existing.map((row) => ({
-        division: row.division,
-        ageGroup: row.ageGroup || row.division,
-        homeTeamId: row.homeTeamId || "",
-        awayTeamId: row.awayTeamId || "",
-        homeTeamName: row.homeTeamName,
-        awayTeamName: row.awayTeamName,
-        roundLabel: row.roundLabel || "",
-        gameNumber: row.gameNumber ?? row.sortOrder ?? 0,
-        gameDate: row.gameDate,
-        startTime: row.startTime,
-        endTime: row.endTime,
-        parkId: row.parkId,
-        fieldId: row.fieldId,
-        status: row.status === "CONFLICT" || !row.gameDate ? "CONFLICT" : "DRAFT",
-        sortOrder: row.sortOrder ?? row.gameNumber ?? 0,
-        conflictFlags: jsonStringArray(row.conflictFlags),
-        fairnessMetadata:
-          row.fairnessMetadata && typeof row.fairnessMetadata === "object" && !Array.isArray(row.fairnessMetadata)
-            ? (row.fairnessMetadata as GeneratedDraftGame["fairnessMetadata"])
-            : {},
-        schedulerNotes: row.schedulerNotes,
-      }));
+      const games: GeneratedDraftGame[] = existing.map(toGeneratedDraftGame);
       const lockedIds = existing
         .filter((row) => row.status === "LOCKED" || row.status === "EXPORTED")
         .map((row) => `${row.division}:${row.gameNumber ?? row.sortOrder ?? 0}`);
@@ -244,6 +293,95 @@ export async function POST(request: NextRequest) {
     }
 
     const context = await loadGenerationContext({ organizationId: auth.organizationId, seasonId, divisions });
+    if (packer === "fill") {
+      const scopedDivisions = divisions.filter((division) => {
+        const rule = context.rules.find((entry) => entry.division === division);
+        const mode = parseScheduleMode(rule?.ruleMetadata, division);
+        return mode === "auto" || mode === "manual";
+      });
+      if (!scopedDivisions.length) {
+        return NextResponse.json(
+          { error: "Pick at least one Auto or Manual / DH division to fill.", code: "INVALID_INPUT" },
+          { status: 400 },
+        );
+      }
+      const existingRows = await prisma.scheduleDraftGame.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          seasonId,
+          NOT: { status: "CANCELED" },
+        },
+        orderBy: [{ gameNumber: "asc" }, { sortOrder: "asc" }],
+      });
+      const result = fillExtraGames({
+        organizationId: auth.organizationId,
+        season: context.season,
+        teams: context.teams,
+        fields: context.fields,
+        availabilities: context.availabilities,
+        rules: context.rules,
+        divisions: scopedDivisions,
+        existingGames: existingRows.map(toGeneratedDraftGame),
+        fillStartsOn: parseOptionalIsoDate(body.fillStartsOn),
+        fillEndsOn: parseOptionalIsoDate(body.fillEndsOn),
+        extraGamesPerTeam: parseOptionalExtraGames(body.extraGamesPerTeam),
+      });
+      if (!replace) {
+        return NextResponse.json(
+          { mode: "preview", data: result },
+          { status: result.games.length || !result.errors.length ? 200 : 422 },
+        );
+      }
+      if (!result.games.length && result.errors.length && !allowConflicts) {
+        return NextResponse.json(
+          {
+            error: result.errors[0]?.message || "No extra games could be placed in that window",
+            code: "CONFLICT",
+            data: result,
+          },
+          { status: 422 },
+        );
+      }
+      if (result.games.length) {
+        await prisma.scheduleDraftGame.createMany({
+          data: result.games.map((game) => ({
+            organizationId: auth.organizationId,
+            seasonId,
+            gameDate: game.gameDate,
+            startTime: game.startTime,
+            endTime: game.endTime,
+            parkId: game.parkId,
+            fieldId: game.fieldId,
+            division: game.division,
+            ageGroup: game.ageGroup,
+            homeTeamId: game.homeTeamId,
+            awayTeamId: game.awayTeamId,
+            homeTeamName: game.homeTeamName,
+            awayTeamName: game.awayTeamName,
+            status: game.status,
+            source: "generated",
+            roundLabel: game.roundLabel,
+            gameNumber: game.gameNumber,
+            sortOrder: game.sortOrder,
+            conflictFlags: game.conflictFlags,
+            fairnessScore: null,
+            fairnessMetadata: game.fairnessMetadata,
+            schedulerNotes: game.schedulerNotes,
+          })),
+        });
+      }
+      const saved = await prisma.scheduleDraftGame.findMany({
+        where: {
+          organizationId: auth.organizationId,
+          seasonId,
+          source: "generated",
+          division: { in: scopedDivisions },
+        },
+        include: { park: true, field: true, homeTeam: true, awayTeam: true },
+        orderBy: [{ gameDate: "asc" }, { startTime: "asc" }, { sortOrder: "asc" }],
+      });
+      return NextResponse.json({ mode: "fill", data: { ...result, savedGames: saved } });
+    }
     const mode = requiredMode(packer);
     const scopedDivisions = divisions.filter((division) => {
       const rule = context.rules.find((entry) => entry.division === division);
