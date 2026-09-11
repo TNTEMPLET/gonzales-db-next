@@ -20,6 +20,7 @@ export type SchedulerExportGame = {
   status: string;
   conflictFlags: unknown;
   schedulerNotes: string | null;
+  roundLabel?: string | null;
 };
 
 function csvCell(value: unknown): string {
@@ -126,15 +127,47 @@ function assignrSheet(games: SchedulerExportGame[], leagueName: string): unknown
   ];
 }
 
+const SPORTSCONNECT_MATCH_HEADERS = [
+  "SortOrder",
+  "RoundNo",
+  "HomeTeam",
+  "AwayTeam",
+  "MatchDate",
+  "StartTime",
+  "EndTime",
+  "Location",
+  "Field",
+] as const;
+
+function formatSportsConnectTime(time: string | null | undefined): string {
+  const minutes = timeToMinutes(time);
+  if (minutes === null) return "";
+  const hours = Math.floor(minutes / 60);
+  const mins = minutes % 60;
+  return `${String(hours).padStart(2, "0")}:${String(mins).padStart(2, "0")}`;
+}
+
+function roundNoForGame(game: SchedulerExportGame, dateRounds: Map<string, number>): number {
+  const labeled = String(game.roundLabel || "").match(/round\s*(\d+)/i);
+  if (labeled?.[1]) return Number.parseInt(labeled[1], 10);
+  const day = game.gameDate ? dateKey(game.gameDate) : "";
+  return dateRounds.get(day) ?? 1;
+}
+
 function sportsConnectSheet(games: SchedulerExportGame[]): unknown[][] {
+  const placed = placedGames(games);
+  const dates = [...new Set(placed.map((game) => (game.gameDate ? dateKey(game.gameDate) : "")).filter(Boolean))].sort();
+  const dateRounds = new Map(dates.map((day, index) => [day, index + 1]));
   return [
-    ["Date", "Start Time", "End Time", "Home Team", "Away Team", "Location", "Field"],
-    ...placedGames(games).map((game) => [
-      game.gameDate ? formatUsDate(game.gameDate) : "",
-      formatAmPm(game.startTime),
-      formatAmPm(game.endTime),
+    [...SPORTSCONNECT_MATCH_HEADERS],
+    ...placed.map((game, index) => [
+      index + 1,
+      roundNoForGame(game, dateRounds),
       game.homeTeamName,
       game.awayTeamName,
+      game.gameDate ? formatUsDate(game.gameDate) : "",
+      formatSportsConnectTime(game.startTime),
+      formatSportsConnectTime(game.endTime),
       parkName(game),
       fieldName(game),
     ]),

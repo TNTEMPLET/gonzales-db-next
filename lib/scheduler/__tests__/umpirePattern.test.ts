@@ -102,11 +102,24 @@ describe("exportVendorWorkbook Assignr Pattern", () => {
     ];
     const workbook = XLSX.read(exportVendorWorkbook(games), { type: "buffer" });
     assert.deepEqual(workbook.SheetNames, ["Assignr", "4U TB", "8U CP", "GameChanger"]);
-    const fourU = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets["4U TB"], { header: 1, raw: false }) as string[][];
-    const eightU = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets["8U CP"], { header: 1, raw: false }) as string[][];
+    const fourU = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets["4U TB"], { header: 1, raw: true }) as unknown[][];
+    const eightU = XLSX.utils.sheet_to_json<string[]>(workbook.Sheets["8U CP"], { header: 1, raw: true }) as unknown[][];
+    assert.deepEqual(fourU[0], [
+      "SortOrder",
+      "RoundNo",
+      "HomeTeam",
+      "AwayTeam",
+      "MatchDate",
+      "StartTime",
+      "EndTime",
+      "Location",
+      "Field",
+    ]);
     assert.equal(fourU.length, 2);
     assert.equal(eightU.length, 2);
-    assert.equal(fourU[1]?.[3], "Tigers");
-    assert.equal(eightU[1]?.[3], "Astros");
+    assert.equal(fourU[1]?.[2], "Tigers");
+    assert.equal(eightU[1]?.[2], "Astros");
+    assert.equal(eightU[1]?.[5], "18:00");
+    assert.equal(eightU[1]?.[6], "19:15");
   });
 });
