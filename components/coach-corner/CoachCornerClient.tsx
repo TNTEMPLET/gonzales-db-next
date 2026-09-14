@@ -67,9 +67,11 @@ type ScheduleGame = {
   home_team?: string | null;
   away_team?: string | null;
   start_time?: string | null;
+  localized_date?: string | null;
   localized_time?: string | null;
   age_group?: string | null;
   subvenue?: string | null;
+  _embedded?: { venue?: { name?: string | null } | null } | null;
   gameNote?: {
     note: string | null;
     availabilityNote: string | null;
@@ -91,6 +93,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
   const [scheduleGames, setScheduleGames] = useState<ScheduleGame[]>([]);
   const [gameNotes, setGameNotes] = useState<Record<string, string>>({});
   const [availabilityNotes, setAvailabilityNotes] = useState<Record<string, string>>({});
+  const [editingGameNoteIds, setEditingGameNoteIds] = useState<Record<string, boolean>>({});
   const [isActorAdmin, setIsActorAdmin] = useState(false);
   const [actorRegisteredUserId, setActorRegisteredUserId] = useState<string | null>(null);
   const [actorCoach, setActorCoach] = useState<CoachProfile | null>(null);
@@ -298,6 +301,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
     }
     setGameNotes(noteState);
     setAvailabilityNotes(availabilityState);
+    setEditingGameNoteIds({});
   }
 
   async function saveTeamProfile() {
@@ -370,6 +374,7 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
       const json = await safeJson(response);
       if (!response.ok) throw new Error(String(json.error || "Failed to save game note"));
       setNotice("Game note saved.");
+      setEditingGameNoteIds((current) => ({ ...current, [gameId]: false }));
       await loadSchedule(selectedTeam.id);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to save game note");
@@ -845,54 +850,144 @@ export default function CoachCornerClient({ targetOrg }: { targetOrg: ContentOrg
           </div>
 
           <div className="space-y-4 rounded-xl border border-zinc-800 bg-zinc-900/70 p-4 sm:p-5">
-            <h2 className="text-lg font-semibold">Schedule + Game Notes</h2>
-            <div className="max-h-96 overflow-auto rounded-lg border border-zinc-800">
+            <div>
+              <h2 className="text-lg font-semibold">Schedule + Game Notes</h2>
+              <p className="mt-1 text-xs text-zinc-500">
+                {scheduleGames.length === 0
+                  ? "Season games for this team."
+                  : `${scheduleGames.length} games · notes stay with your team only`}
+              </p>
+            </div>
+            <div className="max-h-[32rem] overflow-auto rounded-lg border border-zinc-800">
               {scheduleGames.length === 0 ? (
-                <p className="text-zinc-500 text-sm p-3">No matching games found for this team.</p>
+                <p className="p-3 text-sm text-zinc-500">No matching games found for this team.</p>
               ) : (
                 scheduleGames.map((game) => {
                   const gameId = String(game.id);
+                  const teamName = selectedTeam?.teamName || "";
+                  const isHome = (game.home_team || "") === teamName;
+                  const opponent = isHome ? game.away_team : game.home_team;
+                  const when = [game.localized_date, game.localized_time].filter(Boolean).join(" · ");
+                  const place = [game._embedded?.venue?.name, game.subvenue]
+                    .map((value) => value?.trim())
+                    .filter(Boolean)
+                    .join(" · ");
                   return (
-                    <div key={gameId} className="space-y-2 border-b border-zinc-800 px-3 py-3 last:border-b-0">
-                      <p className="text-sm font-medium">
-                        {game.home_team || "Home"} vs {game.away_team || "Away"}
-                      </p>
-                      <p className="text-xs text-zinc-500">
-                        {game.start_time
-                          ? new Date(game.start_time).toLocaleString()
-                          : game.localized_time || "TBD"}
-                        {game.subvenue ? ` · ${game.subvenue}` : ""}
-                      </p>
-                      <textarea
-                        value={gameNotes[gameId] || ""}
-                        onChange={(event) =>
-                          setGameNotes((current) => ({ ...current, [gameId]: event.target.value }))
-                        }
-                        rows={2}
-                        placeholder="Game note"
-                        className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm"
-                      />
-                      <input
-                        value={availabilityNotes[gameId] || ""}
-                        onChange={(event) =>
-                          setAvailabilityNotes((current) => ({
-                            ...current,
-                            [gameId]: event.target.value,
-                          }))
-                        }
-                        placeholder="Availability note"
-                        className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm"
-                      />
-                      <div className="flex justify-stretch sm:justify-end">
-                        <button
-                          type="button"
-                          disabled={busy}
-                          onClick={() => void saveGameNote(gameId)}
-                          className="min-h-10 w-full rounded-lg border border-zinc-600 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-60 sm:w-auto"
-                        >
-                          Save Game Note
-                        </button>
+                    <div
+                      key={gameId}
+                      className="space-y-2 border-b border-zinc-800 px-3 py-3 last:border-b-0"
+                    >
+                      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <p className="text-sm font-medium">
+                          vs {opponent || "TBD"}
+                          <span className="ml-2 text-[11px] font-semibold uppercase tracking-wide text-zinc-500">
+                            {isHome ? "Home" : "Away"}
+                          </span>
+                        </p>
+                        <p className="text-xs text-zinc-400">{when || "Date TBD"}</p>
                       </div>
+                      {place ? <p className="text-xs text-zinc-500">{place}</p> : null}
+                      {editingGameNoteIds[gameId] ? (
+                        <>
+                          <textarea
+                            value={gameNotes[gameId] || ""}
+                            onChange={(event) =>
+                              setGameNotes((current) => ({
+                                ...current,
+                                [gameId]: event.target.value,
+                              }))
+                            }
+                            rows={2}
+                            placeholder="Game note (lineup, carpool, reminder…)"
+                            className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm"
+                          />
+                          <input
+                            value={availabilityNotes[gameId] || ""}
+                            onChange={(event) =>
+                              setAvailabilityNotes((current) => ({
+                                ...current,
+                                [gameId]: event.target.value,
+                              }))
+                            }
+                            placeholder="Availability (who’s out)"
+                            className="w-full rounded bg-zinc-950 border border-zinc-700 px-2 py-1 text-sm"
+                          />
+                          <div className="flex justify-end gap-2">
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => {
+                                setGameNotes((current) => ({
+                                  ...current,
+                                  [gameId]: game.gameNote?.note || "",
+                                }));
+                                setAvailabilityNotes((current) => ({
+                                  ...current,
+                                  [gameId]: game.gameNote?.availabilityNote || "",
+                                }));
+                                setEditingGameNoteIds((current) => ({
+                                  ...current,
+                                  [gameId]: false,
+                                }));
+                              }}
+                              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-60"
+                            >
+                              Cancel
+                            </button>
+                            <button
+                              type="button"
+                              disabled={busy}
+                              onClick={() => void saveGameNote(gameId)}
+                              className="rounded-lg border border-zinc-600 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800 disabled:opacity-60"
+                            >
+                              Save
+                            </button>
+                          </div>
+                        </>
+                      ) : (
+                        <div className="space-y-2">
+                          <div>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                              Notes
+                            </p>
+                            <p
+                              className={`mt-0.5 whitespace-pre-wrap text-sm ${
+                                gameNotes[gameId]?.trim() ? "text-zinc-200" : "text-zinc-500"
+                              }`}
+                            >
+                              {gameNotes[gameId]?.trim() || "No game notes."}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">
+                              Availability
+                            </p>
+                            <p
+                              className={`mt-0.5 whitespace-pre-wrap text-sm ${
+                                availabilityNotes[gameId]?.trim()
+                                  ? "text-zinc-200"
+                                  : "text-zinc-500"
+                              }`}
+                            >
+                              {availabilityNotes[gameId]?.trim() || "No availability notes."}
+                            </p>
+                          </div>
+                          <div className="flex justify-end">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setEditingGameNoteIds((current) => ({
+                                  ...current,
+                                  [gameId]: true,
+                                }))
+                              }
+                              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-300 hover:bg-zinc-800"
+                            >
+                              Edit
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })

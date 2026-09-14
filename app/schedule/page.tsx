@@ -1,12 +1,13 @@
 import ScheduleTable from "@/components/ScheduleTable";
-import { fetchGames, type Game } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
-import { SEASON_END_DATE, SEASON_START_DATE, CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
-import { getAssignrLeagueId, getOrgId, getSiteConfig } from "@/lib/siteConfig";
+import { getOrgCapabilities } from "@/lib/org/capabilities";
 import {
-  computeStandingsByAgeGroup,
-  type AgeGroupStandings,
-} from "@/lib/standings";
+  loadPublicPracticeSlots,
+  loadPublicScheduleGames,
+  loadPublicScheduleWindow,
+} from "@/lib/schedule/publicScheduleLoad";
+import { getOrgId, getSiteConfig, type ContentOrgId } from "@/lib/siteConfig";
+import { computeStandingsByAgeGroup, type AgeGroupStandings } from "@/lib/standings";
 
 type ViewMode = "thisWeek" | "nextWeek" | "fullSeason";
 
@@ -14,7 +15,24 @@ export function generateMetadata() {
   const site = getSiteConfig();
   return {
     title: `Schedule & Standings | ${site.name}`,
-    description: `Full game schedule and standings for ${site.name}.`,
+    description: `Game and practice schedules for ${site.name}.`,
+  };
+}
+
+function weekRange(mode: ViewMode, seasonStart: string, seasonEnd: string) {
+  const now = new Date();
+  if (mode === "fullSeason") return { startDate: seasonStart, endDate: seasonEnd };
+  const start = new Date(now);
+  if (mode === "thisWeek") {
+    start.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1));
+  } else {
+    start.setDate(now.getDate() - now.getDay() + (now.getDay() === 0 ? 1 : 8));
+  }
+  const end = new Date(start);
+  end.setDate(start.getDate() + 6);
+  return {
+    startDate: start.toISOString().split("T")[0]!,
+    endDate: end.toISOString().split("T")[0]!,
   };
 }
 
@@ -23,100 +41,70 @@ export default async function SchedulePage({
 }: {
   searchParams: Promise<{ view?: string }>;
 }) {
-  const resolvedSearchParams = await searchParams;
-  const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
+  const { view } = await searchParams;
+  const viewMode = (view as ViewMode) || "thisWeek";
   const site = getSiteConfig();
-  const leagueId = getAssignrLeagueId();
-  const orgId = getOrgId();
+  const orgId = getOrgId() as ContentOrgId;
+  const window = await loadPublicScheduleWindow(orgId);
+  const { startDate, endDate } = weekRange(viewMode, window.startDate, window.endDate);
 
-  const now = new Date();
-  let startDate: string;
-  let endDate: string;
-
-  if (viewMode === "thisWeek") {
-    const startOfWeek = new Date(now);
-    startOfWeek.setDate(
-      now.getDate() - now.getDay() + (now.getDay() === 0 ? -6 : 1),
-    );
-    const endOfWeek = new Date(startOfWeek);
-    endOfWeek.setDate(startOfWeek.getDate() + 6);
-    startDate = startOfWeek.toISOString().split("T")[0]!;
-    endDate = endOfWeek.toISOString().split("T")[0]!;
-  } else if (viewMode === "nextWeek") {
-    const startOfNextWeek = new Date(now);
-    startOfNextWeek.setDate(
-      now.getDate() - now.getDay() + (now.getDay() === 0 ? 1 : 8),
-    );
-    const endOfNextWeek = new Date(startOfNextWeek);
-    endOfNextWeek.setDate(startOfNextWeek.getDate() + 6);
-    startDate = startOfNextWeek.toISOString().split("T")[0]!;
-    endDate = endOfNextWeek.toISOString().split("T")[0]!;
-  } else {
-    startDate = SEASON_START_DATE;
-    endDate = SEASON_END_DATE;
-  }
-
-  let games: Game[] = [];
+  let games = [] as Awaited<ReturnType<typeof loadPublicScheduleGames>>;
+  let practices = [] as Awaited<ReturnType<typeof loadPublicPracticeSlots>>;
   let error: string | null = null;
   let standings: AgeGroupStandings[] = [];
 
   try {
-    games = await fetchGames({ startDate, endDate, leagueId });
+    [games, practices] = await Promise.all([
+      loadPublicScheduleGames({ org: orgId, startDate, endDate }),
+      loadPublicPracticeSlots({ org: orgId, seasonYear: window.seasonYear }),
+    ]);
   } catch (err: unknown) {
-    error = err instanceof Error ? err.message : "Failed to load game data";
+    error = err instanceof Error ? err.message : "Failed to load schedule";
   }
 
   try {
-    const [scores, allSeasonGames] = await Promise.all([
-      prisma.gameScore.findMany({
-        where: { organizationId: orgId },
-        orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
-        select: {
-          gameExternalId: true,
-          ageGroup: true,
-          homeTeam: true,
-          awayTeam: true,
-          homeScore: true,
-          awayScore: true,
-        },
-      }),
-      fetchGames({
-        startDate: SEASON_START_DATE,
-        endDate: SEASON_END_DATE,
-        leagueId,
-      }),
-    ]);
-
-    const activeGameIds = new Set(
-      allSeasonGames
-        .filter((game) => game.status?.trim().toUpperCase() === "A")
-        .map((game) => String(game.id)),
-    );
-
-    standings = computeStandingsByAgeGroup(
-      scores.filter((score) => activeGameIds.has(score.gameExternalId)),
-    );
+    const scores = await prisma.gameScore.findMany({
+      where: { organizationId: orgId },
+      orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
+      select: {
+        gameExternalId: true,
+        ageGroup: true,
+        homeTeam: true,
+        awayTeam: true,
+        homeScore: true,
+        awayScore: true,
+      },
+    });
+    standings = computeStandingsByAgeGroup(scores);
   } catch {
     standings = [];
   }
 
+  const scheduleEnabled = getOrgCapabilities(orgId).schedule === "scheduler";
+
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
-      <div className="mx-auto max-w-6xl px-4 pb-4 pt-8 sm:px-6 sm:pt-10">
-        <h1 className="mb-1 text-2xl font-bold tracking-tight sm:text-3xl">
-          Schedule &amp; Standings
-        </h1>
-        <p className="text-zinc-400 text-sm">
-          {site.name} · {CURRENT_SEASON_LABEL}
+      <div className="mx-auto max-w-6xl px-4 pb-2 pt-8 sm:px-6 sm:pt-10">
+        <h1 className="mb-1 text-2xl font-bold tracking-tight sm:text-3xl">Schedules</h1>
+        <p className="text-sm text-zinc-400">
+          {site.name} · {window.seasonName}
         </p>
       </div>
-      <ScheduleTable
-        siteName={site.name}
-        initialGames={games}
-        initialError={error}
-        currentViewMode={viewMode}
-        standings={standings}
-      />
+      {scheduleEnabled ? (
+        <ScheduleTable
+          siteName={site.name}
+          seasonName={window.seasonName}
+          initialGames={games}
+          initialPractices={practices}
+          initialError={error}
+          currentViewMode={viewMode}
+          standings={standings}
+        />
+      ) : (
+        <p className="mx-auto max-w-6xl px-4 py-12 text-sm text-zinc-400">
+          Schedules publish when the league season is set up in Scheduler.
+        </p>
+      )}
     </main>
   );
 }

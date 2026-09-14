@@ -4,7 +4,7 @@ import type { ContentOrgId, OrgId } from "@/lib/siteConfig";
 export type RegistrationMode = "sportsconnect" | "internal" | "none";
 
 /** Public schedule data source. */
-export type ScheduleSource = "assignr" | "none";
+export type ScheduleSource = "scheduler" | "assignr" | "none";
 
 /** Homepage shell variant. */
 export type HomepageMode = "league-hero" | "news-rotator" | "compact-ops";
@@ -35,7 +35,7 @@ export type OrgCapabilities = {
 
 const SPRING_LEAGUE_DEFAULTS: OrgCapabilities = {
   registration: "internal",
-  schedule: "assignr",
+  schedule: "scheduler",
   liveScores: "gamechanger",
   dugout: true,
   coachCorner: true,
@@ -54,8 +54,7 @@ const CAPABILITIES: Record<ContentOrgId, OrgCapabilities> = {
   ascension: { ...SPRING_LEAGUE_DEFAULTS, coachingInterest: true },
   fallball: {
     registration: "sportsconnect",
-    // Assignr site 18601 / league 515713 (AP Fall Ball) — see siteConfig.
-    schedule: "assignr",
+    schedule: "scheduler",
     liveScores: "none",
     dugout: true,
     coachCorner: true,

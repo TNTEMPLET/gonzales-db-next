@@ -1,31 +1,38 @@
-// components/ScheduleTable.tsx
 "use client";
 
-import { useRouter, useSearchParams } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import * as XLSX from "xlsx";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
+
 import RainoutPopup from "./RainoutPopup";
 import StandingsTabs from "@/components/standings/StandingsTabs";
 import type { AgeGroupStandings } from "@/lib/standings";
-
-type Game = {
-  id?: string | number;
-  start_time?: string;
-  age_group?: string | null;
-  home_team?: string;
-  away_team?: string;
-  localized_date?: string;
-  localized_time?: string;
-  status?: string;
-  _embedded?: { venue?: { name?: string } };
-  subvenue?: string;
-};
+import {
+  filterPublicGames,
+  filterPublicPractices,
+  groupPublicGames,
+  groupPublicPractices,
+  uniqueAgeGroupsFromGames,
+  uniqueAgeGroupsFromPractices,
+  uniqueParksFromGames,
+  uniqueParksFromPractices,
+  uniqueTeamsFromGames,
+  uniqueTeamsFromPractices,
+  type PublicPracticeSlot,
+  type PublicScheduleGame,
+} from "@/lib/schedule/publicSchedule";
+import {
+  buildSeasonGamesPdf,
+  buildSeasonPracticesPdf,
+  buildTeamSchedulePdf,
+  downloadPdfBuffer,
+} from "@/lib/schedule/publicSchedulePdf";
 
 type Props = {
   siteName: string;
-  initialGames: Game[];
+  seasonName: string;
+  initialGames: PublicScheduleGame[];
+  initialPractices: PublicPracticeSlot[];
   initialError: string | null;
   currentViewMode: "thisWeek" | "nextWeek" | "fullSeason";
   standings: AgeGroupStandings[];
@@ -33,270 +40,157 @@ type Props = {
 };
 
 type DayFilter = "all" | "yesterday" | "today" | "tomorrow";
+type ScheduleTab = "games" | "practices";
 
-const getAgeGroupSortValue = (ageGroup?: string | null) => {
-  if (!ageGroup) return Number.POSITIVE_INFINITY;
-  const normalized = ageGroup.trim().toUpperCase();
-  const numericMatch =
-    normalized.match(/^(\d+)\s*U$/) || normalized.match(/^(\d+)/);
-  return numericMatch ? Number(numericMatch[1]) : Number.POSITIVE_INFINITY;
-};
+function todayDateKey() {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "America/Chicago",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
 
-const sortAgeGroupLabels = (a: string, b: string) => {
-  const aValue = getAgeGroupSortValue(a);
-  const bValue = getAgeGroupSortValue(b);
-  if (aValue !== bValue) return aValue - bValue;
-  return a.localeCompare(b);
-};
+function shiftDateKey(dateKey: string, days: number) {
+  const date = new Date(`${dateKey}T12:00:00.000Z`);
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
+}
 
-const getGameSortDateValue = (game: Game) => {
-  if (game.start_time) {
-    const date = new Date(game.start_time);
-    if (!Number.isNaN(date.valueOf())) return date.valueOf();
-  }
-  if (game.localized_date) {
-    const combined = `${game.localized_date} ${game.localized_time || ""}`;
-    const parsed = new Date(combined);
-    if (!Number.isNaN(parsed.valueOf())) return parsed.valueOf();
-  }
-  return Number.POSITIVE_INFINITY;
-};
+function downloadTextFile(content: string, filename: string, type: string) {
+  const blob = new Blob([content], { type });
+  const link = document.createElement("a");
+  const url = URL.createObjectURL(blob);
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(url);
+}
 
-const compareStrings = (a?: string, b?: string) => {
-  const left = (a || "").trim().toUpperCase();
-  const right = (b || "").trim().toUpperCase();
-  return left.localeCompare(right);
-};
-
-const compareDateTime = (a: Game, b: Game) => {
-  const aValue = getGameSortDateValue(a);
-  const bValue = getGameSortDateValue(b);
-  if (aValue !== bValue) return aValue - bValue;
-  return compareStrings(a.localized_time, b.localized_time);
-};
-
-const compareAgeGroup = (a: Game, b: Game) => {
-  const aValue = getAgeGroupSortValue(a.age_group);
-  const bValue = getAgeGroupSortValue(b.age_group);
-  if (aValue !== bValue) return aValue - bValue;
-  return compareStrings(a.age_group || "", b.age_group || "");
-};
+function fileStem(parts: string[]) {
+  return parts
+    .map((part) => part.trim().replace(/[^a-zA-Z0-9]+/g, "-"))
+    .filter(Boolean)
+    .join("-")
+    .replace(/^-+|-+$/g, "");
+}
 
 export default function ScheduleTable({
   siteName,
+  seasonName,
   initialGames,
+  initialPractices,
   initialError,
   currentViewMode,
   standings,
   forceRainout,
 }: Props) {
   const router = useRouter();
-  const searchParams = useSearchParams();
-  const previewRainout = searchParams.get("rainout") === "preview";
+  const pathname = usePathname();
+  const [tab, setTab] = useState<ScheduleTab>("games");
   const [selectedAgeGroup, setSelectedAgeGroup] = useState<string[]>([]);
   const [selectedTeam, setSelectedTeam] = useState<string[]>([]);
+  const [selectedPark, setSelectedPark] = useState<string[]>([]);
   const [dayFilter, setDayFilter] = useState<DayFilter>("all");
   const [ageDropdownOpen, setAgeDropdownOpen] = useState(false);
   const [teamDropdownOpen, setTeamDropdownOpen] = useState(false);
+  const [parkDropdownOpen, setParkDropdownOpen] = useState(false);
   const ageDropdownRef = useRef<HTMLDivElement>(null);
   const teamDropdownRef = useRef<HTMLDivElement>(null);
-
-  const lastUpdateTime = useMemo(() => new Date().toLocaleTimeString(), []);
+  const parkDropdownRef = useRef<HTMLDivElement>(null);
 
   const handleViewChange = (mode: "thisWeek" | "nextWeek" | "fullSeason") => {
     if (mode === "nextWeek") setDayFilter("all");
-    const url = mode === "thisWeek" ? "/#schedule" : `/?view=${mode}#schedule`;
+    const onSchedulePage = pathname?.startsWith("/schedule");
+    const url = onSchedulePage
+      ? mode === "thisWeek"
+        ? "/schedule"
+        : `/schedule?view=${mode}`
+      : mode === "thisWeek"
+        ? "/#schedule"
+        : `/?view=${mode}#schedule`;
     router.push(url);
   };
 
-  // Extract unique age groups
-  const ageGroups = useMemo(() => {
-    const groups = new Set<string>();
-    initialGames.forEach((game) => {
-      if (game.age_group) groups.add(game.age_group);
-    });
-    return Array.from(groups).sort(sortAgeGroupLabels);
-  }, [initialGames]);
+  const sourceGames = useMemo(() => {
+    if (dayFilter === "all") return initialGames;
+    const today = todayDateKey();
+    const target =
+      dayFilter === "yesterday"
+        ? shiftDateKey(today, -1)
+        : dayFilter === "tomorrow"
+          ? shiftDateKey(today, 1)
+          : today;
+    return initialGames.filter((game) => game.dateKey === target);
+  }, [initialGames, dayFilter]);
 
-  // Extract teams based on selected age group(s)
-  const teams = useMemo(() => {
-    const teamSet = new Set<string>();
-    initialGames.forEach((game) => {
-      if (
-        selectedAgeGroup.length === 0 ||
-        selectedAgeGroup.includes(game.age_group || "")
-      ) {
-        if (game.home_team) teamSet.add(game.home_team);
-        if (game.away_team) teamSet.add(game.away_team);
-      }
-    });
-    return Array.from(teamSet).sort();
-  }, [initialGames, selectedAgeGroup]);
+  const ageGroups = useMemo(
+    () =>
+      tab === "games"
+        ? uniqueAgeGroupsFromGames(sourceGames)
+        : uniqueAgeGroupsFromPractices(initialPractices),
+    [tab, sourceGames, initialPractices],
+  );
 
-  const getGameDayTime = (game: Game) => {
-    const dateSource = game.start_time || game.localized_date;
-    if (!dateSource) return null;
+  const parks = useMemo(
+    () =>
+      tab === "games"
+        ? uniqueParksFromGames(sourceGames, selectedAgeGroup)
+        : uniqueParksFromPractices(initialPractices, selectedAgeGroup),
+    [tab, sourceGames, initialPractices, selectedAgeGroup],
+  );
 
-    const parsedDate = new Date(dateSource);
-    if (Number.isNaN(parsedDate.valueOf())) return null;
+  const teams = useMemo(
+    () =>
+      tab === "games"
+        ? uniqueTeamsFromGames(sourceGames, selectedAgeGroup, selectedPark)
+        : uniqueTeamsFromPractices(initialPractices, selectedAgeGroup, selectedPark),
+    [tab, sourceGames, initialPractices, selectedAgeGroup, selectedPark],
+  );
 
-    return new Date(
-      parsedDate.getFullYear(),
-      parsedDate.getMonth(),
-      parsedDate.getDate(),
-    ).valueOf();
-  };
+  const filteredGames = useMemo(
+    () =>
+      filterPublicGames(sourceGames, {
+        ageGroups: selectedAgeGroup,
+        teams: selectedTeam,
+        parks: selectedPark,
+      }),
+    [sourceGames, selectedAgeGroup, selectedTeam, selectedPark],
+  );
+  const filteredPractices = useMemo(
+    () =>
+      filterPublicPractices(initialPractices, {
+        ageGroups: selectedAgeGroup,
+        teams: selectedTeam,
+        parks: selectedPark,
+      }),
+    [initialPractices, selectedAgeGroup, selectedTeam, selectedPark],
+  );
 
-  const targetDayByFilter = useMemo(() => {
-    const now = new Date();
-    now.setHours(0, 0, 0, 0);
+  const groupedGames = useMemo(() => groupPublicGames(filteredGames), [filteredGames]);
+  const groupedPractices = useMemo(
+    () => groupPublicPractices(filteredPractices),
+    [filteredPractices],
+  );
 
-    const dayOffsetByFilter: Record<Exclude<DayFilter, "all">, number> = {
-      yesterday: -1,
-      today: 0,
-      tomorrow: 1,
-    };
-
-    if (dayFilter === "all") return null;
-
-    const target = new Date(now);
-    target.setDate(now.getDate() + dayOffsetByFilter[dayFilter]);
-    return target.valueOf();
-  }, [dayFilter]);
-
-  // Filter games based on selections
-  const filteredGames = useMemo(() => {
-    return initialGames.filter((game) => {
-      const ageGroupMatch =
-        selectedAgeGroup.length === 0 ||
-        selectedAgeGroup.includes(game.age_group || "");
-      const teamMatch =
-        selectedTeam.length === 0 ||
-        selectedTeam.includes(game.home_team || "") ||
-        selectedTeam.includes(game.away_team || "");
-      const gameDayTime = getGameDayTime(game);
-      const dayMatch =
-        dayFilter === "all"
-          ? true
-          : targetDayByFilter !== null && gameDayTime === targetDayByFilter;
-
-      return ageGroupMatch && teamMatch && dayMatch;
-    });
-  }, [
-    initialGames,
-    selectedAgeGroup,
-    selectedTeam,
-    dayFilter,
-    targetDayByFilter,
-  ]);
-
-  const sortedGames = useMemo(() => {
-    return [...filteredGames].sort((a, b) => {
-      const parkCmp = (a._embedded?.venue?.name || "").localeCompare(
-        b._embedded?.venue?.name || "",
-      );
-      if (parkCmp !== 0) return parkCmp;
-      const dayCmp = getGameSortDateValue(a) - getGameSortDateValue(b);
-      if (dayCmp !== 0) return dayCmp;
-      const ageCmp = compareAgeGroup(a, b);
-      if (ageCmp !== 0) return ageCmp;
-      return compareDateTime(a, b);
-    });
-  }, [filteredGames]);
-
-  const groupedGames = useMemo(() => {
-    const parkMap = new Map<
-      string,
-      Map<number, { dayLabel: string; games: Game[] }>
-    >();
-    for (const game of sortedGames) {
-      const park = game._embedded?.venue?.name || "Unknown Venue";
-      const daySortVal = getGameDayTime(game) ?? Number.POSITIVE_INFINITY;
-      const dayLabel = (() => {
-        const src = game.start_time || game.localized_date;
-        if (!src) return "Unknown Date";
-        const d = new Date(src);
-        if (Number.isNaN(d.valueOf()))
-          return game.localized_date || "Unknown Date";
-        return d.toLocaleDateString("en-US", {
-          weekday: "long",
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        });
-      })();
-      if (!parkMap.has(park)) parkMap.set(park, new Map());
-      const dayMap = parkMap.get(park)!;
-      if (!dayMap.has(daySortVal))
-        dayMap.set(daySortVal, { dayLabel, games: [] });
-      dayMap.get(daySortVal)!.games.push(game);
-    }
-    return Array.from(parkMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .map(([park, dayMap]) => ({
-        park,
-        days: Array.from(dayMap.entries())
-          .sort(([a], [b]) => a - b)
-          .map(([, dayData]) => dayData),
-      }));
-  }, [sortedGames]);
-
-  useEffect(() => {
-    const statuses = sortedGames.map((g) => ({ id: g.id, status: g.status }));
-    console.log("Game statuses:", statuses);
-  }, [sortedGames]);
-
-  // Rainout detection — admin override takes priority, then auto-detect from today's games
   const { rainedOutVenues, allParksRainedOut } = useMemo(() => {
     if (forceRainout) {
-      const venues = forceRainout.venues.length > 0
-        ? forceRainout.venues
-        : forceRainout.allParksOut ? ["All Parks"] : [];
+      const venues =
+        forceRainout.venues.length > 0
+          ? forceRainout.venues
+          : forceRainout.allParksOut
+            ? ["All Parks"]
+            : [];
       return { rainedOutVenues: venues, allParksRainedOut: forceRainout.allParksOut };
     }
-
-    const today = new Date().toLocaleDateString("en-US", {
-      month: "numeric",
-      day: "numeric",
-      year: "numeric",
-    });
-
-    const allVenues = new Set<string>();
-    const cancelledVenues = new Set<string>();
-
-    initialGames.forEach((game) => {
-      const venue = game._embedded?.venue?.name;
-      if (!venue || !game.localized_date) return;
-
-      // Only consider games scheduled for today
-      const gameDate = new Date(game.localized_date).toLocaleDateString(
-        "en-US",
-        {
-          month: "numeric",
-          day: "numeric",
-          year: "numeric",
-        },
-      );
-      if (gameDate !== today) return;
-
-      allVenues.add(venue);
-      if (game.status === "C") {
-        cancelledVenues.add(venue);
-      }
-    });
-
-    const rainedOutVenues = Array.from(cancelledVenues).sort();
-    const allParksRainedOut =
-      allVenues.size > 0 && cancelledVenues.size === allVenues.size;
-
-    return { rainedOutVenues, allParksRainedOut };
-  }, [initialGames, forceRainout]);
+    return { rainedOutVenues: [] as string[], allParksRainedOut: false };
+  }, [forceRainout]);
 
   const toggleAgeSelection = (value: string) => {
     setSelectedAgeGroup((prev) => {
-      const next = prev.includes(value)
-        ? prev.filter((item) => item !== value)
-        : [...prev, value];
+      const next = prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value];
       return next;
     });
     setSelectedTeam([]);
@@ -304,385 +198,296 @@ export default function ScheduleTable({
 
   const toggleTeamSelection = (value: string) => {
     setSelectedTeam((prev) =>
-      prev.includes(value)
-        ? prev.filter((item) => item !== value)
-        : [...prev, value],
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value],
     );
   };
 
-  const resetAgeSelection = () => {
-    setSelectedAgeGroup([]);
-    setSelectedTeam([]);
-  };
-
-  const resetTeamSelection = () => {
-    setSelectedTeam([]);
-  };
-
-  const handleDayFilterChange = (filter: Exclude<DayFilter, "all">) => {
-    setDayFilter((current) => (current === filter ? "all" : filter));
+  const toggleParkSelection = (value: string) => {
+    setSelectedPark((prev) =>
+      prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value],
+    );
   };
 
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
-      if (
-        ageDropdownRef.current &&
-        !ageDropdownRef.current.contains(event.target as Node)
-      ) {
+      if (ageDropdownRef.current && !ageDropdownRef.current.contains(event.target as Node)) {
         setAgeDropdownOpen(false);
       }
-      if (
-        teamDropdownRef.current &&
-        !teamDropdownRef.current.contains(event.target as Node)
-      ) {
+      if (teamDropdownRef.current && !teamDropdownRef.current.contains(event.target as Node)) {
         setTeamDropdownOpen(false);
       }
+      if (parkDropdownRef.current && !parkDropdownRef.current.contains(event.target as Node)) {
+        setParkDropdownOpen(false);
+      }
     };
-
     document.addEventListener("mousedown", handleClickOutside);
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const downloadCSV = (games: Game[]) => {
-    const headers = [
-      "Date & Time",
-      "Age Group",
-      "Home Team",
-      "Away Team",
-      "Field",
-      "Venue",
-    ];
-    const rows = games.map((game) => [
-      game.localized_date
-        ? `${game.localized_date} • ${game.localized_time || "TBD"}`
-        : "TBD",
-      game.age_group || "—",
-      game.home_team || "TBD",
-      game.away_team || "TBD",
-      game.subvenue || "TBD",
-      game._embedded?.venue?.name || "TBD",
-    ]);
-
-    const csvContent = [headers, ...rows]
-      .map((row) => row.map((cell) => `"${cell}"`).join(","))
-      .join("\n");
-
-    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
-    const link = document.createElement("a");
-    const url = URL.createObjectURL(blob);
-    link.setAttribute("href", url);
-    link.setAttribute(
-      "download",
-      `schedule-${new Date().toISOString().split("T")[0]}.csv`,
-    );
-    link.style.visibility = "hidden";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  };
-
-  const downloadXLSX = (games: Game[]) => {
-    const data = games.map((game) => ({
-      "Date & Time": game.localized_date
-        ? `${game.localized_date} • ${game.localized_time || "TBD"}`
-        : "TBD",
-      "Age Group": game.age_group || "—",
-      "Home Team": game.home_team || "TBD",
-      "Away Team": game.away_team || "TBD",
-      Field: game.subvenue || "TBD",
-      Venue: game._embedded?.venue?.name || "TBD",
-    }));
-
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(workbook, worksheet, "Schedule");
-    XLSX.writeFile(
-      workbook,
-      `schedule-${new Date().toISOString().split("T")[0]}.xlsx`,
-    );
-  };
-
-  const downloadPDF = (games: Game[]) => {
-    const doc = new jsPDF({
-      orientation: "landscape",
-      unit: "mm",
-      format: "a4",
-    });
-
-    doc.setFontSize(20);
-    doc.text("Schedules & Standings", 20, 20);
-    doc.setFontSize(12);
-    doc.text(`${getSubtitle()} • Live from Assignr`, 20, 35);
-
-    // Build grouped body using cell objects so Park/Day rows span all columns
-    type CellDef = {
-      content: string;
-      colSpan?: number;
-      styles?: Record<string, unknown>;
-    };
-    type RowInput = (string | CellDef)[];
-    const body: RowInput[] = [];
-
-    const parkMap = new Map<
-      string,
-      Map<number, { dayLabel: string; games: Game[] }>
-    >();
-    for (const game of games) {
-      const park = game._embedded?.venue?.name || "Unknown Venue";
-      const src = game.start_time || game.localized_date;
-      let daySortVal = Number.POSITIVE_INFINITY;
-      let dayLabel = "Unknown Date";
-      if (src) {
-        const d = new Date(src);
-        if (!Number.isNaN(d.valueOf())) {
-          daySortVal = new Date(
-            d.getFullYear(),
-            d.getMonth(),
-            d.getDate(),
-          ).valueOf();
-          dayLabel = d.toLocaleDateString("en-US", {
-            weekday: "long",
-            month: "short",
-            day: "numeric",
-            year: "numeric",
-          });
-        } else {
-          dayLabel = game.localized_date || "Unknown Date";
-        }
-      }
-      if (!parkMap.has(park)) parkMap.set(park, new Map());
-      const dayMap = parkMap.get(park)!;
-      if (!dayMap.has(daySortVal))
-        dayMap.set(daySortVal, { dayLabel, games: [] });
-      dayMap.get(daySortVal)!.games.push(game);
-    }
-
-    Array.from(parkMap.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .forEach(([park, dayMap]) => {
-        body.push([
-          {
-            content: park,
-            colSpan: 5,
-            styles: {
-              fillColor: [39, 39, 42],
-              textColor: [161, 161, 170],
-              fontStyle: "bold",
-              fontSize: 9,
-            },
-          },
-        ]);
-        Array.from(dayMap.entries())
-          .sort(([a], [b]) => a - b)
-          .forEach(([, { dayLabel, games: dayGames }]) => {
-            body.push([
-              {
-                content: `    ${dayLabel}`,
-                colSpan: 5,
-                styles: {
-                  fillColor: [24, 24, 27],
-                  textColor: [202, 138, 4],
-                  fontStyle: "bold",
-                  fontSize: 8,
-                },
-              },
-            ]);
-            const sorted = [...dayGames].sort((a, b) => {
-              const ageDiff =
-                getAgeGroupSortValue(a.age_group) -
-                getAgeGroupSortValue(b.age_group);
-              if (ageDiff !== 0) return ageDiff;
-              return getGameSortDateValue(a) - getGameSortDateValue(b);
-            });
-            sorted.forEach((game) => {
-              body.push([
-                game.localized_time || "TBD",
-                game.age_group || "—",
-                game.home_team || "TBD",
-                game.away_team || "TBD",
-                game.subvenue || "TBD",
-              ]);
-            });
-          });
-      });
-
-    autoTable(doc, {
-      head: [["Time", "Age Group", "Home Team", "Away Team", "Field"]],
-      body,
-      startY: 45,
-      styles: {
-        fontSize: 8,
-        cellPadding: 2,
-        lineColor: [80, 80, 80],
-        lineWidth: 0.1,
-      },
-      headStyles: {
-        fillColor: [89, 2, 117],
-        textColor: 255,
-        lineWidth: 0.1,
-      },
-      alternateRowStyles: {
-        fillColor: [245, 245, 245],
-      },
-      tableLineColor: [200, 200, 200],
-      tableLineWidth: 0.1,
-      columnStyles: {
-        0: { cellWidth: 22 },
-        1: { cellWidth: 22 },
-        2: { cellWidth: "auto" },
-        3: { cellWidth: "auto" },
-        4: { cellWidth: 38 },
-      },
-    });
-
-    doc.save(`schedule-${new Date().toISOString().split("T")[0]}.pdf`);
-  };
-
   const selectedAgeGroupLabel =
     selectedAgeGroup.length === 0
-      ? "All Age Groups"
+      ? "All divisions"
       : selectedAgeGroup.length > 2
         ? `${selectedAgeGroup.length} selected`
         : selectedAgeGroup.join(", ");
-
   const selectedTeamLabel =
     selectedTeam.length === 0
-      ? "All Teams"
+      ? "All teams"
       : selectedTeam.length > 2
         ? `${selectedTeam.length} selected`
         : selectedTeam.join(", ");
+  const selectedParkLabel =
+    selectedPark.length === 0
+      ? "All parks"
+      : selectedPark.length > 2
+        ? `${selectedPark.length} selected`
+        : selectedPark.join(", ");
 
-  // Build subtitle text based on filters
-  const getSubtitle = () => {
-    if (selectedAgeGroup.length > 0 && selectedTeam.length > 0) {
-      return `${selectedAgeGroup.join(", ")} • ${selectedTeam.join(", ")}`;
-    } else if (selectedAgeGroup.length > 0) {
-      return selectedAgeGroup.join(", ");
+  const subtitle =
+    selectedAgeGroup.length || selectedTeam.length || selectedPark.length
+      ? [selectedAgeGroup.join(", "), selectedTeam.join(", "), selectedPark.join(", ")]
+          .filter(Boolean)
+          .join(" · ")
+      : tab === "games"
+        ? "All games"
+        : "Weekly practices";
+
+  const singleTeam = selectedTeam.length === 1 ? selectedTeam[0]! : null;
+  const stamp = new Date().toISOString().slice(0, 10);
+  const rowsForCount = tab === "games" ? filteredGames.length : filteredPractices.length;
+
+  function downloadCSV() {
+    if (tab === "practices") {
+      const headers = ["Weekday", "Time", "Age", "Team", "Park", "Field", "Shares with"];
+      const rows = filteredPractices.map((slot) => [
+        slot.weekdayName,
+        slot.timeLabel,
+        slot.ageGroup,
+        slot.teamName,
+        slot.parkName,
+        slot.fieldName,
+        slot.pairTeamName || "",
+      ]);
+      const csv = [headers, ...rows].map((row) => row.map((cell) => `"${cell}"`).join(",")).join("\n");
+      downloadTextFile(csv, `${fileStem(["practices", subtitle, stamp])}.csv`, "text/csv;charset=utf-8;");
+      return;
     }
-    return "All Games";
-  };
+    const headers = ["Date", "Weekday", "Time", "Age", "Home", "Away", "Park", "Field"];
+    const rows = filteredGames.map((game) => [
+      game.dateKey,
+      game.weekdayName,
+      game.timeLabel,
+      game.ageGroup,
+      game.homeTeam,
+      game.awayTeam,
+      game.parkName,
+      game.fieldName,
+    ]);
+    const csv = [headers, ...rows].map((row) => row.map((cell) => `"${cell}"`).join(",")).join("\n");
+    downloadTextFile(csv, `${fileStem(["schedule", subtitle, stamp])}.csv`, "text/csv;charset=utf-8;");
+  }
+
+  function downloadXLSX() {
+    if (tab === "practices") {
+      const data = filteredPractices.map((slot) => ({
+        Weekday: slot.weekdayName,
+        Time: slot.timeLabel,
+        Age: slot.ageGroup,
+        Team: slot.teamName,
+        Park: slot.parkName,
+        Field: slot.fieldName,
+        "Shares with": slot.pairTeamName || "",
+      }));
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, "Practices");
+      XLSX.writeFile(workbook, `${fileStem(["practices", subtitle, stamp])}.xlsx`);
+      return;
+    }
+    const data = filteredGames.map((game) => ({
+      Date: game.dateKey,
+      Weekday: game.weekdayName,
+      Time: game.timeLabel,
+      Age: game.ageGroup,
+      Home: game.homeTeam,
+      Away: game.awayTeam,
+      Park: game.parkName,
+      Field: game.fieldName,
+    }));
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Schedule");
+    XLSX.writeFile(workbook, `${fileStem(["schedule", subtitle, stamp])}.xlsx`);
+  }
+
+  function downloadPDF() {
+    if (singleTeam) {
+      const teamGames = filterPublicGames(sourceGames, {
+        ageGroups: selectedAgeGroup,
+        teams: [singleTeam],
+        parks: selectedPark,
+      });
+      const teamPractices = filterPublicPractices(initialPractices, {
+        ageGroups: selectedAgeGroup,
+        teams: [singleTeam],
+        parks: selectedPark,
+      });
+      const ageGroup =
+        teamGames[0]?.ageGroup || teamPractices[0]?.ageGroup || selectedAgeGroup[0] || "";
+      const pdf = buildTeamSchedulePdf({
+        orgName: siteName,
+        seasonName,
+        ageGroup,
+        teamName: singleTeam,
+        games: teamGames,
+        practices: teamPractices,
+      });
+      downloadPdfBuffer(pdf.buffer, `${fileStem([ageGroup, singleTeam, "schedule"])}.pdf`);
+      return;
+    }
+    if (tab === "practices") {
+      const pdf = buildSeasonPracticesPdf({
+        orgName: siteName,
+        seasonName,
+        subtitle,
+        slots: filteredPractices,
+      });
+      downloadPdfBuffer(pdf.buffer, `${fileStem(["practices", subtitle, stamp])}.pdf`);
+      return;
+    }
+    const pdf = buildSeasonGamesPdf({
+      orgName: siteName,
+      seasonName,
+      subtitle,
+      games: filteredGames,
+    });
+    downloadPdfBuffer(pdf.buffer, `${fileStem(["schedule", subtitle, stamp])}.pdf`);
+  }
+
+  const empty =
+    tab === "games" ? filteredGames.length === 0 : filteredPractices.length === 0;
 
   return (
-    <section id="schedule" className="bg-zinc-950 py-12 sm:py-16 lg:py-20">
+    <section id="schedule" className="bg-zinc-950 py-10 sm:py-14">
       <RainoutPopup
         siteName={siteName}
         rainedOutVenues={rainedOutVenues}
         allParksRainedOut={allParksRainedOut}
-        _preview={previewRainout}
       />
       <div className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="mb-8 flex flex-col justify-between gap-5 md:flex-row md:items-center">
+        <div className="mb-6 flex flex-col justify-between gap-4 md:flex-row md:items-end">
           <div>
-            <h2 className="text-3xl font-bold sm:text-4xl">Schedules</h2>
-            <p className="mt-1 text-sm text-zinc-400 sm:text-base">{getSubtitle()} • Live from Assignr</p>
+            <h2 className="text-2xl font-bold sm:text-3xl">Schedules</h2>
+            <p className="mt-1 text-sm text-zinc-400">
+              {seasonName} · {subtitle}
+            </p>
           </div>
-
           <div className="space-y-2">
-            <div className="grid grid-cols-3 gap-2 sm:flex sm:justify-start md:justify-end">
-              <button
-                onClick={() => handleViewChange("thisWeek")}
-                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:px-6 sm:py-3 sm:text-base ${
-                  currentViewMode === "thisWeek"
-                    ? "bg-brand-purple text-white"
-                    : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                }`}
-              >
-                This Week
-              </button>
-              <button
-                onClick={() => handleViewChange("nextWeek")}
-                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:px-6 sm:py-3 sm:text-base ${
-                  currentViewMode === "nextWeek"
-                    ? "bg-brand-purple text-white"
-                    : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                }`}
-              >
-                Next Week
-              </button>
-              <button
-                onClick={() => handleViewChange("fullSeason")}
-                className={`min-h-11 rounded-xl px-3 py-2 text-sm font-medium transition-all sm:px-6 sm:py-3 sm:text-base ${
-                  currentViewMode === "fullSeason"
-                    ? "bg-brand-purple text-white"
-                    : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                }`}
-              >
-                Full Season
-              </button>
+            <div className="grid grid-cols-3 gap-2 sm:flex sm:justify-end">
+              {(
+                [
+                  ["thisWeek", "This week"],
+                  ["nextWeek", "Next week"],
+                  ["fullSeason", "Season"],
+                ] as const
+              ).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  onClick={() => handleViewChange(mode)}
+                  className={`min-h-10 rounded-lg px-3 py-2 text-sm font-medium ${
+                    currentViewMode === mode
+                      ? "bg-brand-purple text-white"
+                      : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                  }`}
+                >
+                  {label}
+                </button>
+              ))}
             </div>
-
-            {(currentViewMode === "thisWeek" ||
-              currentViewMode === "fullSeason") && (
-              <div className="grid grid-cols-3 gap-2 sm:flex sm:justify-start md:justify-end">
-                <button
-                  onClick={() => handleDayFilterChange("yesterday")}
-                  className={`min-h-10 rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:text-sm ${
-                    dayFilter === "yesterday"
-                      ? "bg-brand-gold text-black"
-                      : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                  }`}
-                >
-                  Yesterday
-                </button>
-                <button
-                  onClick={() => handleDayFilterChange("today")}
-                  className={`min-h-10 rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:text-sm ${
-                    dayFilter === "today"
-                      ? "bg-brand-gold text-black"
-                      : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                  }`}
-                >
-                  Today
-                </button>
-                <button
-                  onClick={() => handleDayFilterChange("tomorrow")}
-                  className={`min-h-10 rounded-lg px-3 py-2 text-xs font-medium transition-all sm:px-4 sm:text-sm ${
-                    dayFilter === "tomorrow"
-                      ? "bg-brand-gold text-black"
-                      : "bg-zinc-800 hover:bg-zinc-700 text-zinc-300"
-                  }`}
-                >
-                  Tomorrow
-                </button>
+            {currentViewMode !== "nextWeek" ? (
+              <div className="grid grid-cols-3 gap-2 sm:flex sm:justify-end">
+                {(
+                  [
+                    ["yesterday", "Yesterday"],
+                    ["today", "Today"],
+                    ["tomorrow", "Tomorrow"],
+                  ] as const
+                ).map(([filter, label]) => (
+                  <button
+                    key={filter}
+                    type="button"
+                    onClick={() => setDayFilter((current) => (current === filter ? "all" : filter))}
+                    className={`min-h-9 rounded-lg px-3 py-1.5 text-xs font-medium ${
+                      dayFilter === filter
+                        ? "bg-brand-gold text-black"
+                        : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+                    }`}
+                  >
+                    {label}
+                  </button>
+                ))}
               </div>
-            )}
+            ) : null}
           </div>
         </div>
 
-        {/* Filter Section */}
-        <div className="mb-8 grid gap-4 md:grid-cols-2">
-          <div className="relative flex min-w-0 flex-col" ref={ageDropdownRef}>
-            <label className="text-sm font-medium text-zinc-400 mb-2">
-              Age Group
-            </label>
+        <div className="mb-4 flex gap-2">
+          {(
+            [
+              ["games", "Games"],
+              ["practices", "Practices"],
+            ] as const
+          ).map(([value, label]) => (
+            <button
+              key={value}
+              type="button"
+              onClick={() => setTab(value)}
+              className={`rounded-full px-4 py-1.5 text-sm font-medium ${
+                tab === value
+                  ? "bg-white text-zinc-950"
+                  : "bg-zinc-800 text-zinc-300 hover:bg-zinc-700"
+              }`}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        <div className="mb-5 grid gap-3 md:grid-cols-3">
+          <div className="relative" ref={ageDropdownRef}>
+            <label className="mb-1 block text-xs font-medium text-zinc-500">Division</label>
             <button
               type="button"
               onClick={() => {
-                setAgeDropdownOpen((value) => !value);
+                setAgeDropdownOpen((open) => !open);
                 setTeamDropdownOpen(false);
+                setParkDropdownOpen(false);
               }}
-              className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-white transition-colors hover:border-zinc-600"
+              className="flex min-h-10 w-full items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white"
             >
-              <span className="min-w-0 truncate">{selectedAgeGroupLabel}</span>
+              <span className="truncate">{selectedAgeGroupLabel}</span>
               <span className="text-zinc-400">▾</span>
             </button>
-
-            {ageDropdownOpen && (
-              <div className="absolute left-0 top-full z-20 mt-2 w-full overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950 shadow-xl">
+            {ageDropdownOpen ? (
+              <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl">
                 <button
                   type="button"
-                  onClick={resetAgeSelection}
-                  className="min-h-11 w-full px-4 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
+                  onClick={() => {
+                    setSelectedAgeGroup([]);
+                    setSelectedTeam([]);
+                  }}
+                  className="min-h-10 w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
                 >
-                  All Age Groups
+                  All divisions
                 </button>
-                <div className="max-h-72 overflow-auto">
+                <div className="max-h-64 overflow-auto">
                   {ageGroups.map((group) => (
                     <button
                       key={group}
                       type="button"
                       onClick={() => toggleAgeSelection(group)}
-                      className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-white hover:bg-zinc-900"
+                      className="flex min-h-10 w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-zinc-900"
                     >
                       <span>{group}</span>
                       {selectedAgeGroup.includes(group) ? (
@@ -692,41 +497,38 @@ export default function ScheduleTable({
                   ))}
                 </div>
               </div>
-            )}
+            ) : null}
           </div>
-
-          <div className="relative flex min-w-0 flex-col" ref={teamDropdownRef}>
-            <label className="text-sm font-medium text-zinc-400 mb-2">
-              Team
-            </label>
+          <div className="relative" ref={teamDropdownRef}>
+            <label className="mb-1 block text-xs font-medium text-zinc-500">Team</label>
             <button
               type="button"
               onClick={() => {
-                setTeamDropdownOpen((value) => !value);
+                setTeamDropdownOpen((open) => !open);
                 setAgeDropdownOpen(false);
+                setParkDropdownOpen(false);
               }}
-              className="flex min-h-11 items-center justify-between gap-3 rounded-lg border border-zinc-700 bg-zinc-800 px-4 py-2 text-white transition-colors hover:border-zinc-600"
+              className="flex min-h-10 w-full items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white"
             >
-              <span className="min-w-0 truncate">{selectedTeamLabel}</span>
+              <span className="truncate">{selectedTeamLabel}</span>
               <span className="text-zinc-400">▾</span>
             </button>
-
-            {teamDropdownOpen && (
-              <div className="absolute left-0 top-full z-20 mt-2 w-full overflow-hidden rounded-2xl border border-zinc-700 bg-zinc-950 shadow-xl">
+            {teamDropdownOpen ? (
+              <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl">
                 <button
                   type="button"
-                  onClick={resetTeamSelection}
-                  className="min-h-11 w-full px-4 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
+                  onClick={() => setSelectedTeam([])}
+                  className="min-h-10 w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
                 >
-                  All Teams
+                  All teams
                 </button>
-                <div className="max-h-72 overflow-auto">
+                <div className="max-h-64 overflow-auto">
                   {teams.map((team) => (
                     <button
                       key={team}
                       type="button"
                       onClick={() => toggleTeamSelection(team)}
-                      className="flex min-h-11 w-full items-center justify-between gap-3 px-4 py-2 text-left text-sm text-white hover:bg-zinc-900"
+                      className="flex min-h-10 w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-zinc-900"
                     >
                       <span>{team}</span>
                       {selectedTeam.includes(team) ? (
@@ -736,139 +538,193 @@ export default function ScheduleTable({
                   ))}
                 </div>
               </div>
-            )}
+            ) : null}
+          </div>
+          <div className="relative" ref={parkDropdownRef}>
+            <label className="mb-1 block text-xs font-medium text-zinc-500">Park</label>
+            <button
+              type="button"
+              onClick={() => {
+                setParkDropdownOpen((open) => !open);
+                setAgeDropdownOpen(false);
+                setTeamDropdownOpen(false);
+              }}
+              className="flex min-h-10 w-full items-center justify-between rounded-lg border border-zinc-700 bg-zinc-800 px-3 py-2 text-sm text-white"
+            >
+              <span className="truncate">{selectedParkLabel}</span>
+              <span className="text-zinc-400">▾</span>
+            </button>
+            {parkDropdownOpen ? (
+              <div className="absolute z-20 mt-1 w-full overflow-hidden rounded-xl border border-zinc-700 bg-zinc-950 shadow-xl">
+                <button
+                  type="button"
+                  onClick={() => setSelectedPark([])}
+                  className="min-h-10 w-full px-3 py-2 text-left text-sm text-zinc-300 hover:bg-zinc-900"
+                >
+                  All parks
+                </button>
+                <div className="max-h-64 overflow-auto">
+                  {parks.map((park) => (
+                    <button
+                      key={park}
+                      type="button"
+                      onClick={() => toggleParkSelection(park)}
+                      className="flex min-h-10 w-full items-center justify-between px-3 py-2 text-left text-sm hover:bg-zinc-900"
+                    >
+                      <span>{park}</span>
+                      {selectedPark.includes(park) ? (
+                        <span className="text-brand-gold">✓</span>
+                      ) : null}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ) : null}
           </div>
         </div>
 
-        {/* Download Section */}
-        {filteredGames.length > 0 && (
-          <div className="mb-8 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {!empty ? (
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-sm font-medium text-zinc-400">
-                Download:
-              </span>
+              <span className="text-xs font-medium text-zinc-500">Download</span>
               <button
-                onClick={() => downloadCSV(sortedGames)}
-                className="min-h-10 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+                type="button"
+                onClick={downloadCSV}
+                className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
               >
                 CSV
               </button>
               <button
-                onClick={() => downloadXLSX(sortedGames)}
-                className="min-h-10 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+                type="button"
+                onClick={downloadXLSX}
+                className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
               >
                 Excel
               </button>
               <button
-                onClick={() => downloadPDF(sortedGames)}
-                className="min-h-10 rounded-lg bg-zinc-800 px-4 py-2 text-sm font-medium text-white transition-colors hover:bg-zinc-700"
+                type="button"
+                onClick={downloadPDF}
+                className="rounded-lg bg-zinc-800 px-3 py-1.5 text-xs font-medium text-white hover:bg-zinc-700"
               >
                 PDF
               </button>
             </div>
-            <div className="flex items-center text-xs text-zinc-500">
-              {sortedGames.length} games • {getSubtitle()}
-            </div>
-          </div>
-        )}
-
-        {initialError ? (
-          <div className="bg-red-950 border border-red-800 rounded-2xl p-8 text-center">
-            <p className="text-red-400">Error: {initialError}</p>
-          </div>
-        ) : filteredGames.length === 0 ? (
-          <div className="rounded-2xl bg-zinc-900 p-8 text-center sm:p-12">
-            <p className="text-zinc-400">
-              No games found for the selected filters.
+            <p className="text-xs text-zinc-500">
+              {rowsForCount} {tab === "games" ? "games" : "practice slots"}
+              {singleTeam ? " · team sheet is one page" : ""}
             </p>
           </div>
-        ) : (
-          <div className="overflow-x-auto rounded-2xl border border-zinc-800 bg-zinc-900">
-            <table className="min-w-[720px] w-full text-sm">
+        ) : null}
+
+        {initialError ? (
+          <div className="rounded-xl border border-red-800 bg-red-950/40 p-6 text-center text-sm text-red-300">
+            {initialError}
+          </div>
+        ) : empty ? (
+          <div className="rounded-xl bg-zinc-900 p-8 text-center text-sm text-zinc-400">
+            {tab === "games"
+              ? "No games for these filters."
+              : "No practice slots for these filters."}
+          </div>
+        ) : tab === "games" ? (
+          <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900">
+            <table className="w-full min-w-[640px] text-sm">
               <thead>
-                <tr className="border-b border-zinc-800 bg-zinc-800">
-                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">Time</th>
-                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">
-                    Age Group
-                  </th>
-                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">
-                    Home Team
-                  </th>
-                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">
-                    Away Team
-                  </th>
-                  <th className="px-4 py-4 text-left font-semibold sm:px-6 sm:py-5">Field</th>
+                <tr className="border-b border-zinc-800 bg-zinc-800/80 text-left text-xs uppercase tracking-wide text-zinc-400">
+                  <th className="px-3 py-2 font-semibold">Date</th>
+                  <th className="px-3 py-2 font-semibold">Time</th>
+                  <th className="px-3 py-2 font-semibold">Age</th>
+                  <th className="px-3 py-2 font-semibold">Home</th>
+                  <th className="px-3 py-2 font-semibold">Away</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-zinc-800">
-                {groupedGames.map(({ park, days }) => (
-                  <Fragment key={`park-group-${park}`}>
-                    <tr key={`park-${park}`}>
+              <tbody>
+                {groupedGames.map((park) => (
+                  <Fragment key={park.parkName}>
+                    <tr>
                       <td
                         colSpan={5}
-                        className="bg-zinc-800/60 px-4 py-3 text-xs font-semibold uppercase tracking-widest text-zinc-400 sm:px-6"
+                        className="bg-zinc-800 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-400"
                       >
-                        {park.replace(/\s*Parks?$/i, "").trim() || park}
+                        {park.parkName}
                       </td>
                     </tr>
-                    {days.map(({ dayLabel, games }) => (
-                      <Fragment key={`day-group-${park}-${dayLabel}`}>
-                        <tr key={`day-${park}-${dayLabel}`}>
-                          <td
-                            colSpan={5}
-                            className="bg-zinc-900/80 px-5 py-2 text-xs font-semibold tracking-wide text-brand-gold/80 sm:px-8"
-                          >
-                            {dayLabel}
-                          </td>
-                        </tr>
-                        {games.map((game) => {
-                          const fieldName = game.subvenue || "TBD";
-                          const isCancelled = game.status === "C";
-                          return (
-                            <tr
-                              key={game.id}
-                              className={`transition-colors ${
-                                isCancelled
-                                  ? "bg-red-950/40 hover:bg-red-950/60"
-                                  : "hover:bg-zinc-800/50"
-                              }`}
-                            >
+                    {park.fields.map((field) => (
+                      <Fragment key={`${park.parkName}-${field.fieldName}`}>
+                        {field.weekdays.map((weekday) => (
+                          <Fragment key={`${park.parkName}-${field.fieldName}-${weekday.weekdayIndex}`}>
+                            <tr>
                               <td
-                                className={`whitespace-nowrap px-4 py-4 font-medium sm:px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
+                                colSpan={5}
+                                className="bg-zinc-950/70 px-3 py-1 text-xs font-medium text-brand-gold/80"
                               >
-                                {game.localized_time || "TBD"}
-                                {isCancelled && (
-                                  <span
-                                    className="ml-2 text-xs font-bold uppercase tracking-wide text-red-400"
-                                    style={{ textDecoration: "none" }}
-                                  >
-                                    Rained-Out
-                                  </span>
-                                )}
-                              </td>
-                              <td
-                                className={`px-4 py-4 font-medium sm:px-6 ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
-                              >
-                                {game.age_group || "—"}
-                              </td>
-                              <td
-                                className={`px-4 py-4 sm:px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
-                              >
-                                {game.home_team || "TBD"}
-                              </td>
-                              <td
-                                className={`px-4 py-4 sm:px-6 ${isCancelled ? "line-through text-red-400" : ""}`}
-                              >
-                                {game.away_team || "TBD"}
-                              </td>
-                              <td
-                                className={`px-4 py-4 font-medium sm:px-6 ${isCancelled ? "line-through text-red-400" : "text-brand-gold"}`}
-                              >
-                                {fieldName}
+                                {field.fieldName} · {weekday.weekdayName}
                               </td>
                             </tr>
-                          );
-                        })}
+                            {weekday.games.map((row) => (
+                              <tr key={row.id} className="border-t border-zinc-800/80 hover:bg-zinc-800/40">
+                                <td className="whitespace-nowrap px-3 py-1.5 text-zinc-300">
+                                  {row.dateLabel.replace(/^[A-Za-z]{3},\s/, "")}
+                                </td>
+                                <td className="whitespace-nowrap px-3 py-1.5 font-medium">{row.timeLabel}</td>
+                                <td className="px-3 py-1.5 text-brand-gold">{row.ageGroup}</td>
+                                <td className="px-3 py-1.5">{row.homeTeam}</td>
+                                <td className="px-3 py-1.5">{row.awayTeam}</td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
+                      </Fragment>
+                    ))}
+                  </Fragment>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        ) : (
+          <div className="overflow-x-auto rounded-xl border border-zinc-800 bg-zinc-900">
+            <table className="w-full min-w-[640px] text-sm">
+              <thead>
+                <tr className="border-b border-zinc-800 bg-zinc-800/80 text-left text-xs uppercase tracking-wide text-zinc-400">
+                  <th className="px-3 py-2 font-semibold">Time</th>
+                  <th className="px-3 py-2 font-semibold">Age</th>
+                  <th className="px-3 py-2 font-semibold">Team</th>
+                  <th className="px-3 py-2 font-semibold">Shares with</th>
+                </tr>
+              </thead>
+              <tbody>
+                {groupedPractices.map((park) => (
+                  <Fragment key={park.parkName}>
+                    <tr>
+                      <td
+                        colSpan={4}
+                        className="bg-zinc-800 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-400"
+                      >
+                        {park.parkName}
+                      </td>
+                    </tr>
+                    {park.fields.map((field) => (
+                      <Fragment key={`${park.parkName}-${field.fieldName}`}>
+                        {field.weekdays.map((weekday) => (
+                          <Fragment key={`${park.parkName}-${field.fieldName}-${weekday.weekdayIndex}`}>
+                            <tr>
+                              <td
+                                colSpan={4}
+                                className="bg-zinc-950/70 px-3 py-1 text-xs font-medium text-brand-gold/80"
+                              >
+                                {field.fieldName} · {weekday.weekdayName}
+                              </td>
+                            </tr>
+                            {weekday.slots.map((slot) => (
+                              <tr key={slot.id} className="border-t border-zinc-800/80 hover:bg-zinc-800/40">
+                                <td className="whitespace-nowrap px-3 py-1.5 font-medium">{slot.timeLabel}</td>
+                                <td className="px-3 py-1.5 text-brand-gold">{slot.ageGroup}</td>
+                                <td className="px-3 py-1.5">{slot.teamName}</td>
+                                <td className="px-3 py-1.5 text-zinc-400">{slot.pairTeamName || "—"}</td>
+                              </tr>
+                            ))}
+                          </Fragment>
+                        ))}
                       </Fragment>
                     ))}
                   </Fragment>
@@ -878,20 +734,11 @@ export default function ScheduleTable({
           </div>
         )}
 
-        <p
-          className="text-center text-xs text-zinc-500 mt-8"
-          suppressHydrationWarning
-        >
-          Data refreshes every 5 minutes • Last updated: {lastUpdateTime}
-        </p>
-
-        <div className="mt-12 sm:mt-14">
-          <h2 className="mb-2 text-3xl font-bold sm:text-4xl">Standings</h2>
-          <p className="text-zinc-400 mb-6">
-            League standings by age group from scored games.
-          </p>
-          <StandingsTabs standings={standings} />
-        </div>
+        {standings.length > 0 ? (
+          <div className="mt-10">
+            <StandingsTabs standings={standings} />
+          </div>
+        ) : null}
       </div>
     </section>
   );

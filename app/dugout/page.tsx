@@ -16,20 +16,21 @@ import {
   getCoachUserFromCookieToken,
 } from "@/lib/auth/coachSession";
 import { listDugoutPosts } from "@/lib/dugout/posts";
-import { fetchGames, type Game } from "@/lib/fetchGames";
+import type { Game } from "@/lib/fetchGames";
+import { toLegacyScheduleGame } from "@/lib/schedule/publicSchedule";
+import { loadPublicScheduleGames } from "@/lib/schedule/publicScheduleLoad";
+import type { ContentOrgId } from "@/lib/siteConfig";
 import { getPublishedNewsPosts } from "@/lib/news/queries";
 import prisma from "@/lib/prisma";
 import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
 import {
-  getAssignrLeagueId,
   getSiteConfig,
   isMasterDeployment,
 } from "@/lib/siteConfig";
 import { computeStandingsByAgeGroup } from "@/lib/standings";
 
 const site = getSiteConfig();
-const orgId = site.orgId === "ascension" ? "ascension" : "gonzales";
-const defaultLeagueId = getAssignrLeagueId();
+const orgId = site.orgId === "ascension" ? "ascension" : site.orgId === "fallball" ? "fallball" : "gonzales";
 const isMaster = isMasterDeployment();
 
 export const metadata = {
@@ -39,15 +40,16 @@ export const metadata = {
     : "Coaches-only discussion feed.",
 };
 
-function formatGameTime(game: Game): string {
+function formatGameTime(game: { localized_time?: string | null; start_time?: string | null }): string {
+  if (game.localized_time) return game.localized_time;
   if (game.start_time) {
-    return new Date(game.start_time as string).toLocaleTimeString("en-US", {
+    return new Date(game.start_time).toLocaleTimeString("en-US", {
       hour: "numeric",
       minute: "2-digit",
       timeZone: "America/Chicago",
     });
   }
-  return (game.localized_time as string) || "TBD";
+  return "TBD";
 }
 
 function formatSidebarDate(value: Date | null): string {
@@ -60,14 +62,16 @@ function formatSidebarDate(value: Date | null): string {
 
 async function fetchGamesForOrgs(
   options: { startDate: string; endDate: string },
-  leagueIds: string[],
-): Promise<Game[]> {
+  orgs: ContentOrgId[],
+) {
   const results = await Promise.all(
-    leagueIds.map((id) =>
-      fetchGames({ ...options, leagueId: id }).catch(() => [] as Game[]),
+    orgs.map((org) =>
+      loadPublicScheduleGames({ org, startDate: options.startDate, endDate: options.endDate }).catch(
+        () => [],
+      ),
     ),
   );
-  return results.flat();
+  return results.flat().map(toLegacyScheduleGame);
 }
 
 const NAV_ITEMS = [
@@ -237,9 +241,9 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
   const scheduleStartDate = startOfWeek.toISOString().split("T")[0]!;
   const scheduleEndDate = endOfWeek.toISOString().split("T")[0]!;
 
-  const gameLeagueIds = isMaster
-    ? [getAssignrLeagueId("gonzales"), getAssignrLeagueId("ascension")]
-    : [defaultLeagueId];
+  const scheduleOrgs: ContentOrgId[] = isMaster
+    ? ["gonzales", "ascension", "fallball"]
+    : [site.orgId === "ascension" ? "ascension" : site.orgId === "fallball" ? "fallball" : "gonzales"];
 
   const [
     initialPosts,
@@ -247,16 +251,15 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     scheduleGames,
     allNews,
     scores,
-    allSeasonGames,
   ] = await Promise.all([
     listDugoutPosts(coach?.id, isMaster ? "master" : undefined),
     fetchGamesForOrgs(
       { startDate: todayStr, endDate: todayStr },
-      gameLeagueIds,
+      scheduleOrgs,
     ),
     fetchGamesForOrgs(
       { startDate: scheduleStartDate, endDate: scheduleEndDate },
-      gameLeagueIds,
+      scheduleOrgs,
     ),
     getPublishedNewsPosts(),
     prisma.gameScore.findMany({
@@ -271,21 +274,10 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
         awayScore: true,
       },
     }),
-    fetchGamesForOrgs(
-      { startDate: SEASON_START_DATE, endDate: SEASON_END_DATE },
-      gameLeagueIds,
-    ),
   ]);
 
   const recentNews = allNews.slice(0, 6);
-  const activeGameIds = new Set(
-    allSeasonGames
-      .filter((game) => game.status?.trim().toUpperCase() === "A")
-      .map((game) => String(game.id)),
-  );
-  const standings = computeStandingsByAgeGroup(
-    scores.filter((score) => activeGameIds.has(score.gameExternalId)),
-  );
+  const standings = computeStandingsByAgeGroup(scores);
 
   const groupedTodayGames = Object.entries(
     todayGames.reduce<Record<string, Record<string, Game[]>>>(
