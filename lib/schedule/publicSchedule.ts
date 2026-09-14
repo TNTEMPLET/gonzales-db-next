@@ -102,6 +102,12 @@ export function formatPublicDateLabel(dateKey: string): string {
   });
 }
 
+export const PUBLIC_POSTED_GAME_STATUSES = ["LOCKED", "EXPORTED"] as const;
+
+export function isPostedPublicGameStatus(status: string): boolean {
+  return (PUBLIC_POSTED_GAME_STATUSES as readonly string[]).includes(status);
+}
+
 export function isPlacedPublicGame(row: {
   gameDate: Date | string | null;
   startTime: string | null | undefined;
@@ -109,7 +115,7 @@ export function isPlacedPublicGame(row: {
   awayTeamName: string | null | undefined;
   status: string;
 }): boolean {
-  if (row.status === "CANCELED") return false;
+  if (!isPostedPublicGameStatus(row.status)) return false;
   if (!row.gameDate || !row.startTime?.trim()) return false;
   if (!row.homeTeamName?.trim() || !row.awayTeamName?.trim()) return false;
   return true;

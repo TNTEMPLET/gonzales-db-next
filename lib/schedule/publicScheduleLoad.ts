@@ -12,6 +12,7 @@ import {
   formatPublicClock,
   formatPublicDateLabel,
   isPlacedPublicGame,
+  PUBLIC_POSTED_GAME_STATUSES,
   weekdayIndexFromDateKey,
   weekdayName,
   type PublicPracticeSlot,
@@ -88,7 +89,7 @@ export async function loadPublicScheduleGames(options: {
     where: {
       organizationId: options.org,
       seasonId: season.id,
-      status: { not: "CANCELED" },
+      status: { in: [...PUBLIC_POSTED_GAME_STATUSES] },
       gameDate: dateRangeFilter(options.startDate, options.endDate),
     },
     include: {

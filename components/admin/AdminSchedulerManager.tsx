@@ -414,7 +414,18 @@ function numberOrNull(value: string): number | null {
 function statusClass(status: string) {
   if (status === "CONFLICT") return "border-red-500/40 bg-red-500/10 text-red-100";
   if (status === "READY") return "border-emerald-500/40 bg-emerald-500/10 text-emerald-100";
+  if (status === "LOCKED") return "border-brand-gold/40 bg-brand-gold/10 text-brand-gold";
   return "border-zinc-700 bg-zinc-900 text-zinc-200";
+}
+
+function statusLabel(status: string) {
+  if (status === "LOCKED") return "Posted";
+  if (status === "DRAFT") return "Draft";
+  if (status === "READY") return "Ready";
+  if (status === "CONFLICT") return "Conflict";
+  if (status === "CANCELED") return "Canceled";
+  if (status === "EXPORTED") return "Exported";
+  return status;
 }
 
 async function safeJson(response: Response) {
@@ -697,15 +708,25 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
     [draftGames],
   );
   const reviewSummary = useMemo(() => {
+    const scoped = reviewDivision === "all" ? draftGames : draftGames.filter((game) => game.division === reviewDivision);
     const conflicts = draftGames.filter(gameHasConflict);
     const unassigned = draftGames.filter((game) => !game.gameDate || !game.fieldId);
+    const posted = scoped.filter((game) => game.status === "LOCKED").length;
+    const postable = scoped.filter(
+      (game) =>
+        (game.status === "DRAFT" || game.status === "READY") &&
+        !gameHasConflict(game) &&
+        Boolean(game.gameDate && game.startTime && game.fieldId),
+    ).length;
+    const unpostable = scoped.filter((game) => game.status === "LOCKED").length;
     const byDivision = reviewDivisions.map((division) => ({
       division,
       count: draftGames.filter((game) => game.division === division).length,
       conflicts: draftGames.filter((game) => game.division === division && gameHasConflict(game)).length,
+      posted: draftGames.filter((game) => game.division === division && game.status === "LOCKED").length,
     }));
-    return { conflicts: conflicts.length, unassigned: unassigned.length, byDivision };
-  }, [draftGames, reviewDivisions]);
+    return { conflicts: conflicts.length, unassigned: unassigned.length, posted, postable, unpostable, byDivision };
+  }, [draftGames, reviewDivision, reviewDivisions]);
   const filteredReviewGames = useMemo(() => {
     const query = reviewQuery.trim().toLowerCase();
     return draftGames.filter((game) => {
@@ -1415,6 +1436,48 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
       setNotice("Draft game updated.");
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to update draft game");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function bulkSetDraftStatus(status: "LOCKED" | "DRAFT") {
+    if (!selectedSeasonId) return;
+    const scope = reviewDivision === "all" ? "all divisions" : reviewDivision;
+    const posting = status === "LOCKED";
+    const count = posting ? reviewSummary.postable : reviewSummary.unpostable;
+    if (!count) return;
+    const confirmed = window.confirm(
+      posting
+        ? `Post ${count} ${scope} game${count === 1 ? "" : "s"}? Posted games stay put when you Generate/Replace. Conflicts and unassigned games are skipped.`
+        : `Return ${count} posted ${scope} game${count === 1 ? "" : "s"} to Draft? Generate/Replace can overwrite them again.`,
+    );
+    if (!confirmed) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const json = (await api("/api/admin/scheduler/draft-games", {
+        method: "POST",
+        body: JSON.stringify({
+          seasonId: selectedSeasonId,
+          status,
+          ...(reviewDivision !== "all" ? { division: reviewDivision } : {}),
+        }),
+      })) as {
+        data?: { updated?: number; skippedConflicts?: number; skippedUnplaced?: number };
+      };
+      await refreshDraftGames();
+      const updated = json.data?.updated ?? 0;
+      const skipped = (json.data?.skippedConflicts ?? 0) + (json.data?.skippedUnplaced ?? 0);
+      const skipNote = skipped ? ` Skipped ${skipped} conflict/unassigned.` : "";
+      setNotice(
+        posting
+          ? `Posted ${updated} game${updated === 1 ? "" : "s"} for ${scope}.${skipNote}`
+          : `Returned ${updated} game${updated === 1 ? "" : "s"} to Draft for ${scope}.`,
+      );
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : "Failed to update game status");
     } finally {
       setBusy(false);
     }
@@ -2141,14 +2204,35 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
         open={stepOpen("scheduler-review")}
         onToggle={() => toggleStepOpen("scheduler-review")}
       >
+        <p className="mb-3 text-sm text-zinc-400">
+          Post a division or all games when the draft is right. Posted games stay put if you Generate/Replace later.
+          Conflicts and unassigned games are skipped.
+        </p>
         <div className="mb-3 flex flex-wrap items-center justify-between gap-2 text-sm text-zinc-400">
           <p>
             {draftGames.length - reviewSummary.unassigned} placed
             {reviewSummary.unassigned ? ` · ${reviewSummary.unassigned} unassigned` : ""}
             {reviewSummary.conflicts ? ` · ${reviewSummary.conflicts} conflicts` : ""}
+            {reviewSummary.posted ? ` · ${reviewSummary.posted} posted` : ""}
             {` · ${filteredReviewGames.length} showing`}
           </p>
           <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              onClick={() => void bulkSetDraftStatus("LOCKED")}
+              disabled={busy || !selectedSeasonId || reviewSummary.postable === 0}
+              className="rounded-xl bg-red-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-red-500 disabled:opacity-50"
+            >
+              {reviewDivision === "all" ? `Post all (${reviewSummary.postable})` : `Post ${reviewDivision} (${reviewSummary.postable})`}
+            </button>
+            <button
+              type="button"
+              onClick={() => void bulkSetDraftStatus("DRAFT")}
+              disabled={busy || !selectedSeasonId || reviewSummary.unpostable === 0}
+              className="rounded-xl border border-zinc-700 px-3 py-1.5 text-xs font-semibold text-zinc-200 hover:border-red-400 disabled:opacity-50"
+            >
+              Return to Draft
+            </button>
             <button
               type="button"
               onClick={() => setReviewFairnessOpen((open) => !open)}
@@ -2188,7 +2272,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                 reviewDivision === row.division ? "border-red-500/60 bg-red-500/10 text-red-100" : "border-zinc-700 text-zinc-200 hover:border-red-400"
               }`}
             >
-              {row.division} ({row.count}{row.conflicts ? ` · ${row.conflicts}` : ""})
+              {row.division} ({row.count}{row.conflicts ? ` · ${row.conflicts}` : ""}{row.posted ? ` · ${row.posted} posted` : ""})
             </button>
           ))}
         </div>
@@ -2207,7 +2291,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
               <option value="DRAFT">Draft</option>
               <option value="READY">Ready</option>
               <option value="CONFLICT">Conflict</option>
-              <option value="LOCKED">Locked</option>
+              <option value="LOCKED">Posted</option>
               <option value="CANCELED">Canceled</option>
             </SelectInput>
           </div>
@@ -2304,7 +2388,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                         {[game.park?.name, game.field?.name].filter(Boolean).join(" · ") || "Unassigned"}
                       </td>
                       <td className="px-3 py-1.5">
-                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusClass(game.status)}`}>{game.status}</span>
+                        <span className={`inline-flex rounded-full border px-2 py-0.5 text-[10px] font-semibold ${statusClass(game.status)}`}>{statusLabel(game.status)}</span>
                       </td>
                       <td className="max-w-xs px-3 py-1.5 text-xs text-zinc-400">{issue || "—"}</td>
                     </tr>
@@ -2326,7 +2410,7 @@ export default function AdminSchedulerManager({ targetOrg }: { targetOrg: Conten
                                 <option value="DRAFT">Draft</option>
                                 <option value="READY">Ready</option>
                                 <option value="CONFLICT">Conflict</option>
-                                <option value="LOCKED">Locked</option>
+                                <option value="LOCKED">Posted</option>
                                 <option value="CANCELED">Canceled</option>
                               </SelectInput>
                             </FieldLabel>
