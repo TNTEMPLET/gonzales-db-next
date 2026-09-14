@@ -43,34 +43,23 @@ describe("public schedule grouping", () => {
     assert.equal(weekdayIndexFromDateKey(key), 1);
   });
 
-  it("excludes canceled and unplaced games", () => {
+  it("excludes draft, canceled, and unplaced games from the public board", () => {
+    const placed = {
+      gameDate: new Date("2026-09-14T12:00:00Z"),
+      startTime: "18:00",
+      homeTeamName: "Yankees",
+      awayTeamName: "Astros",
+    };
+    assert.equal(isPlacedPublicGame({ ...placed, status: "LOCKED" }), true);
+    assert.equal(isPlacedPublicGame({ ...placed, status: "EXPORTED" }), true);
+    assert.equal(isPlacedPublicGame({ ...placed, status: "DRAFT" }), false);
+    assert.equal(isPlacedPublicGame({ ...placed, status: "READY" }), false);
+    assert.equal(isPlacedPublicGame({ ...placed, status: "CANCELED" }), false);
     assert.equal(
       isPlacedPublicGame({
-        gameDate: new Date("2026-09-14T12:00:00Z"),
-        startTime: "18:00",
-        homeTeamName: "Yankees",
-        awayTeamName: "Astros",
-        status: "DRAFT",
-      }),
-      true,
-    );
-    assert.equal(
-      isPlacedPublicGame({
-        gameDate: new Date("2026-09-14T12:00:00Z"),
-        startTime: "18:00",
-        homeTeamName: "Yankees",
-        awayTeamName: "Astros",
-        status: "CANCELED",
-      }),
-      false,
-    );
-    assert.equal(
-      isPlacedPublicGame({
+        ...placed,
         gameDate: null,
-        startTime: "18:00",
-        homeTeamName: "Yankees",
-        awayTeamName: "Astros",
-        status: "DRAFT",
+        status: "LOCKED",
       }),
       false,
     );

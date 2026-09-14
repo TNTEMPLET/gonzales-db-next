@@ -139,6 +139,100 @@ export async function GET(request: NextRequest) {
   }
 }
 
+type BulkStatusBody = {
+  seasonId?: unknown;
+  status?: unknown;
+  division?: unknown;
+  divisions?: unknown;
+  gameIds?: unknown;
+};
+
+function asIdList(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && Boolean(item.trim()));
+}
+
+function hasConflictFlags(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0;
+}
+
+export async function POST(request: NextRequest) {
+  const auth = await requireSchedulerAdmin(request);
+  if (!auth.ok) return auth.response;
+
+  try {
+    const body = (await request.json()) as BulkStatusBody;
+    const seasonId = requireString(body.seasonId, "seasonId");
+    await requireSeason(auth.organizationId, seasonId);
+    const status = parseStatus(body.status);
+    if (status !== "LOCKED" && status !== "DRAFT") {
+      return NextResponse.json(
+        { error: "Bulk status can only set Posted or Draft" },
+        { status: 400 },
+      );
+    }
+
+    const divisions = [
+      ...(typeof body.division === "string" && body.division.trim() && body.division !== "all"
+        ? [body.division.trim()]
+        : []),
+      ...asIdList(body.divisions),
+    ];
+    const gameIds = asIdList(body.gameIds);
+
+    const candidates = await prisma.scheduleDraftGame.findMany({
+      where: {
+        organizationId: auth.organizationId,
+        seasonId,
+        ...(divisions.length ? { division: { in: divisions } } : {}),
+        ...(gameIds.length ? { id: { in: gameIds } } : {}),
+        status: { notIn: ["CANCELED", "EXPORTED"] },
+      },
+      select: {
+        id: true,
+        status: true,
+        gameDate: true,
+        startTime: true,
+        fieldId: true,
+        conflictFlags: true,
+      },
+    });
+
+    const skippedConflicts = candidates.filter((game) => hasConflictFlags(game.conflictFlags) || game.status === "CONFLICT").length;
+    const skippedUnplaced = candidates.filter(
+      (game) => !hasConflictFlags(game.conflictFlags) && game.status !== "CONFLICT" && (!game.gameDate || !game.startTime || !game.fieldId),
+    ).length;
+
+    const eligible = candidates.filter((game) => {
+      if (hasConflictFlags(game.conflictFlags) || game.status === "CONFLICT") return false;
+      if (status === "LOCKED") {
+        if (game.status === "LOCKED") return false;
+        return Boolean(game.gameDate && game.startTime && game.fieldId);
+      }
+      return game.status === "LOCKED" || game.status === "READY";
+    });
+
+    const updated = eligible.length
+      ? await prisma.scheduleDraftGame.updateMany({
+          where: { id: { in: eligible.map((game) => game.id) }, organizationId: auth.organizationId },
+          data: { status },
+        })
+      : { count: 0 };
+
+    return NextResponse.json({
+      data: {
+        status,
+        updated: updated.count,
+        skippedConflicts,
+        skippedUnplaced,
+        considered: candidates.length,
+      },
+    });
+  } catch (error) {
+    return jsonError(error);
+  }
+}
+
 export async function PATCH(request: NextRequest) {
   const auth = await requireSchedulerAdmin(request);
   if (!auth.ok) return auth.response;
