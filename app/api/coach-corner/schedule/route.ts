@@ -1,23 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCoachCornerActor } from "@/lib/coachCorner/auth";
-import { fetchGames } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
-import { getAssignrLeagueId } from "@/lib/siteConfig";
+import { toLegacyScheduleGame } from "@/lib/schedule/publicSchedule";
+import {
+  loadPublicScheduleGames,
+  loadPublicScheduleWindow,
+} from "@/lib/schedule/publicScheduleLoad";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 function normalize(value: string) {
   return value.trim().toLowerCase();
-}
-
-function defaultDateRange() {
-  const start = new Date();
-  start.setDate(start.getDate() - start.getDay() + (start.getDay() === 0 ? -6 : 1));
-  const end = new Date(start);
-  end.setDate(start.getDate() + 6);
-  return {
-    startDate: start.toISOString().split("T")[0]!,
-    endDate: end.toISOString().split("T")[0]!,
-  };
 }
 
 export async function GET(request: NextRequest) {
@@ -51,32 +44,32 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
 
-  const defaults = defaultDateRange();
-  const startDate = request.nextUrl.searchParams.get("startDate") || defaults.startDate;
-  const endDate = request.nextUrl.searchParams.get("endDate") || defaults.endDate;
-  const games = await fetchGames({
+  const window = await loadPublicScheduleWindow(actor.targetOrg as ContentOrgId);
+  const startDate = request.nextUrl.searchParams.get("startDate") || window.startDate;
+  const endDate = request.nextUrl.searchParams.get("endDate") || window.endDate;
+  const games = await loadPublicScheduleGames({
+    org: actor.targetOrg as ContentOrgId,
     startDate,
     endDate,
-    leagueId: getAssignrLeagueId(actor.targetOrg),
   });
-
-  const ageGroupNorm = normalize(team.ageGroup);
-  const teamNameNorm = normalize(team.teamName);
   const notesByGameId = new Map(
     team.gameNotes.map((note) => [note.gameExternalId, note]),
   );
-
+  const teamNameNorm = normalize(team.teamName);
+  const ageGroupNorm = normalize(team.ageGroup);
   const filtered = games
     .filter((game) => {
-      const gameAge = typeof game.age_group === "string" ? normalize(game.age_group) : "";
-      const home = typeof game.home_team === "string" ? normalize(game.home_team) : "";
-      const away = typeof game.away_team === "string" ? normalize(game.away_team) : "";
-      return gameAge === ageGroupNorm && (home === teamNameNorm || away === teamNameNorm);
+      if (game.homeTeamId === team.id || game.awayTeamId === team.id) return true;
+      if (normalize(game.ageGroup) !== ageGroupNorm) return false;
+      return normalize(game.homeTeam) === teamNameNorm || normalize(game.awayTeam) === teamNameNorm;
     })
-    .map((game) => ({
-      ...game,
-      gameNote: notesByGameId.get(String(game.id)) || null,
-    }));
+    .map((game) => {
+      const legacy = toLegacyScheduleGame(game);
+      return {
+        ...legacy,
+        gameNote: notesByGameId.get(String(game.id)) || null,
+      };
+    });
 
   return NextResponse.json({
     team: {

@@ -4,7 +4,12 @@ import Image from "next/image";
 import Link from "next/link";
 import ScheduleTable from "@/components/ScheduleTable";
 import HeroNewsRotator from "@/components/home/HeroNewsRotator";
-import { fetchGames, type Game } from "@/lib/fetchGames";
+import {
+  loadPublicPracticeSlots,
+  loadPublicScheduleGames,
+  loadPublicScheduleWindow,
+} from "@/lib/schedule/publicScheduleLoad";
+import { leagueCalendarDate } from "@/lib/seasonConfig";
 import {
   getHomepageFeaturedNewsPosts,
   getHomepageRotatorPosts,
@@ -15,10 +20,8 @@ import {
   getSportsConnectVolunteerRegistrationUrl,
 } from "@/lib/sportsConnect/registrationUrl";
 import {
-  getAssignrLeagueId,
   getDefaultContentOrg,
   getSiteConfig,
-  hasAssignrLeagueId,
   isMasterDeployment,
   isTournamentOnlyDeployment,
   type ContentOrgId,
@@ -290,11 +293,8 @@ export default async function Home({
   const showRegistrationCta =
     regOpen || regWaitlist || orgCaps.registration === "sportsconnect";
   const heroBadge = regWaitlist ? "WAITLIST OPEN" : homepageCopy.seasonBadge;
-  const scheduleLive =
-    orgCaps.schedule === "assignr" && hasAssignrLeagueId();
+  const scheduleLive = orgCaps.schedule === "scheduler";
   const compactOps = orgCaps.homepage === "compact-ops";
-  // Safe for Fall Ball: empty league id never falls back to Gonzales.
-  const defaultLeagueId = hasAssignrLeagueId() ? getAssignrLeagueId() : "";
 
   let rotatorPosts: HomepageRotatorPost[] = [];
   let featuredPosts: HomepageFeaturedPost[] = [];
@@ -356,16 +356,21 @@ export default async function Home({
     endDate = SEASON_END_DATE;
   }
 
-  let games: Game[] = [];
+  let games: Awaited<ReturnType<typeof loadPublicScheduleGames>> = [];
+  let practices: Awaited<ReturnType<typeof loadPublicPracticeSlots>> = [];
   let error: string | null = null;
+  let seasonName = CURRENT_SEASON_LABEL;
 
-  if (defaultLeagueId) {
+  if (scheduleLive) {
     try {
-      games = await fetchGames({
-        startDate,
-        endDate,
-        leagueId: defaultLeagueId,
-      });
+      const window = await loadPublicScheduleWindow(contentOrg);
+      seasonName = window.seasonName;
+      const rangeStart = viewMode === "fullSeason" ? window.startDate : startDate;
+      const rangeEnd = viewMode === "fullSeason" ? window.endDate : endDate;
+      [games, practices] = await Promise.all([
+        loadPublicScheduleGames({ org: contentOrg, startDate: rangeStart, endDate: rangeEnd }),
+        loadPublicPracticeSlots({ org: contentOrg, seasonYear: window.seasonYear }),
+      ]);
     } catch (err: unknown) {
       error = err instanceof Error ? err.message : "Failed to load game data";
       console.error(err);
@@ -394,9 +399,10 @@ export default async function Home({
   const todayYearLabel =
     todayParts.find((part) => part.type === "year")?.value || "";
 
+  const todayKey = leagueCalendarDate();
   const venueStats = Array.from(
     games.reduce((acc, game) => {
-      const venue = game._embedded?.venue?.name?.trim();
+      const venue = game.parkName.trim();
       if (!venue) return acc;
 
       const current = acc.get(venue) || {
@@ -405,20 +411,9 @@ export default async function Home({
         cancelledTodayGames: 0,
       };
 
-      if (game.localized_date) {
-        const gameDate = new Date(game.localized_date).toLocaleDateString(
-          "en-US",
-          {
-            month: "numeric",
-            day: "numeric",
-            year: "numeric",
-          },
-        );
-
-        if (gameDate === today) {
-          current.todayGames += 1;
-          if (game.status === "C") current.cancelledTodayGames += 1;
-        }
+      if (game.dateKey === todayKey) {
+        current.todayGames += 1;
+        if (game.status === "C") current.cancelledTodayGames += 1;
       }
 
       acc.set(venue, current);
@@ -823,11 +818,12 @@ export default async function Home({
         </section>
       ) : null}
 
-      {/* Schedule Table — honest empty when no Assignr source */}
       {scheduleLive ? (
         <ScheduleTable
           siteName={site.name}
+          seasonName={seasonName}
           initialGames={games}
+          initialPractices={practices}
           initialError={error}
           currentViewMode={viewMode}
           standings={[]}

@@ -20,23 +20,18 @@ export async function resolveCoachCornerActor(
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
 
   const coach = await getCoachUserFromRequest(request);
-  if (coach && coach.isCoach && !coach.isBlocked) {
-    // Global identity: presence in the org is represented by a profile row.
-    const profile = await (prisma as any).registeredUserOrgProfile.findUnique({
+  if (coach && !coach.isBlocked) {
+    const profile = await prisma.registeredUserOrgProfile.findUnique({
       where: {
-        registeredUserId_organizationId: { registeredUserId: coach.id, organizationId: targetOrg },
+        registeredUserId_organizationId: {
+          registeredUserId: coach.id,
+          organizationId: targetOrg,
+        },
       },
-      select: { registeredUserId: true },
+      select: { isCoach: true },
     });
-    if (profile) {
-      // Also confirm not blocked (global flag lives on the user).
-      const u = await prisma.registeredUser.findUnique({
-        where: { id: coach.id },
-        select: { isBlocked: true },
-      });
-      if (u && !u.isBlocked) {
-        return { targetOrg, registeredUserId: coach.id, isAdmin: false };
-      }
+    if (profile?.isCoach) {
+      return { targetOrg, registeredUserId: coach.id, isAdmin: false };
     }
   }
 
