@@ -126,28 +126,40 @@ export default function ScheduleTable({
     return initialGames.filter((game) => game.dateKey === target);
   }, [initialGames, dayFilter]);
 
+  const sourcePractices = useMemo(() => {
+    if (dayFilter === "all") return initialPractices;
+    const today = todayDateKey();
+    const target =
+      dayFilter === "yesterday"
+        ? shiftDateKey(today, -1)
+        : dayFilter === "tomorrow"
+          ? shiftDateKey(today, 1)
+          : today;
+    return initialPractices.filter((slot) => !slot.dateKey || slot.dateKey === target);
+  }, [initialPractices, dayFilter]);
+
   const ageGroups = useMemo(
     () =>
       tab === "games"
         ? uniqueAgeGroupsFromGames(sourceGames)
-        : uniqueAgeGroupsFromPractices(initialPractices),
-    [tab, sourceGames, initialPractices],
+        : uniqueAgeGroupsFromPractices(sourcePractices),
+    [tab, sourceGames, sourcePractices],
   );
 
   const parks = useMemo(
     () =>
       tab === "games"
         ? uniqueParksFromGames(sourceGames, selectedAgeGroup)
-        : uniqueParksFromPractices(initialPractices, selectedAgeGroup),
-    [tab, sourceGames, initialPractices, selectedAgeGroup],
+        : uniqueParksFromPractices(sourcePractices, selectedAgeGroup),
+    [tab, sourceGames, sourcePractices, selectedAgeGroup],
   );
 
   const teams = useMemo(
     () =>
       tab === "games"
         ? uniqueTeamsFromGames(sourceGames, selectedAgeGroup, selectedPark)
-        : uniqueTeamsFromPractices(initialPractices, selectedAgeGroup, selectedPark),
-    [tab, sourceGames, initialPractices, selectedAgeGroup, selectedPark],
+        : uniqueTeamsFromPractices(sourcePractices, selectedAgeGroup, selectedPark),
+    [tab, sourceGames, sourcePractices, selectedAgeGroup, selectedPark],
   );
 
   const filteredGames = useMemo(
@@ -161,12 +173,12 @@ export default function ScheduleTable({
   );
   const filteredPractices = useMemo(
     () =>
-      filterPublicPractices(initialPractices, {
+      filterPublicPractices(sourcePractices, {
         ageGroups: selectedAgeGroup,
         teams: selectedTeam,
         parks: selectedPark,
       }),
-    [initialPractices, selectedAgeGroup, selectedTeam, selectedPark],
+    [sourcePractices, selectedAgeGroup, selectedTeam, selectedPark],
   );
 
   const groupedGames = useMemo(() => groupPublicGames(filteredGames), [filteredGames]);
@@ -258,8 +270,9 @@ export default function ScheduleTable({
 
   function downloadCSV() {
     if (tab === "practices") {
-      const headers = ["Weekday", "Time", "Age", "Team", "Park", "Field", "Shares with"];
+      const headers = ["Date", "Weekday", "Time", "Age", "Team", "Park", "Field", "Shares with"];
       const rows = filteredPractices.map((slot) => [
+        slot.dateKey || "",
         slot.weekdayName,
         slot.timeLabel,
         slot.ageGroup,
@@ -290,6 +303,7 @@ export default function ScheduleTable({
   function downloadXLSX() {
     if (tab === "practices") {
       const data = filteredPractices.map((slot) => ({
+        Date: slot.dateKey || "",
         Weekday: slot.weekdayName,
         Time: slot.timeLabel,
         Age: slot.ageGroup,
@@ -327,7 +341,7 @@ export default function ScheduleTable({
         teams: [singleTeam],
         parks: selectedPark,
       });
-      const teamPractices = filterPublicPractices(initialPractices, {
+      const teamPractices = filterPublicPractices(sourcePractices, {
         ageGroups: selectedAgeGroup,
         teams: [singleTeam],
         parks: selectedPark,
@@ -686,7 +700,9 @@ export default function ScheduleTable({
             <table className="w-full min-w-[640px] text-sm">
               <thead>
                 <tr className="border-b border-zinc-800 bg-zinc-800/80 text-left text-xs uppercase tracking-wide text-zinc-400">
+                  <th className="px-3 py-2 font-semibold">Date</th>
                   <th className="px-3 py-2 font-semibold">Time</th>
+                  <th className="px-3 py-2 font-semibold">Field</th>
                   <th className="px-3 py-2 font-semibold">Age</th>
                   <th className="px-3 py-2 font-semibold">Team</th>
                   <th className="px-3 py-2 font-semibold">Shares with</th>
@@ -697,19 +713,45 @@ export default function ScheduleTable({
                   <Fragment key={park.parkName}>
                     <tr>
                       <td
-                        colSpan={4}
+                        colSpan={6}
                         className="bg-zinc-800 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-400"
                       >
                         {park.parkName}
                       </td>
                     </tr>
+                    {park.dates.map((dateGroup) => (
+                      <Fragment key={`${park.parkName}-${dateGroup.dateKey}`}>
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="bg-zinc-950/70 px-3 py-1 text-xs font-medium text-brand-gold/80"
+                          >
+                            {dateGroup.dateLabel}
+                          </td>
+                        </tr>
+                        {dateGroup.slots.map((slot) => (
+                          <tr key={slot.id} className="border-t border-zinc-800/80 hover:bg-zinc-800/40">
+                            <td className="whitespace-nowrap px-3 py-1.5 text-zinc-300">
+                              {slot.dateLabel
+                                ? slot.dateLabel.replace(/^[A-Za-z]{3},\s/, "")
+                                : "Weekly"}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 font-medium">{slot.timeLabel}</td>
+                            <td className="px-3 py-1.5 text-zinc-300">{slot.fieldName}</td>
+                            <td className="px-3 py-1.5 text-brand-gold">{slot.ageGroup}</td>
+                            <td className="px-3 py-1.5">{slot.teamName}</td>
+                            <td className="px-3 py-1.5 text-zinc-400">{slot.pairTeamName || "—"}</td>
+                          </tr>
+                        ))}
+                      </Fragment>
+                    ))}
                     {park.fields.map((field) => (
                       <Fragment key={`${park.parkName}-${field.fieldName}`}>
                         {field.weekdays.map((weekday) => (
                           <Fragment key={`${park.parkName}-${field.fieldName}-${weekday.weekdayIndex}`}>
                             <tr>
                               <td
-                                colSpan={4}
+                                colSpan={6}
                                 className="bg-zinc-950/70 px-3 py-1 text-xs font-medium text-brand-gold/80"
                               >
                                 {field.fieldName} · {weekday.weekdayName}
@@ -717,7 +759,13 @@ export default function ScheduleTable({
                             </tr>
                             {weekday.slots.map((slot) => (
                               <tr key={slot.id} className="border-t border-zinc-800/80 hover:bg-zinc-800/40">
+                                <td className="whitespace-nowrap px-3 py-1.5 text-zinc-300">
+                                  {slot.dateLabel
+                                    ? slot.dateLabel.replace(/^[A-Za-z]{3},\s/, "")
+                                    : "Weekly"}
+                                </td>
                                 <td className="whitespace-nowrap px-3 py-1.5 font-medium">{slot.timeLabel}</td>
+                                <td className="px-3 py-1.5 text-zinc-300">{slot.fieldName}</td>
                                 <td className="px-3 py-1.5 text-brand-gold">{slot.ageGroup}</td>
                                 <td className="px-3 py-1.5">{slot.teamName}</td>
                                 <td className="px-3 py-1.5 text-zinc-400">{slot.pairTeamName || "—"}</td>

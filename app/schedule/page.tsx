@@ -56,7 +56,12 @@ export default async function SchedulePage({
   try {
     [games, practices] = await Promise.all([
       loadPublicScheduleGames({ org: orgId, startDate, endDate }),
-      loadPublicPracticeSlots({ org: orgId, seasonYear: window.seasonYear }),
+      loadPublicPracticeSlots({
+        org: orgId,
+        seasonYear: window.seasonYear,
+        startDate,
+        endDate,
+      }),
     ]);
   } catch (err: unknown) {
     error = err instanceof Error ? err.message : "Failed to load schedule";
