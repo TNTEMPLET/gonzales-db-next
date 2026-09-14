@@ -369,7 +369,12 @@ export default async function Home({
       const rangeEnd = viewMode === "fullSeason" ? window.endDate : endDate;
       [games, practices] = await Promise.all([
         loadPublicScheduleGames({ org: contentOrg, startDate: rangeStart, endDate: rangeEnd }),
-        loadPublicPracticeSlots({ org: contentOrg, seasonYear: window.seasonYear }),
+        loadPublicPracticeSlots({
+          org: contentOrg,
+          seasonYear: window.seasonYear,
+          startDate: rangeStart,
+          endDate: rangeEnd,
+        }),
       ]);
     } catch (err: unknown) {
       error = err instanceof Error ? err.message : "Failed to load game data";

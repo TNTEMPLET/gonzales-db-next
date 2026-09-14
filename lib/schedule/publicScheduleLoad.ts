@@ -1,10 +1,14 @@
 import prisma from "@/lib/prisma";
+import { parseRotationNote } from "@/lib/scheduler/practiceBoard";
 import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
+import { parseSeasonDateWindows } from "@/lib/scheduler/seasonWindows";
 import { dateKey as utcDateKey } from "@/lib/scheduler/validation";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
 
 import {
+  collapseSharedPracticeSlots,
+  expandRotationPracticeSlots,
   formatPublicClock,
   formatPublicDateLabel,
   isPlacedPublicGame,
@@ -17,6 +21,8 @@ import {
 export type PublicScheduleWindow = {
   startDate: string;
   endDate: string;
+  practiceStartDate: string;
+  practiceEndDate: string;
   seasonName: string;
   seasonYear: number;
 };
@@ -31,6 +37,7 @@ async function resolveSeason(organizationId: string, seasonYear: number) {
       status: true,
       startsOn: true,
       endsOn: true,
+      settings: true,
     },
   });
   if (seasons.length === 0) return null;
@@ -49,9 +56,12 @@ export async function loadPublicScheduleWindow(
   const season = await resolveSeason(org, config.year);
   const startsOn = season?.startsOn ? utcDateKey(season.startsOn) : config.startDate;
   const endsOn = season?.endsOn ? utcDateKey(season.endsOn) : config.endDate;
+  const windows = parseSeasonDateWindows(season?.settings, startsOn, endsOn);
   return {
     startDate: startsOn,
     endDate: endsOn,
+    practiceStartDate: windows.practiceStartsOn || startsOn,
+    practiceEndDate: windows.practiceEndsOn || endsOn,
     seasonName: season?.name || config.label,
     seasonYear: config.year,
   };
@@ -125,8 +135,14 @@ export async function loadPublicScheduleGames(options: {
 export async function loadPublicPracticeSlots(options: {
   org: ContentOrgId;
   seasonYear?: number;
+  startDate?: string;
+  endDate?: string;
 }): Promise<PublicPracticeSlot[]> {
-  const seasonYear = options.seasonYear ?? getSeasonConfigForOrg(options.org).year;
+  const seasonConfig = getSeasonConfigForOrg(options.org);
+  const seasonYear = options.seasonYear ?? seasonConfig.year;
+  const seasonWindow = await loadPublicScheduleWindow(options.org);
+  const practiceStart = seasonWindow.practiceStartDate;
+  const practiceEnd = seasonWindow.practiceEndDate;
   const slots = await prisma.teamPracticeSlot.findMany({
     where: {
       organizationId: options.org,
@@ -141,29 +157,9 @@ export async function loadPublicPracticeSlots(options: {
     orderBy: [{ dayOfWeek: "asc" }, { startTime: "asc" }],
   });
 
-  const groupIds = Array.from(
-    new Set(slots.map((slot) => slot.sharedFieldGroupId).filter((id): id is string => Boolean(id))),
-  );
-  const siblings =
-    groupIds.length === 0
-      ? []
-      : await prisma.teamPracticeSlot.findMany({
-          where: { sharedFieldGroupId: { in: groupIds } },
-          include: { team: { select: { id: true, teamName: true } } },
-        });
-  const pairBySlotId = new Map<string, string>();
-  for (const slot of slots) {
-    if (!slot.sharedFieldGroupId) continue;
-    const partner = siblings.find(
-      (row) =>
-        row.sharedFieldGroupId === slot.sharedFieldGroupId &&
-        row.teamId !== slot.teamId,
-    );
-    if (partner?.team.teamName) pairBySlotId.set(slot.id, partner.team.teamName);
-  }
-
-  return slots.map((slot) => {
+  const mapped: PublicPracticeSlot[] = slots.map((slot) => {
     const weekdayIndex = slot.dayOfWeek;
+    const notes = slot.notes?.trim() || null;
     return {
       id: slot.id,
       weekdayIndex,
@@ -175,7 +171,24 @@ export async function loadPublicPracticeSlots(options: {
       teamId: slot.team.id,
       parkName: slot.park?.name || slot.park?.shortName || "Park TBD",
       fieldName: slot.field?.name || slot.field?.shortName || "Field TBD",
-      pairTeamName: pairBySlotId.get(slot.id) ?? null,
+      pairTeamName: null,
+      sharedFieldGroupId: slot.sharedFieldGroupId ?? null,
+      notes,
+      rotationWeek: parseRotationNote(notes)?.week || null,
     };
+  });
+  const dated = expandRotationPracticeSlots(collapseSharedPracticeSlots(mapped), {
+    startDate: practiceStart,
+    endDate: practiceEnd,
+  });
+  const viewStart = options.startDate || practiceStart;
+  const viewEnd = options.endDate || practiceEnd;
+  const datedViewStart = viewStart > practiceStart ? viewStart : practiceStart;
+  const datedViewEnd = viewEnd < practiceEnd ? viewEnd : practiceEnd;
+  return dated.filter((slot) => {
+    if (!slot.dateKey) {
+      return viewStart <= practiceEnd && viewEnd >= practiceStart;
+    }
+    return slot.dateKey >= datedViewStart && slot.dateKey <= datedViewEnd;
   });
 }

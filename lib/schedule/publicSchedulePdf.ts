@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 import {
+  comparePublicPractices,
   groupPublicGames,
   groupPublicPractices,
   type PublicPracticeSlot,
@@ -81,25 +82,27 @@ export function buildTeamSchedulePdf(input: {
 
   autoTable(doc, {
     startY: y,
-    head: [["Day", "Time", "Park", "Field", "Shares with"]],
+    head: [["Date", "Day", "Time", "Park", "Field", "Shares with"]],
     body: input.practices.length
-      ? input.practices.map((slot) => [
+      ? [...input.practices].sort(comparePublicPractices).map((slot) => [
+          slot.dateLabel ? slot.dateLabel.replace(/^[A-Za-z]{3},\s/, "") : "Weekly",
           slot.weekdayName,
           slot.timeLabel,
           slot.parkName,
           slot.fieldName,
           slot.pairTeamName || "—",
         ])
-      : [["No practice slot assigned.", "", "", "", ""]],
+      : [["No practice slot assigned.", "", "", "", "", ""]],
     margin: { left: margin, right: margin },
     styles: { fontSize, cellPadding: 2.5, valign: "middle", overflow: "linebreak" },
     headStyles: { fillColor: AP_RED, textColor: 255, fontStyle: "bold" },
     alternateRowStyles: { fillColor: ROW_STRIPE },
     columnStyles: {
-      0: { cellWidth: 80 },
+      0: { cellWidth: 90 },
       1: { cellWidth: 70 },
-      2: { cellWidth: 180 },
-      3: { cellWidth: 120 },
+      2: { cellWidth: 60 },
+      3: { cellWidth: 150 },
+      4: { cellWidth: 120 },
     },
   });
 
@@ -245,6 +248,30 @@ export function buildSeasonPracticesPdf(input: {
     doc.setTextColor(0, 0, 0);
     doc.text(park.parkName, margin, y);
     y += 14;
+    for (const dateGroup of park.dates) {
+      y = ensureRoom(doc, y, 70, margin);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      doc.setTextColor(0, 0, 0);
+      doc.text(dateGroup.dateLabel, margin, y);
+      autoTable(doc, {
+        startY: y + 6,
+        head: [["Time", "Field", "Age", "Team", "Shares with"]],
+        body: dateGroup.slots.map((slot) => [
+          slot.timeLabel,
+          slot.fieldName,
+          slot.ageGroup,
+          slot.teamName,
+          slot.pairTeamName || "—",
+        ]),
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 8, cellPadding: 2.5, valign: "middle" },
+        headStyles: { fillColor: AP_RED, textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: ROW_STRIPE },
+        showHead: "everyPage",
+      });
+      y = lastTableY(doc, y) + 14;
+    }
     for (const field of park.fields) {
       y = ensureRoom(doc, y, 80, margin);
       doc.setFont("helvetica", "bold");
@@ -260,8 +287,9 @@ export function buildSeasonPracticesPdf(input: {
         doc.text(weekday.weekdayName, margin, y);
         autoTable(doc, {
           startY: y + 6,
-          head: [["Time", "Age", "Team", "Shares with"]],
+          head: [["Date", "Time", "Age", "Team", "Shares with"]],
           body: weekday.slots.map((slot) => [
+            slot.dateLabel ? slot.dateLabel.replace(/^[A-Za-z]{3},\s/, "") : "Weekly",
             slot.timeLabel,
             slot.ageGroup,
             slot.teamName,
