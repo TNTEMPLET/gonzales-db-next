@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
 import {
+  comparePublicGames,
   comparePublicPractices,
   groupPublicGames,
   groupPublicPractices,
@@ -117,7 +118,7 @@ export function buildTeamSchedulePdf(input: {
     startY: y,
     head: [["Date", "Time", "Opponent", "H/A", "Park", "Field"]],
     body: input.games.length
-      ? input.games.map((game) => {
+      ? [...input.games].sort(comparePublicGames).map((game) => {
           const home = game.homeTeam === input.teamName;
           return [
             game.dateLabel,
@@ -180,37 +181,29 @@ export function buildSeasonGamesPdf(input: {
     doc.setTextColor(0, 0, 0);
     doc.text(park.parkName, margin, y);
     y += 14;
-    for (const field of park.fields) {
-      y = ensureRoom(doc, y, 80, margin);
+    for (const dateGroup of park.dates) {
+      y = ensureRoom(doc, y, 70, margin);
       doc.setFont("helvetica", "bold");
       doc.setFontSize(10);
-      doc.setTextColor(...HEADER_GRAY);
-      doc.text(field.fieldName, margin, y);
-      y += 12;
-      for (const weekday of field.weekdays) {
-        y = ensureRoom(doc, y, 70, margin);
-        doc.setFont("helvetica", "bold");
-        doc.setFontSize(10);
-        doc.setTextColor(0, 0, 0);
-        doc.text(weekday.weekdayName, margin, y);
-        autoTable(doc, {
-          startY: y + 6,
-          head: [["Date", "Time", "Age", "Home", "Away"]],
-          body: weekday.games.map((game) => [
-            game.dateLabel,
-            game.timeLabel,
-            game.ageGroup,
-            game.homeTeam,
-            game.awayTeam,
-          ]),
-          margin: { left: margin, right: margin },
-          styles: { fontSize: 8, cellPadding: 2.5, valign: "middle" },
-          headStyles: { fillColor: AP_RED, textColor: 255, fontStyle: "bold" },
-          alternateRowStyles: { fillColor: ROW_STRIPE },
-          showHead: "everyPage",
-        });
-        y = lastTableY(doc, y) + 14;
-      }
+      doc.setTextColor(0, 0, 0);
+      doc.text(dateGroup.dateLabel, margin, y);
+      autoTable(doc, {
+        startY: y + 6,
+        head: [["Time", "Field", "Age", "Home", "Away"]],
+        body: dateGroup.games.map((game) => [
+          game.timeLabel,
+          game.fieldName,
+          game.ageGroup,
+          game.homeTeam,
+          game.awayTeam,
+        ]),
+        margin: { left: margin, right: margin },
+        styles: { fontSize: 8, cellPadding: 2.5, valign: "middle" },
+        headStyles: { fillColor: AP_RED, textColor: 255, fontStyle: "bold" },
+        alternateRowStyles: { fillColor: ROW_STRIPE },
+        showHead: "everyPage",
+      });
+      y = lastTableY(doc, y) + 14;
     }
   }
 

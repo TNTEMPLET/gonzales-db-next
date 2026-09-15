@@ -647,6 +647,7 @@ export default function ScheduleTable({
                 <tr className="border-b border-zinc-800 bg-zinc-800/80 text-left text-xs uppercase tracking-wide text-zinc-400">
                   <th className="px-3 py-2 font-semibold">Date</th>
                   <th className="px-3 py-2 font-semibold">Time</th>
+                  <th className="px-3 py-2 font-semibold">Field</th>
                   <th className="px-3 py-2 font-semibold">Age</th>
                   <th className="px-3 py-2 font-semibold">Home</th>
                   <th className="px-3 py-2 font-semibold">Away</th>
@@ -657,36 +658,33 @@ export default function ScheduleTable({
                   <Fragment key={park.parkName}>
                     <tr>
                       <td
-                        colSpan={5}
+                        colSpan={6}
                         className="bg-zinc-800 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-widest text-zinc-400"
                       >
                         {park.parkName}
                       </td>
                     </tr>
-                    {park.fields.map((field) => (
-                      <Fragment key={`${park.parkName}-${field.fieldName}`}>
-                        {field.weekdays.map((weekday) => (
-                          <Fragment key={`${park.parkName}-${field.fieldName}-${weekday.weekdayIndex}`}>
-                            <tr>
-                              <td
-                                colSpan={5}
-                                className="bg-zinc-950/70 px-3 py-1 text-xs font-medium text-brand-gold/80"
-                              >
-                                {field.fieldName} · {weekday.weekdayName}
-                              </td>
-                            </tr>
-                            {weekday.games.map((row) => (
-                              <tr key={row.id} className="border-t border-zinc-800/80 hover:bg-zinc-800/40">
-                                <td className="whitespace-nowrap px-3 py-1.5 text-zinc-300">
-                                  {row.dateLabel.replace(/^[A-Za-z]{3},\s/, "")}
-                                </td>
-                                <td className="whitespace-nowrap px-3 py-1.5 font-medium">{row.timeLabel}</td>
-                                <td className="px-3 py-1.5 text-brand-gold">{row.ageGroup}</td>
-                                <td className="px-3 py-1.5">{row.homeTeam}</td>
-                                <td className="px-3 py-1.5">{row.awayTeam}</td>
-                              </tr>
-                            ))}
-                          </Fragment>
+                    {park.dates.map((dateGroup) => (
+                      <Fragment key={`${park.parkName}-${dateGroup.dateKey}`}>
+                        <tr>
+                          <td
+                            colSpan={6}
+                            className="bg-zinc-950/70 px-3 py-1 text-xs font-medium text-brand-gold/80"
+                          >
+                            {dateGroup.dateLabel}
+                          </td>
+                        </tr>
+                        {dateGroup.games.map((row) => (
+                          <tr key={row.id} className="border-t border-zinc-800/80 hover:bg-zinc-800/40">
+                            <td className="whitespace-nowrap px-3 py-1.5 text-zinc-300">
+                              {row.dateLabel.replace(/^[A-Za-z]{3},\s/, "")}
+                            </td>
+                            <td className="whitespace-nowrap px-3 py-1.5 font-medium">{row.timeLabel}</td>
+                            <td className="px-3 py-1.5 text-zinc-300">{row.fieldName}</td>
+                            <td className="px-3 py-1.5 text-brand-gold">{row.ageGroup}</td>
+                            <td className="px-3 py-1.5">{row.homeTeam}</td>
+                            <td className="px-3 py-1.5">{row.awayTeam}</td>
+                          </tr>
                         ))}
                       </Fragment>
                     ))}
