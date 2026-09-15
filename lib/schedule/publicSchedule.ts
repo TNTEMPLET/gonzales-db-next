@@ -41,20 +41,17 @@ export type PublicPracticeSlot = {
   dateLabel?: string | null;
 };
 
-export type PublicWeekdayGameGroup = {
+export type PublicDateGameGroup = {
+  dateKey: string;
+  dateLabel: string;
   weekdayIndex: number;
   weekdayName: string;
   games: PublicScheduleGame[];
 };
 
-export type PublicFieldGameGroup = {
-  fieldName: string;
-  weekdays: PublicWeekdayGameGroup[];
-};
-
 export type PublicParkGameGroup = {
   parkName: string;
-  fields: PublicFieldGameGroup[];
+  dates: PublicDateGameGroup[];
 };
 
 export type PublicWeekdayPracticeGroup = {
@@ -139,10 +136,10 @@ function compareAgeGroupLabel(a: string, b: string): number {
 
 export function comparePublicGames(a: PublicScheduleGame, b: PublicScheduleGame): number {
   return (
+    a.dateKey.localeCompare(b.dateKey) ||
+    compareWeekday(a.weekdayIndex, b.weekdayIndex) ||
     a.parkName.localeCompare(b.parkName) ||
     compareFieldNames(a.fieldName, b.fieldName) ||
-    compareWeekday(a.weekdayIndex, b.weekdayIndex) ||
-    a.dateKey.localeCompare(b.dateKey) ||
     a.startTime.localeCompare(b.startTime) ||
     compareAgeGroupLabel(a.ageGroup, b.ageGroup) ||
     a.homeTeam.localeCompare(b.homeTeam)
@@ -155,24 +152,21 @@ export function groupPublicGames(games: PublicScheduleGame[]): PublicParkGameGro
   for (const game of sorted) {
     let park = parks.find((item) => item.parkName === game.parkName);
     if (!park) {
-      park = { parkName: game.parkName, fields: [] };
+      park = { parkName: game.parkName, dates: [] };
       parks.push(park);
     }
-    let field = park.fields.find((item) => item.fieldName === game.fieldName);
-    if (!field) {
-      field = { fieldName: game.fieldName, weekdays: [] };
-      park.fields.push(field);
-    }
-    let weekday = field.weekdays.find((item) => item.weekdayIndex === game.weekdayIndex);
-    if (!weekday) {
-      weekday = {
+    let dateGroup = park.dates.find((item) => item.dateKey === game.dateKey);
+    if (!dateGroup) {
+      dateGroup = {
+        dateKey: game.dateKey,
+        dateLabel: game.dateLabel,
         weekdayIndex: game.weekdayIndex,
         weekdayName: game.weekdayName,
         games: [],
       };
-      field.weekdays.push(weekday);
+      park.dates.push(dateGroup);
     }
-    weekday.games.push(game);
+    dateGroup.games.push(game);
   }
   return parks;
 }
@@ -391,18 +385,20 @@ export function filterPublicGames(
   const ages = filters.ageGroups ?? [];
   const teams = filters.teams ?? [];
   const parks = filters.parks ?? [];
-  return games.filter((game) => {
-    if (ages.length && !ages.includes(game.ageGroup)) return false;
-    if (parks.length && !parks.includes(game.parkName)) return false;
-    if (
-      teams.length &&
-      !teams.includes(game.homeTeam) &&
-      !teams.includes(game.awayTeam)
-    ) {
-      return false;
-    }
-    return true;
-  });
+  return games
+    .filter((game) => {
+      if (ages.length && !ages.includes(game.ageGroup)) return false;
+      if (parks.length && !parks.includes(game.parkName)) return false;
+      if (
+        teams.length &&
+        !teams.includes(game.homeTeam) &&
+        !teams.includes(game.awayTeam)
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .sort(comparePublicGames);
 }
 
 export function filterPublicPractices(

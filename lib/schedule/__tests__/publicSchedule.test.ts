@@ -65,7 +65,7 @@ describe("public schedule grouping", () => {
     );
   });
 
-  it("groups park → field → Monday before Wednesday, dates ascending", () => {
+  it("groups park → date then weekday, and keeps later Mondays after earlier Wednesdays", () => {
     const grouped = groupPublicGames([
       game({
         id: "g2",
@@ -103,18 +103,18 @@ describe("public schedule grouping", () => {
     );
     const jls = grouped[1]!;
     assert.deepEqual(
-      jls.fields.map((field) => field.fieldName),
-      ["Field 1", "Field 2"],
+      jls.dates.map((day) => day.dateKey),
+      ["2026-09-14", "2026-09-16", "2026-09-21"],
     );
     assert.deepEqual(
-      jls.fields[0]!.weekdays.map((day) => day.weekdayName),
-      ["Monday"],
+      jls.dates.map((day) => day.weekdayName),
+      ["Monday", "Wednesday", "Monday"],
     );
     assert.deepEqual(
-      jls.fields[0]!.weekdays[0]!.games.map((row) => row.dateKey),
-      ["2026-09-14", "2026-09-21"],
+      jls.dates[0]!.games.map((row) => row.fieldName),
+      ["Field 1"],
     );
-    assert.equal(jls.fields[1]!.weekdays[0]!.weekdayName, "Wednesday");
+    assert.equal(jls.dates[1]!.games[0]!.fieldName, "Field 2");
   });
 
   it("filters games by one or more parks", () => {
@@ -473,7 +473,7 @@ describe("public schedule PDFs", () => {
     assert.equal(pdf.pageCount, 1);
   });
 
-  it("builds a season PDF from park/field/weekday groups", () => {
+  it("builds a season PDF from park/date groups", () => {
     const pdf = buildSeasonGamesPdf({
       orgName: "AP Fall Ball",
       seasonName: "Fall Ball 2026",
