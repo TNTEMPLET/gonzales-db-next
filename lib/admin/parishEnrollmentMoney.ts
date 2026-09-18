@@ -1,20 +1,27 @@
 import { sortTeamsManagementAgeGroups } from "@/lib/admin/teamsImportHelpers";
+import {
+  CREDIT_CARD_PROCESSING_FEE_RATE,
+  ONLINE_REGISTRATION_FEE_CENTS_PER_PLAYER,
+  PARISH_REC_SHARE_RATE,
+} from "@/lib/enrollment/feeConstants";
 import type { EnrollmentKpiSummary } from "@/lib/enrollment/kpi";
 
 export type ParishEnrollmentRow = {
   fullName: string;
   ageGroup: string;
   teamName: string;
+  address: string;
+  dob: string;
   feeDescription: string;
   amountCents: number;
   paidCents: number;
   balanceCents: number;
   paymentStatus: string;
 };
-import {
-  CREDIT_CARD_PROCESSING_FEE_RATE,
-  ONLINE_REGISTRATION_FEE_CENTS_PER_PLAYER,
-} from "@/lib/enrollment/feeConstants";
+
+export type ParishEnrollmentSummary = EnrollmentKpiSummary & {
+  parishRecDueCents: number;
+};
 
 export const FALLBALL_DEFAULT_PARISH_REGISTRATION_FEE_CENTS = 8000;
 
@@ -31,6 +38,40 @@ export function resolveParishRegistrationFeeCents(input: {
     return input.storedCents;
   }
   return defaultParishRegistrationFeeCents(input.organizationId);
+}
+
+function blankToNull(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed ? trimmed : null;
+}
+
+export function formatParishAddress(input: {
+  streetAddress?: string | null;
+  unit?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postalCode?: string | null;
+}): string {
+  const street = [blankToNull(input.streetAddress), blankToNull(input.unit)].filter(Boolean).join(", ");
+  const city = blankToNull(input.city);
+  const stateZip = [blankToNull(input.state), blankToNull(input.postalCode)].filter(Boolean).join(" ");
+  const locality = [city, stateZip].filter(Boolean).join(", ");
+  const line = [street, locality].filter(Boolean).join(", ");
+  return line || "—";
+}
+
+export function formatParishDob(value: Date | string | null | undefined): string {
+  if (!value) return "—";
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return "—";
+  const iso = date.toISOString().slice(0, 10);
+  const [year, month, day] = iso.split("-");
+  if (!year || !month || !day) return "—";
+  return `${Number(month)}/${Number(day)}/${year}`;
+}
+
+export function parishRecDueCents(netDueCents: number): number {
+  return Math.max(0, Math.round(netDueCents * PARISH_REC_SHARE_RATE));
 }
 
 export function capParishEnrollmentRow(
@@ -68,13 +109,14 @@ export function rebuildParishEnrollmentSummary(
   rows: ParishEnrollmentRow[],
   original: EnrollmentKpiSummary,
   capCents: number | null,
-): EnrollmentKpiSummary {
+): ParishEnrollmentSummary {
   const totalEnrollments = rows.length;
   const grossCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
   const collectedCents = rows.reduce((sum, row) => sum + row.paidCents, 0);
   const outstandingCents = rows.reduce((sum, row) => sum + row.balanceCents, 0);
   const ccProcessingFeeCents = Math.round(collectedCents * CREDIT_CARD_PROCESSING_FEE_RATE);
   const onlineFeeCents = totalEnrollments * ONLINE_REGISTRATION_FEE_CENTS_PER_PLAYER;
+  const netDueCents = collectedCents - ccProcessingFeeCents - onlineFeeCents;
   const rosteredByAge = new Map(original.perDivision.map((row) => [row.ageGroup, row.rostered]));
 
   const perDivision = groupParishEnrollmentByDivision(rows).map((group) => {
@@ -122,7 +164,8 @@ export function rebuildParishEnrollmentSummary(
     outstandingCents,
     ccProcessingFeeCents,
     onlineFeeCents,
-    netDueCents: collectedCents - ccProcessingFeeCents - onlineFeeCents,
+    netDueCents,
+    parishRecDueCents: parishRecDueCents(netDueCents),
     feeTierBreakdown,
     perDivision,
   };

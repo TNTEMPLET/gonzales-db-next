@@ -65,6 +65,9 @@ export function reportTable(
     didParseCell?: (data: CellHookData) => void;
     fontSize?: number;
     striped?: boolean;
+    columnStyles?: {
+      [key: string]: { cellWidth?: number | "auto" | "wrap" };
+    };
   },
 ) {
   autoTable(doc, {
@@ -72,9 +75,10 @@ export function reportTable(
     head: [head],
     body: body.length ? body : [["No rows.", ...head.slice(1).map(() => "")]],
     margin: { left: margin, right: margin },
-    styles: { fontSize: options?.fontSize ?? 9, cellPadding: 4, valign: "top" },
+    styles: { fontSize: options?.fontSize ?? 9, cellPadding: 4, valign: "top", overflow: "linebreak" },
     headStyles: { fillColor: AP_RED, textColor: 255, fontStyle: "bold" },
     alternateRowStyles: options?.striped === false ? undefined : { fillColor: ROW_STRIPE },
+    columnStyles: options?.columnStyles,
     didParseCell: options?.didParseCell,
   });
   return lastTableY(doc, startY) + 16;

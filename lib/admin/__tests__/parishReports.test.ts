@@ -3,10 +3,13 @@ import { describe, it } from "node:test";
 
 import { bookedPrepSlots, buildParishFieldPrepPdf, parishPrepDayCell } from "../parishFieldPrepReport";
 import { buildFieldPrepCodes, fieldTokenFromName, parkCodeFromName } from "../fieldPrepCodes";
-import { buildParishEnrollmentPdf, parishEnrollmentCsv } from "../parishEnrollmentReport";
+import { buildParishIncomePdf, buildParishRegistrationPdf, parishEnrollmentCsv } from "../parishEnrollmentReport";
 import {
   capParishEnrollmentRow,
+  formatParishAddress,
+  formatParishDob,
   groupParishEnrollmentByDivision,
+  parishRecDueCents,
   rebuildParishEnrollmentSummary,
   resolveParishRegistrationFeeCents,
   type ParishEnrollmentRow,
@@ -15,6 +18,38 @@ import { parseReportEmails } from "../parseReportEmails";
 import type { EnrollmentKpiSummary } from "@/lib/enrollment/kpi";
 import { heatmapCellKey, type FieldCapacityHeatmap } from "../fieldCapacityHeatmap";
 import { buildPayByParkPdf, buildPayByUmpirePdf } from "../umpirePayPdf";
+
+function sampleRow(overrides: Partial<ParishEnrollmentRow> = {}): ParishEnrollmentRow {
+  return {
+    fullName: "Jane Doe",
+    ageGroup: "6U MOD",
+    teamName: "Astros",
+    address: "123 Main St, Gonzales, LA 70737",
+    dob: "6/1/2015",
+    feeDescription: "Fall Ball",
+    amountCents: 8000,
+    paidCents: 8000,
+    balanceCents: 0,
+    paymentStatus: "Paid",
+    ...overrides,
+  };
+}
+
+const emptyKpi: EnrollmentKpiSummary = {
+  organizationId: "fallball",
+  seasonYear: 2026,
+  totalEnrollments: 0,
+  unassignedEnrollments: 0,
+  grossCents: 0,
+  collectedCents: 0,
+  outstandingCents: 0,
+  ccProcessingFeeCents: 0,
+  onlineFeeCents: 0,
+  netDueCents: 0,
+  feeTierBreakdown: [],
+  perDivision: [],
+  priorSeasonComparison: null,
+};
 
 describe("parish and umpire reports", () => {
   it("lists only booked heatmap cells for parish prep", () => {
@@ -65,24 +100,39 @@ describe("parish and umpire reports", () => {
     assert.equal(parishPrepDayCell(grid, "2026-09-29", "f1").booked, false);
   });
 
-  it("builds an enrollment CSV with paid and balance", () => {
-    const rows: ParishEnrollmentRow[] = [
-      {
-        fullName: "Jane Doe",
-        ageGroup: "6U MOD",
-        teamName: "Astros",
-        feeDescription: "Fall Ball",
-        amountCents: 12500,
-        paidCents: 12500,
-        balanceCents: 0,
-        paymentStatus: "Paid",
-      },
-    ];
-    const csv = parishEnrollmentCsv(rows, "AP Fall Ball");
+  it("builds an enrollment CSV with address and DOB, not payments", () => {
+    const csv = parishEnrollmentCsv(
+      [sampleRow({ fullName: "Jane Doe", amountCents: 12500, paidCents: 12500 })],
+      "AP Fall Ball",
+    );
     assert.match(csv, /AP Fall Ball/);
     assert.match(csv, /Jane Doe/);
-    assert.match(csv, /125\.00/);
-    assert.match(csv, /Paid/);
+    assert.match(csv, /123 Main St, Gonzales, LA 70737/);
+    assert.match(csv, /6\/1\/2015/);
+    assert.doesNotMatch(csv, /125\.00/);
+    assert.doesNotMatch(csv, /Paid/);
+    assert.doesNotMatch(csv, /Balance/);
+  });
+
+  it("formats a one-line parish address and DOB", () => {
+    assert.equal(
+      formatParishAddress({
+        streetAddress: "123 Main St",
+        unit: "Apt 2",
+        city: "Gonzales",
+        state: "LA",
+        postalCode: "70737",
+      }),
+      "123 Main St, Apt 2, Gonzales, LA 70737",
+    );
+    assert.equal(formatParishAddress({}), "—");
+    assert.equal(formatParishDob(new Date("2015-06-01T00:00:00.000Z")), "6/1/2015");
+    assert.equal(formatParishDob(null), "—");
+  });
+
+  it("takes 10% of net income for Parish Rec and floors at zero", () => {
+    assert.equal(parishRecDueCents(7428), 743);
+    assert.equal(parishRecDueCents(-300), 0);
   });
 
   it("rejects empty recipient lists", () => {
@@ -188,16 +238,12 @@ describe("parish and umpire reports", () => {
 
   it("caps parish fees at the registration amount", () => {
     const late = capParishEnrollmentRow(
-      {
+      sampleRow({
         fullName: "Late Kid",
-        ageGroup: "6U MOD",
-        teamName: "Astros",
         feeDescription: "Fall Ball Late",
         amountCents: 10000,
         paidCents: 10000,
-        balanceCents: 0,
-        paymentStatus: "Paid",
-      },
+      }),
       8000,
     );
     assert.equal(late.amountCents, 8000);
@@ -206,16 +252,12 @@ describe("parish and umpire reports", () => {
     assert.equal(late.feeDescription, "Registration");
 
     const partial = capParishEnrollmentRow(
-      {
+      sampleRow({
         fullName: "Partial",
-        ageGroup: "6U MOD",
-        teamName: "Astros",
-        feeDescription: "Fall Ball",
-        amountCents: 8000,
         paidCents: 4000,
         balanceCents: 4000,
         paymentStatus: "Partial",
-      },
+      }),
       8000,
     );
     assert.equal(partial.amountCents, 8000);
@@ -223,32 +265,27 @@ describe("parish and umpire reports", () => {
     assert.equal(partial.balanceCents, 4000);
 
     const scholarship = capParishEnrollmentRow(
-      {
+      sampleRow({
         fullName: "Scholarship",
         ageGroup: "8U CP",
         teamName: "Yankees",
-        feeDescription: "Fall Ball",
         amountCents: 6000,
         paidCents: 6000,
-        balanceCents: 0,
-        paymentStatus: "Paid",
-      },
+      }),
       8000,
     );
     assert.equal(scholarship.amountCents, 6000);
     assert.equal(scholarship.paidCents, 6000);
 
     const gonzales = capParishEnrollmentRow(
-      {
+      sampleRow({
         fullName: "Spring Kid",
         ageGroup: "10U",
         teamName: "Cubs",
         feeDescription: "Spring",
         amountCents: 15000,
         paidCents: 15000,
-        balanceCents: 0,
-        paymentStatus: "Paid",
-      },
+      }),
       null,
     );
     assert.equal(gonzales.amountCents, 15000);
@@ -262,26 +299,8 @@ describe("parish and umpire reports", () => {
 
   it("groups parish rows by division in age order", () => {
     const groups = groupParishEnrollmentByDivision([
-      {
-        fullName: "Zoe",
-        ageGroup: "8U CP",
-        teamName: "A",
-        feeDescription: "Registration",
-        amountCents: 8000,
-        paidCents: 8000,
-        balanceCents: 0,
-        paymentStatus: "Paid",
-      },
-      {
-        fullName: "Amy",
-        ageGroup: "6U MOD",
-        teamName: "B",
-        feeDescription: "Registration",
-        amountCents: 8000,
-        paidCents: 8000,
-        balanceCents: 0,
-        paymentStatus: "Paid",
-      },
+      sampleRow({ fullName: "Zoe", ageGroup: "8U CP", teamName: "A", feeDescription: "Registration" }),
+      sampleRow({ fullName: "Amy", ageGroup: "6U MOD", teamName: "B", feeDescription: "Registration" }),
     ]);
     assert.deepEqual(
       groups.map((group) => group.ageGroup),
@@ -289,15 +308,12 @@ describe("parish and umpire reports", () => {
     );
   });
 
-  it("rebuilds parish totals from capped rows", () => {
+  it("rebuilds parish totals from capped rows including Parish Rec due", () => {
     const original: EnrollmentKpiSummary = {
-      organizationId: "fallball",
-      seasonYear: 2026,
+      ...emptyKpi,
       totalEnrollments: 1,
-      unassignedEnrollments: 0,
       grossCents: 10000,
       collectedCents: 10000,
-      outstandingCents: 0,
       ccProcessingFeeCents: 340,
       onlineFeeCents: 300,
       netDueCents: 9360,
@@ -305,75 +321,81 @@ describe("parish and umpire reports", () => {
       perDivision: [
         { ageGroup: "6U MOD", enrolled: 1, rostered: 1, unrostered: 0, grossCents: 10000, collectedCents: 10000 },
       ],
-      priorSeasonComparison: null,
     };
     const capped = [
       capParishEnrollmentRow(
-        {
+        sampleRow({
           fullName: "Late Kid",
-          ageGroup: "6U MOD",
-          teamName: "Astros",
           feeDescription: "Late",
           amountCents: 10000,
           paidCents: 10000,
-          balanceCents: 0,
-          paymentStatus: "Paid",
-        },
+        }),
         8000,
       ),
     ];
     const summary = rebuildParishEnrollmentSummary(capped, original, 8000);
     assert.equal(summary.grossCents, 8000);
     assert.equal(summary.collectedCents, 8000);
+    assert.equal(summary.ccProcessingFeeCents, 272);
+    assert.equal(summary.onlineFeeCents, 300);
+    assert.equal(summary.netDueCents, 7428);
+    assert.equal(summary.parishRecDueCents, 743);
     assert.equal(summary.feeTierBreakdown[0]?.orderDetailDescription, "Registration");
     assert.equal(summary.perDivision[0]?.collectedCents, 8000);
   });
 
-  it("puts division headings in the parish enrollment PDF", () => {
-    const original: EnrollmentKpiSummary = {
-      organizationId: "fallball",
-      seasonYear: 2026,
-      totalEnrollments: 2,
-      unassignedEnrollments: 0,
-      grossCents: 16000,
-      collectedCents: 16000,
-      outstandingCents: 0,
-      ccProcessingFeeCents: 0,
-      onlineFeeCents: 0,
-      netDueCents: 0,
-      feeTierBreakdown: [],
-      perDivision: [],
-      priorSeasonComparison: null,
-    };
-    const { pdf } = buildParishEnrollmentPdf({
+  it("floors Parish Rec due at zero when net income is negative", () => {
+    const summary = rebuildParishEnrollmentSummary(
+      [sampleRow({ amountCents: 0, paidCents: 0, balanceCents: 0 })],
+      emptyKpi,
+      null,
+    );
+    assert.equal(summary.netDueCents, -300);
+    assert.equal(summary.parishRecDueCents, 0);
+  });
+
+  it("puts Parish Rec remittance on the income PDF and omits the player list", () => {
+    const summary = rebuildParishEnrollmentSummary(
+      [sampleRow({ fullName: "Amy" })],
+      { ...emptyKpi, perDivision: [{ ageGroup: "6U MOD", enrolled: 1, rostered: 1, unrostered: 0, grossCents: 8000, collectedCents: 8000 }] },
+      8000,
+    );
+    const { pdf } = buildParishIncomePdf({
       orgName: "AP Fall Ball",
       seasonLabel: "Fall Ball 2026",
-      summary: original,
+      summary,
+    });
+    const text = pdf.toString("latin1");
+    assert.match(text, /Parish Rec/);
+    assert.match(text, /10% of net/);
+    assert.match(text, /Net income/);
+    assert.doesNotMatch(text, /Amy/);
+    assert.doesNotMatch(text, /Enrollment list/);
+  });
+
+  it("puts division headings, address, and DOB on the registration PDF", () => {
+    const { pdf } = buildParishRegistrationPdf({
+      orgName: "AP Fall Ball",
+      seasonLabel: "Fall Ball 2026",
       rows: [
-        {
-          fullName: "Amy",
-          ageGroup: "6U MOD",
-          teamName: "Astros",
-          feeDescription: "Registration",
-          amountCents: 8000,
-          paidCents: 8000,
-          balanceCents: 0,
-          paymentStatus: "Paid",
-        },
-        {
+        sampleRow({ fullName: "Amy", ageGroup: "6U MOD", teamName: "Astros" }),
+        sampleRow({
           fullName: "Zoe",
           ageGroup: "8U CP",
           teamName: "Yankees",
-          feeDescription: "Registration",
-          amountCents: 8000,
-          paidCents: 8000,
-          balanceCents: 0,
-          paymentStatus: "Paid",
-        },
+          address: "9 Oak Ave, Prairieville, LA 70769",
+          dob: "3/12/2014",
+        }),
       ],
     });
     const text = pdf.toString("latin1");
     assert.match(text, /6U MOD/);
     assert.match(text, /8U CP/);
+    assert.match(text, /123 Main St/);
+    assert.match(text, /6\/1\/2015/);
+    assert.match(text, /9 Oak Ave/);
+    assert.doesNotMatch(text, /Amount/);
+    assert.doesNotMatch(text, /Paid/);
+    assert.doesNotMatch(text, /Balance/);
   });
 });

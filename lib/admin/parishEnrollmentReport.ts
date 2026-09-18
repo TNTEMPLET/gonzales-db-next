@@ -1,9 +1,9 @@
 import { jsPDF } from "jspdf";
 
-import type { EnrollmentKpiSummary } from "@/lib/enrollment/kpi";
 import {
   groupParishEnrollmentByDivision,
   type ParishEnrollmentRow,
+  type ParishEnrollmentSummary,
 } from "@/lib/admin/parishEnrollmentMoney";
 import {
   formatCents,
@@ -16,58 +16,53 @@ import {
 
 export type { ParishEnrollmentRow };
 
+function csvCell(value: string): string {
+  return `"${value.replaceAll('"', '""')}"`;
+}
+
 export function parishEnrollmentCsv(rows: ParishEnrollmentRow[], orgName: string): string {
-  const header = ["Organization", "Player", "Division", "Team", "Fee", "Amount", "Paid", "Balance", "Status"];
+  const header = ["Organization", "Player", "Address", "DOB", "Division", "Team"];
   const lines = [
     header.join(","),
     ...rows.map((row) =>
-      [
-        orgName,
-        row.fullName,
-        row.ageGroup,
-        row.teamName,
-        row.feeDescription,
-        (row.amountCents / 100).toFixed(2),
-        (row.paidCents / 100).toFixed(2),
-        (row.balanceCents / 100).toFixed(2),
-        row.paymentStatus,
-      ]
-        .map((value) => `"${String(value).replaceAll('"', '""')}"`)
-        .join(","),
+      [orgName, row.fullName, row.address, row.dob, row.ageGroup, row.teamName].map(csvCell).join(","),
     ),
   ];
   return lines.join("\n");
 }
 
-export function buildParishEnrollmentPdf(input: {
+export function buildParishIncomePdf(input: {
   orgName: string;
   seasonLabel: string;
-  summary: EnrollmentKpiSummary;
-  rows: ParishEnrollmentRow[];
+  summary: ParishEnrollmentSummary;
 }): { pdf: Buffer; filename: string } {
   const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "portrait" });
   const margin = 48;
   let y = writeReportLetterhead(doc, margin, {
     orgName: input.orgName,
-    title: "Parish enrollment & revenue",
+    title: "Parish income",
     subtitle: input.seasonLabel,
   });
 
-  y = reportTable(
-    doc,
-    y,
-    margin,
-    ["Metric", "Amount"],
-    [
-      ["Enrollments", String(input.summary.totalEnrollments)],
-      ["Gross registered", formatCents(input.summary.grossCents)],
-      ["Collected", formatCents(input.summary.collectedCents)],
-      ["Outstanding", formatCents(input.summary.outstandingCents)],
-      ["Credit-card processing", formatCents(input.summary.ccProcessingFeeCents)],
-      ["Online registration fees", formatCents(input.summary.onlineFeeCents)],
-      ["Net due", formatCents(input.summary.netDueCents)],
-    ],
-  );
+  const metricRows: [string, string][] = [
+    ["Enrollments", String(input.summary.totalEnrollments)],
+    ["Gross registered", formatCents(input.summary.grossCents)],
+    ["Collected", formatCents(input.summary.collectedCents)],
+    ["Outstanding", formatCents(input.summary.outstandingCents)],
+    ["Credit-card processing (3.4%)", formatCents(input.summary.ccProcessingFeeCents)],
+    ["SportsConnect fees ($3 / player)", formatCents(input.summary.onlineFeeCents)],
+    ["Net income", formatCents(input.summary.netDueCents)],
+    ["Due to Ascension Parish Rec (10% of net)", formatCents(input.summary.parishRecDueCents)],
+  ];
+
+  y = reportTable(doc, y, margin, ["Metric", "Amount"], metricRows, {
+    columnStyles: { 0: { cellWidth: 360 }, 1: { cellWidth: "auto" } },
+    didParseCell: (data) => {
+      if (data.section === "body" && data.row.index >= 6) {
+        data.cell.styles.fontStyle = "bold";
+      }
+    },
+  });
 
   y = reportTable(
     doc,
@@ -82,7 +77,7 @@ export function buildParishEnrollmentPdf(input: {
     ]),
   );
 
-  y = reportTable(
+  reportTable(
     doc,
     y,
     margin,
@@ -96,20 +91,36 @@ export function buildParishEnrollmentPdf(input: {
     ]),
   );
 
-  const pageBottom = doc.internal.pageSize.getHeight() - 48;
-  if (y > pageBottom - 80) {
-    doc.addPage();
-    y = margin;
-  }
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(12);
-  doc.setTextColor(0, 0, 0);
-  doc.text("Enrollment list", margin, y);
-  y += 16;
+  stampReportFooter(doc, margin, `AP Baseball · ${input.orgName} · ${input.seasonLabel}`);
+  const stem = reportFilenameStem([input.orgName, input.seasonLabel, "parish-income"]);
+  return { pdf: pdfToBuffer(doc), filename: `${stem}.pdf` };
+}
 
+export function buildParishRegistrationPdf(input: {
+  orgName: string;
+  seasonLabel: string;
+  rows: ParishEnrollmentRow[];
+}): { pdf: Buffer; filename: string } {
+  const doc = new jsPDF({ unit: "pt", format: "letter", orientation: "landscape" });
+  const margin = 36;
+  let y = writeReportLetterhead(doc, margin, {
+    orgName: input.orgName,
+    title: "Parish registration",
+    subtitle: input.seasonLabel,
+  });
+
+  const pageBottom = doc.internal.pageSize.getHeight() - 48;
   const groups = groupParishEnrollmentByDivision(input.rows);
+  const columns = ["Player", "Address", "DOB", "Team"];
+  const columnStyles = {
+    0: { cellWidth: 150 },
+    1: { cellWidth: 320 },
+    2: { cellWidth: 70 },
+    3: { cellWidth: "auto" as const },
+  };
+
   if (!groups.length) {
-    y = reportTable(doc, y, margin, ["Player", "Team", "Fee", "Amount", "Paid", "Balance"], []);
+    reportTable(doc, y, margin, columns, [], { fontSize: 8, columnStyles });
   }
   for (const group of groups) {
     if (y > pageBottom - 72) {
@@ -125,19 +136,13 @@ export function buildParishEnrollmentPdf(input: {
       doc,
       y,
       margin,
-      ["Player", "Team", "Fee", "Amount", "Paid", "Balance"],
-      group.rows.map((row) => [
-        row.fullName,
-        row.teamName,
-        row.feeDescription,
-        formatCents(row.amountCents),
-        formatCents(row.paidCents),
-        formatCents(row.balanceCents),
-      ]),
+      columns,
+      group.rows.map((row) => [row.fullName, row.address, row.dob, row.teamName]),
+      { fontSize: 8, columnStyles },
     );
   }
 
   stampReportFooter(doc, margin, `AP Baseball · ${input.orgName} · ${input.seasonLabel}`);
-  const stem = reportFilenameStem([input.orgName, input.seasonLabel, "parish-enrollment"]);
+  const stem = reportFilenameStem([input.orgName, input.seasonLabel, "parish-registration"]);
   return { pdf: pdfToBuffer(doc), filename: `${stem}.pdf` };
 }

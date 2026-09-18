@@ -161,7 +161,7 @@ export default function ReportSendPanel({
         <div>
           <p className="text-sm font-medium text-zinc-200">{preview.subject}</p>
           <p className="mt-1 text-sm text-zinc-400">
-            Review the AP Baseball PDF below. Nothing is emailed until you confirm.
+            Review the AP Baseball PDF(s) below. Nothing is emailed until you confirm.
           </p>
         </div>
       ) : null}

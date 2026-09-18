@@ -25,7 +25,7 @@ export const ADMIN_REPORT_CATALOG: AdminReportCard[] = [
     id: "parish-enrollment",
     title: "Parish enrollment & revenue",
     description:
-      "Revenue totals plus the detailed player enrollment list for one organization (Gonzales, Ascension, or Fall Ball). PDF and CSV.",
+      "Income (including 10% due to Ascension Parish Rec) plus the player list with address and DOB for one organization. Two PDFs and a CSV.",
     href: "/admin/reports/parish-enrollment",
     module: "ENROLLMENT_KPI",
     action: "Review & send",
