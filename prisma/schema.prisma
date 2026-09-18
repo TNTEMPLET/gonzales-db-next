@@ -2703,7 +2703,12 @@ model SurveyResponse {
   divisionName      String?
   ageGroup          String? // e.g., "6U", "8U", "10U"
   wantsBoardContact Boolean  @default(false)
+  contactName       String?
   contactPhone      String?
+  /// PHONE | TEXT | EMAIL | EITHER — see lib/surveys/boardContact.ts
+  contactPreferredMethod String?
+  /// MORNING | AFTERNOON | EVENING | ANYTIME
+  contactBestTime   String?
   submittedAt       DateTime @default(now())
 
   /// Set when an admin marks this board-contact request as handled, via the

@@ -37,10 +37,20 @@ export async function GET(request: NextRequest) {
         _count: {
           select: { responses: true },
         },
+        responses: {
+          orderBy: { submittedAt: "desc" },
+          take: 1,
+          select: { submittedAt: true },
+        },
       },
     });
 
-    return NextResponse.json({ surveys });
+    return NextResponse.json({
+      surveys: surveys.map(({ responses, ...survey }) => ({
+        ...survey,
+        lastSubmittedAt: responses[0]?.submittedAt ?? null,
+      })),
+    });
   } catch (error) {
     console.error("Error fetching admin surveys:", error);
     return NextResponse.json(

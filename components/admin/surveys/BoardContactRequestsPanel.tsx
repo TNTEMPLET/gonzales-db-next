@@ -2,11 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { toCsvSafeValue } from "@/lib/admin/teamsImportHelpers";
+import { boardContactMethodLabel, boardContactTimeLabel } from "@/lib/surveys/boardContact";
 
 type BoardContactRequest = {
   id: string;
+  name: string | null;
   phone: string | null;
   email: string | null;
+  preferredMethod: string | null;
+  bestTime: string | null;
   organizationId: string | null;
   divisionName: string | null;
   submittedAt: string;
@@ -96,13 +100,27 @@ export default function BoardContactRequestsPanel({ isMasterAdmin }: { isMasterA
   };
 
   const csvHref = useMemo(() => {
-    const header = ["Survey", "Org", "Division", "Phone", "Email", "Submitted", "Contacted"];
+    const header = [
+      "Name",
+      "Phone",
+      "Email",
+      "Preferred method",
+      "Best time",
+      "Survey",
+      "Org",
+      "Division",
+      "Submitted",
+      "Contacted",
+    ];
     const rows = requests.map((r) => [
+      r.name || "",
+      r.phone || "",
+      r.email || "",
+      boardContactMethodLabel(r.preferredMethod),
+      boardContactTimeLabel(r.bestTime),
       r.surveyTitle,
       orgBadgeLabel(r.organizationId),
       r.divisionName || "",
-      r.phone || "",
-      r.email || "",
       fmtDate(r.submittedAt),
       r.contactedAt ? fmtDate(r.contactedAt) : "",
     ]);
@@ -155,7 +173,9 @@ export default function BoardContactRequestsPanel({ isMasterAdmin }: { isMasterA
           <table className="w-full text-left text-xs text-zinc-300">
             <thead className="border-b border-zinc-800 text-[11px] uppercase text-zinc-500">
               <tr>
-                <th className="px-4 py-3">Contact</th>
+                <th className="px-4 py-3">Name</th>
+                <th className="px-4 py-3">Phone / Email</th>
+                <th className="px-4 py-3">How / When</th>
                 <th className="px-4 py-3">Survey</th>
                 <th className="px-4 py-3">Org / Division</th>
                 <th className="px-4 py-3">Submitted</th>
@@ -166,8 +186,15 @@ export default function BoardContactRequestsPanel({ isMasterAdmin }: { isMasterA
               {requests.map((req) => (
                 <tr key={req.id} className="hover:bg-zinc-900/60">
                   <td className="px-4 py-3">
-                    <div className="font-semibold text-white">{req.phone || "—"}</div>
+                    <div className="font-semibold text-white">{req.name || "—"}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-zinc-200">{req.phone || "—"}</div>
                     {req.email && <div className="text-[11px] text-zinc-500">{req.email}</div>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-zinc-200">{boardContactMethodLabel(req.preferredMethod)}</div>
+                    <div className="text-[11px] text-zinc-500">{boardContactTimeLabel(req.bestTime)}</div>
                   </td>
                   <td className="px-4 py-3 text-zinc-300">{req.surveyTitle}</td>
                   <td className="px-4 py-3">

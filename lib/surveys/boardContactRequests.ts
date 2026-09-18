@@ -4,8 +4,11 @@ import prisma from "@/lib/prisma";
 
 export type BoardContactRequest = {
   id: string;
+  name: string | null;
   phone: string | null;
   email: string | null;
+  preferredMethod: string | null;
+  bestTime: string | null;
   organizationId: string | null;
   divisionName: string | null;
   submittedAt: string;
@@ -57,8 +60,11 @@ export async function getBoardContactRequests(input: {
 
   return responses.map((r) => ({
     id: r.id,
+    name: r.contactName,
     phone: r.contactPhone,
     email: r.respondentEmail,
+    preferredMethod: r.contactPreferredMethod,
+    bestTime: r.contactBestTime,
     organizationId: r.organizationId,
     divisionName: r.divisionName,
     submittedAt: r.submittedAt.toISOString(),
