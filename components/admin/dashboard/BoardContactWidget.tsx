@@ -30,8 +30,9 @@ export default function BoardContactWidget({ summary }: { summary: BoardContactS
           {summary.recent.map((r) => (
             <div key={r.id} className="flex items-center justify-between rounded-lg bg-zinc-950/70 px-3 py-2 text-xs">
               <div>
-                <div className="font-semibold text-white">{r.phone || r.email || "—"}</div>
+                <div className="font-semibold text-white">{r.name || r.phone || r.email || "—"}</div>
                 <div className="text-[10px] text-zinc-500">
+                  {r.phone ? `${r.phone} · ` : ""}
                   {ORG_LABELS[r.organizationId ?? ""] ?? r.organizationId ?? "Unknown"} · {r.surveyTitle}
                 </div>
               </div>

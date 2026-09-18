@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
+import { validateBoardContact } from "@/lib/surveys/boardContact";
 
 export async function GET(
   request: NextRequest,
@@ -95,13 +96,27 @@ export async function POST(
 
     const body = await request.json();
 
-    const { selectedOrg, respondentEmail, divisionName, ageGroup, wantsBoardContact, contactPhone, answers } = body as {
+    const {
+      selectedOrg,
+      respondentEmail,
+      divisionName,
+      ageGroup,
+      wantsBoardContact,
+      contactName,
+      contactPhone,
+      contactPreferredMethod,
+      contactBestTime,
+      answers,
+    } = body as {
       selectedOrg?: string;
       respondentEmail?: string;
       divisionName?: string;
       ageGroup?: string;
       wantsBoardContact?: boolean;
+      contactName?: string;
       contactPhone?: string;
+      contactPreferredMethod?: string;
+      contactBestTime?: string;
       answers: Array<{
         questionId: string;
         matrixTopic?: string;
@@ -165,11 +180,16 @@ export async function POST(
       );
     }
 
-    if (wantsBoardContact && !contactPhone?.trim()) {
-      return NextResponse.json(
-        { error: "Please provide a phone number so the board can contact you" },
-        { status: 400 }
-      );
+    const boardContact = validateBoardContact({
+      wantsBoardContact: Boolean(wantsBoardContact),
+      contactName,
+      contactPhone,
+      email: respondentEmail,
+      preferredMethod: contactPreferredMethod,
+      bestTime: contactBestTime,
+    });
+    if (!boardContact.ok) {
+      return NextResponse.json({ error: boardContact.error }, { status: 400 });
     }
 
     const validQuestionIds = new Set(
@@ -183,15 +203,19 @@ export async function POST(
       );
     }
 
+    const optedIn = !("skipped" in boardContact);
     const response = await prisma.surveyResponse.create({
       data: {
         surveyId: survey.id,
         organizationId: responseOrg,
-        respondentEmail: respondentEmail || null,
+        respondentEmail: optedIn ? boardContact.email : respondentEmail?.trim() || null,
         divisionName: divisionName || null,
         ageGroup: ageGroup || null,
-        wantsBoardContact: Boolean(wantsBoardContact),
-        contactPhone: wantsBoardContact ? contactPhone!.trim() : null,
+        wantsBoardContact: optedIn,
+        contactName: optedIn ? boardContact.contactName : null,
+        contactPhone: optedIn ? boardContact.contactPhone : null,
+        contactPreferredMethod: optedIn ? boardContact.preferredMethod : null,
+        contactBestTime: optedIn ? boardContact.bestTime : null,
         answers: {
           create: answers.map((ans) => ({
             questionId: ans.questionId,

@@ -32,3 +32,23 @@ export type SurveyOrgId = (typeof SURVEY_ORG_IDS)[number];
 export function isSurveyOrgId(value: unknown): value is SurveyOrgId {
   return typeof value === "string" && SURVEY_ORG_IDS.includes(value as SurveyOrgId);
 }
+
+export const SURVEY_ORG_LABELS: Record<SurveyOrgId, string> = {
+  gonzales: "Gonzales DYB",
+  ascension: "Ascension LL",
+  fallball: "Fall Ball",
+  apbaseball: "Spring — All Sites (Gonzales + Ascension)",
+};
+
+export function surveyOrgLabel(orgId: string | null | undefined): string {
+  if (!orgId) return "Unknown org";
+  return orgId in SURVEY_ORG_LABELS ? SURVEY_ORG_LABELS[orgId as SurveyOrgId] : orgId;
+}
+
+/** Highlight cards on Results when these matrix topics exist. */
+export const SURVEY_SNAPSHOT_TOPICS = [
+  { label: "Field Conditions", key: "Field conditions" },
+  { label: "League Communication", key: "Communication from the league" },
+  { label: "Coach Communication", key: "Coach communication" },
+  { label: "Umpire Professionalism", key: "Professionalism" },
+] as const;

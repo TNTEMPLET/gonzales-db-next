@@ -3,6 +3,14 @@
 import { useEffect, useState, use } from "react";
 import { useSearchParams } from "next/navigation";
 
+import SurveyQuestionCard, {
+  visibleSectionQuestions,
+  type SurveyAnswerValue,
+} from "@/components/surveys/SurveyQuestionCard";
+import BoardContactFields from "@/components/surveys/BoardContactFields";
+import { divisionsForOrg, isDivisionQuestion } from "@/lib/surveys/divisions";
+import { validateBoardContact, type BoardContactMethod, type BoardContactTime } from "@/lib/surveys/boardContact";
+
 interface Question {
   id: string;
   questionText: string;
@@ -21,26 +29,12 @@ interface Section {
 
 type SurveySeason = "SPRING" | "FALL";
 
-/**
- * Which of Q15's real seeded division options are valid for each org —
- * computed from the actual options rather than a hardcoded list, so it
- * can't drift out of sync if the seeded divisions ever change. Gonzales
- * DYB divisions are tagged "DYB"/"DBB" in their real option text; every
- * other option belongs to Ascension LL. Fall Ball sees everything.
- */
-function divisionsForOrg(org: string, allOptions: string[]): string[] {
-  const isDybOrDbb = (opt: string) => opt.includes("DYB") || opt.includes("DBB");
-  if (org === "gonzales") return allOptions.filter(isDybOrDbb);
-  if (org === "ascension") return allOptions.filter((opt) => !isDybOrDbb(opt));
-  if (org === "fallball") return allOptions;
-  return [];
-}
-
 interface SurveyData {
   id: string;
   title: string;
   description?: string;
   season: SurveySeason;
+  seasonYear?: number;
   sections: Section[];
 }
 
@@ -52,9 +46,6 @@ export default function PublicSurveyPage({
   const resolvedParams = use(params);
   const searchParams = useSearchParams();
   const org = searchParams.get("org") || "fallball";
-  // Admin-only draft preview -- see app/api/surveys/[slug]/route.ts. Has no
-  // effect unless the request also carries a valid admin session, so this
-  // flag alone can't expose an unpublished survey to a random visitor.
   const isPreview = searchParams.get("preview") === "1";
   const [survey, setSurvey] = useState<SurveyData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,18 +53,14 @@ export default function PublicSurveyPage({
   const [submitted, setSubmitted] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Form State: questionId / topic -> answer
-  const [answers, setAnswers] = useState<Record<string, { numberValue?: number; stringValue?: string; textValue?: string }>>({});
-  const [allStarGate, setAllStarGate] = useState<boolean | null>(null);
-  // Division/age-group selection — also used as the value for the "Division
-  // played" survey question (Q15) so parents aren't asked the same thing twice.
+  const [answers, setAnswers] = useState<Record<string, SurveyAnswerValue>>({});
   const [division, setDivision] = useState<string>("");
   const [email, setEmail] = useState<string>("");
   const [wantsBoardContact, setWantsBoardContact] = useState(false);
+  const [contactName, setContactName] = useState<string>("");
   const [contactPhone, setContactPhone] = useState<string>("");
-  // Spring surveys serve both Gonzales DYB and Ascension LL — the respondent
-  // picks which one. Fall surveys are fallball-only, set automatically once
-  // the survey loads.
+  const [contactPreferredMethod, setContactPreferredMethod] = useState<BoardContactMethod | "">("");
+  const [contactBestTime, setContactBestTime] = useState<BoardContactTime | "">("");
   const [selectedOrg, setSelectedOrg] = useState<string>("");
 
   useEffect(() => {
@@ -122,33 +109,21 @@ export default function PublicSurveyPage({
     }));
   };
 
-  // Reuse the real "Division played" question (Q15) and its actual seeded
-  // options as the source for the top-of-form division/age-group selector,
-  // rather than duplicating a hardcoded list that could drift out of sync.
   const divisionQuestion = survey?.sections
     .flatMap((s) => s.questions)
-    .find((q) => q.questionText.toLowerCase().includes("division"));
+    .find((q) => isDivisionQuestion(q.questionText));
 
-  // Filtered to whichever of Q15's real options are valid for the selected
-  // org — a filter over real data, not a separate list, so a Gonzales/
-  // Ascension respondent can never end up submitting a division value Q15
-  // doesn't actually have.
   const availableDivisions = selectedOrg
     ? divisionsForOrg(selectedOrg, divisionQuestion?.options ?? [])
     : [];
 
   const handleDivisionSelect = (value: string) => {
     setDivision(value);
-    // Keep Q15's own answer in sync so parents aren't asked the same
-    // question twice.
     if (divisionQuestion) {
       handleOptionSelect(divisionQuestion.id, value);
     }
   };
 
-  // Whenever the respondent changes org, the previously-selected division
-  // may no longer be valid for the new org — clear it (and Q15's answer)
-  // rather than leave a stale, possibly-invalid value in place.
   useEffect(() => {
     function resetDivisionForNewOrg() {
       setDivision("");
@@ -161,18 +136,13 @@ export default function PublicSurveyPage({
       }
     }
     resetDivisionForNewOrg();
-    // divisionQuestion is intentionally excluded — it's a new object
-    // reference every render, and including it would re-fire this effect
-    // (and wipe the just-made selection) immediately after handleDivisionSelect.
+    // divisionQuestion is a new object each render — including it would wipe a just-made selection.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedOrg]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
-
-    // Belt-and-suspenders: the submit button is hidden in preview mode, but
-    // guard here too so a preview session can never write a real response.
     if (isPreview) return;
 
     if (survey?.season === "SPRING" && !selectedOrg) {
@@ -180,14 +150,29 @@ export default function PublicSurveyPage({
       return;
     }
 
-    if (wantsBoardContact && !contactPhone.trim()) {
-      setError("Please provide a phone number so the board can contact you, or uncheck the contact request.");
+    const boardContact = validateBoardContact({
+      wantsBoardContact,
+      contactName,
+      contactPhone,
+      email,
+      preferredMethod: contactPreferredMethod,
+      bestTime: contactBestTime,
+    });
+    if (!boardContact.ok) {
+      setError(boardContact.error);
       return;
     }
 
     setSubmitting(true);
 
     try {
+      const visibleIds = new Set(
+        (survey?.sections ?? []).flatMap((section) =>
+          visibleSectionQuestions(section.questions, answers, divisionQuestion?.id).map((q) => q.id),
+        ),
+      );
+      if (divisionQuestion) visibleIds.add(divisionQuestion.id);
+
       const formattedAnswers: Array<{
         questionId: string;
         matrixTopic?: string;
@@ -197,10 +182,12 @@ export default function PublicSurveyPage({
       }> = [];
 
       Object.entries(answers).forEach(([key, val]) => {
+        const questionId = key.includes("__") ? key.split("__")[0] : key;
+        if (!visibleIds.has(questionId)) return;
         if (key.includes("__")) {
-          const [qId, topic] = key.split("__");
+          const topic = key.slice(questionId.length + 2);
           formattedAnswers.push({
-            questionId: qId,
+            questionId,
             matrixTopic: topic,
             numberValue: val.numberValue,
             stringValue: val.stringValue,
@@ -224,7 +211,10 @@ export default function PublicSurveyPage({
           divisionName: division || null,
           ageGroup: division || null,
           wantsBoardContact,
+          contactName: wantsBoardContact ? contactName.trim() : null,
           contactPhone: wantsBoardContact ? contactPhone.trim() : null,
+          contactPreferredMethod: wantsBoardContact ? contactPreferredMethod || null : null,
+          contactBestTime: wantsBoardContact ? contactBestTime || null : null,
           answers: formattedAnswers,
         }),
       });
@@ -243,12 +233,14 @@ export default function PublicSurveyPage({
     }
   };
 
+  const seasonYear = survey?.seasonYear ?? new Date().getFullYear();
+
   if (loading) {
     return (
       <div className="min-h-screen bg-slate-950 text-white flex items-center justify-center p-6">
         <div className="flex items-center space-x-3 text-slate-400">
           <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-          <span>Loading 2026 Parent Survey...</span>
+          <span>Loading survey...</span>
         </div>
       </div>
     );
@@ -281,11 +273,9 @@ export default function PublicSurveyPage({
           </div>
           <h1 className="text-2xl font-bold text-white mb-2">Thank You!</h1>
           <p className="text-slate-300 text-sm mb-6">
-            Your feedback for the 2026 season has been submitted successfully. Your input helps us continuously improve youth baseball for all players and families.
+            Your feedback for the {seasonYear} season has been submitted successfully. Your input helps us continuously
+            improve youth baseball for all players and families.
           </p>
-          <div className="inline-flex items-center px-4 py-2 bg-slate-800 rounded-full text-xs text-slate-400">
-            <span>✨ AP Baseball Admin Operations</span>
-          </div>
         </div>
       </div>
     );
@@ -296,26 +286,21 @@ export default function PublicSurveyPage({
       <div className="max-w-3xl mx-auto space-y-8">
         {isPreview && (
           <div className="sticky top-2 z-20 flex items-center justify-center gap-2 rounded-xl border border-amber-500/40 bg-amber-500/15 px-4 py-2.5 text-sm font-semibold text-amber-200 shadow-lg">
-            <span>🔍 Draft Preview</span>
+            <span>Draft Preview</span>
             <span className="font-normal text-amber-200/80">— not publicly visible, submissions are disabled</span>
           </div>
         )}
-        {/* Header Branding Card */}
         <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
           <div className="absolute top-0 right-0 w-48 h-48 bg-emerald-500/5 rounded-full blur-3xl" />
           <div className="relative z-10">
             <div className="flex items-center justify-between mb-4">
               <span className="text-xs font-semibold tracking-wider text-emerald-400 uppercase bg-emerald-500/10 px-3 py-1 rounded-full border border-emerald-500/20">
-                2026 Official Feedback
+                {seasonYear} Official Feedback
               </span>
-              <span className="text-xs text-slate-400">⏱️ Est. 3-5 minutes</span>
+              <span className="text-xs text-slate-400">Est. 3–5 minutes</span>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3">
-              {survey?.title}
-            </h1>
-            <p className="text-slate-300 text-sm leading-relaxed">
-              {survey?.description}
-            </p>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white mb-3">{survey?.title}</h1>
+            <p className="text-slate-300 text-sm leading-relaxed">{survey?.description}</p>
           </div>
         </div>
 
@@ -330,14 +315,12 @@ export default function PublicSurveyPage({
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-md">
               <div>
                 <h2 className="text-lg font-semibold text-emerald-400">Your Organization</h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Which organization is your player registered with?
-                </p>
+                <p className="text-xs text-slate-400 mt-1">Which organization is your player registered with?</p>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 {[
-                  { id: "gonzales", label: "⚾ Gonzales DYB" },
-                  { id: "ascension", label: "⚾ Ascension Little League" },
+                  { id: "gonzales", label: "Gonzales DYB" },
+                  { id: "ascension", label: "Ascension Little League" },
                 ].map((option) => (
                   <button
                     key={option.id}
@@ -360,9 +343,7 @@ export default function PublicSurveyPage({
             <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-4 shadow-md">
               <div>
                 <h2 className="text-lg font-semibold text-emerald-400">Your Player&apos;s Division</h2>
-                <p className="text-xs text-slate-400 mt-1">
-                  Helps us break feedback down by age group.
-                </p>
+                <p className="text-xs text-slate-400 mt-1">Helps us break feedback down by age group.</p>
               </div>
               {survey?.season === "SPRING" && !selectedOrg ? (
                 <p className="text-sm text-amber-300/90 bg-amber-500/10 border border-amber-500/20 rounded-xl p-3">
@@ -386,201 +367,35 @@ export default function PublicSurveyPage({
           )}
 
           {survey?.sections.map((section) => {
-            const isAllStarSection = section.title.includes("All-Star");
-            if (isAllStarSection && allStarGate === false) {
-              return null; // Skip All-Star section if parent selected "No"
-            }
-
+            const questions = visibleSectionQuestions(section.questions, answers, divisionQuestion?.id);
+            if (questions.length === 0) return null;
             return (
-              <div
-                key={section.id}
-                className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-md"
-              >
+              <div key={section.id} className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-6 shadow-md">
                 <div className="border-b border-slate-800 pb-3">
-                  <h2 className="text-lg font-semibold text-emerald-400">
-                    {section.title}
-                  </h2>
-                  {section.description && (
-                    <p className="text-xs text-slate-400 mt-1">{section.description}</p>
-                  )}
+                  <h2 className="text-lg font-semibold text-emerald-400">{section.title}</h2>
+                  {section.description && <p className="text-xs text-slate-400 mt-1">{section.description}</p>}
                 </div>
-
                 <div className="space-y-6">
-                  {section.questions.map((q) => {
-                    // Already captured by the top-of-form division selector
-                    // above (kept in sync via handleDivisionSelect) — don't
-                    // ask the same question twice.
-                    if (q.id === divisionQuestion?.id) {
-                      return null;
-                    }
-
-                    if (q.type === "CONDITIONAL_GATE") {
-                      return (
-                        <div key={q.id} className="space-y-3">
-                          <label className="block text-sm font-medium text-slate-200">
-                            {q.questionText}
-                          </label>
-                          <div className="flex items-center space-x-4">
-                            {["Yes", "No"].map((opt) => (
-                              <button
-                                key={opt}
-                                type="button"
-                                onClick={() => {
-                                  const isYes = opt === "Yes";
-                                  setAllStarGate(isYes);
-                                  handleOptionSelect(q.id, opt);
-                                }}
-                                className={`px-5 py-2.5 rounded-xl font-medium text-sm transition-all ${
-                                  (opt === "Yes" && allStarGate === true) ||
-                                  (opt === "No" && allStarGate === false)
-                                    ? "bg-emerald-500 text-slate-950 font-bold shadow-lg"
-                                    : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                                }`}
-                              >
-                                {opt}
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (q.type === "MATRIX") {
-                      return (
-                        <div key={q.id} className="space-y-4">
-                          <label className="block text-sm font-medium text-slate-200">
-                            {q.questionText}
-                          </label>
-                          <div className="space-y-3">
-                            {q.matrixTopics.map((topic) => (
-                              <div
-                                key={topic}
-                                className="bg-slate-950/60 border border-slate-800/80 rounded-xl p-4 sm:flex sm:items-center sm:justify-between space-y-3 sm:space-y-0"
-                              >
-                                <span className="text-sm text-slate-300 font-medium">
-                                  {topic}
-                                </span>
-                                <div className="flex items-center space-x-2">
-                                  {[1, 2, 3, 4, 5].map((num) => {
-                                    const key = `${q.id}__${topic}`;
-                                    const selectedNum = answers[key]?.numberValue;
-                                    return (
-                                      <button
-                                        key={num}
-                                        type="button"
-                                        onClick={() => handleRatingChange(q.id, num, topic)}
-                                        className={`w-9 h-9 sm:w-10 sm:h-10 rounded-lg text-xs sm:text-sm font-semibold transition-all flex items-center justify-center ${
-                                          selectedNum === num
-                                            ? "bg-amber-400 text-slate-950 font-bold shadow-md scale-105"
-                                            : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                                        }`}
-                                      >
-                                        {num}
-                                      </button>
-                                    );
-                                  })}
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (q.type === "RATING" || q.type === "LIKERT_CHOICE") {
-                      return (
-                        <div key={q.id} className="space-y-3">
-                          <label className="block text-sm font-medium text-slate-200">
-                            {q.questionText}
-                          </label>
-                          <div className="grid grid-cols-5 gap-2">
-                            {[1, 2, 3, 4, 5].map((num, idx) => {
-                              const label = q.options[idx] || num.toString();
-                              const isSelected = answers[q.id]?.numberValue === num || answers[q.id]?.stringValue === label;
-                              return (
-                                <button
-                                  key={num}
-                                  type="button"
-                                  onClick={() => handleRatingChange(q.id, num)}
-                                  className={`p-3 rounded-xl text-center text-xs sm:text-sm font-medium transition-all ${
-                                    isSelected
-                                      ? "bg-emerald-500 text-slate-950 font-bold shadow-lg"
-                                      : "bg-slate-800 text-slate-300 hover:bg-slate-700"
-                                  }`}
-                                >
-                                  <div className="font-bold mb-0.5">{num}</div>
-                                  <div className="text-[10px] opacity-80 truncate">{label.replace(/^\d+\s*/, '')}</div>
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (q.type === "SINGLE_CHOICE") {
-                      return (
-                        <div key={q.id} className="space-y-3">
-                          <label className="block text-sm font-medium text-slate-200">
-                            {q.questionText}
-                          </label>
-                          <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
-                            {q.options.map((opt) => {
-                              const isSelected = answers[q.id]?.stringValue === opt;
-                              return (
-                                <button
-                                  key={opt}
-                                  type="button"
-                                  onClick={() => handleOptionSelect(q.id, opt)}
-                                  className={`p-3 rounded-xl text-left text-xs sm:text-sm font-medium transition-all border ${
-                                    isSelected
-                                      ? "bg-emerald-500/10 border-emerald-500 text-emerald-300 font-bold"
-                                      : "bg-slate-800/60 border-slate-700/50 text-slate-300 hover:bg-slate-800"
-                                  }`}
-                                >
-                                  {opt}
-                                </button>
-                              );
-                            })}
-                          </div>
-                        </div>
-                      );
-                    }
-
-                    if (q.type === "TEXT") {
-                      return (
-                        <div key={q.id} className="space-y-2">
-                          <label className="block text-sm font-medium text-slate-200">
-                            {q.questionText}
-                          </label>
-                          <textarea
-                            rows={3}
-                            value={answers[q.id]?.textValue || ""}
-                            onChange={(e) => handleTextChange(q.id, e.target.value)}
-                            placeholder="Share your thoughts..."
-                            className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-emerald-500"
-                          />
-                        </div>
-                      );
-                    }
-
-                    return null;
-                  })}
+                  {questions.map((q) => (
+                    <SurveyQuestionCard
+                      key={q.id}
+                      question={q}
+                      answers={answers}
+                      onRating={handleRatingChange}
+                      onText={handleTextChange}
+                      onOption={handleOptionSelect}
+                    />
+                  ))}
                 </div>
               </div>
             );
           })}
 
-          {/* Contact & Division Info */}
           <div className="bg-slate-900/90 border border-slate-800 rounded-2xl p-6 space-y-4">
-            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-              Optional Details
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">Optional Details</h3>
+            {!wantsBoardContact && (
               <div>
-                <label className="block text-xs font-medium text-slate-400 mb-1">
-                  Your Email (Optional / Confidential)
-                </label>
+                <label className="block text-xs font-medium text-slate-400 mb-1">Your Email (Optional / Confidential)</label>
                 <input
                   type="email"
                   value={email}
@@ -589,16 +404,21 @@ export default function PublicSurveyPage({
                   className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
                 />
               </div>
-            </div>
+            )}
 
-            <div className="pt-2 border-t border-slate-800 space-y-3">
+            <div className={`${wantsBoardContact ? "" : "pt-2 border-t border-slate-800"} space-y-3`}>
               <label className="flex items-start gap-2.5 text-sm text-slate-200 cursor-pointer">
                 <input
                   type="checkbox"
                   checked={wantsBoardContact}
                   onChange={(e) => {
                     setWantsBoardContact(e.target.checked);
-                    if (!e.target.checked) setContactPhone("");
+                    if (!e.target.checked) {
+                      setContactName("");
+                      setContactPhone("");
+                      setContactPreferredMethod("");
+                      setContactBestTime("");
+                    }
                   }}
                   className="mt-0.5 h-4 w-4 rounded border-slate-700 bg-slate-950 text-emerald-500 focus:ring-emerald-500"
                 />
@@ -606,19 +426,18 @@ export default function PublicSurveyPage({
               </label>
 
               {wantsBoardContact && (
-                <div>
-                  <label className="block text-xs font-medium text-slate-400 mb-1">
-                    Phone Number
-                  </label>
-                  <input
-                    type="tel"
-                    value={contactPhone}
-                    onChange={(e) => setContactPhone(e.target.value)}
-                    placeholder="(225) 555-0100"
-                    required={wantsBoardContact}
-                    className="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-sm text-slate-100 focus:outline-none focus:border-emerald-500"
-                  />
-                </div>
+                <BoardContactFields
+                  contactName={contactName}
+                  contactPhone={contactPhone}
+                  email={email}
+                  preferredMethod={contactPreferredMethod}
+                  bestTime={contactBestTime}
+                  onName={setContactName}
+                  onPhone={setContactPhone}
+                  onEmail={setEmail}
+                  onMethod={setContactPreferredMethod}
+                  onTime={setContactBestTime}
+                />
               )}
             </div>
           </div>
@@ -637,12 +456,10 @@ export default function PublicSurveyPage({
                 {submitting ? (
                   <>
                     <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin" />
-                    <span>Submitting Feedback...</span>
+                    <span>Submitting feedback...</span>
                   </>
                 ) : (
-                  <>
-                    <span>Submit 2026 Parent Survey</span>
-                  </>
+                  <span>Submit {survey?.title ?? "survey"}</span>
                 )}
               </button>
             )}
