@@ -62,8 +62,9 @@ export default async function ParishEnrollmentPage({
           </p>
           <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Parish enrollment &amp; revenue</h1>
           <p className="max-w-2xl text-zinc-400">
-            Review totals and the player list for one organization, then email the PDF and CSV when
-            you are ready to send it to the parish.
+            Two PDFs for one organization: income (including 10% due to Ascension Parish Rec) and
+            the registration list with address and date of birth — no per-player payments. Email
+            both files plus the CSV when you are ready to send them to the parish.
           </p>
         </div>
         {selectedOrg ? (

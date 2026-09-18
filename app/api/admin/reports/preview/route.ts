@@ -42,10 +42,12 @@ export async function GET(request: NextRequest) {
       });
       return NextResponse.json({
         kind,
-        subject: `${orgName} enrollment & revenue — ${season.label}`,
-        html: `<p>Hi,</p><p>The AP Baseball enrollment and revenue report for <strong>${orgName}</strong> is attached (${report.rowCount} players). A CSV is included for Excel.</p>`,
-        filename: report.filename,
-        pdfBase64: report.pdf.toString("base64"),
+        subject: `${orgName} parish enrollment & income — ${season.label}`,
+        html: `<p>Hi,</p><p>The AP Baseball parish enrollment packet for <strong>${orgName}</strong> is attached (${report.rowCount} players): the income report (including Parish Rec remittance) and the registration list. A CSV is included for Excel.</p>`,
+        files: [
+          { filename: report.incomeFilename, pdfBase64: report.incomePdf.toString("base64") },
+          { filename: report.registrationFilename, pdfBase64: report.registrationPdf.toString("base64") },
+        ],
         csvFilename: report.csvFilename,
         csvBase64: Buffer.from(report.csv).toString("base64"),
         rowCount: report.rowCount,

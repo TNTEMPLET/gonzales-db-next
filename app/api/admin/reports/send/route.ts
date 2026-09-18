@@ -72,13 +72,14 @@ export async function POST(request: NextRequest) {
         campaignTitlePrefix: "Parish Enrollment",
         sourceType: "PARISH_ENROLLMENT",
         recipients: parsed.emails,
-        subject: `${orgName} enrollment & revenue — ${season.label}`,
-        text: `The AP Baseball enrollment and revenue report for ${orgName} is attached (${report.rowCount} players).`,
-        html: `<p>Hi,</p><p>The AP Baseball enrollment and revenue report for <strong>${orgName}</strong> is attached (${report.rowCount} players). A CSV is included for Excel.</p>`,
+        subject: `${orgName} parish enrollment & income — ${season.label}`,
+        text: `The AP Baseball parish enrollment packet for ${orgName} is attached (${report.rowCount} players): income report (including Parish Rec remittance) and registration list.`,
+        html: `<p>Hi,</p><p>The AP Baseball parish enrollment packet for <strong>${orgName}</strong> is attached (${report.rowCount} players): the income report (including Parish Rec remittance) and the registration list. A CSV is included for Excel.</p>`,
         fromEmail,
         replyTo,
         attachments: [
-          { filename: report.filename, content: report.pdf.toString("base64"), contentType: "application/pdf" },
+          { filename: report.incomeFilename, content: report.incomePdf.toString("base64"), contentType: "application/pdf" },
+          { filename: report.registrationFilename, content: report.registrationPdf.toString("base64"), contentType: "application/pdf" },
           { filename: report.csvFilename, content: Buffer.from(report.csv).toString("base64"), contentType: "text/csv" },
         ],
       });

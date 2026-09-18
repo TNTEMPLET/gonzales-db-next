@@ -4,11 +4,17 @@ import { getEnrollmentKpiSummary } from "@/lib/enrollment/kpi";
 import { sortTeamsManagementAgeGroups } from "@/lib/admin/teamsImportHelpers";
 import {
   capParishEnrollmentRow,
+  formatParishAddress,
+  formatParishDob,
   rebuildParishEnrollmentSummary,
   resolveParishRegistrationFeeCents,
   type ParishEnrollmentRow,
 } from "@/lib/admin/parishEnrollmentMoney";
-import { buildParishEnrollmentPdf, parishEnrollmentCsv } from "@/lib/admin/parishEnrollmentReport";
+import {
+  buildParishIncomePdf,
+  buildParishRegistrationPdf,
+  parishEnrollmentCsv,
+} from "@/lib/admin/parishEnrollmentReport";
 import prisma from "@/lib/prisma";
 
 export async function loadParishEnrollmentRows(params: {
@@ -23,6 +29,12 @@ export async function loadParishEnrollmentRows(params: {
       lastName: true,
       ageGroup: true,
       teamNameRaw: true,
+      birthDate: true,
+      streetAddress: true,
+      unit: true,
+      city: true,
+      state: true,
+      postalCode: true,
       orderDetailDescription: true,
       amountCents: true,
       amountPaidCents: true,
@@ -36,6 +48,14 @@ export async function loadParishEnrollmentRows(params: {
       fullName: row.fullName || [row.firstName, row.lastName].filter(Boolean).join(" ") || "—",
       ageGroup: row.ageGroup,
       teamName: row.teamNameRaw?.trim() || "Unassigned",
+      address: formatParishAddress({
+        streetAddress: row.streetAddress,
+        unit: row.unit,
+        city: row.city,
+        state: row.state,
+        postalCode: row.postalCode,
+      }),
+      dob: formatParishDob(row.birthDate),
       feeDescription: row.orderDetailDescription?.trim() || "—",
       amountCents: row.amountCents ?? 0,
       paidCents: row.amountPaidCents ?? 0,
@@ -73,16 +93,23 @@ export async function loadParishEnrollmentReport(params: {
   });
   const rows = rawRows.map((row) => capParishEnrollmentRow(row, capCents));
   const summary = rebuildParishEnrollmentSummary(rows, rawSummary, capCents);
-  const pdf = buildParishEnrollmentPdf({
+  const income = buildParishIncomePdf({
     orgName: params.orgName,
     seasonLabel: params.seasonLabel,
     summary,
+  });
+  const registration = buildParishRegistrationPdf({
+    orgName: params.orgName,
+    seasonLabel: params.seasonLabel,
     rows,
   });
   return {
-    ...pdf,
+    incomePdf: income.pdf,
+    incomeFilename: income.filename,
+    registrationPdf: registration.pdf,
+    registrationFilename: registration.filename,
     csv: parishEnrollmentCsv(rows, params.orgName),
-    csvFilename: pdf.filename.replace(/\.pdf$/, ".csv"),
+    csvFilename: registration.filename.replace(/\.pdf$/, ".csv"),
     summary,
     rowCount: rows.length,
     capCents,
