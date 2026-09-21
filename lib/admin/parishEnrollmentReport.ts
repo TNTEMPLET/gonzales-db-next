@@ -2,6 +2,7 @@ import { jsPDF } from "jspdf";
 
 import {
   groupParishEnrollmentByDivision,
+  parishOutboundRows,
   type ParishEnrollmentRow,
   type ParishEnrollmentSummary,
 } from "@/lib/admin/parishEnrollmentMoney";
@@ -24,7 +25,7 @@ export function parishEnrollmentCsv(rows: ParishEnrollmentRow[], orgName: string
   const header = ["Organization", "Player", "Address", "DOB", "Division", "Team"];
   const lines = [
     header.join(","),
-    ...rows.map((row) =>
+    ...parishOutboundRows(rows).map((row) =>
       [orgName, row.fullName, row.address, row.dob, row.ageGroup, row.teamName].map(csvCell).join(","),
     ),
   ];
@@ -68,11 +69,10 @@ export function buildParishIncomePdf(input: {
     doc,
     y,
     margin,
-    ["Fee tier", "Count", "Gross", "Collected"],
-    input.summary.feeTierBreakdown.map((tier) => [
-      tier.orderDetailDescription,
+    ["Registration amount", "Players", "Collected"],
+    input.summary.paidByAmount.map((tier) => [
+      formatCents(tier.amountCents),
       String(tier.count),
-      formatCents(tier.grossCents),
       formatCents(tier.collectedCents),
     ]),
   );
@@ -110,7 +110,7 @@ export function buildParishRegistrationPdf(input: {
   });
 
   const pageBottom = doc.internal.pageSize.getHeight() - 48;
-  const groups = groupParishEnrollmentByDivision(input.rows);
+  const groups = groupParishEnrollmentByDivision(parishOutboundRows(input.rows));
   const columns = ["Player", "Address", "DOB", "Team"];
   const columnStyles = {
     0: { cellWidth: 150 },

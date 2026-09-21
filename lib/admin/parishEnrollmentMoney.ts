@@ -19,8 +19,15 @@ export type ParishEnrollmentRow = {
   paymentStatus: string;
 };
 
+export type ParishPaidByAmount = {
+  amountCents: number;
+  count: number;
+  collectedCents: number;
+};
+
 export type ParishEnrollmentSummary = EnrollmentKpiSummary & {
   parishRecDueCents: number;
+  paidByAmount: ParishPaidByAmount[];
 };
 
 export const FALLBALL_DEFAULT_PARISH_REGISTRATION_FEE_CENTS = 8000;
@@ -74,6 +81,26 @@ export function parishRecDueCents(netDueCents: number): number {
   return Math.max(0, Math.round(netDueCents * PARISH_REC_SHARE_RATE));
 }
 
+/** $0 registrations stay internal; they are not sent to the parish. */
+export function parishOutboundRows(rows: ParishEnrollmentRow[]): ParishEnrollmentRow[] {
+  return rows.filter((row) => row.amountCents > 0);
+}
+
+export function groupParishPaidByAmount(rows: ParishEnrollmentRow[]): ParishPaidByAmount[] {
+  const byAmount = new Map<number, ParishPaidByAmount>();
+  for (const row of parishOutboundRows(rows)) {
+    const existing = byAmount.get(row.amountCents) ?? {
+      amountCents: row.amountCents,
+      count: 0,
+      collectedCents: 0,
+    };
+    existing.count += 1;
+    existing.collectedCents += row.paidCents;
+    byAmount.set(row.amountCents, existing);
+  }
+  return [...byAmount.values()].sort((a, b) => b.amountCents - a.amountCents);
+}
+
 export function capParishEnrollmentRow(
   row: ParishEnrollmentRow,
   capCents: number | null,
@@ -110,16 +137,17 @@ export function rebuildParishEnrollmentSummary(
   original: EnrollmentKpiSummary,
   capCents: number | null,
 ): ParishEnrollmentSummary {
-  const totalEnrollments = rows.length;
-  const grossCents = rows.reduce((sum, row) => sum + row.amountCents, 0);
-  const collectedCents = rows.reduce((sum, row) => sum + row.paidCents, 0);
-  const outstandingCents = rows.reduce((sum, row) => sum + row.balanceCents, 0);
+  const reportable = parishOutboundRows(rows);
+  const totalEnrollments = reportable.length;
+  const grossCents = reportable.reduce((sum, row) => sum + row.amountCents, 0);
+  const collectedCents = reportable.reduce((sum, row) => sum + row.paidCents, 0);
+  const outstandingCents = reportable.reduce((sum, row) => sum + row.balanceCents, 0);
   const ccProcessingFeeCents = Math.round(collectedCents * CREDIT_CARD_PROCESSING_FEE_RATE);
   const onlineFeeCents = totalEnrollments * ONLINE_REGISTRATION_FEE_CENTS_PER_PLAYER;
   const netDueCents = collectedCents - ccProcessingFeeCents - onlineFeeCents;
   const rosteredByAge = new Map(original.perDivision.map((row) => [row.ageGroup, row.rostered]));
 
-  const perDivision = groupParishEnrollmentByDivision(rows).map((group) => {
+  const perDivision = groupParishEnrollmentByDivision(reportable).map((group) => {
     const enrolled = group.rows.length;
     const rostered = rosteredByAge.get(group.ageGroup) ?? 0;
     return {
@@ -143,7 +171,7 @@ export function rebuildParishEnrollmentSummary(
       ]
     : (() => {
         const byFee = new Map<string, { count: number; grossCents: number; collectedCents: number }>();
-        for (const row of rows) {
+        for (const row of reportable) {
           const key = row.feeDescription || "(unspecified)";
           const existing = byFee.get(key) ?? { count: 0, grossCents: 0, collectedCents: 0 };
           existing.count += 1;
@@ -167,6 +195,7 @@ export function rebuildParishEnrollmentSummary(
     netDueCents,
     parishRecDueCents: parishRecDueCents(netDueCents),
     feeTierBreakdown,
+    paidByAmount: groupParishPaidByAmount(reportable),
     perDivision,
   };
 }

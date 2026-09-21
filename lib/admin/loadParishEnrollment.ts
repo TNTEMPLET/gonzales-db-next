@@ -6,6 +6,7 @@ import {
   capParishEnrollmentRow,
   formatParishAddress,
   formatParishDob,
+  parishOutboundRows,
   rebuildParishEnrollmentSummary,
   resolveParishRegistrationFeeCents,
   type ParishEnrollmentRow,
@@ -91,7 +92,7 @@ export async function loadParishEnrollmentReport(params: {
     organizationId: params.organizationId,
     storedCents: stored?.parishRegistrationFeeCents,
   });
-  const rows = rawRows.map((row) => capParishEnrollmentRow(row, capCents));
+  const rows = parishOutboundRows(rawRows.map((row) => capParishEnrollmentRow(row, capCents)));
   const summary = rebuildParishEnrollmentSummary(rows, rawSummary, capCents);
   const income = buildParishIncomePdf({
     orgName: params.orgName,

@@ -9,6 +9,8 @@ import {
   formatParishAddress,
   formatParishDob,
   groupParishEnrollmentByDivision,
+  groupParishPaidByAmount,
+  parishOutboundRows,
   parishRecDueCents,
   rebuildParishEnrollmentSummary,
   resolveParishRegistrationFeeCents,
@@ -102,11 +104,15 @@ describe("parish and umpire reports", () => {
 
   it("builds an enrollment CSV with address and DOB, not payments", () => {
     const csv = parishEnrollmentCsv(
-      [sampleRow({ fullName: "Jane Doe", amountCents: 12500, paidCents: 12500 })],
+      [
+        sampleRow({ fullName: "Jane Doe", amountCents: 12500, paidCents: 12500 }),
+        sampleRow({ fullName: "Zero Kid", amountCents: 0, paidCents: 0, balanceCents: 0 }),
+      ],
       "AP Fall Ball",
     );
     assert.match(csv, /AP Fall Ball/);
     assert.match(csv, /Jane Doe/);
+    assert.doesNotMatch(csv, /Zero Kid/);
     assert.match(csv, /123 Main St, Gonzales, LA 70737/);
     assert.match(csv, /6\/1\/2015/);
     assert.doesNotMatch(csv, /125\.00/);
@@ -341,16 +347,41 @@ describe("parish and umpire reports", () => {
     assert.equal(summary.netDueCents, 7428);
     assert.equal(summary.parishRecDueCents, 743);
     assert.equal(summary.feeTierBreakdown[0]?.orderDetailDescription, "Registration");
+    assert.deepEqual(summary.paidByAmount, [{ amountCents: 8000, count: 1, collectedCents: 8000 }]);
     assert.equal(summary.perDivision[0]?.collectedCents, 8000);
+  });
+
+  it("counts players by registration amount and omits $0", () => {
+    const rows = [
+      sampleRow({ fullName: "A", amountCents: 8000, paidCents: 8000 }),
+      sampleRow({ fullName: "B", amountCents: 8000, paidCents: 8000 }),
+      sampleRow({ fullName: "C", amountCents: 7000, paidCents: 7000 }),
+      sampleRow({ fullName: "D", amountCents: 0, paidCents: 0, balanceCents: 0 }),
+    ];
+    assert.deepEqual(groupParishPaidByAmount(rows), [
+      { amountCents: 8000, count: 2, collectedCents: 16000 },
+      { amountCents: 7000, count: 1, collectedCents: 7000 },
+    ]);
+    const summary = rebuildParishEnrollmentSummary(rows, emptyKpi, 8000);
+    assert.equal(parishOutboundRows(rows).length, 3);
+    assert.equal(summary.totalEnrollments, 3);
+    assert.equal(summary.onlineFeeCents, 900);
+    assert.equal(
+      summary.paidByAmount.reduce((sum, tier) => sum + tier.count, 0),
+      summary.totalEnrollments,
+    );
+    assert.equal(summary.paidByAmount.length, 2);
+    assert.ok(summary.paidByAmount.every((tier) => tier.amountCents > 0));
   });
 
   it("floors Parish Rec due at zero when net income is negative", () => {
     const summary = rebuildParishEnrollmentSummary(
-      [sampleRow({ amountCents: 0, paidCents: 0, balanceCents: 0 })],
+      [sampleRow({ amountCents: 100, paidCents: 100, balanceCents: 0 })],
       emptyKpi,
       null,
     );
-    assert.equal(summary.netDueCents, -300);
+    assert.equal(summary.onlineFeeCents, 300);
+    assert.ok(summary.netDueCents < 0);
     assert.equal(summary.parishRecDueCents, 0);
   });
 
@@ -369,8 +400,32 @@ describe("parish and umpire reports", () => {
     assert.match(text, /Parish Rec/);
     assert.match(text, /10% of net/);
     assert.match(text, /Net income/);
+    assert.match(text, /Registration amount/);
+    assert.match(text, /80\.00/);
+    assert.doesNotMatch(text, /Fee tier/);
     assert.doesNotMatch(text, /Amy/);
     assert.doesNotMatch(text, /Enrollment list/);
+  });
+
+  it("prints paid-by-amount rows on the income PDF without a $0 line", () => {
+    const summary = rebuildParishEnrollmentSummary(
+      [
+        sampleRow({ fullName: "A", amountCents: 8000, paidCents: 8000 }),
+        sampleRow({ fullName: "B", amountCents: 7000, paidCents: 7000 }),
+        sampleRow({ fullName: "Zero", amountCents: 0, paidCents: 0, balanceCents: 0 }),
+      ],
+      emptyKpi,
+      8000,
+    );
+    const { pdf } = buildParishIncomePdf({
+      orgName: "AP Fall Ball",
+      seasonLabel: "Fall Ball 2026",
+      summary,
+    });
+    const text = pdf.toString("latin1");
+    assert.match(text, /80\.00/);
+    assert.match(text, /70\.00/);
+    assert.equal(summary.paidByAmount.length, 2);
   });
 
   it("puts division headings, address, and DOB on the registration PDF", () => {
@@ -386,6 +441,7 @@ describe("parish and umpire reports", () => {
           address: "9 Oak Ave, Prairieville, LA 70769",
           dob: "3/12/2014",
         }),
+        sampleRow({ fullName: "Zero Kid", amountCents: 0, paidCents: 0, balanceCents: 0 }),
       ],
     });
     const text = pdf.toString("latin1");
@@ -394,6 +450,7 @@ describe("parish and umpire reports", () => {
     assert.match(text, /123 Main St/);
     assert.match(text, /6\/1\/2015/);
     assert.match(text, /9 Oak Ave/);
+    assert.doesNotMatch(text, /Zero Kid/);
     assert.doesNotMatch(text, /Amount/);
     assert.doesNotMatch(text, /Paid/);
     assert.doesNotMatch(text, /Balance/);
