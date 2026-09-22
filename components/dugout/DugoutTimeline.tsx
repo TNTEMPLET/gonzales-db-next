@@ -2961,7 +2961,7 @@ export default function DugoutTimeline({
                 Standings Snapshot
               </h4>
               <span className="text-[11px] text-zinc-500">
-                Live from saved scores
+                Active season
               </span>
             </div>
             <StandingsTabs standings={initialStandings} />

@@ -22,12 +22,11 @@ import { loadPublicScheduleGames } from "@/lib/schedule/publicScheduleLoad";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { getPublishedNewsPosts } from "@/lib/news/queries";
 import prisma from "@/lib/prisma";
-import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
 import {
   getSiteConfig,
   isMasterDeployment,
 } from "@/lib/siteConfig";
-import { computeStandingsByAgeGroup } from "@/lib/standings";
+import { loadSeasonStandings } from "@/lib/standings/loadSeasonStandings";
 
 const site = getSiteConfig();
 const orgId = site.orgId === "ascension" ? "ascension" : site.orgId === "fallball" ? "fallball" : "gonzales";
@@ -250,7 +249,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     todayGames,
     scheduleGames,
     allNews,
-    scores,
+    seasonStandings,
   ] = await Promise.all([
     listDugoutPosts(coach?.id, isMaster ? "master" : undefined),
     fetchGamesForOrgs(
@@ -262,22 +261,13 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
       scheduleOrgs,
     ),
     getPublishedNewsPosts(),
-    prisma.gameScore.findMany({
-      where: { organizationId: orgId },
-      orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
-      select: {
-        gameExternalId: true,
-        ageGroup: true,
-        homeTeam: true,
-        awayTeam: true,
-        homeScore: true,
-        awayScore: true,
-      },
-    }),
+    isMaster
+      ? Promise.resolve({ standings: [], seasonName: "", seasonYear: 0 })
+      : loadSeasonStandings(orgId),
   ]);
 
   const recentNews = allNews.slice(0, 6);
-  const standings = computeStandingsByAgeGroup(scores);
+  const standings = seasonStandings.standings;
 
   const groupedTodayGames = Object.entries(
     todayGames.reduce<Record<string, Record<string, Game[]>>>(
@@ -560,7 +550,9 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h3 className="text-lg font-bold">Standings</h3>
-                <span className="text-[11px] text-zinc-500">Saved scores</span>
+                <span className="text-[11px] text-zinc-500">
+                  {seasonStandings.seasonName || "Active season"}
+                </span>
               </div>
               <StandingsTabs standings={standings} />
               <Link

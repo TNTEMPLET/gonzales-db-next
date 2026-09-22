@@ -45,6 +45,19 @@ export function leagueCalendarDate(asOf: Date = new Date()): string {
   }).format(asOf);
 }
 
+/** Clock in league time (Central), HH:MM (24h). */
+export function leagueClockHm(asOf: Date = new Date()): string {
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    timeZone: LEAGUE_TZ,
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  }).formatToParts(asOf);
+  const hour = parts.find((part) => part.type === "hour")?.value ?? "00";
+  const minute = parts.find((part) => part.type === "minute")?.value ?? "00";
+  return `${hour.padStart(2, "0")}:${minute.padStart(2, "0")}`;
+}
+
 export function isSeasonLiveForOrg(org: ContentOrgId, asOf: Date = new Date()): boolean {
   const season = getSeasonConfigForOrg(org);
   const day = leagueCalendarDate(asOf);

@@ -47,6 +47,17 @@ function getWinningPercentage(
   return (wins + ties * 0.5) / totalGames;
 }
 
+export function filterScoresForSeasonGames<T extends { gameExternalId: string }>(
+  records: T[],
+  seasonGameIds: Iterable<string>,
+): T[] {
+  const ids = new Set(
+    Array.from(seasonGameIds, (id) => id.trim()).filter(Boolean),
+  );
+  if (ids.size === 0) return [];
+  return records.filter((record) => ids.has(record.gameExternalId));
+}
+
 export function computeStandingsByAgeGroup(
   records: ScoreRecord[],
 ): AgeGroupStandings[] {

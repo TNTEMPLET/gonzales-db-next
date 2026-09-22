@@ -2,8 +2,9 @@
 
 import { useState } from "react";
 
-import AdminGamesImportManager from "@/components/admin/AdminGamesImportManager";
-import AdminScoresManager from "@/components/admin/AdminScoresManager";
+import GameChangerPanel from "@/components/admin/scores/GameChangerPanel";
+import ScoreQueue from "@/components/admin/scores/ScoreQueue";
+import ScoresImportPanel from "@/components/admin/scores/ScoresImportPanel";
 import ScoresWorkflowNav, {
   type ScoresSectionId,
 } from "@/components/admin/scores/ScoresWorkflowNav";
@@ -18,13 +19,15 @@ type Props = {
   connections: UnifiedGameChangerConnection[];
   scope: AdminAssignrScope;
   seasonYear: number;
+  seasonLabel?: string;
 };
 
-/**
- * Scores console shell: workflow nav + shared managers.
- * AdminScoresManager already embeds GameChanger service UI; section focus scrolls/expands intent.
- */
-export default function ScoresHub({ games, connections, scope, seasonYear }: Props) {
+export default function ScoresHub({
+  games,
+  connections,
+  scope,
+  seasonLabel,
+}: Props) {
   const [section, setSection] = useState<ScoresSectionId>("queue");
 
   return (
@@ -32,23 +35,17 @@ export default function ScoresHub({ games, connections, scope, seasonYear }: Pro
       <ScoresWorkflowNav active={section} onChange={setSection} />
       <p className="text-sm text-zinc-400">
         {section === "queue"
-          ? "Enter or review finals for loaded league and tournament games."
+          ? `Enter finals for ${seasonLabel || "this season"} league games that have already started.`
           : section === "gamechanger"
             ? "Connect a public GameChanger scoreboard, preview completed games, then import finals."
             : "Upload a scores spreadsheet when bulk entry is faster than the queue."}
       </p>
 
-      {section === "import" ? (
-        <AdminGamesImportManager scope={scope} />
-      ) : (
-        <AdminScoresManager
-          games={games}
-          connections={connections}
-          scope={scope}
-          seasonYear={seasonYear}
-          preferGameChangerExpanded={section === "gamechanger"}
-        />
-      )}
+      {section === "queue" ? <ScoreQueue games={games} /> : null}
+      {section === "gamechanger" ? (
+        <GameChangerPanel games={games} connections={connections} />
+      ) : null}
+      {section === "import" ? <ScoresImportPanel scope={scope} /> : null}
     </div>
   );
 }

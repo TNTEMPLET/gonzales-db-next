@@ -1,6 +1,4 @@
 import prisma from "@/lib/prisma";
-import { fetchAssignrGamesForScope } from "@/lib/admin/assignrOrgScope";
-import { buildScoreEntryGames } from "@/lib/admin/scoreEntryGames";
 import { leagueSourceKey, type UnifiedScoreSourceType } from "@/lib/admin/unifiedScoreSources";
 import { fetchGameChangerScoreboardSyncWindow } from "@/lib/gamechanger/fetchScoreboard";
 import { gcEventToBracketMatchScores, importGcScoresIntoBracket } from "@/lib/gamechanger/importScoresIntoBracket";
@@ -10,7 +8,7 @@ import { buildBracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
 import { getScoreboardConnection, mirrorTournamentImportedIdsToSpec, parseJsonStringArray, parseMatchEventPins, updateConnectionImportedEventIds } from "@/lib/gamechanger/scoreboardConnections";
 import { isBracketOrgId, isContentOrgId, type BracketOrgId } from "@/lib/siteConfig";
-import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
+import { loadScoreableGames } from "@/lib/schedule/scoreableGamesLoad";
 import type { GcBracketMatchRef, GcScoreboardEvent } from "@/lib/gamechanger/types";
 
 export type GameChangerScorePreviewRow = {
@@ -34,8 +32,12 @@ function previewRows(refs: GcBracketMatchRef[], events: GcScoreboardEvent[], pin
 }
 async function refsForLeague(params: { organizationId: BracketOrgId }) {
   if (!isContentOrgId(params.organizationId)) return [];
-  const games = await fetchAssignrGamesForScope({ scope: params.organizationId, startDate: SEASON_START_DATE, endDate: SEASON_END_DATE });
-  return buildScoreEntryGames(games, params.organizationId).map((game) => ({ id: game.gameExternalId, home: game.homeTeam, away: game.awayTeam } satisfies GcBracketMatchRef));
+  const games = await loadScoreableGames(params.organizationId);
+  return games.map((game) => ({
+    id: game.id,
+    home: game.homeTeam,
+    away: game.awayTeam,
+  } satisfies GcBracketMatchRef));
 }
 async function refsForTournament(projectId: string) {
   const project = await prisma.bracketProject.findUnique({ where: { id: projectId } });
@@ -55,14 +57,44 @@ export async function importCompletedGameChangerScores(params: { sourceType: Uni
   const importedIds = new Set(parseJsonStringArray(connection.importedFinalEventIds)); const pins = parseMatchEventPins(connection.matchEventPins);
   const fetched = await fetchGameChangerScoreboardSyncWindow(connection.widgetId);
   if (params.sourceType === "LEAGUE") {
-    const refs = await refsForLeague(params); const rows = previewRows(refs, fetched.events, pins); let importedCount = 0;
+    if (!isContentOrgId(params.organizationId)) {
+      throw new Error("GameChanger league import requires a content organization.");
+    }
+    const localGames = await loadScoreableGames(params.organizationId);
+    const localById = new Map(localGames.map((game) => [game.id, game]));
+    const refs = localGames.map((game) => ({
+      id: game.id,
+      home: game.homeTeam,
+      away: game.awayTeam,
+    } satisfies GcBracketMatchRef));
+    const rows = previewRows(refs, fetched.events, pins); let importedCount = 0;
     for (const ref of refs) {
       const event = resolveGcEventForBracketMatch(ref, fetched.events, pins); if (!event || event.game_status !== "completed" || importedIds.has(event.id)) continue;
       const scores = gcEventToBracketMatchScores(ref, event); if (!scores || scores.homeScore == null || scores.awayScore == null) continue;
+      const local = localById.get(ref.id);
+      const gameDate = local ? new Date(`${local.dateKey}T12:00:00.000Z`) : null;
       await prisma.gameScore.upsert({
         where: { organizationId_gameExternalId: { organizationId: params.organizationId, gameExternalId: ref.id } },
-        create: { organizationId: params.organizationId, gameExternalId: ref.id, ageGroup: "GameChanger", homeTeam: ref.home, awayTeam: ref.away, gameDate: null, homeScore: scores.homeScore, awayScore: scores.awayScore, enteredByAdminId: params.enteredByAdminId ?? null },
-        update: { homeTeam: ref.home, awayTeam: ref.away, homeScore: scores.homeScore, awayScore: scores.awayScore, enteredByAdminId: params.enteredByAdminId ?? null },
+        create: {
+          organizationId: params.organizationId,
+          gameExternalId: ref.id,
+          ageGroup: local?.ageGroup?.trim() || null,
+          homeTeam: local?.homeTeam || ref.home,
+          awayTeam: local?.awayTeam || ref.away,
+          gameDate,
+          homeScore: scores.homeScore,
+          awayScore: scores.awayScore,
+          enteredByAdminId: params.enteredByAdminId ?? null,
+        },
+        update: {
+          ageGroup: local?.ageGroup?.trim() || null,
+          homeTeam: local?.homeTeam || ref.home,
+          awayTeam: local?.awayTeam || ref.away,
+          gameDate,
+          homeScore: scores.homeScore,
+          awayScore: scores.awayScore,
+          enteredByAdminId: params.enteredByAdminId ?? null,
+        },
       });
       importedIds.add(event.id); importedCount += 1;
     }

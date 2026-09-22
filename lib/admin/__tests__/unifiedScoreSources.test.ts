@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 
-import { leagueSourceKey, unifiedScoreGameId } from "@/lib/admin/unifiedScoreSources";
+import { leagueSourceKey, unifiedScoreGameId } from "@/lib/admin/unifiedScoreKeys";
 
 test("leagueSourceKey returns the shared league connection key", () => {
   assert.equal(leagueSourceKey(), "league");

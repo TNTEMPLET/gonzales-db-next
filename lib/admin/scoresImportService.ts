@@ -12,6 +12,7 @@ import {
 } from "@/lib/assignr/scheduleVenueCatalog";
 import { inferContentOrgFromGame } from "@/lib/admin/assignrOrgScope";
 import type { Game } from "@/lib/fetchGames";
+import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
 export {
   SEASON_END_DATE as SCORES_IMPORT_SEASON_END,
@@ -170,9 +171,16 @@ export type SaveScoresImportRowPayload = {
   row: ScoresImportRow;
   homeScore: number;
   awayScore: number;
-  targetOrg: NonNullable<ReturnType<typeof inferContentOrgFromGame>>;
+  targetOrg: ContentOrgId;
   gameDate: Date | null;
 };
+
+function resolveImportTargetOrg(game: Game): ContentOrgId | null {
+  if (isContentOrgId(String(game.organizationId || ""))) {
+    return game.organizationId as ContentOrgId;
+  }
+  return inferContentOrgFromGame(game);
+}
 
 function normalizeText(value: string) {
   return value
@@ -925,7 +933,7 @@ export function matchScoresImportRow(params: {
   }
 
   const gameExternalId = String(game.id || "").trim();
-  const targetOrg = inferContentOrgFromGame(game);
+  const targetOrg = resolveImportTargetOrg(game);
   if (!gameExternalId || !targetOrg) {
     return { kind: "unmatched", row };
   }
@@ -1111,7 +1119,7 @@ function buildUnmatchedPreviewRow(
 ): ScoresImportUnmatchedRow {
   return buildReviewPreviewRow(row, games, mappings, {
     outcome: "unmatched",
-    reason: "No matching Assignr game for this row",
+    reason: "No matching scheduled game for this row",
   });
 }
 
@@ -1196,7 +1204,7 @@ export function buildScoresImportPreview(params: {
     const sample = toPreviewSample(
       result,
       result.kind === "unmatched"
-        ? "No matching Assignr game for this row"
+        ? "No matching scheduled game for this row"
         : undefined,
     );
 
@@ -1271,7 +1279,7 @@ export function buildSaveScoresImportPayload(
     parsedDateFromGame && !Number.isNaN(parsedDateFromGame.valueOf())
       ? parsedDateFromGame
       : null;
-  const targetOrg = inferContentOrgFromGame(result.game);
+  const targetOrg = resolveImportTargetOrg(result.game);
   if (!targetOrg) return null;
 
   return {

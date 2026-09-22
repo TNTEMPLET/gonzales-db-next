@@ -1,18 +1,14 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
-import {
-  fetchAssignrGamesForScope,
-  resolveAdminAssignrScope,
-} from "@/lib/admin/assignrOrgScope";
+import { resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
 import {
   applyScoresImport,
   listAssignrCancelledGamesForUpload,
   parseScoresImportBuffer,
   parseScoresImportRow,
-  SCORES_IMPORT_SEASON_END,
-  SCORES_IMPORT_SEASON_START,
 } from "@/lib/admin/scoresImportService";
+import { loadScoreableImportGames } from "@/lib/schedule/scoreableGamesLoad";
 import { parseJsonRecord } from "@/lib/assignr/gamesImportService";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
@@ -66,11 +62,7 @@ export async function POST(request: NextRequest) {
         .trim()
         .toLowerCase() === "true";
 
-    const games = await fetchAssignrGamesForScope({
-      startDate: SCORES_IMPORT_SEASON_START,
-      endDate: SCORES_IMPORT_SEASON_END,
-      scope,
-    });
+    const games = await loadScoreableImportGames(scope);
     const parsedRows = rows.map((row, index) =>
       parseScoresImportRow(row, index + 2),
     );
@@ -80,7 +72,7 @@ export async function POST(request: NextRequest) {
     );
     if (assignrCancelledGames.length > 0 && !acknowledgeCancelledGames) {
       return NextResponse.json(
-        { error: "Confirm Assignr cancelled games before importing." },
+        { error: "Confirm cancelled games before importing." },
         { status: 400 },
       );
     }

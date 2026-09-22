@@ -1,11 +1,8 @@
 import Link from "next/link";
 
 import StandingsTabs from "@/components/standings/StandingsTabs";
-import { fetchGames } from "@/lib/fetchGames";
-import prisma from "@/lib/prisma";
-import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
-import { getAssignrLeagueId, getOrgId, getSiteConfig } from "@/lib/siteConfig";
-import { computeStandingsByAgeGroup } from "@/lib/standings";
+import { getOrgId, getSiteConfig } from "@/lib/siteConfig";
+import { loadSeasonStandings } from "@/lib/standings/loadSeasonStandings";
 
 export const dynamic = "force-dynamic";
 
@@ -18,42 +15,9 @@ export function generateMetadata() {
 }
 
 export default async function StandingsPage() {
-  const leagueId = getAssignrLeagueId();
   const orgId = getOrgId();
-
-  const scores = await prisma.gameScore.findMany({
-    where: { organizationId: orgId },
-    orderBy: [{ ageGroup: "asc" }, { gameDate: "asc" }],
-    select: {
-      gameExternalId: true,
-      ageGroup: true,
-      homeTeam: true,
-      awayTeam: true,
-      homeScore: true,
-      awayScore: true,
-    },
-  });
-
-  let activeGameIds: Set<string> | null = null;
-  let scheduleUnavailable = false;
-  try {
-    const allSeasonGames = await fetchGames({
-      startDate: SEASON_START_DATE,
-      endDate: SEASON_END_DATE,
-      leagueId,
-    });
-    activeGameIds = new Set(
-      allSeasonGames
-        .filter((game) => game.status?.trim().toUpperCase() === "A")
-        .map((game) => String(game.id)),
-    );
-  } catch {
-    // Fail-soft: keep standings renderable when schedule API credentials expire.
-    scheduleUnavailable = true;
-  }
-
-  const standings = computeStandingsByAgeGroup(
-    activeGameIds ? scores.filter((score) => activeGameIds.has(score.gameExternalId)) : scores,
+  const season = await loadSeasonStandings(
+    orgId === "ascension" ? "ascension" : orgId === "fallball" ? "fallball" : "gonzales",
   );
 
   return (
@@ -65,7 +29,7 @@ export default async function StandingsPage() {
               League Standings
             </h1>
             <p className="text-zinc-400">
-              By age group with current scored results.
+              {season.seasonName} · by age group with current scored results.
             </p>
           </div>
           <Link
@@ -76,13 +40,7 @@ export default async function StandingsPage() {
           </Link>
         </div>
 
-        {scheduleUnavailable ? (
-          <div className="rounded-lg border border-amber-700 bg-amber-950/30 p-3 text-sm text-amber-200">
-            Live schedule sync is temporarily unavailable. Showing standings from scored games only.
-          </div>
-        ) : null}
-
-        <StandingsTabs standings={standings} />
+        <StandingsTabs standings={season.standings} />
       </section>
     </main>
   );

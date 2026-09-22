@@ -1,15 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-  fetchAssignrGamesForScope,
-  resolveAdminAssignrScope,
-} from "@/lib/admin/assignrOrgScope";
+import { resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
 import {
   buildScoresImportPreview,
   parseScoresImportBuffer,
-  SCORES_IMPORT_SEASON_END,
-  SCORES_IMPORT_SEASON_START,
 } from "@/lib/admin/scoresImportService";
+import { loadScoreableImportGames } from "@/lib/schedule/scoreableGamesLoad";
 import { parseJsonRecord } from "@/lib/assignr/gamesImportService";
 import { ensureAdminModule } from "@/lib/news/auth";
 
@@ -56,11 +52,7 @@ export async function POST(request: NextRequest) {
         ? { parkMappings, fieldMappings, ageGroupMappings, rowMappings }
         : undefined;
 
-    const games = await fetchAssignrGamesForScope({
-      startDate: SCORES_IMPORT_SEASON_START,
-      endDate: SCORES_IMPORT_SEASON_END,
-      scope,
-    });
+    const games = await loadScoreableImportGames(scope);
 
     const preview = buildScoresImportPreview({ rows, games, mappings });
 
