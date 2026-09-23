@@ -15,6 +15,7 @@ import {
   ACCOUNT_SETUP_PREFILL_KEY,
   type AccountSetupPrefillPayload,
 } from "@/lib/accountSetupPrefill";
+import { getPostLoginHref } from "@/lib/dugout/postLoginHref";
 
 type CoachUser = {
   name: string;
@@ -54,17 +55,6 @@ type CoachAuthButtonProps = {
 
 function getInitial(user: CoachUser): string {
   return (user.firstName?.[0] ?? user.name?.[0] ?? "?").toUpperCase();
-}
-
-function isSafeNextPath(path: string | null): path is string {
-  // Relative paths only -- guards against an open redirect via a
-  // protocol-relative ("//evil.com") or absolute-URL "next" value.
-  return !!path && path.startsWith("/") && !path.startsWith("//");
-}
-
-function getPostLoginHref(loginResponse: LoginResponse, nextParam: string | null): string {
-  if (isSafeNextPath(nextParam)) return nextParam;
-  return loginResponse.isCoach ? "/dugout" : "/";
 }
 
 function stashAccountSetupPrefill(payload: AccountSetupPrefillPayload) {
@@ -218,7 +208,13 @@ export default function CoachAuthButton({
             setOpen(false);
             notifyAuthChanged();
             onAuthenticated?.();
-            router.push(getPostLoginHref(json, nextParam));
+            router.push(
+              getPostLoginHref({
+                isAdmin: json.isAdmin,
+                isCoach: json.isCoach,
+                nextParam,
+              }),
+            );
           } catch (err: unknown) {
             setError(err instanceof Error ? err.message : "Sign-in failed");
           } finally {
@@ -310,7 +306,13 @@ export default function CoachAuthButton({
       setOpen(false);
       notifyAuthChanged();
       onAuthenticated?.();
-      router.push(getPostLoginHref(json, nextParam));
+      router.push(
+        getPostLoginHref({
+          isAdmin: json.isAdmin,
+          isCoach: json.isCoach,
+          nextParam,
+        }),
+      );
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Local auth failed");
     } finally {

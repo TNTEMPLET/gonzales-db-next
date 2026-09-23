@@ -54,7 +54,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   TEAMS: "ADMIN",
   SPONSORS: "ADMIN",
   REPORTS: "PARK_DIRECTOR",
-  SCORES: "BOARD_MEMBER",
+  SCORES: "PARK_DIRECTOR",
   DUGOUT_MODERATION: "BOARD_MEMBER",
   NEWS_ADMIN: "BOARD_MEMBER",
   ALL_STAR_VAULT: "ADMIN",
@@ -189,7 +189,6 @@ export function suggestLeastPrivilegeRole(
 
   const needsBoard = desiredModules.some((m) =>
     [
-      "SCORES",
       "DUGOUT_MODERATION",
       "NEWS_ADMIN",
       "ALL_STAR_PAYMENTS",
