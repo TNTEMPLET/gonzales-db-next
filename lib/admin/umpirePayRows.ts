@@ -1,3 +1,4 @@
+import { venueMatchesPark } from "@/lib/admin/parkDirectorPark";
 import { type Game } from "@/lib/fetchGames";
 
 export type LeagueFilter = "all" | "littleleague" | "diamond";
@@ -236,6 +237,33 @@ export function buildMainReportRows(games: Game[]): MainReportRow[] {
     if (dateCompare !== 0) return dateCompare;
     return a.time.localeCompare(b.time);
   });
+}
+
+export type DayParkUmpirePay = {
+  umpireId: string;
+  name: string;
+  games: number;
+  totalPay: number;
+};
+
+export function summarizeUmpirePayForPark(games: Game[], parkName: string): DayParkUmpirePay[] {
+  const byUmpire = new Map<string, DayParkUmpirePay>();
+  for (const row of buildUmpireReportRows(games)) {
+    if (!venueMatchesPark(row.park, parkName)) continue;
+    const existing = byUmpire.get(row.umpireId);
+    if (!existing) {
+      byUmpire.set(row.umpireId, {
+        umpireId: row.umpireId,
+        name: row.umpireName,
+        games: row.games,
+        totalPay: row.totalPay,
+      });
+      continue;
+    }
+    existing.games += row.games;
+    existing.totalPay += row.totalPay;
+  }
+  return Array.from(byUmpire.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
 export function buildUmpireReportRows(games: Game[]): UmpireReportRow[] {

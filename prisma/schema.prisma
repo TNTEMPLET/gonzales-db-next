@@ -1671,9 +1671,14 @@ model ScheduleDraftGame {
   conflictFlags    Json                    @default("[]")
   fairnessScore    Float?
   fairnessMetadata Json                    @default("{}")
-  schedulerNotes   String?
-  createdAt        DateTime                @default(now())
-  updatedAt        DateTime                @updatedAt
+  schedulerNotes           String?
+  /// Scoreboard remote checked out to a team volunteer for this game, then returned.
+  scoreboardCheckedOutAt   DateTime?
+  scoreboardCheckedInAt    DateTime?
+  scoreboardCheckoutSide   String?
+  scoreboardCheckoutName   String?
+  createdAt                DateTime                @default(now())
+  updatedAt                DateTime                @updatedAt
 
   season   ScheduleSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   park     SchedulePark?  @relation(fields: [parkId], references: [id], onDelete: SetNull)

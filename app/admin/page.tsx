@@ -47,6 +47,29 @@ import ComplianceSection from "@/components/admin/dashboard/ComplianceSection";
 import EngagementSection from "@/components/admin/dashboard/EngagementSection";
 import BoardContactWidget from "@/components/admin/dashboard/BoardContactWidget";
 import NeedsAttentionPanel from "@/components/admin/dashboard/NeedsAttentionPanel";
+import GameDayPanel from "@/components/admin/dashboard/GameDayPanel";
+import ParkDirectorMenu from "@/components/admin/dashboard/ParkDirectorMenu";
+import ParkDirectorScope from "@/components/admin/ParkDirectorScope";
+import { loadDirectorParks, loadParkDirectorUmpirePay } from "@/lib/admin/dashboard/parkDirectorPay";
+import type { DayParkUmpirePay } from "@/lib/admin/umpirePayRows";
+
+const SAMPLE_UMPIRE_PAY: DayParkUmpirePay[] = [
+  { umpireId: "sample-1", name: "Maria Alvarez", games: 2, totalPay: 80 },
+  { umpireId: "sample-2", name: "James Whitfield", games: 3, totalPay: 150 },
+  { umpireId: "sample-3", name: "Denise Porter", games: 1, totalPay: 40 },
+  { umpireId: "sample-4", name: "Caleb Nguyen", games: 2, totalPay: 100 },
+];
+import { leagueCalendarDate } from "@/lib/seasonConfig";
+import InSeasonBoard, { type SeasonFinanceSlice } from "@/components/admin/dashboard/InSeasonBoard";
+import type { GameDayStatus } from "@/lib/admin/dashboard/gameDay";
+import {
+  loadGameDayStatuses,
+  loadInSeasonBoard,
+  type AssignrSyncView,
+  type InSeasonBoardData,
+  type OperationsView,
+} from "@/lib/admin/dashboard/loadInSeasonBoard";
+import { seasonDashboardLinks, type SeasonDashboardLinks } from "@/lib/admin/dashboard/seasonLinks";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -60,9 +83,9 @@ export function generateMetadata() {
 export default async function AdminDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string }>;
+  searchParams: Promise<{ org?: string; day?: string; park?: string }>;
 }) {
-  const { org } = await searchParams;
+  const { org, day, park } = await searchParams;
   const masterMode = isMasterDeployment();
   const requestedOrg =
     org && CONTENT_ORGS.includes(org as ContentOrgId)
@@ -190,6 +213,111 @@ export default async function AdminDashboardPage({
       );
     }
   }
+
+  const liveDashboardOrgs = dashboardOrgs.filter((orgId) => isSeasonLiveForOrg(orgId));
+  const roleForOrg = (orgId: ContentOrgId): AdminRole =>
+    roleByOrg[orgId] ?? (adminUser.isMaster ? "MASTER_ADMIN" : adminRole);
+  let inSeason: InSeasonBoardData | null = null;
+  let seasonLinks: Partial<Record<ContentOrgId, SeasonDashboardLinks>> = {};
+  let seasonFinance: Partial<Record<ContentOrgId, SeasonFinanceSlice>> = {};
+  if (showStateOfOrg && liveDashboardOrgs.length > 0) {
+    const operationsOrgs = liveDashboardOrgs.filter((orgId) =>
+      hasAdminRoleAtLeast(roleForOrg(orgId), "ADMIN"),
+    );
+    seasonLinks = Object.fromEntries(
+      liveDashboardOrgs.map((orgId) => [orgId, seasonDashboardLinks(orgId, roleForOrg(orgId))]),
+    );
+    if (stateOfOrg) {
+      seasonFinance = Object.fromEntries(
+        stateOfOrg.registration.byOrg
+          .filter((row) => liveDashboardOrgs.includes(row.organizationId))
+          .map((row) => [
+            row.organizationId,
+            {
+              collectedCents: row.collectedCents,
+              outstandingCents: row.outstandingCents,
+              grossCents: row.grossCents,
+              divisions: stateOfOrg.registration.perDivision
+                .filter((division) => division.organizationId === row.organizationId)
+                .map((division) => ({
+                  ageGroup: division.ageGroup,
+                  enrolled: division.enrolled,
+                  rostered: division.rostered,
+                  collectedCents: division.collectedCents,
+                  grossCents: division.grossCents,
+                })),
+            } satisfies SeasonFinanceSlice,
+          ]),
+      );
+    }
+    const outstandingCentsByOrg: Partial<Record<ContentOrgId, number>> = {};
+    for (const orgId of liveDashboardOrgs) {
+      outstandingCentsByOrg[orgId] = seasonFinance[orgId]?.outstandingCents ?? 0;
+    }
+    try {
+      inSeason = await loadInSeasonBoard({
+        orgs: liveDashboardOrgs,
+        outstandingCentsByOrg,
+        operationsOrgs,
+        includeDistrictIncome: allSitesRequested && adminUser.isMaster,
+      });
+    } catch (err) {
+      console.error(
+        "In-season board summary failed (continuing with the registration dashboard):",
+        err instanceof Error ? err.message : err,
+      );
+    }
+  }
+  let parkDirectorGameDay: GameDayStatus[] = [];
+  if (!inSeason && liveDashboardOrgs.length > 0) {
+    const gameDayOrgs = liveDashboardOrgs.filter((orgId) => {
+      const role = roleByOrg[orgId];
+      return adminUser.isMaster || (role != null && hasAdminRoleAtLeast(role, "PARK_DIRECTOR"));
+    });
+    if (gameDayOrgs.length > 0) {
+      try {
+        parkDirectorGameDay = await loadGameDayStatuses(gameDayOrgs);
+      } catch (err) {
+        console.error(
+          "Game day status failed (continuing without the rainout panel):",
+          err instanceof Error ? err.message : err,
+        );
+      }
+    }
+  }
+  let directorParks: string[] = [];
+  let directorDay = leagueCalendarDate();
+  let directorPark: string | null = null;
+  let directorPay: DayParkUmpirePay[] | null = null;
+  let directorPayError: string | null = null;
+  if (!showStateOfOrg) {
+    try {
+      directorParks = await loadDirectorParks(moduleOrgFallback);
+    } catch (err) {
+      console.error("Park director park list failed:", err instanceof Error ? err.message : err);
+    }
+    if (day && /^\d{4}-\d{2}-\d{2}$/.test(day)) directorDay = day;
+    const requestedPark = park?.trim() || "";
+    directorPark = directorParks.includes(requestedPark) ? requestedPark : null;
+    if (directorPark) {
+      try {
+        directorPay = await loadParkDirectorUmpirePay({
+          org: moduleOrgFallback,
+          day: directorDay,
+          parkName: directorPark,
+        });
+      } catch (err) {
+        directorPayError = "Umpire pay could not be loaded for this day.";
+        console.error("Park director umpire pay failed:", err instanceof Error ? err.message : err);
+      }
+    }
+  }
+  const syncByOrg: Partial<Record<ContentOrgId, AssignrSyncView>> = Object.fromEntries(
+    (inSeason?.sync ?? []).map((row) => [row.organizationId, row]),
+  );
+  const operationsByOrg: Partial<Record<ContentOrgId, OperationsView>> = Object.fromEntries(
+    (inSeason?.operations ?? []).map((row) => [row.organizationId, row]),
+  );
 
   const cards = sortAdminDashboardCards([
     {
@@ -371,7 +499,9 @@ export default async function AdminDashboardPage({
               <p className="text-zinc-400 max-w-3xl">
                 {masterMode
                   ? "Direct operations for Gonzales DYB, Ascension Little League, and AP Baseball Fall Ball from a single administrative surface. Switch target sites, publish updates, manage access, and monitor league operations without dropping context."
-                  : "Manage users, publish league updates, and moderate dugout posts from one place."}
+                  : showStateOfOrg
+                    ? "Manage users, publish league updates, and moderate dugout posts from one place."
+                    : "Rainouts, scoreboard controllers, umpire cards, scores, and umpire pay. In that order."}
               </p>
               <div className="mt-5 max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-300">
                 <span className="font-semibold text-white">Selected target: </span>
@@ -455,27 +585,101 @@ export default async function AdminDashboardPage({
           </div>
         ) : null}
 
+        {!showStateOfOrg ? (
+          <ParkDirectorScope
+            org={moduleOrgFallback}
+            parks={directorParks}
+            day={directorDay}
+            selectedPark={directorPark}
+          />
+        ) : null}
+
+        {inSeason ? (
+          <InSeasonBoard
+            pictures={inSeason.pictures}
+            gameDayByOrg={Object.fromEntries(inSeason.gameDays.map((row) => [row.organizationId, row]))}
+            syncByOrg={syncByOrg}
+            operationsByOrg={operationsByOrg}
+            linksByOrg={seasonLinks}
+            financeByOrg={seasonFinance}
+            district={inSeason.district}
+            districtHref={
+              allSitesRequested && adminUser.isMaster ? "/admin/reports/tournament-income" : null
+            }
+          />
+        ) : parkDirectorGameDay.length > 0 ? (
+          <div className="mb-8 space-y-4">
+            {parkDirectorGameDay.map((status) => (
+              <GameDayPanel key={status.organizationId} status={status} />
+            ))}
+          </div>
+        ) : null}
+
         {stateOfOrg ? (
           <div className="mb-8 space-y-6">
-            <RegistrationRevenueSection summary={stateOfOrg.registration} />
+            {inSeason ? null : <RegistrationRevenueSection summary={stateOfOrg.registration} />}
             <div className="grid gap-6 lg:grid-cols-2">
               <ComplianceSection summary={stateOfOrg.compliance} />
               <EngagementSection summary={stateOfOrg.engagement} />
             </div>
             <div className="grid gap-6 lg:grid-cols-2">
               <BoardContactWidget summary={stateOfOrg.boardContact} />
-              <NeedsAttentionPanel summary={stateOfOrg.needsAttention} />
+              <NeedsAttentionPanel summary={stateOfOrg.needsAttention} hideZeros={Boolean(inSeason)} />
             </div>
           </div>
         ) : null}
 
-        <AdminDashboardModuleGrid
-          cards={cards}
-          masterMode={masterMode}
-          allowRolePreview={allowRolePreview}
-          allStarVaultView={allStarVaultView}
-          currentOrg={currentOrg}
-        />
+        {showStateOfOrg ? (
+          <AdminDashboardModuleGrid
+            cards={cards}
+            masterMode={masterMode}
+            allowRolePreview={allowRolePreview}
+            allStarVaultView={allStarVaultView}
+            currentOrg={currentOrg}
+          />
+        ) : (
+          <>
+            <ParkDirectorMenu org={moduleOrgFallback} />
+            <section id="umpire-pay" className="mt-10 scroll-mt-24 space-y-4">
+              <div>
+                <h2 className="text-xl font-semibold tracking-tight text-white sm:text-2xl">Umpire pay</h2>
+                <p className="mt-1 max-w-3xl text-sm text-zinc-400">
+                  {directorPark
+                    ? `${directorPark} on ${directorDay}.`
+                    : "Choose the park you are working at."}
+                </p>
+              </div>
+              {!(directorPay && directorPay.length > 0) ? (
+                <p className="text-sm text-amber-100">
+                  Sample names so you can see the layout. These are not real assignments
+                  {directorPayError ? ", and live pay did not load for this day." : "."}
+                </p>
+              ) : null}
+              <div className="overflow-x-auto rounded-2xl border border-zinc-800">
+                <table className="min-w-full text-left text-sm">
+                  <thead className="text-xs uppercase tracking-wide text-zinc-500">
+                    <tr>
+                      <th className="px-3 py-2">Umpire&apos;s name</th>
+                      <th className="px-3 py-2">Games umpired</th>
+                      <th className="px-3 py-2">Total pay</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(directorPay && directorPay.length > 0 ? directorPay : SAMPLE_UMPIRE_PAY).map((row) => (
+                      <tr key={row.umpireId} className="border-t border-zinc-800">
+                        <td className="px-3 py-3 text-white">{row.name}</td>
+                        <td className="px-3 py-3">{row.games}</td>
+                        <td className="px-3 py-3">
+                          {row.totalPay.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </>
+        )}
       </section>
     </main>
   );

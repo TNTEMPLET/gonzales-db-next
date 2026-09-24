@@ -1,8 +1,15 @@
 import Link from "next/link";
 import type { NeedsAttentionSummary } from "@/lib/admin/dashboard/needsAttentionSummary";
 
-export default function NeedsAttentionPanel({ summary }: { summary: NeedsAttentionSummary }) {
-  const totalOpen = summary.items.reduce((sum, i) => sum + i.count, 0);
+export default function NeedsAttentionPanel({
+  summary,
+  hideZeros = false,
+}: {
+  summary: NeedsAttentionSummary;
+  hideZeros?: boolean;
+}) {
+  const items = hideZeros ? summary.items.filter((item) => item.count > 0) : summary.items;
+  const totalOpen = items.reduce((sum, i) => sum + i.count, 0);
 
   return (
     <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5 space-y-3">
@@ -14,7 +21,7 @@ export default function NeedsAttentionPanel({ summary }: { summary: NeedsAttenti
         <div className="py-6 text-center text-xs text-emerald-400">Nothing needs attention right now. 🎉</div>
       ) : (
         <div className="space-y-1.5">
-          {summary.items.map((item) => (
+          {items.map((item) => (
             <Link
               key={item.key}
               href={item.href}

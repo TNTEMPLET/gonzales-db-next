@@ -200,6 +200,13 @@ export default function ScheduleTable({
     return { rainedOutVenues: [] as string[], allParksRainedOut: false };
   }, [forceRainout]);
 
+  const isRowRainedOut = (parkName: string, dateKey: string) => {
+    if (!forceRainout || dateKey !== todayDateKey()) return false;
+    if (forceRainout.allParksOut) return true;
+    const needle = parkName.trim().toLowerCase();
+    return forceRainout.venues.some((venue) => venue.trim().toLowerCase() === needle);
+  };
+
   const toggleAgeSelection = (value: string) => {
     setSelectedAgeGroup((prev) => {
       const next = prev.includes(value) ? prev.filter((item) => item !== value) : [...prev, value];
@@ -674,8 +681,10 @@ export default function ScheduleTable({
                             {dateGroup.dateLabel}
                           </td>
                         </tr>
-                        {dateGroup.games.map((row) => (
-                          <tr key={row.id} className="border-t border-zinc-800/80 hover:bg-zinc-800/40">
+                        {dateGroup.games.map((row) => {
+                          const rainedOut = isRowRainedOut(park.parkName, row.dateKey);
+                          return (
+                          <tr key={row.id} className={`border-t border-zinc-800/80 hover:bg-zinc-800/40 ${rainedOut ? "bg-red-950/40" : ""}`}>
                             <td className="whitespace-nowrap px-3 py-1.5 text-zinc-300">
                               {row.dateLabel.replace(/^[A-Za-z]{3},\s/, "")}
                             </td>
@@ -683,9 +692,17 @@ export default function ScheduleTable({
                             <td className="px-3 py-1.5 text-zinc-300">{row.fieldName}</td>
                             <td className="px-3 py-1.5 text-brand-gold">{row.ageGroup}</td>
                             <td className="px-3 py-1.5">{row.homeTeam}</td>
-                            <td className="px-3 py-1.5">{row.awayTeam}</td>
+                            <td className="px-3 py-1.5">
+                              {row.awayTeam}
+                              {rainedOut ? (
+                                <span className="ml-2 text-xs font-semibold uppercase tracking-wide text-red-300">
+                                  Rained out
+                                </span>
+                              ) : null}
+                            </td>
                           </tr>
-                        ))}
+                          );
+                        })}
                       </Fragment>
                     ))}
                   </Fragment>
