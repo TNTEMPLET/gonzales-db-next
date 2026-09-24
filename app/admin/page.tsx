@@ -52,13 +52,6 @@ import ParkDirectorMenu from "@/components/admin/dashboard/ParkDirectorMenu";
 import ParkDirectorScope from "@/components/admin/ParkDirectorScope";
 import { loadDirectorParks, loadParkDirectorUmpirePay } from "@/lib/admin/dashboard/parkDirectorPay";
 import type { DayParkUmpirePay } from "@/lib/admin/umpirePayRows";
-
-const SAMPLE_UMPIRE_PAY: DayParkUmpirePay[] = [
-  { umpireId: "sample-1", name: "Maria Alvarez", games: 2, totalPay: 80 },
-  { umpireId: "sample-2", name: "James Whitfield", games: 3, totalPay: 150 },
-  { umpireId: "sample-3", name: "Denise Porter", games: 1, totalPay: 40 },
-  { umpireId: "sample-4", name: "Caleb Nguyen", games: 2, totalPay: 100 },
-];
 import { leagueCalendarDate } from "@/lib/seasonConfig";
 import InSeasonBoard, { type SeasonFinanceSlice } from "@/components/admin/dashboard/InSeasonBoard";
 import type { GameDayStatus } from "@/lib/admin/dashboard/gameDay";
@@ -649,34 +642,34 @@ export default async function AdminDashboardPage({
                     : "Choose the park you are working at."}
                 </p>
               </div>
-              {!(directorPay && directorPay.length > 0) ? (
-                <p className="text-sm text-amber-100">
-                  Sample names so you can see the layout. These are not real assignments
-                  {directorPayError ? ", and live pay did not load for this day." : "."}
-                </p>
+              {directorPayError ? <p className="text-sm text-red-200">{directorPayError}</p> : null}
+              {directorPark && directorPay && directorPay.length === 0 ? (
+                <p className="text-sm text-zinc-500">No umpires assigned at this park on this day.</p>
               ) : null}
-              <div className="overflow-x-auto rounded-2xl border border-zinc-800">
-                <table className="min-w-full text-left text-sm">
-                  <thead className="text-xs uppercase tracking-wide text-zinc-500">
-                    <tr>
-                      <th className="px-3 py-2">Umpire&apos;s name</th>
-                      <th className="px-3 py-2">Games umpired</th>
-                      <th className="px-3 py-2">Total pay</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {(directorPay && directorPay.length > 0 ? directorPay : SAMPLE_UMPIRE_PAY).map((row) => (
-                      <tr key={row.umpireId} className="border-t border-zinc-800">
-                        <td className="px-3 py-3 text-white">{row.name}</td>
-                        <td className="px-3 py-3">{row.games}</td>
-                        <td className="px-3 py-3">
-                          {row.totalPay.toLocaleString("en-US", { style: "currency", currency: "USD" })}
-                        </td>
+              {directorPay && directorPay.length > 0 ? (
+                <div className="overflow-x-auto rounded-2xl border border-zinc-800">
+                  <table className="min-w-full text-left text-sm">
+                    <thead className="text-xs uppercase tracking-wide text-zinc-500">
+                      <tr>
+                        <th className="px-3 py-2">Umpire&apos;s name</th>
+                        <th className="px-3 py-2">Games umpired</th>
+                        <th className="px-3 py-2">Total pay</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody>
+                      {directorPay.map((row) => (
+                        <tr key={row.umpireId} className="border-t border-zinc-800">
+                          <td className="px-3 py-3 text-white">{row.name}</td>
+                          <td className="px-3 py-3">{row.games}</td>
+                          <td className="px-3 py-3">
+                            {row.totalPay.toLocaleString("en-US", { style: "currency", currency: "USD" })}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : null}
             </section>
           </>
         )}
