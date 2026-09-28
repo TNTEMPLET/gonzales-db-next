@@ -10,7 +10,7 @@ import {
 import {
   getSeasonConfigForOrg,
   CURRENT_SEASON_LABEL,
-} from "../../seasonConfig";
+} from "../../lib/seasonConfig";
 
 describe("fallball capabilities (Phase 3 smoke)", () => {
   it("uses compact-ops homepage and SportsConnect registration", () => {
