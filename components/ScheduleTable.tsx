@@ -2,8 +2,6 @@
 
 import { usePathname, useRouter } from "next/navigation";
 import { Fragment, useEffect, useMemo, useRef, useState } from "react";
-import * as XLSX from "xlsx";
-
 import RainoutPopup from "./RainoutPopup";
 import StandingsTabs from "@/components/standings/StandingsTabs";
 import type { AgeGroupStandings } from "@/lib/standings";
@@ -21,12 +19,6 @@ import {
   type PublicPracticeSlot,
   type PublicScheduleGame,
 } from "@/lib/schedule/publicSchedule";
-import {
-  buildSeasonGamesPdf,
-  buildSeasonPracticesPdf,
-  buildTeamSchedulePdf,
-  downloadPdfBuffer,
-} from "@/lib/schedule/publicSchedulePdf";
 
 type Props = {
   siteName: string;
@@ -307,7 +299,8 @@ export default function ScheduleTable({
     downloadTextFile(csv, `${fileStem(["schedule", subtitle, stamp])}.csv`, "text/csv;charset=utf-8;");
   }
 
-  function downloadXLSX() {
+  async function downloadXLSX() {
+    const XLSX = await import("xlsx");
     if (tab === "practices") {
       const data = filteredPractices.map((slot) => ({
         Date: slot.dateKey || "",
@@ -341,7 +334,9 @@ export default function ScheduleTable({
     XLSX.writeFile(workbook, `${fileStem(["schedule", subtitle, stamp])}.xlsx`);
   }
 
-  function downloadPDF() {
+  async function downloadPDF() {
+    const { buildSeasonGamesPdf, buildSeasonPracticesPdf, buildTeamSchedulePdf, downloadPdfBuffer } =
+      await import("@/lib/schedule/publicSchedulePdf");
     if (singleTeam) {
       const teamGames = filterPublicGames(sourceGames, {
         ageGroups: selectedAgeGroup,
