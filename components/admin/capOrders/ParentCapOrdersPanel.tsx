@@ -310,11 +310,23 @@ export default function ParentCapOrdersPanel() {
     }
   }, []);
 
-  // Initial load + 30s polling
+  // Initial load + 30s polling (paused while the tab is hidden)
   useEffect(() => {
     void fetchOrders();
-    pollRef.current = setInterval(() => void fetchOrders(true), 30_000);
-    return () => { if (pollRef.current) clearInterval(pollRef.current); };
+    pollRef.current = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      void fetchOrders(true);
+    }, 30_000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") void fetchOrders(true);
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
+
+    return () => {
+      if (pollRef.current) clearInterval(pollRef.current);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
+    };
   }, [fetchOrders]);
 
   async function syncFromPayPal() {
