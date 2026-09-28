@@ -116,6 +116,12 @@ const EMPTY_COMMENT_DRAFT_MEDIA: CommentDraftMedia = Object.freeze({
   gif: null,
 });
 
+// Only one post's reply composer can have its GIF search open at a time
+// (replyGifSearchPostId is a single, non-per-post id). Every other post's
+// ReplyComposer must see this same frozen empty array rather than a fresh
+// `[]`, or a fresh reference would defeat React.memo for all of them.
+const EMPTY_GIF_RESULTS: readonly GifResult[] = Object.freeze([]);
+
 type DugoutNotificationCounts = {
   unreadLikeCount: number;
   unreadReplyCount: number;
@@ -443,6 +449,274 @@ const ReplyMediaPreview = memo(function ReplyMediaPreview({
   return null;
 });
 
+type ReplyComposerProps = {
+  postId: string;
+  currentUserId: string | null;
+  commentInput: string;
+  onCommentInputChange: (postId: string, value: string) => void;
+  onTextareaRef: (postId: string, element: HTMLTextAreaElement | null) => void;
+  onFocus: (postId: string) => void;
+  draft: CommentDraftMedia;
+  onRemoveMedia: (postId: string) => void;
+  emojiPickerOpen: boolean;
+  onToggleEmojiPicker: (postId: string) => void;
+  onInsertEmoji: (postId: string, emoji: string) => void;
+  gifSearchOpen: boolean;
+  onToggleGifSearch: (postId: string) => void;
+  gifQuery: string;
+  onGifQueryChange: (value: string) => void;
+  onGifInputKeyDown: (event: KeyboardEvent<HTMLInputElement>) => void;
+  onSearchGifs: () => void;
+  gifBusy: boolean;
+  gifResults: readonly GifResult[];
+  gifHasMore: boolean;
+  onSelectGif: (postId: string, gif: GifResult) => void;
+  onLoadMoreGifs: () => void;
+  onPickMediaFile: (postId: string) => void;
+  onBoldClick: (postId: string) => void;
+  onItalicClick: (postId: string) => void;
+  busy: boolean;
+  onSubmit: (postId: string) => void;
+};
+
+// Every prop here is either primitive, derived per-post in the parent (so
+// another post's composer state never touches this one), or a permanently
+// stable callback — see the useCallback/ref-trampoline definitions above
+// each one's call site. That's what lets React.memo skip a post's composer
+// when an unrelated post or an unrelated composer changes. The singular
+// (not per-post) gif/emoji picker state is passed down already resolved to
+// neutral values ("", [], false) when this post isn't the active target, so
+// interacting with one post's panel never re-renders every other composer.
+const ReplyComposer = memo(function ReplyComposer({
+  postId,
+  currentUserId,
+  commentInput,
+  onCommentInputChange,
+  onTextareaRef,
+  onFocus,
+  draft,
+  onRemoveMedia,
+  emojiPickerOpen,
+  onToggleEmojiPicker,
+  onInsertEmoji,
+  gifSearchOpen,
+  onToggleGifSearch,
+  gifQuery,
+  onGifQueryChange,
+  onGifInputKeyDown,
+  onSearchGifs,
+  gifBusy,
+  gifResults,
+  gifHasMore,
+  onSelectGif,
+  onLoadMoreGifs,
+  onPickMediaFile,
+  onBoldClick,
+  onItalicClick,
+  busy,
+  onSubmit,
+}: ReplyComposerProps) {
+  return (
+    <div className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40">
+      <textarea
+        ref={(element) => onTextareaRef(postId, element)}
+        rows={3}
+        maxLength={MAX_COMMENT_LENGTH}
+        value={commentInput}
+        onChange={(event) => onCommentInputChange(postId, event.target.value)}
+        onFocus={() => onFocus(postId)}
+        placeholder={
+          currentUserId ? "Write a comment or reply..." : "Sign in as a coach to reply"
+        }
+        disabled={!currentUserId}
+        className="w-full resize-y bg-transparent px-3 py-2.5 text-sm leading-relaxed text-white placeholder-zinc-500 outline-none min-h-[4.5rem] disabled:opacity-50"
+      />
+
+      <ReplyMediaPreview postId={postId} draft={draft} onRemove={onRemoveMedia} />
+
+      {emojiPickerOpen ? (
+        <div className="flex flex-wrap gap-2 border-t border-zinc-800 px-3 py-2">
+          {EMOJI_CHOICES.map((emoji) => (
+            <button
+              key={`${postId}-reply-emoji-${emoji}`}
+              type="button"
+              onClick={() => onInsertEmoji(postId, emoji)}
+              className="rounded-full border border-zinc-700 px-2.5 py-1 text-base hover:bg-zinc-800"
+            >
+              {emoji}
+            </button>
+          ))}
+        </div>
+      ) : null}
+
+      {gifSearchOpen ? (
+        <div className="border-t border-zinc-800 px-3 py-2">
+          <div className="flex gap-2">
+            <input
+              value={gifQuery}
+              onChange={(event) => onGifQueryChange(event.target.value)}
+              onKeyDown={onGifInputKeyDown}
+              placeholder="Search GIFs"
+              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs"
+            />
+            <button
+              type="button"
+              onClick={onSearchGifs}
+              disabled={gifBusy || !gifQuery.trim()}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+            >
+              {gifBusy ? "..." : "Find"}
+            </button>
+          </div>
+          {gifResults.length > 0 ? (
+            <>
+              <div className="mt-3 grid grid-cols-3 gap-2">
+                {gifResults.map((gif) => (
+                  <button
+                    key={`reply-gif-${postId}-${gif.id}`}
+                    type="button"
+                    onClick={() => onSelectGif(postId, gif)}
+                    className={`overflow-hidden rounded-lg border ${
+                      draft.gif?.id === gif.id ? "border-brand-gold" : "border-zinc-800"
+                    }`}
+                  >
+                    <Image
+                      src={gif.previewUrl}
+                      alt={gif.title}
+                      width={240}
+                      height={240}
+                      unoptimized
+                      className="h-16 w-full object-cover"
+                    />
+                  </button>
+                ))}
+              </div>
+              {gifHasMore ? (
+                <button
+                  type="button"
+                  onClick={onLoadMoreGifs}
+                  disabled={gifBusy}
+                  className="mt-2 w-full rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
+                >
+                  {gifBusy ? "Loading..." : "Load more"}
+                </button>
+              ) : null}
+            </>
+          ) : null}
+        </div>
+      ) : null}
+
+      <div className="flex items-center gap-2 border-t border-zinc-800 px-2 py-2 sm:gap-3 sm:px-3 sm:py-2.5">
+        <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto text-violet-400 scrollbar-hide sm:gap-1">
+          <button
+            type="button"
+            title="Add photo"
+            onClick={() => onPickMediaFile(postId)}
+            className="rounded-full p-1.5 hover:bg-zinc-800 sm:p-2"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4.5 w-4.5 sm:h-5 sm:w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              aria-hidden
+            >
+              <rect x="3" y="5" width="18" height="14" rx="2" />
+              <circle cx="8.5" cy="10.5" r="1.5" />
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                d="M3 16l5-5 4 4 3-3 4 4"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            title="Search GIFs"
+            onClick={() => onToggleGifSearch(postId)}
+            className={`rounded-full p-1.5 hover:bg-zinc-800 sm:p-2 ${gifSearchOpen ? "bg-zinc-800" : ""}`}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4.5 w-4.5 sm:h-5 sm:w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              aria-hidden
+            >
+              <rect x="2" y="6" width="20" height="12" rx="2" />
+              <path
+                strokeLinecap="round"
+                d="M7 12h2m0 0v2m0-2V10M13 10v4M17 10h-2v4h2M17 12h-1"
+              />
+            </svg>
+          </button>
+          <button
+            type="button"
+            title="Add emoji"
+            onClick={() => onToggleEmojiPicker(postId)}
+            className={`rounded-full p-1.5 hover:bg-zinc-800 sm:p-2 ${emojiPickerOpen ? "bg-zinc-800" : ""}`}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-4.5 w-4.5 sm:h-5 sm:w-5"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={1.8}
+              aria-hidden
+            >
+              <circle cx="12" cy="12" r="9" />
+              <path strokeLinecap="round" d="M8.5 14.5s1 1.5 3.5 1.5 3.5-1.5 3.5-1.5" />
+              <circle cx="9" cy="10" r="1" fill="currentColor" stroke="none" />
+              <circle cx="15" cy="10" r="1" fill="currentColor" stroke="none" />
+            </svg>
+          </button>
+          <div className="flex items-center gap-0.5 sm:gap-1">
+            <button
+              type="button"
+              title="Bold"
+              onClick={() => onBoldClick(postId)}
+              className="rounded-full px-2 py-1.5 text-base font-bold hover:bg-zinc-800 sm:px-3 sm:py-2 sm:text-lg"
+            >
+              B
+            </button>
+            <button
+              type="button"
+              title="Italic"
+              onClick={() => onItalicClick(postId)}
+              className="rounded-full px-2 py-1.5 text-base italic hover:bg-zinc-800 sm:px-3 sm:py-2 sm:text-lg"
+            >
+              I
+            </button>
+          </div>
+        </div>
+
+        <div className="ml-auto flex shrink-0 items-center gap-2">
+          {commentInput.length > 0 ? (
+            <CharacterMeter current={commentInput.length} max={MAX_COMMENT_LENGTH} />
+          ) : null}
+          <button
+            type="button"
+            disabled={
+              !currentUserId ||
+              (!commentInput.trim() && !draft.file && !draft.gif) ||
+              busy
+            }
+            onClick={() => onSubmit(postId)}
+            className="rounded-full bg-violet-500 px-3 py-1.5 text-xs font-bold leading-5 text-zinc-950 hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-50 sm:px-4 sm:text-sm"
+          >
+            {busy ? "Sending..." : "Send"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+});
+
 export default function DugoutTimeline({
   initialPosts,
   initialScheduleGames = [],
@@ -621,12 +895,12 @@ export default function DugoutTimeline({
     );
   }
 
-  function updateCommentInput(postId: string, nextContent: string) {
+  const updateCommentInput = useCallback((postId: string, nextContent: string) => {
     setCommentInputByPost((prev) => ({
       ...prev,
       [postId]: nextContent,
     }));
-  }
+  }, []);
 
   function addThreadEntry() {
     const nextEntry = createThreadComposerEntry();
@@ -887,13 +1161,6 @@ export default function DugoutTimeline({
       setError(err instanceof Error ? err.message : "Failed to search GIFs");
     } finally {
       setReplyGifBusy(false);
-    }
-  }
-
-  function handleReplyGifInputKeyDown(event: KeyboardEvent<HTMLInputElement>) {
-    if (event.key === "Enter") {
-      event.preventDefault();
-      void searchReplyGifs();
     }
   }
 
@@ -1915,6 +2182,116 @@ export default function DugoutTimeline({
     );
   }
 
+  // Stable ("live-ref") wrappers below so every callback handed to the
+  // memoized ReplyComposer keeps one identity across renders, even though
+  // the handlers they trampoline to (applyInlineFormat, searchReplyGifs,
+  // submitComment) close over fast-changing state such as
+  // activeComposerTarget, commentInputByPost, and the reply GIF search
+  // state. Same ref-trampoline pattern as TNT-30's saveCommentEdit.
+  const applyInlineFormatRef = useRef(applyInlineFormat);
+  applyInlineFormatRef.current = applyInlineFormat;
+  const searchReplyGifsRef = useRef(searchReplyGifs);
+  searchReplyGifsRef.current = searchReplyGifs;
+  const submitCommentRef = useRef(submitComment);
+  submitCommentRef.current = submitComment;
+
+  const stableSearchReplyGifs = useCallback(
+    (opts?: { append?: boolean }) => searchReplyGifsRef.current(opts),
+    [],
+  );
+
+  const handleComposerTextareaRef = useCallback(
+    (postId: string, element: HTMLTextAreaElement | null) => {
+      commentTextareaRefs.current[postId] = element;
+    },
+    [],
+  );
+
+  const handleComposerFocus = useCallback((postId: string) => {
+    setActiveComposerTarget({ type: "comment", postId });
+  }, []);
+
+  const handleComposerToggleEmojiPicker = useCallback((postId: string) => {
+    setReplyGifSearchPostId((open) => (open === postId ? null : open));
+    setActiveComposerTarget({ type: "comment", postId });
+    setReplyEmojiPickerPostId((id) => (id === postId ? null : postId));
+  }, []);
+
+  const handleComposerInsertEmoji = useCallback(
+    (postId: string, emoji: string) => {
+      setActiveComposerTarget({ type: "comment", postId });
+      setCommentInputByPost((prev) => ({
+        ...prev,
+        [postId]: `${prev[postId] ?? ""}${emoji}`,
+      }));
+      setReplyEmojiPickerPostId(null);
+    },
+    [],
+  );
+
+  const handleComposerToggleGifSearch = useCallback((postId: string) => {
+    setReplyEmojiPickerPostId(null);
+    setActiveComposerTarget({ type: "comment", postId });
+    setReplyGifSearchPostId((id) => (id === postId ? null : postId));
+  }, []);
+
+  const handleComposerGifInputKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLInputElement>) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        void stableSearchReplyGifs();
+      }
+    },
+    [stableSearchReplyGifs],
+  );
+
+  const handleComposerSearchGifs = useCallback(() => {
+    void stableSearchReplyGifs();
+  }, [stableSearchReplyGifs]);
+
+  const handleComposerLoadMoreGifs = useCallback(() => {
+    void stableSearchReplyGifs({ append: true });
+  }, [stableSearchReplyGifs]);
+
+  const handleComposerSelectGif = useCallback(
+    (postId: string, gif: GifResult) => {
+      setActiveComposerTarget({ type: "comment", postId });
+      setCommentDraftMediaByPost((prev) => {
+        const old = prev[postId];
+        if (old?.previewUrl?.startsWith("blob:")) {
+          URL.revokeObjectURL(old.previewUrl);
+        }
+        return {
+          ...prev,
+          [postId]: { file: null, previewUrl: null, gif },
+        };
+      });
+      setReplyGifSearchPostId(null);
+    },
+    [],
+  );
+
+  const handleComposerPickMediaFile = useCallback((postId: string) => {
+    setReplyEmojiPickerPostId(null);
+    setActiveComposerTarget({ type: "comment", postId });
+    commentMediaPickPostIdRef.current = postId;
+    commentMediaFileInputRef.current?.click();
+  }, []);
+
+  const handleComposerBoldClick = useCallback((postId: string) => {
+    setActiveComposerTarget({ type: "comment", postId });
+    applyInlineFormatRef.current("**");
+  }, []);
+
+  const handleComposerItalicClick = useCallback((postId: string) => {
+    setActiveComposerTarget({ type: "comment", postId });
+    applyInlineFormatRef.current("*");
+  }, []);
+
+  const handleComposerSubmit = useCallback((postId: string) => {
+    void submitCommentRef.current(postId);
+  }, []);
+
   function renderPostBody(
     post: DugoutPost,
     {
@@ -1943,6 +2320,13 @@ export default function DugoutTimeline({
   ) {
     const replyMediaDraft =
       commentDraftMediaByPost[post.id] ?? EMPTY_COMMENT_DRAFT_MEDIA;
+    // replyEmojiPickerPostId/replyGifSearchPostId are singular (not
+    // per-post) state — only one post's panel can be open at a time. Every
+    // other post's ReplyComposer gets neutral values here so typing in one
+    // post's GIF search box doesn't change the props (and force a
+    // re-render) of every other visible post's composer.
+    const replyEmojiPickerOpenForPost = replyEmojiPickerPostId === post.id;
+    const replyGifSearchOpenForPost = replyGifSearchPostId === post.id;
 
     return (
       <>
@@ -2249,314 +2633,39 @@ export default function DugoutTimeline({
 
             {commentsExpanded ? (
               <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
-                <div className="flex flex-col overflow-hidden rounded-xl border border-zinc-800 bg-zinc-900/40">
-                  <textarea
-                    ref={(element) => {
-                      commentTextareaRefs.current[post.id] = element;
-                    }}
-                    rows={3}
-                    maxLength={MAX_COMMENT_LENGTH}
-                    value={commentInput}
-                    onChange={(event) =>
-                      updateCommentInput(post.id, event.target.value)
-                    }
-                    onFocus={() =>
-                      setActiveComposerTarget({
-                        type: "comment",
-                        postId: post.id,
-                      })
-                    }
-                    placeholder={
-                      currentUserId
-                        ? "Write a comment or reply..."
-                        : "Sign in as a coach to reply"
-                    }
-                    disabled={!currentUserId}
-                    className="w-full resize-y bg-transparent px-3 py-2.5 text-sm leading-relaxed text-white placeholder-zinc-500 outline-none min-h-[4.5rem] disabled:opacity-50"
-                  />
-
-                  <ReplyMediaPreview
-                    postId={post.id}
-                    draft={replyMediaDraft}
-                    onRemove={clearCommentDraftMedia}
-                  />
-
-                  {replyEmojiPickerPostId === post.id ? (
-                    <div className="flex flex-wrap gap-2 border-t border-zinc-800 px-3 py-2">
-                      {EMOJI_CHOICES.map((emoji) => (
-                        <button
-                          key={`${post.id}-reply-emoji-${emoji}`}
-                          type="button"
-                          onClick={() => {
-                            setActiveComposerTarget({
-                              type: "comment",
-                              postId: post.id,
-                            });
-                            setCommentInputByPost((prev) => ({
-                              ...prev,
-                              [post.id]: `${prev[post.id] ?? ""}${emoji}`,
-                            }));
-                            setReplyEmojiPickerPostId(null);
-                          }}
-                          className="rounded-full border border-zinc-700 px-2.5 py-1 text-base hover:bg-zinc-800"
-                        >
-                          {emoji}
-                        </button>
-                      ))}
-                    </div>
-                  ) : null}
-
-                  {replyGifSearchPostId === post.id ? (
-                    <div className="border-t border-zinc-800 px-3 py-2">
-                      <div className="flex gap-2">
-                        <input
-                          value={replyGifQuery}
-                          onChange={(event) =>
-                            setReplyGifQuery(event.target.value)
-                          }
-                          onKeyDown={handleReplyGifInputKeyDown}
-                          placeholder="Search GIFs"
-                          className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-1.5 text-xs"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => void searchReplyGifs()}
-                          disabled={replyGifBusy || !replyGifQuery.trim()}
-                          className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
-                        >
-                          {replyGifBusy ? "..." : "Find"}
-                        </button>
-                      </div>
-                      {replyGifResults.length > 0 ? (
-                        <>
-                          <div className="mt-3 grid grid-cols-3 gap-2">
-                            {replyGifResults.map((gif) => (
-                              <button
-                                key={`reply-gif-${post.id}-${gif.id}`}
-                                type="button"
-                                onClick={() => {
-                                  setActiveComposerTarget({
-                                    type: "comment",
-                                    postId: post.id,
-                                  });
-                                  setCommentDraftMediaByPost((prev) => {
-                                    const old = prev[post.id];
-                                    if (old?.previewUrl?.startsWith("blob:")) {
-                                      URL.revokeObjectURL(old.previewUrl);
-                                    }
-                                    return {
-                                      ...prev,
-                                      [post.id]: {
-                                        file: null,
-                                        previewUrl: null,
-                                        gif,
-                                      },
-                                    };
-                                  });
-                                  setReplyGifSearchPostId(null);
-                                }}
-                                className={`overflow-hidden rounded-lg border ${
-                                  replyMediaDraft.gif?.id === gif.id
-                                    ? "border-brand-gold"
-                                    : "border-zinc-800"
-                                }`}
-                              >
-                                <Image
-                                  src={gif.previewUrl}
-                                  alt={gif.title}
-                                  width={240}
-                                  height={240}
-                                  unoptimized
-                                  className="h-16 w-full object-cover"
-                                />
-                              </button>
-                            ))}
-                          </div>
-                          {replyGifHasMore ? (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                void searchReplyGifs({ append: true })
-                              }
-                              disabled={replyGifBusy}
-                              className="mt-2 w-full rounded-lg border border-zinc-700 px-3 py-1.5 text-xs font-semibold hover:bg-zinc-800 disabled:opacity-60"
-                            >
-                              {replyGifBusy ? "Loading..." : "Load more"}
-                            </button>
-                          ) : null}
-                        </>
-                      ) : null}
-                    </div>
-                  ) : null}
-
-                  <div className="flex items-center gap-2 border-t border-zinc-800 px-2 py-2 sm:gap-3 sm:px-3 sm:py-2.5">
-                    <div className="flex min-w-0 flex-1 items-center gap-0.5 overflow-x-auto text-violet-400 scrollbar-hide sm:gap-1">
-                      <button
-                        type="button"
-                        title="Add photo"
-                        onClick={() => {
-                          setReplyEmojiPickerPostId(null);
-                          setActiveComposerTarget({
-                            type: "comment",
-                            postId: post.id,
-                          });
-                          commentMediaPickPostIdRef.current = post.id;
-                          commentMediaFileInputRef.current?.click();
-                        }}
-                        className="rounded-full p-1.5 hover:bg-zinc-800 sm:p-2"
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4.5 w-4.5 sm:h-5 sm:w-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={1.8}
-                          aria-hidden
-                        >
-                          <rect x="3" y="5" width="18" height="14" rx="2" />
-                          <circle cx="8.5" cy="10.5" r="1.5" />
-                          <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            d="M3 16l5-5 4 4 3-3 4 4"
-                          />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        title="Search GIFs"
-                        onClick={() => {
-                          setReplyEmojiPickerPostId(null);
-                          setActiveComposerTarget({
-                            type: "comment",
-                            postId: post.id,
-                          });
-                          setReplyGifSearchPostId((id) =>
-                            id === post.id ? null : post.id,
-                          );
-                        }}
-                        className={`rounded-full p-1.5 hover:bg-zinc-800 sm:p-2 ${replyGifSearchPostId === post.id ? "bg-zinc-800" : ""}`}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4.5 w-4.5 sm:h-5 sm:w-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={1.8}
-                          aria-hidden
-                        >
-                          <rect x="2" y="6" width="20" height="12" rx="2" />
-                          <path
-                            strokeLinecap="round"
-                            d="M7 12h2m0 0v2m0-2V10M13 10v4M17 10h-2v4h2M17 12h-1"
-                          />
-                        </svg>
-                      </button>
-                      <button
-                        type="button"
-                        title="Add emoji"
-                        onClick={() => {
-                          setReplyGifSearchPostId((open) =>
-                            open === post.id ? null : open,
-                          );
-                          setActiveComposerTarget({
-                            type: "comment",
-                            postId: post.id,
-                          });
-                          setReplyEmojiPickerPostId((id) =>
-                            id === post.id ? null : post.id,
-                          );
-                        }}
-                        className={`rounded-full p-1.5 hover:bg-zinc-800 sm:p-2 ${replyEmojiPickerPostId === post.id ? "bg-zinc-800" : ""}`}
-                      >
-                        <svg
-                          xmlns="http://www.w3.org/2000/svg"
-                          className="h-4.5 w-4.5 sm:h-5 sm:w-5"
-                          fill="none"
-                          viewBox="0 0 24 24"
-                          stroke="currentColor"
-                          strokeWidth={1.8}
-                          aria-hidden
-                        >
-                          <circle cx="12" cy="12" r="9" />
-                          <path
-                            strokeLinecap="round"
-                            d="M8.5 14.5s1 1.5 3.5 1.5 3.5-1.5 3.5-1.5"
-                          />
-                          <circle
-                            cx="9"
-                            cy="10"
-                            r="1"
-                            fill="currentColor"
-                            stroke="none"
-                          />
-                          <circle
-                            cx="15"
-                            cy="10"
-                            r="1"
-                            fill="currentColor"
-                            stroke="none"
-                          />
-                        </svg>
-                      </button>
-                      <div className="flex items-center gap-0.5 sm:gap-1">
-                        <button
-                          type="button"
-                          title="Bold"
-                          onClick={() => {
-                            setActiveComposerTarget({
-                              type: "comment",
-                              postId: post.id,
-                            });
-                            applyInlineFormat("**");
-                          }}
-                          className="rounded-full px-2 py-1.5 text-base font-bold hover:bg-zinc-800 sm:px-3 sm:py-2 sm:text-lg"
-                        >
-                          B
-                        </button>
-                        <button
-                          type="button"
-                          title="Italic"
-                          onClick={() => {
-                            setActiveComposerTarget({
-                              type: "comment",
-                              postId: post.id,
-                            });
-                            applyInlineFormat("*");
-                          }}
-                          className="rounded-full px-2 py-1.5 text-base italic hover:bg-zinc-800 sm:px-3 sm:py-2 sm:text-lg"
-                        >
-                          I
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="ml-auto flex shrink-0 items-center gap-2">
-                      {commentInput.length > 0 ? (
-                        <CharacterMeter
-                          current={commentInput.length}
-                          max={MAX_COMMENT_LENGTH}
-                        />
-                      ) : null}
-                      <button
-                        type="button"
-                        disabled={
-                          !currentUserId ||
-                          (!commentInput.trim() &&
-                            !replyMediaDraft.file &&
-                            !replyMediaDraft.gif) ||
-                          commentBusyByPost[post.id]
-                        }
-                        onClick={() => void submitComment(post.id)}
-                        className="rounded-full bg-violet-500 px-3 py-1.5 text-xs font-bold leading-5 text-zinc-950 hover:bg-violet-400 disabled:cursor-not-allowed disabled:bg-zinc-800 disabled:text-zinc-500 disabled:opacity-50 sm:px-4 sm:text-sm"
-                      >
-                        {commentBusyByPost[post.id] ? "Sending..." : "Send"}
-                      </button>
-                    </div>
-                  </div>
-                </div>
+                <ReplyComposer
+                  postId={post.id}
+                  currentUserId={currentUserId}
+                  commentInput={commentInput}
+                  onCommentInputChange={updateCommentInput}
+                  onTextareaRef={handleComposerTextareaRef}
+                  onFocus={handleComposerFocus}
+                  draft={replyMediaDraft}
+                  onRemoveMedia={clearCommentDraftMedia}
+                  emojiPickerOpen={replyEmojiPickerOpenForPost}
+                  onToggleEmojiPicker={handleComposerToggleEmojiPicker}
+                  onInsertEmoji={handleComposerInsertEmoji}
+                  gifSearchOpen={replyGifSearchOpenForPost}
+                  onToggleGifSearch={handleComposerToggleGifSearch}
+                  gifQuery={replyGifSearchOpenForPost ? replyGifQuery : ""}
+                  onGifQueryChange={setReplyGifQuery}
+                  onGifInputKeyDown={handleComposerGifInputKeyDown}
+                  onSearchGifs={handleComposerSearchGifs}
+                  gifBusy={replyGifSearchOpenForPost ? replyGifBusy : false}
+                  gifResults={
+                    replyGifSearchOpenForPost ? replyGifResults : EMPTY_GIF_RESULTS
+                  }
+                  gifHasMore={
+                    replyGifSearchOpenForPost ? replyGifHasMore : false
+                  }
+                  onSelectGif={handleComposerSelectGif}
+                  onLoadMoreGifs={handleComposerLoadMoreGifs}
+                  onPickMediaFile={handleComposerPickMediaFile}
+                  onBoldClick={handleComposerBoldClick}
+                  onItalicClick={handleComposerItalicClick}
+                  busy={Boolean(commentBusyByPost[post.id])}
+                  onSubmit={handleComposerSubmit}
+                />
 
                 {commentsLoadingByPost[post.id] ? (
                   <p className="mt-3 text-xs text-zinc-400">
