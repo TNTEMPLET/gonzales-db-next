@@ -862,12 +862,21 @@ export default function DugoutTimeline({
   useEffect(() => {
     const initialId = window.setTimeout(() => void fetchNotifications(), 0);
     const intervalId = window.setInterval(() => {
+      if (document.visibilityState !== "visible") return;
       void fetchNotifications();
     }, 60000);
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        void fetchNotifications();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibilityChange);
 
     return () => {
       window.clearTimeout(initialId);
       window.clearInterval(intervalId);
+      document.removeEventListener("visibilitychange", onVisibilityChange);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
