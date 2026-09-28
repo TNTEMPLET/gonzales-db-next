@@ -231,22 +231,25 @@ describe("bracketScoring", () => {
       [matchByGame(spec, 5).id]: { homeScore: 4, awayScore: 2 },
     });
 
+    // G1: A beats D, G2: C beats B, G3 (WB final, W1 vs W2): A beats C (C drops to losers),
+    // G4 (LB r1, L1 vs L2): B beats D, G5 (LB final, W4 vs L3): B beats C. So the grand final
+    // (G6, W3 vs W5) is A (WB champ) vs B (LB champ) — not C, which was already eliminated in G5.
     const gf = matchByGame(spec, 6);
     assert.equal(gf.home, "A");
-    assert.equal(gf.away, "C");
+    assert.equal(gf.away, "B");
     spec = mergeMatchScoresIntoSpec(spec, {
       [gf.id]: { homeScore: 1, awayScore: 4 },
     });
 
     const reset = matchByGame(spec, 7);
-    assert.equal(reset.home, "A");
-    assert.equal(reset.away, "C");
+    assert.equal(reset.home, "B");
+    assert.equal(reset.away, "A");
     assert.equal(spec.championTeamName, undefined);
 
     spec = mergeMatchScoresIntoSpec(spec, {
       [reset.id]: { homeScore: 2, awayScore: 5 },
     });
-    assert.equal(spec.championTeamName, "C");
+    assert.equal(spec.championTeamName, "A");
   });
 
   it("resolveDoubleElimChampionTeamName uses G8 when if-necessary is not required", () => {
@@ -293,10 +296,12 @@ describe("bracketScoring", () => {
       [matchByGame(spec, 6).id]: { homeScore: 2, awayScore: 5 },
     });
     assert.equal(resolveDoubleElimChampionTeamName(spec), null);
+    // Grand final (G6) is A (WB champ) vs D (LB champ, per G1-G5 all-home-wins); D wins it,
+    // forcing the if-necessary game (G7, W6 vs L6 = D vs A). A wins the reset, so A is champion.
     spec = mergeMatchScoresIntoSpec(spec, {
       [matchByGame(spec, 7).id]: { homeScore: 4, awayScore: 6 },
     });
-    assert.equal(resolveDoubleElimChampionTeamName(spec), "C");
+    assert.equal(resolveDoubleElimChampionTeamName(spec), "A");
   });
 
   it("modified double elimination crowns grand final winner with no reset game", () => {
@@ -318,14 +323,15 @@ describe("bracketScoring", () => {
       [matchByGame(spec, 5).id]: { homeScore: 4, awayScore: 2 },
     });
 
+    // Same bracket progression as the classic-format test above: grand final is A vs B, not A vs C.
     const gf = matchByGame(spec, 6);
     assert.equal(gf.home, "A");
-    assert.equal(gf.away, "C");
+    assert.equal(gf.away, "B");
     spec = mergeMatchScoresIntoSpec(spec, {
       [gf.id]: { homeScore: 1, awayScore: 4 },
     });
 
-    assert.equal(spec.championTeamName, "C");
+    assert.equal(spec.championTeamName, "B");
     assert.throws(() => matchByGame(spec, 7));
   });
 });
