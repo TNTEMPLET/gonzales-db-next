@@ -19,7 +19,10 @@ import {
   inferLockedClassicVariant,
   isClassicDoubleElimLayoutLocked,
 } from "@/lib/tournament-brackets/doubleEliminationClassicLayoutTemplate";
-import { resolveClassicSixTeamModifiedDeSlots } from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
+import {
+  resolveClassicSixTeamModifiedDeSlots,
+  type ClassicSixTeamModifiedDeSlots,
+} from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
 
 /** One row in a classic column bracket (home/away are stored labels; slots are what we render). */
 export type LayoutMatch = {
@@ -146,6 +149,57 @@ export function collectAllDoubleElimMatchesByGame(
     }
   }
   return map;
+}
+
+export type DoubleElimRenderSlots = {
+  allMatchesByGame: Map<string, LayoutMatch>;
+  classicSixSlots: ClassicSixTeamModifiedDeSlots | null;
+  classicThreeSlots: ClassicDoubleElimSlots | null;
+  classicFiveSlots: ClassicDoubleElimSlots | null;
+};
+
+/**
+ * Rebuilds the classic-diagram slot maps a `double_elimination` layout renders from.
+ *
+ * This depends only on `layout` (winners/losers/championship matches, the if-necessary
+ * game on `classicChampionshipPodium`, `diagramStyle`/`classicVariant`/`classicFiveTeamSlots`,
+ * and `officialTemplateId`) — never on live per-match status data such as `liveGameStatuses`,
+ * which carries display-only fields (score/inning/status labels) looked up separately by
+ * match id at render time. Two calls with the same `layout` reference always return
+ * deep-equal results, which is what makes it safe to gate behind `useMemo(() => ..., [layout])`
+ * in `DoubleEliminationBracketView`: a live-status poll never changes `layout`, so it can
+ * never change this function's output, and it is never skipped when `layout` actually changes
+ * (e.g. a score is saved and advances a downstream slot).
+ */
+export function resolveDoubleElimRenderSlots(
+  layout: Extract<BracketLayout, { mode: "double_elimination" }>,
+): DoubleElimRenderSlots {
+  const allMatchesByGame = collectAllDoubleElimMatchesByGame(
+    layout.winnersBracket.rounds,
+    layout.losersBracket?.rounds,
+    layout.championship?.matches,
+  );
+  const ifNecessaryMatch = layout.classicChampionshipPodium?.ifNecessaryMatch;
+  if (ifNecessaryMatch?.officialGameNumber?.trim()) {
+    allMatchesByGame.set(ifNecessaryMatch.officialGameNumber.trim(), ifNecessaryMatch);
+  }
+  const classicSixSlots =
+    layout.diagramStyle === "classic_unified" && layout.classicVariant === "six_team_modified_de"
+      ? resolveClassicSixTeamModifiedDeSlots(allMatchesByGame)
+      : null;
+  const classicThreeSlots =
+    layout.diagramStyle === "classic_unified" && layout.classicVariant === "three_team"
+      ? resolveClassicThreeTeamDoubleElimSlots(allMatchesByGame)
+      : null;
+  const classicFiveSlots =
+    layout.classicFiveTeamSlots ??
+    (layout.diagramStyle === "classic_unified" && layout.classicVariant === "five_team"
+      ? resolveClassicDoubleElimSlots(allMatchesByGame, {
+          officialTemplateId: layout.officialTemplateId,
+          locked: true,
+        })
+      : null);
+  return { allMatchesByGame, classicSixSlots, classicThreeSlots, classicFiveSlots };
 }
 
 function hasStructuredRounds(spec: BracketSpec): boolean {
