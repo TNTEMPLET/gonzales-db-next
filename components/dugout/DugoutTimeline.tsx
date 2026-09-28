@@ -12,6 +12,7 @@ import {
   type DragEvent,
   type FormEvent,
   type KeyboardEvent,
+  type RefObject,
 } from "react";
 
 import type { Game } from "@/lib/fetchGames";
@@ -713,6 +714,144 @@ const ReplyComposer = memo(function ReplyComposer({
           </button>
         </div>
       </div>
+    </div>
+  );
+});
+
+type PostReactionsBarProps = {
+  postId: string;
+  likedByViewer: boolean;
+  viewerReaction: string | null;
+  likeCount: number;
+  canLike: boolean;
+  likeBusy: boolean;
+  pickerOpen: boolean;
+  // A ref object's identity never changes across renders, so handing this
+  // down doesn't defeat React.memo the way a fresh object/array prop would.
+  // The parent keeps the outside-click-to-close effect; this is just where
+  // that effect's DOM node now lives.
+  pickerContainerRef: RefObject<HTMLDivElement | null>;
+  onTogglePicker: (postId: string) => void;
+  onReact: (postId: string, emoji: string) => void;
+  commentCount: number;
+  commentsExpanded: boolean;
+  currentUserId: string | null;
+  onOpenComposer: (postId: string) => void;
+  onToggleComments: (postId: string) => void;
+};
+
+const PostReactionsBar = memo(function PostReactionsBar({
+  postId,
+  likedByViewer,
+  viewerReaction,
+  likeCount,
+  canLike,
+  likeBusy,
+  pickerOpen,
+  pickerContainerRef,
+  onTogglePicker,
+  onReact,
+  commentCount,
+  commentsExpanded,
+  currentUserId,
+  onOpenComposer,
+  onToggleComments,
+}: PostReactionsBarProps) {
+  return (
+    <div className="mt-3 flex flex-wrap items-center gap-3">
+      <div className="relative" ref={pickerOpen ? pickerContainerRef : null}>
+        <button
+          type="button"
+          disabled={!canLike || likeBusy}
+          onClick={() => onTogglePicker(postId)}
+          className={`rounded-full border px-3 py-1 text-sm font-semibold transition disabled:opacity-50 ${
+            likedByViewer
+              ? "border-brand-gold text-violet-400 hover:bg-violet-500/10"
+              : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
+          }`}
+          title={likedByViewer ? "Change reaction" : "React"}
+        >
+          {likedByViewer && viewerReaction ? viewerReaction : "👍"}
+        </button>
+
+        {pickerOpen ? (
+          <div className="absolute bottom-full left-0 z-20 mb-2 flex gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1.5 shadow-xl">
+            {["👍", ...EMOJI_CHOICES].map((emoji) => (
+              <button
+                key={emoji}
+                type="button"
+                disabled={likeBusy}
+                onClick={() => onReact(postId, emoji)}
+                className={`rounded-full p-1 text-lg transition hover:scale-125 hover:bg-zinc-700 disabled:opacity-50 ${
+                  likedByViewer && viewerReaction === emoji
+                    ? "bg-zinc-700 ring-1 ring-brand-gold"
+                    : ""
+                }`}
+                title={emoji}
+              >
+                {emoji}
+              </button>
+            ))}
+          </div>
+        ) : null}
+      </div>
+      <span className="text-xs text-zinc-500">
+        {likeCount} {likeCount === 1 ? "like" : "likes"}
+      </span>
+      <button
+        type="button"
+        disabled={!currentUserId}
+        onClick={() => onOpenComposer(postId)}
+        className="rounded-full border border-zinc-700 p-2 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
+        aria-label="Reply to post"
+        title="Reply"
+      >
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth={1.8}
+          className="h-4 w-4"
+        >
+          <path
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            d="M10 8 6 12l4 4M6 12h9a4 4 0 0 1 4 4v0"
+          />
+        </svg>
+      </button>
+      <button
+        type="button"
+        onClick={() => onToggleComments(postId)}
+        className="rounded-full border border-zinc-700 p-2 text-zinc-300 hover:bg-zinc-800"
+        aria-label={
+          commentsExpanded
+            ? `Hide replies (${commentCount})`
+            : `Show replies (${commentCount})`
+        }
+        title={commentsExpanded ? "Hide replies" : "Show replies"}
+      >
+        <span className="inline-flex items-center gap-1.5">
+          <svg
+            xmlns="http://www.w3.org/2000/svg"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth={1.8}
+            className="h-4 w-4"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              d="M21 12a8.5 8.5 0 0 1-8.5 8.5c-1.4 0-2.72-.33-3.88-.92L3 21l1.42-5.07A8.46 8.46 0 0 1 4 12a8.5 8.5 0 1 1 17 0Z"
+            />
+          </svg>
+          <span className="text-xs font-semibold tabular-nums">
+            {commentCount}
+          </span>
+        </span>
+      </button>
     </div>
   );
 });
@@ -2292,6 +2431,37 @@ export default function DugoutTimeline({
     void submitCommentRef.current(postId);
   }, []);
 
+  // Same live-ref trampoline pattern for PostReactionsBar: toggleLike and
+  // toggleComments both close over fast-changing state (posts,
+  // expandedCommentsByPost, commentsByPost), so the stable handlers below
+  // read them through a ref instead of taking them as a dependency.
+  const postsRef = useRef(posts);
+  postsRef.current = posts;
+  const toggleLikeRef = useRef(toggleLike);
+  toggleLikeRef.current = toggleLike;
+  const toggleCommentsRef = useRef(toggleComments);
+  toggleCommentsRef.current = toggleComments;
+
+  const handleTogglePicker = useCallback((postId: string) => {
+    setLikePickerOpenId((prev) => (prev === postId ? null : postId));
+  }, []);
+
+  const handleReact = useCallback((postId: string, emoji: string) => {
+    const target = postsRef.current.find((entry) => entry.id === postId);
+    if (target) void toggleLikeRef.current(target, emoji);
+  }, []);
+
+  const handleOpenComposer = useCallback((postId: string) => {
+    void toggleCommentsRef.current(postId);
+    requestAnimationFrame(() => {
+      commentTextareaRefs.current[postId]?.focus();
+    });
+  }, []);
+
+  const handleToggleComments = useCallback((postId: string) => {
+    void toggleCommentsRef.current(postId);
+  }, []);
+
   function renderPostBody(
     post: DugoutPost,
     {
@@ -2521,115 +2691,23 @@ export default function DugoutTimeline({
               mediaType={post.mediaType}
               alt={post.content || "Dugout media"}
             />
-            <div className="mt-3 flex flex-wrap items-center gap-3">
-              <div
-                className="relative"
-                ref={likePickerOpenId === post.id ? likePickerRef : null}
-              >
-                <button
-                  type="button"
-                  disabled={!canLike || likeBusyId === post.id}
-                  onClick={() =>
-                    setLikePickerOpenId((prev) =>
-                      prev === post.id ? null : post.id,
-                    )
-                  }
-                  className={`rounded-full border px-3 py-1 text-sm font-semibold transition disabled:opacity-50 ${
-                    post.likedByViewer
-                      ? "border-brand-gold text-violet-400 hover:bg-violet-500/10"
-                      : "border-zinc-700 text-zinc-400 hover:bg-zinc-800"
-                  }`}
-                  title={post.likedByViewer ? "Change reaction" : "React"}
-                >
-                  {post.likedByViewer && post.viewerReaction
-                    ? post.viewerReaction
-                    : "👍"}
-                </button>
-
-                {likePickerOpenId === post.id ? (
-                  <div className="absolute bottom-full left-0 z-20 mb-2 flex gap-1 rounded-full border border-zinc-700 bg-zinc-900 px-2 py-1.5 shadow-xl">
-                    {["👍", ...EMOJI_CHOICES].map((emoji) => (
-                      <button
-                        key={emoji}
-                        type="button"
-                        disabled={likeBusyId === post.id}
-                        onClick={() => void toggleLike(post, emoji)}
-                        className={`rounded-full p-1 text-lg transition hover:scale-125 hover:bg-zinc-700 disabled:opacity-50 ${
-                          post.likedByViewer && post.viewerReaction === emoji
-                            ? "bg-zinc-700 ring-1 ring-brand-gold"
-                            : ""
-                        }`}
-                        title={emoji}
-                      >
-                        {emoji}
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-              <span className="text-xs text-zinc-500">
-                {post.likeCount} {post.likeCount === 1 ? "like" : "likes"}
-              </span>
-              <button
-                type="button"
-                disabled={!currentUserId}
-                onClick={() => {
-                  void toggleComments(post.id);
-                  requestAnimationFrame(() => {
-                    commentTextareaRefs.current[post.id]?.focus();
-                  });
-                }}
-                className="rounded-full border border-zinc-700 p-2 text-zinc-300 hover:bg-zinc-800 disabled:opacity-50"
-                aria-label="Reply to post"
-                title="Reply"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth={1.8}
-                  className="h-4 w-4"
-                >
-                  <path
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                    d="M10 8 6 12l4 4M6 12h9a4 4 0 0 1 4 4v0"
-                  />
-                </svg>
-              </button>
-              <button
-                type="button"
-                onClick={() => void toggleComments(post.id)}
-                className="rounded-full border border-zinc-700 p-2 text-zinc-300 hover:bg-zinc-800"
-                aria-label={
-                  commentsExpanded
-                    ? `Hide replies (${post.commentCount})`
-                    : `Show replies (${post.commentCount})`
-                }
-                title={commentsExpanded ? "Hide replies" : "Show replies"}
-              >
-                <span className="inline-flex items-center gap-1.5">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth={1.8}
-                    className="h-4 w-4"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      d="M21 12a8.5 8.5 0 0 1-8.5 8.5c-1.4 0-2.72-.33-3.88-.92L3 21l1.42-5.07A8.46 8.46 0 0 1 4 12a8.5 8.5 0 1 1 17 0Z"
-                    />
-                  </svg>
-                  <span className="text-xs font-semibold tabular-nums">
-                    {post.commentCount}
-                  </span>
-                </span>
-              </button>
-            </div>
+            <PostReactionsBar
+              postId={post.id}
+              likedByViewer={post.likedByViewer}
+              viewerReaction={post.viewerReaction}
+              likeCount={post.likeCount}
+              canLike={canLike}
+              likeBusy={likeBusyId === post.id}
+              pickerOpen={likePickerOpenId === post.id}
+              pickerContainerRef={likePickerRef}
+              onTogglePicker={handleTogglePicker}
+              onReact={handleReact}
+              commentCount={post.commentCount}
+              commentsExpanded={commentsExpanded}
+              currentUserId={currentUserId}
+              onOpenComposer={handleOpenComposer}
+              onToggleComments={handleToggleComments}
+            />
 
             {commentsExpanded ? (
               <div className="mt-3 rounded-lg border border-zinc-800 bg-zinc-950/60 p-3">
