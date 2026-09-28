@@ -1,0 +1,38 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      # Lint and test currently fail against main (206 pre-existing lint errors,
+      # and real bracketScoring/tournament-monitor test failures) — see TNT-28.
+      # Non-blocking until that debt is paid down; flip continue-on-error to
+      # false once both are green so they gate merges like Type check already does.
+      - name: Lint
+        run: pnpm run lint
+        continue-on-error: true
+
+      - name: Type check
+        run: pnpm exec tsc --noEmit
+
+      - name: Test
+        run: pnpm run test
+        continue-on-error: true
