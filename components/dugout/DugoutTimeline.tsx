@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import {
+  memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -105,9 +107,14 @@ type CommentDraftMedia = {
   gif: GifResult | null;
 };
 
-function emptyCommentDraftMedia(): CommentDraftMedia {
-  return { file: null, previewUrl: null, gif: null };
-}
+// Frozen so every "no active draft" read shares one reference instead of
+// allocating a fresh object each render — a fresh object here would defeat
+// React.memo's shallow prop comparison on any child it gets passed to.
+const EMPTY_COMMENT_DRAFT_MEDIA: CommentDraftMedia = Object.freeze({
+  file: null,
+  previewUrl: null,
+  gif: null,
+});
 
 type DugoutNotificationCounts = {
   unreadLikeCount: number;
@@ -368,6 +375,73 @@ function removeCommentFromTree(
 
   return { next, removedCount };
 }
+
+type ReplyMediaPreviewProps = {
+  postId: string;
+  draft: CommentDraftMedia;
+  onRemove: (postId: string) => void;
+};
+
+// Props are derived per-post in the parent so that a draft change on one
+// post's composer never changes the props of another post's preview — that's
+// what lets React.memo's default shallow comparison skip the rest.
+const ReplyMediaPreview = memo(function ReplyMediaPreview({
+  postId,
+  draft,
+  onRemove,
+}: ReplyMediaPreviewProps) {
+  const handleRemove = useCallback(() => onRemove(postId), [onRemove, postId]);
+
+  if (draft.previewUrl) {
+    return (
+      <div className="border-t border-zinc-800 px-3 pt-2">
+        <div className="relative overflow-hidden rounded-xl border border-zinc-700">
+          <Image
+            src={draft.previewUrl}
+            alt="Attachment preview"
+            width={1200}
+            height={900}
+            unoptimized={draft.file?.type === "image/gif"}
+            className="h-auto max-h-48 w-full object-cover"
+          />
+          <button
+            type="button"
+            onClick={handleRemove}
+            className="absolute right-2 top-2 rounded-full bg-zinc-900/80 px-2 py-0.5 text-xs text-red-300 hover:text-red-200"
+          >
+            ✕ Remove
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  if (draft.gif && !draft.file) {
+    return (
+      <div className="border-t border-zinc-800 px-3 pt-2">
+        <div className="relative overflow-hidden rounded-xl border border-brand-gold">
+          <Image
+            src={draft.gif.previewUrl}
+            alt={draft.gif.title}
+            width={1200}
+            height={900}
+            unoptimized
+            className="h-auto max-h-48 w-full object-cover"
+          />
+          <button
+            type="button"
+            onClick={handleRemove}
+            className="absolute right-2 top-2 rounded-full bg-zinc-900/80 px-2 py-0.5 text-xs text-red-300 hover:text-red-200"
+          >
+            ✕ Remove
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return null;
+});
 
 export default function DugoutTimeline({
   initialPosts,
@@ -751,7 +825,7 @@ export default function DugoutTimeline({
     }
   }
 
-  function clearCommentDraftMedia(postId: string) {
+  const clearCommentDraftMedia = useCallback((postId: string) => {
     setCommentDraftMediaByPost((prev) => {
       const cur = prev[postId];
       if (cur?.previewUrl?.startsWith("blob:")) {
@@ -762,7 +836,7 @@ export default function DugoutTimeline({
       delete next[postId];
       return next;
     });
-  }
+  }, []);
 
   async function searchReplyGifs({
     append = false,
@@ -1463,7 +1537,7 @@ export default function DugoutTimeline({
     if (!currentUserId) return;
 
     const text = (commentInputByPost[postId] || "").trim();
-    const draft = commentDraftMediaByPost[postId] ?? emptyCommentDraftMedia();
+    const draft = commentDraftMediaByPost[postId] ?? EMPTY_COMMENT_DRAFT_MEDIA;
     const hasFile = Boolean(draft.file);
     const hasGif = Boolean(draft.gif);
 
@@ -1868,7 +1942,7 @@ export default function DugoutTimeline({
     },
   ) {
     const replyMediaDraft =
-      commentDraftMediaByPost[post.id] ?? emptyCommentDraftMedia();
+      commentDraftMediaByPost[post.id] ?? EMPTY_COMMENT_DRAFT_MEDIA;
 
     return (
       <>
@@ -2201,51 +2275,11 @@ export default function DugoutTimeline({
                     className="w-full resize-y bg-transparent px-3 py-2.5 text-sm leading-relaxed text-white placeholder-zinc-500 outline-none min-h-[4.5rem] disabled:opacity-50"
                   />
 
-                  {replyMediaDraft.previewUrl ? (
-                    <div className="border-t border-zinc-800 px-3 pt-2">
-                      <div className="relative overflow-hidden rounded-xl border border-zinc-700">
-                        <Image
-                          src={replyMediaDraft.previewUrl}
-                          alt="Attachment preview"
-                          width={1200}
-                          height={900}
-                          unoptimized={
-                            replyMediaDraft.file?.type === "image/gif"
-                          }
-                          className="h-auto max-h-48 w-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => clearCommentDraftMedia(post.id)}
-                          className="absolute right-2 top-2 rounded-full bg-zinc-900/80 px-2 py-0.5 text-xs text-red-300 hover:text-red-200"
-                        >
-                          ✕ Remove
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
-
-                  {replyMediaDraft.gif && !replyMediaDraft.file ? (
-                    <div className="border-t border-zinc-800 px-3 pt-2">
-                      <div className="relative overflow-hidden rounded-xl border border-brand-gold">
-                        <Image
-                          src={replyMediaDraft.gif.previewUrl}
-                          alt={replyMediaDraft.gif.title}
-                          width={1200}
-                          height={900}
-                          unoptimized
-                          className="h-auto max-h-48 w-full object-cover"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => clearCommentDraftMedia(post.id)}
-                          className="absolute right-2 top-2 rounded-full bg-zinc-900/80 px-2 py-0.5 text-xs text-red-300 hover:text-red-200"
-                        >
-                          ✕ Remove
-                        </button>
-                      </div>
-                    </div>
-                  ) : null}
+                  <ReplyMediaPreview
+                    postId={post.id}
+                    draft={replyMediaDraft}
+                    onRemove={clearCommentDraftMedia}
+                  />
 
                   {replyEmojiPickerPostId === post.id ? (
                     <div className="flex flex-wrap gap-2 border-t border-zinc-800 px-3 py-2">
