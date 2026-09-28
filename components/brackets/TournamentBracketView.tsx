@@ -1,15 +1,10 @@
 "use client";
 
 import type { CSSProperties, KeyboardEvent, ReactNode } from "react";
-import { useLayoutEffect, useRef, useState, type RefObject } from "react";
+import { useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 
 import type { BracketLayout, BracketLayoutPodium, LayoutMatch, LayoutRound } from "@/lib/tournament-brackets/bracketLayout";
-import { collectAllDoubleElimMatchesByGame } from "@/lib/tournament-brackets/bracketLayout";
-import {
-  resolveClassicDoubleElimSlots,
-  resolveClassicThreeTeamDoubleElimSlots,
-} from "@/lib/tournament-brackets/classicDoubleElimDiagram";
-import { resolveClassicSixTeamModifiedDeSlots } from "@/lib/tournament-brackets/classicSixTeamModifiedDeDiagram";
+import { resolveDoubleElimRenderSlots } from "@/lib/tournament-brackets/bracketLayout";
 import {
   declaredChampionFromFinalSlots,
   declaredThirdPlaceFromSlots,
@@ -1346,32 +1341,16 @@ function DoubleEliminationBracketView({
       : [],
   ].flat();
 
-  const allMatchesByGame = collectAllDoubleElimMatchesByGame(
-    layout.winnersBracket.rounds,
-    layout.losersBracket?.rounds,
-    layout.championship?.matches,
+  // Slot resolution is a pure function of `layout` alone — see resolveDoubleElimRenderSlots'
+  // doc comment for the field-by-field enumeration. `liveGameStatuses` polls every 15-60s
+  // during a live tournament but never changes `layout`, so keying this memo on `[layout]`
+  // (not on `liveGameStatuses`) skips the recompute on every live-poll tick without risking a
+  // stale bracket: any real change to winners/losers/championship matches or the if-necessary
+  // game replaces `layout` itself and forces a recompute.
+  const { allMatchesByGame, classicSixSlots, classicThreeSlots, classicFiveSlots } = useMemo(
+    () => resolveDoubleElimRenderSlots(layout),
+    [layout],
   );
-  const ifNecessaryMatch =
-    layout.mode === "double_elimination" ? layout.classicChampionshipPodium?.ifNecessaryMatch : null;
-  if (ifNecessaryMatch?.officialGameNumber?.trim()) {
-    allMatchesByGame.set(ifNecessaryMatch.officialGameNumber.trim(), ifNecessaryMatch);
-  }
-  const classicSixSlots =
-    layout.diagramStyle === "classic_unified" && layout.classicVariant === "six_team_modified_de"
-      ? resolveClassicSixTeamModifiedDeSlots(allMatchesByGame)
-      : null;
-  const classicThreeSlots =
-    layout.diagramStyle === "classic_unified" && layout.classicVariant === "three_team"
-      ? resolveClassicThreeTeamDoubleElimSlots(allMatchesByGame)
-      : null;
-  const classicFiveSlots =
-    layout.classicFiveTeamSlots ??
-    (layout.diagramStyle === "classic_unified" && layout.classicVariant === "five_team"
-      ? resolveClassicDoubleElimSlots(allMatchesByGame, {
-          officialTemplateId: layout.officialTemplateId,
-          locked: true,
-        })
-      : null);
 
   const renderMatch = (props: {
     match: LayoutMatch;
