@@ -145,3 +145,5 @@ Canonical agent rules: **`AGENTS.md`**. Extra detail: **`CLAUDE.md`**. Default s
 - `docs/local-dev-database.md`
 - `docs/deployment-ladistrict6.md`
 - `docs/admin-module-workflow-pattern.md`
+
+<!-- vercel-deploy-trigger: 2026-09-28T19:55Z — nudge push for TNT-32 PR #11/#17/#19 (620f2aa) after re-enabling Git→Vercel integration -->
