@@ -2,6 +2,8 @@
 
 import Image from "next/image";
 import {
+  memo,
+  useCallback,
   useEffect,
   useMemo,
   useRef,
@@ -368,6 +370,165 @@ function removeCommentFromTree(
 
   return { next, removedCount };
 }
+
+type CommentItemProps = {
+  postId: string;
+  comment: DugoutComment;
+  canManage: boolean;
+  isEditing: boolean;
+  editContent: string;
+  editRemoveMedia: boolean;
+  editBusy: boolean;
+  isDeleting: boolean;
+  onEditContentChange: (value: string) => void;
+  onRemoveMediaChange: (remove: boolean) => void;
+  onStartEdit: (comment: DugoutComment) => void;
+  onCancelEdit: () => void;
+  onSaveEdit: (postId: string, commentId: string, hasExistingMedia: boolean) => void;
+  onDelete: (postId: string, commentId: string) => void;
+};
+
+// Props are derived per-comment in the parent so that editing one comment
+// (typing in its textarea, deleting it, etc.) never changes the props of any
+// other comment's instance — that's what lets React.memo's default shallow
+// comparison actually skip re-rendering the rest of the thread.
+const CommentItem = memo(function CommentItem({
+  postId,
+  comment,
+  canManage,
+  isEditing,
+  editContent,
+  editRemoveMedia,
+  editBusy,
+  isDeleting,
+  onEditContentChange,
+  onRemoveMediaChange,
+  onStartEdit,
+  onCancelEdit,
+  onSaveEdit,
+  onDelete,
+}: CommentItemProps) {
+  const hasExistingMedia = Boolean(comment.mediaUrl);
+  const trimmedEditContent = editContent.trim();
+  const editKeepsMedia = hasExistingMedia && !editRemoveMedia;
+  const canSaveEdit = trimmedEditContent.length > 0 || editKeepsMedia;
+
+  const handleStartEdit = useCallback(
+    () => onStartEdit(comment),
+    [onStartEdit, comment],
+  );
+  const handleSaveEdit = useCallback(
+    () => onSaveEdit(postId, comment.id, hasExistingMedia),
+    [onSaveEdit, postId, comment.id, hasExistingMedia],
+  );
+  const handleDelete = useCallback(
+    () => onDelete(postId, comment.id),
+    [onDelete, postId, comment.id],
+  );
+  const handleRemoveMedia = useCallback(
+    () => onRemoveMediaChange(true),
+    [onRemoveMediaChange],
+  );
+
+  return (
+    <div
+      key={comment.id}
+      className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3"
+    >
+      <div className="mb-1 flex items-center justify-between gap-2">
+        <p className="text-xs font-semibold text-zinc-200">
+          {getDisplayName(comment.author)}
+        </p>
+        <p className="text-[11px] text-zinc-500">
+          {formatPostTime(comment.createdAt)}
+        </p>
+      </div>
+      {isEditing ? (
+        <div className="space-y-2">
+          <textarea
+            rows={3}
+            maxLength={MAX_COMMENT_LENGTH}
+            value={editContent}
+            onChange={(event) => onEditContentChange(event.target.value)}
+            className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
+          />
+          {comment.mediaUrl && !editRemoveMedia ? (
+            <div className="space-y-2">
+              <DugoutMedia
+                mediaUrl={comment.mediaUrl}
+                mediaType={comment.mediaType}
+                alt={comment.content || "Reply attachment"}
+              />
+              <button
+                type="button"
+                onClick={handleRemoveMedia}
+                className="text-xs text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline"
+              >
+                Remove attachment
+              </button>
+            </div>
+          ) : null}
+          {comment.mediaUrl && editRemoveMedia ? (
+            <p className="text-[11px] text-zinc-500">
+              Attachment will be removed when you save.
+            </p>
+          ) : null}
+          <div className="flex items-center justify-end gap-2">
+            <button
+              type="button"
+              onClick={onCancelEdit}
+              className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={editBusy || !canSaveEdit}
+              onClick={handleSaveEdit}
+              className="rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-violet-400 disabled:opacity-60"
+            >
+              {editBusy ? "Saving..." : "Save"}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <>
+          {comment.content.trim() ? (
+            <p className="whitespace-pre-wrap wrap-anywhere text-sm text-zinc-200">
+              {renderFormattedText(comment.content)}
+            </p>
+          ) : null}
+          <DugoutMedia
+            mediaUrl={comment.mediaUrl}
+            mediaType={comment.mediaType}
+            alt={comment.content || "Reply attachment"}
+          />
+        </>
+      )}
+      <div className="mt-2 flex items-center gap-3">
+        {canManage ? (
+          <button
+            type="button"
+            onClick={handleStartEdit}
+            className="text-xs text-zinc-400 hover:text-zinc-200"
+          >
+            Edit
+          </button>
+        ) : null}
+        {canManage ? (
+          <button
+            type="button"
+            onClick={handleDelete}
+            disabled={isDeleting}
+            className="text-xs text-red-400 hover:text-red-300 disabled:opacity-60"
+          >
+            {isDeleting ? "Deleting..." : "Delete"}
+          </button>
+        ) : null}
+      </div>
+    </div>
+  );
+});
 
 export default function DugoutTimeline({
   initialPosts,
@@ -1565,107 +1726,134 @@ export default function DugoutTimeline({
     }
   }
 
-  async function deleteComment(postId: string, commentId: string) {
-    setCommentDeleteBusyId(commentId);
-    setError("");
+  // deleteComment's identity only needs to change when commentsByPost
+  // actually changes (a comment was added/edited/deleted elsewhere), not on
+  // every render — that's a much rarer event than a composer keystroke, so
+  // this stays a safe, real dependency rather than a stale-closure risk.
+  const deleteComment = useCallback(
+    async (postId: string, commentId: string) => {
+      setCommentDeleteBusyId(commentId);
+      setError("");
 
-    try {
-      const response = await fetch(`/api/dugout/comments/${commentId}`, {
-        method: "DELETE",
-      });
-      const json = (await response.json()) as { error?: string };
+      try {
+        const response = await fetch(`/api/dugout/comments/${commentId}`, {
+          method: "DELETE",
+        });
+        const json = (await response.json()) as { error?: string };
 
-      if (!response.ok) {
-        throw new Error(json.error || "Failed to delete comment");
+        if (!response.ok) {
+          throw new Error(json.error || "Failed to delete comment");
+        }
+
+        const result = removeCommentFromTree(
+          commentsByPost[postId] ?? [],
+          commentId,
+        );
+        setCommentsByPost((prev) => ({
+          ...prev,
+          [postId]: result.next,
+        }));
+        setPosts((prev) =>
+          prev.map((post) =>
+            post.id === postId
+              ? {
+                  ...post,
+                  commentCount: Math.max(
+                    0,
+                    post.commentCount - result.removedCount,
+                  ),
+                }
+              : post,
+          ),
+        );
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error ? err.message : "Failed to delete comment",
+        );
+      } finally {
+        setCommentDeleteBusyId(null);
       }
+    },
+    [commentsByPost],
+  );
 
-      const result = removeCommentFromTree(
-        commentsByPost[postId] ?? [],
-        commentId,
-      );
-      setCommentsByPost((prev) => ({
-        ...prev,
-        [postId]: result.next,
-      }));
-      setPosts((prev) =>
-        prev.map((post) =>
-          post.id === postId
-            ? {
-                ...post,
-                commentCount: Math.max(
-                  0,
-                  post.commentCount - result.removedCount,
-                ),
-              }
-            : post,
-        ),
-      );
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to delete comment");
-    } finally {
-      setCommentDeleteBusyId(null);
-    }
-  }
-
-  function startCommentEdit(comment: DugoutComment) {
+  const startCommentEdit = useCallback((comment: DugoutComment) => {
     setCommentEditingId(comment.id);
     setCommentEditContent(comment.content);
     setCommentEditRemoveMedia(false);
-  }
+  }, []);
 
-  function cancelCommentEdit() {
+  const cancelCommentEdit = useCallback(() => {
     setCommentEditingId(null);
     setCommentEditContent("");
     setCommentEditRemoveMedia(false);
-  }
+  }, []);
 
-  async function saveCommentEdit(postId: string, commentId: string) {
-    const trimmed = commentEditContent.trim();
-    const existingComment = (commentsByPost[postId] ?? []).find(
-      (c) => c.id === commentId,
-    );
-    const willHaveMedia =
-      !commentEditRemoveMedia && Boolean(existingComment?.mediaUrl);
+  // saveCommentEdit reads the live draft off a ref instead of closing over
+  // commentEditContent/commentEditRemoveMedia directly, so its identity stays
+  // stable across every keystroke in the edit textarea. That's what keeps
+  // CommentItem's onSaveEdit prop reference-equal for every comment that
+  // ISN'T being edited, so they aren't forced to re-render on every keystroke.
+  const commentEditDraftRef = useRef({
+    content: commentEditContent,
+    removeMedia: commentEditRemoveMedia,
+  });
+  useEffect(() => {
+    commentEditDraftRef.current = {
+      content: commentEditContent,
+      removeMedia: commentEditRemoveMedia,
+    };
+  }, [commentEditContent, commentEditRemoveMedia]);
 
-    if (!trimmed && !willHaveMedia) return;
-    if (trimmed.length > MAX_COMMENT_LENGTH) {
-      setError(`Comment must be ${MAX_COMMENT_LENGTH} characters or fewer`);
-      return;
-    }
+  const saveCommentEdit = useCallback(
+    async (postId: string, commentId: string, hasExistingMedia: boolean) => {
+      const { content, removeMedia } = commentEditDraftRef.current;
+      const trimmed = content.trim();
+      const willHaveMedia = !removeMedia && hasExistingMedia;
 
-    setCommentEditBusy(true);
-    setError("");
-
-    try {
-      const response = await fetch(`/api/dugout/comments/${commentId}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          content: trimmed,
-          removeMedia: commentEditRemoveMedia,
-        }),
-      });
-      const json = (await response.json()) as {
-        error?: string;
-        data?: DugoutComment;
-      };
-      if (!response.ok || !json.data) {
-        throw new Error(json.error || "Failed to update comment");
+      if (!trimmed && !willHaveMedia) return;
+      if (trimmed.length > MAX_COMMENT_LENGTH) {
+        setError(`Comment must be ${MAX_COMMENT_LENGTH} characters or fewer`);
+        return;
       }
 
-      setCommentsByPost((prev) => ({
-        ...prev,
-        [postId]: (prev[postId] ?? []).map((entry) =>
-          entry.id === commentId ? (json.data as DugoutComment) : entry,
-        ),
-      }));
-      cancelCommentEdit();
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Failed to update comment");
-    } finally {
-      setCommentEditBusy(false);
-    }
-  }
+      setCommentEditBusy(true);
+      setError("");
+
+      try {
+        const response = await fetch(`/api/dugout/comments/${commentId}`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            content: trimmed,
+            removeMedia,
+          }),
+        });
+        const json = (await response.json()) as {
+          error?: string;
+          data?: DugoutComment;
+        };
+        if (!response.ok || !json.data) {
+          throw new Error(json.error || "Failed to update comment");
+        }
+
+        setCommentsByPost((prev) => ({
+          ...prev,
+          [postId]: (prev[postId] ?? []).map((entry) =>
+            entry.id === commentId ? (json.data as DugoutComment) : entry,
+          ),
+        }));
+        cancelCommentEdit();
+      } catch (err: unknown) {
+        setError(
+          err instanceof Error ? err.message : "Failed to update comment",
+        );
+      } finally {
+        setCommentEditBusy(false);
+      }
+    },
+    [cancelCommentEdit],
+  );
 
   const showingNotificationsView = initialView === "notifications";
   const showingScheduleView = initialView === "schedule";
@@ -1740,115 +1928,6 @@ export default function DugoutTimeline({
       return groups;
     }, []);
   }, [initialScheduleGames]);
-
-  function renderComment(postId: string, comment: DugoutComment) {
-    const canManageComment = isAdmin || comment.author.id === currentUserId;
-    const isEditingComment = commentEditingId === comment.id;
-    const trimmedCommentEdit = commentEditContent.trim();
-    const commentEditKeepsMedia =
-      Boolean(comment.mediaUrl) && !commentEditRemoveMedia;
-    const canSaveCommentEdit =
-      trimmedCommentEdit.length > 0 || commentEditKeepsMedia;
-
-    return (
-      <div
-        key={comment.id}
-        className="mt-2 rounded-lg border border-zinc-800 bg-zinc-900/60 p-3"
-      >
-        <div className="mb-1 flex items-center justify-between gap-2">
-          <p className="text-xs font-semibold text-zinc-200">
-            {getDisplayName(comment.author)}
-          </p>
-          <p className="text-[11px] text-zinc-500">
-            {formatPostTime(comment.createdAt)}
-          </p>
-        </div>
-        {isEditingComment ? (
-          <div className="space-y-2">
-            <textarea
-              rows={3}
-              maxLength={MAX_COMMENT_LENGTH}
-              value={commentEditContent}
-              onChange={(event) => setCommentEditContent(event.target.value)}
-              className="w-full rounded-lg border border-zinc-700 bg-zinc-900 px-2.5 py-2 text-xs"
-            />
-            {comment.mediaUrl && !commentEditRemoveMedia ? (
-              <div className="space-y-2">
-                <DugoutMedia
-                  mediaUrl={comment.mediaUrl}
-                  mediaType={comment.mediaType}
-                  alt={comment.content || "Reply attachment"}
-                />
-                <button
-                  type="button"
-                  onClick={() => setCommentEditRemoveMedia(true)}
-                  className="text-xs text-zinc-400 underline-offset-2 hover:text-zinc-200 hover:underline"
-                >
-                  Remove attachment
-                </button>
-              </div>
-            ) : null}
-            {comment.mediaUrl && commentEditRemoveMedia ? (
-              <p className="text-[11px] text-zinc-500">
-                Attachment will be removed when you save.
-              </p>
-            ) : null}
-            <div className="flex items-center justify-end gap-2">
-              <button
-                type="button"
-                onClick={cancelCommentEdit}
-                className="rounded-lg border border-zinc-700 px-3 py-1.5 text-xs text-zinc-400 hover:text-zinc-200"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={commentEditBusy || !canSaveCommentEdit}
-                onClick={() => void saveCommentEdit(postId, comment.id)}
-                className="rounded-lg bg-violet-500 px-3 py-1.5 text-xs font-semibold text-zinc-950 hover:bg-violet-400 disabled:opacity-60"
-              >
-                {commentEditBusy ? "Saving..." : "Save"}
-              </button>
-            </div>
-          </div>
-        ) : (
-          <>
-            {comment.content.trim() ? (
-              <p className="whitespace-pre-wrap wrap-anywhere text-sm text-zinc-200">
-                {renderFormattedText(comment.content)}
-              </p>
-            ) : null}
-            <DugoutMedia
-              mediaUrl={comment.mediaUrl}
-              mediaType={comment.mediaType}
-              alt={comment.content || "Reply attachment"}
-            />
-          </>
-        )}
-        <div className="mt-2 flex items-center gap-3">
-          {canManageComment ? (
-            <button
-              type="button"
-              onClick={() => startCommentEdit(comment)}
-              className="text-xs text-zinc-400 hover:text-zinc-200"
-            >
-              Edit
-            </button>
-          ) : null}
-          {canManageComment ? (
-            <button
-              type="button"
-              onClick={() => void deleteComment(postId, comment.id)}
-              disabled={commentDeleteBusyId === comment.id}
-              className="text-xs text-red-400 hover:text-red-300 disabled:opacity-60"
-            >
-              {commentDeleteBusyId === comment.id ? "Deleting..." : "Delete"}
-            </button>
-          ) : null}
-        </div>
-      </div>
-    );
-  }
 
   function renderPostBody(
     post: DugoutPost,
@@ -2541,7 +2620,34 @@ export default function DugoutTimeline({
                   <p className="mt-3 text-xs text-zinc-500">No replies yet.</p>
                 ) : (
                   <div className="mt-2">
-                    {comments.map((comment) => renderComment(post.id, comment))}
+                    {comments.map((comment) => {
+                      const isEditingComment = commentEditingId === comment.id;
+                      return (
+                        <CommentItem
+                          key={comment.id}
+                          postId={post.id}
+                          comment={comment}
+                          canManage={
+                            isAdmin || comment.author.id === currentUserId
+                          }
+                          isEditing={isEditingComment}
+                          editContent={
+                            isEditingComment ? commentEditContent : ""
+                          }
+                          editRemoveMedia={
+                            isEditingComment ? commentEditRemoveMedia : false
+                          }
+                          editBusy={isEditingComment ? commentEditBusy : false}
+                          isDeleting={commentDeleteBusyId === comment.id}
+                          onEditContentChange={setCommentEditContent}
+                          onRemoveMediaChange={setCommentEditRemoveMedia}
+                          onStartEdit={startCommentEdit}
+                          onCancelEdit={cancelCommentEdit}
+                          onSaveEdit={saveCommentEdit}
+                          onDelete={deleteComment}
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>
