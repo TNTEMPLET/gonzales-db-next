@@ -39,8 +39,11 @@ const LEGACY_PAY_RATES: Record<string, number> = {
   "9U DYB": 60,
   "10U DYB": 60,
   "10U LLB": 50,
+  "12U": 80,
   "12U DYB": 60,
   "12U LLB": 50,
+  "14U": 80,
+  "15U": 80,
   "15U DBB": 80,
   "17U DPM": 60,
 };
@@ -169,6 +172,11 @@ function extractAssignments(game: Game): Assignment[] {
   return assignments;
 }
 
+function isThirteenFourteenLabel(ageGroup: string): boolean {
+  const normalized = normalizeAgeGroupKey(ageGroup);
+  return /\b13\s*[-–]\s*14\b/.test(normalized) || /\b13\s*[-–]\s*15\b/.test(normalized);
+}
+
 function getBasePayRate(ageGroup: string): number {
   const normalized = normalizeAgeGroupKey(ageGroup);
   if (LEGACY_PAY_RATES[normalized]) {
@@ -177,6 +185,11 @@ function getBasePayRate(ageGroup: string): number {
 
   if (normalized.includes("MAJ") || normalized.includes("MAJOR")) {
     return 50;
+  }
+
+  // Fall Ball 13-14 / 13-15 (Assignr often keeps the year-old label).
+  if (isThirteenFourteenLabel(normalized)) {
+    return 80;
   }
 
   return 60;

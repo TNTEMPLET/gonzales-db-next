@@ -15,8 +15,10 @@ describe("assignrUmpirePattern", () => {
     assert.equal(assignrUmpirePattern("8U CP"), "2 Umpires");
     assert.equal(assignrUmpirePattern("9U"), "1 Umpire");
     assert.equal(assignrUmpirePattern("10U"), "1 Umpire");
-    assert.equal(assignrUmpirePattern("12U"), "1 Umpire");
-    assert.equal(assignrUmpirePattern("15U"), "1 Umpire");
+    assert.equal(assignrUmpirePattern("12U"), "1 Umpire 12U");
+    assert.equal(assignrUmpirePattern("15U"), "1 Umpire 13-14");
+    assert.equal(assignrUmpirePattern("13-14"), "1 Umpire 13-14");
+    assert.equal(assignrUmpirePattern("13-15 year-olds"), "1 Umpire 13-14");
     assert.equal(assignrUmpirePattern("17U"), "2 Umpires");
     assert.equal(assignrUmpirePattern("Umpire Clinic"), "");
   });
