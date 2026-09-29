@@ -6,6 +6,7 @@ import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 import {
   buildMainReportRows,
   buildUmpireReportRows,
+  gameUsesUmpires,
   matchesLeagueFilter,
   normalizeAgeGroup,
   parseLeagueFilter,
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
         .toUpperCase();
       if (status === "X") return false;
       const ageGroup = normalizeAgeGroup(game.age_group as string | undefined);
-      return matchesLeagueFilter(ageGroup, leagueFilter);
+      return gameUsesUmpires(ageGroup) && matchesLeagueFilter(ageGroup, leagueFilter);
     });
 
     if (mode === "umpire") {

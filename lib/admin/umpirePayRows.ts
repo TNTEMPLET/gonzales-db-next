@@ -117,6 +117,18 @@ export function matchesLeagueFilter(ageGroup: string, filter: LeagueFilter): boo
   return isDiamondAgeGroup(ageGroup);
 }
 
+/** Tee ball and 6U modified have no crew. 6U LLB and 7U CP+ stay on umpire desks. */
+export function gameUsesUmpires(ageGroup: string): boolean {
+  const normalized = normalizeAgeGroupKey(ageGroup);
+  if (/\bTB\b/.test(normalized) || normalized.includes("TEE BALL") || normalized.includes("TEEBALL")) {
+    return false;
+  }
+  if (/\bMOD\b/.test(normalized) || normalized.includes("MODIFIED")) {
+    return false;
+  }
+  return true;
+}
+
 function extractAssignments(game: Game): Assignment[] {
   const embedded = game._embedded as
     | {

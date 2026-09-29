@@ -1,5 +1,6 @@
 import { checkInScoreboard, checkOutScoreboard, undoScoreboardReturn } from "@/app/admin/field-desk/actions";
 import type { FieldDeskGame } from "@/lib/admin/fieldDeskTypes";
+import { gameUsesUmpires } from "@/lib/admin/umpirePayRows";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 export default function FieldDesk({
@@ -14,8 +15,9 @@ export default function FieldDesk({
   parkName: string | null;
 }) {
   const stillOut = games.filter((game) => game.checkoutStatus === "out").length;
-  const today = games.filter((game) => game.isToday);
-  const later = games.filter((game) => !game.isToday);
+  const umpireGames = games.filter((game) => gameUsesUmpires(game.ageGroup));
+  const today = umpireGames.filter((game) => game.isToday);
+  const later = umpireGames.filter((game) => !game.isToday);
 
   return (
     <div className="space-y-10">
@@ -69,7 +71,7 @@ export default function FieldDesk({
         <p className="max-w-3xl text-sm text-zinc-400">
           Read this to the crew. The umpire’s name is not stored here. It stays in Assignr.
         </p>
-        <GameList games={today.length > 0 ? today : games} empty={emptyWeek(parkName)} />
+        <GameList games={today.length > 0 ? today : umpireGames} empty={emptyUmpireWeek(parkName)} />
         {today.length > 0 && later.length > 0 ? (
           <details className="text-sm text-zinc-400">
             <summary className="cursor-pointer text-zinc-200">Rest of the week</summary>
@@ -87,7 +89,7 @@ export default function FieldDesk({
             {orgLabel}. Copy each row onto a printed card. The cards themselves are not printed from here.
           </p>
         </div>
-        {games.length > 0 ? (
+        {umpireGames.length > 0 ? (
           <div className="overflow-x-auto rounded-2xl border border-zinc-800">
             <table className="min-w-full text-left text-sm">
               <thead className="text-xs uppercase tracking-wide text-zinc-500">
@@ -101,7 +103,7 @@ export default function FieldDesk({
                 </tr>
               </thead>
               <tbody>
-                {games.map((game, index) => (
+                {umpireGames.map((game, index) => (
                   <tr key={game.id} className="border-t border-zinc-800">
                     <td className="px-3 py-3 text-zinc-500">{index + 1}</td>
                     <td className="px-3 py-3 text-zinc-200">{game.when}</td>
@@ -118,7 +120,7 @@ export default function FieldDesk({
             </table>
           </div>
         ) : (
-          <p className="text-sm text-zinc-500">{emptyWeek(parkName)}</p>
+          <p className="text-sm text-zinc-500">{emptyUmpireWeek(parkName)}</p>
         )}
       </section>
     </div>
@@ -246,6 +248,12 @@ function CheckoutForm({
 
 function emptyWeek(parkName: string | null) {
   return parkName ? `No posted games at ${parkName} this week.` : "No posted games this week.";
+}
+
+function emptyUmpireWeek(parkName: string | null) {
+  return parkName
+    ? `No umpire games at ${parkName} this week.`
+    : "No umpire games this week.";
 }
 
 function GameList({ games, empty }: { games: FieldDeskGame[]; empty: string }) {

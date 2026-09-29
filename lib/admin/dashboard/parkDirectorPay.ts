@@ -1,6 +1,11 @@
 import "server-only";
 
-import { summarizeUmpirePayForPark, type DayParkUmpirePay } from "@/lib/admin/umpirePayRows";
+import {
+  gameUsesUmpires,
+  normalizeAgeGroup,
+  summarizeUmpirePayForPark,
+  type DayParkUmpirePay,
+} from "@/lib/admin/umpirePayRows";
 import { fetchGames, type Game } from "@/lib/fetchGames";
 import prisma from "@/lib/prisma";
 import { getAssignrLeagueId, type ContentOrgId } from "@/lib/siteConfig";
@@ -37,6 +42,8 @@ export async function loadParkDirectorUmpirePay(input: {
   const thatDay = games.filter((game) => {
     const status = String(game.status || "").trim().toUpperCase();
     if (status === "X" || status === "C") return false;
+    const ageGroup = normalizeAgeGroup(game.age_group as string | undefined);
+    if (!gameUsesUmpires(ageGroup)) return false;
     return gameDateKey(game) === input.day;
   });
   return summarizeUmpirePayForPark(thatDay, input.parkName);

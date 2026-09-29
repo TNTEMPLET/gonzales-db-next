@@ -4,6 +4,7 @@ import { fetchGames } from "@/lib/fetchGames";
 import {
   buildMainReportRows,
   buildUmpireReportRows,
+  gameUsesUmpires,
   matchesLeagueFilter,
   normalizeAgeGroup,
   parseLeagueFilter,
@@ -30,7 +31,8 @@ export async function loadUmpirePayReport(input: {
   ).filter((game) => {
     const status = String(game.status || "").trim().toUpperCase();
     if (status === "X") return false;
-    return matchesLeagueFilter(normalizeAgeGroup(game.age_group as string | undefined), league);
+    const ageGroup = normalizeAgeGroup(game.age_group as string | undefined);
+    return gameUsesUmpires(ageGroup) && matchesLeagueFilter(ageGroup, league);
   });
 
   const parkPdf = buildPayByParkPdf({
