@@ -10,6 +10,10 @@ import {
 } from "@/lib/admin/umpirePayAssignments";
 import { formatReportFieldName } from "@/lib/admin/umpirePayFieldLabel";
 import { dateLabelSortValue, groupPayByPark, weekdayName } from "@/lib/admin/umpirePayGroups";
+import {
+  UMPIRE_PAY_CASH_NEEDED_LABEL,
+  writeUmpirePayTotalBanner,
+} from "@/lib/admin/umpirePayTotalBanner";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type LeagueFilter = "all" | "littleleague" | "diamond";
@@ -86,6 +90,20 @@ function formatMoney(value: number) {
     currency: "USD",
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+function TotalPayBanner({ total }: { total: number }) {
+  return (
+    <div className="flex flex-col gap-1 rounded-xl border border-emerald-800/70 bg-emerald-950/40 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-wide text-emerald-400">
+          Total Pay
+        </p>
+        <p className="text-xs text-zinc-400">{UMPIRE_PAY_CASH_NEEDED_LABEL}</p>
+      </div>
+      <p className="text-2xl font-bold text-emerald-300">{formatMoney(total)}</p>
+    </div>
+  );
 }
 
 function todayIsoDate() {
@@ -426,6 +444,13 @@ export default function AdminReportsManager({ targetOrg }: Props) {
       doc.setLineWidth(0.5);
       doc.line(marginLeft, currentY, marginLeft + contentWidth, currentY);
       currentY += 14;
+      currentY = writeUmpirePayTotalBanner(
+        doc,
+        currentY,
+        marginLeft,
+        contentWidth,
+        generatedPayTotal,
+      );
 
       if (mode === "main") {
         let isFirstPark = true;
@@ -667,6 +692,13 @@ export default function AdminReportsManager({ targetOrg }: Props) {
       doc.setLineWidth(0.5);
       doc.line(marginLeft, currentY, marginLeft + contentWidth, currentY);
       currentY += 14;
+      currentY = writeUmpirePayTotalBanner(
+        doc,
+        currentY,
+        marginLeft,
+        contentWidth,
+        generatedPayTotal,
+      );
 
       let isFirstPark = true;
       for (const parkGroup of umpireGroups) {
@@ -821,11 +853,12 @@ export default function AdminReportsManager({ targetOrg }: Props) {
           </div>
           <div className="rounded-xl border border-zinc-800 bg-zinc-950/50 p-4">
             <p className="text-xs font-semibold uppercase tracking-wide text-zinc-500">
-              Estimated pay
+              Total Pay
             </p>
             <p className="mt-2 text-2xl font-bold text-emerald-300">
               {formatMoney(generatedPayTotal)}
             </p>
+            <p className="mt-1 text-xs text-zinc-500">{UMPIRE_PAY_CASH_NEEDED_LABEL}</p>
           </div>
         </div>
 
@@ -976,6 +1009,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
         </div>
       ) : mode === "main" ? (
         <div className="space-y-4 p-4">
+          <TotalPayBanner total={generatedPayTotal} />
           {mainReportGroups.map((parkGroup) => (
             <section
               key={parkGroup.park}
@@ -1094,6 +1128,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
         </div>
       ) : (
         <div className="space-y-4 p-4">
+          <TotalPayBanner total={generatedPayTotal} />
           {umpireGroups.map((parkGroup) => (
             <section
               key={parkGroup.park}

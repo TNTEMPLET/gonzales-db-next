@@ -99,6 +99,21 @@ describe("buildPayByParkPdf", () => {
     assert.ok(monday < tuesday, "Monday before Tuesday at Clouatre");
     assert.ok(tuesday < jleo, "Clouatre days finish before the next park");
     assert.ok(jleo < thursday, "Thursday sits under J Leo Stevens");
+    assert.ok(text.includes("Cash needed to fulfill weekly umpire pay"), "grand-total cash banner");
+    assert.ok(text.includes("$180.00"), "grand total is the sum of every park");
+  });
+
+  it("writes a $0.00 Total Pay banner when there are no games", () => {
+    const pdf = buildPayByParkPdf({
+      orgName: "AP Fall Ball",
+      startDate: "2026-09-07",
+      endDate: "2026-09-10",
+      rows: [],
+    });
+    const text = pdf.toString("latin1");
+    assert.ok(text.includes("Total Pay"));
+    assert.ok(text.includes("Cash needed to fulfill weekly umpire pay"));
+    assert.ok(text.includes("$0.00"));
   });
 });
 

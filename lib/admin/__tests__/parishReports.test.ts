@@ -173,6 +173,9 @@ describe("parish and umpire reports", () => {
     });
     assert.equal(park.subarray(0, 5).toString(), "%PDF-");
     assert.equal(person.subarray(0, 5).toString(), "%PDF-");
+    assert.ok(park.toString("latin1").includes("Cash needed to fulfill weekly umpire pay"));
+    assert.ok(person.toString("latin1").includes("Cash needed to fulfill weekly umpire pay"));
+    assert.ok(person.toString("latin1").includes("$60.00"));
   });
 
   it("builds a parish field-prep PDF", () => {

@@ -4,6 +4,7 @@ import autoTable from "jspdf-autotable";
 import { assignmentColumnPair, dayUsesTwoAssignmentColumns } from "@/lib/admin/umpirePayAssignments";
 import { formatReportFieldName } from "@/lib/admin/umpirePayFieldLabel";
 import { dateLabelSortValue, groupPayByPark, weekdayName } from "@/lib/admin/umpirePayGroups";
+import { formatUmpirePayMoney, writeUmpirePayTotalBanner } from "@/lib/admin/umpirePayTotalBanner";
 import {
   pdfToBuffer,
   reportTable,
@@ -31,9 +32,7 @@ export type UmpirePayRow = {
   totalPay: number;
 };
 
-function money(value: number): string {
-  return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
-}
+const money = formatUmpirePayMoney;
 
 export function buildPayByParkPdf(input: {
   orgName: string;
@@ -53,6 +52,8 @@ export function buildPayByParkPdf(input: {
   });
 
   const parks = groupPayByPark(input.rows);
+  const totalPay = parks.reduce((sum, park) => sum + park.totalPay, 0);
+  y = writeUmpirePayTotalBanner(doc, y, margin, contentWidth, totalPay);
   if (parks.length === 0) {
     reportTable(doc, y, margin, ["Park", "Day", "Games", "Pay"], [["No rows.", "", "", ""]]);
     stampReportFooter(doc, margin, `AP Baseball · ${input.orgName} · umpire pay`);
@@ -203,6 +204,8 @@ export function buildPayByUmpirePdf(input: {
     })
     .sort((a, b) => a.park.localeCompare(b.park));
 
+  const totalPay = parks.reduce((sum, park) => sum + park.totalPay, 0);
+  y = writeUmpirePayTotalBanner(doc, y, margin, contentWidth, totalPay);
   if (parks.length === 0) {
     reportTable(doc, y, margin, ["Park", "Date", "Umpire", "Games", "Pay"], [["No rows.", "", "", "", ""]]);
     stampReportFooter(doc, margin, `AP Baseball · ${input.orgName} · umpire pay`);
