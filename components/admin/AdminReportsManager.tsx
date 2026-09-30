@@ -4,6 +4,11 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import ReportSendPanel from "@/components/admin/ReportSendPanel";
+import {
+  assignmentColumnPair,
+  dayUsesTwoAssignmentColumns,
+} from "@/lib/admin/umpirePayAssignments";
+import { formatReportFieldName } from "@/lib/admin/umpirePayFieldLabel";
 import { dateLabelSortValue, groupPayByPark, weekdayName } from "@/lib/admin/umpirePayGroups";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
@@ -309,7 +314,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               row.awayTeam,
               row.homeTeam,
               row.venue,
-              row.subvenue,
+              formatReportFieldName(row.subvenue),
               row.status,
               row.umpires.map((u) => `${u.name} - $${u.pay}`).join("; "),
               row.gamePayTotal,
@@ -475,44 +480,54 @@ export default function AdminReportsManager({ targetOrg }: Props) {
             currentY += dayBarHeight;
 
             // ── Games table ───────────────────────────────────────────────────
+            const twoAssignments = dayUsesTwoAssignmentColumns(day.games);
             const tableBody = day.games.map((game) => {
-              const u0 = game.umpires[0];
-              const u1 = game.umpires[1];
-              let assignments: string;
-              if (game.status === "Cancelled") {
-                assignments = "Cancelled — $0";
-              } else if (game.umpires.length === 0) {
-                assignments = "No Assignment";
-              } else if (game.umpires.length === 1) {
-                assignments = `${u0.name} — $${u0.pay}`;
-              } else {
-                assignments = `${u0.name} — $${u0.pay}\n${u1.name} — $${u1.pay}`;
-              }
-              return [
+              const [left, right] = assignmentColumnPair(
+                game.umpires,
+                (pay) => `$${pay}`,
+                {
+                  cancelled: game.status === "Cancelled",
+                  noneLabel: "No Assignment",
+                },
+              );
+              const base = [
                 game.date,
                 game.time,
                 game.homeTeam,
                 game.awayTeam,
                 game.venue,
-                game.subvenue,
+                formatReportFieldName(game.subvenue),
                 game.ageGroup,
-                assignments,
               ];
+              return twoAssignments ? [...base, left, right] : [...base, left];
             });
 
             autoTable(doc, {
               startY: currentY,
+              tableWidth: contentWidth,
               head: [
-                [
-                  "Date",
-                  "Time",
-                  "Home Team",
-                  "Away Team",
-                  "Park",
-                  "Field",
-                  "Age Group",
-                  "Assignment(s)",
-                ],
+                twoAssignments
+                  ? [
+                      "Date",
+                      "Time",
+                      "Home Team",
+                      "Away Team",
+                      "Park",
+                      "Field",
+                      "Age Group",
+                      "Assignment 1",
+                      "Assignment 2",
+                    ]
+                  : [
+                      "Date",
+                      "Time",
+                      "Home Team",
+                      "Away Team",
+                      "Park",
+                      "Field",
+                      "Age Group",
+                      "Assignment(s)",
+                    ],
               ],
               body: tableBody,
               theme: "grid",
@@ -532,16 +547,28 @@ export default function AdminReportsManager({ targetOrg }: Props) {
               alternateRowStyles: {
                 fillColor: [248, 248, 248],
               },
-              columnStyles: {
-                0: { cellWidth: 56 }, // Date
-                1: { cellWidth: 42 }, // Time
-                2: { cellWidth: 90 }, // Home Team
-                3: { cellWidth: 90 }, // Away Team
-                4: { cellWidth: 80 }, // Park
-                5: { cellWidth: 50 }, // Field
-                6: { cellWidth: 52 }, // Age Group
-                7: { cellWidth: "auto" }, // Assignment(s)
-              },
+              columnStyles: twoAssignments
+                ? {
+                    0: { cellWidth: 52 },
+                    1: { cellWidth: 40 },
+                    2: { cellWidth: 78 },
+                    3: { cellWidth: 78 },
+                    4: { cellWidth: 64 },
+                    5: { cellWidth: 72 },
+                    6: { cellWidth: 44 },
+                    7: { cellWidth: "auto", halign: "center" },
+                    8: { cellWidth: "auto", halign: "center" },
+                  }
+                : {
+                    0: { cellWidth: 56 },
+                    1: { cellWidth: 42 },
+                    2: { cellWidth: 90 },
+                    3: { cellWidth: 90 },
+                    4: { cellWidth: 76 },
+                    5: { cellWidth: 72 },
+                    6: { cellWidth: 48 },
+                    7: { cellWidth: "auto", halign: "center" },
+                  },
               margin: { left: marginLeft, right: marginRight },
             });
 
@@ -966,11 +993,13 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                 From: {startDate} To: {endDate}
               </p>
               <div className="space-y-3 px-3 pb-3">
-                {parkGroup.days.map((day) => (
-                  <div
-                    key={`${parkGroup.park}-${day.date}`}
-                    className="overflow-x-auto rounded-lg border border-zinc-800"
-                  >
+                {parkGroup.days.map((day) => {
+                  const twoAssignments = dayUsesTwoAssignmentColumns(day.games);
+                  return (
+                    <div
+                      key={`${parkGroup.park}-${day.date}`}
+                      className="overflow-x-auto rounded-lg border border-zinc-800"
+                    >
                     <div className="bg-zinc-900/80 px-3 py-2 text-xs font-semibold text-zinc-200">
                       {day.dayName}
                       {day.dayName ? " — " : ""}
@@ -984,17 +1013,31 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                           <th className="px-3 py-2 text-left">Home Team</th>
                           <th className="px-3 py-2 text-left">Away Team</th>
                           <th className="px-3 py-2 text-left">Park</th>
-                          <th className="px-3 py-2 text-left">Field</th>
+                          <th className="px-3 py-2 text-left whitespace-nowrap">Field</th>
                           <th className="px-3 py-2 text-left">Age Group</th>
-                          <th className="px-3 py-2 text-center" colSpan={2}>
-                            Assignment(s)
-                          </th>
+                          {twoAssignments ? (
+                            <>
+                              <th className="px-3 py-2 text-center">Assignment 1</th>
+                              <th className="px-3 py-2 text-center">Assignment 2</th>
+                            </>
+                          ) : (
+                            <th className="px-3 py-2 text-center" colSpan={2}>
+                              Assignment(s)
+                            </th>
+                          )}
                         </tr>
                       </thead>
                       <tbody>
                         {day.games.map((game) => {
-                          const u0 = game.umpires[0];
-                          const u1 = game.umpires[1];
+                          const [left, right] = assignmentColumnPair(
+                            game.umpires,
+                            (pay) => `$${pay}`,
+                            {
+                              cancelled: game.status === "Cancelled",
+                              noneLabel: "No Assignment",
+                            },
+                          );
+                          const muted = game.status === "Cancelled" || game.umpires.length === 0;
                           return (
                             <tr
                               key={game.gameId}
@@ -1005,38 +1048,26 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                               <td className="px-3 py-2">{game.homeTeam}</td>
                               <td className="px-3 py-2">{game.awayTeam}</td>
                               <td className="px-3 py-2">{game.venue}</td>
-                              <td className="px-3 py-2">{game.subvenue}</td>
+                              <td className="px-3 py-2 whitespace-nowrap">
+                                {formatReportFieldName(game.subvenue)}
+                              </td>
                               <td className="px-3 py-2">{game.ageGroup}</td>
-                              {game.status === "Cancelled" ? (
-                                <td
-                                  colSpan={2}
-                                  className="px-3 py-2 text-center text-zinc-500"
-                                >
-                                  Cancelled — $0
-                                </td>
-                              ) : game.umpires.length === 0 ? (
-                                <td
-                                  colSpan={2}
-                                  className="px-3 py-2 text-center text-zinc-500"
-                                >
-                                  No Assignment
-                                </td>
-                              ) : game.umpires.length === 1 ? (
-                                <td
-                                  colSpan={2}
-                                  className="px-3 py-2 text-center"
-                                >
-                                  {u0!.name} — ${u0!.pay}
-                                </td>
-                              ) : (
+                              {twoAssignments ? (
                                 <>
-                                  <td className="px-3 py-2 text-center">
-                                    {u0!.name} — ${u0!.pay}
+                                  <td
+                                    className={`px-3 py-2 text-center ${muted ? "text-zinc-500" : ""}`}
+                                  >
+                                    {left}
                                   </td>
-                                  <td className="px-3 py-2 text-center">
-                                    {u1!.name} — ${u1!.pay}
-                                  </td>
+                                  <td className="px-3 py-2 text-center">{right}</td>
                                 </>
+                              ) : (
+                                <td
+                                  colSpan={2}
+                                  className={`px-3 py-2 text-center ${muted ? "text-zinc-500" : ""}`}
+                                >
+                                  {left}
+                                </td>
                               )}
                             </tr>
                           );
@@ -1045,7 +1076,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                       <tfoot>
                         <tr className="border-t border-zinc-700 bg-zinc-900/60">
                           <td
-                            colSpan={8}
+                            colSpan={9}
                             className="px-3 py-2 text-sm font-semibold text-zinc-200"
                           >
                             Total Pay for {day.date} ={" "}
@@ -1055,7 +1086,8 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                       </tfoot>
                     </table>
                   </div>
-                ))}
+                  );
+                })}
               </div>
             </section>
           ))}

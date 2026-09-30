@@ -1,6 +1,8 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
+import { assignmentColumnPair, dayUsesTwoAssignmentColumns } from "@/lib/admin/umpirePayAssignments";
+import { formatReportFieldName } from "@/lib/admin/umpirePayFieldLabel";
 import { dateLabelSortValue, groupPayByPark, weekdayName } from "@/lib/admin/umpirePayGroups";
 import {
   pdfToBuffer,
@@ -31,11 +33,6 @@ export type UmpirePayRow = {
 
 function money(value: number): string {
   return new Intl.NumberFormat("en-US", { style: "currency", currency: "USD" }).format(value);
-}
-
-function assignmentCell(row: UmpireGameRow): string {
-  if (row.umpires.length === 0) return "No assignment";
-  return row.umpires.map((ump) => `${ump.name} ${money(ump.pay)}`).join("; ");
 }
 
 export function buildPayByParkPdf(input: {
@@ -97,18 +94,27 @@ export function buildPayByParkPdf(input: {
       doc.text(`Day Total: ${money(day.totalPay)}`, margin + contentWidth - 6, y + 11, { align: "right" });
       y += dayBarHeight;
 
+      const twoAssignments = dayUsesTwoAssignmentColumns(day.games);
       autoTable(doc, {
         startY: y,
-        head: [["Time", "Home", "Away", "Field", "Division", "Assignments", "Pay"]],
-        body: day.games.map((game) => [
-          game.time,
-          game.homeTeam,
-          game.awayTeam,
-          game.subvenue || "—",
-          game.ageGroup,
-          assignmentCell(game),
-          money(game.gamePayTotal),
-        ]),
+        tableWidth: contentWidth,
+        head: [
+          twoAssignments
+            ? ["Time", "Home", "Away", "Field", "Division", "Assignment 1", "Assignment 2", "Pay"]
+            : ["Time", "Home", "Away", "Field", "Division", "Assignments", "Pay"],
+        ],
+        body: day.games.map((game) => {
+          const [left, right] = assignmentColumnPair(game.umpires, money);
+          const base = [
+            game.time,
+            game.homeTeam,
+            game.awayTeam,
+            formatReportFieldName(game.subvenue),
+            game.ageGroup,
+          ];
+          if (twoAssignments) return [...base, left, right, money(game.gamePayTotal)];
+          return [...base, left, money(game.gamePayTotal)];
+        }),
         theme: "grid",
         styles: {
           fontSize: 8,
@@ -124,15 +130,26 @@ export function buildPayByParkPdf(input: {
           fontSize: 8,
         },
         alternateRowStyles: { fillColor: [248, 248, 248] },
-        columnStyles: {
-          0: { cellWidth: 48 },
-          1: { cellWidth: 100 },
-          2: { cellWidth: 100 },
-          3: { cellWidth: 56 },
-          4: { cellWidth: 56 },
-          5: { cellWidth: "auto" },
-          6: { cellWidth: 64, halign: "right" },
-        },
+        columnStyles: twoAssignments
+          ? {
+              0: { cellWidth: 46 },
+              1: { cellWidth: 88 },
+              2: { cellWidth: 88 },
+              3: { cellWidth: 100 },
+              4: { cellWidth: 48 },
+              5: { cellWidth: "auto", halign: "center" },
+              6: { cellWidth: "auto", halign: "center" },
+              7: { cellWidth: 56, halign: "right" },
+            }
+          : {
+              0: { cellWidth: 48 },
+              1: { cellWidth: 92 },
+              2: { cellWidth: 92 },
+              3: { cellWidth: 80 },
+              4: { cellWidth: 52 },
+              5: { cellWidth: "auto", halign: "center" },
+              6: { cellWidth: 64, halign: "right" },
+            },
         margin: { left: margin, right: margin },
       });
       const lastTable = (doc as unknown as { lastAutoTable: { finalY: number } }).lastAutoTable;
