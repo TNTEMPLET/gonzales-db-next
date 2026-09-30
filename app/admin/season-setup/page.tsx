@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import AdminSeasonSetupChecklist from "@/components/admin/AdminSeasonSetupChecklist";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import FallBallUmpirePayScheduleEditor from "@/components/admin/FallBallUmpirePayScheduleEditor";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
@@ -78,6 +79,10 @@ export default async function SeasonSetupPage({
           </p>
         </div>
 
+        <FallBallUmpirePayScheduleEditor
+          targetOrg={currentOrg}
+          canEdit={hasAdminRoleAtLeast(role, "ADMIN")}
+        />
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
           <AdminSeasonSetupChecklist targetOrg={currentOrg} />
         </div>

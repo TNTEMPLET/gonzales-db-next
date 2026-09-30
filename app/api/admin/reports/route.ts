@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAdminModule } from "@/lib/news/auth";
 import { fetchGames } from "@/lib/fetchGames";
+import { loadFallBallPaySchedule } from "@/lib/admin/fallBallUmpirePayStore";
+import { isFallBallOrg } from "@/lib/admin/fallBallUmpirePay";
 import { getAssignrLeagueId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 import {
   buildMainReportRows,
@@ -72,8 +74,13 @@ export async function GET(request: NextRequest) {
       return gameUsesUmpires(ageGroup) && matchesLeagueFilter(ageGroup, leagueFilter);
     });
 
+    const fallBallSchedule = isFallBallOrg(orgId)
+      ? await loadFallBallPaySchedule({ org: orgId })
+      : null;
+    const payOptions = { org: orgId, fallBallSchedule };
+
     if (mode === "umpire") {
-      const rows = buildUmpireReportRows(filteredGames, { org: orgId });
+      const rows = buildUmpireReportRows(filteredGames, payOptions);
       const totalPay = rows.reduce((sum, row) => sum + row.totalPay, 0);
       const totalGames = rows.reduce((sum, row) => sum + row.games, 0);
 
@@ -90,7 +97,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const rows = buildMainReportRows(filteredGames, { org: orgId });
+    const rows = buildMainReportRows(filteredGames, payOptions);
     const totalPay = rows.reduce((sum, row) => sum + row.gamePayTotal, 0);
 
     return NextResponse.json({

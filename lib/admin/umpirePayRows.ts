@@ -1,4 +1,8 @@
-import { fallBallAssignmentPay, isFallBallOrg } from "@/lib/admin/fallBallUmpirePay";
+import {
+  fallBallAssignmentPay,
+  isFallBallOrg,
+  type FallBallPaySchedule,
+} from "@/lib/admin/fallBallUmpirePay";
 import { venueMatchesPark } from "@/lib/admin/parkDirectorPark";
 import { type Game } from "@/lib/fetchGames";
 
@@ -48,6 +52,7 @@ const LEGACY_PAY_RATES: Record<string, number> = {
 
 export type UmpirePayOptions = {
   org?: string | null;
+  fallBallSchedule?: FallBallPaySchedule | null;
 };
 
 const SPLIT_50_AGE_PREFIXES = ["9U", "10U", "12U"];
@@ -257,6 +262,7 @@ function payForAssignments(
       umpiresOnGame: assignments.length,
       gamesThatNight: nightCounts.get(`${assignment.officialId}::${date}`) || 0,
       cancelled,
+      schedule: options?.fallBallSchedule,
     }),
   );
 }

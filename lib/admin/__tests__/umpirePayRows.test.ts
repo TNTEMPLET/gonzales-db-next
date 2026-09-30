@@ -1,7 +1,12 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { fallBallAssignmentPay, fallBallPayBand } from "../fallBallUmpirePay";
+import {
+  DEFAULT_FALL_BALL_PAY_SCHEDULE,
+  fallBallAssignmentPay,
+  fallBallPayBand,
+  parseFallBallPaySchedule,
+} from "../fallBallUmpirePay";
 import {
   buildMainReportRows,
   buildUmpireReportRows,
@@ -113,6 +118,54 @@ describe("Fall Ball 7/30/2026 pay sheet", () => {
     assert.equal(pay.length, 1);
     assert.equal(pay[0]?.games, 2);
     assert.equal(pay[0]?.totalPay, 160);
+  });
+
+  it("uses a saved schedule instead of the 7/30 defaults", () => {
+    const schedule = parseFallBallPaySchedule({
+      version: 1,
+      bands: [
+        { id: "coach", basePay: 45, oneGameNightPay: 70 },
+        { id: "nineTwelve", basePay: 65, oneGameNightPay: 90 },
+      ],
+    });
+    assert.equal(
+      fallBallAssignmentPay({
+        ageGroup: "8U CP",
+        umpiresOnGame: 2,
+        gamesThatNight: 2,
+        schedule,
+      }),
+      45,
+    );
+    assert.equal(
+      fallBallAssignmentPay({
+        ageGroup: "12U",
+        umpiresOnGame: 1,
+        gamesThatNight: 1,
+        schedule,
+      }),
+      90,
+    );
+    const rows = buildMainReportRows(
+      [assignedGame({ id: 1, age_group: "12U" })],
+      { org: "fallball", fallBallSchedule: schedule },
+    );
+    assert.equal(rows[0]?.umpires[0]?.pay, 90);
+  });
+
+  it("fills missing bands from the 7/30 sheet", () => {
+    const schedule = parseFallBallPaySchedule({ bands: [{ id: "coach", basePay: 41 }] });
+    assert.equal(schedule.bands.length, DEFAULT_FALL_BALL_PAY_SCHEDULE.bands.length);
+    assert.equal(fallBallPayBand("15U"), "thirteenFourteen");
+    assert.equal(
+      fallBallAssignmentPay({
+        ageGroup: "15U",
+        umpiresOnGame: 1,
+        gamesThatNight: 2,
+        schedule,
+      }),
+      80,
+    );
   });
 
   it("pays 17U $60 each with two umpires and $80 with one", () => {

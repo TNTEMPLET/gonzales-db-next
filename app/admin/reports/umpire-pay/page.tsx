@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import AdminReportsManager from "@/components/admin/AdminReportsManager";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import FallBallUmpirePayScheduleEditor from "@/components/admin/FallBallUmpirePayScheduleEditor";
 import ReportOrgPicker from "@/components/admin/ReportOrgPicker";
 import { parseReportContentOrg } from "@/lib/admin/reportOrg";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
@@ -89,6 +90,10 @@ export default async function AdminUmpirePayPage({
               This file is <span className="font-semibold text-white">{getOrgDisplayName(selectedOrg)}</span>{" "}
               only.
             </p>
+            <FallBallUmpirePayScheduleEditor
+              targetOrg={selectedOrg}
+              canEdit={hasAdminRoleAtLeast(role, "ADMIN")}
+            />
             <AdminReportsManager targetOrg={selectedOrg} />
           </>
         ) : (

@@ -1,6 +1,8 @@
 import "server-only";
 
 import { fetchGames } from "@/lib/fetchGames";
+import { loadFallBallPaySchedule } from "@/lib/admin/fallBallUmpirePayStore";
+import { isFallBallOrg } from "@/lib/admin/fallBallUmpirePay";
 import {
   buildMainReportRows,
   buildUmpireReportRows,
@@ -35,17 +37,21 @@ export async function loadUmpirePayReport(input: {
     return gameUsesUmpires(ageGroup) && matchesLeagueFilter(ageGroup, league);
   });
 
+  const fallBallSchedule = isFallBallOrg(input.orgId)
+    ? await loadFallBallPaySchedule({ org: input.orgId })
+    : null;
+  const payOptions = { org: input.orgId, fallBallSchedule };
   const parkPdf = buildPayByParkPdf({
     orgName: input.orgName,
     startDate: input.startDate,
     endDate: input.endDate,
-    rows: buildMainReportRows(games, { org: input.orgId }),
+    rows: buildMainReportRows(games, payOptions),
   });
   const umpirePdf = buildPayByUmpirePdf({
     orgName: input.orgName,
     startDate: input.startDate,
     endDate: input.endDate,
-    rows: buildUmpireReportRows(games, { org: input.orgId }),
+    rows: buildUmpireReportRows(games, payOptions),
   });
 
   return {

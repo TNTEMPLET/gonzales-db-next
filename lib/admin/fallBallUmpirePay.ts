@@ -7,6 +7,76 @@ export type FallBallPayBand =
   | "thirteenFourteen"
   | "fifteenSeventeen";
 
+export const FALL_BALL_PAY_BAND_IDS: FallBallPayBand[] = [
+  "tee",
+  "coach",
+  "nineTwelve",
+  "thirteenFourteen",
+  "fifteenSeventeen",
+];
+
+export type FallBallPayBandRow = {
+  id: FallBallPayBand;
+  label: string;
+  basePay: number;
+  umpiresNote: string;
+  /** Higher pay if that umpire has only one game that night. */
+  oneGameNightPay: number | null;
+  /** Higher pay if only one umpire is on the game. */
+  oneUmpirePay: number | null;
+};
+
+export type FallBallPaySchedule = {
+  version: 1;
+  bands: FallBallPayBandRow[];
+};
+
+export const DEFAULT_FALL_BALL_PAY_SCHEDULE: FallBallPaySchedule = {
+  version: 1,
+  bands: [
+    {
+      id: "tee",
+      label: "Tee Ball (3-6U)",
+      basePay: 0,
+      umpiresNote: "n/a",
+      oneGameNightPay: null,
+      oneUmpirePay: null,
+    },
+    {
+      id: "coach",
+      label: "6-8U (Coach Pitch)",
+      basePay: 40,
+      umpiresNote: "1 or 2",
+      oneGameNightPay: 60,
+      oneUmpirePay: null,
+    },
+    {
+      id: "nineTwelve",
+      label: "9-12U",
+      basePay: 60,
+      umpiresNote: "1 or 2",
+      oneGameNightPay: 80,
+      oneUmpirePay: null,
+    },
+    {
+      id: "thirteenFourteen",
+      label: "13-14U",
+      basePay: 80,
+      umpiresNote: "1",
+      oneGameNightPay: null,
+      oneUmpirePay: null,
+    },
+    {
+      id: "fifteenSeventeen",
+      label: "15-17U",
+      basePay: 60,
+      umpiresNote: "2",
+      oneGameNightPay: null,
+      oneUmpirePay: 80,
+    },
+  ],
+};
+
 export function isFallBallOrg(org?: string | null): boolean {
   return org === "fallball";
 }
@@ -47,18 +117,77 @@ export function fallBallPayBand(ageGroup: string): FallBallPayBand | null {
   return null;
 }
 
+function isPayBand(value: string): value is FallBallPayBand {
+  return (FALL_BALL_PAY_BAND_IDS as string[]).includes(value);
+}
+
+function asMoney(value: unknown, fallback: number): number {
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(n) || n < 0 || n > 500) return fallback;
+  return Math.round(n);
+}
+
+function asOptionalMoney(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const n = typeof value === "number" ? value : typeof value === "string" ? Number(value) : NaN;
+  if (!Number.isFinite(n) || n < 0 || n > 500) return null;
+  return Math.round(n);
+}
+
+export function parseFallBallPaySchedule(raw: unknown): FallBallPaySchedule {
+  const incoming =
+    raw && typeof raw === "object" && Array.isArray((raw as { bands?: unknown }).bands)
+      ? ((raw as { bands: unknown[] }).bands)
+      : [];
+  const byId = new Map<string, Record<string, unknown>>();
+  for (const row of incoming) {
+    if (!row || typeof row !== "object") continue;
+    const id = String((row as { id?: unknown }).id ?? "");
+    if (isPayBand(id)) byId.set(id, row as Record<string, unknown>);
+  }
+  return {
+    version: 1,
+    bands: DEFAULT_FALL_BALL_PAY_SCHEDULE.bands.map((fallback) => {
+      const stored = byId.get(fallback.id);
+      if (!stored) return { ...fallback };
+      return {
+        id: fallback.id,
+        label: fallback.label,
+        umpiresNote: fallback.umpiresNote,
+        basePay: asMoney(stored.basePay, fallback.basePay),
+        oneGameNightPay:
+          "oneGameNightPay" in stored ? asOptionalMoney(stored.oneGameNightPay) : fallback.oneGameNightPay,
+        oneUmpirePay:
+          fallback.id === "fifteenSeventeen"
+            ? ("oneUmpirePay" in stored ? asOptionalMoney(stored.oneUmpirePay) : fallback.oneUmpirePay)
+            : null,
+      };
+    }),
+  };
+}
+
+export function bandRow(
+  schedule: FallBallPaySchedule | null | undefined,
+  id: FallBallPayBand,
+): FallBallPayBandRow {
+  const source = schedule ?? DEFAULT_FALL_BALL_PAY_SCHEDULE;
+  return source.bands.find((row) => row.id === id) ?? DEFAULT_FALL_BALL_PAY_SCHEDULE.bands.find((row) => row.id === id)!;
+}
+
 export function fallBallAssignmentPay(input: {
   ageGroup: string;
   umpiresOnGame: number;
   gamesThatNight: number;
   cancelled?: boolean;
+  schedule?: FallBallPaySchedule | null;
 }): number {
   if (input.cancelled) return 0;
   const band = fallBallPayBand(input.ageGroup);
-  if (!band || band === "tee") return 0;
+  if (!band) return 0;
+  const row = bandRow(input.schedule, band);
+  if (band === "tee") return 0;
   const onlyOneGame = input.gamesThatNight <= 1;
-  if (band === "coach") return onlyOneGame ? 60 : 40;
-  if (band === "nineTwelve") return onlyOneGame ? 80 : 60;
-  if (band === "thirteenFourteen") return 80;
-  return input.umpiresOnGame === 1 ? 80 : 60;
+  if (row.oneGameNightPay != null && onlyOneGame) return row.oneGameNightPay;
+  if (row.oneUmpirePay != null && input.umpiresOnGame === 1) return row.oneUmpirePay;
+  return row.basePay;
 }

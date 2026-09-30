@@ -3,8 +3,9 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import type { ContentOrgId } from "@/lib/siteConfig";
 import ReportSendPanel from "@/components/admin/ReportSendPanel";
+import { dateLabelSortValue, groupPayByPark, weekdayName } from "@/lib/admin/umpirePayGroups";
+import type { ContentOrgId } from "@/lib/siteConfig";
 
 type LeagueFilter = "all" | "littleleague" | "diamond";
 type ReportMode = "main" | "umpire";
@@ -90,26 +91,6 @@ function startOfMonthIsoDate() {
   const now = new Date();
   const date = new Date(now.getFullYear(), now.getMonth(), 1);
   return date.toISOString().slice(0, 10);
-}
-
-function dateLabelSortValue(label: string) {
-  const parsed = new Date(label);
-  return Number.isNaN(parsed.valueOf()) ? 0 : parsed.valueOf();
-}
-
-function getDayName(dateLabel: string): string {
-  const parsed = new Date(dateLabel);
-  if (Number.isNaN(parsed.valueOf())) return "";
-  const days = [
-    "Sunday",
-    "Monday",
-    "Tuesday",
-    "Wednesday",
-    "Thursday",
-    "Friday",
-    "Saturday",
-  ];
-  return days[parsed.getDay()];
 }
 
 function PrinterIcon() {
@@ -238,38 +219,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
 
   const mainReportGroups = useMemo(() => {
     if (mode !== "main") return [] as MainParkGroup[];
-
-    const byPark = new Map<string, Map<string, MainReportRow[]>>();
-    for (const row of rows as MainReportRow[]) {
-      if (!byPark.has(row.venue)) {
-        byPark.set(row.venue, new Map<string, MainReportRow[]>());
-      }
-      const byDate = byPark.get(row.venue)!;
-      if (!byDate.has(row.date)) {
-        byDate.set(row.date, []);
-      }
-      byDate.get(row.date)!.push(row);
-    }
-
-    return Array.from(byPark.entries())
-      .map(([park, byDate]) => {
-        const days: MainDayGroup[] = Array.from(byDate.entries())
-          .map(([date, games]) => ({
-            date,
-            dayName: getDayName(date),
-            totalPay: games.reduce((sum, g) => sum + g.gamePayTotal, 0),
-            games,
-          }))
-          .sort(
-            (a, b) => dateLabelSortValue(a.date) - dateLabelSortValue(b.date),
-          );
-        return {
-          park,
-          days,
-          totalPay: days.reduce((sum, d) => sum + d.totalPay, 0),
-        };
-      })
-      .sort((a, b) => a.park.localeCompare(b.park));
+    return groupPayByPark(rows as MainReportRow[]);
   }, [mode, rows]);
 
   async function runReport(nextMode: ReportMode) {
@@ -730,7 +680,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
           doc.setFont("helvetica", "bold");
           doc.setTextColor(50, 50, 50);
           doc.text(
-            `${getDayName(day.date)}  —  ${day.date}`,
+            `${weekdayName(day.date)}  —  ${day.date}`,
             marginLeft + 6,
             currentY + 11,
           );
@@ -1023,6 +973,8 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                   >
                     <div className="bg-zinc-900/80 px-3 py-2 text-xs font-semibold text-zinc-200">
                       {day.dayName}
+                      {day.dayName ? " — " : ""}
+                      {day.date}
                     </div>
                     <table className="min-w-[920px] text-sm">
                       <thead className="border-y border-zinc-800 bg-zinc-950/70 text-zinc-400">
@@ -1131,7 +1083,7 @@ export default function AdminReportsManager({ targetOrg }: Props) {
                     className="overflow-x-auto rounded-lg border border-zinc-800"
                   >
                     <div className="bg-zinc-900/80 px-3 py-2 text-xs font-semibold text-zinc-200">
-                      {getDayName(day.date)} — {day.date} —{" "}
+                      {weekdayName(day.date)} — {day.date} —{" "}
                       {formatMoney(day.totalPay)}
                     </div>
                     <table className="min-w-[420px] text-sm sm:min-w-full">

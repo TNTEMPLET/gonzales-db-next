@@ -1,5 +1,7 @@
 import "server-only";
 
+import { loadFallBallPaySchedule } from "@/lib/admin/fallBallUmpirePayStore";
+import { isFallBallOrg } from "@/lib/admin/fallBallUmpirePay";
 import {
   gameUsesUmpires,
   normalizeAgeGroup,
@@ -46,5 +48,11 @@ export async function loadParkDirectorUmpirePay(input: {
     if (!gameUsesUmpires(ageGroup)) return false;
     return gameDateKey(game) === input.day;
   });
-  return summarizeUmpirePayForPark(thatDay, input.parkName, { org: input.org });
+  const fallBallSchedule = isFallBallOrg(input.org)
+    ? await loadFallBallPaySchedule({ org: input.org })
+    : null;
+  return summarizeUmpirePayForPark(thatDay, input.parkName, {
+    org: input.org,
+    fallBallSchedule,
+  });
 }
