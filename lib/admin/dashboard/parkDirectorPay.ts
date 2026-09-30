@@ -46,5 +46,5 @@ export async function loadParkDirectorUmpirePay(input: {
     if (!gameUsesUmpires(ageGroup)) return false;
     return gameDateKey(game) === input.day;
   });
-  return summarizeUmpirePayForPark(thatDay, input.parkName);
+  return summarizeUmpirePayForPark(thatDay, input.parkName, { org: input.org });
 }

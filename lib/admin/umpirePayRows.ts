@@ -1,3 +1,4 @@
+import { fallBallAssignmentPay, isFallBallOrg } from "@/lib/admin/fallBallUmpirePay";
 import { venueMatchesPark } from "@/lib/admin/parkDirectorPark";
 import { type Game } from "@/lib/fetchGames";
 
@@ -39,13 +40,14 @@ const LEGACY_PAY_RATES: Record<string, number> = {
   "9U DYB": 60,
   "10U DYB": 60,
   "10U LLB": 50,
-  "12U": 80,
   "12U DYB": 60,
   "12U LLB": 50,
-  "14U": 80,
-  "15U": 80,
   "15U DBB": 80,
   "17U DPM": 60,
+};
+
+export type UmpirePayOptions = {
+  org?: string | null;
 };
 
 const SPLIT_50_AGE_PREFIXES = ["9U", "10U", "12U"];
@@ -172,11 +174,6 @@ function extractAssignments(game: Game): Assignment[] {
   return assignments;
 }
 
-function isThirteenFourteenLabel(ageGroup: string): boolean {
-  const normalized = normalizeAgeGroupKey(ageGroup);
-  return /\b13\s*[-–]\s*14\b/.test(normalized) || /\b13\s*[-–]\s*15\b/.test(normalized);
-}
-
 function getBasePayRate(ageGroup: string): number {
   const normalized = normalizeAgeGroupKey(ageGroup);
   if (LEGACY_PAY_RATES[normalized]) {
@@ -187,15 +184,32 @@ function getBasePayRate(ageGroup: string): number {
     return 50;
   }
 
-  // Fall Ball 13-14 / 13-15 (Assignr often keeps the year-old label).
-  if (isThirteenFourteenLabel(normalized)) {
-    return 80;
-  }
-
   return 60;
 }
 
-function computeAssignmentPays(
+function nightKey(game: Game): string {
+  return String(game.localized_date || "").trim();
+}
+
+function isCancelledGame(status: string | undefined): boolean {
+  return String(status || "").trim().toUpperCase() === "C";
+}
+
+function officialGamesThatNight(games: Game[]): Map<string, number> {
+  const counts = new Map<string, number>();
+  for (const game of games) {
+    if (isCancelledGame(game.status as string | undefined)) continue;
+    const date = nightKey(game);
+    if (!date) continue;
+    for (const assignment of extractAssignments(game)) {
+      const key = `${assignment.officialId}::${date}`;
+      counts.set(key, (counts.get(key) || 0) + 1);
+    }
+  }
+  return counts;
+}
+
+function computeLegacyAssignmentPays(
   ageGroup: string,
   status: string | undefined,
   assignmentCount: number,
@@ -203,8 +217,7 @@ function computeAssignmentPays(
   if (assignmentCount <= 0) return [];
 
   const normalized = normalizeAgeGroupKey(ageGroup);
-  const normalizedStatus = (status || "").trim().toUpperCase();
-  if (normalizedStatus === "C") {
+  if (isCancelledGame(status)) {
     return Array.from({ length: assignmentCount }, () => 0);
   }
 
@@ -225,15 +238,38 @@ function computeAssignmentPays(
   return Array.from({ length: assignmentCount }, () => baseRate);
 }
 
-export function buildMainReportRows(games: Game[]): MainReportRow[] {
+function payForAssignments(
+  game: Game,
+  assignments: Assignment[],
+  options: UmpirePayOptions | undefined,
+  nightCounts: Map<string, number>,
+): number[] {
+  const ageGroup = normalizeAgeGroup(game.age_group as string | undefined);
+  const status = game.status as string | undefined;
+  if (!isFallBallOrg(options?.org)) {
+    return computeLegacyAssignmentPays(ageGroup, status, assignments.length);
+  }
+  const cancelled = isCancelledGame(status);
+  const date = nightKey(game);
+  return assignments.map((assignment) =>
+    fallBallAssignmentPay({
+      ageGroup,
+      umpiresOnGame: assignments.length,
+      gamesThatNight: nightCounts.get(`${assignment.officialId}::${date}`) || 0,
+      cancelled,
+    }),
+  );
+}
+
+export function buildMainReportRows(
+  games: Game[],
+  options?: UmpirePayOptions,
+): MainReportRow[] {
+  const nightCounts = officialGamesThatNight(games);
   const rows = games.map((game) => {
     const ageGroup = normalizeAgeGroup(game.age_group as string | undefined);
     const assignments = extractAssignments(game);
-    const assignmentPays = computeAssignmentPays(
-      ageGroup,
-      game.status as string | undefined,
-      assignments.length,
-    );
+    const assignmentPays = payForAssignments(game, assignments, options, nightCounts);
 
     return {
       gameId: String(game.id),
@@ -271,9 +307,13 @@ export type DayParkUmpirePay = {
   totalPay: number;
 };
 
-export function summarizeUmpirePayForPark(games: Game[], parkName: string): DayParkUmpirePay[] {
+export function summarizeUmpirePayForPark(
+  games: Game[],
+  parkName: string,
+  options?: UmpirePayOptions,
+): DayParkUmpirePay[] {
   const byUmpire = new Map<string, DayParkUmpirePay>();
-  for (const row of buildUmpireReportRows(games)) {
+  for (const row of buildUmpireReportRows(games, options)) {
     if (!venueMatchesPark(row.park, parkName)) continue;
     const existing = byUmpire.get(row.umpireId);
     if (!existing) {
@@ -291,19 +331,18 @@ export function summarizeUmpirePayForPark(games: Game[], parkName: string): DayP
   return Array.from(byUmpire.values()).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-export function buildUmpireReportRows(games: Game[]): UmpireReportRow[] {
+export function buildUmpireReportRows(
+  games: Game[],
+  options?: UmpirePayOptions,
+): UmpireReportRow[] {
   const byKey = new Map<string, UmpireReportRow>();
+  const nightCounts = officialGamesThatNight(games);
 
   for (const game of games) {
-    const ageGroup = normalizeAgeGroup(game.age_group as string | undefined);
     const assignments = extractAssignments(game);
     if (assignments.length === 0) continue;
 
-    const assignmentPays = computeAssignmentPays(
-      ageGroup,
-      game.status as string | undefined,
-      assignments.length,
-    );
+    const assignmentPays = payForAssignments(game, assignments, options, nightCounts);
     const park =
       (
         ((game._embedded as { venue?: { name?: string } } | undefined)?.venue?.name ||

@@ -73,7 +73,7 @@ export async function GET(request: NextRequest) {
     });
 
     if (mode === "umpire") {
-      const rows = buildUmpireReportRows(filteredGames);
+      const rows = buildUmpireReportRows(filteredGames, { org: orgId });
       const totalPay = rows.reduce((sum, row) => sum + row.totalPay, 0);
       const totalGames = rows.reduce((sum, row) => sum + row.games, 0);
 
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
       });
     }
 
-    const rows = buildMainReportRows(filteredGames);
+    const rows = buildMainReportRows(filteredGames, { org: orgId });
     const totalPay = rows.reduce((sum, row) => sum + row.gamePayTotal, 0);
 
     return NextResponse.json({

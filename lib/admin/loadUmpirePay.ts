@@ -39,13 +39,13 @@ export async function loadUmpirePayReport(input: {
     orgName: input.orgName,
     startDate: input.startDate,
     endDate: input.endDate,
-    rows: buildMainReportRows(games),
+    rows: buildMainReportRows(games, { org: input.orgId }),
   });
   const umpirePdf = buildPayByUmpirePdf({
     orgName: input.orgName,
     startDate: input.startDate,
     endDate: input.endDate,
-    rows: buildUmpireReportRows(games),
+    rows: buildUmpireReportRows(games, { org: input.orgId }),
   });
 
   return {
