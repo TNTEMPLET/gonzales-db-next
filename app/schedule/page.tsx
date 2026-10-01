@@ -1,4 +1,5 @@
 import ScheduleTable from "@/components/ScheduleTable";
+import { getActiveOrgAlert } from "@/lib/orgAlerts";
 import prisma from "@/lib/prisma";
 import { getOrgCapabilities } from "@/lib/org/capabilities";
 import {
@@ -86,6 +87,7 @@ export default async function SchedulePage({
   }
 
   const scheduleEnabled = getOrgCapabilities(orgId).schedule === "scheduler";
+  const orgAlert = await getActiveOrgAlert(orgId).catch(() => null);
 
   return (
     <main className="min-h-screen bg-zinc-950 text-white">
@@ -104,6 +106,11 @@ export default async function SchedulePage({
           initialError={error}
           currentViewMode={viewMode}
           standings={standings}
+          forceRainout={
+            orgAlert
+              ? { allParksOut: orgAlert.allParksOut, venues: orgAlert.venues }
+              : undefined
+          }
         />
       ) : (
         <p className="mx-auto max-w-6xl px-4 py-12 text-sm text-zinc-400">

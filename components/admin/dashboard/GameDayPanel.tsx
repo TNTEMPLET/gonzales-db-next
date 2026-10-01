@@ -2,13 +2,17 @@
 
 import { useState, useTransition } from "react";
 
-import { clearGameDayRainout, setGameDayRainout } from "@/app/admin/game-day/actions";
+import { clearGameDayRainout, previewGameDayRainout, setGameDayRainout } from "@/app/admin/game-day/actions";
+import RainoutEmailPreview from "@/components/admin/RainoutEmailPreview";
 import type { GameDayStatus } from "@/lib/admin/dashboard/gameDay";
+import type { RainoutNotifySummary } from "@/lib/rainout/types";
 
 export default function GameDayPanel({ status }: { status: GameDayStatus }) {
   const [allParksOut, setAllParksOut] = useState(status.allParksOut);
   const [parks, setParks] = useState<string[]>(status.rainedOutParks);
   const [error, setError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<RainoutNotifySummary | null>(null);
+  const [intent, setIntent] = useState<"preview" | "save" | "clear" | null>(null);
   const [pending, startTransition] = useTransition();
   const active = status.allParksOut || status.rainedOutParks.length > 0;
 
@@ -18,20 +22,46 @@ export default function GameDayPanel({ status }: { status: GameDayStatus }) {
     );
   }
 
+  function preview() {
+    setError(null);
+    setIntent("preview");
+    startTransition(async () => {
+      const result = await previewGameDayRainout({
+        organizationId: status.organizationId,
+        allParksOut,
+        parks,
+      });
+      if (!result.ok) {
+        setSummary(null);
+        setError(result.error);
+        return;
+      }
+      setSummary(result.summary ?? null);
+    });
+  }
+
   function save() {
     setError(null);
+    setIntent("save");
     startTransition(async () => {
       const result = await setGameDayRainout({
         organizationId: status.organizationId,
         allParksOut,
         parks,
       });
-      if (!result.ok) setError(result.error);
+      if (!result.ok) {
+        setSummary(null);
+        setError(result.error);
+        return;
+      }
+      setSummary(result.summary ?? null);
     });
   }
 
   function clear() {
     setError(null);
+    setSummary(null);
+    setIntent("clear");
     startTransition(async () => {
       const result = await clearGameDayRainout(status.organizationId);
       if (!result.ok) setError(result.error);
@@ -99,11 +129,19 @@ export default function GameDayPanel({ status }: { status: GameDayStatus }) {
       <div className="mt-4 flex flex-wrap gap-2">
         <button
           type="button"
+          onClick={preview}
+          disabled={pending || (!allParksOut && parks.length === 0)}
+          className="rounded-lg border border-zinc-700 px-4 py-2 text-sm font-semibold text-zinc-100 hover:bg-zinc-800 disabled:opacity-50"
+        >
+          {pending && intent === "preview" ? "Working…" : "Preview emails"}
+        </button>
+        <button
+          type="button"
           onClick={save}
           disabled={pending || (!allParksOut && parks.length === 0)}
           className="rounded-lg bg-red-700 px-4 py-2 text-sm font-semibold text-white hover:bg-red-600 disabled:opacity-50"
         >
-          {pending ? "Saving…" : "Rain out"}
+          {pending && intent === "save" ? "Saving…" : "Rain out"}
         </button>
         {active ? (
           <button
@@ -116,6 +154,7 @@ export default function GameDayPanel({ status }: { status: GameDayStatus }) {
           </button>
         ) : null}
       </div>
+      {summary ? <RainoutEmailPreview summary={summary} /> : null}
     </section>
   );
 }

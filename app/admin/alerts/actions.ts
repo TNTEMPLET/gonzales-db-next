@@ -1,6 +1,5 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
@@ -8,9 +7,17 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import { setOrgRainout } from "@/lib/rainout/apply";
+import { previewRainoutNotifications } from "@/lib/rainout/notify";
+import { revalidateRainoutPaths } from "@/lib/rainout/revalidate";
+import type { RainoutNotifySummary } from "@/lib/rainout/types";
 import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
+
+export type AlertActionResult =
+  | { ok: true; summary?: RainoutNotifySummary }
+  | { ok: false; error: string };
 
 async function requireParkAlertsAccess(targetOrg: ContentOrgId) {
   const cookieStore = await cookies();
@@ -30,36 +37,53 @@ async function requireParkAlertsAccess(targetOrg: ContentOrgId) {
   return adminUser;
 }
 
-export async function createOrgAlert(formData: FormData) {
-  const org = formData.get("org") as string;
+function rainoutFields(formData: FormData): {
+  org: string;
+  allParksOut: boolean;
+  parks: string[];
+  expiresAtRaw: string;
+} {
+  const org = String(formData.get("org") ?? "");
   const allParksOut = formData.get("allParksOut") === "true";
-  const venuesRaw = (formData.get("venues") as string | null) ?? "";
-  const expiresAtRaw = formData.get("expiresAt") as string;
+  const venuesRaw = String(formData.get("venues") ?? "");
+  const parks = venuesRaw
+    .split("\n")
+    .map((venue) => venue.trim())
+    .filter(Boolean);
+  return { org, allParksOut, parks, expiresAtRaw: String(formData.get("expiresAt") ?? "") };
+}
 
+export async function previewOrgAlert(formData: FormData): Promise<AlertActionResult> {
+  const { org, allParksOut, parks } = rainoutFields(formData);
   if (!CONTENT_ORGS.includes(org as ContentOrgId)) {
-    throw new Error("Invalid org");
+    return { ok: false, error: "Invalid org" };
   }
   await requireParkAlertsAccess(org as ContentOrgId);
+  const preview = await previewRainoutNotifications({ organizationId: org, allParksOut, parks });
+  if (!preview.ok) return preview;
+  return { ok: true, summary: preview.summary };
+}
 
-  const venues = venuesRaw
-    .split("\n")
-    .map((v) => v.trim())
-    .filter(Boolean);
+export async function createOrgAlert(formData: FormData): Promise<AlertActionResult> {
+  const { org, allParksOut, parks, expiresAtRaw } = rainoutFields(formData);
+
+  if (!CONTENT_ORGS.includes(org as ContentOrgId)) {
+    return { ok: false, error: "Invalid org" };
+  }
+  const adminUser = await requireParkAlertsAccess(org as ContentOrgId);
 
   const expiresAt = new Date(expiresAtRaw);
-  if (isNaN(expiresAt.getTime())) throw new Error("Invalid expiry date");
+  if (Number.isNaN(expiresAt.getTime())) return { ok: false, error: "Invalid expiry date" };
 
-  await prisma.orgAlert.create({
-    data: {
-      organizationId: org,
-      allParksOut,
-      venues: allParksOut ? [] : venues,
-      expiresAt,
-    },
+  const result = await setOrgRainout({
+    organizationId: org,
+    allParksOut,
+    parks,
+    expiresAt,
+    actorAdminId: adminUser.id,
   });
-
-  revalidatePath("/admin/alerts");
-  revalidatePath("/");
+  if (!result.ok) return result;
+  return { ok: true, summary: result.summary };
 }
 
 export async function deleteOrgAlert(alertId: string) {
@@ -69,9 +93,7 @@ export async function deleteOrgAlert(alertId: string) {
   await requireParkAlertsAccess(alert.organizationId as ContentOrgId);
 
   await prisma.orgAlert.delete({ where: { id: alertId } });
-
-  revalidatePath("/admin/alerts");
-  revalidatePath("/");
+  revalidateRainoutPaths();
 }
 
 export async function extendOrgAlert(alertId: string, newExpiresAt: Date) {
@@ -85,6 +107,5 @@ export async function extendOrgAlert(alertId: string, newExpiresAt: Date) {
     data: { expiresAt: newExpiresAt },
   });
 
-  revalidatePath("/admin/alerts");
-  revalidatePath("/");
+  revalidateRainoutPaths();
 }
