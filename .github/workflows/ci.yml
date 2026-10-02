@@ -100,25 +100,46 @@ jobs:
           await client.end();
           EOF
 
+      # Raw `prisma migrate deploy` cannot replay two historical files
+      # (TeamPlayer is altered before it is created; 20260729000000 quotes
+      # googleSub incorrectly). Editing those files would change checksums and
+      # break deploy on databases that already applied them. scripts/bootstrap-fresh-database.mjs
+      # is the supported from-scratch replay: it runs migrate deploy and, only
+      # when one of those known migrations fails, applies an idempotent correction
+      # and marks that migration applied.
       - name: Apply migrations to empty database
         run: |
           if [ -z "${DATABASE_URL}" ] || [ -z "${SHADOW_DATABASE_URL}" ]; then
             echo "Throwaway DATABASE_URL or SHADOW_DATABASE_URL is empty."
             exit 1
           fi
-          pnpm exec prisma migrate deploy
+          node scripts/bootstrap-fresh-database.mjs
 
-      # Prisma 7.8 flags: --from-migrations and --to-schema (the old
-      # --from-schema-datamodel / --from-url / --shadow-database-url flags
-      # were removed). The shadow database is datasource.shadowDatabaseUrl
-      # in prisma.config.ts, fed by SHADOW_DATABASE_URL. Exit 0 means no
-      # drift; exit 2 means the migrations and schema differ.
+      # Prisma 7.8 removed --from-url and --shadow-database-url.
+      # --from-migrations replays raw migration.sql on the shadow database
+      # (datasource.shadowDatabaseUrl / SHADOW_DATABASE_URL) and dies on the
+      # two historical files above, so it cannot be the drift gate.
+      # --from-config-datasource introspects the throwaway database this job
+      # just migrated. --to-schema is the Prisma schema. Exit 0 is no drift;
+      # exit 2 means they differ. The script is printed so the delta is visible
+      # without a connection string.
       - name: Fail on migration drift
         run: |
+          set +e
           pnpm exec prisma migrate diff \
-            --from-migrations prisma/migrations \
+            --from-config-datasource \
             --to-schema prisma/schema.prisma \
-            --exit-code
+            --exit-code \
+            --script > "$RUNNER_TEMP/migration-drift.sql" 2> "$RUNNER_TEMP/migration-drift.err"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "No migration drift."
+            exit 0
+          fi
+          echo "prisma migrate diff exited $status."
+          sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[redacted]#g' "$RUNNER_TEMP/migration-drift.err" "$RUNNER_TEMP/migration-drift.sql"
+          exit "$status"
 
       - name: Reject unapproved destructive migrations
         if: github.event_name == 'pull_request'

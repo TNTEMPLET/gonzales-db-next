@@ -45,8 +45,23 @@ if (!databaseUrl) {
 
 const { Client } = await import("pg");
 
+function pgClientOptions(connectionString) {
+  // Hosted Postgres (the pooled gateway this script was written for) needs SSL.
+  // The throwaway Postgres in GitHub Actions does not speak SSL; requiring it
+  // makes the corrective steps fail before they can run.
+  let host = "";
+  try {
+    host = new URL(connectionString).hostname;
+  } catch {
+    host = "";
+  }
+  const local = host === "localhost" || host === "127.0.0.1" || host === "::1";
+  if (local) return { connectionString };
+  return { connectionString, ssl: { rejectUnauthorized: false } };
+}
+
 async function runSql(sql) {
-  const client = new Client({ connectionString: databaseUrl, ssl: { rejectUnauthorized: false } });
+  const client = new Client(pgClientOptions(databaseUrl));
   await client.connect();
   try {
     await client.query(sql);
