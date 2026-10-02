@@ -111,7 +111,11 @@ jobs:
           run_sql "$PROD_DATABASE_URL" "$prod_sql"
           echo "Staging marker is present and production has none."
 
+      # pg_restore often exits non-zero after it has already written rows
+      # (warnings, --clean drop noise). A failed step must not skip the scrub:
+      # staging would be left holding unscrubbed production data.
       - name: Stream production into staging
+        id: stream_prod
         env:
           PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
@@ -140,7 +144,11 @@ jobs:
       # pg_restore --clean drops public._environment. Put the marker back and
       # re-check it before any scrub. The pre-restore check already proved this
       # URL was staging, and production was proven not to have the table.
+      # Runs after a non-zero pg_restore too, so the scrub below can still refuse
+      # any database that is not marked staging.
       - name: Restore staging marker after refresh
+        id: restore_marker
+        if: ${{ always() && (steps.stream_prod.conclusion == 'success' || steps.stream_prod.conclusion == 'failure') }}
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
@@ -178,7 +186,12 @@ jobs:
           rm -f "$err"
           exit "$status"
 
+      # always() so a non-zero pg_restore cannot skip this step. The job still
+      # fails when the restore step failed; later install/migrate steps stay
+      # skipped. Cancelled runs do not scrub (stream_prod.conclusion is cancelled).
       - name: Scrub staging PII
+        id: scrub_pii
+        if: ${{ always() && (steps.stream_prod.conclusion == 'success' || steps.stream_prod.conclusion == 'failure') }}
         env:
           STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
         run: |
@@ -191,6 +204,23 @@ jobs:
           export PATH="/usr/lib/postgresql/17/bin:$PATH"
           redact() { sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[redacted]#g' "$1"; }
           err="$(mktemp)"
+          # Retry the marker here. A failure of the previous step must not be
+          # the reason scrub.sql refuses and leaves production rows in place.
+          set +e
+          psql "$STAGING" -q -v ON_ERROR_STOP=1 <<'SQL' 2>"$err"
+          CREATE TABLE IF NOT EXISTS public._environment (
+            value text PRIMARY KEY CHECK (value = 'staging')
+          );
+          DELETE FROM public._environment;
+          INSERT INTO public._environment (value) VALUES ('staging');
+          SQL
+          status=$?
+          set -e
+          redact "$err" >&2 || true
+          if [ "$status" -ne 0 ]; then
+            rm -f "$err"
+            exit "$status"
+          fi
           set +e
           psql "$STAGING" -q -v ON_ERROR_STOP=1 -f scripts/staging/scrub.sql 2>"$err"
           status=$?
