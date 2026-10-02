@@ -1,11 +1,7 @@
 import { redirect } from "next/navigation";
 
-const TAB_TO_PATH: Record<string, string> = {
-  caps: "/admin/cap-orders",
-  shirts: "/admin/shirt-orders",
-  sponsors: "/admin/sponsors",
-  reports: "/admin/reports",
-};
+import OrdersUnavailable from "@/components/admin/OrdersUnavailable";
+import { legacyOrdersDestination } from "@/lib/auth/ordersModule";
 
 export default async function LegacyOrdersRedirectPage({
   searchParams,
@@ -14,8 +10,12 @@ export default async function LegacyOrdersRedirectPage({
 }) {
   const resolvedParams = await searchParams;
   const tabValue = resolvedParams.tab;
-  const tab = typeof tabValue === "string" ? tabValue : "caps";
-  const basePath = TAB_TO_PATH[tab] || TAB_TO_PATH.caps;
+  const tab = typeof tabValue === "string" ? tabValue : undefined;
+  const destination = legacyOrdersDestination(tab);
+  if (destination.kind === "unavailable") {
+    return <OrdersUnavailable />;
+  }
+  const basePath = destination.path;
 
   const params = new URLSearchParams();
   for (const [key, value] of Object.entries(resolvedParams)) {

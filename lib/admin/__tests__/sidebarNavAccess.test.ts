@@ -49,9 +49,31 @@ describe("sidebar job leaves", () => {
     }
   });
 
-  it("shows cap and shirt orders to a master admin", () => {
-    const hrefs = leafHrefs("MASTER_ADMIN");
-    assert.equal(hrefs.includes("/admin/cap-orders"), true);
-    assert.equal(hrefs.includes("/admin/shirt-orders"), true);
+  it("shows cap and shirt orders to a master admin when the orders flag is on", () => {
+    const previous = process.env.ORDERS_ENABLED;
+    process.env.ORDERS_ENABLED = "true";
+    try {
+      const hrefs = leafHrefs("MASTER_ADMIN");
+      assert.equal(hrefs.includes("/admin/cap-orders"), true);
+      assert.equal(hrefs.includes("/admin/shirt-orders"), true);
+    } finally {
+      if (previous === undefined) delete process.env.ORDERS_ENABLED;
+      else process.env.ORDERS_ENABLED = previous;
+    }
+  });
+
+  it("hides cap and shirt orders from a master admin when the orders flag is off", () => {
+    const previous = process.env.ORDERS_ENABLED;
+    delete process.env.ORDERS_ENABLED;
+    try {
+      const hrefs = leafHrefs("MASTER_ADMIN");
+      assert.equal(hrefs.includes("/admin/cap-orders"), false);
+      assert.equal(hrefs.includes("/admin/shirt-orders"), false);
+      assert.equal(hrefs.includes("/admin/sponsors"), true);
+      assert.equal(hrefs.includes("/admin/reports"), true);
+    } finally {
+      if (previous === undefined) delete process.env.ORDERS_ENABLED;
+      else process.env.ORDERS_ENABLED = previous;
+    }
   });
 });
