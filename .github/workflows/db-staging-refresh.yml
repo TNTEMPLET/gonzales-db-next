@@ -204,6 +204,23 @@ jobs:
           export PATH="/usr/lib/postgresql/17/bin:$PATH"
           redact() { sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[redacted]#g' "$1"; }
           err="$(mktemp)"
+          # Retry the marker here. A failure of the previous step must not be
+          # the reason scrub.sql refuses and leaves production rows in place.
+          set +e
+          psql "$STAGING" -q -v ON_ERROR_STOP=1 <<'SQL' 2>"$err"
+          CREATE TABLE IF NOT EXISTS public._environment (
+            value text PRIMARY KEY CHECK (value = 'staging')
+          );
+          DELETE FROM public._environment;
+          INSERT INTO public._environment (value) VALUES ('staging');
+          SQL
+          status=$?
+          set -e
+          redact "$err" >&2 || true
+          if [ "$status" -ne 0 ]; then
+            rm -f "$err"
+            exit "$status"
+          fi
           set +e
           psql "$STAGING" -q -v ON_ERROR_STOP=1 -f scripts/staging/scrub.sql 2>"$err"
           status=$?
