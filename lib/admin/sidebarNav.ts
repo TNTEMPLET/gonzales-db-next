@@ -59,12 +59,6 @@ export function buildAdminSidebarNav(
     ],
   };
 
-  const competitionVisible =
-    allowModule("TEAMS") ||
-    allowModule("DRAFT") ||
-    allowModule("SCORES") ||
-    allowModule("ASSIGNR") ||
-    allowModule("REGISTRATION_WINDOWS");
   const competition: AdminSidebarSubcategory = {
     id: "competition",
     label: ADMIN_DASHBOARD_CATEGORY_META.competition.label,
@@ -75,10 +69,7 @@ export function buildAdminSidebarNav(
       ...(allowModule("TEAMS")
         ? [{ id: "teams", label: "Teams & Rosters", href: leafHref("/admin/teams", orgSuffix) }]
         : []),
-      // Scheduler / SportsConnect Import have no dedicated AdminModule --
-      // each page gates on the same "competitionVisible" OR-check, so match
-      // that here too: show whenever the subcategory itself is.
-      ...(competitionVisible
+      ...(allowModule("SPORTS_CONNECT")
         ? [
             {
               id: "sports-connect",
@@ -102,7 +93,7 @@ export function buildAdminSidebarNav(
       ...(allowModule("SCORES")
         ? [{ id: "scores", label: "Scores & Standings", href: leafHref("/admin/scores", orgSuffix) }]
         : []),
-      ...(competitionVisible
+      ...(allowModule("SCHEDULER")
         ? [{ id: "scheduler", label: "Scheduler", href: leafHref("/admin/scheduler", orgSuffix) }]
         : []),
       ...(allowModule("ASSIGNR")
@@ -155,22 +146,18 @@ export function buildAdminSidebarNav(
       ...(allowModule("ORG_DOCUMENTS")
         ? [{ id: "drive", label: "Org Documents", href: leafHref("/admin/documents", orgSuffix) }]
         : []),
-      // Surveys shares TEAMS' gate today (no dedicated module) -- placed
-      // here per explicit product decision, not a Competition & Play leaf.
-      ...(allowModule("TEAMS")
+      // Surveys stay under Publishing. Moving them under Comms is a later slice.
+      ...(allowModule("SURVEYS")
         ? [{ id: "surveys", label: "Surveys", href: `/admin/surveys${orgSuffix}` }]
         : []),
     ],
   };
 
-  // Cap Orders / Shirt Orders have no dedicated AdminModule -- fall back to
-  // the subcategory's own visibility rather than a per-module gate.
-  const ordersVisible = allowModule("SPONSORS") || allowModule("REPORTS");
   const orders: AdminSidebarSubcategory = {
     id: "orders",
     label: ADMIN_DASHBOARD_CATEGORY_META.orders.label,
     leaves: [
-      ...(ordersVisible
+      ...(allowModule("ORDERS")
         ? [
             { id: "caps", label: "Cap Orders", href: leafHref("/admin/cap-orders", orgSuffix) },
             { id: "shirts", label: "Shirt Orders", href: leafHref("/admin/shirt-orders", orgSuffix) },

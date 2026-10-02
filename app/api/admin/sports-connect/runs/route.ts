@@ -32,7 +32,7 @@ function parseSummary(value: unknown): Record<string, unknown> | null {
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },
@@ -79,7 +79,7 @@ export async function GET(request: NextRequest) {
 
 /** Create an audit run (PREVIEW/RUNNING) or record a completed assisted import. */
 export async function POST(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },

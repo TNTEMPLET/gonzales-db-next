@@ -40,7 +40,7 @@ export default async function AdminSurveysPage({
   );
   const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
-  if (!canAccessAdminModule(role, "TEAMS")) {
+  if (!canAccessAdminModule(role, "SURVEYS")) {
     redirect("/admin?denied=surveys");
   }
 

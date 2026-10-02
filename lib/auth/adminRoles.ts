@@ -36,6 +36,11 @@ export const ADMIN_MODULES = [
   "DRAFT",
   "ENROLLMENT_KPI",
   "SEASON_SETUP",
+  "SURVEYS",
+  "SCHEDULER",
+  "SPORTS_CONNECT",
+  "ORDERS",
+  "GAME_DAY",
 ] as const;
 
 export type AdminModule = (typeof ADMIN_MODULES)[number];
@@ -72,6 +77,43 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   DRAFT: "ADMIN",
   ENROLLMENT_KPI: "BOARD_MEMBER",
   SEASON_SETUP: "PARK_DIRECTOR",
+  SURVEYS: "ADMIN",
+  SCHEDULER: "ADMIN",
+  SPORTS_CONNECT: "ADMIN",
+  ORDERS: "MASTER_ADMIN",
+  GAME_DAY: "PARK_DIRECTOR",
+};
+
+const ADMIN_MODULE_LABELS: Record<AdminModule, string> = {
+  DASHBOARD: "Dashboard",
+  USERS: "Directory",
+  VOLUNTEERS: "Volunteer cards",
+  TEAMS: "Teams and rosters",
+  SPONSORS: "Sponsors",
+  REPORTS: "Reports and umpire pay",
+  SCORES: "Scores and standings",
+  DUGOUT_MODERATION: "Dugout moderation",
+  NEWS_ADMIN: "News publishing",
+  ALL_STAR_VAULT: "All-Star vault",
+  ALL_STAR_PAYMENTS: "All-Star payments",
+  COMMUNICATIONS: "Communications",
+  SOCIAL_MEDIA: "Social media",
+  ORG_DOCUMENTS: "Org documents",
+  ASSIGNR: "Umpire desk (Assignr)",
+  TOURNAMENT_BRACKETS: "Tournament brackets",
+  TOURNAMENT_ALERTS: "Tournament alerts",
+  PARK_ALERTS: "Park alerts",
+  PARK_INFO: "Park info",
+  ROLE_ASSIGNMENT: "Role assignment",
+  REGISTRATION_WINDOWS: "Registration windows",
+  DRAFT: "Online draft",
+  ENROLLMENT_KPI: "Enrollment and KPIs",
+  SEASON_SETUP: "Season setup",
+  SURVEYS: "Surveys",
+  SCHEDULER: "Scheduler",
+  SPORTS_CONNECT: "Sports Connect import",
+  ORDERS: "Cap and shirt orders",
+  GAME_DAY: "Game day and field desk",
 };
 
 const MASTER_ONLY_MODULES = new Set<AdminModule>([
@@ -84,6 +126,7 @@ const MASTER_ONLY_MODULES = new Set<AdminModule>([
   "PARK_INFO",
   "ROLE_ASSIGNMENT",
   "REGISTRATION_WINDOWS",
+  "ORDERS",
 ]);
 
 export function isAdminRole(
@@ -143,14 +186,20 @@ export function getMinimumRoleForModule(module: AdminModule): AdminRole {
   return moduleMinimumRole[module];
 }
 
+export function getAdminModuleLabel(module: AdminModule): string {
+  return ADMIN_MODULE_LABELS[module];
+}
+
 export function canAccessAdminModule(
   role: AdminRole,
   module: AdminModule,
+  options?: { masterDeployment?: boolean },
 ): boolean {
   if (role === "MASTER_ADMIN") {
     return true;
   }
-  if (MASTER_ONLY_MODULES.has(module) && !isMasterDeployment()) {
+  const masterDeployment = options?.masterDeployment ?? isMasterDeployment();
+  if (MASTER_ONLY_MODULES.has(module) && !masterDeployment) {
     return false;
   }
   return hasAdminRoleAtLeast(role, getMinimumRoleForModule(module));
@@ -163,8 +212,20 @@ export function getAdminRoleLabel(role: AdminRole): string {
   return "Admin";
 }
 
+const ROLE_SUGGESTION_NOTES: Record<AdminRole, string> = {
+  PARK_DIRECTOR:
+    "Game day, scores, umpire pay, and season setup. Park directors do not see cap or shirt orders.",
+  BOARD_MEMBER:
+    "Board access for moderation and payments oversight. Surveys, the scheduler, Sports Connect, and orders stay with higher roles.",
+  ADMIN:
+    "Site operator. Includes surveys, the scheduler, Sports Connect, teams, and everything a board member can open. Cap and shirt orders stay with master admins.",
+  MASTER_ADMIN:
+    "Requires platform-level privileges. Only for trusted cross-org operators. Includes cap and shirt orders.",
+};
+
 /**
  * Suggest the least-privilege AdminRole for a set of desired modules.
+ * The suggestion is the highest minimum role among those modules.
  * Used by the Role Assignment console to guide Master Admins.
  */
 export function suggestLeastPrivilegeRole(
@@ -173,39 +234,15 @@ export function suggestLeastPrivilegeRole(
   if (!desiredModules || desiredModules.length === 0) {
     return {
       role: "PARK_DIRECTOR",
-      notes: "Minimal access. Good for read-only oversight (reports + basic dashboard).",
+      notes: ROLE_SUGGESTION_NOTES.PARK_DIRECTOR,
     };
   }
 
-  const needsMaster = desiredModules.some((m) =>
-    ["TOURNAMENT_BRACKETS", "TOURNAMENT_ALERTS", "ROLE_ASSIGNMENT", "REGISTRATION_WINDOWS"].includes(m),
-  );
-  if (needsMaster) {
-    return {
-      role: "MASTER_ADMIN",
-      notes: "Requires platform-level privileges. Only for trusted cross-org operators.",
-    };
+  let role: AdminRole = "PARK_DIRECTOR";
+  for (const module of desiredModules) {
+    const minimum = getMinimumRoleForModule(module);
+    if (roleRank[minimum] > roleRank[role]) role = minimum;
   }
 
-  const needsBoard = desiredModules.some((m) =>
-    [
-      "DUGOUT_MODERATION",
-      "NEWS_ADMIN",
-      "ALL_STAR_PAYMENTS",
-      "SOCIAL_MEDIA",
-      "ORG_DOCUMENTS",
-    ].includes(m),
-  );
-  if (needsBoard) {
-    return {
-      role: "BOARD_MEMBER",
-      notes: "Elevated operational + publishing/moderation. Use when scores, moderation, or payments oversight is required.",
-    };
-  }
-
-  // Default for day-to-day league work (teams, users, volunteers, comms, assignr, etc.)
-  return {
-    role: "ADMIN",
-    notes: "Site-level operator. Preferred for most league staff. Grant per-organization via AdminOrgMembership.",
-  };
+  return { role, notes: ROLE_SUGGESTION_NOTES[role] };
 }

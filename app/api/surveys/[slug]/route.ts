@@ -20,12 +20,12 @@ export async function GET(
     // `preview=1` lets a logged-in admin load a draft (unpublished) survey
     // through this same public renderer, without opening drafts up to
     // everyone -- the flag only does anything if the request also carries a
-    // valid admin session for the TEAMS module. A normal, unauthenticated
+    // valid admin session for the SURVEYS module. A normal, unauthenticated
     // request behaves exactly as before: published surveys only.
     const previewRequested = request.nextUrl.searchParams.get("preview") === "1";
     let allowUnpublished = false;
     if (previewRequested) {
-      const auth = await ensureAdminModule(request, "TEAMS");
+      const auth = await ensureAdminModule(request, "SURVEYS");
       // Master admins can preview any org's draft; a scoped admin only
       // theirs -- mirrors the org check in the authenticated survey-detail
       // route rather than trusting the `org` query param on its own.

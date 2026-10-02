@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import type { AdminModule } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, type AdminModule, type AdminRole } from "@/lib/auth/adminRoles";
 import {
   ADMIN_DASHBOARD_CARD_SPECS,
   ADMIN_DASHBOARD_CATEGORY_META,
@@ -74,35 +74,61 @@ describe("admin dashboard card specs", () => {
     assert.equal(pathByTitle.Sponsors, "/admin/sponsors");
   });
 
-  it("keeps the same module gate as the destination page", () => {
+  it("keeps reports and alerts on their own gates, not orders", () => {
     const allow = (module: AdminModule) => module === "REPORTS" || module === "PARK_ALERTS";
     const cards = buildAdminDashboardCardDescriptors({
       allowModule: allow,
       orgFor: () => "gonzales",
     });
     const titles = cards.map((card) => card.title);
-    assert.deepEqual(titles, [
-      "Park & Tournament Alerts",
-      "Cap Orders",
-      "Shirt Orders",
-      "Reports",
-    ]);
+    assert.deepEqual(titles, ["Park & Tournament Alerts", "Reports"]);
     assert.ok(cards.every((card) => card.href.endsWith("?org=gonzales")));
     assert.ok(cards.every((card) => !isAdminHubHref(card.href)));
   });
 
-  it("shows alerts and cap orders through their alternate modules", () => {
-    const allow = (module: AdminModule) => module === "TOURNAMENT_ALERTS" || module === "SPONSORS";
+  it("gates cap and shirt cards on ORDERS alone", () => {
+    for (const title of ["Cap Orders", "Shirt Orders"]) {
+      const card = ADMIN_DASHBOARD_CARD_SPECS.find((spec) => spec.title === title);
+      assert.ok(card);
+      assert.equal(card.module, "ORDERS");
+      assert.equal(card.accessModules, undefined);
+    }
+
+    const orders = buildAdminDashboardCardDescriptors({
+      allowModule: (module) => module === "ORDERS",
+      orgFor: () => "gonzales",
+    }).map((card) => card.title);
+    assert.deepEqual(orders, ["Cap Orders", "Shirt Orders"]);
+
+    for (const role of ["PARK_DIRECTOR", "BOARD_MEMBER", "ADMIN"] as const satisfies readonly AdminRole[]) {
+      const titles = buildAdminDashboardCardDescriptors({
+        allowModule: (module) => canAccessAdminModule(role, module),
+        orgFor: () => "gonzales",
+      }).map((card) => card.title);
+      assert.equal(titles.includes("Cap Orders"), false, role);
+      assert.equal(titles.includes("Shirt Orders"), false, role);
+    }
+
+    const masterTitles = buildAdminDashboardCardDescriptors({
+      allowModule: (module) => canAccessAdminModule("MASTER_ADMIN", module),
+      orgFor: () => "gonzales",
+    }).map((card) => card.title);
+    assert.equal(masterTitles.includes("Cap Orders"), true);
+    assert.equal(masterTitles.includes("Shirt Orders"), true);
+
+    const sponsors = buildAdminDashboardCardDescriptors({
+      allowModule: (module) => module === "SPONSORS",
+      orgFor: () => "gonzales",
+    }).map((card) => card.title);
+    assert.deepEqual(sponsors, ["Sponsors"]);
+  });
+
+  it("shows alerts through the tournament-alerts alternate", () => {
     const titles = buildAdminDashboardCardDescriptors({
-      allowModule: allow,
+      allowModule: (module) => module === "TOURNAMENT_ALERTS",
       orgFor: () => "ascension",
     }).map((card) => card.title);
-    assert.deepEqual(titles, [
-      "Park & Tournament Alerts",
-      "Cap Orders",
-      "Shirt Orders",
-      "Sponsors",
-    ]);
+    assert.deepEqual(titles, ["Park & Tournament Alerts"]);
   });
 
   it("hides a card when none of its modules are allowed", () => {

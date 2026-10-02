@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { resolveAllStarVaultAccessForAdmin } from "@/lib/allStar/auth";
-import { hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
   ADMIN_SESSION_COOKIE,
@@ -77,7 +77,11 @@ export default async function AdminTravelEventPage({
           />
         </div>
 
-        <AllStarProgramNav stage="travel" org={currentOrg} />
+        <AllStarProgramNav
+          stage="travel"
+          org={currentOrg}
+          showOrders={canAccessAdminModule(role, "ORDERS")}
+        />
 
         <TravelEventDetailClient eventId={id} organizationId={currentOrg} />
       </section>

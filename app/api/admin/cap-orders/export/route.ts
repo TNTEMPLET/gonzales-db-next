@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import {
   buildCapOrdersCsv,
   type CapOrdersExportOrg,
 } from "@/lib/merch/capOrdersExport";
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAdminModule(request, "ORDERS");
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const url = new URL(request.url);

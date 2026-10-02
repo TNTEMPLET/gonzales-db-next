@@ -7,7 +7,7 @@ import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
 } from "@/lib/auth/adminSession";
-import { hasAdminRoleAtLeast } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { rainoutActionError } from "@/lib/rainout/actionError";
 import { clearOrgRainout, setOrgRainout } from "@/lib/rainout/apply";
@@ -28,7 +28,7 @@ async function requireGameDayRole(
   if (!adminUser) return { ok: false, error: "Sign in again to update game day." };
 
   const role = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, organizationId);
-  if (!role || !hasAdminRoleAtLeast(role, "PARK_DIRECTOR")) {
+  if (!role || !canAccessAdminModule(role, "GAME_DAY")) {
     return { ok: false, error: "You cannot change game day for this league." };
   }
   return { ok: true, adminId: adminUser.id };

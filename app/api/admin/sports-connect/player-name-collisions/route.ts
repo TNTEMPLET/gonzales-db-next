@@ -21,7 +21,7 @@ function resolveSeasonYear(request: NextRequest, targetOrg: ContentOrgId): numbe
 }
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
   }
@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message || "Unauthorized" }, { status: auth.status });
   }

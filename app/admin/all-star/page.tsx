@@ -2,7 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import { resolveAllStarVaultAccessForAdmin } from "@/lib/allStar/auth";
-import { hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
@@ -80,7 +80,11 @@ export default async function AdminAllStarPage({
           </p>
         </div>
 
-        <AllStarProgramNav stage="vault" org={currentOrg} />
+        <AllStarProgramNav
+          stage="vault"
+          org={currentOrg}
+          showOrders={canAccessAdminModule(role, "ORDERS")}
+        />
 
         <AllStarVaultManager
           key={currentOrg}

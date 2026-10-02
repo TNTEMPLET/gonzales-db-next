@@ -38,15 +38,7 @@ export default async function SportsConnectPage({
   );
   const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
-  // No dedicated AdminModule for this tab -- gates the same as the sidebar's
-  // "competitionVisible" check (lib/admin/sidebarNav.ts).
-  const competitionVisible =
-    canAccessAdminModule(role, "TEAMS") ||
-    canAccessAdminModule(role, "DRAFT") ||
-    canAccessAdminModule(role, "SCORES") ||
-    canAccessAdminModule(role, "ASSIGNR") ||
-    canAccessAdminModule(role, "REGISTRATION_WINDOWS");
-  if (!competitionVisible) {
+  if (!canAccessAdminModule(role, "SPORTS_CONNECT")) {
     redirect("/admin?denied=sports-connect");
   }
 

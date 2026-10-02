@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import {
   getAllowedFromAddresses,
@@ -42,7 +42,7 @@ function escapeHtml(value: string) {
 
 /** Options for the in-module email form (Communications From list + provider status). */
 export async function GET(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAdminModule(request, "ORDERS");
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const [fromOptions, defaultFrom] = await Promise.all([
@@ -69,7 +69,7 @@ export async function GET(request: NextRequest) {
  * lib/communications/orderReportEmail.ts for suppression checks + audit trail.
  */
 export async function POST(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAdminModule(request, "ORDERS");
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const admin = await getAdminUserFromRequest(request);

@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import {
   defaultShirtIngestOpts,
   syncShirtOrdersFromReporting,
@@ -88,7 +88,7 @@ function mapOrder(r: {
 
 // ── GET — load from DB ────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAdminModule(request, "ORDERS");
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const gonzalesKw = process.env.PAYPAL_SHIRT_ITEM_GONZALES ?? "";
@@ -122,7 +122,7 @@ export async function GET(request: NextRequest) {
 
 // ── POST — sync from PayPal, upsert into DB ───────────────────────────────────
 export async function POST(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAdminModule(request, "ORDERS");
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   if (!isPayPalOrdersConfigured()) {
@@ -220,7 +220,7 @@ export async function POST(request: NextRequest) {
 
 // ── PATCH — fulfill toggle and/or edit size labels ────────────────────────────
 export async function PATCH(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAdminModule(request, "ORDERS");
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   let body: {

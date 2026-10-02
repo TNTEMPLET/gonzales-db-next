@@ -38,10 +38,7 @@ export default async function CapOrdersPage({
   );
   const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
-  // No dedicated AdminModule for this tab -- same "ordersVisible" gate
-  // sidebarNav.ts uses to decide whether to show this leaf at all.
-  const ordersVisible = canAccessAdminModule(role, "SPONSORS") || canAccessAdminModule(role, "REPORTS");
-  if (!ordersVisible) {
+  if (!canAccessAdminModule(role, "ORDERS")) {
     redirect("/admin?denied=cap-orders");
   }
 

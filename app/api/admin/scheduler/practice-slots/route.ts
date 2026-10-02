@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 
 /** GET ?org=&seasonYear=&ageGroup= -- every real team in the division plus its current practice slot, if any. */
 export async function GET(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SCHEDULER");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
@@ -120,7 +120,7 @@ export async function GET(request: NextRequest) {
  * the partner goes second, durationMinutes later.
  */
 export async function POST(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SCHEDULER");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
@@ -261,7 +261,7 @@ export async function POST(request: NextRequest) {
 
 /** DELETE ?slotId= -- removes one team's practice slot, unpairing its sibling if shared. */
 export async function DELETE(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SCHEDULER");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }

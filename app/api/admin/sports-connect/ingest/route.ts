@@ -19,7 +19,7 @@ export const runtime = "nodejs";
  *
  * Auth (either):
  * - Authorization: Bearer <SPORTS_CONNECT_INGEST_SECRET>
- * - Admin session with TEAMS module (manual testing)
+ * - Admin session with SPORTS_CONNECT module (manual testing)
  *
  * Body: multipart form fields:
  *   file (required), org (required), seasonYear (optional)
@@ -39,7 +39,7 @@ async function authorizeIngest(request: NextRequest): Promise<
 
   if (isSportsConnectIngestConfigured()) {
     // Secret is configured: require it for non-session callers.
-    const auth = await ensureAdminModule(request, "TEAMS");
+    const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
     if (auth.ok) return { ok: true, via: "session" };
     return {
       ok: false,
@@ -49,7 +49,7 @@ async function authorizeIngest(request: NextRequest): Promise<
   }
 
   // Secret not configured: allow admin session only (local/dev).
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (auth.ok) return { ok: true, via: "session" };
   return {
     ok: false,

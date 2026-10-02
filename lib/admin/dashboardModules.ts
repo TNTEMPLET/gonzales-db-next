@@ -67,8 +67,10 @@ const moduleCatalog: Record<
   ROLE_ASSIGNMENT: { category: "people", sortOrder: 12 },
   SEASON_SETUP: { category: "competition", sortOrder: 5 },
   TEAMS: { category: "competition", sortOrder: 10 },
+  SPORTS_CONNECT: { category: "competition", sortOrder: 12 },
   DRAFT: { category: "competition", sortOrder: 15 },
   SCORES: { category: "competition", sortOrder: 20 },
+  SCHEDULER: { category: "competition", sortOrder: 22 },
   ENROLLMENT_KPI: { category: "competition", sortOrder: 25 },
   ASSIGNR: { category: "competition", sortOrder: 30 },
   REGISTRATION_WINDOWS: { category: "competition", sortOrder: 40 },
@@ -76,12 +78,15 @@ const moduleCatalog: Record<
   TOURNAMENT_ALERTS: { category: "park", sortOrder: 20 },
   PARK_ALERTS: { category: "park", sortOrder: 30 },
   PARK_INFO: { category: "park", sortOrder: 40 },
+  GAME_DAY: { category: "park", sortOrder: 50 },
   COMMUNICATIONS: { category: "publishing", sortOrder: 10 },
   NEWS_ADMIN: { category: "publishing", sortOrder: 20 },
   SOCIAL_MEDIA: { category: "publishing", sortOrder: 30 },
   DUGOUT_MODERATION: { category: "publishing", sortOrder: 40 },
   ORG_DOCUMENTS: { category: "publishing", sortOrder: 50 },
+  SURVEYS: { category: "publishing", sortOrder: 60 },
   ALL_STAR_PAYMENTS: { category: "orders", sortOrder: 10 },
+  ORDERS: { category: "orders", sortOrder: 12 },
   SPONSORS: { category: "orders", sortOrder: 20 },
   REPORTS: { category: "orders", sortOrder: 30 },
   ALL_STAR_VAULT: { category: "allstar", sortOrder: 10 },
@@ -172,7 +177,7 @@ export type AdminDashboardCardSpec = {
   /**
    * Visible when any of these modules is allowed.
    * Defaults to the card's own module. Use this when the destination page
-   * allows more than one module (alerts, cap/shirt orders, reports).
+   * allows more than one module (alerts, reports).
    */
   accessModules?: readonly AdminModule[];
   path: string;
@@ -184,8 +189,8 @@ export type AdminDashboardCardSpec = {
 
 /**
  * One card per real admin page. Hub URLs stay as bookmark redirects only.
- * Cap and shirt orders share the orders-desk gate (sponsors or reports) and
- * have no module of their own. Alerts is one page for park and tournament alerts.
+ * Cap and shirt orders use ORDERS. Alerts is one page for park and tournament alerts.
+ * Reports stays visible when any of its source modules is allowed.
  */
 export const ADMIN_DASHBOARD_CARD_SPECS: readonly AdminDashboardCardSpec[] = [
   {
@@ -317,8 +322,7 @@ export const ADMIN_DASHBOARD_CARD_SPECS: readonly AdminDashboardCardSpec[] = [
     action: "Open Documents",
   },
   {
-    module: "REPORTS",
-    accessModules: ["SPONSORS", "REPORTS"],
+    module: "ORDERS",
     path: "/admin/cap-orders",
     title: "Cap Orders",
     description: "Fulfill cap orders.",
@@ -326,8 +330,7 @@ export const ADMIN_DASHBOARD_CARD_SPECS: readonly AdminDashboardCardSpec[] = [
     sortOrder: 10,
   },
   {
-    module: "REPORTS",
-    accessModules: ["SPONSORS", "REPORTS"],
+    module: "ORDERS",
     path: "/admin/shirt-orders",
     title: "Shirt Orders",
     description: "Championship shirt orders.",
