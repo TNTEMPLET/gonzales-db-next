@@ -4,6 +4,7 @@ import { useRef, useState, useTransition } from "react";
 import type { ContentOrgId } from "@/lib/siteConfig";
 import { createOrgAlert, deleteOrgAlert, previewOrgAlert } from "@/app/admin/alerts/actions";
 import RainoutEmailPreview from "@/components/admin/RainoutEmailPreview";
+import { rethrowNavigationError } from "@/lib/rainout/actionError";
 import type { RainoutNotifySummary } from "@/lib/rainout/types";
 
 type OrgAlert = {
@@ -56,13 +57,20 @@ export default function AdminAlertsManager({ activeAlerts, availableOrgs, defaul
     setFormError(null);
     setIntent(action);
     startTransition(async () => {
-      const result = action === "preview" ? await previewOrgAlert(formData) : await createOrgAlert(formData);
-      if (!result.ok) {
+      try {
+        const result = action === "preview" ? await previewOrgAlert(formData) : await createOrgAlert(formData);
+        if (!result.ok) {
+          setSummary(null);
+          setFormError(result.error);
+          return;
+        }
+        setSummary(result.summary ?? null);
+        setFormError(result.summary?.error ?? null);
+      } catch (error: unknown) {
+        rethrowNavigationError(error);
         setSummary(null);
-        setFormError(result.error);
-        return;
+        setFormError(error instanceof Error && error.message ? error.message : "Rainout update failed.");
       }
-      setSummary(result.summary ?? null);
     });
   }
 

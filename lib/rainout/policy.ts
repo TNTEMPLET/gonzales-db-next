@@ -2,6 +2,7 @@ type RainoutEnv = {
   RAINOUT_EMAILS_ENABLED?: string;
   RAINOUT_EMAIL_ALLOWLIST?: string | null;
   COMMUNICATIONS_MODULE_ENABLED?: string;
+  VERCEL_ENV?: string | null;
 };
 
 type RainoutEnvSource = RainoutEnv | NodeJS.ProcessEnv;
@@ -33,15 +34,23 @@ export function rainoutSendingEnabled(env: RainoutEnvSource = process.env): bool
   return rainoutEmailsEnabled(env) && communicationsModuleEnabled(env);
 }
 
+function productionEnv(env: RainoutEnvSource): boolean {
+  return (readEnv(env, "VERCEL_ENV") ?? "").trim() === "production";
+}
+
 /**
- * Comma-separated allowlist. Unset or blank means every computed family may be mailed.
+ * Comma-separated allowlist.
+ * In production, unset or blank means every computed family may be mailed.
+ * Outside production (preview, local, unset VERCEL_ENV), unset or blank means nobody.
  * A list that is present but empty (for example ",") matches nobody.
  */
 export function rainoutEmailAllowlist(env: RainoutEnvSource = process.env): Set<string> | null {
   const raw = readEnv(env, "RAINOUT_EMAIL_ALLOWLIST");
-  if (raw == null) return null;
-  if (raw.trim() === "") return null;
-  const emails = raw.split(",")
+  if (raw == null || raw.trim() === "") {
+    return productionEnv(env) ? null : new Set();
+  }
+  const emails = raw
+    .split(",")
     .map((email) => email.trim().toLowerCase())
     .filter(Boolean);
   return new Set(emails);

@@ -4,6 +4,7 @@ import { useState, useTransition } from "react";
 
 import { clearGameDayRainout, previewGameDayRainout, setGameDayRainout } from "@/app/admin/game-day/actions";
 import RainoutEmailPreview from "@/components/admin/RainoutEmailPreview";
+import { rethrowNavigationError } from "@/lib/rainout/actionError";
 import type { GameDayStatus } from "@/lib/admin/dashboard/gameDay";
 import type { RainoutNotifySummary } from "@/lib/rainout/types";
 
@@ -26,17 +27,24 @@ export default function GameDayPanel({ status }: { status: GameDayStatus }) {
     setError(null);
     setIntent("preview");
     startTransition(async () => {
-      const result = await previewGameDayRainout({
-        organizationId: status.organizationId,
-        allParksOut,
-        parks,
-      });
-      if (!result.ok) {
+      try {
+        const result = await previewGameDayRainout({
+          organizationId: status.organizationId,
+          allParksOut,
+          parks,
+        });
+        if (!result.ok) {
+          setSummary(null);
+          setError(result.error);
+          return;
+        }
+        setSummary(result.summary ?? null);
+        setError(result.summary?.error ?? null);
+      } catch (caught: unknown) {
+        rethrowNavigationError(caught);
         setSummary(null);
-        setError(result.error);
-        return;
+        setError(caught instanceof Error && caught.message ? caught.message : "Could not preview rainout emails.");
       }
-      setSummary(result.summary ?? null);
     });
   }
 
@@ -44,17 +52,24 @@ export default function GameDayPanel({ status }: { status: GameDayStatus }) {
     setError(null);
     setIntent("save");
     startTransition(async () => {
-      const result = await setGameDayRainout({
-        organizationId: status.organizationId,
-        allParksOut,
-        parks,
-      });
-      if (!result.ok) {
+      try {
+        const result = await setGameDayRainout({
+          organizationId: status.organizationId,
+          allParksOut,
+          parks,
+        });
+        if (!result.ok) {
+          setSummary(null);
+          setError(result.error);
+          return;
+        }
+        setSummary(result.summary ?? null);
+        setError(result.summary?.error ?? null);
+      } catch (caught: unknown) {
+        rethrowNavigationError(caught);
         setSummary(null);
-        setError(result.error);
-        return;
+        setError(caught instanceof Error && caught.message ? caught.message : "Rainout update failed.");
       }
-      setSummary(result.summary ?? null);
     });
   }
 
@@ -63,8 +78,13 @@ export default function GameDayPanel({ status }: { status: GameDayStatus }) {
     setSummary(null);
     setIntent("clear");
     startTransition(async () => {
-      const result = await clearGameDayRainout(status.organizationId);
-      if (!result.ok) setError(result.error);
+      try {
+        const result = await clearGameDayRainout(status.organizationId);
+        if (!result.ok) setError(result.error);
+      } catch (caught: unknown) {
+        rethrowNavigationError(caught);
+        setError(caught instanceof Error && caught.message ? caught.message : "Could not clear the rainout.");
+      }
     });
   }
 

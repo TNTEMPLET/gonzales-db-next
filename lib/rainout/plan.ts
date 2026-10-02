@@ -2,6 +2,7 @@ import { leagueCalendarDate } from "@/lib/seasonConfig";
 import { getOrgDisplayName, isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
 import { loadKnownParkNames, loadNotifiedParkKeys, loadRainoutAudience, loadSuppressedEmails } from "./load";
+import { isMissingRainoutTableError } from "./missingTable";
 import { countOutcomes, deliveryOutcome, toFamilyViews } from "./outcomes";
 import { newlyAffectedParks, parksTreatedAsOut, resolveRainoutSelection } from "./parks";
 import { rainoutEmailAllowlist, rainoutSendingEnabled } from "./policy";
@@ -20,6 +21,8 @@ export type RainoutPlan = {
   suppressedEmails: Set<string>;
   allowlist: Set<string> | null;
   emailsEnabled: boolean;
+  /** True when RainoutParkNotification is not in the database yet. */
+  notificationTableMissing: boolean;
 };
 
 export async function planRainout(input: {
@@ -34,12 +37,20 @@ export async function planRainout(input: {
   const organizationId = input.organizationId;
   const asOf = input.asOf ?? new Date();
   const calendarDate = leagueCalendarDate(asOf);
-  const [knownParks, audience, alreadyNotified, suppressedEmails] = await Promise.all([
+  const notifiedPromise = loadNotifiedParkKeys(organizationId, calendarDate).then(
+    (keys) => ({ missing: false as const, keys }),
+    (error: unknown) => {
+      if (!isMissingRainoutTableError(error)) throw error;
+      return { missing: true as const, keys: [] as string[] };
+    },
+  );
+  const [knownParks, audience, notified, suppressedEmails] = await Promise.all([
     loadKnownParkNames(organizationId, asOf),
     loadRainoutAudience(organizationId, calendarDate),
-    loadNotifiedParkKeys(organizationId, calendarDate),
+    notifiedPromise,
     loadSuppressedEmails(organizationId),
   ]);
+  const alreadyNotified = notified.keys;
 
   const selection = resolveRainoutSelection({
     allParksOut: input.allParksOut,
@@ -81,6 +92,7 @@ export async function planRainout(input: {
       suppressedEmails,
       allowlist: rainoutEmailAllowlist(),
       emailsEnabled: rainoutSendingEnabled(),
+      notificationTableMissing: notified.missing,
     },
   };
 }

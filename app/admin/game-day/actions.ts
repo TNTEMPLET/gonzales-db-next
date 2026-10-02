@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth/adminSession";
 import { hasAdminRoleAtLeast } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import { rainoutActionError } from "@/lib/rainout/actionError";
 import { clearOrgRainout, setOrgRainout } from "@/lib/rainout/apply";
 import { previewRainoutNotifications } from "@/lib/rainout/notify";
 import type { RainoutNotifySummary } from "@/lib/rainout/types";
@@ -38,12 +39,16 @@ export async function previewGameDayRainout(input: {
   allParksOut: boolean;
   parks: string[];
 }): Promise<GameDayActionResult> {
-  if (!isContentOrgId(input.organizationId)) return { ok: false, error: "Unknown league." };
-  const auth = await requireGameDayRole(input.organizationId);
-  if (!auth.ok) return auth;
-  const preview = await previewRainoutNotifications(input);
-  if (!preview.ok) return preview;
-  return { ok: true, summary: preview.summary };
+  try {
+    if (!isContentOrgId(input.organizationId)) return { ok: false, error: "Unknown league." };
+    const auth = await requireGameDayRole(input.organizationId);
+    if (!auth.ok) return auth;
+    const preview = await previewRainoutNotifications(input);
+    if (!preview.ok) return preview;
+    return { ok: true, summary: preview.summary };
+  } catch (error: unknown) {
+    return { ok: false, error: rainoutActionError(error, "Could not preview rainout emails.") };
+  }
 }
 
 export async function setGameDayRainout(input: {
@@ -51,24 +56,32 @@ export async function setGameDayRainout(input: {
   allParksOut: boolean;
   parks: string[];
 }): Promise<GameDayActionResult> {
-  if (!isContentOrgId(input.organizationId)) return { ok: false, error: "Unknown league." };
-  const auth = await requireGameDayRole(input.organizationId);
-  if (!auth.ok) return auth;
+  try {
+    if (!isContentOrgId(input.organizationId)) return { ok: false, error: "Unknown league." };
+    const auth = await requireGameDayRole(input.organizationId);
+    if (!auth.ok) return auth;
 
-  const result = await setOrgRainout({
-    organizationId: input.organizationId,
-    allParksOut: input.allParksOut,
-    parks: input.parks,
-    expiresAt: endOfCentralDay(new Date()),
-    actorAdminId: auth.adminId,
-  });
-  if (!result.ok) return result;
-  return { ok: true, summary: result.summary };
+    const result = await setOrgRainout({
+      organizationId: input.organizationId,
+      allParksOut: input.allParksOut,
+      parks: input.parks,
+      expiresAt: endOfCentralDay(new Date()),
+      actorAdminId: auth.adminId,
+    });
+    if (!result.ok) return result;
+    return { ok: true, summary: result.summary };
+  } catch (error: unknown) {
+    return { ok: false, error: rainoutActionError(error, "Rainout update failed.") };
+  }
 }
 
 export async function clearGameDayRainout(organizationId: string): Promise<GameDayActionResult> {
-  if (!isContentOrgId(organizationId)) return { ok: false, error: "Unknown league." };
-  const auth = await requireGameDayRole(organizationId);
-  if (!auth.ok) return auth;
-  return clearOrgRainout(organizationId);
+  try {
+    if (!isContentOrgId(organizationId)) return { ok: false, error: "Unknown league." };
+    const auth = await requireGameDayRole(organizationId);
+    if (!auth.ok) return auth;
+    return clearOrgRainout(organizationId);
+  } catch (error: unknown) {
+    return { ok: false, error: rainoutActionError(error, "Could not clear the rainout.") };
+  }
 }

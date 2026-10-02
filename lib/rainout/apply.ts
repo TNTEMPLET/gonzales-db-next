@@ -2,6 +2,7 @@ import { parseOrgAlertVenues, type OrgAlertRecord } from "@/lib/orgAlerts";
 import prisma from "@/lib/prisma";
 import { isContentOrgId } from "@/lib/siteConfig";
 
+import { rainoutFailureMessage } from "./missingTable";
 import { sendRainoutNotifications } from "./notify";
 import { planRainout } from "./plan";
 import { rainoutEmailsEnabled } from "./policy";
@@ -48,59 +49,63 @@ export async function setOrgRainout(input: {
     return { ok: false, error: "Invalid expiry date." };
   }
 
-  const planned = await planRainout({
-    organizationId: input.organizationId,
-    allParksOut: input.allParksOut,
-    parks: input.parks,
-  });
-  if (!planned.ok) return planned;
+  try {
+    const planned = await planRainout({
+      organizationId: input.organizationId,
+      allParksOut: input.allParksOut,
+      parks: input.parks,
+    });
+    if (!planned.ok) return planned;
 
-  const now = new Date();
-  const [, created] = await prisma.$transaction([
-    prisma.orgAlert.deleteMany({
-      where: { organizationId: input.organizationId, expiresAt: { gt: now } },
-    }),
-    prisma.orgAlert.create({
-      data: {
+    const now = new Date();
+    const [, created] = await prisma.$transaction([
+      prisma.orgAlert.deleteMany({
+        where: { organizationId: input.organizationId, expiresAt: { gt: now } },
+      }),
+      prisma.orgAlert.create({
+        data: {
+          organizationId: input.organizationId,
+          allParksOut: planned.plan.allParksOut,
+          venues: planned.plan.allParksOut ? [] : planned.plan.parks,
+          expiresAt: input.expiresAt,
+        },
+      }),
+    ]);
+
+    revalidateRainoutPaths();
+
+    let summary: RainoutNotifySummary;
+    try {
+      summary = await sendRainoutNotifications({
         organizationId: input.organizationId,
         allParksOut: planned.plan.allParksOut,
-        venues: planned.plan.allParksOut ? [] : planned.plan.parks,
-        expiresAt: input.expiresAt,
+        parks: planned.plan.parks,
+        actorAdminId: input.actorAdminId,
+        alertId: created.id,
+      });
+    } catch (err: unknown) {
+      summary = emptySummary({
+        allParksOut: planned.plan.allParksOut,
+        parks: planned.plan.parks,
+        error: rainoutFailureMessage(err, "Rainout email failed."),
+      });
+    }
+
+    return {
+      ok: true,
+      alert: {
+        id: created.id,
+        organizationId: created.organizationId,
+        allParksOut: created.allParksOut,
+        venues: parseOrgAlertVenues(created.venues),
+        expiresAt: created.expiresAt,
+        createdAt: created.createdAt,
       },
-    }),
-  ]);
-
-  revalidateRainoutPaths();
-
-  let summary: RainoutNotifySummary;
-  try {
-    summary = await sendRainoutNotifications({
-      organizationId: input.organizationId,
-      allParksOut: planned.plan.allParksOut,
-      parks: planned.plan.parks,
-      actorAdminId: input.actorAdminId,
-      alertId: created.id,
-    });
+      summary,
+    };
   } catch (err: unknown) {
-    summary = emptySummary({
-      allParksOut: planned.plan.allParksOut,
-      parks: planned.plan.parks,
-      error: err instanceof Error ? err.message : "Rainout email failed.",
-    });
+    return { ok: false, error: rainoutFailureMessage(err, "Rainout update failed.") };
   }
-
-  return {
-    ok: true,
-    alert: {
-      id: created.id,
-      organizationId: created.organizationId,
-      allParksOut: created.allParksOut,
-      venues: parseOrgAlertVenues(created.venues),
-      expiresAt: created.expiresAt,
-      createdAt: created.createdAt,
-    },
-    summary,
-  };
 }
 
 export async function clearOrgRainout(organizationId: string): Promise<{ ok: true } | { ok: false; error: string }> {

@@ -82,8 +82,8 @@ export async function POST(
     await prisma.communicationCampaign.update({
       where: { id: campaign.id },
       data: {
-        status: result.failed > 0 ? "FAILED" : "SENT",
-        sentAt: new Date(),
+        status: result.failed > 0 ? "FAILED" : result.sent > 0 ? "SENT" : "CANCELED",
+        ...(result.sent > 0 ? { sentAt: new Date() } : {}),
         approvedAt: campaign.approvedAt ?? new Date(),
       },
     });

@@ -34,7 +34,11 @@ export default function RainoutEmailPreview({ summary }: { summary: RainoutNotif
           Set RAINOUT_EMAILS_ENABLED=true to send. Until then this stays a dry run.
         </p>
       ) : null}
-      {summary.error ? <p className="mt-2 text-red-300">{summary.error}</p> : null}
+      {summary.error ? (
+        <p className="mt-2 text-sm font-medium text-red-300" role="alert">
+          {summary.error}
+        </p>
+      ) : null}
       {summary.families.length === 0 ? (
         <p className="mt-3 text-zinc-400">No families to email for this rainout.</p>
       ) : (

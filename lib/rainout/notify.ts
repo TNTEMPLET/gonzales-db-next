@@ -7,6 +7,12 @@ import prisma from "@/lib/prisma";
 import { reconnectPrisma } from "@/lib/prismaRetry";
 import { getSiteConfigForOrg } from "@/lib/siteConfig";
 
+import {
+  isMissingRainoutTableError,
+  rainoutFailureMessage,
+  RAINOUT_TABLE_MISSING_MESSAGE,
+  warnMissingRainoutTable,
+} from "./missingTable";
 import { parkKey } from "./parks";
 import { planRainout, summarizePlan, type RainoutPlan } from "./plan";
 import { rainoutEmailsEnabled } from "./policy";
@@ -58,9 +64,17 @@ export async function previewRainoutNotifications(input: {
   allParksOut: boolean;
   parks: string[];
 }): Promise<{ ok: true; summary: RainoutNotifySummary } | { ok: false; error: string }> {
-  const planned = await planRainout(input);
-  if (!planned.ok) return planned;
-  return { ok: true, summary: summarizePlan(planned.plan, "preview") };
+  try {
+    const planned = await planRainout(input);
+    if (!planned.ok) return planned;
+    const summary = summarizePlan(planned.plan, "preview");
+    if (planned.plan.notificationTableMissing) {
+      return { ok: true, summary: { ...summary, error: RAINOUT_TABLE_MISSING_MESSAGE } };
+    }
+    return { ok: true, summary };
+  } catch (error: unknown) {
+    return { ok: false, error: rainoutFailureMessage(error, "Could not preview rainout emails.") };
+  }
 }
 
 /**
@@ -102,6 +116,9 @@ export async function sendRainoutNotifications(input: {
 
   const plan = planned.plan;
   const summary = summarizePlan(plan, "posted");
+  if (plan.notificationTableMissing) {
+    return { ...summary, error: RAINOUT_TABLE_MISSING_MESSAGE };
+  }
   if (plan.families.length === 0) return summary;
 
   const fromAddress = await getDefaultFromAddress();
@@ -179,6 +196,15 @@ export async function sendRainoutNotifications(input: {
         text: rendered.text,
         from: fromAddress,
       });
+      if (provider.status === "skipped") {
+        deliveries.push({
+          email: family.email,
+          outcome: "allowlist",
+          status: "SKIPPED_ALLOWLIST",
+          errorMessage: provider.skippedReason,
+        });
+        continue;
+      }
       sent += 1;
       deliveries.push({
         email: family.email,
@@ -218,9 +244,34 @@ export async function sendRainoutNotifications(input: {
     })),
   });
 
+  const skippedByGuard = new Set(
+    deliveries
+      .filter((row) => row.status === "SKIPPED_ALLOWLIST")
+      .map((row) => row.email.toLowerCase()),
+  );
+  const families =
+    skippedByGuard.size === 0
+      ? summary.families
+      : summary.families.map((family) =>
+          skippedByGuard.has(family.email.toLowerCase())
+            ? { ...family, outcome: "allowlist" as const }
+            : family,
+        );
+  const postedSummary: RainoutNotifySummary = {
+    ...summary,
+    families,
+    allowlistActive: summary.allowlistActive || skippedByGuard.size > 0,
+    sent,
+    failed,
+    dryRunCount: deliveries.filter((row) => row.status === "SKIPPED_DRY_RUN").length,
+    skippedSuppressed: deliveries.filter((row) => row.status === "SKIPPED_SUPPRESSED").length,
+    skippedAllowlist: deliveries.filter((row) => row.status === "SKIPPED_ALLOWLIST").length,
+    error: failed > 0 ? `${failed} rainout email${failed === 1 ? "" : "s"} failed.` : null,
+  };
+
   await prisma.communicationCampaign.update({
     where: { id: campaign.id },
-    data: { status: failed > 0 ? "FAILED" : "SENT" },
+    data: { status: failed > 0 ? "FAILED" : sent > 0 ? "SENT" : "CANCELED" },
   });
 
   const everyoneSuppressed =
@@ -230,23 +281,21 @@ export async function sendRainoutNotifications(input: {
   // Once any message is sent, the parks are done for the day.
   const shouldMarkParks = plan.emailsEnabled && failed === 0 && (sent > 0 || everyoneSuppressed);
   if (shouldMarkParks && plan.newlyAffected.length > 0) {
-    await prisma.rainoutParkNotification.createMany({
-      data: plan.newlyAffected.map((park) => ({
-        organizationId: plan.organizationId,
-        calendarDate: plan.calendarDate,
-        parkKey: parkKey(park),
-      })),
-      skipDuplicates: true,
-    });
+    try {
+      await prisma.rainoutParkNotification.createMany({
+        data: plan.newlyAffected.map((park) => ({
+          organizationId: plan.organizationId,
+          calendarDate: plan.calendarDate,
+          parkKey: parkKey(park),
+        })),
+        skipDuplicates: true,
+      });
+    } catch (error: unknown) {
+      if (!isMissingRainoutTableError(error)) throw error;
+      warnMissingRainoutTable();
+      return { ...postedSummary, error: RAINOUT_TABLE_MISSING_MESSAGE };
+    }
   }
 
-  return {
-    ...summary,
-    sent,
-    failed,
-    dryRunCount: deliveries.filter((row) => row.status === "SKIPPED_DRY_RUN").length,
-    skippedSuppressed: deliveries.filter((row) => row.status === "SKIPPED_SUPPRESSED").length,
-    skippedAllowlist: deliveries.filter((row) => row.status === "SKIPPED_ALLOWLIST").length,
-    error: failed > 0 ? `${failed} rainout email${failed === 1 ? "" : "s"} failed.` : null,
-  };
+  return postedSummary;
 }

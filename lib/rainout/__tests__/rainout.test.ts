@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { isMissingRainoutTableError, RAINOUT_TABLE_MISSING_MESSAGE, warnMissingRainoutTable } from "../missingTable";
 import { deliveryOutcome } from "../outcomes";
 import { newlyAffectedParks, parkKey, parksTreatedAsOut, resolveRainoutSelection } from "../parks";
 import { allowlistPermits, rainoutEmailAllowlist, rainoutEmailsEnabled, rainoutSendingEnabled } from "../policy";
@@ -373,18 +374,50 @@ describe("rainout email safety switches", () => {
     );
   });
 
-  it("enforces the allowlist only when it is set", () => {
-    assert.equal(rainoutEmailAllowlist({}), null);
-    assert.equal(rainoutEmailAllowlist({ RAINOUT_EMAIL_ALLOWLIST: "  " }), null);
+  it("treats a blank rainout allowlist as nobody outside production", () => {
+    for (const env of [
+      {},
+      { RAINOUT_EMAIL_ALLOWLIST: "  " },
+      { VERCEL_ENV: "preview" },
+      { VERCEL_ENV: "preview", RAINOUT_EMAIL_ALLOWLIST: "" },
+    ]) {
+      const allowlist = rainoutEmailAllowlist(env);
+      assert.ok(allowlist);
+      assert.equal(allowlist.size, 0);
+    }
+    assert.equal(allowlistPermits("parent@example.com", rainoutEmailAllowlist({})), false);
+
+    assert.equal(rainoutEmailAllowlist({ VERCEL_ENV: "production" }), null);
+    assert.equal(rainoutEmailAllowlist({ VERCEL_ENV: "production", RAINOUT_EMAIL_ALLOWLIST: "  " }), null);
+    assert.equal(allowlistPermits("parent@example.com", null), true);
+
     const allowlist = rainoutEmailAllowlist({
+      VERCEL_ENV: "preview",
       RAINOUT_EMAIL_ALLOWLIST: " Coach@Example.com, other@example.com ",
     });
     assert.equal(allowlistPermits("coach@example.com", allowlist), true);
     assert.equal(allowlistPermits("parent@example.com", allowlist), false);
-    assert.equal(allowlistPermits("parent@example.com", null), true);
 
-    const empty = rainoutEmailAllowlist({ RAINOUT_EMAIL_ALLOWLIST: "," });
+    const empty = rainoutEmailAllowlist({ VERCEL_ENV: "production", RAINOUT_EMAIL_ALLOWLIST: "," });
     assert.equal(allowlistPermits("parent@example.com", empty), false);
+  });
+
+  it("recognizes a missing rainout notification table without throwing", () => {
+    assert.equal(RAINOUT_TABLE_MISSING_MESSAGE, "Rainout notification table missing; migrations pending");
+    assert.equal(isMissingRainoutTableError({ code: "P2021" }), true);
+    assert.equal(isMissingRainoutTableError({ code: "P2022" }), true);
+    assert.equal(isMissingRainoutTableError({ code: "P2002" }), false);
+    const warnings: unknown[][] = [];
+    const original = console.warn;
+    console.warn = (...args: unknown[]) => {
+      warnings.push(args);
+    };
+    try {
+      warnMissingRainoutTable();
+    } finally {
+      console.warn = original;
+    }
+    assert.deepEqual(warnings, [["[rainout] RainoutParkNotification table missing; migrations pending"]]);
   });
 
   it("does not choose send unless mail is enabled and the address is allowed", () => {

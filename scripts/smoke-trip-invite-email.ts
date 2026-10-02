@@ -15,6 +15,7 @@
  *   SMOKE_ORG=ascension
  *   SMOKE_EVENT_ID=...   # optional pin
  */
+import { sendEmailViaResend } from "../lib/communications/providers/resend";
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaPostgresAdapter } from "@prisma/adapter-ppg";
@@ -60,29 +61,18 @@ async function resendSend(opts: {
   html: string;
   text: string;
 }) {
-  const response = await fetch("https://api.resend.com/emails", {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${opts.apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      from: opts.from,
-      to: [opts.to],
-      subject: opts.subject,
-      html: opts.html,
-      text: opts.text,
-    }),
+  process.env.RESEND_API_KEY = opts.apiKey;
+  const result = await sendEmailViaResend({
+    to: opts.to,
+    from: opts.from,
+    subject: opts.subject,
+    html: opts.html,
+    text: opts.text,
   });
-  const json = (await response.json()) as {
-    id?: string;
-    message?: string;
-    name?: string;
-  };
-  if (!response.ok) {
-    throw new Error(json.message || json.name || `Resend ${response.status}`);
+  if (result.status === "skipped") {
+    throw new Error(result.skippedReason || "Resend send skipped by allowlist");
   }
-  return json;
+  return { id: result.providerMessageId };
 }
 
 type CookieJar = Map<string, string>;

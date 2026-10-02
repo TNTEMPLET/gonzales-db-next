@@ -4,6 +4,7 @@ import { UNALLOCATED_TEAM_NAME_EQUALS } from "@/lib/scheduler/realTeams";
 import { leagueCalendarDate, getSeasonConfigForOrg } from "@/lib/seasonConfig";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
+import { isMissingRainoutTableError, RainoutTableMissingError, warnMissingRainoutTable } from "./missingTable";
 import { displayParkName } from "./parks";
 import type { RainoutGameInput, RainoutPlayerInput, RainoutTeamRef } from "./recipients";
 
@@ -126,11 +127,17 @@ export async function loadRainoutAudience(
 }
 
 export async function loadNotifiedParkKeys(organizationId: string, calendarDate: string): Promise<string[]> {
-  const rows = await prisma.rainoutParkNotification.findMany({
-    where: { organizationId, calendarDate },
-    select: { parkKey: true },
-  });
-  return rows.map((row) => row.parkKey);
+  try {
+    const rows = await prisma.rainoutParkNotification.findMany({
+      where: { organizationId, calendarDate },
+      select: { parkKey: true },
+    });
+    return rows.map((row) => row.parkKey);
+  } catch (error: unknown) {
+    if (!isMissingRainoutTableError(error)) throw error;
+    warnMissingRainoutTable();
+    throw new RainoutTableMissingError();
+  }
 }
 
 export async function loadSuppressedEmails(organizationId: string): Promise<Set<string>> {

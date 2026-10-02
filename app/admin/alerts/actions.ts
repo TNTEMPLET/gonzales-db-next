@@ -9,6 +9,7 @@ import {
 } from "@/lib/auth/adminSession";
 import { canAccessAdminModule, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import { rainoutActionError } from "@/lib/rainout/actionError";
 import { setOrgRainout } from "@/lib/rainout/apply";
 import { previewRainoutNotifications } from "@/lib/rainout/notify";
 import { revalidateRainoutPaths } from "@/lib/rainout/revalidate";
@@ -54,36 +55,44 @@ function rainoutFields(formData: FormData): {
 }
 
 export async function previewOrgAlert(formData: FormData): Promise<AlertActionResult> {
-  const { org, allParksOut, parks } = rainoutFields(formData);
-  if (!CONTENT_ORGS.includes(org as ContentOrgId)) {
-    return { ok: false, error: "Invalid org" };
+  try {
+    const { org, allParksOut, parks } = rainoutFields(formData);
+    if (!CONTENT_ORGS.includes(org as ContentOrgId)) {
+      return { ok: false, error: "Invalid org" };
+    }
+    await requireParkAlertsAccess(org as ContentOrgId);
+    const preview = await previewRainoutNotifications({ organizationId: org, allParksOut, parks });
+    if (!preview.ok) return preview;
+    return { ok: true, summary: preview.summary };
+  } catch (error: unknown) {
+    return { ok: false, error: rainoutActionError(error, "Could not preview rainout emails.") };
   }
-  await requireParkAlertsAccess(org as ContentOrgId);
-  const preview = await previewRainoutNotifications({ organizationId: org, allParksOut, parks });
-  if (!preview.ok) return preview;
-  return { ok: true, summary: preview.summary };
 }
 
 export async function createOrgAlert(formData: FormData): Promise<AlertActionResult> {
-  const { org, allParksOut, parks, expiresAtRaw } = rainoutFields(formData);
+  try {
+    const { org, allParksOut, parks, expiresAtRaw } = rainoutFields(formData);
 
-  if (!CONTENT_ORGS.includes(org as ContentOrgId)) {
-    return { ok: false, error: "Invalid org" };
+    if (!CONTENT_ORGS.includes(org as ContentOrgId)) {
+      return { ok: false, error: "Invalid org" };
+    }
+    const adminUser = await requireParkAlertsAccess(org as ContentOrgId);
+
+    const expiresAt = new Date(expiresAtRaw);
+    if (Number.isNaN(expiresAt.getTime())) return { ok: false, error: "Invalid expiry date" };
+
+    const result = await setOrgRainout({
+      organizationId: org,
+      allParksOut,
+      parks,
+      expiresAt,
+      actorAdminId: adminUser.id,
+    });
+    if (!result.ok) return result;
+    return { ok: true, summary: result.summary };
+  } catch (error: unknown) {
+    return { ok: false, error: rainoutActionError(error, "Rainout update failed.") };
   }
-  const adminUser = await requireParkAlertsAccess(org as ContentOrgId);
-
-  const expiresAt = new Date(expiresAtRaw);
-  if (Number.isNaN(expiresAt.getTime())) return { ok: false, error: "Invalid expiry date" };
-
-  const result = await setOrgRainout({
-    organizationId: org,
-    allParksOut,
-    parks,
-    expiresAt,
-    actorAdminId: adminUser.id,
-  });
-  if (!result.ok) return result;
-  return { ok: true, summary: result.summary };
 }
 
 export async function deleteOrgAlert(alertId: string) {
