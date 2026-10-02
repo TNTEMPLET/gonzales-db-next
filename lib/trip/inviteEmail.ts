@@ -385,7 +385,7 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
     participantId: string;
     email: string;
     nextInviteEmailCount: number;
-    status: "SENT" | "FAILED" | "SKIPPED_SUPPRESSED";
+    status: "SENT" | "FAILED" | "SKIPPED_SUPPRESSED" | "SKIPPED_ALLOWLIST";
     errorMessage?: string;
     provider?: string;
     providerMessageId?: string | null;
@@ -438,6 +438,16 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
         text,
         from: fromAddress,
       });
+      if (providerResponse.status === "skipped") {
+        results.push({
+          participantId: row.participantId,
+          email: row.email,
+          nextInviteEmailCount: row.nextInviteEmailCount,
+          status: "SKIPPED_ALLOWLIST",
+          errorMessage: providerResponse.skippedReason ?? "Not on EMAIL_ALLOWLIST",
+        });
+        continue;
+      }
       results.push({
         participantId: row.participantId,
         email: row.email,
@@ -465,8 +475,8 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
   const sentIds = results
     .filter((r) => r.status === "SENT")
     .map((r) => r.participantId);
-  let sent = results.filter((r) => r.status === "SENT").length;
-  let failed = results.length - sent;
+  const sent = results.filter((r) => r.status === "SENT").length;
+  const failed = results.filter((r) => r.status === "FAILED" || r.status === "SKIPPED_SUPPRESSED").length;
 
   try {
     await withTransientDbRetry(
@@ -515,7 +525,7 @@ export async function sendTripInviteEmails(input: SendTripInvitesInput) {
           });
         }
 
-        const finalStatus = failed > 0 && sent === 0 ? "FAILED" : "SENT";
+        const finalStatus = sent > 0 ? "SENT" : failed > 0 ? "FAILED" : "CANCELED";
         await prisma.$executeRawUnsafe(
           `UPDATE "CommunicationCampaign"
            SET status = $2::"CommunicationCampaignStatus",

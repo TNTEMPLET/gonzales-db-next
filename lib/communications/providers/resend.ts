@@ -1,4 +1,11 @@
 import { DEFAULT_COMMUNICATIONS_FROM } from "@/lib/communications/fromAddressConstants";
+import {
+  guardOutboundMessage,
+  isProductionEnv,
+  sentSendResult,
+  skippedSendResult,
+  type GuardedSendResult,
+} from "@/lib/communications/outboundGuard";
 
 export type ResendAttachment = {
   filename: string;
@@ -18,6 +25,11 @@ function isRateLimitError(status: number, message: string) {
   );
 }
 
+function addressList(value: string | string[] | null | undefined): string[] {
+  if (value == null) return [];
+  return (Array.isArray(value) ? value : [value]).map((entry) => entry.trim()).filter(Boolean);
+}
+
 export async function sendEmailViaResend(input: {
   /** One address, or multiple (Resend accepts an array). */
   to: string | string[];
@@ -30,7 +42,30 @@ export async function sendEmailViaResend(input: {
   attachments?: ResendAttachment[];
   /** Optional reply-to. */
   replyTo?: string | null;
-}) {
+  cc?: string | string[] | null;
+  bcc?: string | string[] | null;
+}): Promise<GuardedSendResult<"resend">> {
+  let toList = addressList(input.to);
+  let ccList = addressList(input.cc);
+  let bccList = addressList(input.bcc);
+  if (toList.length === 0) {
+    throw new Error("At least one recipient is required");
+  }
+  if (!isProductionEnv()) {
+    const guarded = guardOutboundMessage({
+      to: toList,
+      cc: ccList,
+      bcc: bccList,
+      channel: "email",
+    });
+    if (guarded.to.length === 0) {
+      return skippedSendResult("resend");
+    }
+    toList = guarded.to;
+    ccList = guarded.cc;
+    bccList = guarded.bcc;
+  }
+
   const apiKey = process.env.RESEND_API_KEY;
   const from = (
     input.from?.trim() ||
@@ -42,13 +77,6 @@ export async function sendEmailViaResend(input: {
     throw new Error("Missing RESEND_API_KEY or COMMUNICATIONS_EMAIL_FROM");
   }
 
-  const toList = (Array.isArray(input.to) ? input.to : [input.to])
-    .map((e) => e.trim())
-    .filter(Boolean);
-  if (toList.length === 0) {
-    throw new Error("At least one recipient is required");
-  }
-
   const body: Record<string, unknown> = {
     from,
     to: toList,
@@ -56,6 +84,8 @@ export async function sendEmailViaResend(input: {
     html: input.html,
     text: input.text ?? undefined,
   };
+  if (ccList.length > 0) body.cc = ccList;
+  if (bccList.length > 0) body.bcc = bccList;
   if (input.replyTo?.trim()) {
     body.reply_to = input.replyTo.trim();
   }
@@ -88,10 +118,7 @@ export async function sendEmailViaResend(input: {
       error?: unknown;
     };
     if (response.ok) {
-      return {
-        provider: "resend",
-        providerMessageId: json.id ?? null,
-      };
+      return sentSendResult("resend", json.id ?? null, toList);
     }
 
     lastError =

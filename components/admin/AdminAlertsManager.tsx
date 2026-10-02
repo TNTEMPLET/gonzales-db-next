@@ -1,8 +1,11 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useRef, useState, useTransition } from "react";
 import type { ContentOrgId } from "@/lib/siteConfig";
-import { createOrgAlert, deleteOrgAlert } from "@/app/admin/alerts/actions";
+import { createOrgAlert, deleteOrgAlert, previewOrgAlert } from "@/app/admin/alerts/actions";
+import RainoutEmailPreview from "@/components/admin/RainoutEmailPreview";
+import { rethrowNavigationError } from "@/lib/rainout/actionError";
+import type { RainoutNotifySummary } from "@/lib/rainout/types";
 
 type OrgAlert = {
   id: string;
@@ -39,12 +42,41 @@ function defaultMidnight() {
 }
 
 export default function AdminAlertsManager({ activeAlerts, availableOrgs, defaultOrg }: Props) {
+  const formRef = useRef<HTMLFormElement>(null);
   const [isPending, startTransition] = useTransition();
+  const [intent, setIntent] = useState<"preview" | "post" | "delete" | null>(null);
   const [allParksOut, setAllParksOut] = useState(true);
   const [deleteError, setDeleteError] = useState<string | null>(null);
+  const [formError, setFormError] = useState<string | null>(null);
+  const [summary, setSummary] = useState<RainoutNotifySummary | null>(null);
+
+  function runForm(action: "preview" | "post") {
+    const form = formRef.current;
+    if (!form) return;
+    const formData = new FormData(form);
+    setFormError(null);
+    setIntent(action);
+    startTransition(async () => {
+      try {
+        const result = action === "preview" ? await previewOrgAlert(formData) : await createOrgAlert(formData);
+        if (!result.ok) {
+          setSummary(null);
+          setFormError(result.error);
+          return;
+        }
+        setSummary(result.summary ?? null);
+        setFormError(result.summary?.error ?? null);
+      } catch (error: unknown) {
+        rethrowNavigationError(error);
+        setSummary(null);
+        setFormError(error instanceof Error && error.message ? error.message : "Rainout update failed.");
+      }
+    });
+  }
 
   function handleDelete(id: string) {
     setDeleteError(null);
+    setIntent("delete");
     startTransition(async () => {
       try {
         await deleteOrgAlert(id);
@@ -134,7 +166,11 @@ export default function AdminAlertsManager({ activeAlerts, availableOrgs, defaul
       <section>
         <h2 className="mb-4 text-xl font-bold">Post New Rainout Alert</h2>
         <form
-          action={createOrgAlert}
+          ref={formRef}
+          onSubmit={(event) => {
+            event.preventDefault();
+            runForm("post");
+          }}
           className="rounded-2xl border border-zinc-800 bg-zinc-900/50 p-6 space-y-5"
         >
           {/* Org selector */}
@@ -220,17 +256,31 @@ export default function AdminAlertsManager({ activeAlerts, availableOrgs, defaul
           </div>
 
           <div className="rounded-xl border border-amber-700/60 bg-amber-950/20 p-3 text-sm text-amber-100/90">
-            Check the site and scope before posting. This message is visible to
-            families until the expiration time or until you clear it.
+            Preview who would be emailed before you post. The rainout shows on the
+            public site until it expires or you clear it. Parent email stays off
+            until RAINOUT_EMAILS_ENABLED is turned on.
           </div>
 
-          <button
-            type="submit"
-            disabled={isPending}
-            className="rounded-xl bg-red-700 px-6 py-2.5 font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
-          >
-            Post Rainout Alert
-          </button>
+          {formError ? <p className="text-sm text-red-300">{formError}</p> : null}
+
+          <div className="flex flex-wrap gap-2">
+            <button
+              type="button"
+              disabled={isPending}
+              onClick={() => runForm("preview")}
+              className="rounded-xl border border-zinc-700 px-6 py-2.5 font-semibold text-zinc-100 transition hover:bg-zinc-800 disabled:opacity-50"
+            >
+              {isPending && intent === "preview" ? "Working…" : "Preview emails"}
+            </button>
+            <button
+              type="submit"
+              disabled={isPending}
+              className="rounded-xl bg-red-700 px-6 py-2.5 font-semibold text-white transition hover:bg-red-600 disabled:opacity-50"
+            >
+              {isPending && intent === "post" ? "Posting…" : "Post Rainout Alert"}
+            </button>
+          </div>
+          {summary ? <RainoutEmailPreview summary={summary} /> : null}
         </form>
       </section>
     </div>

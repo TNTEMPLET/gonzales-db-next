@@ -79,8 +79,12 @@ export async function sendTournamentMonitorEvent(
   for (const subscription of subscriptions) {
     if (subscription.channels.includes("EMAIL")) {
       try {
-        await sendEmail(subscription, event);
-        emailSentCount += 1;
+        const emailResult = await sendEmail(subscription, event);
+        if (emailResult.status === "skipped") {
+          failures.push(`Email to ${subscription.name}: ${emailResult.skippedReason ?? "skipped by allowlist"}`);
+        } else {
+          emailSentCount += 1;
+        }
       } catch (error: unknown) {
         failedCount += 1;
         failures.push(`Email to ${subscription.name}: ${error instanceof Error ? error.message : String(error)}`);
@@ -89,8 +93,12 @@ export async function sendTournamentMonitorEvent(
 
     if (subscription.channels.includes("SMS")) {
       try {
-        await sendSms(subscription, event);
-        smsSentCount += 1;
+        const smsResult = await sendSms(subscription, event);
+        if (smsResult.status === "skipped") {
+          failures.push(`SMS to ${subscription.name}: ${smsResult.skippedReason ?? "skipped by allowlist"}`);
+        } else {
+          smsSentCount += 1;
+        }
       } catch (error: unknown) {
         failedCount += 1;
         failures.push(`SMS to ${subscription.name}: ${error instanceof Error ? error.message : String(error)}`);

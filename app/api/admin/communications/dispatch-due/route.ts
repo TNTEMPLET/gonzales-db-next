@@ -48,7 +48,10 @@ export async function POST(request: NextRequest) {
         : { sent: 0, failed: 0, total: 0 };
       await prisma.communicationCampaign.update({
         where: { id: campaign.id },
-        data: { status: result.failed > 0 ? "FAILED" : "SENT", sentAt: new Date() },
+        data: {
+          status: result.failed > 0 ? "FAILED" : result.sent > 0 ? "SENT" : "CANCELED",
+          ...(result.sent > 0 ? { sentAt: new Date() } : {}),
+        },
       });
       results.push({ campaignId: campaign.id, sent: result.sent, failed: result.failed });
     } catch (err: unknown) {

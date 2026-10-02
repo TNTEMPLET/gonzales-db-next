@@ -141,22 +141,41 @@ export async function sendOrderReportEmail(params: {
         replyTo: params.replyTo,
         attachments: params.attachments,
       });
-      sent = sendable.length;
+      const accepted = new Set(result.accepted.map((email) => email.toLowerCase()));
+      const delivered = result.status === "skipped" ? [] : sendable.filter((email) => accepted.has(email.toLowerCase()));
+      const droppedByGuard = sendable.filter((email) => !delivered.includes(email));
+      sent = delivered.length;
       providerMessageId = result.providerMessageId;
-      await prisma.communicationDelivery.createMany({
-        data: sendable.map((email) => ({
-          campaignId: campaign.id,
-          channel: "EMAIL" as const,
-          recipientType: "RAW_CONTACT" as const,
-          sourceType: params.sourceType,
-          toEmail: email,
-          provider: result.provider,
-          providerMessageId: result.providerMessageId,
-          status: "SENT" as const,
-          attemptedAt: new Date(),
-          sentAt: new Date(),
-        })),
-      });
+      if (delivered.length > 0) {
+        await prisma.communicationDelivery.createMany({
+          data: delivered.map((email) => ({
+            campaignId: campaign.id,
+            channel: "EMAIL" as const,
+            recipientType: "RAW_CONTACT" as const,
+            sourceType: params.sourceType,
+            toEmail: email,
+            provider: result.provider,
+            providerMessageId: result.providerMessageId,
+            status: "SENT" as const,
+            attemptedAt: new Date(),
+            sentAt: new Date(),
+          })),
+        });
+      }
+      if (droppedByGuard.length > 0) {
+        await prisma.communicationDelivery.createMany({
+          data: droppedByGuard.map((email) => ({
+            campaignId: campaign.id,
+            channel: "EMAIL" as const,
+            recipientType: "RAW_CONTACT" as const,
+            sourceType: params.sourceType,
+            toEmail: email,
+            status: "SKIPPED_ALLOWLIST" as const,
+            errorMessage: result.skippedReason ?? "Not on EMAIL_ALLOWLIST",
+            attemptedAt: new Date(),
+          })),
+        });
+      }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Email send failed";
       failed.push(...sendable);

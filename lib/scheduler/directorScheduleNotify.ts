@@ -206,7 +206,7 @@ export async function sendDirectorScheduleEmails(params: {
 
   type Delivery = {
     email: string;
-    status: "SENT" | "FAILED";
+    status: "SENT" | "FAILED" | "SKIPPED_ALLOWLIST";
     errorMessage?: string;
     provider?: string;
     providerMessageId?: string | null;
@@ -242,6 +242,14 @@ export async function sendDirectorScheduleEmails(params: {
         replyTo: params.replyTo,
         attachments,
       });
+      if (provider.status === "skipped") {
+        results.push({
+          email: to,
+          status: "SKIPPED_ALLOWLIST",
+          errorMessage: provider.skippedReason ?? "Not on EMAIL_ALLOWLIST",
+        });
+        continue;
+      }
       results.push({
         email: to,
         status: "SENT",
@@ -279,10 +287,10 @@ export async function sendDirectorScheduleEmails(params: {
   }
 
   const sent = results.filter((row) => row.status === "SENT").length;
-  const failed = results.length - sent;
+  const failed = results.filter((row) => row.status === "FAILED").length;
   await prisma.communicationCampaign.update({
     where: { id: campaign.id },
-    data: { status: sent > 0 ? "SENT" : "FAILED" },
+    data: { status: sent > 0 ? "SENT" : failed > 0 ? "FAILED" : "CANCELED" },
   });
 
   if (sent > 0 && !params.sample) {

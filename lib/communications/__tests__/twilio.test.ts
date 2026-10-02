@@ -8,6 +8,7 @@ describe("sendSmsViaTwilio", () => {
     const previousFetch = globalThis.fetch;
     const previousEnv = { ...process.env };
     let captured: { url: string; init: RequestInit } | null = null;
+    process.env.VERCEL_ENV = "production";
     process.env.COMMUNICATIONS_SMS_ENABLED = "true";
     process.env.TWILIO_ACCOUNT_SID = "AC123";
     process.env.TWILIO_AUTH_TOKEN = "secret";
@@ -20,6 +21,7 @@ describe("sendSmsViaTwilio", () => {
     try {
       const result = await sendSmsViaTwilio({ to: "+15556667777", body: "Tournament alert" });
       assert.equal(result.provider, "twilio");
+      assert.equal(result.status, "sent");
       assert.ok(captured);
       const cap: { url: string; init: RequestInit } = captured;
       assert.ok(cap.url.includes("/Accounts/AC123/Messages.json"));

@@ -89,6 +89,24 @@ export async function sendCampaignEmails(campaign: CommunicationCampaign) {
         text: campaign.messageBody,
         from: fromAddress,
       });
+      if (providerResponse.status === "skipped") {
+        await prisma.communicationDelivery.create({
+          data: {
+            campaignId: campaign.id,
+            channel: "EMAIL",
+            recipientType: snapshot.recipientType,
+            registeredUserId: snapshot.registeredUserId,
+            adminUserId: snapshot.adminUserId,
+            sourceType: snapshot.sourceType,
+            sourceId: snapshot.sourceId,
+            toEmail: email,
+            status: "SKIPPED_ALLOWLIST",
+            errorMessage: providerResponse.skippedReason,
+            attemptedAt: new Date(),
+          },
+        });
+        continue;
+      }
       sent += 1;
       await prisma.communicationDelivery.create({
         data: {

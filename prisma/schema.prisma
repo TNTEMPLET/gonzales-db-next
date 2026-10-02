@@ -180,6 +180,10 @@ enum CommunicationDeliveryStatus {
   SKIPPED_SUPPRESSED
   SKIPPED_NO_CONSENT
   SKIPPED_NO_CONTACT
+  /// Rainout parent mail computed while RAINOUT_EMAILS_ENABLED is off.
+  SKIPPED_DRY_RUN
+  /// Address was left out because RAINOUT_EMAIL_ALLOWLIST is set and does not include it.
+  SKIPPED_ALLOWLIST
 }
 
 enum CoachingInterestRolePreference {
@@ -1940,6 +1944,22 @@ model OrgAlert {
   createdAt      DateTime @default(now())
 
   @@index([organizationId, expiresAt])
+}
+
+/// Parks already included in a live rainout parent email for a league calendar day.
+/// Dry-runs do not write rows. An allowlist pass that sends nobody does not either,
+/// so turning RAINOUT_EMAILS_ENABLED on, or clearing a miss-all allowlist, can still send.
+model RainoutParkNotification {
+  id             String   @id @default(cuid())
+  organizationId String
+  /// League calendar date (America/Chicago), YYYY-MM-DD.
+  calendarDate   String
+  /// Lowercased trimmed park name.
+  parkKey        String
+  createdAt      DateTime @default(now())
+
+  @@unique([organizationId, calendarDate, parkKey])
+  @@index([organizationId, calendarDate])
 }
 
 model SocialPost {
