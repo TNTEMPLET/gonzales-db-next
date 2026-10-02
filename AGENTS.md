@@ -6,12 +6,12 @@ This version has breaking changes — APIs, conventions, and file structure may 
 
 ## Git (default for agent commits and pushes)
 
-**Branch rule:** Do agent work on a **`feature/*`** branch in its **own git worktree**. Do not commit on a shared checkout. Open a pull request into **`preview`**. Agents never push **`preview`** or **`main`** directly, and never merge **`preview`** into **`main`**.
+**Branch rule:** Do agent work on a **`feature/*`** branch in its **own git worktree**. Do not commit on a shared checkout. Open a pull request into **`preview`**. Agents never merge any pull request. Agents never push **`preview`** or **`main`**, and never merge **`preview`** into **`main`**.
 
 1. **Branch:** From current `origin/preview`, create `feature/<short-name>` in a separate worktree. Commit only on that branch.
-2. **Pull request:** Open the PR into **`preview`** and wait for CI (`.github/workflows/ci.yml`).
-3. **Merge into preview:** When CI is green, merge that feature PR into **`preview`**. The push runs `.github/workflows/db-migrate.yml` job `migrate-staging`, which applies migrations to the staging database. Do not `git push origin preview`.
-4. **Trent tests** the staging deployment. Agents stop here.
+2. **Pull request:** Open the PR into **`preview`** and wait for CI (`.github/workflows/ci.yml`). Agents stop here. Do not merge the pull request.
+3. **Trent merges into preview:** Trent reviews and merges that feature PR into **`preview`**. That merge runs `.github/workflows/db-migrate.yml` job `migrate-staging`, which applies migrations to the staging database. Do not `git push origin preview`.
+4. **Trent tests** the staging deployment.
 5. **Production:** **Trent** merges **`preview`** into **`main`** with a **merge commit** (never squash). That push runs job `migrate-prod`, which applies migrations to production. Agents do not merge to **`main`**, do not push **`main`**, and do not run `prisma migrate deploy` against staging or production.
 6. **Hotfix already on main:** `.github/workflows/sync-preview-with-main.yml` fast-forwards **`preview`** to **`main`**. Do not push **`main`** or **`preview`** to repair that yourself.
 

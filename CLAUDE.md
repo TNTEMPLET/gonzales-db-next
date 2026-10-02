@@ -8,8 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 - The running local servers use the **DEV database** (`.env.development.local`).
 - `prisma.config.ts` loads `.env.local`, then `.env.development.local` (which overrides it), so local Prisma CLI targets DEV. In GitHub Actions those files are not loaded.
-- Promote by pull request into `preview`. CI runs, the PR merges into `preview`, and `.github/workflows/db-migrate.yml` job `migrate-staging` applies migrations to staging. Trent tests staging.
-- **Trent** merges `preview` into `main` with a merge commit (never squash). Job `migrate-prod` applies migrations to production. Agents never merge to `main` and never push `main` or `preview` directly.
+- Promote by pull request into `preview`. Agents open the PR and stop. They never merge any pull request. Trent reviews and merges into `preview`, and that merge runs `.github/workflows/db-migrate.yml` job `migrate-staging`. Trent tests staging.
+- **Trent** merges `preview` into `main` with a merge commit (never squash). Job `migrate-prod` applies migrations to production. Agents never merge any pull request and never push `main` or `preview`.
 - If you are writing a one-off script that touches the database, load `.env.development.local` unless you have been explicitly asked to target another database. Do not run `migrate deploy` against staging or production yourself.
 
 ## Next.js version warning
@@ -114,11 +114,11 @@ Prisma uses the `@prisma/adapter-ppg` adapter (Prisma Postgres/pooled gateway).
 
 ### Git / deployment workflow
 
-- Work on `feature/*` in your own worktree. Open a pull request into `preview`.
-- CI (`.github/workflows/ci.yml`) runs on the PR. Merge the PR into `preview`.
-- That push runs `db-migrate.yml` job `migrate-staging` (GitHub environment `staging`). Trent tests staging.
+- Work on `feature/*` in your own worktree. Open a pull request into `preview`. Agents never merge any pull request.
+- CI (`.github/workflows/ci.yml`) runs on the PR. Trent reviews and merges into `preview`.
+- That merge runs `db-migrate.yml` job `migrate-staging` (GitHub environment `staging`). Trent tests staging.
 - **Trent** merges `preview` into `main` with a merge commit (never squash). Job `migrate-prod` (environment `production`) migrates production.
-- Agents never auto-merge to `main` and never push `main` or `preview` directly.
+- Agents never merge any pull request and never push `main` or `preview`.
 - A push to `main` still fast-forwards `preview` via `sync-preview-with-main.yml`. Demo repos sync from `main` via `sync-demo-repos.yml`.
 - Vercel uses its own env vars. Preview uses the staging database. Production uses the production database.
 

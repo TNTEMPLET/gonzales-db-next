@@ -95,10 +95,10 @@ Prisma uses the `@prisma/adapter-ppg` adapter (Prisma Postgres/pooled gateway).
 
 ### Git / deployment workflow
 
-- Work on `feature/*` in your own worktree. Open a pull request into `preview`.
-- CI runs on the PR. Merge the PR into `preview`. Job `migrate-staging` applies migrations to staging. Trent tests staging.
+- Work on `feature/*` in your own worktree. Open a pull request into `preview`. Agents never merge any pull request.
+- CI runs on the PR. Trent reviews and merges into `preview`. That merge runs `migrate-staging`. Trent tests staging.
 - **Trent** merges `preview` into `main` with a merge commit (never squash). Job `migrate-prod` migrates production.
-- Agents never auto-merge to `main` and never push `main` or `preview` directly.
+- Agents never merge any pull request and never push `main` or `preview`.
 - A push to `main` still fast-forwards `preview` via `sync-preview-with-main.yml`. Demo repos sync from `main` via `sync-demo-repos.yml`.
 - Vercel uses its own env vars. Preview uses the staging database. Production uses the production database.
 

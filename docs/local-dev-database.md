@@ -31,7 +31,7 @@ Shared PostgreSQL 15 for all development projects on dev-box.
 Local dev (apbaseball_dev)
   → prisma migrate dev / schema changes
   → verify on dev sites (ports 3000–3003)
-  → PR into preview → CI → merge into preview
+  → PR into preview → CI → Trent merges into preview
   → GitHub Action migrate-staging
   → Trent tests staging
   → Trent merges preview into main with a merge commit (never squash)
