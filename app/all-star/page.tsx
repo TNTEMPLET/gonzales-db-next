@@ -65,7 +65,7 @@ export default async function AllStarPage() {
     return true;
   }
   // Additional cards are the public cap/apparel PayPal buttons. The primary
-  // button above is the All-Star fee and stays up. Shop (/shop) is a separate flag.
+  // button above is the All-Star fee and stays up. /shop uses this same flag.
   const safeLinks = (isOrdersModuleEnabled() ? (config?.links ?? []) : [])
     .filter((l): l is PageLink => typeof l.label === "string" && isSafePayPalUrl(l.url))
     .filter(isLinkActive)

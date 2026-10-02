@@ -6,9 +6,12 @@ import { buildAdminDashboardCardDescriptors } from "@/lib/admin/dashboardModules
 import { canAccessAdminModule, type AdminRole } from "@/lib/auth/adminRoles";
 import {
   ORDERS_UNAVAILABLE_MESSAGE,
+  filterAllStarProgramStageIds,
+  headerShopNavItem,
   isOrdersModuleEnabled,
   legacyOrdersDestination,
   ordersAdminApiDenial,
+  shopPageGate,
 } from "@/lib/auth/ordersModule";
 
 const ROLES: AdminRole[] = ["PARK_DIRECTOR", "BOARD_MEMBER", "ADMIN", "MASTER_ADMIN"];
@@ -127,5 +130,46 @@ describe("orders module flag", () => {
       if (previous === undefined) delete process.env.ORDERS_ENABLED;
       else process.env.ORDERS_ENABLED = previous;
     }
+  });
+
+  it("hides /shop and the Header Shop link while the flag is off, and shows both when it is on", () => {
+    const off = {};
+    assert.deepEqual(shopPageGate(off), {
+      kind: "unavailable",
+      message: ORDERS_UNAVAILABLE_MESSAGE,
+    });
+    const contentOrgs = ["gonzales", "ascension", "fallball"] as const;
+    for (const orgId of contentOrgs) {
+      assert.equal(
+        headerShopNavItem({ orgId, tournamentOnly: false, env: off }),
+        null,
+        orgId,
+      );
+    }
+    assert.equal(
+      filterAllStarProgramStageIds(["vault", "shop", "cap-orders", "travel"], false, off).includes(
+        "shop",
+      ),
+      false,
+    );
+
+    const on = env("true");
+    assert.deepEqual(shopPageGate(on), { kind: "open" });
+    for (const orgId of contentOrgs) {
+      assert.deepEqual(
+        headerShopNavItem({ orgId, tournamentOnly: false, env: on }),
+        { href: "/shop", label: "Shop", key: "shop" },
+        orgId,
+      );
+    }
+    assert.equal(headerShopNavItem({ orgId: "master", tournamentOnly: false, env: on }), null);
+    assert.equal(
+      headerShopNavItem({ orgId: "ladistrict2", tournamentOnly: true, env: on }),
+      null,
+    );
+    assert.equal(
+      filterAllStarProgramStageIds(["vault", "shop", "travel"], false, on).includes("shop"),
+      true,
+    );
   });
 });

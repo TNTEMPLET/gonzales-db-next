@@ -10,6 +10,7 @@ import SponsorScroller from "../components/sponsors/SponsorScroller";
 import DevLiveIndicator from "../components/dev/DevLiveIndicator";
 import { RootStagingBanner } from "@/components/staging/StagingBanner";
 import { shouldShowStagingBanner } from "@/lib/communications/outboundGuard";
+import { isOrdersModuleEnabled } from "@/lib/auth/ordersModule";
 import { getRegistrationStatus } from "@/lib/registrationStatus";
 import { getSiteConfig, isContentOrgId, isTournamentOnlyDeployment } from "@/lib/siteConfig";
 
@@ -45,6 +46,7 @@ export default async function RootLayout({
     displayNameLine2: site.displayNameLine2,
     logoPath: site.logoPath,
     registrationStatus,
+    ordersModuleEnabled: isOrdersModuleEnabled(),
   };
 
   const orgCss = `

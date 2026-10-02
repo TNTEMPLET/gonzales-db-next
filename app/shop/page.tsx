@@ -8,6 +8,8 @@ import {
   listMerchProductsForOrgAsync,
   orgHasMerchShop,
 } from "@/lib/merch/catalog";
+import OrdersUnavailable from "@/components/admin/OrdersUnavailable";
+import { ORDERS_UNAVAILABLE_MESSAGE, shopPageGate } from "@/lib/auth/ordersModule";
 import { getShopAccess } from "@/lib/merch/shopAccess";
 import {
   getSiteConfig,
@@ -30,7 +32,10 @@ export function generateMetadata() {
   const title = isContentOrgId(site.orgId) ? shopPageTitle(site.orgId) : site.name;
   return {
     title: `Shop | ${title}`,
-    description: `Members-only merchandise for ${title}. Sign in required. Secure checkout with PayPal.`,
+    description:
+      shopPageGate().kind === "unavailable"
+        ? ORDERS_UNAVAILABLE_MESSAGE
+        : `Members-only merchandise for ${title}. Sign in required. Secure checkout with PayPal.`,
     robots: {
       index: false,
       follow: false,
@@ -39,6 +44,12 @@ export function generateMetadata() {
 }
 
 export default async function ShopPage() {
+  // Before the master redirect and the member login gate. Signed-in visitors
+  // get the same unavailable page and never see product cards or PayPal links.
+  if (shopPageGate().kind === "unavailable") {
+    return <OrdersUnavailable backHref="/" backLabel="Back to home" />;
+  }
+
   if (isMasterDeployment()) {
     redirect("/admin/shop");
   }
