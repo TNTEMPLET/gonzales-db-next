@@ -74,35 +74,45 @@ describe("admin dashboard card specs", () => {
     assert.equal(pathByTitle.Sponsors, "/admin/sponsors");
   });
 
-  it("keeps the same module gate as the destination page", () => {
+  it("keeps reports and alerts on their own gates, not orders", () => {
     const allow = (module: AdminModule) => module === "REPORTS" || module === "PARK_ALERTS";
     const cards = buildAdminDashboardCardDescriptors({
       allowModule: allow,
       orgFor: () => "gonzales",
     });
     const titles = cards.map((card) => card.title);
-    assert.deepEqual(titles, [
-      "Park & Tournament Alerts",
-      "Cap Orders",
-      "Shirt Orders",
-      "Reports",
-    ]);
+    assert.deepEqual(titles, ["Park & Tournament Alerts", "Reports"]);
     assert.ok(cards.every((card) => card.href.endsWith("?org=gonzales")));
     assert.ok(cards.every((card) => !isAdminHubHref(card.href)));
   });
 
-  it("shows alerts and cap orders through their alternate modules", () => {
-    const allow = (module: AdminModule) => module === "TOURNAMENT_ALERTS" || module === "SPONSORS";
+  it("gates cap and shirt cards on ORDERS alone", () => {
+    for (const title of ["Cap Orders", "Shirt Orders"]) {
+      const card = ADMIN_DASHBOARD_CARD_SPECS.find((spec) => spec.title === title);
+      assert.ok(card);
+      assert.equal(card.module, "ORDERS");
+      assert.equal(card.accessModules, undefined);
+    }
+
+    const orders = buildAdminDashboardCardDescriptors({
+      allowModule: (module) => module === "ORDERS",
+      orgFor: () => "gonzales",
+    }).map((card) => card.title);
+    assert.deepEqual(orders, ["Cap Orders", "Shirt Orders"]);
+
+    const sponsors = buildAdminDashboardCardDescriptors({
+      allowModule: (module) => module === "SPONSORS",
+      orgFor: () => "gonzales",
+    }).map((card) => card.title);
+    assert.deepEqual(sponsors, ["Sponsors"]);
+  });
+
+  it("shows alerts through the tournament-alerts alternate", () => {
     const titles = buildAdminDashboardCardDescriptors({
-      allowModule: allow,
+      allowModule: (module) => module === "TOURNAMENT_ALERTS",
       orgFor: () => "ascension",
     }).map((card) => card.title);
-    assert.deepEqual(titles, [
-      "Park & Tournament Alerts",
-      "Cap Orders",
-      "Shirt Orders",
-      "Sponsors",
-    ]);
+    assert.deepEqual(titles, ["Park & Tournament Alerts"]);
   });
 
   it("hides a card when none of its modules are allowed", () => {

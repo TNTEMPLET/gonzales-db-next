@@ -6,7 +6,7 @@ import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import AllStarProgramNav from "@/components/admin/allStar/AllStarProgramNav";
 import MerchDraftsList from "@/components/merch/MerchDraftsList";
 import MerchTestOrderForm from "@/components/merch/MerchTestOrderForm";
-import { hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { listMerchProductsForOrgAsync } from "@/lib/merch/catalog";
@@ -90,14 +90,22 @@ export default async function AdminMerchTestOrderPage({
             <Link href={`/admin/shop${orgQuery}`} className="text-sky-300 hover:underline">
               ← Back to merch catalog
             </Link>
-            {" · "}
-            <Link href={`/admin/shirt-orders${orgQuery}`} className="text-sky-300 hover:underline">
-              Shirt orders desk
-            </Link>
+            {canAccessAdminModule(role, "ORDERS") ? (
+              <>
+                {" · "}
+                <Link href={`/admin/shirt-orders${orgQuery}`} className="text-sky-300 hover:underline">
+                  Shirt orders desk
+                </Link>
+              </>
+            ) : null}
           </p>
         </div>
 
-        <AllStarProgramNav stage="shop" org={catalogOrg} />
+        <AllStarProgramNav
+          stage="shop"
+          org={catalogOrg}
+          showOrders={canAccessAdminModule(role, "ORDERS")}
+        />
 
         {!catalogOrg ? (
           <p className="text-sm text-zinc-500">

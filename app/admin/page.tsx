@@ -190,6 +190,15 @@ export default async function AdminDashboardPage({
         getBoardContactSummary(dashboardOrgs),
       ]);
       const needsAttention = await getNeedsAttentionSummary(dashboardOrgs, compliance, boardContact);
+      needsAttention.items = needsAttention.items.filter((item) => {
+        if (item.key === "cap-orders" || item.key === "shirt-orders") {
+          return dashboardOrgs.some((orgId) => hasModuleAccess(orgId, "ORDERS"));
+        }
+        if (item.key === "player-name-collisions") {
+          return dashboardOrgs.some((orgId) => hasModuleAccess(orgId, "SPORTS_CONNECT"));
+        }
+        return true;
+      });
       stateOfOrg = { registration, compliance, engagement, boardContact, needsAttention };
     } catch (err) {
       console.error(

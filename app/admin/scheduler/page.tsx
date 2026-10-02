@@ -38,15 +38,7 @@ export default async function SchedulerPage({
   );
   const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
-  // No dedicated AdminModule for this tab -- same "competitionVisible" gate
-  // sidebarNav.ts uses to decide whether to show this leaf at all.
-  const competitionVisible =
-    canAccessAdminModule(role, "TEAMS") ||
-    canAccessAdminModule(role, "DRAFT") ||
-    canAccessAdminModule(role, "SCORES") ||
-    canAccessAdminModule(role, "ASSIGNR") ||
-    canAccessAdminModule(role, "REGISTRATION_WINDOWS");
-  if (!competitionVisible) {
+  if (!canAccessAdminModule(role, "SCHEDULER")) {
     redirect("/admin?denied=scheduler");
   }
 

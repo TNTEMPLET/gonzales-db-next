@@ -6,7 +6,7 @@ import ParkWorkFilter from "@/components/admin/ParkWorkFilter";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import { loadFieldDeskGames } from "@/lib/admin/fieldDesk";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
-import { hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { getOrgDisplayName, getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
@@ -39,7 +39,7 @@ export default async function FieldDeskPage({
     currentOrg,
   );
   const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
-  if (!effectiveRole || !hasAdminRoleAtLeast(role, "PARK_DIRECTOR")) {
+  if (!effectiveRole || !canAccessAdminModule(role, "GAME_DAY")) {
     redirect("/admin?denied=field-desk");
   }
 

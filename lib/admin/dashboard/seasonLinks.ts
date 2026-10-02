@@ -26,8 +26,8 @@ export function seasonDashboardLinks(
     enrollment: canAccessAdminModule(role, "ENROLLMENT_KPI")
       ? `/admin/enrollment${query}`
       : null,
-    scheduler: canAccessAdminModule(role, "TEAMS") ? `/admin/scheduler${query}` : null,
-    sportsConnect: canAccessAdminModule(role, "TEAMS")
+    scheduler: canAccessAdminModule(role, "SCHEDULER") ? `/admin/scheduler${query}` : null,
+    sportsConnect: canAccessAdminModule(role, "SPORTS_CONNECT")
       ? `/admin/sports-connect${query}`
       : null,
     teams: canAccessAdminModule(role, "TEAMS") ? `/admin/teams${query}` : null,

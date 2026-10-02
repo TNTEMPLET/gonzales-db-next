@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureAllStarVaultAdmin } from "@/lib/allStar/auth";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { fetchRecentPayPalTransactions } from "@/lib/paypal/client";
 import prisma from "@/lib/prisma";
 
@@ -49,7 +49,7 @@ function resolveOrg(itemName: string | null, gKw: string, aKw: string): string {
 
 // ── GET — load from DB ────────────────────────────────────────────────────────
 export async function GET(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAdminModule(request, "ORDERS");
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const gonzalesKw = process.env.PAYPAL_CAP_ITEM_GONZALES ?? "";
@@ -99,7 +99,7 @@ export async function GET(request: NextRequest) {
 
 // ── POST — sync from PayPal, upsert into DB ───────────────────────────────────
 export async function POST(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAdminModule(request, "ORDERS");
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const gonzalesKw = process.env.PAYPAL_CAP_ITEM_GONZALES ?? "";
@@ -156,7 +156,7 @@ export async function POST(request: NextRequest) {
 
 // ── PATCH — toggle a single cap item's status ─────────────────────────────────
 export async function PATCH(request: NextRequest) {
-  const auth = await ensureAllStarVaultAdmin(request);
+  const auth = await ensureAdminModule(request, "ORDERS");
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status });
 
   const body = (await request.json()) as { itemId?: string; status?: "open" | "fulfilled" };

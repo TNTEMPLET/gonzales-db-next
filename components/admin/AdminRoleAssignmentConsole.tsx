@@ -2,9 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  ADMIN_MODULES,
   ADMIN_ROLES,
   type AdminRole,
+  getAdminModuleLabel,
   getAdminRoleLabel,
+  getMinimumRoleForModule,
   suggestLeastPrivilegeRole,
   type AdminModule,
 } from "@/lib/auth/adminRoles";
@@ -35,6 +38,14 @@ type RegisteredLite = {
 };
 
 const ALL_ORGS = [...CONTENT_ORGS] as const;
+
+const JOB_MODULE_KEYS: AdminModule[] = [
+  "SURVEYS",
+  "SCHEDULER",
+  "SPORTS_CONNECT",
+  "ORDERS",
+  "GAME_DAY",
+];
 
 export default function AdminRoleAssignmentConsole({
   currentAdminEmail,
@@ -243,8 +254,10 @@ export default function AdminRoleAssignmentConsole({
 
   function quickSuggestForPersona(persona: string) {
     let mods: AdminModule[] = ["TEAMS", "USERS", "VOLUNTEERS"];
+    if (persona === "game-day") mods = ["GAME_DAY", "SCORES", "REPORTS", "SEASON_SETUP"];
     if (persona === "scorekeeper") mods = ["SCORES", "REPORTS"];
-    if (persona === "board") mods = ["SCORES", "DUGOUT_MODERATION", "ALL_STAR_PAYMENTS"];
+    if (persona === "orders") mods = ["ORDERS"];
+    if (persona === "board") mods = ["ORDERS", "DUGOUT_MODERATION", "ALL_STAR_PAYMENTS"];
     if (persona === "platform") mods = ["ROLE_ASSIGNMENT", "TOURNAMENT_BRACKETS"];
 
     const s = suggestLeastPrivilegeRole(mods);
@@ -381,7 +394,9 @@ export default function AdminRoleAssignmentConsole({
           <div className="mb-2 flex flex-wrap items-center gap-2 text-xs">
             <span className="text-zinc-400">Quick persona suggestions:</span>
             <button type="button" onClick={() => quickSuggestForPersona("operator")} className="rounded border border-emerald-700/50 px-2 py-0.5 hover:bg-emerald-950/30">League Operator</button>
+            <button type="button" onClick={() => quickSuggestForPersona("game-day")} className="rounded border border-emerald-700/50 px-2 py-0.5 hover:bg-emerald-950/30">Park director</button>
             <button type="button" onClick={() => quickSuggestForPersona("scorekeeper")} className="rounded border border-emerald-700/50 px-2 py-0.5 hover:bg-emerald-950/30">Scorekeeper</button>
+            <button type="button" onClick={() => quickSuggestForPersona("orders")} className="rounded border border-emerald-700/50 px-2 py-0.5 hover:bg-emerald-950/30">Orders desk</button>
             <button type="button" onClick={() => quickSuggestForPersona("board")} className="rounded border border-emerald-700/50 px-2 py-0.5 hover:bg-emerald-950/30">Board / Moderator</button>
             <button type="button" onClick={() => quickSuggestForPersona("platform")} className="rounded border border-emerald-700/50 px-2 py-0.5 hover:bg-emerald-950/30">Platform (Master)</button>
             <button type="button" onClick={applySuggestion} className="ml-2 rounded border border-zinc-700 px-2 py-0.5 hover:bg-zinc-900">Suggest least privilege</button>
@@ -435,8 +450,38 @@ export default function AdminRoleAssignmentConsole({
         <div className="rounded-xl border border-emerald-800/50 bg-emerald-950/20 px-4 py-3 text-sm text-emerald-200">{notice}</div>
       )}
 
+      <div className="rounded-2xl border border-zinc-800 bg-zinc-900/40 p-5">
+        <h2 className="text-lg font-semibold text-zinc-100">Job keys</h2>
+        <p className="mt-1 text-sm text-zinc-400">
+          Each job has its own key. The role shown is the minimum that can open it. Park directors keep game day and lose cap and shirt orders.
+        </p>
+        <ul className="mt-4 grid gap-2 sm:grid-cols-2">
+          {JOB_MODULE_KEYS.map((module) => (
+            <li key={module} className="rounded-lg border border-zinc-800 bg-zinc-950/50 px-3 py-2 text-sm">
+              <span className="font-medium text-zinc-100">{getAdminModuleLabel(module)}</span>
+              <span className="mt-0.5 block text-xs text-zinc-500">
+                {module} · {getAdminRoleLabel(getMinimumRoleForModule(module))}+
+              </span>
+            </li>
+          ))}
+        </ul>
+        <details className="mt-4 text-xs text-zinc-400">
+          <summary className="cursor-pointer text-zinc-300">Every module and its minimum role</summary>
+          <ul className="mt-2 grid gap-1 sm:grid-cols-2">
+            {ADMIN_MODULES.map((module) => (
+              <li key={module}>
+                {getAdminModuleLabel(module)}{" "}
+                <span className="text-zinc-500">
+                  ({module}, {getAdminRoleLabel(getMinimumRoleForModule(module))}+)
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      </div>
+
       <div className="text-xs text-zinc-500">
-        Tip: For day-to-day league work give <span className="text-zinc-300">ADMIN</span> on the specific organization(s). Only use BOARD_MEMBER when scores entry or moderation is needed. MASTER_ADMIN is for platform owners only.
+        Tip: Park directors run game day (scores, field desk, umpire pay) and do not see orders. Board members add orders, moderation, and payments oversight. Admins add surveys, the scheduler, Sports Connect, and teams. MASTER_ADMIN is for platform owners only.
       </div>
     </div>
   );

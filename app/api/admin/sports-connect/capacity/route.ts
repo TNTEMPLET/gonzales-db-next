@@ -11,7 +11,7 @@ export const runtime = "nodejs";
  * Fall Ball division enrollment + matched-coach capacity, from real roster data.
  */
 export async function GET(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }

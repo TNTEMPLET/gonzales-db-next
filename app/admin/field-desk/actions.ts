@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
-import { hasAdminRoleAtLeast } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import prisma from "@/lib/prisma";
 import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
@@ -15,7 +15,7 @@ async function requireFieldDesk(organizationId: ContentOrgId) {
   const adminUser = await getAdminUserFromCookieToken(token);
   if (!adminUser) return "Sign in again to save controllers.";
   const role = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, organizationId);
-  if (!role || !hasAdminRoleAtLeast(role, "PARK_DIRECTOR")) {
+  if (!role || !canAccessAdminModule(role, "GAME_DAY")) {
     return "You cannot change scoreboard controllers for this league.";
   }
   return null;

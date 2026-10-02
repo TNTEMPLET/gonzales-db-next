@@ -22,7 +22,7 @@ export const runtime = "nodejs";
  * Retrieves Google Drive folder mapping status and recent sync runs for an organization.
  */
 export async function GET(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
@@ -90,7 +90,7 @@ export async function GET(request: NextRequest) {
  * know the org's folder ID yet.
  */
 export async function POST(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }

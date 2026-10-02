@@ -1,0 +1,70 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import {
+  canAccessAdminModule,
+  getMinimumRoleForModule,
+  suggestLeastPrivilegeRole,
+  type AdminModule,
+  type AdminRole,
+} from "@/lib/auth/adminRoles";
+
+const JOB_KEYS = ["SURVEYS", "SCHEDULER", "SPORTS_CONNECT", "ORDERS", "GAME_DAY"] as const;
+
+const ROLES: AdminRole[] = ["PARK_DIRECTOR", "BOARD_MEMBER", "ADMIN", "MASTER_ADMIN"];
+
+function allowed(role: AdminRole, module: AdminModule) {
+  return canAccessAdminModule(role, module);
+}
+
+describe("admin job module keys", () => {
+  it("sets the minimum role for each new key", () => {
+    assert.equal(getMinimumRoleForModule("SURVEYS"), "ADMIN");
+    assert.equal(getMinimumRoleForModule("SCHEDULER"), "ADMIN");
+    assert.equal(getMinimumRoleForModule("SPORTS_CONNECT"), "ADMIN");
+    assert.equal(getMinimumRoleForModule("ORDERS"), "BOARD_MEMBER");
+    assert.equal(getMinimumRoleForModule("GAME_DAY"), "PARK_DIRECTOR");
+  });
+
+  it("lets a board member open orders and keeps them off a park director", () => {
+    assert.equal(allowed("PARK_DIRECTOR", "ORDERS"), false);
+    assert.equal(allowed("BOARD_MEMBER", "ORDERS"), true);
+    assert.equal(allowed("ADMIN", "ORDERS"), true);
+    assert.equal(allowed("MASTER_ADMIN", "ORDERS"), true);
+  });
+
+  it("keeps surveys, the scheduler, and Sports Connect at admin and above", () => {
+    for (const module of ["SURVEYS", "SCHEDULER", "SPORTS_CONNECT"] as const) {
+      assert.equal(allowed("PARK_DIRECTOR", module), false);
+      assert.equal(allowed("BOARD_MEMBER", module), false);
+      assert.equal(allowed("ADMIN", module), true);
+      assert.equal(allowed("MASTER_ADMIN", module), true);
+    }
+  });
+
+  it("keeps game day open to every admin role", () => {
+    for (const role of ROLES) {
+      assert.equal(allowed(role, "GAME_DAY"), true, role);
+    }
+  });
+
+  it("still lets a park director enter scores, open reports, and run season setup", () => {
+    for (const module of ["SCORES", "REPORTS", "SEASON_SETUP", "GAME_DAY"] as const) {
+      assert.equal(allowed("PARK_DIRECTOR", module), true, module);
+    }
+  });
+
+  it("suggests the least role that covers the requested jobs", () => {
+    assert.equal(suggestLeastPrivilegeRole(["GAME_DAY", "SCORES", "REPORTS"]).role, "PARK_DIRECTOR");
+    assert.equal(suggestLeastPrivilegeRole(["ORDERS"]).role, "BOARD_MEMBER");
+    assert.equal(suggestLeastPrivilegeRole(["SURVEYS", "SCHEDULER", "SPORTS_CONNECT"]).role, "ADMIN");
+    assert.equal(suggestLeastPrivilegeRole(["ORDERS", "SURVEYS"]).role, "ADMIN");
+    assert.equal(suggestLeastPrivilegeRole(["ROLE_ASSIGNMENT"]).role, "MASTER_ADMIN");
+    assert.equal(suggestLeastPrivilegeRole([]).role, "PARK_DIRECTOR");
+    for (const module of JOB_KEYS) {
+      const suggestion = suggestLeastPrivilegeRole([module]);
+      assert.equal(suggestion.role, getMinimumRoleForModule(module));
+      assert.ok(suggestion.notes.length > 0);
+    }
+  });
+});

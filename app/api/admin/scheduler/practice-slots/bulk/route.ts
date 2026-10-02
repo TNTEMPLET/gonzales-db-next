@@ -7,7 +7,7 @@ import { replaceDivisionPracticeSlots } from "@/lib/scheduler/practiceSlotWrite"
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SCHEDULER");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
