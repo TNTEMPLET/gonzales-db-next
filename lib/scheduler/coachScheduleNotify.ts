@@ -328,7 +328,7 @@ export async function sendCoachScheduleEmails(params: {
     teamId: string;
     email: string;
     registeredUserId: string | null;
-    status: "SENT" | "FAILED";
+    status: "SENT" | "FAILED" | "SKIPPED_ALLOWLIST";
     errorMessage?: string;
     provider?: string;
     providerMessageId?: string | null;
@@ -364,6 +364,16 @@ export async function sendCoachScheduleEmails(params: {
         replyTo: params.replyTo,
         attachments: buildCoachScheduleAttachments(row),
       });
+      if (provider.status === "skipped") {
+        results.push({
+          teamId: row.teamId,
+          email: row.coachEmail!,
+          registeredUserId: row.registeredUserId,
+          status: "SKIPPED_ALLOWLIST",
+          errorMessage: provider.skippedReason ?? "Not on EMAIL_ALLOWLIST",
+        });
+        continue;
+      }
       results.push({
         teamId: row.teamId,
         email: row.coachEmail!,
@@ -406,10 +416,10 @@ export async function sendCoachScheduleEmails(params: {
   }
 
   const sent = results.filter((row) => row.status === "SENT").length;
-  const failed = results.length - sent;
+  const failed = results.filter((row) => row.status === "FAILED").length;
   await prisma.communicationCampaign.update({
     where: { id: campaign.id },
-    data: { status: sent > 0 ? "SENT" : "FAILED" },
+    data: { status: sent > 0 ? "SENT" : failed > 0 ? "FAILED" : "CANCELED" },
   });
 
   if (sent > 0) {
@@ -530,6 +540,32 @@ export async function sendCoachScheduleSample(params: {
       attachments: buildCoachScheduleAttachments(row),
     });
     await reconnectPrisma(prisma);
+    if (provider.status === "skipped") {
+      await prisma.communicationDelivery.create({
+        data: {
+          campaignId: campaign.id,
+          channel: "EMAIL",
+          recipientType: "RAW_CONTACT",
+          sourceType: `${COACH_NOTIFY_SOURCE_TYPE}_SAMPLE`,
+          sourceId: row.teamId,
+          toEmail: to,
+          status: "SKIPPED_ALLOWLIST",
+          errorMessage: provider.skippedReason ?? "Not on EMAIL_ALLOWLIST",
+          attemptedAt: new Date(),
+        },
+      });
+      await prisma.communicationCampaign.update({
+        where: { id: campaign.id },
+        data: { status: "CANCELED" },
+      });
+      return {
+        campaignId: campaign.id,
+        sent: 0,
+        teamName: row.teamName,
+        ageGroup: row.ageGroup,
+        to,
+      };
+    }
     await prisma.communicationDelivery.create({
       data: {
         campaignId: campaign.id,

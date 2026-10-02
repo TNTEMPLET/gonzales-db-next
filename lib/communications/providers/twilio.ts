@@ -1,6 +1,21 @@
+import {
+  guardOutboundMessage,
+  isProductionEnv,
+  sentSendResult,
+  skippedSendResult,
+  type GuardedSendResult,
+} from "@/lib/communications/outboundGuard";
+
 import { isSmsSendingEnabled } from "../config";
 
-export async function sendSmsViaTwilio(input: { to: string; body: string }) {
+export async function sendSmsViaTwilio(input: { to: string; body: string }): Promise<GuardedSendResult<"twilio">> {
+  let to = input.to.trim();
+  if (!isProductionEnv()) {
+    const guarded = guardOutboundMessage({ to: [to], channel: "sms" });
+    if (guarded.to.length === 0) return skippedSendResult("twilio");
+    to = guarded.to[0]!;
+  }
+
   if (!isSmsSendingEnabled()) {
     throw new Error("SMS sending is disabled. Set COMMUNICATIONS_SMS_ENABLED=true to send tournament text alerts.");
   }
@@ -14,7 +29,7 @@ export async function sendSmsViaTwilio(input: { to: string; body: string }) {
 
   const body = new URLSearchParams({
     From: from,
-    To: input.to,
+    To: to,
     Body: input.body,
   });
   const response = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${accountSid}/Messages.json`, {
@@ -29,8 +44,5 @@ export async function sendSmsViaTwilio(input: { to: string; body: string }) {
   if (!response.ok) {
     throw new Error(json.message || json.error_message || `Twilio send failed (${response.status})`);
   }
-  return {
-    provider: "twilio",
-    providerMessageId: json.sid ?? null,
-  };
+  return sentSendResult("twilio", json.sid ?? null, [to]);
 }

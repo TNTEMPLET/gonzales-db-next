@@ -8,6 +8,8 @@ import Footer from "../components/Footer";
 import { AdminSidebarProvider } from "@/components/admin/AdminSidebarProvider";
 import SponsorScroller from "../components/sponsors/SponsorScroller";
 import DevLiveIndicator from "../components/dev/DevLiveIndicator";
+import { RootStagingBanner } from "@/components/staging/StagingBanner";
+import { shouldShowStagingBanner } from "@/lib/communications/outboundGuard";
 import { getRegistrationStatus } from "@/lib/registrationStatus";
 import { getSiteConfig, isContentOrgId, isTournamentOnlyDeployment } from "@/lib/siteConfig";
 
@@ -61,6 +63,7 @@ export default async function RootLayout({
       </head>
       <SpeedInsights />
       <body className={`${inter.className} bg-zinc-950 text-white antialiased`}>
+        <RootStagingBanner enabled={shouldShowStagingBanner()} />
         <AdminSidebarProvider>
           <Suspense fallback={<div className="h-16 border-b border-zinc-800 bg-zinc-950" aria-hidden />}>
             <Header brand={brand} />
