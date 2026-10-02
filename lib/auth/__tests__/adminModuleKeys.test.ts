@@ -17,6 +17,11 @@ function allowed(role: AdminRole, module: AdminModule) {
   return canAccessAdminModule(role, module);
 }
 
+function restoreOrdersFlag(previous: string | undefined) {
+  if (previous === undefined) delete process.env.ORDERS_ENABLED;
+  else process.env.ORDERS_ENABLED = previous;
+}
+
 describe("admin job module keys", () => {
   it("sets the minimum role for each new key", () => {
     assert.equal(getMinimumRoleForModule("SURVEYS"), "ADMIN");
@@ -26,11 +31,17 @@ describe("admin job module keys", () => {
     assert.equal(getMinimumRoleForModule("GAME_DAY"), "PARK_DIRECTOR");
   });
 
-  it("denies non-masters on the orders API gate and allows a master admin", () => {
-    for (const role of ["PARK_DIRECTOR", "BOARD_MEMBER", "ADMIN"] as const) {
-      assert.equal(allowed(role, "ORDERS"), false, role);
+  it("denies non-masters on the orders API gate and allows a master admin when orders are on", () => {
+    const previous = process.env.ORDERS_ENABLED;
+    process.env.ORDERS_ENABLED = "true";
+    try {
+      for (const role of ["PARK_DIRECTOR", "BOARD_MEMBER", "ADMIN"] as const) {
+        assert.equal(allowed(role, "ORDERS"), false, role);
+      }
+      assert.equal(allowed("MASTER_ADMIN", "ORDERS"), true);
+    } finally {
+      restoreOrdersFlag(previous);
     }
-    assert.equal(allowed("MASTER_ADMIN", "ORDERS"), true);
   });
 
   it("keeps surveys, the scheduler, and Sports Connect at admin and above", () => {

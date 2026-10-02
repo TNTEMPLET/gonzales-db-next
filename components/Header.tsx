@@ -10,6 +10,7 @@ import {
 } from "@/lib/sportsConnect/registrationUrl";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
+import { headerShopNavItem } from "@/lib/auth/ordersModule";
 import { isContentOrgId, isPublicNavEnabledForOrg, type OrgId } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import type { RegistrationStatus } from "@/lib/registrationStatus";
@@ -32,6 +33,11 @@ type HeaderProps = {
     tournamentOnly?: boolean;
     /** Server-evaluated registration status (Master Admin mode override or scheduled window). */
     registrationStatus?: RegistrationStatus;
+    /**
+     * Server-evaluated Orders flag. The header is a client component, so it
+     * must not read `ORDERS_ENABLED` itself.
+     */
+    ordersModuleEnabled: boolean;
   };
 };
 
@@ -214,8 +220,12 @@ export default function Header({ brand }: HeaderProps) {
       ? brand.orgId
       : null;
   // Avoid importing merch catalog into the client bundle graph via a heavy path —
-  // shop link is always offered for content orgs; empty catalog still shows "coming soon".
-  const showShopLink = Boolean(shopNavOrg) && !isTournamentOnly;
+  // shop link is offered for content orgs when the Orders flag is on.
+  const shopItem = headerShopNavItem({
+    orgId: brand.orgId,
+    tournamentOnly: isTournamentOnly,
+    ordersEnabled: brand.ordersModuleEnabled,
+  });
 
   const contentOrgForCaps = isFallBallHeader
     ? "fallball"
@@ -241,7 +251,7 @@ export default function Header({ brand }: HeaderProps) {
         ...(showAllStarLink ? [{ href: "/all-star", label: "All-Stars", key: "all-stars" }] : []),
         ...(showParkInfoLink ? [{ href: "/park-info", label: "Park Info" }] : []),
         { href: "/news", label: "News" },
-        ...(showShopLink ? [{ href: "/shop", label: "Shop", key: "shop" }] : []),
+        ...(shopItem ? [shopItem] : []),
         ...(regOpen || regWaitlist ? [{ href: "/registration", label: "Registration" }] : []),
         ...(!isFallBallHeader && coachingInterestPublic
           ? [{ href: "/coaching-interest", label: "Coaching Interest" }]

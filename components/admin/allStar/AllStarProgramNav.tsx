@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { filterAllStarProgramStageIds } from "@/lib/auth/ordersModule";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 export type AllStarProgramStage =
@@ -61,9 +62,13 @@ export default function AllStarProgramNav({
   showOrders?: boolean;
 }) {
   const orgQuery = allSites || !org ? "" : `?org=${encodeURIComponent(org)}`;
-  const stages = STAGES.filter(
-    (item) => showOrders || (item.id !== "cap-orders" && item.id !== "shirt-orders"),
+  const visibleIds = new Set(
+    filterAllStarProgramStageIds(
+      STAGES.map((item) => item.id),
+      showOrders,
+    ),
   );
+  const stages = STAGES.filter((item) => visibleIds.has(item.id));
 
   return (
     <nav

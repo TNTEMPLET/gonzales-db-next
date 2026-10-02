@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { ordersAdminApiDenial } from "@/lib/auth/ordersModule";
 import {
   createMerchOrderDraft,
   DraftValidationError,
@@ -14,6 +15,12 @@ import {
   type ContentOrgId,
 } from "@/lib/siteConfig";
 
+function shopClosedResponse() {
+  const hidden = ordersAdminApiDenial();
+  if (!hidden) return null;
+  return NextResponse.json({ error: hidden.message }, { status: hidden.status });
+}
+
 function resolveOrg(bodyOrg: string | undefined): ContentOrgId | null {
   if (bodyOrg && isContentOrgId(bodyOrg)) return bodyOrg;
   if (isMasterDeployment()) return null;
@@ -23,6 +30,9 @@ function resolveOrg(bodyOrg: string | undefined): ContentOrgId | null {
 
 /** POST — members create a draft, then pay on PayPal with the composed note. */
 export async function POST(request: NextRequest) {
+  const closed = shopClosedResponse();
+  if (closed) return closed;
+
   const access = await getShopAccess();
   if (!access.allowed) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });
@@ -79,6 +89,9 @@ export async function POST(request: NextRequest) {
 
 /** GET — look up own draft by code (members) for pay resume. */
 export async function GET(request: NextRequest) {
+  const closed = shopClosedResponse();
+  if (closed) return closed;
+
   const access = await getShopAccess();
   if (!access.allowed) {
     return NextResponse.json({ error: "Sign in required" }, { status: 401 });

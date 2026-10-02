@@ -1,10 +1,17 @@
 import { redirect } from "next/navigation";
 
+import OrdersUnavailable from "@/components/admin/OrdersUnavailable";
+import { shopPageGate } from "@/lib/auth/ordersModule";
+
 export default async function LegacyRedirectPage({
   searchParams,
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  if (shopPageGate().kind === "unavailable") {
+    return <OrdersUnavailable />;
+  }
+
   const resolvedParams = await searchParams;
   const targetBase = "/admin/shop/test-order";
   const params = new URLSearchParams();

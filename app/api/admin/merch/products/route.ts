@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { ordersAdminApiDenial } from "@/lib/auth/ordersModule";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
@@ -21,6 +22,12 @@ import {
   isMasterDeployment,
   type ContentOrgId,
 } from "@/lib/siteConfig";
+
+function shopClosedResponse() {
+  const hidden = ordersAdminApiDenial();
+  if (!hidden) return null;
+  return NextResponse.json({ error: hidden.message }, { status: hidden.status });
+}
 
 function resolveOrg(request: NextRequest, adminUser: { isMaster: boolean }): ContentOrgId | null {
   const orgParam = request.nextUrl.searchParams.get("org");
@@ -65,6 +72,9 @@ function slugifyProductId(name: string): string {
 
 /** GET — catalog for org with open/closed status (admin). */
 export async function GET(request: NextRequest) {
+  const closed = shopClosedResponse();
+  if (closed) return closed;
+
   const adminUser = await getAdminUserFromRequest(request);
   if (!adminUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -97,6 +107,9 @@ export async function GET(request: NextRequest) {
  * Body: MerchProduct fields (+ optional org for auth scope).
  */
 export async function POST(request: NextRequest) {
+  const closed = shopClosedResponse();
+  if (closed) return closed;
+
   const adminUser = await getAdminUserFromRequest(request);
   if (!adminUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -200,6 +213,9 @@ export async function POST(request: NextRequest) {
  * Body: { productId, enabled, activeFrom?, activeTo?, org? }
  */
 export async function PATCH(request: NextRequest) {
+  const closed = shopClosedResponse();
+  if (closed) return closed;
+
   const adminUser = await getAdminUserFromRequest(request);
   if (!adminUser) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });

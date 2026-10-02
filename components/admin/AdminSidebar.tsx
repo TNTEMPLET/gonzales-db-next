@@ -4,17 +4,19 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { usePathname, useSearchParams } from "next/navigation";
 import {
-  getMinimumRoleForModule,
-  hasAdminRoleAtLeast,
   isAdminRole,
   toAdminRole,
   type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
-import { isAdminModuleEnabledForOrg, isContentOrgId } from "@/lib/siteConfig";
+import { isContentOrgId } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import { getPrimaryLiveContentOrg } from "@/lib/seasonConfig";
-import { buildAdminSidebarNav, type AdminSidebarSubcategory } from "@/lib/admin/sidebarNav";
+import {
+  buildAdminSidebarNav,
+  sidebarAllowsModule,
+  type AdminSidebarSubcategory,
+} from "@/lib/admin/sidebarNav";
 import { useAdminSidebar } from "@/components/admin/AdminSidebarProvider";
 
 type AdminMeResponse = {
@@ -26,7 +28,12 @@ function pathKeyOf(href: string): string {
   return href.split("?")[0] ?? href;
 }
 
-export default function AdminSidebar() {
+export default function AdminSidebar({
+  ordersModuleEnabled,
+}: {
+  /** Server value of `isOrdersModuleEnabled()`. Do not read `ORDERS_ENABLED` here. */
+  ordersModuleEnabled: boolean;
+}) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { collapsed, toggleCollapsed, isSubcategoryOpen, toggleSubcategory } = useAdminSidebar();
@@ -72,11 +79,13 @@ export default function AdminSidebar() {
   const orgSuffix = `?org=${encodeURIComponent(effectiveOrgParam)}`;
   const currentMasterOrg = isContentOrgId(effectiveOrgParam) ? effectiveOrgParam : null;
 
-  const allowModule = (module: AdminModule) => {
-    if (!isAdminModuleEnabledForOrg(currentMasterOrg, module)) return false;
-    if (!masterRole) return true;
-    return hasAdminRoleAtLeast(masterRole, getMinimumRoleForModule(module));
-  };
+  const allowModule = (module: AdminModule) =>
+    sidebarAllowsModule({
+      module,
+      orgId: currentMasterOrg,
+      role: masterRole,
+      ordersModuleEnabled,
+    });
 
   const canCoachingInterest =
     allowModule("TEAMS") && isCoachingInterestEnabled(currentMasterOrg ?? "gonzales");

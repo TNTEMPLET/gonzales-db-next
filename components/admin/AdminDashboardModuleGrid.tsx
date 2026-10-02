@@ -36,6 +36,7 @@ function canPreviewUserAccessModule(
   module: AdminDashboardCardModule,
   organizationId: ContentOrgId | null,
   masterMode: boolean,
+  ordersModuleEnabled: boolean,
 ) {
   const organizationIds: ContentOrgId[] = organizationId
     ? [organizationId]
@@ -43,11 +44,22 @@ function canPreviewUserAccessModule(
   return organizationIds.some((orgId) => {
     const access = resolvePreviewUserAccess(user, orgId);
     if (module === "ALL_STAR_VAULT") return access.allStarVaultView;
+    // A master user keeps the Admin card set, except Orders follows the server
+    // switch. Collapsing the whole preview to Admin would hide those cards
+    // even after ORDERS_ENABLED is turned on.
+    if (access.effectiveRole === "MASTER_ADMIN" && module === "ORDERS") {
+      return canPreviewDashboardModule("MASTER_ADMIN", module, {
+        masterMode,
+        allStarVaultView: access.allStarVaultView,
+        ordersModuleEnabled,
+      });
+    }
     const previewAs: DashboardRolePreview =
       access.effectiveRole === "MASTER_ADMIN" ? "ADMIN" : access.effectiveRole;
     return canPreviewDashboardModule(previewAs, module, {
       masterMode,
       allStarVaultView: access.allStarVaultView,
+      ordersModuleEnabled,
     });
   });
 }
@@ -55,12 +67,15 @@ function canPreviewUserAccessModule(
 export default function AdminDashboardModuleGrid({
   cards,
   masterMode,
+  ordersModuleEnabled,
   allowRolePreview,
   allStarVaultView,
   currentOrg = null,
 }: {
   cards: AdminDashboardCard[];
   masterMode: boolean;
+  /** Server value of `isOrdersModuleEnabled()`. Do not read `ORDERS_ENABLED` here. */
+  ordersModuleEnabled: boolean;
   allowRolePreview: boolean;
   allStarVaultView: boolean;
   currentOrg?: ContentOrgId | null;
@@ -92,13 +107,20 @@ export default function AdminDashboardModuleGrid({
     if (previewContext.mode === "user" && previewContext.user) {
       const previewUser = previewContext.user;
       return cards.filter((card) =>
-        canPreviewUserAccessModule(previewUser, card.module, currentOrg, masterMode),
+        canPreviewUserAccessModule(
+          previewUser,
+          card.module,
+          currentOrg,
+          masterMode,
+          ordersModuleEnabled,
+        ),
       );
     }
     return cards.filter((card) =>
       canPreviewDashboardModule(previewRole, card.module, {
         masterMode,
         allStarVaultView,
+        ordersModuleEnabled,
       }),
     );
   }, [
@@ -109,6 +131,7 @@ export default function AdminDashboardModuleGrid({
     previewContext,
     currentOrg,
     masterMode,
+    ordersModuleEnabled,
   ]);
 
   const groupedCards = useMemo(

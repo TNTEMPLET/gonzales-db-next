@@ -109,12 +109,28 @@ describe("admin dashboard card specs", () => {
       assert.equal(titles.includes("Shirt Orders"), false, role);
     }
 
-    const masterTitles = buildAdminDashboardCardDescriptors({
-      allowModule: (module) => canAccessAdminModule("MASTER_ADMIN", module),
-      orgFor: () => "gonzales",
-    }).map((card) => card.title);
-    assert.equal(masterTitles.includes("Cap Orders"), true);
-    assert.equal(masterTitles.includes("Shirt Orders"), true);
+    const previous = process.env.ORDERS_ENABLED;
+    try {
+      process.env.ORDERS_ENABLED = "true";
+      const masterTitles = buildAdminDashboardCardDescriptors({
+        allowModule: (module) => canAccessAdminModule("MASTER_ADMIN", module),
+        orgFor: () => "gonzales",
+      }).map((card) => card.title);
+      assert.equal(masterTitles.includes("Cap Orders"), true);
+      assert.equal(masterTitles.includes("Shirt Orders"), true);
+
+      delete process.env.ORDERS_ENABLED;
+      const hiddenTitles = buildAdminDashboardCardDescriptors({
+        allowModule: (module) => canAccessAdminModule("MASTER_ADMIN", module),
+        orgFor: () => "gonzales",
+      }).map((card) => card.title);
+      assert.equal(hiddenTitles.includes("Cap Orders"), false);
+      assert.equal(hiddenTitles.includes("Shirt Orders"), false);
+      assert.equal(hiddenTitles.includes("Sponsors"), true);
+    } finally {
+      if (previous === undefined) delete process.env.ORDERS_ENABLED;
+      else process.env.ORDERS_ENABLED = previous;
+    }
 
     const sponsors = buildAdminDashboardCardDescriptors({
       allowModule: (module) => module === "SPONSORS",

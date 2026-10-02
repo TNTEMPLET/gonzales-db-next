@@ -2,8 +2,10 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import OrdersUnavailable from "@/components/admin/OrdersUnavailable";
 import ParentShirtOrdersPanel from "@/components/admin/shirtOrders/ParentShirtOrdersPanel";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
+import { isOrdersModuleEnabled } from "@/lib/auth/ordersModule";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
@@ -21,6 +23,10 @@ export default async function ShirtOrdersPage({
 }: {
   searchParams: Promise<{ org?: string }>;
 }) {
+  if (!isOrdersModuleEnabled()) {
+    return <OrdersUnavailable />;
+  }
+
   const { org } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org);
   const cookieStore = await cookies();

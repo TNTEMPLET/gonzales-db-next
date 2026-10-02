@@ -8,6 +8,8 @@ import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 /**
  * Capture an approved PayPal order and complete the merch draft → shirt order.
  * Body: { orderID }  (PayPal JS SDK onApprove payload)
+ *
+ * Not gated by the Orders flag: an in-flight checkout must still record.
  */
 export async function POST(request: NextRequest) {
   if (!isPayPalOrdersConfigured()) {

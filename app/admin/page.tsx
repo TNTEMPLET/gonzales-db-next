@@ -32,6 +32,7 @@ import {
   isSeasonLiveForOrg,
 } from "@/lib/seasonConfig";
 import { isCommunicationsModuleEnabled } from "@/lib/communications/config";
+import { isOrdersModuleEnabled } from "@/lib/auth/ordersModule";
 import prisma from "@/lib/prisma";
 import {
   buildAdminDashboardCardDescriptors,
@@ -567,6 +568,7 @@ export default async function AdminDashboardPage({
           <AdminDashboardModuleGrid
             cards={cards}
             masterMode={masterMode}
+            ordersModuleEnabled={isOrdersModuleEnabled()}
             allowRolePreview={allowRolePreview}
             allStarVaultView={allStarVaultView}
             currentOrg={currentOrg}
