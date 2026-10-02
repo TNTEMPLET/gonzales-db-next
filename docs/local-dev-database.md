@@ -38,6 +38,8 @@ Local dev (apbaseball_dev)
   → GitHub Action migrate-prod
 ```
 
+Prod migrations should run before or together with the production deploy. Vercel can mark the `main` deployment Ready before `migrate-prod` is approved, so code that depends on a new schema can break in that window. Keep schema changes backward-compatible (expand, then contract in a later migration), or approve `migrate-prod` before the new code serves traffic.
+
 Never run `migrate dev`, `migrate deploy`, or `db push` against staging or production from a workstation. Those databases are migrated only by `.github/workflows/db-migrate.yml`.
 
 ## Refresh dev data from remote Prisma dev
