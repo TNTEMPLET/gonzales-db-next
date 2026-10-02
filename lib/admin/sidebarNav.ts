@@ -4,8 +4,14 @@
  * already used to group the /admin dashboard cards) so this isn't a
  * second, driftable copy of the same grouping.
  */
-import type { AdminModule } from "@/lib/auth/adminRoles";
 import { ADMIN_DASHBOARD_CATEGORY_META } from "@/lib/admin/dashboardModules";
+import {
+  getMinimumRoleForModule,
+  hasAdminRoleAtLeast,
+  type AdminModule,
+  type AdminRole,
+} from "@/lib/auth/adminRoles";
+import { isAdminModuleEnabledForOrg, type ContentOrgId } from "@/lib/siteConfig";
 
 export type AdminSidebarLeaf = {
   id: string;
@@ -31,6 +37,23 @@ export type AdminSidebarNav = {
 };
 
 type AllowModuleFn = (module: AdminModule) => boolean;
+
+/**
+ * The allow-check AdminSidebar uses for each leaf.
+ * `ordersModuleEnabled` is read on the server and passed in. Do not read
+ * `ORDERS_ENABLED` here: this runs in the client bundle.
+ */
+export function sidebarAllowsModule(input: {
+  module: AdminModule;
+  orgId: ContentOrgId | null;
+  role: AdminRole | null;
+  ordersModuleEnabled: boolean;
+}): boolean {
+  if (input.module === "ORDERS" && !input.ordersModuleEnabled) return false;
+  if (!isAdminModuleEnabledForOrg(input.orgId, input.module)) return false;
+  if (!input.role) return true;
+  return hasAdminRoleAtLeast(input.role, getMinimumRoleForModule(input.module));
+}
 
 /** A leaf that's its own real page (no ?tab=/?section= needed) -- just append the org param, if any. */
 function leafHref(basePath: string, orgSuffix: string): string {

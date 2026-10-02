@@ -194,12 +194,18 @@ export function getAdminModuleLabel(module: AdminModule): string {
 export function canAccessAdminModule(
   role: AdminRole,
   module: AdminModule,
-  options?: { masterDeployment?: boolean },
+  options?: { masterDeployment?: boolean; ordersModuleEnabled?: boolean },
 ): boolean {
   // Slice 2a: one switch closes every ORDERS gate, masters included.
   // Flag on restores the TNT-85 rule (Master Admin only).
-  if (module === "ORDERS" && !isOrdersModuleEnabled()) {
-    return false;
+  // Pass `ordersModuleEnabled` from the server when this runs in the browser.
+  // The client bundle does not have ORDERS_ENABLED.
+  if (module === "ORDERS") {
+    const enabled =
+      typeof options?.ordersModuleEnabled === "boolean"
+        ? options.ordersModuleEnabled
+        : isOrdersModuleEnabled();
+    if (!enabled) return false;
   }
   if (role === "MASTER_ADMIN") {
     return true;

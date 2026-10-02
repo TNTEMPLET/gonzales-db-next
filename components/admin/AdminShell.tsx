@@ -7,6 +7,7 @@ import { useAdminSidebar } from "@/components/admin/AdminSidebarProvider";
 
 type AdminShellProps = {
   isMasterHeader: boolean;
+  ordersModuleEnabled: boolean;
   children: React.ReactNode;
 };
 
@@ -23,7 +24,11 @@ type AdminShellProps = {
  * behavior (already `md:hidden`) is left as the better fit -- there isn't
  * room to push content aside on a phone.
  */
-export default function AdminShell({ isMasterHeader, children }: AdminShellProps) {
+export default function AdminShell({
+  isMasterHeader,
+  ordersModuleEnabled,
+  children,
+}: AdminShellProps) {
   const pathname = usePathname();
   const { collapsed } = useAdminSidebar();
 
@@ -34,7 +39,7 @@ export default function AdminShell({ isMasterHeader, children }: AdminShellProps
   return (
     <>
       <Suspense fallback={null}>
-        <AdminSidebar />
+        <AdminSidebar ordersModuleEnabled={ordersModuleEnabled} />
       </Suspense>
       <div className={`transition-[margin-left] duration-200 ${collapsed ? "" : "md:ml-64"}`}>
         {children}

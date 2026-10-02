@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { buildAdminSidebarNav } from "@/lib/admin/sidebarNav";
-import { canAccessAdminModule, type AdminRole } from "@/lib/auth/adminRoles";
+import { buildAdminSidebarNav, sidebarAllowsModule } from "@/lib/admin/sidebarNav";
+import type { AdminRole } from "@/lib/auth/adminRoles";
 
-function leafHrefs(role: AdminRole) {
+function leafHrefs(role: AdminRole, ordersModuleEnabled: boolean) {
   const nav = buildAdminSidebarNav(
-    (module) => canAccessAdminModule(role, module),
+    (module) =>
+      sidebarAllowsModule({
+        module,
+        orgId: "gonzales",
+        role,
+        ordersModuleEnabled,
+      }),
     false,
     "?org=gonzales",
   );
@@ -17,7 +23,7 @@ function leafHrefs(role: AdminRole) {
 
 describe("sidebar job leaves", () => {
   it("hides orders, surveys, scheduler, and Sports Connect from a park director", () => {
-    const hrefs = leafHrefs("PARK_DIRECTOR");
+    const hrefs = leafHrefs("PARK_DIRECTOR", true);
     for (const path of [
       "/admin/cap-orders",
       "/admin/shirt-orders",
@@ -33,7 +39,7 @@ describe("sidebar job leaves", () => {
   });
 
   it("hides orders from a board member and an admin, and keeps admin jobs with admins", () => {
-    const board = leafHrefs("BOARD_MEMBER");
+    const board = leafHrefs("BOARD_MEMBER", true);
     assert.equal(board.includes("/admin/cap-orders"), false);
     assert.equal(board.includes("/admin/shirt-orders"), false);
     assert.equal(board.includes("/admin/surveys"), false);
@@ -41,7 +47,7 @@ describe("sidebar job leaves", () => {
     assert.equal(board.includes("/admin/sports-connect"), false);
     assert.equal(board.includes("/admin/reports/umpire-pay"), true);
 
-    const admin = leafHrefs("ADMIN");
+    const admin = leafHrefs("ADMIN", true);
     assert.equal(admin.includes("/admin/cap-orders"), false);
     assert.equal(admin.includes("/admin/shirt-orders"), false);
     for (const path of ["/admin/surveys", "/admin/scheduler", "/admin/sports-connect"]) {
@@ -49,31 +55,22 @@ describe("sidebar job leaves", () => {
     }
   });
 
-  it("shows cap and shirt orders to a master admin when the orders flag is on", () => {
-    const previous = process.env.ORDERS_ENABLED;
-    process.env.ORDERS_ENABLED = "true";
-    try {
-      const hrefs = leafHrefs("MASTER_ADMIN");
-      assert.equal(hrefs.includes("/admin/cap-orders"), true);
-      assert.equal(hrefs.includes("/admin/shirt-orders"), true);
-    } finally {
-      if (previous === undefined) delete process.env.ORDERS_ENABLED;
-      else process.env.ORDERS_ENABLED = previous;
-    }
+  it("hides cap and shirt leaves from a master admin when the switch is off", () => {
+    const hrefs = leafHrefs("MASTER_ADMIN", false);
+    assert.equal(hrefs.includes("/admin/cap-orders"), false);
+    assert.equal(hrefs.includes("/admin/shirt-orders"), false);
+    assert.equal(hrefs.includes("/admin/sponsors"), true);
+    assert.equal(hrefs.includes("/admin/reports"), true);
   });
 
-  it("hides cap and shirt orders from a master admin when the orders flag is off", () => {
-    const previous = process.env.ORDERS_ENABLED;
-    delete process.env.ORDERS_ENABLED;
-    try {
-      const hrefs = leafHrefs("MASTER_ADMIN");
-      assert.equal(hrefs.includes("/admin/cap-orders"), false);
-      assert.equal(hrefs.includes("/admin/shirt-orders"), false);
-      assert.equal(hrefs.includes("/admin/sponsors"), true);
-      assert.equal(hrefs.includes("/admin/reports"), true);
-    } finally {
-      if (previous === undefined) delete process.env.ORDERS_ENABLED;
-      else process.env.ORDERS_ENABLED = previous;
+  it("shows cap and shirt leaves to a master admin only when the switch is on", () => {
+    const master = leafHrefs("MASTER_ADMIN", true);
+    assert.equal(master.includes("/admin/cap-orders"), true);
+    assert.equal(master.includes("/admin/shirt-orders"), true);
+    for (const role of ["ADMIN", "BOARD_MEMBER", "PARK_DIRECTOR"] as const) {
+      const hrefs = leafHrefs(role, true);
+      assert.equal(hrefs.includes("/admin/cap-orders"), false, role);
+      assert.equal(hrefs.includes("/admin/shirt-orders"), false, role);
     }
   });
 });
