@@ -1,0 +1,142 @@
+# Applies committed migrations after a merge.
+# preview → job migrate-staging (environment staging, secret STAGING_DATABASE_URL)
+# main    → job migrate-prod    (environment production, secret PROD_DATABASE_URL)
+#
+# DATABASE_URL is set from that secret inside the step. prisma.config.ts does
+# not load .env* files when GITHUB_ACTIONS=true, so a checked-in env file cannot
+# replace the secret. There is no fallback to the other environment's secret.
+name: Database migrations
+
+on:
+  push:
+    branches: [preview, main]
+  workflow_dispatch:
+
+jobs:
+  migrate-staging:
+    if: github.ref == 'refs/heads/preview'
+    runs-on: ubuntu-latest
+    environment: staging
+    concurrency:
+      group: db-migrate-staging
+      cancel-in-progress: false
+    env:
+      SKIP_PRISMA_SYNC: "1"
+    steps:
+      - name: Require STAGING_DATABASE_URL
+        env:
+          STAGING_DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          if [ -z "$STAGING_DATABASE_URL" ]; then
+            echo "STAGING_DATABASE_URL secret missing in environment staging"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Migration status
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "STAGING_DATABASE_URL secret missing in environment staging"
+            exit 1
+          fi
+          log="$(mktemp)"
+          set +e
+          pnpm exec prisma migrate status >"$log" 2>&1 || true
+          sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[redacted]#g' "$log"
+          rm -f "$log"
+
+      - name: Apply migrations
+        env:
+          DATABASE_URL: ${{ secrets.STAGING_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "STAGING_DATABASE_URL secret missing in environment staging"
+            exit 1
+          fi
+          log="$(mktemp)"
+          set +e
+          pnpm exec prisma migrate deploy >"$log" 2>&1
+          status=$?
+          set -e
+          sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[redacted]#g' "$log"
+          rm -f "$log"
+          exit "$status"
+
+  migrate-prod:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    concurrency:
+      group: db-migrate-prod
+      cancel-in-progress: false
+    env:
+      SKIP_PRISMA_SYNC: "1"
+    steps:
+      - name: Require PROD_DATABASE_URL
+        env:
+          PROD_DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          if [ -z "$PROD_DATABASE_URL" ]; then
+            echo "PROD_DATABASE_URL secret missing in environment production"
+            exit 1
+          fi
+
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Migration status
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "PROD_DATABASE_URL secret missing in environment production"
+            exit 1
+          fi
+          log="$(mktemp)"
+          set +e
+          pnpm exec prisma migrate status >"$log" 2>&1 || true
+          sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[redacted]#g' "$log"
+          rm -f "$log"
+
+      - name: Apply migrations
+        env:
+          DATABASE_URL: ${{ secrets.PROD_DATABASE_URL }}
+        run: |
+          if [ -z "$DATABASE_URL" ]; then
+            echo "PROD_DATABASE_URL secret missing in environment production"
+            exit 1
+          fi
+          log="$(mktemp)"
+          set +e
+          pnpm exec prisma migrate deploy >"$log" 2>&1
+          status=$?
+          set -e
+          sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[redacted]#g' "$log"
+          rm -f "$log"
+          exit "$status"

@@ -8,6 +8,15 @@ const INITIAL_MASTER_ADMIN_PASSWORD = process.env.INITIAL_MASTER_ADMIN_PASSWORD 
 
 const databaseUrl = process.env.DATABASE_URL;
 
+// Opt-in only. A plain `pnpm build` must not db-push or upsert admins, even
+// when DATABASE_URL points somewhere reachable.
+if (process.env.PRISMA_SYNC_ON_BUILD !== "1") {
+  console.log(
+    "[prisma-sync] Skipping prisma db push and admin bootstrap (PRISMA_SYNC_ON_BUILD is not 1).",
+  );
+  process.exit(0);
+}
+
 if (!databaseUrl) {
   console.log(
     "[prisma-sync] Skipping prisma db push (DATABASE_URL is not set).",

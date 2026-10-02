@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+env:
+  SKIP_PRISMA_SYNC: "1"
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -36,3 +39,108 @@ jobs:
       - name: Test
         run: pnpm run test
         continue-on-error: true
+
+  # Applies the migration chain to a throwaway Postgres 17, then fails if the
+  # migrations directory and schema.prisma have drifted. This service is the
+  # only database these checks may touch.
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: migrations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/migrations
+      SHADOW_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/shadow
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create shadow database
+        run: |
+          node --input-type=module <<'EOF'
+          import pg from "pg";
+          const client = new pg.Client({
+            host: "127.0.0.1",
+            port: 5432,
+            user: "postgres",
+            password: "postgres",
+            database: "postgres",
+          });
+          await client.connect();
+          const existing = await client.query(
+            "SELECT 1 FROM pg_database WHERE datname = 'shadow'",
+          );
+          if (existing.rowCount === 0) {
+            await client.query("CREATE DATABASE shadow");
+          }
+          await client.end();
+          EOF
+
+      - name: Apply migrations to empty database
+        run: |
+          if [ -z "${DATABASE_URL}" ] || [ -z "${SHADOW_DATABASE_URL}" ]; then
+            echo "Throwaway DATABASE_URL or SHADOW_DATABASE_URL is empty."
+            exit 1
+          fi
+          pnpm exec prisma migrate deploy
+
+      # Prisma 7.8 flags: --from-migrations and --to-schema (the old
+      # --from-schema-datamodel / --from-url / --shadow-database-url flags
+      # were removed). The shadow database is datasource.shadowDatabaseUrl
+      # in prisma.config.ts, fed by SHADOW_DATABASE_URL. Exit 0 means no
+      # drift; exit 2 means the migrations and schema differ.
+      - name: Fail on migration drift
+        run: |
+          pnpm exec prisma migrate diff \
+            --from-migrations prisma/migrations \
+            --to-schema prisma/schema.prisma \
+            --exit-code
+
+      - name: Reject unapproved destructive migrations
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DESTRUCTIVE_OK: ${{ contains(github.event.pull_request.labels.*.name, 'destructive-migration-approved') && 'yes' || 'no' }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- prisma/migrations | grep '/migration.sql$' || true)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed migration.sql files."
+            exit 0
+          fi
+          pattern='DROP TABLE|DROP COLUMN|ALTER COLUMN .* TYPE|RENAME|SET NOT NULL'
+          if grep -E -n -i -H "$pattern" "${files[@]}"; then
+            if [ "$DESTRUCTIVE_OK" != "yes" ]; then
+              echo "Destructive migration SQL needs the pull request label destructive-migration-approved."
+              exit 1
+            fi
+            echo "Destructive migration SQL is covered by label destructive-migration-approved."
+          else
+            echo "No destructive statements in changed migrations."
+          fi

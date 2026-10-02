@@ -2,15 +2,15 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-## ⚠️ Database environment rule — DEV before PROD
+## ⚠️ Database environment rule — DEV, then staging, then prod
 
-**All database schema changes (migrations, `db push`, raw DDL) must be applied to the DEV database first and verified working on the local dev sites before the production database is touched.**
+**Schema changes are applied to the DEV database first and verified on the local dev sites. Staging and production are migrated by GitHub Actions after a merge, not by a laptop.**
 
-- The running local servers (ports 3000/3001/3002) use the **DEV database** (`.env.development.local`).
-- `prisma.config.ts` is intentionally configured so that all Prisma CLI commands (`migrate dev`, `db push`, etc.) also target the DEV database by default.
-- Do **not** apply any structural change to the prod database (`DATABASE_URL` in `.env.local`) until the dev sites are confirmed working with the change.
-- When it is time to promote a schema change to production, use `DATABASE_URL="<prod-url>" npx prisma migrate deploy` explicitly — never run Prisma migrations against prod by accident.
-- If you are writing a one-off script that touches the database, always load `.env.development.local` (not `.env.local`) unless you have been explicitly asked to target production.
+- The running local servers use the **DEV database** (`.env.development.local`).
+- `prisma.config.ts` loads `.env.local`, then `.env.development.local` (which overrides it), so local Prisma CLI targets DEV. In GitHub Actions those files are not loaded.
+- Promote by pull request into `preview`. CI runs, the PR merges into `preview`, and `.github/workflows/db-migrate.yml` job `migrate-staging` applies migrations to staging. Trent tests staging.
+- **Trent** merges `preview` into `main` with a merge commit (never squash). Job `migrate-prod` applies migrations to production. Agents never merge to `main` and never push `main` or `preview` directly.
+- If you are writing a one-off script that touches the database, load `.env.development.local` unless you have been explicitly asked to target another database. Do not run `migrate deploy` against staging or production yourself.
 
 ## Next.js version warning
 
@@ -35,16 +35,15 @@ pnpm test
 tsx --test lib/assignr/__tests__/someFile.test.ts
 
 # Prisma
-npx prisma migrate dev      # create and apply a new migration (dev)
-npx prisma migrate deploy   # apply pending migrations (prod/preview)
+npx prisma migrate dev      # create and apply a new migration (dev only)
 npx prisma generate         # regenerate client after schema change
-npx prisma migrate status   # check pending migrations
-npx prisma db push          # push schema without migration history (prototyping only)
+npx prisma validate         # schema and config check, no database writes
+npx prisma db push          # prototype against the dev database only
 ```
 
-`prisma.config.ts` at the repo root loads `.env.local` first, then `.env.development.local` (which overrides it). This mirrors Next.js dev-mode priority, so Prisma CLI commands target the **dev database** by default — matching what the running dev servers use.
+`prisma.config.ts` loads `.env.local` first, then `.env.development.local` (which overrides it), except when `CI` or `GITHUB_ACTIONS` is set. Local Prisma CLI targets the **dev database**. Staging and production migrations run in `.github/workflows/db-migrate.yml`.
 
-To apply a migration to the **production database**, temporarily remove or rename `.env.development.local` before running `prisma migrate deploy`, then restore it. Never run `prisma migrate dev` or `prisma db push` with the production `DATABASE_URL` loaded.
+`pnpm build` does not sync the database unless `PRISMA_SYNC_ON_BUILD=1`.
 
 There is no local node/npm on this dev box — run Prisma CLI commands from within the project directory on dev-box.
 
@@ -70,10 +69,10 @@ Two separate PostgreSQL databases via Prisma (`lib/prisma.ts`):
 
 | File | Database | Used by |
 |---|---|---|
-| `.env.development.local` | **DEV** database | Running local dev servers (all three ports) |
-| `.env.local` | **PROD** database | Vercel deployments |
+| `.env.development.local` | **DEV** database | Running local dev servers and local Prisma CLI |
+| `.env.local` | Local-only URL file. Vercel uses its own env vars. Preview uses the staging database. | Developer machine, only when `.env.development.local` is absent |
 
-`.env.development.local` overrides `.env.local` in Next.js dev mode and in Prisma CLI commands (via `prisma.config.ts`). The running dev servers on this box always connect to the dev database.
+`.env.development.local` overrides `.env.local` in Next.js dev mode and in local Prisma CLI commands (via `prisma.config.ts`). Vercel does not read either file. Preview deployments use the staging database. Production deployments use the production database.
 
 The Prisma client is a singleton with HMR-safe version checking — bump `PRISMA_SCHEMA_VERSION` in `lib/prisma.ts` whenever the schema changes to flush the dev cache.
 
@@ -115,17 +114,19 @@ Prisma uses the `@prisma/adapter-ppg` adapter (Prisma Postgres/pooled gateway).
 
 ### Git / deployment workflow
 
-- Default branch for all agent work: **`preview`**. Do not commit directly to `main`.
-- Push to `preview` → Vercel preview deployment → merge `preview` into `main` → production deploys.
-- `main` pushes trigger a GitHub Action (`sync-preview-with-main.yml`) that fast-forwards `preview`.
-- Each push to `preview` triggers ~3 Vercel deployments (one per org). Batch commits to avoid thrashing.
-- Three demo repos (`apbaseball-demo-admin/dyb/llb`) are automatically synced from `main` via `sync-demo-repos.yml`.
+- Work on `feature/*` in your own worktree. Open a pull request into `preview`.
+- CI (`.github/workflows/ci.yml`) runs on the PR. Merge the PR into `preview`.
+- That push runs `db-migrate.yml` job `migrate-staging` (GitHub environment `staging`). Trent tests staging.
+- **Trent** merges `preview` into `main` with a merge commit (never squash). Job `migrate-prod` (environment `production`) migrates production.
+- Agents never auto-merge to `main` and never push `main` or `preview` directly.
+- A push to `main` still fast-forwards `preview` via `sync-preview-with-main.yml`. Demo repos sync from `main` via `sync-demo-repos.yml`.
+- Vercel uses its own env vars. Preview uses the staging database. Production uses the production database.
 
 ### Environment variables
 
 Required in `.env.local` for local dev:
 
-- `DATABASE_URL` — **production** Postgres connection string (overridden by `.env.development.local` for dev work)
+- `DATABASE_URL` — local Prisma CLI URL. `.env.development.local` overrides it for dev. Vercel uses its own env vars; Preview uses the staging database.
 - `SITE_ORG` — set by Vercel per deployment; use `pnpm dev:*` scripts locally
 - `ASSIGNR_SITE_ID`, `ASSIGNR_LEAGUE_ID`, `ASSIGNR_CLIENT_ID`, `ASSIGNR_CLIENT_SECRET`
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — Dugout OAuth
