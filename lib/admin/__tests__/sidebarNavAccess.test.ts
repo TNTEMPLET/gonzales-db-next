@@ -32,26 +32,26 @@ describe("sidebar job leaves", () => {
     }
   });
 
-  it("shows orders to a board member and keeps admin-only jobs hidden", () => {
-    const hrefs = leafHrefs("BOARD_MEMBER");
-    assert.equal(hrefs.includes("/admin/cap-orders"), true);
-    assert.equal(hrefs.includes("/admin/shirt-orders"), true);
-    assert.equal(hrefs.includes("/admin/surveys"), false);
-    assert.equal(hrefs.includes("/admin/scheduler"), false);
-    assert.equal(hrefs.includes("/admin/sports-connect"), false);
-    assert.equal(hrefs.includes("/admin/reports/umpire-pay"), true);
+  it("hides orders from a board member and an admin, and keeps admin jobs with admins", () => {
+    const board = leafHrefs("BOARD_MEMBER");
+    assert.equal(board.includes("/admin/cap-orders"), false);
+    assert.equal(board.includes("/admin/shirt-orders"), false);
+    assert.equal(board.includes("/admin/surveys"), false);
+    assert.equal(board.includes("/admin/scheduler"), false);
+    assert.equal(board.includes("/admin/sports-connect"), false);
+    assert.equal(board.includes("/admin/reports/umpire-pay"), true);
+
+    const admin = leafHrefs("ADMIN");
+    assert.equal(admin.includes("/admin/cap-orders"), false);
+    assert.equal(admin.includes("/admin/shirt-orders"), false);
+    for (const path of ["/admin/surveys", "/admin/scheduler", "/admin/sports-connect"]) {
+      assert.equal(admin.includes(path), true, path);
+    }
   });
 
-  it("shows each admin job to an admin on its own key", () => {
-    const hrefs = leafHrefs("ADMIN");
-    for (const path of [
-      "/admin/cap-orders",
-      "/admin/shirt-orders",
-      "/admin/surveys",
-      "/admin/scheduler",
-      "/admin/sports-connect",
-    ]) {
-      assert.equal(hrefs.includes(path), true, path);
-    }
+  it("shows cap and shirt orders to a master admin", () => {
+    const hrefs = leafHrefs("MASTER_ADMIN");
+    assert.equal(hrefs.includes("/admin/cap-orders"), true);
+    assert.equal(hrefs.includes("/admin/shirt-orders"), true);
   });
 });

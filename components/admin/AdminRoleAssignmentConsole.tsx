@@ -257,7 +257,7 @@ export default function AdminRoleAssignmentConsole({
     if (persona === "game-day") mods = ["GAME_DAY", "SCORES", "REPORTS", "SEASON_SETUP"];
     if (persona === "scorekeeper") mods = ["SCORES", "REPORTS"];
     if (persona === "orders") mods = ["ORDERS"];
-    if (persona === "board") mods = ["ORDERS", "DUGOUT_MODERATION", "ALL_STAR_PAYMENTS"];
+    if (persona === "board") mods = ["DUGOUT_MODERATION", "ALL_STAR_PAYMENTS"];
     if (persona === "platform") mods = ["ROLE_ASSIGNMENT", "TOURNAMENT_BRACKETS"];
 
     const s = suggestLeastPrivilegeRole(mods);

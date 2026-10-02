@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import type { AdminModule } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, type AdminModule, type AdminRole } from "@/lib/auth/adminRoles";
 import {
   ADMIN_DASHBOARD_CARD_SPECS,
   ADMIN_DASHBOARD_CATEGORY_META,
@@ -99,6 +99,22 @@ describe("admin dashboard card specs", () => {
       orgFor: () => "gonzales",
     }).map((card) => card.title);
     assert.deepEqual(orders, ["Cap Orders", "Shirt Orders"]);
+
+    for (const role of ["PARK_DIRECTOR", "BOARD_MEMBER", "ADMIN"] as const satisfies readonly AdminRole[]) {
+      const titles = buildAdminDashboardCardDescriptors({
+        allowModule: (module) => canAccessAdminModule(role, module),
+        orgFor: () => "gonzales",
+      }).map((card) => card.title);
+      assert.equal(titles.includes("Cap Orders"), false, role);
+      assert.equal(titles.includes("Shirt Orders"), false, role);
+    }
+
+    const masterTitles = buildAdminDashboardCardDescriptors({
+      allowModule: (module) => canAccessAdminModule("MASTER_ADMIN", module),
+      orgFor: () => "gonzales",
+    }).map((card) => card.title);
+    assert.equal(masterTitles.includes("Cap Orders"), true);
+    assert.equal(masterTitles.includes("Shirt Orders"), true);
 
     const sponsors = buildAdminDashboardCardDescriptors({
       allowModule: (module) => module === "SPONSORS",

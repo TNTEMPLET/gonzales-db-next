@@ -14,8 +14,11 @@ import {
   type AdminDashboardCardDescriptor,
 } from "@/lib/admin/dashboardModules";
 import type { AdminDashboardCardModule } from "@/lib/admin/dashboardModules";
+import {
+  canPreviewDashboardModule,
+  type DashboardRolePreview,
+} from "@/lib/admin/dashboardRolePreview";
 import { resolvePreviewUserAccess, type PreviewUserSnapshot } from "@/lib/admin/viewPreview";
-import { canAccessAdminModule, type AdminModule, type AdminRole } from "@/lib/auth/adminRoles";
 import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 
 type AdminDashboardCard = AdminDashboardCardDescriptor;
@@ -28,38 +31,11 @@ const previewRoleLabel: Record<AdminViewPreviewRole, string> = {
   ALL_STAR_VIEW_ONLY: "All-Star Vault Limited Admin",
 };
 
-function asAdminModule(module: AdminDashboardCardModule): AdminModule {
-  return module;
-}
-
-function previewRoleToAdminRole(previewRole: AdminViewPreviewRole): AdminRole | null {
-  if (previewRole === "ADMIN" || previewRole === "BOARD_MEMBER" || previewRole === "PARK_DIRECTOR") {
-    return previewRole;
-  }
-  return null;
-}
-
-function canPreviewAccessModule(
-  previewRole: AdminViewPreviewRole,
-  module: AdminDashboardCardModule,
-  allStarVaultView: boolean,
-) {
-  if (previewRole === "NONE") return true;
-  if (previewRole === "ALL_STAR_VIEW_ONLY") {
-    return module === "ALL_STAR_VAULT" && allStarVaultView;
-  }
-  if (module === "ALL_STAR_VAULT" && previewRole !== "ADMIN") {
-    return false;
-  }
-  const previewAs = previewRoleToAdminRole(previewRole);
-  if (!previewAs) return false;
-  return canAccessAdminModule(previewAs, asAdminModule(module));
-}
-
 function canPreviewUserAccessModule(
   user: PreviewUserSnapshot,
   module: AdminDashboardCardModule,
   organizationId: ContentOrgId | null,
+  masterMode: boolean,
 ) {
   const organizationIds: ContentOrgId[] = organizationId
     ? [organizationId]
@@ -67,9 +43,12 @@ function canPreviewUserAccessModule(
   return organizationIds.some((orgId) => {
     const access = resolvePreviewUserAccess(user, orgId);
     if (module === "ALL_STAR_VAULT") return access.allStarVaultView;
-    const previewAs =
+    const previewAs: DashboardRolePreview =
       access.effectiveRole === "MASTER_ADMIN" ? "ADMIN" : access.effectiveRole;
-    return canPreviewAccessModule(previewAs, module, access.allStarVaultView);
+    return canPreviewDashboardModule(previewAs, module, {
+      masterMode,
+      allStarVaultView: access.allStarVaultView,
+    });
   });
 }
 
@@ -113,11 +92,14 @@ export default function AdminDashboardModuleGrid({
     if (previewContext.mode === "user" && previewContext.user) {
       const previewUser = previewContext.user;
       return cards.filter((card) =>
-        canPreviewUserAccessModule(previewUser, card.module, currentOrg),
+        canPreviewUserAccessModule(previewUser, card.module, currentOrg, masterMode),
       );
     }
     return cards.filter((card) =>
-      canPreviewAccessModule(previewRole, card.module, allStarVaultView),
+      canPreviewDashboardModule(previewRole, card.module, {
+        masterMode,
+        allStarVaultView,
+      }),
     );
   }, [
     allowRolePreview,
@@ -126,6 +108,7 @@ export default function AdminDashboardModuleGrid({
     allStarVaultView,
     previewContext,
     currentOrg,
+    masterMode,
   ]);
 
   const groupedCards = useMemo(

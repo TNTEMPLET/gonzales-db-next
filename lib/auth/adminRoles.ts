@@ -80,7 +80,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   SURVEYS: "ADMIN",
   SCHEDULER: "ADMIN",
   SPORTS_CONNECT: "ADMIN",
-  ORDERS: "BOARD_MEMBER",
+  ORDERS: "MASTER_ADMIN",
   GAME_DAY: "PARK_DIRECTOR",
 };
 
@@ -126,6 +126,7 @@ const MASTER_ONLY_MODULES = new Set<AdminModule>([
   "PARK_INFO",
   "ROLE_ASSIGNMENT",
   "REGISTRATION_WINDOWS",
+  "ORDERS",
 ]);
 
 export function isAdminRole(
@@ -192,11 +193,13 @@ export function getAdminModuleLabel(module: AdminModule): string {
 export function canAccessAdminModule(
   role: AdminRole,
   module: AdminModule,
+  options?: { masterDeployment?: boolean },
 ): boolean {
   if (role === "MASTER_ADMIN") {
     return true;
   }
-  if (MASTER_ONLY_MODULES.has(module) && !isMasterDeployment()) {
+  const masterDeployment = options?.masterDeployment ?? isMasterDeployment();
+  if (MASTER_ONLY_MODULES.has(module) && !masterDeployment) {
     return false;
   }
   return hasAdminRoleAtLeast(role, getMinimumRoleForModule(module));
@@ -213,11 +216,11 @@ const ROLE_SUGGESTION_NOTES: Record<AdminRole, string> = {
   PARK_DIRECTOR:
     "Game day, scores, umpire pay, and season setup. Park directors do not see cap or shirt orders.",
   BOARD_MEMBER:
-    "Board access, including cap and shirt orders, moderation, and payments oversight. Surveys, the scheduler, and Sports Connect stay with admins.",
+    "Board access for moderation and payments oversight. Surveys, the scheduler, Sports Connect, and orders stay with higher roles.",
   ADMIN:
-    "Site operator. Includes surveys, the scheduler, Sports Connect, teams, and everything a board member can open.",
+    "Site operator. Includes surveys, the scheduler, Sports Connect, teams, and everything a board member can open. Cap and shirt orders stay with master admins.",
   MASTER_ADMIN:
-    "Requires platform-level privileges. Only for trusted cross-org operators.",
+    "Requires platform-level privileges. Only for trusted cross-org operators. Includes cap and shirt orders.",
 };
 
 /**

@@ -22,14 +22,14 @@ describe("admin job module keys", () => {
     assert.equal(getMinimumRoleForModule("SURVEYS"), "ADMIN");
     assert.equal(getMinimumRoleForModule("SCHEDULER"), "ADMIN");
     assert.equal(getMinimumRoleForModule("SPORTS_CONNECT"), "ADMIN");
-    assert.equal(getMinimumRoleForModule("ORDERS"), "BOARD_MEMBER");
+    assert.equal(getMinimumRoleForModule("ORDERS"), "MASTER_ADMIN");
     assert.equal(getMinimumRoleForModule("GAME_DAY"), "PARK_DIRECTOR");
   });
 
-  it("lets a board member open orders and keeps them off a park director", () => {
-    assert.equal(allowed("PARK_DIRECTOR", "ORDERS"), false);
-    assert.equal(allowed("BOARD_MEMBER", "ORDERS"), true);
-    assert.equal(allowed("ADMIN", "ORDERS"), true);
+  it("denies non-masters on the orders API gate and allows a master admin", () => {
+    for (const role of ["PARK_DIRECTOR", "BOARD_MEMBER", "ADMIN"] as const) {
+      assert.equal(allowed(role, "ORDERS"), false, role);
+    }
     assert.equal(allowed("MASTER_ADMIN", "ORDERS"), true);
   });
 
@@ -56,9 +56,9 @@ describe("admin job module keys", () => {
 
   it("suggests the least role that covers the requested jobs", () => {
     assert.equal(suggestLeastPrivilegeRole(["GAME_DAY", "SCORES", "REPORTS"]).role, "PARK_DIRECTOR");
-    assert.equal(suggestLeastPrivilegeRole(["ORDERS"]).role, "BOARD_MEMBER");
+    assert.equal(suggestLeastPrivilegeRole(["ORDERS"]).role, "MASTER_ADMIN");
     assert.equal(suggestLeastPrivilegeRole(["SURVEYS", "SCHEDULER", "SPORTS_CONNECT"]).role, "ADMIN");
-    assert.equal(suggestLeastPrivilegeRole(["ORDERS", "SURVEYS"]).role, "ADMIN");
+    assert.equal(suggestLeastPrivilegeRole(["ORDERS", "SURVEYS"]).role, "MASTER_ADMIN");
     assert.equal(suggestLeastPrivilegeRole(["ROLE_ASSIGNMENT"]).role, "MASTER_ADMIN");
     assert.equal(suggestLeastPrivilegeRole([]).role, "PARK_DIRECTOR");
     for (const module of JOB_KEYS) {
