@@ -27,16 +27,15 @@ pnpm test
 tsx --test lib/assignr/__tests__/someFile.test.ts
 
 # Prisma
-npx prisma migrate dev      # create and apply a new migration (dev)
-npx prisma migrate deploy   # apply pending migrations (prod/preview)
+npx prisma migrate dev      # create and apply a new migration (dev only)
 npx prisma generate         # regenerate client after schema change
-npx prisma migrate status   # check pending migrations
-npx prisma db push          # push schema without migration history (prototyping only)
+npx prisma validate         # schema and config check, no database writes
+npx prisma db push          # prototype against the dev database only
 ```
 
-`prisma.config.ts` at the repo root loads `.env.local` automatically for all Prisma CLI commands. If `DATABASE_URL` is still missing, prefix with `node --env-file=.env.local`.
+`prisma.config.ts` loads `.env.local`, then `.env.development.local` (which overrides it), except in CI. Local Prisma CLI targets the dev database. Staging and production migrations run in `.github/workflows/db-migrate.yml`. Do not run `migrate deploy` against staging or production from a workstation.
 
-There is no local node/npm in this dev environment — migrations **cannot** be applied from this machine unless `DATABASE_URL` is present in `.env.local`. The same database is used for both local dev and production.
+`pnpm build` does not sync the database unless `PRISMA_SYNC_ON_BUILD=1`.
 
 ## Architecture overview
 
@@ -96,17 +95,18 @@ Prisma uses the `@prisma/adapter-ppg` adapter (Prisma Postgres/pooled gateway).
 
 ### Git / deployment workflow
 
-- Default branch for all agent work: **`preview`**. Do not commit directly to `main`.
-- Push to `preview` → Vercel preview deployment → merge `preview` into `main` → production deploys.
-- `main` pushes trigger a GitHub Action (`sync-preview-with-main.yml`) that fast-forwards `preview`.
-- Each push to `preview` triggers ~3 Vercel deployments (one per org). Batch commits to avoid thrashing.
-- Three demo repos (`apbaseball-demo-admin/dyb/llb`) are automatically synced from `main` via `sync-demo-repos.yml`.
+- Work on `feature/*` in your own worktree. Open a pull request into `preview`. Agents never merge any pull request.
+- CI runs on the PR. Trent reviews and merges into `preview`. That merge runs `migrate-staging`. Trent tests staging.
+- **Trent** merges `preview` into `main` with a merge commit (never squash). Job `migrate-prod` migrates production. Run that migration before or together with the production deploy. Vercel can serve the new `main` build before `migrate-prod` is approved, so schema changes need to be backward-compatible (expand, then contract) or the migration needs approval before the new code serves traffic.
+- Agents never merge any pull request and never push `main` or `preview`.
+- A push to `main` still fast-forwards `preview` via `sync-preview-with-main.yml`. Demo repos sync from `main` via `sync-demo-repos.yml`.
+- Vercel uses its own env vars. Preview uses the staging database. Production uses the production database.
 
 ### Environment variables
 
 Required in `.env.local` for local dev:
 
-- `DATABASE_URL` — shared production/dev Postgres connection string
+- `DATABASE_URL` — local Prisma CLI URL. `.env.development.local` overrides it for dev. Vercel uses its own env vars; Preview uses the staging database.
 - `SITE_ORG` — set by Vercel per deployment; use `pnpm dev:*` scripts locally
 - `ASSIGNR_SITE_ID`, `ASSIGNR_LEAGUE_ID`, `ASSIGNR_CLIENT_ID`, `ASSIGNR_CLIENT_SECRET`
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — Dugout OAuth

@@ -4,6 +4,9 @@ on:
   push:
   pull_request:
 
+env:
+  SKIP_PRISMA_SYNC: "1"
+
 jobs:
   verify:
     runs-on: ubuntu-latest
@@ -36,3 +39,129 @@ jobs:
       - name: Test
         run: pnpm run test
         continue-on-error: true
+
+  # Applies the migration chain to a throwaway Postgres 17, then fails if the
+  # migrations directory and schema.prisma have drifted. This service is the
+  # only database these checks may touch.
+  migrations:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: migrations
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/migrations
+      SHADOW_DATABASE_URL: postgresql://postgres:postgres@127.0.0.1:5432/shadow
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create shadow database
+        run: |
+          node --input-type=module <<'EOF'
+          import pg from "pg";
+          const client = new pg.Client({
+            host: "127.0.0.1",
+            port: 5432,
+            user: "postgres",
+            password: "postgres",
+            database: "postgres",
+          });
+          await client.connect();
+          const existing = await client.query(
+            "SELECT 1 FROM pg_database WHERE datname = 'shadow'",
+          );
+          if (existing.rowCount === 0) {
+            await client.query("CREATE DATABASE shadow");
+          }
+          await client.end();
+          EOF
+
+      # Raw `prisma migrate deploy` cannot replay two historical files
+      # (TeamPlayer is altered before it is created; 20260729000000 quotes
+      # googleSub incorrectly). Editing those files would change checksums and
+      # break deploy on databases that already applied them. scripts/bootstrap-fresh-database.mjs
+      # is the supported from-scratch replay: it runs migrate deploy and, only
+      # when one of those known migrations fails, applies an idempotent correction
+      # and marks that migration applied.
+      - name: Apply migrations to empty database
+        run: |
+          if [ -z "${DATABASE_URL}" ] || [ -z "${SHADOW_DATABASE_URL}" ]; then
+            echo "Throwaway DATABASE_URL or SHADOW_DATABASE_URL is empty."
+            exit 1
+          fi
+          node scripts/bootstrap-fresh-database.mjs
+
+      # Prisma 7.8 removed --from-url and --shadow-database-url.
+      # --from-migrations replays raw migration.sql on the shadow database
+      # (datasource.shadowDatabaseUrl / SHADOW_DATABASE_URL) and dies on the
+      # two historical files above, so it cannot be the drift gate.
+      # --from-config-datasource introspects the throwaway database this job
+      # just migrated. --to-schema is the Prisma schema. Exit 0 is no drift;
+      # exit 2 means they differ. The script is printed so the delta is visible
+      # without a connection string.
+      - name: Fail on migration drift
+        run: |
+          set +e
+          pnpm exec prisma migrate diff \
+            --from-config-datasource \
+            --to-schema prisma/schema.prisma \
+            --exit-code \
+            --script > "$RUNNER_TEMP/migration-drift.sql" 2> "$RUNNER_TEMP/migration-drift.err"
+          status=$?
+          set -e
+          if [ "$status" -eq 0 ]; then
+            echo "No migration drift."
+            exit 0
+          fi
+          echo "prisma migrate diff exited $status."
+          sed -E 's#(postgres(ql)?://)[^[:space:]]+#\1[redacted]#g' "$RUNNER_TEMP/migration-drift.err" "$RUNNER_TEMP/migration-drift.sql"
+          exit "$status"
+
+      - name: Reject unapproved destructive migrations
+        if: github.event_name == 'pull_request'
+        shell: bash
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          DESTRUCTIVE_OK: ${{ contains(github.event.pull_request.labels.*.name, 'destructive-migration-approved') && 'yes' || 'no' }}
+        run: |
+          set -euo pipefail
+          mapfile -t files < <(git diff --name-only "$BASE_SHA" "$HEAD_SHA" -- prisma/migrations | grep '/migration.sql$' || true)
+          if [ "${#files[@]}" -eq 0 ]; then
+            echo "No changed migration.sql files."
+            exit 0
+          fi
+          pattern='DROP TABLE|DROP COLUMN|ALTER COLUMN .* TYPE|RENAME|SET NOT NULL'
+          if grep -E -n -i -H "$pattern" "${files[@]}"; then
+            if [ "$DESTRUCTIVE_OK" != "yes" ]; then
+              echo "Destructive migration SQL needs the pull request label destructive-migration-approved."
+              exit 1
+            fi
+            echo "Destructive migration SQL is covered by label destructive-migration-approved."
+          else
+            echo "No destructive statements in changed migrations."
+          fi
