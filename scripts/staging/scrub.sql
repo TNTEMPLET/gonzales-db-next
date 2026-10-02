@@ -37,6 +37,34 @@
 
 BEGIN;
 
+-- First action: abort with no changes unless this database is marked staging.
+-- The marker is created by hand on staging only and must never exist on
+-- production. pg_restore --clean can drop it; the refresh workflow puts it
+-- back before this script runs.
+--
+--   CREATE TABLE public._environment (
+--     value text PRIMARY KEY CHECK (value = 'staging')
+--   );
+--   INSERT INTO public._environment (value) VALUES ('staging');
+DO $$
+DECLARE
+  n int;
+  marker text;
+BEGIN
+  IF to_regclass('public._environment') IS NULL THEN
+    RAISE EXCEPTION 'refusing to scrub: public._environment marker is missing';
+  END IF;
+  SELECT count(*) INTO n FROM public._environment;
+  IF n <> 1 THEN
+    RAISE EXCEPTION 'refusing to scrub: public._environment must contain exactly one row';
+  END IF;
+  SELECT value INTO marker FROM public._environment;
+  IF marker IS DISTINCT FROM 'staging' THEN
+    RAISE EXCEPTION 'refusing to scrub: public._environment value is not staging';
+  END IF;
+END
+$$;
+
 CREATE TEMP TABLE staging_kept_login_emails (
   email text PRIMARY KEY
 ) ON COMMIT DROP;
