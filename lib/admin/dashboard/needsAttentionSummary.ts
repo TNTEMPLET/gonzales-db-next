@@ -20,8 +20,8 @@ export type NeedsAttentionSummary = {
 };
 
 /**
- * Checklist of concrete, actionable counts -- every item links straight to
- * the hub that resolves it. Deliberately not a generic "alerts" system:
+ * Checklist of concrete, actionable counts. Each item links to the page
+ * that resolves it. Deliberately not a generic "alerts" system:
  * OrgAlert (lib/orgAlerts.ts) only models weather/park closures, not a
  * general alert feed, so this assembles real counts from each domain's own
  * data instead of inventing new alert infrastructure.

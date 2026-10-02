@@ -34,8 +34,8 @@ import {
 import { isCommunicationsModuleEnabled } from "@/lib/communications/config";
 import prisma from "@/lib/prisma";
 import {
-  getAdminDashboardCategory,
-  sortAdminDashboardCards,
+  buildAdminDashboardCardDescriptors,
+  cardAccessModules,
 } from "@/lib/admin/dashboardModules";
 import { getRegistrationSummary } from "@/lib/admin/dashboard/registrationSummary";
 import { getComplianceSummary } from "@/lib/admin/dashboard/complianceSummary";
@@ -168,14 +168,6 @@ export default async function AdminDashboardPage({
     const r = roleByOrg[orgId] ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
     return canAccessAdminModule(r, module);
   };
-
-  const preferredOrgForModule = (module: AdminModule): ContentOrgId => {
-    if (currentOrg) return currentOrg;
-    return CONTENT_ORGS.find((orgId) => hasModuleAccess(orgId, module)) ?? CONTENT_ORGS[0];
-  };
-
-  const moduleHref = (basePath: string, module: AdminModule) =>
-    `${basePath}?org=${preferredOrgForModule(module)}`;
 
   // "State of the organization" dashboard section -- scorecards/charts/
   // leaderboards above the module-launcher grid. Board Member+ only (same
@@ -312,81 +304,21 @@ export default async function AdminDashboardPage({
     (inSeason?.operations ?? []).map((row) => [row.organizationId, row]),
   );
 
-  const cards = sortAdminDashboardCards([
-    {
-      module: "USERS" as AdminModule,
-      href: `/admin/people?org=${moduleOrgFallback}`,
-      title: "People & Access Hub",
-      description: masterMode
-        ? "Accounts, volunteer compliance cards (JDP / Abuse Awareness), coaching interest, and Master Role Assignments."
-        : "Directory, volunteer compliance cards, coaching interest, and organization access.",
-      action: masterMode ? "Open People Hub" : "Open People",
+  const allowDashboardCard = (module: AdminModule) => {
+    if (currentOrg) return hasModuleAccess(currentOrg, module);
+    return CONTENT_ORGS.some((orgId) => hasModuleAccess(orgId, module));
+  };
+  const cards = buildAdminDashboardCardDescriptors({
+    allowModule: allowDashboardCard,
+    orgFor: (spec) => {
+      if (currentOrg) return currentOrg;
+      for (const module of cardAccessModules(spec)) {
+        const match = CONTENT_ORGS.find((orgId) => hasModuleAccess(orgId, module));
+        if (match) return match;
+      }
+      return moduleOrgFallback;
     },
-    {
-      module: "SEASON_SETUP" as AdminModule,
-      href: `/admin/season-setup?org=${moduleOrgFallback}`,
-      title: "Season Setup",
-      description: "Track season-setup progress: registration, coaches, drafts, jerseys, and schedule.",
-      action: "Open Season Setup",
-    },
-    {
-      module: "TEAMS" as AdminModule,
-      href: `/admin/competition?org=${moduleOrgFallback}`,
-      title: "Competition & Play Hub",
-      description: masterMode
-        ? "Teams & rosters, game scores, Fall Ball scheduler, Assignr umpires, SportsConnect imports, and registration windows."
-        : "Manage team rosters, game scores, scheduler, and Assignr umpires in one place.",
-      action: masterMode ? "Open Competition Hub" : "Open Competition",
-    },
-    {
-      module: "TOURNAMENT_BRACKETS" as AdminModule,
-      href: `/admin/park?org=${moduleOrgFallback}`,
-      title: "Park & Tournament Hub",
-      description: masterMode
-        ? "Bracket creator, tournament monitor readiness, rainout alerts, and park rules/field layouts."
-        : "Build brackets, monitor alerts, post rainouts, and manage park rules.",
-      action: masterMode ? "Open Park Hub" : "Open Park Desk",
-    },
-    {
-      module: "COMMUNICATIONS" as AdminModule,
-      href: `/admin/publishing?org=${moduleOrgFallback}`,
-      title: "Publishing & Comms Center",
-      description: masterMode
-        ? "Email broadcast campaigns (Resend), news announcements, Facebook post drafts, Dugout moderation, and shared Drive files."
-        : "Publish emails, news stories, social posts, moderate dugout feed, and open shared files.",
-      action: masterMode ? "Open Publishing Center" : "Open Publishing",
-    },
-    {
-      module: "ENROLLMENT_KPI" as AdminModule,
-      href: `/admin/enrollment?org=${moduleOrgFallback}`,
-      title: "Enrollment & KPIs",
-      description: masterMode
-        ? "Registration counts, revenue collected vs. outstanding, fee-tier breakdown, and team fill status across organizations."
-        : "Registration counts, revenue collected vs. outstanding, fee-tier breakdown, and team rosters at a glance.",
-      action: "Open Enrollment & KPIs",
-    },
-    {
-      module: "ALL_STAR_PAYMENTS" as AdminModule,
-      href: `/admin/orders?org=${moduleOrgFallback}`,
-      title: "Orders & Commerce Desk",
-      description: masterMode
-        ? "Fulfill cap orders, manage championship shirt orders, review merch catalog PayPal links, sponsors, and payment reports."
-        : "Cap orders, championship shirt orders, merch shop catalog, and payment audit log.",
-      action: masterMode ? "Open Orders Desk" : "Open Orders",
-    },
-    {
-      module: "ALL_STAR_VAULT" as AdminModule,
-      href: moduleHref("/admin/all-star", "ALL_STAR_VAULT"),
-      title: "All-Star Program",
-      description: masterMode
-        ? "Vault, payments, cap orders, and shirt orders for All-Star season work across organizations."
-        : "Vault (cycles & ballots), payments, cap orders, and championship shirt orders in one program.",
-      action: masterMode ? "Open All-Star Program" : "Open All-Star",
-    },
-  ].map((card) => ({
-    ...card,
-    category: getAdminDashboardCategory(card.module)!,
-  })));
+  });
 
   const visibleModuleCount = cards.length;
   const liveSeasonLabel = currentOrg
@@ -493,7 +425,7 @@ export default async function AdminDashboardPage({
                 {masterMode
                   ? "Direct operations for Gonzales DYB, Ascension Little League, and AP Baseball Fall Ball from a single administrative surface. Switch target sites, publish updates, manage access, and monitor league operations without dropping context."
                   : showStateOfOrg
-                    ? "Manage users, publish league updates, and moderate dugout posts from one place."
+                    ? "Users, scores, news, and dugout moderation for this organization."
                     : "Rainouts, scoreboard controllers, umpire cards, scores, and umpire pay. In that order."}
               </p>
               <div className="mt-5 max-w-3xl rounded-2xl border border-zinc-800 bg-zinc-950/70 p-4 text-sm text-zinc-300">

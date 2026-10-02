@@ -1,7 +1,7 @@
 /**
  * Master Admin left-sidebar accordion nav: Group > Subcategory > leaf item.
  * Subcategory ids/labels reuse ADMIN_DASHBOARD_CATEGORY_META (the taxonomy
- * already used to group the /admin dashboard's hub cards) so this isn't a
+ * already used to group the /admin dashboard cards) so this isn't a
  * second, driftable copy of the same grouping.
  */
 import type { AdminModule } from "@/lib/auth/adminRoles";
