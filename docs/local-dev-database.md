@@ -6,7 +6,7 @@ Shared PostgreSQL 15 for all development projects on dev-box.
 
 | Item | Value |
 |------|--------|
-| Host | `127.0.0.1` (from dev-box) or `10.42.10.171` (LAN, if enabled) |
+| Host | `127.0.0.1` (from the dev box). From another machine, use `<dev-box LAN IP>`. |
 | Port | `5432` |
 | User | `devplatform` |
 | Password | see password manager / `.env.development.local` |
