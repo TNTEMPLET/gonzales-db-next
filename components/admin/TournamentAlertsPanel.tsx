@@ -16,7 +16,7 @@ export default function TournamentAlertsPanel() {
   const [busy, setBusy] = useState(false);
   const [notice, setNotice] = useState("");
   const [error, setError] = useState("");
-  const [form, setForm] = useState({ name: "", email: "", phone: "", emailEnabled: true, smsEnabled: true });
+  const [form, setForm] = useState({ name: "", email: "" });
 
   async function load() {
     const response = await fetch("/api/admin/tournament-monitor", { cache: "no-store" });
@@ -31,10 +31,9 @@ export default function TournamentAlertsPanel() {
   async function saveSubscription() {
     setBusy(true); setError(""); setNotice("");
     try {
-      const channels = [form.emailEnabled ? "EMAIL" : null, form.smsEnabled ? "SMS" : null].filter(Boolean);
-      const response = await fetch("/api/admin/tournament-monitor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "save-subscription", name: form.name, email: form.email, phone: form.phone, channels }) });
+      const response = await fetch("/api/admin/tournament-monitor", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ action: "save-subscription", name: form.name, email: form.email, channels: ["EMAIL"] }) });
       const json = await readJson(response); if (!response.ok) throw new Error(String(json.error || "Failed to save alert recipient"));
-      setForm({ name: "", email: "", phone: "", emailEnabled: true, smsEnabled: true });
+      setForm({ name: "", email: "" });
       setNotice("Alert recipient saved."); await load();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to save alert recipient"); }
     finally { setBusy(false); }
@@ -65,7 +64,7 @@ export default function TournamentAlertsPanel() {
       <div className="flex flex-col gap-3 md:flex-row md:items-start md:justify-between">
         <div>
           <p className="text-xs font-semibold uppercase tracking-[0.16em] text-brand-gold">Tournament Alerts</p>
-          <h2 className="mt-1 text-2xl font-bold">Email and text status updates</h2>
+          <h2 className="mt-1 text-2xl font-bold">Email status updates</h2>
           <p className="mt-1 max-w-3xl text-sm text-zinc-400">Get downtime alerts, live-game heartbeats, final scores, and GameChanger creation confirmations during active tournaments.</p>
         </div>
         <button type="button" disabled={busy || !payload?.subscriptions.length} onClick={() => void sendTestAlert()} className="rounded-lg border border-brand-gold px-4 py-2 text-sm font-semibold text-brand-gold hover:bg-brand-gold/10 disabled:opacity-50">Send test alert</button>
@@ -74,15 +73,12 @@ export default function TournamentAlertsPanel() {
       {notice ? <div className="mt-4 rounded-lg border border-emerald-700 bg-emerald-950/30 p-3 text-sm text-emerald-200">{notice}</div> : null}
       <div className="mt-4 grid gap-3 md:grid-cols-3">
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-sm"><div className="text-zinc-500">Email provider</div><div className={payload?.providerStatus.emailConfigured ? "text-emerald-300" : "text-amber-300"}>{payload?.providerStatus.emailConfigured ? "Configured" : "Needs setup"}</div></div>
-        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-sm"><div className="text-zinc-500">SMS provider</div><div className={payload?.providerStatus.smsConfigured ? "text-emerald-300" : "text-amber-300"}>{payload?.providerStatus.smsConfigured ? "Configured" : "Needs Twilio setup"}</div></div>
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-sm"><div className="text-zinc-500">Text alerts</div><div className="text-zinc-400">Not available</div></div>
         <div className="rounded-xl border border-zinc-800 bg-zinc-950/40 p-3 text-sm"><div className="text-zinc-500">Last monitor run</div><div className="text-zinc-100">{payload?.lastRun ? `${payload.lastRun.status} · ${payload.lastRun.eventCount} alerts · ${formatTournamentDateTime(payload.lastRun.completedAt ?? payload.lastRun.createdAt)}` : "Not run yet"}</div></div>
       </div>
-      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_1fr_auto_auto_auto]">
+      <div className="mt-4 grid gap-3 lg:grid-cols-[1fr_1fr_auto]">
         <input value={form.name} onChange={(e) => setForm((current) => ({ ...current, name: e.target.value }))} placeholder="Recipient name" className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
         <input value={form.email} onChange={(e) => setForm((current) => ({ ...current, email: e.target.value }))} placeholder="Email" className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
-        <input value={form.phone} onChange={(e) => setForm((current) => ({ ...current, phone: e.target.value }))} placeholder="Cell phone" className="rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-sm" />
-        <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={form.emailEnabled} onChange={(e) => setForm((current) => ({ ...current, emailEnabled: e.target.checked }))} />Email</label>
-        <label className="flex items-center gap-2 text-sm text-zinc-300"><input type="checkbox" checked={form.smsEnabled} onChange={(e) => setForm((current) => ({ ...current, smsEnabled: e.target.checked }))} />Text</label>
         <button type="button" disabled={busy} onClick={() => void saveSubscription()} className="rounded-lg bg-brand-purple px-4 py-2 text-sm font-semibold text-white hover:bg-brand-purple-dark disabled:opacity-50">Add</button>
       </div>
       <div className="mt-4 grid gap-4 lg:grid-cols-2">

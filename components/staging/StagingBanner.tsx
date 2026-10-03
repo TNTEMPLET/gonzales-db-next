@@ -2,7 +2,7 @@
 
 import { useSelectedLayoutSegment } from "next/navigation";
 
-export const STAGING_BANNER_TEXT = "STAGING: not production. Emails/SMS only to allowlist.";
+export const STAGING_BANNER_TEXT = "STAGING: not production. Emails only to the allowlist.";
 
 export function StagingBanner() {
   return (
