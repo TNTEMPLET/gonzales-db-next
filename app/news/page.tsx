@@ -45,7 +45,7 @@ export default async function NewsPage() {
           </div>
           {isAdmin ? (
             <Link
-              href="/news/admin"
+              href="/admin/news"
               className="inline-flex min-h-11 items-center text-sm text-brand-gold transition hover:text-brand-gold/80"
             >
               + New Post

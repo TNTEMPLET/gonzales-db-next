@@ -35,7 +35,7 @@ const ADMIN_PATHS = [
   "/admin/communications",
   "/admin/tournament-brackets",
   "/admin/park-info",
-  "/news/admin",
+  "/admin/news",
 ];
 
 const ADMIN_APIS = [
@@ -66,7 +66,7 @@ function orgQuery(org, path) {
     path.startsWith("/admin/alerts") ||
     path.startsWith("/admin/dugout") ||
     path.startsWith("/admin/communications") ||
-    path.startsWith("/news/admin")
+    path.startsWith("/admin/news")
   ) {
     return `${path}?org=${org === "master" ? "gonzales" : org}`;
   }

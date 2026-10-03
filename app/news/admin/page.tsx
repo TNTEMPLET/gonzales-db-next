@@ -1,89 +1,16 @@
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
-import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
-import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import NewsAdminPanel from "@/components/news/NewsAdminPanel";
-import {
-  ADMIN_SESSION_COOKIE,
-  getAdminUserFromCookieToken,
-} from "@/lib/auth/adminSession";
-import {
-  getSiteConfig,
-  isMasterDeployment,
-  resolveAdminTargetOrg,
-} from "@/lib/siteConfig";
+import { legacyNewsAdminRedirectPath } from "@/lib/admin/newsAdminHref";
 
-export function generateMetadata() {
-  const site = getSiteConfig();
-  return {
-    title: `News Admin | ${site.name}`,
-    description: `Create and manage ${site.name} news posts.`,
-  };
-}
-
-export default async function NewsAdminPage({
+/**
+ * Bookmark redirect from /news/admin to /admin/news.
+ * The destination page owns auth, so a signed-out visit returns to /admin/news
+ * (with the same org and edit) after login, not back to this URL.
+ */
+export default async function LegacyNewsAdminRedirect({
   searchParams,
 }: {
-  searchParams: Promise<{ edit?: string; org?: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
-  const { edit, org } = await searchParams;
-  const currentOrg = resolveAdminTargetOrg(org);
-
-  const cookieStore = await cookies();
-  const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
-  const adminUser = await getAdminUserFromCookieToken(token);
-
-  if (!adminUser) {
-    redirect("/admin/login?next=/news/admin");
-  }
-
-  const effectiveRole = await getEffectiveAdminRoleForOrg(
-    adminUser.id,
-    adminUser.isMaster,
-    currentOrg,
-  );
-  const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
-  if (!canAccessAdminModule(role, "NEWS_ADMIN")) {
-    redirect("/admin?denied=news");
-  }
-
-  return (
-    <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
-      <section className="mx-auto max-w-6xl px-4 sm:px-6">
-        <div className="mb-8">
-          <AdminSectionHeader
-            badge="CONTENT MANAGEMENT"
-            currentOrg={currentOrg}
-            currentPath="/news/admin"
-            allowRolePreview={hasAdminRoleAtLeast(role, "ADMIN")}
-            allowViewByUser={adminUser.isMaster}
-          />
-          <h1 className="text-4xl md:text-5xl font-bold tracking-tight mb-3">
-            News Admin
-          </h1>
-          <p className="text-zinc-400 max-w-3xl">
-            Write announcements for families, keep drafts private until ready, and
-            choose which organization news feed should show the post. Published AP
-            Baseball news can appear on public pages immediately.
-          </p>
-        </div>
-
-        <NewsAdminPanel
-          adminEmail={adminUser.email}
-          adminName={
-            adminUser.firstName || adminUser.lastName
-              ? [adminUser.firstName, adminUser.lastName]
-                  .filter(Boolean)
-                  .join(" ")
-              : adminUser.name
-          }
-          initialEditSlug={edit}
-          targetOrg={currentOrg}
-          isMasterMode={isMasterDeployment()}
-        />
-      </section>
-    </main>
-  );
+  redirect(legacyNewsAdminRedirectPath(await searchParams));
 }

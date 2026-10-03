@@ -6,6 +6,7 @@ import NewsAdminPanel from "@/components/news/NewsAdminPanel";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import { adminNewsLoginPath } from "@/lib/admin/newsAdminHref";
 import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
@@ -19,16 +20,16 @@ export function generateMetadata() {
 export default async function NewsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string }>;
+  searchParams: Promise<{ org?: string; edit?: string }>;
 }) {
-  const { org } = await searchParams;
+  const { org, edit } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org);
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
 
   if (!adminUser) {
-    redirect(`/admin/login?next=/admin/news?org=${currentOrg}`);
+    redirect(adminNewsLoginPath({ org: currentOrg, edit }));
   }
 
   const effectiveRole = await getEffectiveAdminRoleForOrg(
@@ -64,7 +65,12 @@ export default async function NewsPage({
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
           <NewsAdminPanel
             adminEmail={adminUser.email}
-            adminName={adminUser.name}
+            adminName={
+              adminUser.firstName || adminUser.lastName
+                ? [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ")
+                : adminUser.name
+            }
+            initialEditSlug={edit?.trim() || undefined}
             targetOrg={currentOrg}
             isMasterMode={isMaster}
           />
