@@ -63,6 +63,13 @@ describe("sidebar job leaves", () => {
     assert.equal(hrefs.includes("/admin/reports"), true);
   });
 
+  it("does not add a division ages leaf before that page exists", () => {
+    for (const role of ["MASTER_ADMIN", "ADMIN", "BOARD_MEMBER", "PARK_DIRECTOR"] as const) {
+      const hrefs = leafHrefs(role, true);
+      assert.equal(hrefs.includes("/admin/division-ages"), false, role);
+    }
+  });
+
   it("shows cap and shirt leaves to a master admin only when the switch is on", () => {
     const master = leafHrefs("MASTER_ADMIN", true);
     assert.equal(master.includes("/admin/cap-orders"), true);
