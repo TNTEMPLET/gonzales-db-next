@@ -3,6 +3,7 @@
 import {
   useEffect,
   useMemo,
+  useRef,
   useState,
   type ChangeEvent,
   type FormEvent,
@@ -171,6 +172,8 @@ export default function NewsAdminPanel({
   useEffect(() => {
     setCreateTargets([targetOrg]);
   }, [targetOrg]);
+
+  const appliedInitialEdit = useRef<string | null>(null);
 
   const selectedPost = useMemo(
     () => posts.find((post) => post.slug === selectedSlug),
@@ -494,6 +497,14 @@ export default function NewsAdminPanel({
       void checkOrgPresence(slug);
     }
   }
+
+  useEffect(() => {
+    if (!initialEditSlug || appliedInitialEdit.current === initialEditSlug) return;
+    const post = posts.find((item) => item.slug === initialEditSlug);
+    if (!post) return;
+    appliedInitialEdit.current = initialEditSlug;
+    startEdit(initialEditSlug);
+  }, [posts, initialEditSlug]);
 
   async function saveEditedPost(closeAfterSave: boolean) {
     if (!selectedSlug) return;
