@@ -14,7 +14,7 @@ import {
   leagueAge,
 } from "./compute";
 import { leagueDivisionDefaults } from "./defaults";
-import type { ExactAge, LeagueDivisionConfig } from "./types";
+import type { ExactAge, LeagueAgeRule, LeagueDivisionConfig } from "./types";
 
 const MONTHS = [
   "January",
@@ -76,8 +76,7 @@ function configFor(org: ContentOrgId): LeagueDivisionConfig {
 }
 
 /** The standing league rule, in words. */
-export function leagueRuleSentence(org: ContentOrgId): string {
-  const rule = configFor(org).rule;
+export function leagueRuleSentenceForRule(org: ContentOrgId, rule: LeagueAgeRule): string {
   const month = MONTHS[rule.cutoffMonth - 1] ?? "January";
   const family =
     org === "gonzales" ? "Dixie Youth" : org === "ascension" ? "Little League" : "Fall Ball";
@@ -90,11 +89,19 @@ export function leagueRuleSentence(org: ContentOrgId): string {
   return `${family}: ages as of ${month} ${rule.cutoffDay} ${when}.`;
 }
 
+export function leagueRuleSentence(org: ContentOrgId): string {
+  return leagueRuleSentenceForRule(org, configFor(org).rule);
+}
+
 /** "Fall 2026 → ages as of Apr 30, 2027". */
-export function seasonAgeHeadline(org: ContentOrgId, seasonYear: number): string {
-  const cutoff = effectiveCutoffDate(configFor(org).rule, seasonYear);
+export function seasonAgeHeadlineForRule(org: ContentOrgId, rule: LeagueAgeRule, seasonYear: number): string {
+  const cutoff = effectiveCutoffDate(rule, seasonYear);
   const season = org === "fallball" ? `Fall ${seasonYear}` : `Spring ${seasonYear}`;
   return `${season} → ages as of ${formatCalendarDate(cutoff)}`;
+}
+
+export function seasonAgeHeadline(org: ContentOrgId, seasonYear: number): string {
+  return seasonAgeHeadlineForRule(org, configFor(org).rule, seasonYear);
 }
 
 export type DivisionAgeRow = {
@@ -107,10 +114,11 @@ export type DivisionAgeRow = {
   youngest: string;
   oldestLabel: string;
   youngestLabel: string;
+  oldestOverridden: boolean;
+  youngestOverridden: boolean;
 };
 
-export function divisionAgeRows(org: ContentOrgId, seasonYear: number): DivisionAgeRow[] {
-  const config = configFor(org);
+export function divisionAgeRowsForConfig(config: LeagueDivisionConfig, seasonYear: number): DivisionAgeRow[] {
   const cutoff = effectiveCutoffDate(config.rule, seasonYear);
   return [...config.divisions]
     .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code))
@@ -126,14 +134,20 @@ export function divisionAgeRows(org: ContentOrgId, seasonYear: number): Division
         youngest: range.youngest,
         oldestLabel: formatCalendarDate(range.oldest),
         youngestLabel: formatCalendarDate(range.youngest),
+        oldestOverridden: range.oldestOverridden,
+        youngestOverridden: range.youngestOverridden,
       };
     });
 }
 
+export function divisionAgeRows(org: ContentOrgId, seasonYear: number): DivisionAgeRow[] {
+  return divisionAgeRowsForConfig(configFor(org), seasonYear);
+}
+
 /** TSV for Sports Connect: division, min age, max age, oldest, youngest. Dates stay ISO. */
-export function divisionTableTsv(org: ContentOrgId, seasonYear: number): string {
+export function divisionTableTsvForConfig(config: LeagueDivisionConfig, seasonYear: number): string {
   const lines = ["division\tmin age\tmax age\toldest\tyoungest"];
-  for (const row of divisionAgeRows(org, seasonYear)) {
+  for (const row of divisionAgeRowsForConfig(config, seasonYear)) {
     lines.push(
       [row.label, String(row.minAge), String(row.maxAge), row.oldest, row.youngest].join("\t"),
     );
@@ -141,13 +155,16 @@ export function divisionTableTsv(org: ContentOrgId, seasonYear: number): string 
   return lines.join("\n");
 }
 
+export function divisionTableTsv(org: ContentOrgId, seasonYear: number): string {
+  return divisionTableTsvForConfig(configFor(org), seasonYear);
+}
+
 function labelFor(config: LeagueDivisionConfig, code: string): string {
   return config.divisions.find((division) => division.code === code)?.label ?? code;
 }
 
 /** One readable line per gap, overlap, or invalid range. */
-export function coverageWarningLines(org: ContentOrgId, seasonYear: number): string[] {
-  const config = configFor(org);
+export function coverageWarningLinesForConfig(config: LeagueDivisionConfig, seasonYear: number): string[] {
   const cutoff = effectiveCutoffDate(config.rule, seasonYear);
   return coverageWarnings(config.divisions, cutoff).map((warning) => {
     const names = warning.divisionCodes.map((code) => labelFor(config, code)).join(", ");
@@ -158,6 +175,10 @@ export function coverageWarningLines(org: ContentOrgId, seasonYear: number): str
   });
 }
 
+export function coverageWarningLines(org: ContentOrgId, seasonYear: number): string[] {
+  return coverageWarningLinesForConfig(configFor(org), seasonYear);
+}
+
 export type LeagueLookup = {
   org: ContentOrgId;
   leagueAge: number;
@@ -165,8 +186,12 @@ export type LeagueLookup = {
   divisionLabels: string[];
 };
 
-export function lookupLeague(org: ContentOrgId, birthDate: string, seasonYear: number): LeagueLookup {
-  const config = configFor(org);
+export function lookupLeagueForConfig(
+  org: ContentOrgId,
+  config: LeagueDivisionConfig,
+  birthDate: string,
+  seasonYear: number,
+): LeagueLookup {
   const cutoff = effectiveCutoffDate(config.rule, seasonYear);
   return {
     org,
@@ -174,6 +199,10 @@ export function lookupLeague(org: ContentOrgId, birthDate: string, seasonYear: n
     exactAgeLabel: formatExactAgeLabel(exactAge(birthDate, cutoff)),
     divisionLabels: eligibleDivisions(birthDate, config, seasonYear).map((division) => division.label),
   };
+}
+
+export function lookupLeague(org: ContentOrgId, birthDate: string, seasonYear: number): LeagueLookup {
+  return lookupLeagueForConfig(org, configFor(org), birthDate, seasonYear);
 }
 
 /** True when the displayed leagues do not all give this birthdate the same age. */
