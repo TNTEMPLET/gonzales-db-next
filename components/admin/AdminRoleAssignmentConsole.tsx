@@ -45,6 +45,7 @@ const JOB_MODULE_KEYS: AdminModule[] = [
   "SPORTS_CONNECT",
   "ORDERS",
   "GAME_DAY",
+  "DIVISION_AGES",
 ];
 
 export default function AdminRoleAssignmentConsole({
@@ -494,7 +495,7 @@ export default function AdminRoleAssignmentConsole({
       </div>
 
       <div className="text-xs text-zinc-500">
-        Tip: Park directors run game day (scores, field desk, umpire pay) and do not see orders. Board members add moderation and payments oversight. Admins add surveys, the scheduler, Sports Connect, and teams. Cap and shirt orders are Master Admin only
+        Tip: Park directors run game day (scores, field desk, umpire pay) and do not see orders. Board members add moderation and payments oversight. Admins add surveys, the scheduler, Sports Connect, division ages, and teams. Cap and shirt orders are Master Admin only
         {ordersModuleEnabled ? "." : " and are currently disabled."} MASTER_ADMIN is for platform owners only.
       </div>
     </div>

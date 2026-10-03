@@ -43,4 +43,18 @@ describe("dashboard role preview on the master site", () => {
     assert.equal(off.includes("Sponsors"), true);
     assert.equal(off.includes("Reports"), true);
   });
+
+  it("does not preview a division ages card before that page exists", () => {
+    const titles = filterDashboardCardsForRolePreview(ADMIN_DASHBOARD_CARD_SPECS, "MASTER_ADMIN", {
+      masterMode: true,
+      allStarVaultView: true,
+      ordersModuleEnabled: true,
+    }).map((card) => card.title);
+
+    assert.equal(titles.includes("Division ages"), false);
+    assert.equal(
+      ADMIN_DASHBOARD_CARD_SPECS.some((card) => card.module === "DIVISION_AGES"),
+      false,
+    );
+  });
 });

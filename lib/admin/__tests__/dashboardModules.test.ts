@@ -147,6 +147,14 @@ describe("admin dashboard card specs", () => {
     assert.deepEqual(titles, ["Park & Tournament Alerts"]);
   });
 
+  it("keeps division ages out of the card list until that page exists", () => {
+    assert.equal(getAdminDashboardCategory("DIVISION_AGES"), null);
+    assert.equal(
+      ADMIN_DASHBOARD_CARD_SPECS.some((card) => card.module === "DIVISION_AGES"),
+      false,
+    );
+  });
+
   it("hides a card when none of its modules are allowed", () => {
     const cards = buildAdminDashboardCardDescriptors({
       allowModule: () => false,
