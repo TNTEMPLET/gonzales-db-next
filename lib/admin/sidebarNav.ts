@@ -1,11 +1,17 @@
 /**
  * Master Admin left-sidebar accordion nav: Group > Subcategory > leaf item.
  * Subcategory ids/labels reuse ADMIN_DASHBOARD_CATEGORY_META (the taxonomy
- * already used to group the /admin dashboard's hub cards) so this isn't a
+ * already used to group the /admin dashboard cards) so this isn't a
  * second, driftable copy of the same grouping.
  */
-import type { AdminModule } from "@/lib/auth/adminRoles";
 import { ADMIN_DASHBOARD_CATEGORY_META } from "@/lib/admin/dashboardModules";
+import {
+  getMinimumRoleForModule,
+  hasAdminRoleAtLeast,
+  type AdminModule,
+  type AdminRole,
+} from "@/lib/auth/adminRoles";
+import { isAdminModuleEnabledForOrg, type ContentOrgId } from "@/lib/siteConfig";
 
 export type AdminSidebarLeaf = {
   id: string;
@@ -31,6 +37,23 @@ export type AdminSidebarNav = {
 };
 
 type AllowModuleFn = (module: AdminModule) => boolean;
+
+/**
+ * The allow-check AdminSidebar uses for each leaf.
+ * `ordersModuleEnabled` is read on the server and passed in. Do not read
+ * `ORDERS_ENABLED` here: this runs in the client bundle.
+ */
+export function sidebarAllowsModule(input: {
+  module: AdminModule;
+  orgId: ContentOrgId | null;
+  role: AdminRole | null;
+  ordersModuleEnabled: boolean;
+}): boolean {
+  if (input.module === "ORDERS" && !input.ordersModuleEnabled) return false;
+  if (!isAdminModuleEnabledForOrg(input.orgId, input.module)) return false;
+  if (!input.role) return true;
+  return hasAdminRoleAtLeast(input.role, getMinimumRoleForModule(input.module));
+}
 
 /** A leaf that's its own real page (no ?tab=/?section= needed) -- just append the org param, if any. */
 function leafHref(basePath: string, orgSuffix: string): string {
@@ -59,12 +82,6 @@ export function buildAdminSidebarNav(
     ],
   };
 
-  const competitionVisible =
-    allowModule("TEAMS") ||
-    allowModule("DRAFT") ||
-    allowModule("SCORES") ||
-    allowModule("ASSIGNR") ||
-    allowModule("REGISTRATION_WINDOWS");
   const competition: AdminSidebarSubcategory = {
     id: "competition",
     label: ADMIN_DASHBOARD_CATEGORY_META.competition.label,
@@ -75,10 +92,7 @@ export function buildAdminSidebarNav(
       ...(allowModule("TEAMS")
         ? [{ id: "teams", label: "Teams & Rosters", href: leafHref("/admin/teams", orgSuffix) }]
         : []),
-      // Scheduler / SportsConnect Import have no dedicated AdminModule --
-      // each page gates on the same "competitionVisible" OR-check, so match
-      // that here too: show whenever the subcategory itself is.
-      ...(competitionVisible
+      ...(allowModule("SPORTS_CONNECT")
         ? [
             {
               id: "sports-connect",
@@ -102,7 +116,7 @@ export function buildAdminSidebarNav(
       ...(allowModule("SCORES")
         ? [{ id: "scores", label: "Scores & Standings", href: leafHref("/admin/scores", orgSuffix) }]
         : []),
-      ...(competitionVisible
+      ...(allowModule("SCHEDULER")
         ? [{ id: "scheduler", label: "Scheduler", href: leafHref("/admin/scheduler", orgSuffix) }]
         : []),
       ...(allowModule("ASSIGNR")
@@ -155,22 +169,18 @@ export function buildAdminSidebarNav(
       ...(allowModule("ORG_DOCUMENTS")
         ? [{ id: "drive", label: "Org Documents", href: leafHref("/admin/documents", orgSuffix) }]
         : []),
-      // Surveys shares TEAMS' gate today (no dedicated module) -- placed
-      // here per explicit product decision, not a Competition & Play leaf.
-      ...(allowModule("TEAMS")
+      // Surveys stay under Publishing. Moving them under Comms is a later slice.
+      ...(allowModule("SURVEYS")
         ? [{ id: "surveys", label: "Surveys", href: `/admin/surveys${orgSuffix}` }]
         : []),
     ],
   };
 
-  // Cap Orders / Shirt Orders have no dedicated AdminModule -- fall back to
-  // the subcategory's own visibility rather than a per-module gate.
-  const ordersVisible = allowModule("SPONSORS") || allowModule("REPORTS");
   const orders: AdminSidebarSubcategory = {
     id: "orders",
     label: ADMIN_DASHBOARD_CATEGORY_META.orders.label,
     leaves: [
-      ...(ordersVisible
+      ...(allowModule("ORDERS")
         ? [
             { id: "caps", label: "Cap Orders", href: leafHref("/admin/cap-orders", orgSuffix) },
             { id: "shirts", label: "Shirt Orders", href: leafHref("/admin/shirt-orders", orgSuffix) },

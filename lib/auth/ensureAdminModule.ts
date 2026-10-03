@@ -7,6 +7,7 @@ import {
   type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
+import { ordersAdminApiDenial } from "@/lib/auth/ordersModule";
 import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import {
   getAdminUserFromRequest,
@@ -36,6 +37,13 @@ export async function ensureAdminModule(
   request: NextRequest,
   module: AdminModule,
 ): Promise<EnsureAdminResult> {
+  if (module === "ORDERS") {
+    const hidden = ordersAdminApiDenial();
+    if (hidden) {
+      return { ok: false, status: hidden.status, message: hidden.message };
+    }
+  }
+
   try {
     const adminUser = await getAdminUserFromRequest(request);
     if (!adminUser) {

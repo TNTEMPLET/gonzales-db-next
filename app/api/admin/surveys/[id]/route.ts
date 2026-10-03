@@ -33,7 +33,7 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SURVEYS");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
@@ -51,7 +51,7 @@ export async function PUT(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SURVEYS");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
@@ -254,7 +254,7 @@ export async function DELETE(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SURVEYS");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }

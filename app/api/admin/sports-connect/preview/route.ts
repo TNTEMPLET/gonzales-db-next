@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * Body: { files: [{ fileName, headers?, rows? }] } or single { fileName, headers?, rows? }
  */
 export async function POST(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },

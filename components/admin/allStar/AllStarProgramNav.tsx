@@ -1,5 +1,6 @@
 import Link from "next/link";
 
+import { filterAllStarProgramStageIds } from "@/lib/auth/ordersModule";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 export type AllStarProgramStage =
@@ -51,20 +52,30 @@ export default function AllStarProgramNav({
   stage,
   org,
   allSites = false,
+  showOrders = false,
 }: {
   stage: AllStarProgramStage;
   org: ContentOrgId | null;
   /** Master All Sites mode — omit org on links where supported. */
   allSites?: boolean;
+  /** Cap and shirt order links. Callers pass ORDERS module access. */
+  showOrders?: boolean;
 }) {
   const orgQuery = allSites || !org ? "" : `?org=${encodeURIComponent(org)}`;
+  const visibleIds = new Set(
+    filterAllStarProgramStageIds(
+      STAGES.map((item) => item.id),
+      showOrders,
+    ),
+  );
+  const stages = STAGES.filter((item) => visibleIds.has(item.id));
 
   return (
     <nav
       className="mb-6 flex flex-wrap gap-2 border-b border-zinc-800 pb-3"
       aria-label="All-Star program stages"
     >
-      {STAGES.map((item) => {
+      {stages.map((item) => {
         const active = item.id === stage;
         return (
           <Link

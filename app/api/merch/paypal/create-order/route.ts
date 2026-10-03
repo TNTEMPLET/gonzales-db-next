@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
+import { ordersAdminApiDenial } from "@/lib/auth/ordersModule";
 import { attachPaypalOrderToDraft } from "@/lib/merch/orderDrafts";
 import { getShopAccess } from "@/lib/merch/shopAccess";
 import { createPayPalOrder, isPayPalOrdersConfigured } from "@/lib/paypal/orders";
@@ -14,6 +15,11 @@ import prisma from "@/lib/prisma";
  * that shares the same CLIENT_ID / SECRET.
  */
 export async function POST(request: NextRequest) {
+  const hidden = ordersAdminApiDenial();
+  if (hidden) {
+    return NextResponse.json({ error: hidden.message }, { status: hidden.status });
+  }
+
   if (!isPayPalOrdersConfigured()) {
     return NextResponse.json(
       { error: "Embedded PayPal is not configured on this environment" },

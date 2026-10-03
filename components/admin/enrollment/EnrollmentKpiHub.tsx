@@ -75,10 +75,10 @@ export default function EnrollmentKpiHub({
   const setTab = useCallback(
     (next: EnrollmentKpiTab) => {
       const params = new URLSearchParams(searchParams.toString());
-      params.set("tab", "enrollment");
+      params.delete("tab");
       params.set("subtab", next);
       params.set("org", targetOrg);
-      router.push(`/admin/competition?${params.toString()}`);
+      router.push(`/admin/enrollment?${params.toString()}`);
     },
     [router, searchParams, targetOrg],
   );

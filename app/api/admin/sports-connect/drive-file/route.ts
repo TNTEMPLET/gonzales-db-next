@@ -27,7 +27,7 @@ function contentTypeForFileName(name: string | null): string {
  * would let any admin fetch any org's file by guessing/observing an id.
  */
 export async function GET(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },

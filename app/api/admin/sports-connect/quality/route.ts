@@ -12,7 +12,7 @@ import {
 export const dynamic = "force-dynamic";
 
 export async function GET(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
   if (!auth.ok) {
     return NextResponse.json(
       { error: auth.message || "Unauthorized" },

@@ -3,6 +3,7 @@ export const dynamic = "force-dynamic";
 
 import { redirect } from "next/navigation";
 import prisma from "@/lib/prisma";
+import { isOrdersModuleEnabled } from "@/lib/auth/ordersModule";
 import { getSiteConfig, isMasterDeployment } from "@/lib/siteConfig";
 import AllStarQRCode from "@/components/allStar/AllStarQRCode";
 
@@ -63,7 +64,9 @@ export default async function AllStarPage() {
     if (link.activeTo && new Date(link.activeTo) < now) return false;
     return true;
   }
-  const safeLinks = (config?.links ?? [])
+  // Additional cards are the public cap/apparel PayPal buttons. The primary
+  // button above is the All-Star fee and stays up. /shop uses this same flag.
+  const safeLinks = (isOrdersModuleEnabled() ? (config?.links ?? []) : [])
     .filter((l): l is PageLink => typeof l.label === "string" && isSafePayPalUrl(l.url))
     .filter(isLinkActive)
     .map((l) => ({

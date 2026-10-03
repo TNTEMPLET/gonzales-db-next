@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import AdminRoleAssignmentConsole from "@/components/admin/AdminRoleAssignmentConsole";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
+import { isOrdersModuleEnabled } from "@/lib/auth/ordersModule";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
@@ -60,7 +61,11 @@ export default async function RolesPage({
         </div>
 
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
-          <AdminRoleAssignmentConsole currentAdminEmail={adminUser.email} isMasterAdmin={isMaster} />
+          <AdminRoleAssignmentConsole
+            currentAdminEmail={adminUser.email}
+            isMasterAdmin={isMaster}
+            ordersModuleEnabled={isOrdersModuleEnabled()}
+          />
         </div>
       </section>
     </main>

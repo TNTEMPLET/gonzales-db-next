@@ -2,8 +2,10 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import OrdersUnavailable from "@/components/admin/OrdersUnavailable";
 import ParentCapOrdersPanel from "@/components/admin/capOrders/ParentCapOrdersPanel";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
+import { isOrdersModuleEnabled } from "@/lib/auth/ordersModule";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
@@ -21,6 +23,10 @@ export default async function CapOrdersPage({
 }: {
   searchParams: Promise<{ org?: string }>;
 }) {
+  if (!isOrdersModuleEnabled()) {
+    return <OrdersUnavailable />;
+  }
+
   const { org } = await searchParams;
   const currentOrg = resolveAdminTargetOrg(org);
   const cookieStore = await cookies();
@@ -38,10 +44,7 @@ export default async function CapOrdersPage({
   );
   const role: AdminRole = effectiveRole ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR");
 
-  // No dedicated AdminModule for this tab -- same "ordersVisible" gate
-  // sidebarNav.ts uses to decide whether to show this leaf at all.
-  const ordersVisible = canAccessAdminModule(role, "SPONSORS") || canAccessAdminModule(role, "REPORTS");
-  if (!ordersVisible) {
+  if (!canAccessAdminModule(role, "ORDERS")) {
     redirect("/admin?denied=cap-orders");
   }
 

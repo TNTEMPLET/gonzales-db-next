@@ -136,6 +136,17 @@ async function dispatchReport() {
     html,
   });
 
+  if (providerResponse.status === "skipped") {
+    return {
+      success: true,
+      skipped: true,
+      reason: providerResponse.skippedReason,
+      recipient: BOARD_RECIPIENT,
+      providerResponse,
+      report: data,
+    };
+  }
+
   return { success: true, recipient: BOARD_RECIPIENT, providerResponse, report: data };
 }
 

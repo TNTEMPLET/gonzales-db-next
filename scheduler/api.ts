@@ -9,7 +9,7 @@ import { SchedulerError } from "./types";
 import { parseStringArray, schedulerErrorResponse } from "./validation";
 
 export async function requireSchedulerAdmin(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SCHEDULER");
   if (!auth.ok) {
     return {
       ok: false as const,

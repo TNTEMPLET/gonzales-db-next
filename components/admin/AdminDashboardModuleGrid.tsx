@@ -14,58 +14,14 @@ import {
   type AdminDashboardCardDescriptor,
 } from "@/lib/admin/dashboardModules";
 import type { AdminDashboardCardModule } from "@/lib/admin/dashboardModules";
+import {
+  canPreviewDashboardModule,
+  type DashboardRolePreview,
+} from "@/lib/admin/dashboardRolePreview";
 import { resolvePreviewUserAccess, type PreviewUserSnapshot } from "@/lib/admin/viewPreview";
-import type { AdminModule } from "@/lib/auth/adminRoles";
 import { CONTENT_ORGS, type ContentOrgId } from "@/lib/siteConfig";
 
 type AdminDashboardCard = AdminDashboardCardDescriptor;
-
-const previewModuleMinimumRole: Record<
-  AdminDashboardCardModule,
-  "MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR"
-> = {
-  DASHBOARD: "PARK_DIRECTOR",
-  USERS: "ADMIN",
-  VOLUNTEERS: "ADMIN",
-  TEAMS: "ADMIN",
-  SPONSORS: "ADMIN",
-  REPORTS: "PARK_DIRECTOR",
-  SCORES: "PARK_DIRECTOR",
-  DUGOUT_MODERATION: "BOARD_MEMBER",
-  NEWS_ADMIN: "BOARD_MEMBER",
-  ALL_STAR_VAULT: "ADMIN",
-  ALL_STAR_PAYMENTS: "BOARD_MEMBER",
-  COMMUNICATIONS: "ADMIN",
-  SOCIAL_MEDIA: "BOARD_MEMBER",
-  ORG_DOCUMENTS: "BOARD_MEMBER",
-  ASSIGNR: "ADMIN",
-  PARK_ALERTS: "ADMIN",
-  TOURNAMENT_BRACKETS: "MASTER_ADMIN",
-  TOURNAMENT_ALERTS: "MASTER_ADMIN",
-  PARK_INFO: "ADMIN",
-  ROLE_ASSIGNMENT: "MASTER_ADMIN",
-  REGISTRATION_WINDOWS: "MASTER_ADMIN",
-  DRAFT: "ADMIN",
-  ENROLLMENT_KPI: "BOARD_MEMBER",
-  SEASON_SETUP: "PARK_DIRECTOR",
-};
-
-const roleRank: Record<"MASTER_ADMIN" | "ADMIN" | "BOARD_MEMBER" | "PARK_DIRECTOR", number> = {
-  MASTER_ADMIN: 5,
-  ADMIN: 4,
-  BOARD_MEMBER: 3,
-  PARK_DIRECTOR: 2,
-};
-
-const masterOnlyModules = new Set<AdminModule>([
-  "SPONSORS",
-  "NEWS_ADMIN",
-  "SOCIAL_MEDIA",
-  "ORG_DOCUMENTS",
-  "TOURNAMENT_BRACKETS",
-  "TOURNAMENT_ALERTS",
-  "REGISTRATION_WINDOWS",
-]);
 
 const previewRoleLabel: Record<AdminViewPreviewRole, string> = {
   NONE: "Live access",
@@ -75,36 +31,12 @@ const previewRoleLabel: Record<AdminViewPreviewRole, string> = {
   ALL_STAR_VIEW_ONLY: "All-Star Vault Limited Admin",
 };
 
-function canPreviewAccessModule(
-  previewRole: AdminViewPreviewRole,
-  module: AdminDashboardCardModule,
-  masterMode: boolean,
-  allStarVaultView: boolean,
-) {
-  if (previewRole === "NONE") return true;
-  if (previewRole === "ALL_STAR_VIEW_ONLY") {
-    return module === "ALL_STAR_VAULT" && allStarVaultView;
-  }
-  if (module === "ALL_STAR_VAULT" && previewRole !== "ADMIN") {
-    return false;
-  }
-  if (module !== "ASSIGNR" && masterOnlyModules.has(module) && !masterMode) {
-    return false;
-  }
-  const previewAs =
-    previewRole === "ADMIN"
-      ? "ADMIN"
-      : previewRole === "BOARD_MEMBER"
-        ? "BOARD_MEMBER"
-        : "PARK_DIRECTOR";
-  return roleRank[previewAs] >= roleRank[previewModuleMinimumRole[module]];
-}
-
 function canPreviewUserAccessModule(
   user: PreviewUserSnapshot,
   module: AdminDashboardCardModule,
-  masterMode: boolean,
   organizationId: ContentOrgId | null,
+  masterMode: boolean,
+  ordersModuleEnabled: boolean,
 ) {
   const organizationIds: ContentOrgId[] = organizationId
     ? [organizationId]
@@ -112,26 +44,38 @@ function canPreviewUserAccessModule(
   return organizationIds.some((orgId) => {
     const access = resolvePreviewUserAccess(user, orgId);
     if (module === "ALL_STAR_VAULT") return access.allStarVaultView;
-    const previewAs =
+    // A master user keeps the Admin card set, except Orders follows the server
+    // switch. Collapsing the whole preview to Admin would hide those cards
+    // even after ORDERS_ENABLED is turned on.
+    if (access.effectiveRole === "MASTER_ADMIN" && module === "ORDERS") {
+      return canPreviewDashboardModule("MASTER_ADMIN", module, {
+        masterMode,
+        allStarVaultView: access.allStarVaultView,
+        ordersModuleEnabled,
+      });
+    }
+    const previewAs: DashboardRolePreview =
       access.effectiveRole === "MASTER_ADMIN" ? "ADMIN" : access.effectiveRole;
-    return canPreviewAccessModule(
-      previewAs,
-      module,
+    return canPreviewDashboardModule(previewAs, module, {
       masterMode,
-      access.allStarVaultView,
-    );
+      allStarVaultView: access.allStarVaultView,
+      ordersModuleEnabled,
+    });
   });
 }
 
 export default function AdminDashboardModuleGrid({
   cards,
   masterMode,
+  ordersModuleEnabled,
   allowRolePreview,
   allStarVaultView,
   currentOrg = null,
 }: {
   cards: AdminDashboardCard[];
   masterMode: boolean;
+  /** Server value of `isOrdersModuleEnabled()`. Do not read `ORDERS_ENABLED` here. */
+  ordersModuleEnabled: boolean;
   allowRolePreview: boolean;
   allStarVaultView: boolean;
   currentOrg?: ContentOrgId | null;
@@ -166,22 +110,28 @@ export default function AdminDashboardModuleGrid({
         canPreviewUserAccessModule(
           previewUser,
           card.module,
-          masterMode,
           currentOrg,
+          masterMode,
+          ordersModuleEnabled,
         ),
       );
     }
     return cards.filter((card) =>
-      canPreviewAccessModule(previewRole, card.module, masterMode, allStarVaultView),
+      canPreviewDashboardModule(previewRole, card.module, {
+        masterMode,
+        allStarVaultView,
+        ordersModuleEnabled,
+      }),
     );
   }, [
     allowRolePreview,
     cards,
-    masterMode,
     previewRole,
     allStarVaultView,
     previewContext,
     currentOrg,
+    masterMode,
+    ordersModuleEnabled,
   ]);
 
   const groupedCards = useMemo(

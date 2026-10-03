@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { hasAdminRoleAtLeast, toAdminRole } from "@/lib/auth/adminRoles";
+import { ordersAdminApiDenial } from "@/lib/auth/ordersModule";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import {
@@ -15,6 +16,12 @@ import {
   isMasterDeployment,
   type ContentOrgId,
 } from "@/lib/siteConfig";
+
+function shopClosedResponse() {
+  const hidden = ordersAdminApiDenial();
+  if (!hidden) return null;
+  return NextResponse.json({ error: hidden.message }, { status: hidden.status });
+}
 
 function resolveOrg(request: NextRequest, bodyOrg?: string | null): ContentOrgId | null {
   const param = bodyOrg ?? request.nextUrl.searchParams.get("org");
@@ -42,6 +49,9 @@ async function requireShopAdmin(request: NextRequest, org: ContentOrgId) {
 
 /** GET — list recent drafts for org (admin). */
 export async function GET(request: NextRequest) {
+  const closed = shopClosedResponse();
+  if (closed) return closed;
+
   const org = resolveOrg(request);
   if (!org) return NextResponse.json({ error: "Invalid org" }, { status: 400 });
 
@@ -72,6 +82,9 @@ export async function GET(request: NextRequest) {
 
 /** POST — admin test form creates a draft (allows closed products). */
 export async function POST(request: NextRequest) {
+  const closed = shopClosedResponse();
+  if (closed) return closed;
+
   let body: {
     org?: string;
     productId?: string;

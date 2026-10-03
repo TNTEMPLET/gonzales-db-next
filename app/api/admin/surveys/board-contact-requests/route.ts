@@ -10,11 +10,11 @@ import {
 export const dynamic = "force-dynamic";
 
 /**
- * Cross-survey Board Contact Requests -- same "TEAMS" module gate as the
+ * Cross-survey Board Contact Requests -- same "SURVEYS" module gate as the
  * rest of the survey admin routes (see app/api/admin/surveys/[id]/results/route.ts).
  */
 export async function GET(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SURVEYS");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
@@ -41,7 +41,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const auth = await ensureAdminModule(request, "TEAMS");
+  const auth = await ensureAdminModule(request, "SURVEYS");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
