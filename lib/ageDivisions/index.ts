@@ -23,21 +23,28 @@ export {
   exactAge,
   isSplitWindow,
   leagueAge,
+  shiftIsoDateByYears,
 } from "./compute";
 
 export { leagueDivisionDefaults } from "./defaults";
 
 export {
   coverageWarningLines,
+  coverageWarningLinesForConfig,
   divisionAgeRows,
+  divisionAgeRowsForConfig,
   divisionTableTsv,
+  divisionTableTsvForConfig,
   formatAgeSpan,
   formatCalendarDate,
   formatExactAgeLabel,
   leagueRuleSentence,
+  leagueRuleSentenceForRule,
   lookupIsSplit,
   lookupLeague,
+  lookupLeagueForConfig,
   seasonAgeHeadline,
+  seasonAgeHeadlineForRule,
 } from "./present";
 
 export type { DivisionAgeRow, LeagueLookup } from "./present";

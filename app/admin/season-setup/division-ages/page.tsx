@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import DivisionAgesExplorer from "@/components/admin/DivisionAgesExplorer";
+import DivisionAgesWorkspace from "@/components/admin/DivisionAgesWorkspace";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
@@ -78,6 +79,7 @@ export default async function DivisionAgesPage({
   }
 
   const displayRole = allowing[1];
+  const canEdit = hasAdminRoleAtLeast(displayRole, "ADMIN");
   const headerOrg = showAll ? null : orgs[0];
   const hubOrg = headerOrg ?? getPrimaryLiveContentOrg();
   const { defaultSeasonYear, seasonYears } = seasonYearChoices(orgs);
@@ -99,13 +101,22 @@ export default async function DivisionAgesPage({
           <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Division Ages</h1>
           <p className="max-w-3xl text-zinc-400">
             Cutoff dates, birthdate ranges, coverage warnings, and an eligibility lookup.
+            {canEdit ? " Admins can edit birthdates, save this season, and change league defaults." : ""}
           </p>
         </div>
-        <DivisionAgesExplorer
-          orgs={orgs}
-          defaultSeasonYear={defaultSeasonYear}
-          seasonYears={seasonYears}
-        />
+        {canEdit ? (
+          <DivisionAgesWorkspace
+            orgs={orgs}
+            defaultSeasonYear={defaultSeasonYear}
+            seasonYears={seasonYears}
+          />
+        ) : (
+          <DivisionAgesExplorer
+            orgs={orgs}
+            defaultSeasonYear={defaultSeasonYear}
+            seasonYears={seasonYears}
+          />
+        )}
       </section>
     </main>
   );

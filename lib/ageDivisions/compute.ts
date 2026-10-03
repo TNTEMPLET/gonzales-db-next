@@ -56,6 +56,12 @@ function clampInt(value: number, min: number, max: number, fallback: number): nu
   return truncated;
 }
 
+/** Move a calendar date by whole years. Feb 29 lands on Feb 28 when the target year is not a leap year. */
+export function shiftIsoDateByYears(iso: string, years: number): string {
+  if (!Number.isFinite(years)) return "";
+  return addYears(iso, years);
+}
+
 function addYears(iso: string, years: number): string {
   const parsed = parseYmd(iso);
   if (!parsed || !Number.isFinite(years)) return "";
