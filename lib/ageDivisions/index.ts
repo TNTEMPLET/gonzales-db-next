@@ -26,3 +26,18 @@ export {
 } from "./compute";
 
 export { leagueDivisionDefaults } from "./defaults";
+
+export {
+  coverageWarningLines,
+  divisionAgeRows,
+  divisionTableTsv,
+  formatAgeSpan,
+  formatCalendarDate,
+  formatExactAgeLabel,
+  leagueRuleSentence,
+  lookupIsSplit,
+  lookupLeague,
+  seasonAgeHeadline,
+} from "./present";
+
+export type { DivisionAgeRow, LeagueLookup } from "./present";
