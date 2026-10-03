@@ -13,10 +13,10 @@ There is **no official public developer API** for SportsConnect registration/ros
 | Export reports from SC admin UI | Call a SportsConnect REST/OAuth API (none available) |
 | Upload into the Import Registration Data tab | Rely on a public SC developer portal that does not exist |
 | Use mapping presets + quality | Store SC admin passwords in this app by default |
-| Use **n8n / droid** for file-drop assist and co-pilot | Treat third-party sports-stats APIs as SportsConnect |
+| Upload exports by hand (or from a synced Google Drive folder) | Treat third-party sports-stats APIs as SportsConnect |
 | Prefer export drop + notify over UI bots | Ship unattended SC login scrape without operator approval |
 
-**Integration model:** **export → file import**, with assisted detection, reusable mapping presets, the Smart Auto-Build wizard, and import-run audit. **Automation ladder** (n8n, droid, optional credentialed pull) is in the product plan — no public API required.
+**Integration model:** **export → file import**, with assisted detection, reusable mapping presets, the Smart Auto-Build wizard, and import-run audit. Manual upload is the only ingest path. The n8n machine route was removed. No public API is required.
 
 Full product plan (includes short designs for n8n + droid): [`docs/sports-connect-integration-plan.md`](./sports-connect-integration-plan.md).
 
@@ -229,25 +229,11 @@ retroactive backfill of already-imported seasons.
 
 ---
 
-## n8n ingest (Option D — v1)
+## Ingest path
 
-Machine automation can drop an export without a browser session:
+Manual upload is the only path. Use the Smart Auto-Build wizard (upload, or pull a file that already landed in the synced Google Drive folder). There is no machine ingest route and no bearer secret.
 
-| Item | Value |
-|------|--------|
-| Route | `POST /api/admin/sports-connect/ingest` (Master Admin) |
-| Auth | `Authorization: Bearer <SPORTS_CONNECT_INGEST_SECRET>` |
-| Body | multipart `file` + `org` [+ `seasonYear`] **or** JSON `{ org, fileName, contentBase64 }` |
-| Effect | Parse → detect → preview → optional `PREVIEW` import run + Ops Desk deep link |
-| Does **not** | Write rosters / run Teams import engines |
-
-**Env (Vercel apbaseball-admin):** `SPORTS_CONNECT_INGEST_SECRET` (required for n8n). Optional: `SPORTS_CONNECT_ADMIN_BASE_URL` for desk links.
-
-**potions workflow:** `infra/range/stacks/n8n/exports/sc-export-landed.workflow.json`  
-Webhook: `POST https://potions.duckroostdigital.com/webhook/sc-export-landed`  
-Runbook: `infra/range/runbooks/n8n-potions.md` § Phase 3.
-
-`GET /api/admin/sports-connect/ingest` (same auth) returns whether the secret is configured and documents accepted body shapes.
+`POST /api/admin/sports-connect/ingest` and `SPORTS_CONNECT_INGEST_SECRET` were removed. The Google Drive sync (`/api/admin/sports-connect/drive-sync` and the cron) is unchanged.
 
 ---
 
@@ -258,7 +244,7 @@ Runbook: `infra/range/runbooks/n8n-potions.md` § Phase 3.
 - Never store SportsConnect passwords in this app. Do not scrape SC UIs.  
 - On Master, always choose a **concrete site** before importing (never All Sites writes).  
 - No SC API credentials: none exist for public use, and none should be invented via scrape.  
-- n8n machine token (`SPORTS_CONNECT_INGEST_SECRET`) is **not** an SC password — scope it to admin ingest only; rotate if leaked.
+- There is no n8n ingest secret in this app. Do not add a SportsConnect password to stand in for one.
 
 ---
 
@@ -272,8 +258,7 @@ Runbook: `infra/range/runbooks/n8n-potions.md` § Phase 3.
 | Quality | `lib/sportsConnect/quality.ts` |
 | Presets | `lib/sportsConnect/mappingPresets.ts` |
 | Preview / multi-file | `lib/sportsConnect/preview.ts` |
-| Ingest (n8n) | `lib/sportsConnect/ingest.ts`, `ingestAuth.ts`, `parseExportBuffer.ts` |
-| Ingest route | `app/api/admin/sports-connect/ingest/route.ts` |
+| Parse buffer (manual upload + Drive sync) | `lib/sportsConnect/parseExportBuffer.ts` |
 | Import runs | `lib/sportsConnect/importRuns.ts` |
 | Registration URL | `lib/sportsConnect/registrationUrl.ts` |
 | Smart Auto-Build wizard (primary import UI) | `components/admin/teams/SmartAutoBuildWizard.tsx` |
@@ -284,7 +269,6 @@ Runbook: `infra/range/runbooks/n8n-potions.md` § Phase 3.
 | Coach import engine | `app/api/admin/users/import/route.ts` |
 | Enrollment KPIs | `lib/enrollment/kpi.ts`, `components/admin/enrollment/EnrollmentKpiHub.tsx` |
 | Public Fall Ball copy | `app/registration/page.tsx` |
-| n8n workflow | `infra/range/stacks/n8n/exports/sc-export-landed.workflow.json` |
 
 ---
 
@@ -294,13 +278,12 @@ No public SC API does **not** mean “no automation.” Preferred order:
 
 | Path | Status | Notes |
 |------|--------|-------|
-| **Smart Auto-Build wizard** (shipped) | **Live** | Human export → upload/Drive-pull → preview all 3 report types → confirm |
-| **n8n (potions) file-drop** | **Implemented (v1)** | Webhook → `POST …/ingest` → PREVIEW + desk link; import/activate on potions when secret set; **no auto roster write** |
+| **Smart Auto-Build wizard** (shipped) | **Live** | Human export → upload/Drive-pull → preview all 3 report types → confirm. This is the only ingest path. |
+| **n8n (potions) file-drop** | **Removed** | `POST /api/admin/sports-connect/ingest` and its bearer secret are gone |
 | **Holocrons droid co-pilot** | Design ready | Checklist, quality brief, preset reminders via our APIs; **no SC password** |
-| **Secure export drop ingest** | Open | Same as n8n path with optional later approve-to-import |
+| **Secure export drop ingest** | Open | Would be a new design; the old n8n ingest route is not available |
 | **Parent account seed** | Open | After parent Player Cards product decision |
 | **Official public SC API client** | **Closed** | Revisit only with vendor **private** partner docs |
-| **Credentialed UI pull (scrape/login bot)** | **Not default** | Only with explicit operator approval (ToS, vaulted SC secret, brittle UI); feed files into n8n drop path |
+| **Credentialed UI pull (scrape/login bot)** | **Not default** | Only with explicit operator approval (ToS, vaulted SC secret, brittle UI) |
 
-**n8n plane:** https://potions.duckroostdigital.com (ADR-002).  
-**Details:** short designs for Options D (n8n) and E (droid) in [`sports-connect-integration-plan.md`](./sports-connect-integration-plan.md).
+**Details:** [`sports-connect-integration-plan.md`](./sports-connect-integration-plan.md).

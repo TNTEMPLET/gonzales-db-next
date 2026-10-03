@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { afterEach, describe, it } from "node:test";
 
 import { sendEmailViaResend } from "../providers/resend";
-import { sendSmsViaTwilio } from "../providers/twilio";
 import { guardOutboundMessage, isProductionEnv, shouldShowStagingBanner } from "../outboundGuard";
 
 const originalWarn = console.warn;
@@ -126,21 +125,6 @@ describe("guardOutboundMessage", () => {
 });
 
 describe("provider allowlist guard", () => {
-  it("does not call Twilio outside production when nobody is allowlisted", async () => {
-    captureWarnings();
-    let called = false;
-    globalThis.fetch = (async () => {
-      called = true;
-      return new Response("{}", { status: 201 });
-    }) as typeof fetch;
-    delete process.env.VERCEL_ENV;
-    delete process.env.SMS_ALLOWLIST;
-    const result = await sendSmsViaTwilio({ to: "+15556667777", body: "hi" });
-    assert.equal(result.status, "skipped");
-    assert.equal(result.providerMessageId, null);
-    assert.equal(called, false);
-  });
-
   it("sends only the allowlisted address and does not call Resend when none remain", async () => {
     captureWarnings();
     const seen: string[] = [];

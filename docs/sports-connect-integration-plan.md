@@ -63,7 +63,7 @@ SportsConnect (export or drop)
 | **0** Catalog + column detect + runbook | **Done** | `lib/sportsConnect/*`, fixtures, tests, import runbook |
 | **1** Mapping presets + quality | **Done** | Prisma presets/runs, Teams preset UI, quality panel |
 | **2** Ops Desk + audit runs | **Done** | `/admin/sports-connect`, multi-file plan, history, dashboard card |
-| **3** Deeper automation | **Partial** | **D (n8n) v1 shipped**; A / C / E open; B closed |
+| **3** Deeper automation | **Partial** | **D (n8n ingest) removed**; manual upload is the only path; A / C / E open; B closed |
 
 ### Phase 3 options (revised)
 
@@ -72,11 +72,11 @@ SportsConnect (export or drop)
 | **A. Secure export drop** | **Preferred unattended path** | CSV lands in email / Drive / S3 / LAN folder | Ingest + detect + notify; optional staged import; still no SC API |
 | **B. Official SC API** | **Closed (no public API)** | Only if vendor grants a **private** partner API in writing | Client modeled on Assignr; **not planned** without written access |
 | **C. Parent account seed** | **Viable later** | Parent Player Cards portal product decision | Invite-only `RegisteredUser` from guardian emails |
-| **D. n8n orchestration** | **Implemented (v1)** | Want glue without new app services | potions `sc-export-landed` → `POST …/ingest` → PREVIEW + notify stub |
+| **D. n8n orchestration** | **Removed** | Was a machine `POST …/ingest` with a bearer secret | Manual upload at `/admin/sports-connect` (Smart Auto-Build) is the only path |
 | **E. Holocrons droid assist** | **Viable now (design below)** | Want operator co-pilot or (later) approved pull | Desk co-pilot default; credentialed SC pull only with explicit approval |
 | **F. Credentialed UI pull (scrape/login bot)** | **Not default** | Operator accepts ToS + fragility + vaulted SC secrets | Browser automation via n8n/Playwright or droid; isolated secrets; audit |
 
-**Default next step after Phase 2:** **D (n8n file-drop)** is implemented on the platform + workflow export (import/activate on potions when secret is set). Prefer **E (droid co-pilot)** next before any login bot. **Do not block on B.**
+**Default next step after Phase 2:** manual upload is the only ingest path. The n8n ingest route and `SPORTS_CONNECT_INGEST_SECRET` are removed. Prefer **E (droid co-pilot)** next before any login bot. **Do not block on B.**
 
 ### Non-goals (standing)
 
@@ -89,94 +89,11 @@ SportsConnect (export or drop)
 
 ---
 
-## Short design: Option D — n8n (potions)
+## Option D — n8n ingest (removed)
 
-**Owner:** CTO architecture; **COO** for potions deploy/secrets; Huyang for any new platform ingest routes.  
-**Plane:** n8n at **https://potions.duckroostdigital.com** (ADR-002).  
-**SoR for rosters:** still `Gonzales-db-next` import engines — n8n does **not** become the roster database.
+Manual upload is the only path. `POST`/`GET /api/admin/sports-connect/ingest`, `lib/sportsConnect/ingestAuth.ts`, and `lib/sportsConnect/ingest.ts` are gone. `SPORTS_CONNECT_INGEST_SECRET` is unused and can be deleted.
 
-### Goal
-
-Reduce Master Admin busywork when exports already exist as files: detect report kind, attach quality estimates, notify, optionally stage for import — **without** SC UI login.
-
-### Architecture
-
-```
-[Export source]
-  human download  OR  SC email  OR  Drive/S3/LAN drop folder
-        │
-        ▼
-  n8n workflow: sc-export-landed  (potions webhook)
-        │  1. Accept file (JSON contentBase64 or binary)
-        │  2. POST /api/admin/sports-connect/ingest
-        │     Authorization: Bearer SPORTS_CONNECT_INGEST_SECRET
-        │  3. Platform: parse → detect → preview → PREVIEW run
-        │  4. Summarize (no full PII rows in n8n logs)
-        │  5. Notify Master (email stub → wire SMTP)
-        │  6. Deep link: admin.apbaseball.com/admin/sports-connect?org=…
-        ▼
-  Master confirms maps in Ops Desk / Teams → existing import engines write DB
-```
-
-**v1 rule:** n8n **does not auto-commit** roster writes. Preview + notify only.  
-**v2 (optional):** after explicit Master toggle / webhook “approve”, n8n calls Teams import start/chunk/complete with saved presets — still human-gated.
-
-### Shipped pieces (2026-07-15)
-
-| Piece | Location |
-|-------|----------|
-| Machine auth | `lib/sportsConnect/ingestAuth.ts` — env `SPORTS_CONNECT_INGEST_SECRET` |
-| Parse buffer | `lib/sportsConnect/parseExportBuffer.ts` (CSV/XLSX, 15MB cap, sample rows) |
-| Ingest core | `lib/sportsConnect/ingest.ts` — preview + `recordImportRunSafe(PREVIEW)` |
-| HTTP route | `POST/GET /api/admin/sports-connect/ingest` |
-| n8n workflow | `infra/range/stacks/n8n/exports/sc-export-landed.workflow.json` |
-| potions runbook | `infra/range/runbooks/n8n-potions.md` § Phase 3 |
-
-### Workflow (`sc-export-landed`)
-
-| Node | Responsibility |
-|------|----------------|
-| Trigger | Webhook `POST /webhook/sc-export-landed` (IMAP/Drive/LAN can call this later) |
-| Normalize | Require concrete `org` + `contentBase64` or binary; strip unsafe file names |
-| Call platform | `POST …/sports-connect/ingest` with Bearer machine secret |
-| Summarize | reportKind, confidence, missing guardian estimate, desk URL, run id — **no row dump** |
-| Notify | Subject stub: `[SC] {org} {kind} export ready…` + Ops Desk URL; wire Send Email in potions |
-
-### Auth & secrets
-
-| Secret | Where | Notes |
-|--------|-------|-------|
-| `SPORTS_CONNECT_INGEST_SECRET` | Vercel **apbaseball-admin** + potions env | Bearer token for n8n; constant-time compare |
-| Optional `SPORTS_CONNECT_ADMIN_BASE_URL` | Vercel admin | Ops Desk deep-link host (default `https://admin.apbaseball.com`) |
-| Drop-folder / Drive / IMAP | potions credentials | PII — restrict who can open n8n |
-| SC admin password | **Not required for Option D** | Only if Option F is later approved |
-
-### Request contract
-
-**Auth:** `Authorization: Bearer <SPORTS_CONNECT_INGEST_SECRET>` (or Master admin session with TEAMS for manual test).
-
-**Multipart:** fields `file`, `org` (required), `seasonYear` (optional).
-
-**JSON:** `{ org, seasonYear?, fileName, contentBase64, recordPreviewRun? }`.
-
-`org` must be `fallball` | `gonzales` | `ascension` (never All Sites). Response includes `preview`, optional `run`, `deskUrl`, `message`. `writesRosters` is always false.
-
-### Operator activate checklist
-
-1. Generate secret: `openssl rand -hex 32`.  
-2. Set on Vercel **apbaseball-admin** → redeploy/admin env pick-up.  
-3. Set same secret on potions (`/srv/stack/.env` or n8n env) → restart n8n if needed.  
-4. Import `sc-export-landed.workflow.json` (see n8n exports README).  
-5. Smoke webhook with header-only fixture; confirm PREVIEW run in Ops Desk History.  
-6. Wire Send Email after Notify stub; then activate workflow.
-
-### Verification (D)
-
-1. `GET …/ingest` with Bearer → `configured: true`.  
-2. Webhook or direct ingest with synthetic fixture → correct `reportKind`.  
-3. Master gets notify (once SMTP wired) with working Ops Desk link.  
-4. No roster rows created until Master imports in Teams.  
-5. Execution logs redacted / short retention for PII.
+Keep using `/admin/sports-connect` (Smart Auto-Build: file upload or the existing Google Drive sync). That sync is separate and still in place. Parse helpers in `lib/sportsConnect/parseExportBuffer.ts` still serve the manual upload and Drive sync.
 
 ---
 

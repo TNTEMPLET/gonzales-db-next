@@ -4,8 +4,7 @@
 
 - `COMMUNICATIONS_MODULE_ENABLED` (default: `true`)
   - `false` disables `/admin/communications` UI and API responses.
-- `COMMUNICATIONS_SMS_ENABLED` (default: `false`)
-  - Keeps SMS pipeline disabled in MVP.
+- SMS sending was removed. `COMMUNICATIONS_SMS_ENABLED` is unused and can be deleted. The `SMS` enum value and `SmsConsent` table stay until a later slice.
 
 ## Provider configuration
 
@@ -28,11 +27,16 @@ Source of truth: table **`CommunicationFromAddress`**.
 
 Primary production surface: **Vercel project `apbaseball-admin`** (`SITE_ORG=master`).
 
-### SMS (foundation only in MVP)
+### SMS
 
-- `TWILIO_ACCOUNT_SID` (future)
-- `TWILIO_AUTH_TOKEN` (future)
-- `TWILIO_FROM_NUMBER` (future)
+Removed. Nothing sends texts. These Vercel vars are unused and can be deleted from every project that still has them:
+
+- `COMMUNICATIONS_SMS_ENABLED`
+- `TWILIO_ACCOUNT_SID`
+- `TWILIO_AUTH_TOKEN`
+- `TWILIO_FROM_PHONE`
+
+`SmsConsent` and the `SMS` channel enum stay in the database for a later slice. Campaigns and tournament-alert subscriptions that still list `SMS` send email only (or nothing, if they have no email channel) and do not throw.
 
 ## Operational workflow
 
@@ -52,7 +56,7 @@ Primary production surface: **Vercel project `apbaseball-admin`** (`SITE_ORG=mas
 
 - Email unsubscribe writes to `EmailSuppression`.
 - Suppressed addresses are skipped during send.
-- SMS consent is modeled in `SmsConsent` (activation deferred).
+- `SmsConsent` remains in the database and is unused. Nothing reads it to send a text.
 
 ## API smoke test checklist
 

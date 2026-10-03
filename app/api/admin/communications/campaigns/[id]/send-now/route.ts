@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCommunicationActor } from "@/lib/communications/authz";
-import { isSmsSendingEnabled } from "@/lib/communications/config";
+import { campaignSendsEmail } from "@/lib/communications/channels";
 import {
   canSendForOrg,
   canSendNowWithoutApproval,
@@ -64,18 +64,7 @@ export async function POST(
     data: { status: "SENDING" },
   });
   try {
-    if (campaign.channels.includes("SMS") && !isSmsSendingEnabled()) {
-      await prisma.communicationDelivery.create({
-        data: {
-          campaignId: campaign.id,
-          channel: "SMS",
-          recipientType: "ADMIN_USER",
-          status: "SKIPPED_NO_CONSENT",
-          errorMessage: "SMS disabled by COMMUNICATIONS_SMS_ENABLED flag",
-        },
-      });
-    }
-    const result = campaign.channels.includes("EMAIL")
+    const result = campaignSendsEmail(campaign.channels)
       ? await sendCampaignEmails(campaign)
       : { sent: 0, failed: 0, total: 0 };
 
