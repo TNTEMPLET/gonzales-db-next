@@ -9,6 +9,7 @@ import {
 } from "@/lib/communications/campaignRuleWrite";
 import { logicalModeForRules } from "@/lib/communications/divisionAudience";
 import { resolveCommunicationActor } from "@/lib/communications/authz";
+import { withoutSmsChannel } from "@/lib/communications/channels";
 import { resolveFromAddress } from "@/lib/communications/fromAddresses";
 import { canDeleteCampaign, canSendForOrg } from "@/lib/communications/policy";
 import prisma from "@/lib/prisma";
@@ -106,7 +107,8 @@ export async function PATCH(
         messageSubject: body.messageSubject === undefined ? existing.messageSubject : body.messageSubject?.trim() || null,
         messageBody: body.messageBody?.trim() || existing.messageBody,
         fromEmail,
-        channels: body.channels && body.channels.length > 0 ? body.channels : existing.channels,
+        channels:
+          body.channels && body.channels.length > 0 ? withoutSmsChannel(body.channels) : existing.channels,
         logicalMode: parsedRules ? logicalModeForRules(parsedRules) : existing.logicalMode,
         organizationId: requestedOrg,
         quietHoursStart:

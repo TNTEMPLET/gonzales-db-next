@@ -2,6 +2,7 @@ import type { CommunicationChannel } from "@prisma/client";
 import { NextRequest, NextResponse } from "next/server";
 
 import { resolveCommunicationActor } from "@/lib/communications/authz";
+import { withoutSmsChannel } from "@/lib/communications/channels";
 import {
   getAllowedFromAddresses,
   getDefaultFromAddress,
@@ -82,8 +83,9 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     );
   }
+  const requestedChannels = Array.isArray(body.channels) ? body.channels : [];
   const channels: CommunicationChannel[] =
-    Array.isArray(body.channels) && body.channels.length > 0 ? body.channels : ["EMAIL"];
+    requestedChannels.length > 0 ? withoutSmsChannel(requestedChannels) : ["EMAIL"];
   const requestedOrg =
     body.organizationId === undefined
       ? actor.targetOrg

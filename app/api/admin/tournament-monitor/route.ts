@@ -22,8 +22,8 @@ function authorized(request: NextRequest) {
 
 function normalizeChannels(channels: unknown): CommunicationChannel[] {
   if (!Array.isArray(channels)) return ["EMAIL"];
-  const out = channels.filter((channel): channel is CommunicationChannel => channel === "EMAIL" || channel === "SMS");
-  return out.length > 0 ? out : ["EMAIL"];
+  const email = channels.filter((channel): channel is CommunicationChannel => channel === "EMAIL");
+  return email.length > 0 ? email : ["EMAIL"];
 }
 
 export async function GET(request: NextRequest) {
@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
       eventKey: `TEST_ALERT:${hashMonitorStatus(payload)}:${Date.now()}`,
       statusHash: hashMonitorStatus(payload),
       title: "AP Baseball tournament alert test",
-      message: "This is a test tournament alert from the Master Scores module. Email and SMS delivery are working if you received this.",
+      message: "This is a test tournament alert from the Master Scores module. Email delivery is working if you received this.",
       payload,
     });
     return NextResponse.json({ success: true, data: published });
@@ -80,8 +80,8 @@ export async function POST(request: NextRequest) {
     channels: normalizeChannels(body.channels),
     active: body.active !== false,
   };
-  if (!data.email && !data.phone) {
-    return NextResponse.json({ error: "email or phone is required" }, { status: 400 });
+  if (!data.email) {
+    return NextResponse.json({ error: "email is required" }, { status: 400 });
   }
 
   const saved = body.id
