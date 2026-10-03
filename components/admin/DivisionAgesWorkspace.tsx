@@ -739,19 +739,15 @@ export default function DivisionAgesWorkspace({
       return;
     }
     const card = cards[settings.org];
-    const replaceSeason = card && card.source !== "season" && !card.dirty;
-    setSettings((current) =>
-      current
-        ? {
-            ...current,
-            saving: false,
-            message: replaceSeason
-              ? "League defaults saved."
-              : "League defaults saved. This season still uses its saved table until you reset it.",
-          }
-        : current,
-    );
-    if (replaceSeason) await reloadOrg(settings.org);
+    const seasonIsSaved = card?.source === "season";
+    const keepOnScreenEdits = Boolean(card?.dirty);
+    const message = seasonIsSaved
+      ? "League defaults saved. This season still uses its saved table until you reset it."
+      : keepOnScreenEdits
+        ? "League defaults saved. Unsaved edits on this season are still on screen."
+        : "League defaults saved.";
+    setSettings((current) => (current ? { ...current, saving: false, message } : current));
+    if (!seasonIsSaved && !keepOnScreenEdits) await reloadOrg(settings.org);
   }
 
   async function runConfirmedAction() {
@@ -771,7 +767,7 @@ export default function DivisionAgesWorkspace({
         : await fetch(`/api/admin/division-ages/season?org=${encodeURIComponent(org)}&seasonYear=${seasonYear}`, {
             method: "PUT",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ resetToLeagueDefaults: true, cutoff: card?.cutoff, divisions: card?.divisions ?? [] }),
+            body: JSON.stringify({ resetToLeagueDefaults: true }),
           });
     const payload = await readJson(response);
     if (!response.ok || !isSeasonPayload(payload)) {

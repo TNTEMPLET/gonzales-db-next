@@ -93,6 +93,17 @@ describe("division age validation", () => {
     assert.equal(backwards.ok, false);
     if (!backwards.ok) assert.match(backwards.error, /Oldest birthdate must be on or before the youngest birthdate/);
 
+    const reset = validateSeasonWrite(
+      {
+        resetToLeagueDefaults: true,
+        cutoff: CUTOFF,
+        divisions: [division({ oldestBirthdate: "not-a-date" })],
+      },
+      SEASON,
+    );
+    assert.equal(reset.ok, true);
+    if (reset.ok) assert.equal(reset.data.reset, true);
+
     const overlap = validateSeasonWrite(
       {
         cutoff: CUTOFF,
