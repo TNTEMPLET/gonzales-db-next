@@ -109,7 +109,7 @@ export default function NewsPostList({
           <p className="text-zinc-300">No published posts yet.</p>
           {isAdmin ? (
             <Link
-              href="/news/admin"
+              href="/admin/news"
               className="text-sm text-brand-gold hover:text-brand-gold/80 transition mt-2 inline-block"
             >
               Create your first post →
@@ -166,7 +166,7 @@ export default function NewsPostList({
                         {isAdmin ? (
                           <>
                             <Link
-                              href={`/news/admin?edit=${post.slug}`}
+                              href={`/admin/news?edit=${encodeURIComponent(post.slug)}`}
                               className="text-sm text-zinc-400 hover:text-zinc-200 transition"
                             >
                               Edit
