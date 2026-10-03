@@ -44,7 +44,7 @@ describe("dashboard role preview on the master site", () => {
     assert.equal(off.includes("Reports"), true);
   });
 
-  it("does not preview a division ages card before that page exists", () => {
+  it("does not preview a division ages dashboard card", () => {
     const titles = filterDashboardCardsForRolePreview(ADMIN_DASHBOARD_CARD_SPECS, "MASTER_ADMIN", {
       masterMode: true,
       allStarVaultView: true,

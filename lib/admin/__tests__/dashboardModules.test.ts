@@ -147,7 +147,7 @@ describe("admin dashboard card specs", () => {
     assert.deepEqual(titles, ["Park & Tournament Alerts"]);
   });
 
-  it("keeps division ages out of the card list until that page exists", () => {
+  it("keeps division ages off the dashboard card list", () => {
     assert.equal(getAdminDashboardCategory("DIVISION_AGES"), null);
     assert.equal(
       ADMIN_DASHBOARD_CARD_SPECS.some((card) => card.module === "DIVISION_AGES"),

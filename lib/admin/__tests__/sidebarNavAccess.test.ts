@@ -63,11 +63,34 @@ describe("sidebar job leaves", () => {
     assert.equal(hrefs.includes("/admin/reports"), true);
   });
 
-  it("does not add a division ages leaf before that page exists", () => {
-    for (const role of ["MASTER_ADMIN", "ADMIN", "BOARD_MEMBER", "PARK_DIRECTOR"] as const) {
+  it("shows division ages under season setup for admins only", () => {
+    for (const role of ["MASTER_ADMIN", "ADMIN"] as const) {
       const hrefs = leafHrefs(role, true);
+      assert.equal(hrefs.includes("/admin/season-setup/division-ages"), true, role);
       assert.equal(hrefs.includes("/admin/division-ages"), false, role);
     }
+    for (const role of ["BOARD_MEMBER", "PARK_DIRECTOR"] as const) {
+      const hrefs = leafHrefs(role, true);
+      assert.equal(hrefs.includes("/admin/season-setup/division-ages"), false, role);
+      assert.equal(hrefs.includes("/admin/division-ages"), false, role);
+    }
+
+    const nav = buildAdminSidebarNav(
+      (module) =>
+        sidebarAllowsModule({
+          module,
+          orgId: "gonzales",
+          role: "ADMIN",
+          ordersModuleEnabled: true,
+        }),
+      false,
+      "?org=gonzales",
+    );
+    const competition = nav.groups
+      .flatMap((group) => group.subcategories)
+      .find((sub) => sub.id === "competition");
+    const ids = competition?.leaves.map((leaf) => leaf.id) ?? [];
+    assert.equal(ids.indexOf("division-ages"), ids.indexOf("season-setup") + 1);
   });
 
   it("shows cap and shirt leaves to a master admin only when the switch is on", () => {

@@ -89,6 +89,15 @@ export function buildAdminSidebarNav(
       ...(allowModule("SEASON_SETUP")
         ? [{ id: "season-setup", label: "Season Setup", href: leafHref("/admin/season-setup", orgSuffix) }]
         : []),
+      ...(allowModule("DIVISION_AGES")
+        ? [
+            {
+              id: "division-ages",
+              label: "Division Ages",
+              href: leafHref("/admin/season-setup/division-ages", orgSuffix),
+            },
+          ]
+        : []),
       ...(allowModule("TEAMS")
         ? [{ id: "teams", label: "Teams & Rosters", href: leafHref("/admin/teams", orgSuffix) }]
         : []),

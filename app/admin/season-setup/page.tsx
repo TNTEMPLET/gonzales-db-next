@@ -1,4 +1,5 @@
 import { cookies } from "next/headers";
+import Link from "next/link";
 import { redirect } from "next/navigation";
 
 import AdminSeasonSetupChecklist from "@/components/admin/AdminSeasonSetupChecklist";
@@ -78,6 +79,20 @@ export default async function SeasonSetupPage({
             )}
           </p>
         </div>
+
+        {canAccessAdminModule(role, "DIVISION_AGES") ? (
+          <Link
+            href={`/admin/season-setup/division-ages?org=${currentOrg}`}
+            className="mb-6 block rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 transition hover:border-zinc-600 sm:p-6"
+          >
+            <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Read only</p>
+            <h2 className="mt-1 text-xl font-semibold text-white">Division Ages</h2>
+            <p className="mt-2 max-w-3xl text-sm text-zinc-400">
+              Cutoff dates, birthdate ranges, coverage warnings, and an eligibility lookup. Built-in defaults.
+              Editing comes later.
+            </p>
+          </Link>
+        ) : null}
 
         <FallBallUmpirePayScheduleEditor
           targetOrg={currentOrg}
