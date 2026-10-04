@@ -23,6 +23,12 @@ export type DivisionAgeConfig = {
   oldestBirthdate?: string;
   youngestBirthdate?: string;
   sortOrder: number;
+  /**
+   * Optional team size on a league-default division. Missing means the
+   * forecast default of 11–12. Seasons do not store these.
+   */
+  rosterMin?: number;
+  rosterMax?: number;
 };
 
 export type LeagueDivisionConfig = {

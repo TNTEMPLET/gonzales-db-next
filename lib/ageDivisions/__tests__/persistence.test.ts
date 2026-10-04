@@ -225,6 +225,47 @@ describe("start from last season", () => {
   });
 });
 
+describe("league roster bounds", () => {
+  it("stores optional roster size inside divisionsJson and still reads the old shape", async () => {
+    const memory = memoryDb();
+    const saved = await saveLeagueDefaults(
+      memory.db,
+      ORG,
+      {
+        cutoffMonth: 4,
+        cutoffDay: 30,
+        yearOffset: 0,
+        divisions: [division({ rosterMin: 10, rosterMax: 14 })],
+      },
+      "admin-roster",
+    );
+    assert.equal(saved.ok, true);
+    if (!saved.ok) return;
+    assert.equal(saved.value.divisions[0]?.rosterMin, 10);
+    assert.equal(saved.value.divisions[0]?.rosterMax, 14);
+    assert.equal(saved.value.updatedByAdminId, "admin-roster");
+
+    const raw = memory.leagues.get(ORG);
+    const storedDivisions = raw?.divisionsJson as Array<Record<string, unknown>>;
+    assert.equal(storedDivisions[0]?.rosterMin, 10);
+    assert.equal(storedDivisions[0]?.rosterMax, 14);
+
+    const again = await getLeagueDefaults(memory.db, ORG);
+    assert.equal(again.divisions[0]?.rosterMin, 10);
+    assert.equal(again.divisions[0]?.rosterMax, 14);
+
+    memory.leagues.set(ORG, {
+      ...raw!,
+      divisionsJson: [division()],
+    });
+    const oldShape = await getLeagueDefaults(memory.db, ORG);
+    assert.equal(oldShape.source, "league");
+    assert.equal(oldShape.divisions[0]?.code, "7U");
+    assert.equal(oldShape.divisions[0]?.rosterMin, undefined);
+    assert.equal(oldShape.divisions[0]?.rosterMax, undefined);
+  });
+});
+
 describe("division age store wiring", () => {
   it("upserts only divisionAgesJson and gates every route", () => {
     const store = readFileSync(new URL("../store.ts", import.meta.url), "utf8");

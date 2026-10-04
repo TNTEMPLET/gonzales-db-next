@@ -374,6 +374,9 @@ describe("compareConfigs", () => {
     assert.equal(excluded.current.expected, 10);
     assert.equal(excluded.current.minTeams, 1);
     assert.equal(excluded.current.maxTeams, 1);
+    assert.equal(included.currentShortRoster, false);
+    assert.equal(excluded.currentShortRoster, true);
+    assert.equal(included.currentOverlap, 0);
     assert.equal(withFeeder.movers, 0);
   });
 });

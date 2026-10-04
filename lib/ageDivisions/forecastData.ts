@@ -241,7 +241,7 @@ function excludeOverlap(feeder: CountedPlayer[], own: CountedPlayer[]): CountedP
   return feeder.filter((player) => player.matchKey == null || !ownKeys.has(player.matchKey));
 }
 
-/** Optional per-division roster bounds stored on league defaults until the cog adds them. */
+/** Optional per-division roster bounds stored on league defaults by the settings cog. */
 export function rosterMapFromLeagueDivisions(divisions: unknown): Map<string, RosterSize> {
   const map = new Map<string, RosterSize>();
   if (!Array.isArray(divisions)) return map;

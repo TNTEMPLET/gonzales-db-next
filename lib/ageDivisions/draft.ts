@@ -72,6 +72,39 @@ export function moveDivision(divisions: DivisionAgeConfig[], index: number, dire
   return next.map((division, order) => ({ ...division, sortOrder: order + 1 }));
 }
 
+/** Empty text clears the bound. Anything else must be a 1–2 digit integer. */
+export function parseRosterBound(raw: string): number | undefined {
+  const trimmed = raw.trim();
+  if (!trimmed) return undefined;
+  if (!/^\d{1,2}$/.test(trimmed)) return Number.NaN;
+  return Number(trimmed);
+}
+
+export function setDivisionRoster(
+  division: DivisionAgeConfig,
+  field: "rosterMin" | "rosterMax",
+  raw: string,
+): DivisionAgeConfig {
+  const next: DivisionAgeConfig = { ...division };
+  const value = parseRosterBound(raw);
+  if (value == null) {
+    delete next[field];
+    return next;
+  }
+  next[field] = value;
+  return next;
+}
+
+export function setAllDivisionRosters(
+  divisions: DivisionAgeConfig[],
+  minRaw: string,
+  maxRaw: string,
+): DivisionAgeConfig[] {
+  return divisions.map((division) =>
+    setDivisionRoster(setDivisionRoster(division, "rosterMin", minRaw), "rosterMax", maxRaw),
+  );
+}
+
 export function blankDivision(sortOrder: number): DivisionAgeConfig {
   return {
     code: `NEW ${sortOrder}`,

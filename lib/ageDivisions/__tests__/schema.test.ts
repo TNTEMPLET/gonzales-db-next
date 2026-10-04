@@ -116,6 +116,79 @@ describe("division age validation", () => {
     );
     assert.equal(overlap.ok, true);
   });
+
+  it("keeps league defaults valid without roster fields and rejects a bad roster range", () => {
+    const oldShape = validateLeagueDefaults({
+      cutoffMonth: 4,
+      cutoffDay: 30,
+      yearOffset: 0,
+      divisions: [division()],
+    });
+    assert.equal(oldShape.ok, true);
+    if (oldShape.ok) {
+      assert.equal(oldShape.data.divisions[0]?.rosterMin, undefined);
+      assert.equal(oldShape.data.divisions[0]?.rosterMax, undefined);
+    }
+
+    const stored = validateLeagueDefaults({
+      cutoffMonth: 4,
+      cutoffDay: 30,
+      yearOffset: 0,
+      divisions: [division({ rosterMin: 11, rosterMax: 12 })],
+    });
+    assert.equal(stored.ok, true);
+    if (stored.ok) {
+      assert.equal(stored.data.divisions[0]?.rosterMin, 11);
+      assert.equal(stored.data.divisions[0]?.rosterMax, 12);
+    }
+
+    const season = validateSeasonWrite(
+      { cutoff: CUTOFF, divisions: [division({ rosterMin: 9, rosterMax: 10 })] },
+      SEASON,
+    );
+    assert.equal(season.ok, true);
+    if (season.ok && !season.data.reset) {
+      assert.equal(season.data.divisions[0]?.rosterMin, undefined);
+      assert.equal(season.data.divisions[0]?.rosterMax, undefined);
+    }
+
+    const cases = [
+      division({ rosterMin: 0, rosterMax: 12 }),
+      division({ rosterMin: 12, rosterMax: 11 }),
+      division({ rosterMin: 1, rosterMax: 31 }),
+      division({ rosterMin: 11 }),
+      division({ rosterMax: 12 }),
+      division({ rosterMin: 1.5, rosterMax: 12 }),
+      division({ rosterMin: 11, rosterMax: 12.2 }),
+    ];
+    for (const item of cases) {
+      const parsed = validateLeagueDefaults({
+        cutoffMonth: 4,
+        cutoffDay: 30,
+        yearOffset: 0,
+        divisions: [item],
+      });
+      assert.equal(parsed.ok, false);
+    }
+
+    const backwards = validateLeagueDefaults({
+      cutoffMonth: 4,
+      cutoffDay: 30,
+      yearOffset: 0,
+      divisions: [division({ rosterMin: 12, rosterMax: 11 })],
+    });
+    assert.equal(backwards.ok, false);
+    if (!backwards.ok) assert.match(backwards.error, /Roster minimum must be less than or equal to roster maximum/);
+
+    const half = validateLeagueDefaults({
+      cutoffMonth: 4,
+      cutoffDay: 30,
+      yearOffset: 0,
+      divisions: [division({ rosterMin: 11 })],
+    });
+    assert.equal(half.ok, false);
+    if (!half.ok) assert.match(half.error, /both/);
+  });
 });
 
 describe("division age overrides", () => {
