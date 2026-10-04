@@ -6,12 +6,13 @@
  */
 
 import {
+  coverageWarnings,
   effectiveCutoffDate,
   effectiveRange,
   eligibleDivisions,
   leagueAge,
 } from "./compute";
-import type { DivisionAgeConfig, LeagueAgeRule, LeagueDivisionConfig } from "./types";
+import type { CoverageWarning, DivisionAgeConfig, LeagueAgeRule, LeagueDivisionConfig } from "./types";
 
 /** Aggregate players sharing a birth date. No names. */
 export type BirthBucket = {
@@ -107,6 +108,10 @@ export type ForecastRow = {
    * (in exactly one of the two division sets).
    */
   movers: number;
+  /** Players who enter this division. Raw counts, before the return rate and feeder share. */
+  moversIn: PoolSplit;
+  /** Players who leave this division. Raw counts, before the return rate and feeder share. */
+  moversOut: PoolSplit;
   /** `0 < expected < roster.min` on that side. */
   currentShortRoster: boolean;
   proposedShortRoster: boolean;
@@ -144,6 +149,19 @@ export type ForecastPopulation = {
   unmatched: PoolSplit;
 };
 
+/**
+ * Players who move from one eligible set to another.
+ * `from` and `to` are the sorted division codes joined with `+`, or
+ * `none:tooYoung` | `none:agedOut` | `none:gap` when no division matches.
+ */
+export type ForecastFlow = {
+  from: string;
+  to: string;
+  own: number;
+  feeder: number;
+  total: number;
+};
+
 export type CompareConfigsResult = {
   rows: ForecastRow[];
   /** Overlapping divisions. Totals use each pool once instead of summing its members. */
@@ -152,6 +170,10 @@ export type CompareConfigsResult = {
   league: LeagueTotals;
   /** Players whose eligible division-code set differs, counted once. */
   movers: number;
+  /** One entry per from → to among movers. Totals sum to `movers`. */
+  flows: ForecastFlow[];
+  currentWarnings: CoverageWarning[];
+  proposedWarnings: CoverageWarning[];
   current: ForecastPopulation;
   proposed: ForecastPopulation;
 };
@@ -218,6 +240,22 @@ function assertCount(count: number): void {
   if (!Number.isFinite(count) || count < 0) {
     throw new RangeError(`Birth bucket count must be a finite number ≥ 0 (got ${count}).`);
   }
+}
+
+function placementKey(
+  birthDate: string,
+  codes: readonly string[],
+  config: ForecastConfig,
+  targetSeasonYear: number,
+): string {
+  if (codes.length > 0) return [...codes].sort((a, b) => a.localeCompare(b)).join("+");
+  const cutoff = effectiveCutoffDate(config.cutoff, targetSeasonYear);
+  const bounds = coveredBounds(config, targetSeasonYear);
+  const age = leagueAge(birthDate, cutoff);
+  if (!Number.isFinite(age) || bounds == null) return "none:gap";
+  if (birthDate < bounds.oldest) return "none:agedOut";
+  if (birthDate > bounds.youngest) return "none:tooYoung";
+  return "none:gap";
 }
 
 function eligibleCodes(birthDate: string, config: ForecastConfig, targetSeasonYear: number): string[] {
@@ -671,8 +709,15 @@ export function compareConfigs(
   }
 
   const moversByCode = new Map<string, number>();
-  for (const code of meta.keys()) moversByCode.set(code, 0);
+  const moversInByCode = new Map<string, PoolSplit>();
+  const moversOutByCode = new Map<string, PoolSplit>();
+  for (const code of meta.keys()) {
+    moversByCode.set(code, 0);
+    moversInByCode.set(code, emptySplit());
+    moversOutByCode.set(code, emptySplit());
+  }
   let movers = 0;
+  const flowMap = new Map<string, ForecastFlow>();
 
   for (const bucket of buckets) {
     assertPool(bucket.pool);
@@ -689,8 +734,22 @@ export function compareConfigs(
     for (const code of codes) {
       if (currentSet.has(code) === proposedSet.has(code)) continue;
       moversByCode.set(code, (moversByCode.get(code) ?? 0) + bucket.count);
+      const direction = currentSet.has(code) ? moversOutByCode : moversInByCode;
+      const split = direction.get(code) ?? emptySplit();
+      addSplit(split, bucket.pool, bucket.count);
+      direction.set(code, split);
     }
+    const from = placementKey(birthDate, currentCodes, current, targetSeasonYear);
+    const to = placementKey(birthDate, proposedCodes, proposed, targetSeasonYear);
+    if (from === to) continue;
+    const flowKey = `${from}\0${to}`;
+    const flow = flowMap.get(flowKey) ?? { from, to, ...emptySplit() };
+    addSplit(flow, bucket.pool, bucket.count);
+    flowMap.set(flowKey, flow);
   }
+  const flows = [...flowMap.values()].sort(
+    (a, b) => b.total - a.total || a.from.localeCompare(b.from) || a.to.localeCompare(b.to),
+  );
 
   const { pools, currentIds, proposedIds } = collectPools(
     buckets,
@@ -715,6 +774,8 @@ export function compareConfigs(
         proposed: proposedBuilt.side,
         delta: subtractSide(proposedBuilt.side, currentBuilt.side),
         movers: moversByCode.get(code) ?? 0,
+        moversIn: moversInByCode.get(code) ?? emptySplit(),
+        moversOut: moversOutByCode.get(code) ?? emptySplit(),
         currentShortRoster: currentBuilt.shortRoster,
         proposedShortRoster: proposedBuilt.shortRoster,
         currentOverlap: currentBuilt.overlap,
@@ -736,6 +797,9 @@ export function compareConfigs(
       delta: subtractSide(leagueProposed, leagueCurrent),
     },
     movers,
+    flows,
+    currentWarnings: coverageWarnings(current.divisions, effectiveCutoffDate(current.cutoff, targetSeasonYear)),
+    proposedWarnings: coverageWarnings(proposed.divisions, effectiveCutoffDate(proposed.cutoff, targetSeasonYear)),
     current: populationOf(currentAssignment),
     proposed: populationOf(proposedAssignment),
   };

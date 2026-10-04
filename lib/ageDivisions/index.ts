@@ -34,6 +34,7 @@ export type {
   CompareConfigsResult,
   DivisionAssignment,
   ForecastConfig,
+  ForecastFlow,
   ForecastOptions,
   ForecastPopulation,
   ForecastRow,

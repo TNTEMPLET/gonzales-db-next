@@ -535,6 +535,112 @@ describe("return rate, feeder share, and shared pools", () => {
   });
 });
 
+describe("what-if cutoff flows", () => {
+  const options = { retentionRate: 1, includeFeeder: false, feederShare: 1, rosterFor };
+  const current = dyb([
+    division("8U MINOR", 8, 8, 1),
+    division("9U KP", 9, 9, 2),
+    division("10U KP", 10, 10, 3),
+  ]);
+
+  function flowOf(compared: { flows: { from: string; to: string; own: number; feeder: number; total: number }[] }, from: string, to: string) {
+    return compared.flows.find((flow) => flow.from === from && flow.to === to);
+  }
+
+  it("reports a gap, unmatched players, and a none:gap flow when only 9U oldest moves", () => {
+    const proposed = dyb([
+      division("8U MINOR", 8, 8, 1),
+      division("9U KP", 9, 9, 2, { oldestBirthdate: "2017-09-01" }),
+      division("10U KP", 10, 10, 3),
+    ]);
+    const compared = compareConfigs([bucket("2017-06-15", 3), bucket("2017-07-01", 2, "feeder")], current, proposed, SEASON, options);
+    assert.ok(compared.proposedWarnings.some((warning) => warning.kind === "gap"));
+    assert.equal(compared.proposed.unmatched.own, 3);
+    assert.equal(compared.proposed.unmatched.feeder, 2);
+    assert.equal(compared.current.unmatched.total, 0);
+    const gap = flowOf(compared, "9U KP", "none:gap");
+    assert.ok(gap);
+    assert.deepEqual({ own: gap.own, feeder: gap.feeder, total: gap.total }, { own: 3, feeder: 2, total: 5 });
+    const nine = compared.rows.find((row) => row.code === "9U KP");
+    assert.ok(nine);
+    assert.deepEqual(nine.moversOut, { own: 3, feeder: 2, total: 5 });
+    assert.deepEqual(nine.moversIn, { own: 0, feeder: 0, total: 0 });
+    assert.equal(nine.movers, 5);
+  });
+
+  it("moves 9U into 10U with no gap when both sides of the boundary move", () => {
+    const proposed = dyb([
+      division("8U MINOR", 8, 8, 1),
+      division("9U KP", 9, 9, 2, { oldestBirthdate: "2017-09-01" }),
+      division("10U KP", 10, 10, 3, { youngestBirthdate: "2017-08-31" }),
+    ]);
+    const compared = compareConfigs(
+      [bucket("2017-06-15", 4), bucket("2018-01-15", 1)],
+      current,
+      proposed,
+      SEASON,
+      options,
+    );
+    assert.equal(compared.proposedWarnings.some((warning) => warning.kind === "gap"), false);
+    assert.equal(compared.proposed.unmatched.total, 0);
+    const moved = flowOf(compared, "9U KP", "10U KP");
+    assert.ok(moved);
+    assert.equal(moved.own, 4);
+    assert.equal(moved.total, 4);
+    assert.equal(flowOf(compared, "9U KP", "none:gap"), undefined);
+    const ten = compared.rows.find((row) => row.code === "10U KP");
+    assert.ok(ten);
+    assert.deepEqual(ten.moversIn, { own: 4, feeder: 0, total: 4 });
+    assert.deepEqual(ten.moversOut, { own: 0, feeder: 0, total: 0 });
+  });
+
+  it("joins an overlap as a sorted code set", () => {
+    const proposed = dyb([
+      division("8U MINOR", 8, 8, 1, { oldestBirthdate: "2018-01-01" }),
+      division("9U KP", 9, 9, 2),
+      division("10U KP", 10, 10, 3),
+    ]);
+    const compared = compareConfigs([bucket("2018-01-15", 6)], current, proposed, SEASON, options);
+    const overlap = compared.flows.find((flow) => flow.from === "9U KP");
+    assert.ok(overlap);
+    assert.equal(overlap.to, "8U MINOR+9U KP");
+    assert.equal(overlap.own, 6);
+    const eight = compared.rows.find((row) => row.code === "8U MINOR");
+    const nine = compared.rows.find((row) => row.code === "9U KP");
+    assert.ok(eight && nine);
+    assert.equal(eight.moversIn.own, 6);
+    assert.equal(nine.moversIn.total, 0);
+    assert.equal(nine.moversOut.total, 0);
+    assert.equal(nine.movers, 0);
+  });
+
+  it("keeps flow totals equal to the mover total", () => {
+    const proposed = dyb([
+      division("8U MINOR", 8, 8, 1, { youngestBirthdate: "2018-12-31" }),
+      division("9U KP", 9, 9, 2, { oldestBirthdate: "2017-09-01", youngestBirthdate: "2018-08-31" }),
+      division("10U KP", 10, 10, 3, { youngestBirthdate: "2017-08-31" }),
+    ]);
+    const compared = compareConfigs(
+      [
+        bucket("2017-06-15", 3),
+        bucket("2017-06-15", 2, "feeder"),
+        bucket("2018-06-01", 5, "feeder"),
+        bucket("2018-01-15", 1),
+        bucket("2016-06-01", 4),
+      ],
+      current,
+      proposed,
+      SEASON,
+      { ...options, includeFeeder: true },
+    );
+    const flowTotal = compared.flows.reduce((sum, flow) => sum + flow.total, 0);
+    assert.equal(flowTotal, compared.movers);
+    assert.ok(compared.flows.every((flow) => flow.from !== flow.to));
+    assert.ok(compared.flows.every((flow) => flow.total === flow.own + flow.feeder));
+    assert.equal(compared.currentWarnings.some((warning) => warning.kind === "gap"), false);
+  });
+});
+
 describe("assignBuckets rejects bad buckets", () => {
   const config = dyb([division("10U", 10, 10, 1)]);
 
