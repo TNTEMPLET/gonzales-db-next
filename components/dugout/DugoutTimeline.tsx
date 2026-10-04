@@ -19,10 +19,9 @@ import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 import StandingsTabs from "@/components/standings/StandingsTabs";
 import { OffSeasonNotice } from "@/components/publicSeason/OffSeasonNotice";
 import type { AgeGroupStandings } from "@/lib/standings";
-import {
-  finalStandingsLabel,
-  type PublicRegistrationStatus,
-  type SpringContentOrgId,
+import type {
+  PublicRegistrationStatus,
+  SpringContentOrgId,
 } from "@/lib/publicSeason/offSeason";
 import { MAX_COMMENT_LENGTH, MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import {
@@ -83,6 +82,8 @@ type DugoutTimelineProps = {
   /** Set only for a Spring league that is not live. Omit to keep the schedule view. */
   offSeasonOrg?: SpringContentOrgId | null;
   registrationStatus?: PublicRegistrationStatus | null;
+  /** Completed-season label, or null when none should be shown as final. */
+  standingsLabel?: string | null;
   leagueName?: string;
   orgId?: string;
   isAdmin?: boolean;
@@ -1046,6 +1047,7 @@ export default function DugoutTimeline({
   initialStandings = [],
   offSeasonOrg = null,
   registrationStatus = null,
+  standingsLabel = null,
   leagueName = "the league",
   orgId,
   isAdmin = false,
@@ -3214,6 +3216,7 @@ export default function DugoutTimeline({
             <OffSeasonNotice
               org={offSeasonOrg}
               registrationStatus={registrationStatus}
+              standingsLabel={standingsLabel}
             />
           ) : (
             <>
@@ -3315,7 +3318,7 @@ export default function DugoutTimeline({
                 Standings Snapshot
               </h4>
               <span className="text-[11px] text-zinc-500">
-                {offSeasonOrg ? finalStandingsLabel(offSeasonOrg) : "Active season"}
+                {offSeasonOrg ? (standingsLabel ?? "Standings") : "Active season"}
               </span>
             </div>
             <StandingsTabs standings={initialStandings} />

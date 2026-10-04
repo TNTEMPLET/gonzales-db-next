@@ -41,6 +41,8 @@ type HeaderProps = {
     ordersModuleEnabled: boolean;
     /** Spring league outside its season window. Fall Ball and other orgs stay false. */
     springOffSeason?: boolean;
+    /** Set when a completed season should keep a public standings link. */
+    finalStandingsLabel?: string | null;
   };
 };
 
@@ -268,7 +270,7 @@ export default function Header({ brand }: HeaderProps) {
         isPublicNavEnabledForOrg(isFallBallHeader ? "fallball" : shopNavOrg, link.key ?? link.label.toLowerCase()),
       );
   const publicNavLinks = brand.springOffSeason
-    ? springOffSeasonPublicNav(basePublicNavLinks)
+    ? springOffSeasonPublicNav(basePublicNavLinks, brand.finalStandingsLabel)
     : basePublicNavLinks;
 
   const fallBallCoachCornerLinks = isFallBallHeader

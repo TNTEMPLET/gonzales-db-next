@@ -18,6 +18,8 @@ type FooterProps = {
     tournamentOnly?: boolean;
     /** Spring league outside its season window. Fall Ball and other orgs stay false. */
     springOffSeason?: boolean;
+    /** Set when a completed season should keep a public standings link. */
+    finalStandingsLabel?: string | null;
   };
 };
 
@@ -155,6 +157,7 @@ export default function Footer({ brand }: FooterProps) {
               </>
             ) : (
               <>
+                {brand.springOffSeason && !brand.finalStandingsLabel ? null : (
                 <li>
                   {brand.springOffSeason ? (
                     <Link
@@ -172,6 +175,7 @@ export default function Footer({ brand }: FooterProps) {
                     </a>
                   )}
                 </li>
+                )}
                 <li>
                   <a
                     href="/registration"

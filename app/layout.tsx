@@ -12,7 +12,8 @@ import { RootStagingBanner } from "@/components/staging/StagingBanner";
 import { shouldShowStagingBanner } from "@/lib/communications/outboundGuard";
 import { isOrdersModuleEnabled } from "@/lib/auth/ordersModule";
 import { getRegistrationStatus } from "@/lib/registrationStatus";
-import { isSpringPublicOffSeason } from "@/lib/publicSeason/offSeason";
+import { resolvePublicStandingsLabel } from "@/lib/publicSeason/completedSeason";
+import { isSpringContentOrg, isSpringPublicOffSeason } from "@/lib/publicSeason/offSeason";
 import { getSiteConfig, isContentOrgId, isTournamentOnlyDeployment } from "@/lib/siteConfig";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -38,6 +39,12 @@ export default async function RootLayout({
     isContentOrgId(site.orgId) ? site.orgId : undefined,
   );
 
+  const springOffSeason = isSpringPublicOffSeason(site.orgId);
+  const finalStandingsLabel =
+    springOffSeason && isSpringContentOrg(site.orgId)
+      ? await resolvePublicStandingsLabel(site.orgId)
+      : null;
+
   const brand = {
     orgId: site.orgId,
     tournamentOnly: isTournamentOnlyDeployment(),
@@ -48,7 +55,8 @@ export default async function RootLayout({
     logoPath: site.logoPath,
     registrationStatus,
     ordersModuleEnabled: isOrdersModuleEnabled(),
-    springOffSeason: isSpringPublicOffSeason(site.orgId),
+    springOffSeason,
+    finalStandingsLabel,
   };
 
   const orgCss = `

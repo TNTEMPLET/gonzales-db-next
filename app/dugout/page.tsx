@@ -28,8 +28,8 @@ import {
   isMasterDeployment,
 } from "@/lib/siteConfig";
 import { loadSeasonStandings } from "@/lib/standings/loadSeasonStandings";
+import { resolvePublicStandingsLabel } from "@/lib/publicSeason/completedSeason";
 import {
-  finalStandingsLabel,
   isSpringContentOrg,
   isSpringPublicOffSeason,
 } from "@/lib/publicSeason/offSeason";
@@ -266,6 +266,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     allNews,
     seasonStandings,
     registrationStatus,
+    standingsLabel,
   ] = await Promise.all([
     listDugoutPosts(coach?.id, isMaster ? "master" : undefined),
     springOffSeasonOrg
@@ -286,6 +287,9 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
       : loadSeasonStandings(orgId),
     springOffSeasonOrg
       ? getRegistrationStatus(springOffSeasonOrg)
+      : Promise.resolve(null),
+    springOffSeasonOrg
+      ? resolvePublicStandingsLabel(springOffSeasonOrg)
       : Promise.resolve(null),
   ]);
 
@@ -501,6 +505,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             initialStandings={standings}
             offSeasonOrg={springOffSeasonOrg}
             registrationStatus={registrationStatus}
+            standingsLabel={standingsLabel}
             isAdmin={!!admin}
             orgId={isMaster ? "master" : undefined}
             currentUserId={currentUserId}
@@ -519,6 +524,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
               <OffSeasonNotice
                 org={springOffSeasonOrg}
                 registrationStatus={registrationStatus}
+                standingsLabel={standingsLabel}
               />
             </div>
           ) : (
@@ -587,10 +593,10 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
                 <h3 className="text-lg font-bold">
-                  {springOffSeasonOrg ? finalStandingsLabel(springOffSeasonOrg) : "Standings"}
+                  {springOffSeasonOrg ? (standingsLabel ?? "Standings") : "Standings"}
                 </h3>
                 <span className="text-[11px] text-zinc-500">
-                  {springOffSeasonOrg
+                  {standingsLabel
                     ? "Final results"
                     : seasonStandings.seasonName || "Active season"}
                 </span>
