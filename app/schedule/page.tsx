@@ -3,6 +3,7 @@ import { OffSeasonPage } from "@/components/publicSeason/OffSeasonNotice";
 import { getActiveOrgAlert } from "@/lib/orgAlerts";
 import prisma from "@/lib/prisma";
 import { getOrgCapabilities } from "@/lib/org/capabilities";
+import { resolvePublicStandingsLabel } from "@/lib/publicSeason/completedSeason";
 import { isSpringContentOrg, isSpringPublicOffSeason } from "@/lib/publicSeason/offSeason";
 import { getRegistrationStatus } from "@/lib/registrationStatus";
 import {
@@ -48,8 +49,17 @@ export default async function SchedulePage({
   const { view } = await searchParams;
   const siteOrg = getOrgId();
   if (isSpringContentOrg(siteOrg) && isSpringPublicOffSeason(siteOrg)) {
-    const registrationStatus = await getRegistrationStatus(siteOrg);
-    return <OffSeasonPage org={siteOrg} registrationStatus={registrationStatus} />;
+    const [registrationStatus, standingsLabel] = await Promise.all([
+      getRegistrationStatus(siteOrg),
+      resolvePublicStandingsLabel(siteOrg),
+    ]);
+    return (
+      <OffSeasonPage
+        org={siteOrg}
+        registrationStatus={registrationStatus}
+        standingsLabel={standingsLabel}
+      />
+    );
   }
 
   const viewMode = (view as ViewMode) || "thisWeek";

@@ -6,6 +6,10 @@ import {
   getSeasonLabel,
   isSpringContentOrg,
   isSpringPublicOffSeason,
+  offSeasonSeasonInfoMessage,
+  seasonNameFromFinalLabel,
+  springPublicPhase,
+  type CompletedSeasonRecord,
   type PublicRegistrationStatus,
   type PublicSeasonSurface,
   type SpringContentOrgId,
@@ -23,6 +27,8 @@ type GateProps = {
   surface: PublicSeasonSurface;
   asOf?: Date;
   registrationStatus?: PublicRegistrationStatus | null;
+  completedSeasons?: readonly CompletedSeasonRecord[] | null;
+  standingsLabel?: string | null;
   children: React.ReactNode;
 };
 
@@ -35,6 +41,8 @@ export function PublicOperationalGate({
   surface,
   asOf,
   registrationStatus,
+  completedSeasons,
+  standingsLabel,
   children,
 }: GateProps) {
   if (
@@ -43,7 +51,13 @@ export function PublicOperationalGate({
     isSpringPublicOffSeason(org, asOf)
   ) {
     return (
-      <OffSeasonNotice org={org} registrationStatus={registrationStatus} />
+      <OffSeasonNotice
+        org={org}
+        asOf={asOf}
+        registrationStatus={registrationStatus}
+        completedSeasons={completedSeasons}
+        standingsLabel={standingsLabel}
+      />
     );
   }
   return children;
@@ -53,6 +67,8 @@ type StandingsProps = {
   org: string;
   seasonName: string;
   asOf?: Date;
+  completedSeasons?: readonly CompletedSeasonRecord[] | null;
+  standingsLabel?: string | null;
   children: React.ReactNode;
 };
 
@@ -60,18 +76,55 @@ export function PublicStandingsSection({
   org,
   seasonName,
   asOf,
+  completedSeasons,
+  standingsLabel,
   children,
 }: StandingsProps) {
-  if (isSpringContentOrg(org) && isSpringPublicOffSeason(org, asOf)) {
+  const phase = isSpringContentOrg(org) ? springPublicPhase(org, asOf) : null;
+  const resolvedStandingsLabel = !isSpringContentOrg(org)
+    ? null
+    : standingsLabel !== undefined
+      ? standingsLabel
+      : finalStandingsLabel(org, asOf, completedSeasons);
+
+  if (phase === "before" && isSpringContentOrg(org)) {
+    const seasonTitle = resolvedStandingsLabel
+      ? seasonNameFromFinalLabel(resolvedStandingsLabel)
+      : "";
+    const rowsMatch = Boolean(seasonTitle) && seasonName.trim() === seasonTitle;
+    if (!resolvedStandingsLabel || !rowsMatch) {
+      return (
+        <div>
+          <p className="text-zinc-400">{offSeasonSeasonInfoMessage(org, asOf)}</p>
+        </div>
+      );
+    }
     return (
       <>
         <div>
           <h1 className="mb-2 text-3xl font-bold tracking-tight md:text-5xl">
-            {finalStandingsLabel(org)}
+            {resolvedStandingsLabel}
           </h1>
           <p className="text-zinc-400">
-            Final results from {getSeasonLabel(org)}. These standings stay posted
-            through the off-season.
+            Final results from {seasonTitle}. These standings stay posted through the
+            off-season.
+          </p>
+        </div>
+        {children}
+      </>
+    );
+  }
+
+  if (phase === "after" && resolvedStandingsLabel && isSpringContentOrg(org)) {
+    return (
+      <>
+        <div>
+          <h1 className="mb-2 text-3xl font-bold tracking-tight md:text-5xl">
+            {resolvedStandingsLabel}
+          </h1>
+          <p className="text-zinc-400">
+            Final results from {getSeasonLabel(org)}. These standings stay posted through the
+            off-season.
           </p>
         </div>
         {children}

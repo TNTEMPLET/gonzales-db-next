@@ -14,7 +14,9 @@ import {
   isSpringPublicOffSeason,
   offSeasonSeasonInfoMessage,
   publicSurfaceVisibility,
+  springPublicPhase,
   suppressPublicLiveScoreboard,
+  type CompletedSeasonRecord,
   type PublicSeasonSurface,
 } from "@/lib/publicSeason/offSeason";
 
@@ -22,11 +24,22 @@ function utcNoonOn(isoDate: string): Date {
   return new Date(`${isoDate}T17:00:00.000Z`);
 }
 
+const SPRING_BEFORE = utcNoonOn("2026-02-15");
 const SPRING_OFF = utcNoonOn("2026-09-02");
 const SPRING_LIVE = utcNoonOn("2026-04-15");
 const FALL_LIVE = utcNoonOn("2026-09-02");
 const FALL_OFF = utcNoonOn("2026-12-15");
 const BOTH_OFF = utcNoonOn("2026-07-15");
+
+const UPCOMING_MESSAGE =
+  "Spring 2026 season info will appear here once the season begins on March 1, 2026.";
+const AFTER_MESSAGE =
+  "Spring 2027 season info will appear here once the season begins.";
+
+const PRIOR_SEASONS: CompletedSeasonRecord[] = [
+  { label: "Spring 2024", year: 2024, endDate: "2024-06-30" },
+  { label: "Spring 2025", year: 2025, endDate: "2025-06-30" },
+];
 
 const SURFACES: PublicSeasonSurface[] = [
   "rosters",
@@ -68,20 +81,91 @@ function standings(
   );
 }
 
+function finalHeadingSeason(html: string): string | null {
+  const heading = html.match(/<h1[^>]*>([^<]+)<\/h1>/)?.[1]?.replace(/\s+/g, " ").trim() ?? "";
+  if (!heading.endsWith("Final Standings")) return null;
+  return heading.slice(0, -" Final Standings".length);
+}
+
+/** A final heading is present only when the rendered rows name that same season. */
+function assertLabelMatchesRows(html: string) {
+  const headingSeason = finalHeadingSeason(html);
+  const rowSeason = html.match(/data-season="([^"]*)"/)?.[1] ?? "";
+  if (headingSeason) {
+    assert.equal(rowSeason, headingSeason);
+    return;
+  }
+  assert.equal(rowSeason, "");
+  assert.equal(html.includes("Final Standings"), false);
+}
+
 describe("spring public off-season visibility", () => {
   for (const org of ["gonzales", "ascension"] as const) {
-    it(`${org} hides rosters and schedule and keeps final standings when not live`, () => {
+    it(`${org} before opening day treats the configured season as upcoming`, () => {
+      assert.equal(springPublicPhase(org, SPRING_BEFORE), "before");
+      assert.equal(isSpringPublicOffSeason(org, SPRING_BEFORE), true);
+      assert.equal(publicSurfaceVisibility(org, "rosters", SPRING_BEFORE), "hidden");
+      assert.equal(publicSurfaceVisibility(org, "schedule", SPRING_BEFORE), "hidden");
+      assert.equal(publicSurfaceVisibility(org, "upcomingGames", SPRING_BEFORE), "hidden");
+      assert.equal(publicSurfaceVisibility(org, "scoreboard", SPRING_BEFORE), "hidden");
+      assert.equal(publicSurfaceVisibility(org, "standings", SPRING_BEFORE), "hidden");
+      assert.equal(
+        publicSurfaceVisibility(org, "standings", SPRING_BEFORE, PRIOR_SEASONS),
+        "final",
+      );
+      assert.equal(finalStandingsLabel(org, SPRING_BEFORE), null);
+      assert.equal(
+        finalStandingsLabel(org, SPRING_BEFORE, PRIOR_SEASONS),
+        "Spring 2025 Final Standings",
+      );
+      assert.equal(
+        finalStandingsLabel(org, SPRING_BEFORE, [
+          { label: "Spring 2026", year: 2026, endDate: "2026-06-30" },
+        ]),
+        null,
+      );
+      assert.equal(offSeasonSeasonInfoMessage(org, SPRING_BEFORE), UPCOMING_MESSAGE);
+      assert.equal(offSeasonSeasonInfoMessage(org, SPRING_BEFORE).includes("Spring 2027"), false);
+      assert.equal(offSeasonSeasonInfoMessage(org, SPRING_BEFORE).includes("Final"), false);
+
+      const nav = applySpringOffSeasonNav(NAV, org, SPRING_BEFORE);
+      assert.deepEqual(
+        nav.map((link) => link.href),
+        ["/tournaments", "/news"],
+      );
+      assert.equal(nav.some((link) => link.href === "/schedule"), false);
+      assert.equal(nav.some((link) => link.href === "/standings"), false);
+
+      const navWithHistory = applySpringOffSeasonNav(NAV, org, SPRING_BEFORE, PRIOR_SEASONS);
+      assert.deepEqual(
+        navWithHistory.map((link) => link.href),
+        ["/standings", "/tournaments", "/news"],
+      );
+    });
+
+    it(`${org} in season leaves every public surface unchanged`, () => {
+      assert.equal(springPublicPhase(org, SPRING_LIVE), "live");
+      assert.equal(isSpringPublicOffSeason(org, SPRING_LIVE), false);
+      for (const surface of SURFACES) {
+        assert.equal(publicSurfaceVisibility(org, surface, SPRING_LIVE), "live");
+      }
+      assert.equal(finalStandingsLabel(org, SPRING_LIVE), null);
+      assert.equal(finalStandingsLabel(org, SPRING_LIVE, PRIOR_SEASONS), null);
+      assert.equal(applySpringOffSeasonNav(NAV, org, SPRING_LIVE), NAV);
+      assert.equal(applySpringOffSeasonNav(NAV, org, SPRING_LIVE, PRIOR_SEASONS), NAV);
+    });
+
+    it(`${org} after the window keeps the configured season as final`, () => {
+      assert.equal(springPublicPhase(org, SPRING_OFF), "after");
       assert.equal(isSpringPublicOffSeason(org, SPRING_OFF), true);
       assert.equal(publicSurfaceVisibility(org, "rosters", SPRING_OFF), "hidden");
       assert.equal(publicSurfaceVisibility(org, "schedule", SPRING_OFF), "hidden");
       assert.equal(publicSurfaceVisibility(org, "upcomingGames", SPRING_OFF), "hidden");
       assert.equal(publicSurfaceVisibility(org, "scoreboard", SPRING_OFF), "hidden");
       assert.equal(publicSurfaceVisibility(org, "standings", SPRING_OFF), "final");
-      assert.equal(finalStandingsLabel(org), "Spring 2026 Final Standings");
-      assert.equal(
-        offSeasonSeasonInfoMessage(org),
-        "Spring 2027 season info will appear here once the season begins.",
-      );
+      assert.equal(finalStandingsLabel(org, SPRING_OFF), "Spring 2026 Final Standings");
+      assert.equal(offSeasonSeasonInfoMessage(org, SPRING_OFF), AFTER_MESSAGE);
+      assert.equal(offSeasonSeasonInfoMessage(org, SPRING_OFF).includes("on March"), false);
 
       const nav = applySpringOffSeasonNav(NAV, org, SPRING_OFF);
       assert.deepEqual(
@@ -90,28 +174,34 @@ describe("spring public off-season visibility", () => {
       );
       assert.equal(nav.some((link) => link.href === "/schedule"), false);
     });
-
-    it(`${org} in season leaves every public surface unchanged`, () => {
-      assert.equal(isSpringPublicOffSeason(org, SPRING_LIVE), false);
-      for (const surface of SURFACES) {
-        assert.equal(publicSurfaceVisibility(org, surface, SPRING_LIVE), "live");
-      }
-      assert.equal(applySpringOffSeasonNav(NAV, org, SPRING_LIVE), NAV);
-    });
   }
 
+  it("uses the calendar-day boundaries of the Spring window", () => {
+    assert.equal(springPublicPhase("gonzales", utcNoonOn("2026-02-28")), "before");
+    assert.equal(springPublicPhase("ascension", utcNoonOn("2026-02-28")), "before");
+    assert.equal(springPublicPhase("gonzales", utcNoonOn("2026-03-01")), "live");
+    assert.equal(springPublicPhase("ascension", utcNoonOn("2026-03-01")), "live");
+    assert.equal(springPublicPhase("gonzales", utcNoonOn("2026-06-30")), "live");
+    assert.equal(springPublicPhase("ascension", utcNoonOn("2026-06-30")), "live");
+    assert.equal(springPublicPhase("gonzales", utcNoonOn("2026-07-01")), "after");
+    assert.equal(springPublicPhase("ascension", utcNoonOn("2026-07-01")), "after");
+  });
+
   for (const [label, asOf] of [
+    ["before Spring opening day", SPRING_BEFORE],
     ["live September", FALL_LIVE],
     ["after the window in December", FALL_OFF],
     ["before the window in July", BOTH_OFF],
     ["during Spring in April", SPRING_LIVE],
   ] as const) {
     it(`fallball is unchanged while ${label}`, () => {
+      assert.equal(springPublicPhase("fallball", asOf), null);
       assert.equal(isSpringPublicOffSeason("fallball", asOf), false);
       for (const surface of SURFACES) {
         assert.equal(publicSurfaceVisibility("fallball", surface, asOf), "live");
       }
       assert.equal(applySpringOffSeasonNav(NAV, "fallball", asOf), NAV);
+      assert.equal(applySpringOffSeasonNav(NAV, "fallball", asOf, PRIOR_SEASONS), NAV);
     });
   }
 
@@ -138,6 +228,89 @@ describe("spring public off-season visibility", () => {
 });
 
 describe("rendered public season surfaces", () => {
+  it("before opening day shows the upcoming season and hides a final label when none exists", () => {
+    for (const org of ["gonzales", "ascension"] as const) {
+      const html = markup(
+        gate(
+          {
+            org,
+            surface: "schedule",
+            asOf: SPRING_BEFORE,
+            registrationStatus: "CLOSED",
+          },
+          createElement("p", null, "Last year Saturday game"),
+        ),
+      );
+      assert.equal(html.includes("Last year Saturday game"), false);
+      assert.match(html, /UPCOMING SEASON/);
+      assert.match(html, /Spring 2026 season info will appear here once the season begins on March 1, 2026\./);
+      assert.equal(html.includes("Spring 2027"), false);
+      assert.equal(html.includes("Final Standings"), false);
+      assert.equal(html.includes('href="/standings"'), false);
+
+      const withHistory = markup(
+        gate(
+          {
+            org,
+            surface: "rosters",
+            asOf: SPRING_BEFORE,
+            completedSeasons: PRIOR_SEASONS,
+          },
+          createElement("ul", null, createElement("li", null, "Roster Player One")),
+        ),
+      );
+      assert.equal(withHistory.includes("Roster Player One"), false);
+      assert.match(withHistory, /Spring 2025 Final Standings/);
+      assert.match(withHistory, /href="\/standings"/);
+      assert.equal(withHistory.includes("Spring 2026 Final"), false);
+
+      const withoutHistory = markup(
+        standings(
+          { org, seasonName: "Spring 2026", asOf: SPRING_BEFORE },
+          createElement("table", { "data-season": "Spring 2026" }, "Configured year row"),
+        ),
+      );
+      assert.match(withoutHistory, /once the season begins on March 1, 2026\./);
+      assert.equal(withoutHistory.includes("Configured year row"), false);
+      assert.equal(withoutHistory.includes("Standings"), false);
+      assert.equal(withoutHistory.includes("View Schedule"), false);
+      assertLabelMatchesRows(withoutHistory);
+
+      const mismatched = markup(
+        standings(
+          {
+            org,
+            seasonName: "Spring 2026",
+            asOf: SPRING_BEFORE,
+            completedSeasons: PRIOR_SEASONS,
+          },
+          createElement("table", { "data-season": "Spring 2026" }, "Configured year row"),
+        ),
+      );
+      assert.equal(mismatched.includes("Spring 2025 Final Standings"), false);
+      assert.equal(mismatched.includes("Configured year row"), false);
+      assert.match(mismatched, /once the season begins on March 1, 2026\./);
+      assertLabelMatchesRows(mismatched);
+
+      const matched = markup(
+        standings(
+          {
+            org,
+            seasonName: "Spring 2025",
+            asOf: SPRING_BEFORE,
+            completedSeasons: PRIOR_SEASONS,
+          },
+          createElement("table", { "data-season": "Spring 2025" }, "12U finished 10-0"),
+        ),
+      );
+      assert.match(matched, /Spring 2025 Final Standings/);
+      assert.match(matched, /12U finished 10-0/);
+      assert.equal(matched.includes("Spring 2026"), false);
+      assert.equal(matched.includes("View Schedule"), false);
+      assertLabelMatchesRows(matched);
+    }
+  });
+
   it("hides roster and schedule markup for Gonzales and Ascension off-season", () => {
     for (const org of ["gonzales", "ascension"] as const) {
       for (const surface of ["rosters", "schedule"] as const) {
@@ -154,7 +327,9 @@ describe("rendered public season surfaces", () => {
         );
         assert.equal(html.includes("Roster Player One"), false);
         assert.equal(html.includes("Schedule Team"), false);
+        assert.match(html, /OFF SEASON/);
         assert.match(html, /Spring 2027 season info will appear here once the season begins\./);
+        assert.equal(html.includes("on March"), false);
         assert.match(html, /Spring 2026 Final Standings/);
         assert.match(html, /Registration is currently closed\./);
         assert.match(html, /href="\/registration"/);
@@ -167,11 +342,12 @@ describe("rendered public season surfaces", () => {
     const html = markup(
       standings(
         { org: "ascension", seasonName: "Spring 2026", asOf: SPRING_OFF },
-        createElement("table", null, "12U finished 10-0"),
+        createElement("table", { "data-season": "Spring 2026" }, "12U finished 10-0"),
       ),
     );
     assert.match(html, /Spring 2026 Final Standings/);
     assert.match(html, /12U finished 10-0/);
+    assertLabelMatchesRows(html);
     assert.equal(html.includes("View Schedule"), false);
     assert.equal(html.includes("href=\"/schedule\""), false);
   });
@@ -204,7 +380,7 @@ describe("rendered public season surfaces", () => {
   });
 
   it("renders Fall Ball unchanged in and out of its window", () => {
-    for (const asOf of [FALL_LIVE, FALL_OFF, BOTH_OFF]) {
+    for (const asOf of [SPRING_BEFORE, FALL_LIVE, FALL_OFF, BOTH_OFF, SPRING_LIVE]) {
       const rosters = markup(
         gate(
           { org: "fallball", surface: "rosters", asOf },
@@ -241,6 +417,7 @@ describe("rendered public season surfaces", () => {
     const html = markup(
       createElement(OffSeasonNotice, {
         org: "gonzales",
+        asOf: SPRING_OFF,
         registrationStatus: "OPEN",
       }),
     );

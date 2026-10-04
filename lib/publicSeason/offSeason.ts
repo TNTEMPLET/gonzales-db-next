@@ -1,6 +1,6 @@
 import {
   getSeasonConfigForOrg,
-  isSeasonLiveForOrg,
+  leagueCalendarDate,
 } from "@/lib/seasonConfig";
 
 /**
@@ -27,27 +27,59 @@ export type PublicSeasonSurface =
 /** `live` means render the existing in-season UI. */
 export type PublicSurfaceVisibility = "hidden" | "live" | "final";
 
+/**
+ * `before` — calendar day is earlier than the configured start.
+ * `live` — inside the window.
+ * `after` — calendar day is later than the configured end.
+ */
+export type SpringPublicPhase = "before" | "live" | "after";
+
+/** A season that has already finished, supplied from existing schedule data. */
+export type CompletedSeasonRecord = {
+  label: string;
+  /** ISO date YYYY-MM-DD */
+  endDate?: string | null;
+  year?: number | null;
+};
+
 export function isSpringContentOrg(
   org: string | null | undefined,
 ): org is SpringContentOrgId {
   return org === "gonzales" || org === "ascension";
 }
 
+export function springPublicPhase(
+  org: string | null | undefined,
+  asOf: Date = new Date(),
+): SpringPublicPhase | null {
+  if (!isSpringContentOrg(org)) return null;
+  const season = getSeasonConfigForOrg(org);
+  const day = leagueCalendarDate(asOf);
+  if (day < season.startDate) return "before";
+  if (day > season.endDate) return "after";
+  return "live";
+}
+
 export function isSpringPublicOffSeason(
   org: string | null | undefined,
   asOf: Date = new Date(),
 ): boolean {
-  if (!isSpringContentOrg(org)) return false;
-  return !isSeasonLiveForOrg(org, asOf);
+  const phase = springPublicPhase(org, asOf);
+  return phase === "before" || phase === "after";
 }
 
 export function publicSurfaceVisibility(
   org: string | null | undefined,
   surface: PublicSeasonSurface,
   asOf: Date = new Date(),
+  completedSeasons?: readonly CompletedSeasonRecord[] | null,
 ): PublicSurfaceVisibility {
   if (!isSpringPublicOffSeason(org, asOf)) return "live";
-  if (surface === "standings") return "final";
+  if (surface === "standings") {
+    return isSpringContentOrg(org) && finalStandingsLabel(org, asOf, completedSeasons)
+      ? "final"
+      : "hidden";
+  }
   return "hidden";
 }
 
@@ -55,8 +87,15 @@ export function getSeasonLabel(org: SpringContentOrgId): string {
   return getSeasonConfigForOrg(org).label;
 }
 
-export function finalStandingsLabel(org: SpringContentOrgId): string {
-  return `${getSeasonLabel(org)} Final Standings`;
+export function formatPublicSeasonDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map((part) => Number(part));
+  if (!year || !month || !day) return isoDate;
+  return new Intl.DateTimeFormat("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+    timeZone: "UTC",
+  }).format(new Date(Date.UTC(year, month - 1, day)));
 }
 
 export function nextSpringSeasonLabel(org: SpringContentOrgId): string {
@@ -65,7 +104,73 @@ export function nextSpringSeasonLabel(org: SpringContentOrgId): string {
   return `${prefix} ${season.year + 1}`;
 }
 
-export function offSeasonSeasonInfoMessage(org: SpringContentOrgId): string {
+/**
+ * After the window, the configured season is the completed one.
+ * Before the window, use the most recent completed season in `completedSeasons`.
+ * Returns null when there is nothing finished to label, including while the season is live.
+ */
+export function finalStandingsLabel(
+  org: SpringContentOrgId,
+  asOf: Date = new Date(),
+  completedSeasons?: readonly CompletedSeasonRecord[] | null,
+): string | null {
+  const phase = springPublicPhase(org, asOf);
+  if (phase === "after") return `${getSeasonLabel(org)} Final Standings`;
+  if (phase !== "before") return null;
+  const completed = mostRecentCompletedSeasonLabel(org, asOf, completedSeasons);
+  return completed ? `${completed} Final Standings` : null;
+}
+
+export function mostRecentCompletedSeason(
+  org: SpringContentOrgId,
+  asOf: Date = new Date(),
+  completedSeasons?: readonly CompletedSeasonRecord[] | null,
+): CompletedSeasonRecord | null {
+  const config = getSeasonConfigForOrg(org);
+  const day = leagueCalendarDate(asOf);
+  const ranked = (completedSeasons ?? [])
+    .map((season) => ({
+      label: season.label.trim(),
+      endDate: season.endDate?.trim() || null,
+      year: season.year ?? null,
+    }))
+    .filter((season) => {
+      if (!season.label) return false;
+      if (season.year != null && season.year >= config.year) return false;
+      if (season.label === config.label && season.year == null) return false;
+      if (season.endDate && season.endDate >= day) return false;
+      if (season.endDate && season.endDate >= config.startDate) return false;
+      return true;
+    })
+    .sort((left, right) => {
+      const leftKey = left.endDate ?? `${String(left.year ?? 0).padStart(4, "0")}-12-31`;
+      const rightKey = right.endDate ?? `${String(right.year ?? 0).padStart(4, "0")}-12-31`;
+      return rightKey.localeCompare(leftKey);
+    });
+  return ranked[0] ?? null;
+}
+
+export function mostRecentCompletedSeasonLabel(
+  org: SpringContentOrgId,
+  asOf: Date = new Date(),
+  completedSeasons?: readonly CompletedSeasonRecord[] | null,
+): string | null {
+  return mostRecentCompletedSeason(org, asOf, completedSeasons)?.label ?? null;
+}
+
+/** Season name carried by a "… Final Standings" heading. */
+export function seasonNameFromFinalLabel(label: string): string {
+  return label.replace(/ Final Standings$/, "").trim();
+}
+
+export function offSeasonSeasonInfoMessage(
+  org: SpringContentOrgId,
+  asOf: Date = new Date(),
+): string {
+  const season = getSeasonConfigForOrg(org);
+  if (leagueCalendarDate(asOf) < season.startDate) {
+    return `${season.label} season info will appear here once the season begins on ${formatPublicSeasonDate(season.startDate)}.`;
+  }
   return `${nextSpringSeasonLabel(org)} season info will appear here once the season begins.`;
 }
 
@@ -98,11 +203,16 @@ function navPath(href: string): string {
   return href.split(/[?#]/)[0] || href;
 }
 
-/** Drop operational links and point people at final standings. */
+/**
+ * Drop operational links. Add Final Standings only when a completed season exists.
+ * Pass null before opening day when no finished season is in the data.
+ */
 export function springOffSeasonPublicNav<T extends NavLink>(
   links: readonly T[],
+  standingsLabel?: string | null,
 ): Array<T | NavLink> {
   const kept = links.filter((link) => !HIDDEN_PUBLIC_PATHS.has(navPath(link.href)));
+  if (!standingsLabel) return [...kept];
   if (kept.some((link) => navPath(link.href) === "/standings")) return [...kept];
   return [{ href: "/standings", label: "Final Standings", key: "standings" }, ...kept];
 }
@@ -114,9 +224,10 @@ export function applySpringOffSeasonNav<T extends NavLink>(
   links: readonly T[],
   org: string | null | undefined,
   asOf: Date = new Date(),
+  completedSeasons?: readonly CompletedSeasonRecord[] | null,
 ): readonly T[] | Array<T | NavLink> {
-  if (!isSpringPublicOffSeason(org, asOf)) return links;
-  return springOffSeasonPublicNav(links);
+  if (!isSpringPublicOffSeason(org, asOf) || !isSpringContentOrg(org)) return links;
+  return springOffSeasonPublicNav(links, finalStandingsLabel(org, asOf, completedSeasons));
 }
 
 export function suppressPublicLiveScoreboard<T extends { gameChanger?: unknown }>(
