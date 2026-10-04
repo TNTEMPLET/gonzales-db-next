@@ -741,15 +741,30 @@ export function DivisionAgesForecastTimeline({
         </label>
       </div>
 
-      <label className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-100">
-        <input
-          type="checkbox"
-          data-testid="link-edges"
-          checked={linkEdges}
-          onChange={(event) => onLinkEdges(event.target.checked)}
-        />
-        Move neighbor edge too
-      </label>
+      <div className="space-y-2">
+        <label className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-100">
+          <input
+            type="checkbox"
+            data-testid="link-edges"
+            checked={linkEdges}
+            onChange={(event) => onLinkEdges(event.target.checked)}
+          />
+          Also move divisions with this same window
+        </label>
+        <p className="text-sm text-zinc-400">
+          Dragging or typing a date stays on that division. It does not push the next division, so windows can overlap.
+          An overlap is a note. It does not block the forecast.
+        </p>
+        {proposedModel && proposedModel.overlaps.length > 0 ? (
+          <p
+            className="rounded-xl border border-amber-400/50 bg-amber-400/10 px-3 py-2 text-sm text-amber-100"
+            role="status"
+            data-testid="timeline-overlap-note"
+          >
+            These windows overlap. Players born in the shared dates fit more than one division.
+          </p>
+        ) : null}
+      </div>
 
       <div className="overflow-x-auto" data-testid="timeline-strips" onScroll={refreshEdgeTip}>
         <div className="min-w-[40rem] space-y-2">

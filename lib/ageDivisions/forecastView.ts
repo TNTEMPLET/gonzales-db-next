@@ -249,8 +249,26 @@ function sameWindow(left: { oldest: string; youngest: string }, right: { oldest:
 }
 
 /**
- * Apply one edge edit. With linking on, shared-window siblings move together
- * and the neighboring division's touching edge moves to the adjacent day.
+ * Keep one division's oldest on or before its youngest. An empty value clears
+ * the override. Neighboring divisions are not a bound.
+ */
+function boundedEdgeValue(
+  division: DivisionAgeConfig,
+  field: "oldestBirthdate" | "youngestBirthdate",
+  value: string,
+  cutoffIso: string,
+): string {
+  if (!value) return value;
+  const range = effectiveRange(division, cutoffIso);
+  if (field === "oldestBirthdate" && range.youngest && value > range.youngest) return range.youngest;
+  if (field === "youngestBirthdate" && range.oldest && value < range.oldest) return range.oldest;
+  return value;
+}
+
+/**
+ * Apply one edge edit to that division only. With linking on, divisions that
+ * already share the exact window move together. A neighboring division is left
+ * where it is, so the windows may overlap.
  */
 export function applyLinkedEdge(
   divisions: readonly DivisionAgeConfig[],
@@ -262,9 +280,10 @@ export function applyLinkedEdge(
 ): DivisionAgeConfig[] {
   const current = divisions[index];
   if (!current) return divisions.map((division) => ({ ...division }));
+  const bounded = boundedEdgeValue(current, field, value, cutoffIso);
   if (!linkEdges) {
     return divisions.map((division, divisionIndex) =>
-      divisionIndex === index ? setDivisionBirthdate(division, field, value, cutoffIso) : { ...division },
+      divisionIndex === index ? setDivisionBirthdate(division, field, bounded, cutoffIso) : { ...division },
     );
   }
 
@@ -285,7 +304,7 @@ export function applyLinkedEdge(
     while (end + 1 < ordered.length && sameWindow(ordered[end + 1]!.range, before)) end += 1;
   }
 
-  const updatedSelf = setDivisionBirthdate(current, field, value, cutoffIso);
+  const updatedSelf = setDivisionBirthdate(current, field, bounded, cutoffIso);
   const updatedRange = effectiveRange(updatedSelf, cutoffIso);
   const nextEdge = field === "oldestBirthdate" ? updatedRange.oldest : updatedRange.youngest;
   const next = divisions.map((division) => ({ ...division }));
@@ -297,34 +316,6 @@ export function applyLinkedEdge(
   for (let pos = start; pos <= end; pos += 1) {
     const item = ordered[pos]!;
     next[item.divisionIndex] = setDivisionBirthdate(next[item.divisionIndex]!, field, nextEdge, cutoffIso);
-  }
-
-  if (field === "youngestBirthdate") {
-    const neighborPos = start - 1;
-    if (neighborPos >= 0) {
-      const neighborRange = ordered[neighborPos]!.range;
-      let neighborStart = neighborPos;
-      while (neighborStart > 0 && sameWindow(ordered[neighborStart - 1]!.range, neighborRange)) neighborStart -= 1;
-      const dayAfter = shiftIsoDays(nextEdge, 1);
-      if (dayAfter) {
-        for (let pos = neighborStart; pos <= neighborPos; pos += 1) {
-          const item = ordered[pos]!;
-          next[item.divisionIndex] = setDivisionBirthdate(next[item.divisionIndex]!, "oldestBirthdate", dayAfter, cutoffIso);
-        }
-      }
-    }
-  } else if (end + 1 < ordered.length) {
-    const neighborPos = end + 1;
-    const neighborRange = ordered[neighborPos]!.range;
-    let neighborEnd = neighborPos;
-    while (neighborEnd + 1 < ordered.length && sameWindow(ordered[neighborEnd + 1]!.range, neighborRange)) neighborEnd += 1;
-    const dayBefore = shiftIsoDays(nextEdge, -1);
-    if (dayBefore) {
-      for (let pos = neighborPos; pos <= neighborEnd; pos += 1) {
-        const item = ordered[pos]!;
-        next[item.divisionIndex] = setDivisionBirthdate(next[item.divisionIndex]!, "youngestBirthdate", dayBefore, cutoffIso);
-      }
-    }
   }
   return next;
 }
