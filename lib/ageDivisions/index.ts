@@ -28,6 +28,32 @@ export {
 
 export { leagueDivisionDefaults } from "./defaults";
 
+export type {
+  BirthBucket,
+  BucketAssignment,
+  CompareConfigsResult,
+  DivisionAssignment,
+  ForecastConfig,
+  ForecastOptions,
+  ForecastPopulation,
+  ForecastRow,
+  ForecastSide,
+  PoolSplit,
+  Projection,
+  RosterSize,
+  TeamCountRange,
+} from "./forecast";
+
+export {
+  DEFAULT_ROSTER,
+  FALLBACK_RETENTION,
+  assignBuckets,
+  carryoverRate,
+  compareConfigs,
+  projectDivision,
+  teamCountRange,
+} from "./forecast";
+
 export {
   coverageWarningLines,
   coverageWarningLinesForConfig,
