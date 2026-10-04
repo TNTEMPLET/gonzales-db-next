@@ -46,6 +46,7 @@ import {
   structuralScenario,
   sameProposedConfig,
   shownRetentionPercent,
+  storedDraftAction,
   whereKidsMoveLines,
   withProposedCutoff,
   type ForecastResponse,
@@ -116,7 +117,9 @@ function writeStoredDraft(
 ): void {
   const key = forecastDraftKey(org, targetSeason);
   const storageKey = DRAFT_PREFIX + key;
-  if (!proposed || !baseline || sameProposedConfig(proposed, baseline)) {
+  const action = storedDraftAction(proposed, baseline);
+  if (action === "retain") return;
+  if (action === "delete" || !proposed) {
     memory.delete(key);
     try {
       sessionStorage.removeItem(storageKey);
@@ -705,7 +708,7 @@ export function DivisionAgesForecastView({
                   .
                 </p>
                 {scenario.exact ? null : (
-                  <p className="mt-1 text-sm text-amber-200">
+                  <p className="mt-1 text-sm text-amber-200" data-testid="scenario-double-count">
                     An overlap reaches outside this group, so that total can count a player twice.
                   </p>
                 )}
@@ -1041,7 +1044,8 @@ export default function DivisionAgesForecast({
         const copy = cloneProposed({ cutoff: payload.cutoff, divisions: payload.divisions });
         setLoadedSource(payload.source);
         setBaseline(copy);
-        setProposed(draft ?? cloneProposed(copy));
+        const latest = readStoredDraft(org, targetSeason, draftsRef.current) ?? draft;
+        setProposed(latest ?? cloneProposed(copy));
       } catch {
         if (!cancelled) setConfigError("Could not load the current division ages.");
       }

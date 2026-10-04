@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
+import { splitDivisionAt } from "../forecastView";
 import {
   DEFAULT_FEEDER_SHARE,
   DEFAULT_RETURN_RATE,
@@ -11,6 +12,7 @@ import {
   assignBuckets,
   carryoverRate,
   compareConfigs,
+  effectiveCutoffDate,
   eligibilityContrasts,
   projectDivision,
   teamCountRange,
@@ -814,5 +816,47 @@ describe("combine, split, and LL vs DYB counts", () => {
     assert.equal(combined.both.own, 7);
     assert.equal(combined.llOnly.own, 2);
     assert.equal(combined.dybOnly.own, 0);
+  });
+
+  it("gives each split half its own eligibility span", () => {
+    const parent = division("9U KP", 9, 9, 1);
+    const current = dyb([parent]);
+    const cutoff = effectiveCutoffDate(current.cutoff, SEASON);
+    const split = splitDivisionAt(current.divisions, "9U KP", "2017-12-31", cutoff);
+    assert.equal(split.ok, true);
+    if (!split.ok) return;
+    const unsplit = eligibilityContrasts([bucket("2017-08-01", 4), bucket("2018-02-01", 6)], [parent], SEASON)[0]!;
+    const rows = eligibilityContrasts(
+      [bucket("2017-08-01", 4), bucket("2018-02-01", 6)],
+      split.divisions,
+      SEASON,
+    );
+    const young = rows.find((row) => row.code === "9U KP young");
+    const old = rows.find((row) => row.code === "9U KP old");
+    assert.ok(young && old);
+    assert.notEqual(`${young.dybOldest}..${young.dybYoungest}`, `${old.dybOldest}..${old.dybYoungest}`);
+    assert.notEqual(`${young.dybOldest}..${young.dybYoungest}`, `${unsplit.dybOldest}..${unsplit.dybYoungest}`);
+    assert.notEqual(`${old.dybOldest}..${old.dybYoungest}`, `${unsplit.dybOldest}..${unsplit.dybYoungest}`);
+    assert.equal(old.dyb.own, 4);
+    assert.equal(young.dyb.own, 6);
+    assert.equal(young.dyb.own + old.dyb.own, unsplit.dyb.own);
+
+    const span = dyb([division("7-8U", 7, 8, 1)]);
+    const spanCutoff = effectiveCutoffDate(span.cutoff, SEASON);
+    const atBoundary = splitDivisionAt(span.divisions, "7-8U", "2019-04-30", spanCutoff);
+    assert.equal(atBoundary.ok, true);
+    if (!atBoundary.ok) return;
+    const olderHalf = atBoundary.divisions.find((item) => item.code === "7-8U old");
+    const youngerHalf = atBoundary.divisions.find((item) => item.code === "7-8U young");
+    assert.ok(olderHalf && youngerHalf);
+    assert.deepEqual({ minAge: olderHalf.minAge, maxAge: olderHalf.maxAge }, { minAge: 8, maxAge: 8 });
+    assert.deepEqual({ minAge: youngerHalf.minAge, maxAge: youngerHalf.maxAge }, { minAge: 7, maxAge: 7 });
+    const halves = eligibilityContrasts([], atBoundary.divisions, SEASON);
+    const olderRow = halves.find((row) => row.code === "7-8U old");
+    const youngerRow = halves.find((row) => row.code === "7-8U young");
+    assert.ok(olderRow && youngerRow);
+    assert.equal(`${olderRow.dybOldest}..${olderRow.dybYoungest}`, "2018-05-01..2019-04-30");
+    assert.equal(`${youngerRow.dybOldest}..${youngerRow.dybYoungest}`, "2019-05-01..2020-04-30");
+    assert.notEqual(olderRow.llOldest, youngerRow.llOldest);
   });
 });

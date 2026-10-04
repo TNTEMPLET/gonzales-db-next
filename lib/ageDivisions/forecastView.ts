@@ -5,7 +5,7 @@
 
 import type { ContentOrgId } from "@/lib/siteConfig";
 
-import { effectiveRange } from "./compute";
+import { effectiveRange, leagueAge } from "./compute";
 import { seasonCutoffIso, setDivisionBirthdate } from "./draft";
 import {
   DEFAULT_RETURN_RATE,
@@ -172,6 +172,20 @@ export function forecastDraftKey(org: string, targetSeason: number): string {
 
 export function sameProposedConfig(a: ProposedConfig, b: ProposedConfig): boolean {
   return JSON.stringify(cloneProposed(a)) === JSON.stringify(cloneProposed(b));
+}
+
+/**
+ * Save, delete, or leave a stored forecast draft alone.
+ * A missing baseline means the season config is still loading, so an edit
+ * must not be discarded.
+ */
+export function storedDraftAction(
+  proposed: ProposedConfig | null,
+  baseline: ProposedConfig | null,
+): "save" | "delete" | "retain" {
+  if (!baseline) return proposed ? "save" : "retain";
+  if (!proposed || sameProposedConfig(proposed, baseline)) return "delete";
+  return "save";
 }
 
 export function editedDivisionCodes(proposed: ProposedConfig, baseline: ProposedConfig): string[] {
@@ -441,6 +455,8 @@ export function splitDivisionAt(
   };
   let younger = withoutDates({ ...current, code: youngCode, label: halfLabel(current.label, "younger"), sortOrder: current.sortOrder });
   let older = withoutDates({ ...current, code: oldCode, label: halfLabel(current.label, "older"), sortOrder: current.sortOrder + 1 });
+  younger = withHalfAges(younger, youngerStart, range.youngest, cutoffIso);
+  older = withHalfAges(older, range.oldest, splitOn, cutoffIso);
   younger = setDivisionBirthdate(younger, "oldestBirthdate", youngerStart, cutoffIso);
   younger = setDivisionBirthdate(younger, "youngestBirthdate", range.youngest, cutoffIso);
   older = setDivisionBirthdate(older, "oldestBirthdate", range.oldest, cutoffIso);
@@ -525,11 +541,90 @@ function summedLines(lines: readonly ScenarioLine[], code: string, label: string
   );
 }
 
+function rangesOverlap(
+  left: { oldest: string; youngest: string },
+  right: { oldest: string; youngest: string },
+): boolean {
+  if (!left.oldest || !left.youngest || !right.oldest || !right.youngest) return false;
+  if (left.oldest > left.youngest || right.oldest > right.youngest) return false;
+  return left.oldest <= right.youngest && right.oldest <= left.youngest;
+}
+
+function rangeContains(
+  outer: { oldest: string; youngest: string },
+  inner: { oldest: string; youngest: string },
+): boolean {
+  return Boolean(
+    outer.oldest &&
+      inner.oldest &&
+      outer.oldest <= inner.oldest &&
+      outer.youngest >= inner.youngest,
+  );
+}
+
+function sameRange(
+  left: { oldest: string; youngest: string },
+  right: { oldest: string; youngest: string },
+): boolean {
+  return left.oldest === right.oldest && left.youngest === right.youngest;
+}
+
+/**
+ * Count selected windows once. A window inside another selected window is
+ * already included. Identical windows count once. A leftover partial overlap
+ * can still double-count.
+ */
+function countDistinctWindows(
+  members: readonly { window: { oldest: string; youngest: string }; side: ForecastSide }[],
+): { sides: ForecastSide[]; exact: boolean } {
+  const kept = members.filter(
+    (member, index) =>
+      !members.some(
+        (other, otherIndex) =>
+          otherIndex !== index &&
+          rangeContains(other.window, member.window) &&
+          !rangeContains(member.window, other.window),
+      ),
+  );
+  const unique: { window: { oldest: string; youngest: string }; side: ForecastSide }[] = [];
+  for (const member of kept) {
+    if (unique.some((item) => sameRange(item.window, member.window))) continue;
+    unique.push(member);
+  }
+  const overlaps = unique.some((left, index) =>
+    unique.some((right, otherIndex) => otherIndex > index && rangesOverlap(left.window, right.window)),
+  );
+  return { sides: unique.map((item) => item.side), exact: !overlaps };
+}
+
+function agesForWindow(
+  oldest: string,
+  youngest: string,
+  cutoffIso: string,
+): { minAge: number; maxAge: number } | null {
+  const minAge = leagueAge(youngest, cutoffIso);
+  const maxAge = leagueAge(oldest, cutoffIso);
+  if (!Number.isInteger(minAge) || !Number.isInteger(maxAge) || minAge < 0 || maxAge < minAge) return null;
+  return { minAge, maxAge };
+}
+
+function withHalfAges(
+  division: DivisionAgeConfig,
+  oldest: string,
+  youngest: string,
+  cutoffIso: string,
+): DivisionAgeConfig {
+  const ages = agesForWindow(oldest, youngest, cutoffIso);
+  if (!ages) return division;
+  return { ...division, minAge: ages.minAge, maxAge: ages.maxAge };
+}
+
 function distinctGroupSide(
   rows: readonly ForecastRow[],
   pools: readonly SharedPool[],
   codes: readonly string[],
   side: "current" | "proposed",
+  windows: ReadonlyMap<string, { oldest: string; youngest: string }>,
 ): { side: ForecastSide; exact: boolean } {
   const set = new Set(codes);
   const presentKey = side === "current" ? "inCurrent" : "inProposed";
@@ -537,22 +632,36 @@ function distinctGroupSide(
   const present = rows.filter((row) => set.has(row.code) && row[presentKey]);
   let total = zeroSide();
   let exact = true;
-  const used = new Set<string>();
-  const poolIds = new Set(present.map((row) => row[sharedKey]).filter((id): id is string => Boolean(id)));
-  for (const id of poolIds) {
-    const pool = pools.find((item) => item.poolKey === id);
-    const poolSide = pool?.[side];
-    if (!pool || !poolSide || !pool.codes.every((code) => set.has(code))) {
-      exact = false;
+  const byPool = new Map<string, ForecastRow[]>();
+  for (const row of present) {
+    const poolId = row[sharedKey];
+    if (!poolId) {
+      total = addForecastSide(total, row[side]);
       continue;
     }
-    total = addForecastSide(total, poolSide);
-    for (const poolCode of pool.codes) used.add(poolCode);
+    const list = byPool.get(poolId);
+    if (list) list.push(row);
+    else byPool.set(poolId, [row]);
   }
-  for (const row of present) {
-    if (used.has(row.code)) continue;
-    if (row[sharedKey]) exact = false;
-    total = addForecastSide(total, row[side]);
+  for (const [id, members] of byPool) {
+    const pool = pools.find((item) => item.poolKey === id);
+    const poolSide = pool?.[side];
+    if (pool && poolSide && pool.codes.every((code) => set.has(code))) {
+      total = addForecastSide(total, poolSide);
+      continue;
+    }
+    const windowed = members.map((row) => ({
+      window: windows.get(row.code) ?? { oldest: "", youngest: "" },
+      side: row[side],
+    }));
+    if (windowed.some((item) => !item.window.oldest || !item.window.youngest)) {
+      exact = false;
+      for (const row of members) total = addForecastSide(total, row[side]);
+      continue;
+    }
+    const counted = countDistinctWindows(windowed);
+    if (!counted.exact) exact = false;
+    for (const item of counted.sides) total = addForecastSide(total, item);
   }
   return { side: total, exact };
 }
@@ -586,8 +695,32 @@ export function structuralScenario(
     .map((division) => lineFrom(division, rowByCode.get(division.code)?.proposed ?? zeroSide(), afterCutoff));
   const beforeName = kind === "combine" ? "Separate total" : "Unsplit";
   const afterName = kind === "combine" ? "Combined" : "Split total";
-  const beforeDistinct = distinctGroupSide(forecast.rows, forecast.sharedPools, removed.map((division) => division.code), "current");
-  const afterDistinct = distinctGroupSide(forecast.rows, forecast.sharedPools, added.map((division) => division.code), "proposed");
+  const beforeWindows = new Map(
+    removed.map((division) => {
+      const range = effectiveRange(division, beforeCutoff);
+      return [division.code, { oldest: range.oldest, youngest: range.youngest }] as const;
+    }),
+  );
+  const afterWindows = new Map(
+    added.map((division) => {
+      const range = effectiveRange(division, afterCutoff);
+      return [division.code, { oldest: range.oldest, youngest: range.youngest }] as const;
+    }),
+  );
+  const beforeDistinct = distinctGroupSide(
+    forecast.rows,
+    forecast.sharedPools,
+    removed.map((division) => division.code),
+    "current",
+    beforeWindows,
+  );
+  const afterDistinct = distinctGroupSide(
+    forecast.rows,
+    forecast.sharedPools,
+    added.map((division) => division.code),
+    "proposed",
+    afterWindows,
+  );
   const beforeTotal = summedLines(before, "before", beforeName);
   const afterTotal = summedLines(after, "after", afterName);
   return {

@@ -6,7 +6,6 @@
  */
 
 import {
-  calculatedRange,
   coverageWarnings,
   effectiveCutoffDate,
   effectiveRange,
@@ -822,9 +821,10 @@ export type EligibilitySide = {
 };
 
 /**
- * One division's age span (minAge..maxAge) counted under both cutoff rules.
- * Windows come from `calculatedRange`, not from birthdate overrides.
- * Counts are raw headcount, before the return rate and feeder share.
+ * One division's span counted under both cutoff rules.
+ * A plain age span uses the calculated window. Birthdate overrides, including
+ * each half of a split, use the effective window so the halves do not repeat
+ * the unsplit span. Counts are raw headcount, before the return rate and feeder share.
  */
 export type EligibilityContrast = {
   code: string;
@@ -869,8 +869,8 @@ export function eligibilityContrasts(
   for (const division of ordered) {
     if (seen.has(division.code)) continue;
     seen.add(division.code);
-    const llWindow = calculatedRange(division, llCutoff);
-    const dybWindow = calculatedRange(division, dybCutoff);
+    const llWindow = effectiveRange(division, llCutoff);
+    const dybWindow = effectiveRange(division, dybCutoff);
     const row: EligibilityContrast = {
       code: division.code,
       label: division.label,
