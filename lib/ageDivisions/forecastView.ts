@@ -163,7 +163,21 @@ export function cloneProposed(config: ProposedConfig): ProposedConfig {
 }
 
 export function withProposedCutoff(config: ProposedConfig, patch: Partial<LeagueAgeRule>): ProposedConfig {
-  return { ...config, cutoff: { ...config.cutoff, ...patch } };
+  const cutoff = { ...config.cutoff, ...patch };
+  const cutoffChanged =
+    cutoff.cutoffMonth !== config.cutoff.cutoffMonth ||
+    cutoff.cutoffDay !== config.cutoff.cutoffDay ||
+    cutoff.yearOffset !== config.cutoff.yearOffset;
+  return {
+    cutoff,
+    divisions: config.divisions.map((division) => {
+      if (!cutoffChanged) return { ...division };
+      const next: DivisionAgeConfig = { ...division };
+      delete next.oldestBirthdate;
+      delete next.youngestBirthdate;
+      return next;
+    }),
+  };
 }
 
 export function forecastDraftKey(org: string, targetSeason: number): string {

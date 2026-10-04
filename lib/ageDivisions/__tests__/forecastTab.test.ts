@@ -331,6 +331,23 @@ describe("forecast tab", () => {
     });
     assert.equal(before.proposed?.cutoff.cutoffDay, 30);
     assert.equal(after.proposed?.cutoff.cutoffDay, 15);
+    const anchored = withProposedCutoff(
+      {
+        cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+        divisions: [{ code: "8U", label: "8U", minAge: 8, maxAge: 8, sortOrder: 1, oldestBirthdate: "2018-06-01" }],
+      },
+      { cutoffDay: 15 },
+    );
+    assert.equal(anchored.divisions[0]?.oldestBirthdate, undefined);
+    assert.equal(anchored.cutoff.cutoffDay, 15);
+    const kept = withProposedCutoff(
+      {
+        cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+        divisions: [{ code: "8U", label: "8U", minAge: 8, maxAge: 8, sortOrder: 1, oldestBirthdate: "2018-06-01" }],
+      },
+      { cutoffDay: 30 },
+    );
+    assert.equal(kept.divisions[0]?.oldestBirthdate, "2018-06-01");
     assert.notEqual(forecastQueryKey("gonzales", before), forecastQueryKey("gonzales", after));
 
     const html = renderToStaticMarkup(view({ proposed: edited }));

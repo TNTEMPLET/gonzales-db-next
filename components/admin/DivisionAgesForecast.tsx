@@ -709,7 +709,7 @@ export function DivisionAgesForecastView({
                 </p>
                 {scenario.exact ? null : (
                   <p className="mt-1 text-sm text-amber-200" data-testid="scenario-double-count">
-                    An overlap reaches outside this group, so that total can count a player twice.
+                    These divisions overlap on part of their windows, so this total can count a player twice.
                   </p>
                 )}
               </div>

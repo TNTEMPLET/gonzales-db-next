@@ -830,6 +830,7 @@ describe("combine, split, and LL vs DYB counts", () => {
       [bucket("2017-08-01", 4), bucket("2018-02-01", 6)],
       split.divisions,
       SEASON,
+      current.cutoff,
     );
     const young = rows.find((row) => row.code === "9U KP young");
     const old = rows.find((row) => row.code === "9U KP old");
@@ -851,12 +852,59 @@ describe("combine, split, and LL vs DYB counts", () => {
     assert.ok(olderHalf && youngerHalf);
     assert.deepEqual({ minAge: olderHalf.minAge, maxAge: olderHalf.maxAge }, { minAge: 8, maxAge: 8 });
     assert.deepEqual({ minAge: youngerHalf.minAge, maxAge: youngerHalf.maxAge }, { minAge: 7, maxAge: 7 });
-    const halves = eligibilityContrasts([], atBoundary.divisions, SEASON);
+    const halves = eligibilityContrasts([], atBoundary.divisions, SEASON, span.cutoff);
     const olderRow = halves.find((row) => row.code === "7-8U old");
     const youngerRow = halves.find((row) => row.code === "7-8U young");
     assert.ok(olderRow && youngerRow);
     assert.equal(`${olderRow.dybOldest}..${olderRow.dybYoungest}`, "2018-05-01..2019-04-30");
     assert.equal(`${youngerRow.dybOldest}..${youngerRow.dybYoungest}`, "2019-05-01..2020-04-30");
     assert.notEqual(olderRow.llOldest, youngerRow.llOldest);
+  });
+
+  it("shifts a dragged edge onto both leagues and keeps the season window", () => {
+    const season = dyb([
+      division("8U", 8, 8, 1, { oldestBirthdate: "2018-06-01" }),
+      division("9U", 9, 9, 2, { youngestBirthdate: "2018-05-31" }),
+    ]);
+    const rows = eligibilityContrasts([bucket("2018-07-15", 1)], season.divisions, SEASON, season.cutoff);
+    const eight = rows.find((row) => row.code === "8U");
+    const nine = rows.find((row) => row.code === "9U");
+    assert.ok(eight && nine);
+    assert.equal(eight.dybOldest, "2018-06-01");
+    assert.equal(eight.dybYoungest, "2019-04-30");
+    assert.equal(nine.dybOldest, "2017-05-01");
+    assert.equal(nine.dybYoungest, "2018-05-31");
+    assert.notEqual(`${eight.llOldest}..${eight.llYoungest}`, `${eight.dybOldest}..${eight.dybYoungest}`);
+    assert.notEqual(`${nine.llOldest}..${nine.llYoungest}`, `${nine.dybOldest}..${nine.dybYoungest}`);
+    assert.equal(eight.llOldest, "2018-10-02");
+    assert.equal(eight.llYoungest, "2019-08-31");
+    assert.equal(nine.llOldest, "2017-09-01");
+    assert.equal(nine.llYoungest, "2018-10-01");
+    assert.equal(nine.ll.own, 1);
+    assert.equal(eight.ll.own, 0);
+    assert.equal(eight.dyb.own, 1);
+    assert.equal(nine.dyb.own, 0);
+    for (const row of [eight, nine]) {
+      assert.equal(row.llOldest <= row.llYoungest, true);
+      assert.equal(row.dybOldest <= row.dybYoungest, true);
+    }
+
+    const pulled = dyb([division("8U", 8, 8, 1, { youngestBirthdate: "2018-07-01" })]);
+    const narrow = eligibilityContrasts([bucket("2018-07-15", 1)], pulled.divisions, SEASON, pulled.cutoff)[0]!;
+    assert.equal(narrow.dybOldest, "2018-05-01");
+    assert.equal(narrow.dybYoungest, "2018-07-01");
+    assert.equal(narrow.llOldest <= narrow.llYoungest, true);
+    assert.notEqual(`${narrow.llOldest}..${narrow.llYoungest}`, "2018-09-01..2018-07-01");
+    assert.notEqual(`${narrow.llOldest}..${narrow.llYoungest}`, `${narrow.dybOldest}..${narrow.dybYoungest}`);
+
+    const bothEdges = dyb([
+      division("8U", 8, 8, 1, { oldestBirthdate: "2018-06-01", youngestBirthdate: "2019-03-01" }),
+    ]);
+    const both = eligibilityContrasts([], bothEdges.divisions, SEASON, bothEdges.cutoff)[0]!;
+    assert.equal(both.dybOldest, "2018-06-01");
+    assert.equal(both.dybYoungest, "2019-03-01");
+    assert.notEqual(`${both.llOldest}..${both.llYoungest}`, `${both.dybOldest}..${both.dybYoungest}`);
+    assert.equal(both.llOldest <= both.llYoungest, true);
+    assert.equal(both.dybOldest <= both.dybYoungest, true);
   });
 });

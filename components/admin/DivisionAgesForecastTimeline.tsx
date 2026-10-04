@@ -119,6 +119,7 @@ function TimelineTrack({
   onEdgeKeyDown,
   onEdgeClick,
   onEdgeFocus,
+  onEdgeTip,
   onBandClick,
   onBandKeyDown,
 }: {
@@ -134,6 +135,7 @@ function TimelineTrack({
   onEdgeKeyDown: (event: KeyboardEvent<HTMLButtonElement>, edge: TimelineEdge) => void;
   onEdgeClick: (edge: TimelineEdge) => void;
   onEdgeFocus: (edge: TimelineEdge) => void;
+  onEdgeTip?: (edge: TimelineEdge, anchor: HTMLElement | null) => void;
   onBandClick: (member: TimelineMember, event: MouseEvent<HTMLButtonElement>) => void;
   onBandKeyDown: (member: TimelineMember, event: KeyboardEvent<HTMLButtonElement>) => void;
 }) {
@@ -251,7 +253,7 @@ function TimelineTrack({
                 aria-valuetext={edge.hint}
                 aria-label={edge.ariaLabel}
                 data-testid={`timeline-edge-${edge.id}`}
-                className={`group absolute inset-y-0 z-10 w-11 -translate-x-1/2 touch-none outline-none ${active ? "z-20" : ""}`}
+                className={`absolute inset-y-0 z-10 w-11 -translate-x-1/2 touch-none outline-none ${active ? "z-20" : ""}`}
                 style={{ left: `${edge.left}%` }}
                 onPointerDown={(event) => onEdgePointerDown(event, edge)}
                 onPointerMove={onEdgePointerMove}
@@ -259,15 +261,17 @@ function TimelineTrack({
                 onPointerCancel={onEdgePointerUp}
                 onKeyDown={(event) => onEdgeKeyDown(event, edge)}
                 onClick={() => onEdgeClick(edge)}
-                onFocus={() => onEdgeFocus(edge)}
+                onFocus={(event) => {
+                  onEdgeFocus(edge);
+                  onEdgeTip?.(edge, event.currentTarget);
+                }}
+                onBlur={() => onEdgeTip?.(edge, null)}
+                onPointerEnter={(event) => onEdgeTip?.(edge, event.currentTarget)}
+                onPointerLeave={() => onEdgeTip?.(edge, null)}
               >
                 <span
                   className={`pointer-events-none absolute inset-y-1 left-1/2 w-1 -translate-x-1/2 rounded-full ${active ? "bg-white" : "bg-white/90"} shadow`}
                 />
-                <span className="pointer-events-none absolute bottom-full left-1/2 z-30 mb-2 hidden w-max max-w-xs -translate-x-1/2 rounded-lg bg-white px-2 py-1 text-left text-xs font-medium text-zinc-900 shadow group-hover:block group-focus-visible:block">
-                  {edge.hint}
-                  <span className="mt-0.5 block font-normal text-zinc-600">{edge.detail}</span>
-                </span>
               </button>
             );
           })
@@ -309,6 +313,32 @@ export function DivisionAgesForecastTimeline({
   const [actionError, setActionError] = useState<string | null>(null);
   const [shiftText, setShiftText] = useState("");
   const [counting, setCounting] = useState(false);
+  const [edgeTip, setEdgeTip] = useState<{ hint: string; detail: string; left: number; top: number } | null>(null);
+  const tipAnchor = useRef<{ edge: TimelineEdge; element: HTMLElement } | null>(null);
+
+  function placeEdgeTip(edge: TimelineEdge, anchor: HTMLElement | null) {
+    if (!anchor) {
+      if (tipAnchor.current?.edge.id !== edge.id) return;
+      tipAnchor.current = null;
+      setEdgeTip(null);
+      return;
+    }
+    tipAnchor.current = { edge, element: anchor };
+    const rect = anchor.getBoundingClientRect();
+    setEdgeTip({ hint: edge.hint, detail: edge.detail, left: rect.left + rect.width / 2, top: rect.top });
+  }
+
+  function refreshEdgeTip() {
+    const anchor = tipAnchor.current;
+    if (!anchor) return;
+    const rect = anchor.element.getBoundingClientRect();
+    setEdgeTip({
+      hint: anchor.edge.hint,
+      detail: anchor.edge.detail,
+      left: rect.left + rect.width / 2,
+      top: rect.top,
+    });
+  }
   const [frozenAxis, setFrozenAxis] = useState<{ oldest: string; youngest: string } | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const dayRef = useRef<HTMLInputElement>(null);
@@ -410,6 +440,8 @@ export function DivisionAgesForecastTimeline({
 
   function onEdgePointerDown(event: PointerEvent<HTMLButtonElement>, edge: TimelineEdge) {
     if (event.button !== 0 || !layoutAxis) return;
+    tipAnchor.current = null;
+    setEdgeTip(null);
     event.currentTarget.setPointerCapture(event.pointerId);
     setSelected({ code: edge.code, field: edge.field });
     rememberCounts();
@@ -634,7 +666,7 @@ export function DivisionAgesForecastTimeline({
         Move neighbor edge too
       </label>
 
-      <div className="overflow-x-auto" data-testid="timeline-strips">
+      <div className="overflow-x-auto" data-testid="timeline-strips" onScroll={refreshEdgeTip}>
         <div className="min-w-[40rem] space-y-2">
           {currentModel ? (
             <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
@@ -675,6 +707,7 @@ export function DivisionAgesForecastTimeline({
                   onEdgeKeyDown={onEdgeKeyDown}
                   onEdgeClick={onEdgeClick}
                   onEdgeFocus={(edge) => setSelected({ code: edge.code, field: edge.field })}
+                  onEdgeTip={placeEdgeTip}
                   onBandClick={onBandClick}
                   onBandKeyDown={onBandKeyDown}
                 />
@@ -696,6 +729,17 @@ export function DivisionAgesForecastTimeline({
           </div>
         </div>
       </div>
+      {edgeTip ? (
+        <p
+          role="tooltip"
+          data-testid="timeline-edge-tip"
+          className="pointer-events-none fixed z-50 w-max max-w-xs -translate-x-1/2 -translate-y-full rounded-lg bg-white px-2 py-1 text-left text-xs font-medium text-zinc-900 shadow"
+          style={{ left: edgeTip.left, top: edgeTip.top - 8 }}
+        >
+          {edgeTip.hint}
+          <span className="mt-0.5 block font-normal text-zinc-600">{edgeTip.detail}</span>
+        </p>
+      ) : null}
 
       <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-300">
         {legend.map((member) => {

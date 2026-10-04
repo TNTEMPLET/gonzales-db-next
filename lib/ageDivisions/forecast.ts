@@ -6,6 +6,7 @@
  */
 
 import {
+  calculatedRange,
   coverageWarnings,
   effectiveCutoffDate,
   effectiveRange,
@@ -822,9 +823,12 @@ export type EligibilitySide = {
 
 /**
  * One division's span counted under both cutoff rules.
- * A plain age span uses the calculated window. Birthdate overrides, including
- * each half of a split, use the effective window so the halves do not repeat
- * the unsplit span. Counts are raw headcount, before the return rate and feeder share.
+ * Each league starts from `calculatedRange` for that league's cutoff. A
+ * birthdate override is the same day offset from the season cutoff's
+ * calculated edge, applied to both leagues. Unedited edges stay calculated,
+ * so the season's own column matches the timeline and the other league does
+ * not copy the absolute date. Counts are raw headcount, before the return
+ * rate and feeder share.
  */
 export type EligibilityContrast = {
   code: string;
@@ -852,7 +856,56 @@ function addEligibility(side: EligibilitySide, pool: BirthBucket["pool"], count:
 }
 
 function inBirthWindow(birthDate: string, oldest: string, youngest: string): boolean {
-  return Boolean(oldest && youngest && birthDate >= oldest && birthDate <= youngest);
+  return Boolean(oldest && youngest && oldest <= youngest && birthDate >= oldest && birthDate <= youngest);
+}
+
+function shiftDays(iso: string, days: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match || !Number.isFinite(days)) return "";
+  const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  utc.setUTCDate(utc.getUTCDate() + Math.trunc(days));
+  const year = utc.getUTCFullYear();
+  const month = String(utc.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(utc.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function daySpan(start: string, end: string): number {
+  const from = /^(\d{4})-(\d{2})-(\d{2})$/.exec(start);
+  const to = /^(\d{4})-(\d{2})-(\d{2})$/.exec(end);
+  if (!from || !to) return 0;
+  const fromMs = Date.UTC(Number(from[1]), Number(from[2]) - 1, Number(from[3]));
+  const toMs = Date.UTC(Number(to[1]), Number(to[2]) - 1, Number(to[3]));
+  return Math.round((toMs - fromMs) / 86_400_000);
+}
+
+/**
+ * One league's birthdate window. Overrides are day offsets from the season
+ * cutoff, not absolute dates, so Little League and DYB stay apart. An edge
+ * that would pass the other edge stops on it.
+ */
+function leagueBirthWindow(
+  division: DivisionAgeConfig,
+  leagueCutoffIso: string,
+  seasonCutoffIso: string | null,
+): { oldest: string; youngest: string } {
+  const league = calculatedRange(division, leagueCutoffIso);
+  let oldest = league.oldest;
+  let youngest = league.youngest;
+  if (seasonCutoffIso && (division.oldestBirthdate || division.youngestBirthdate)) {
+    const season = calculatedRange(division, seasonCutoffIso);
+    if (division.oldestBirthdate && season.oldest && league.oldest) {
+      oldest = shiftDays(league.oldest, daySpan(season.oldest, division.oldestBirthdate));
+    }
+    if (division.youngestBirthdate && season.youngest && league.youngest) {
+      youngest = shiftDays(league.youngest, daySpan(season.youngest, division.youngestBirthdate));
+    }
+  }
+  if (oldest && youngest && oldest > youngest) {
+    if (division.oldestBirthdate && !division.youngestBirthdate) oldest = youngest;
+    else youngest = oldest;
+  }
+  return { oldest, youngest };
 }
 
 /** LL vs DYB counts for each division's age span. Duplicate codes keep the first division. */
@@ -860,17 +913,19 @@ export function eligibilityContrasts(
   buckets: readonly BirthBucket[],
   divisions: readonly DivisionAgeConfig[],
   targetSeasonYear: number,
+  seasonRule?: LeagueAgeRule,
 ): EligibilityContrast[] {
   const llCutoff = effectiveCutoffDate(LITTLE_LEAGUE_RULE, targetSeasonYear);
   const dybCutoff = effectiveCutoffDate(DYB_RULE, targetSeasonYear);
+  const seasonCutoff = seasonRule ? effectiveCutoffDate(seasonRule, targetSeasonYear) : null;
   const rows: EligibilityContrast[] = [];
   const seen = new Set<string>();
   const ordered = [...divisions].sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));
   for (const division of ordered) {
     if (seen.has(division.code)) continue;
     seen.add(division.code);
-    const llWindow = effectiveRange(division, llCutoff);
-    const dybWindow = effectiveRange(division, dybCutoff);
+    const llWindow = leagueBirthWindow(division, llCutoff, seasonCutoff);
+    const dybWindow = leagueBirthWindow(division, dybCutoff, seasonCutoff);
     const row: EligibilityContrast = {
       code: division.code,
       label: division.label,
@@ -914,13 +969,26 @@ export function eligibilityForConfigs(
   current: readonly DivisionAgeConfig[],
   proposed: readonly DivisionAgeConfig[],
   targetSeasonYear: number,
+  rules?: { current: LeagueAgeRule; proposed: LeagueAgeRule },
 ): EligibilityContrast[] {
-  const byCode = new Map<string, DivisionAgeConfig>();
+  const byCode = new Map<string, { division: DivisionAgeConfig; rule?: LeagueAgeRule }>();
   for (const division of current) {
-    if (!byCode.has(division.code)) byCode.set(division.code, division);
+    if (!byCode.has(division.code)) byCode.set(division.code, { division, rule: rules?.current });
   }
-  for (const division of proposed) byCode.set(division.code, division);
-  return eligibilityContrasts(buckets, [...byCode.values()], targetSeasonYear);
+  for (const division of proposed) byCode.set(division.code, { division, rule: rules?.proposed });
+  const rows: EligibilityContrast[] = [];
+  const seen = new Set<string>();
+  const ordered = [...byCode.values()].sort(
+    (a, b) => a.division.sortOrder - b.division.sortOrder || a.division.code.localeCompare(b.division.code),
+  );
+  for (const item of ordered) {
+    if (seen.has(item.division.code)) continue;
+    seen.add(item.division.code);
+    rows.push(
+      ...eligibilityContrasts(buckets, [item.division], targetSeasonYear, item.rule),
+    );
+  }
+  return rows;
 }
 
 export function carryoverRate(springDistinct: number, carriedToFall: number): number | null {
