@@ -220,16 +220,29 @@ export function getDugoutRegisteredUserOrgId(): ContentOrgId {
   return isContentOrgId(org) ? org : "gonzales";
 }
 
+/**
+ * Content org for an admin route that is not the Spring combined view.
+ * `spring` is a Season Setup view selector, not an organization. On the master
+ * deployment it maps to Gonzales so a leftover `?org=spring` never follows the
+ * live-org fallback (Fall Ball while that season is live).
+ */
+export function resolveOrg(
+  requestedOrg?: string | null,
+  context?: { masterDeployment: boolean; liveOrg: ContentOrgId; defaultOrg: ContentOrgId },
+): ContentOrgId {
+  const masterDeployment = context?.masterDeployment ?? isMasterDeployment();
+  const liveOrg = context?.liveOrg ?? getPrimaryLiveContentOrg();
+  const defaultOrg = context?.defaultOrg ?? getDefaultContentOrg();
+  if (masterDeployment && requestedOrg === "spring") return "gonzales";
+  if (masterDeployment && isContentOrgId(requestedOrg)) return requestedOrg;
+  if (masterDeployment) return liveOrg;
+  return defaultOrg;
+}
+
 export function resolveAdminTargetOrg(
   requestedOrg?: string | null,
 ): ContentOrgId {
-  if (isMasterDeployment() && isContentOrgId(requestedOrg)) {
-    return requestedOrg;
-  }
-  if (isMasterDeployment()) {
-    return getPrimaryLiveContentOrg();
-  }
-  return getDefaultContentOrg();
+  return resolveOrg(requestedOrg);
 }
 
 /** Like resolveAdminTargetOrg but also accepts tournament-only orgs for the bracket admin. */

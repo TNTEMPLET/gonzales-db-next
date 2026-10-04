@@ -6,14 +6,24 @@ import {
   getSeasonSetupChecklist,
   isManualChecklistItemKey,
 } from "@/lib/admin/seasonSetup/checklist";
+import { springCombinedRequestBlock } from "@/lib/admin/springCombined/view";
 import { isContentOrgId } from "@/lib/siteConfig";
 import { resolveAdminTargetOrg } from "@/lib/siteConfig";
+
+function blockSpringView(request: NextRequest) {
+  const blocked = springCombinedRequestBlock(request.nextUrl.searchParams.get("org"));
+  if (!blocked) return null;
+  return NextResponse.json({ error: blocked.error }, { status: blocked.status });
+}
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAdminModule(request, "SEASON_SETUP");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
+
+  const springBlock = blockSpringView(request);
+  if (springBlock) return springBlock;
 
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   if (!isContentOrgId(targetOrg)) {
@@ -35,6 +45,9 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
+
+  const springBlock = blockSpringView(request);
+  if (springBlock) return springBlock;
 
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   if (!isContentOrgId(targetOrg)) {

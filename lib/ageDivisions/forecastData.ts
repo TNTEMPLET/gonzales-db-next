@@ -13,6 +13,15 @@ import { normalizeLooseName, shouldSkipDivisionImport } from "@/lib/admin/teamsI
 import type { EnsureAdminResult } from "@/lib/auth/ensureAdminModule";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
+import {
+  combinedForecastConfig,
+  dedupeSpringPool,
+  isSpringLeagueOrg,
+  SPRING_LEAGUE_ORGS,
+  type SpringLeagueOrg,
+  type SpringPoolPlayer,
+} from "@/lib/admin/springCombined/view";
+
 import { leagueDivisionDefaults } from "./defaults";
 import {
   DEFAULT_FEEDER_SHARE,
@@ -147,6 +156,14 @@ export type ForecastDeps = {
   loadSeasonConfig: (org: ContentOrgId, seasonYear: number) => Promise<SeasonDivisionAgesView>;
   loadRosterMap?: (org: ContentOrgId) => Promise<ReadonlyMap<string, RosterSize>>;
   loadForecastSettings?: (org: ContentOrgId) => Promise<LeagueForecastSettings>;
+  /**
+   * Spring combined only. Gonzales and Ascension. Must not be used for Fall Ball.
+   * Omitted in tests that only exercise the single-org loader.
+   */
+  listSpringLines?: (
+    org: SpringLeagueOrg,
+    seasonYear: number,
+  ) => Promise<Array<EnrollmentLine & { sportsConnectRowKey: string | null }>>;
 };
 
 type CountedPlayer = {
@@ -709,6 +726,216 @@ async function loadCurrent(
   }
 }
 
+const SPRING_ENROLLMENT_SELECT = {
+  ...ENROLLMENT_SELECT,
+  sportsConnectRowKey: true,
+} as const;
+
+function springPlayersFromLines(
+  lines: Array<{ fullName: string; birthDate: Date | string | null; sportsConnectRowKey?: string | null }>,
+): SpringPoolPlayer[] {
+  const seen = new Set<string>();
+  const players: SpringPoolPlayer[] = [];
+  for (const line of lines) {
+    const birthDate = birthIso(line.birthDate);
+    const key = collapseKey(line.fullName ?? "", birthDate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const rowKey = line.sportsConnectRowKey?.trim() || null;
+    players.push({
+      sportsConnectRowKey: rowKey,
+      matchKey: matchKey(line.fullName ?? "", birthDate),
+      birthDate,
+    });
+  }
+  return players;
+}
+
+async function loadSpringOrgPlayers(
+  org: SpringLeagueOrg,
+  seasonYear: number,
+  deps: ForecastDeps,
+): Promise<{ players: SpringPoolPlayer[]; notes: string[]; source: "enrollment" | "roster" }> {
+  const notes: string[] = [];
+  try {
+    const lines = deps.listSpringLines
+      ? await deps.listSpringLines(org, seasonYear)
+      : (await deps.reader.listEnrollment(org, seasonYear)).map((line) => ({
+          ...line,
+          sportsConnectRowKey: null,
+        }));
+    if (lines.length === 0) {
+      notes.push(
+        `${org === "gonzales" ? "Gonzales" : "Ascension"} has no enrollment rows for this season, so counts used roster birth dates.`,
+      );
+    } else {
+      const eligible = lines.filter(
+        (row) => isCompleted(row.orderPaymentStatus) && !isUmpireDivision(row.divisionName, row.ageGroup),
+      );
+      return { players: springPlayersFromLines(eligible), notes, source: "enrollment" };
+    }
+  } catch (error) {
+    if (!isDivisionAgeStorageMissing(error)) throw error;
+    notes.push(
+      `${org === "gonzales" ? "Gonzales" : "Ascension"} enrollment storage is not available, so counts used roster birth dates.`,
+    );
+  }
+  try {
+    const roster = await deps.reader.listRoster(org, seasonYear);
+    const eligible = roster.filter((row) => !isUmpireDivision(null, row.ageGroup));
+    return {
+      players: springPlayersFromLines(eligible.map((row) => ({ ...row, sportsConnectRowKey: null }))),
+      notes,
+      source: "roster",
+    };
+  } catch (error) {
+    if (!isDivisionAgeStorageMissing(error)) throw error;
+    notes.push(`${org === "gonzales" ? "Gonzales" : "Ascension"} roster storage is not available.`);
+    return { players: [], notes, source: "roster" };
+  }
+}
+
+export type SpringCombinedForecastBody = ForecastPayload & {
+  springCombined: true;
+  duplicatePlayers: number;
+};
+
+/**
+ * One pool of Gonzales and Ascension players. A player in both leagues counts
+ * once. Feeder share is not applied. Fall Ball is not read.
+ */
+export async function runSpringCombinedForecast(
+  input: { readJson: () => Promise<unknown> },
+  deps: ForecastDeps,
+): Promise<{ status: 200; body: SpringCombinedForecastBody } | ForecastFailure> {
+  let raw: unknown;
+  try {
+    raw = await input.readJson();
+  } catch {
+    return failure(400, "Request body must be JSON.", ["(root): Request body must be JSON."]);
+  }
+  if (raw == null || typeof raw !== "object" || Array.isArray(raw)) {
+    return failure(400, "Request body must be a JSON object.", ["(root): Request body must be a JSON object."]);
+  }
+  const parsedBody = forecastBodySchema.safeParse(raw);
+  if (!parsedBody.success) {
+    const issues = zodIssues(parsedBody.error);
+    return failure(400, issues[0] ?? "Invalid forecast request.", issues);
+  }
+
+  const seasonYear = parsedBody.data.seasonYear ?? SOURCE_SEASON_DEFAULT;
+  const targetSeasonYear = parsedBody.data.targetSeasonYear ?? seasonYear + 1;
+
+  let proposedConfig: ForecastConfig | null = null;
+  if (parsedBody.data.proposed != null) {
+    const proposed = validateSeasonWrite(parsedBody.data.proposed, targetSeasonYear);
+    if (!proposed.ok) return failure(400, proposed.error, proposed.issues);
+    if (proposed.data.reset) {
+      return failure(400, "proposed: Send a cutoff and divisions.", ["proposed: Send a cutoff and divisions."]);
+    }
+    proposedConfig = { cutoff: proposed.data.cutoff, divisions: proposed.data.divisions };
+  }
+
+  try {
+    const loaded = await Promise.all(
+      SPRING_LEAGUE_ORGS.map(async (org) => ({
+        org,
+        pool: await loadSpringOrgPlayers(org, seasonYear, deps),
+        view: proposedConfig ? null : await loadCurrent(org, targetSeasonYear, deps),
+      })),
+    );
+    const merged = dedupeSpringPool(loaded.flatMap((entry) => entry.pool.players));
+    const config =
+      proposedConfig ??
+      combinedForecastConfig(
+        loaded.flatMap((entry) =>
+          entry.view
+            ? [{ organizationId: entry.org, cutoff: entry.view.cutoff, divisions: entry.view.divisions }]
+            : [],
+        ),
+        targetSeasonYear,
+      );
+    const buckets = bucketsFor(
+      merged.players
+        .filter((player) => player.birthDate)
+        .map((player) => ({ matchKey: player.matchKey, birthDate: player.birthDate })),
+      "own",
+    );
+    const compared = compareConfigs(buckets, config, config, targetSeasonYear, {
+      retentionRate: DEFAULT_RETURN_RATE,
+      includeFeeder: false,
+      feederShare: 0,
+      rosterFor: () => DEFAULT_ROSTER,
+    });
+    const notes = loaded.flatMap((entry) => entry.pool.notes);
+    if (merged.duplicateCount > 0) {
+      notes.push(
+        `${merged.duplicateCount} players are in both leagues and were counted once.`,
+      );
+    }
+    notes.push("Spring combined counts Gonzales and Ascension together. Fall Ball is not included.");
+    const datedPlayers = merged.players.filter((player) => player.birthDate).length;
+    const coveragePct =
+      merged.players.length === 0 ? null : Math.round((datedPlayers / merged.players.length) * 1000) / 10;
+    const ownSource: PoolSource = {
+      source: loaded.some((entry) => entry.pool.source === "enrollment") ? "enrollment" : "roster",
+      players: merged.players.length,
+      datedPlayers,
+      coveragePct,
+    };
+    const feederSource: PoolSource = { source: "none", players: 0, datedPlayers: 0, coveragePct: null };
+    const body: SpringCombinedForecastBody = {
+      organizationId: "gonzales",
+      seasonYear,
+      targetSeasonYear,
+      includeFeeder: false,
+      feederShare: 0,
+      notes,
+      source: ownSource.source === "enrollment" ? "enrollment" : "roster",
+      coveragePct,
+      sources: { own: ownSource, feeder: feederSource },
+      carryover: {
+        springDistinct: merged.players.length,
+        carried: 0,
+        rate: null,
+        note: "Spring combined does not include Fall Ball.",
+      },
+      retention: { applied: DEFAULT_RETURN_RATE, source: "default" },
+      currentSource: loaded.every((entry) => entry.view?.source === "season")
+        ? "season"
+        : loaded.some((entry) => entry.view?.source === "league")
+          ? "league"
+          : "builtin",
+      proposedSource: proposedConfig ? "request" : "current",
+      rows: compared.rows,
+      sharedPools: compared.sharedPools,
+      league: compared.league,
+      movers: compared.movers,
+      flows: compared.flows,
+      currentWarnings: compared.currentWarnings,
+      proposedWarnings: compared.proposedWarnings,
+      eligibility: eligibilityForConfigs(buckets, config.divisions, config.divisions, targetSeasonYear, {
+        current: config.cutoff,
+        proposed: config.cutoff,
+      }),
+      current: compared.current,
+      proposed: compared.proposed,
+      springCombined: true,
+      duplicatePlayers: merged.duplicateCount,
+    };
+    return { status: 200, body };
+  } catch (error) {
+    const code =
+      error && typeof error === "object" && "code" in error
+        ? String((error as { code?: unknown }).code)
+        : error instanceof Error
+          ? error.name
+          : "error";
+    console.error("[division-ages] spring combined forecast failed", code);
+    return failure(500, "Could not load the forecast.");
+  }
+}
+
 export async function forecastReaders(): Promise<ForecastDeps> {
   const [{ default: prisma }, { getSeasonDivisionAges }] = await Promise.all([
     import("@/lib/prisma"),
@@ -720,5 +947,23 @@ export async function forecastReaders(): Promise<ForecastDeps> {
     loadSeasonConfig: (org, seasonYear) => getSeasonDivisionAges(org, seasonYear),
     loadRosterMap: (org) => readLeagueRosterMap(client, org),
     loadForecastSettings: (org) => readLeagueForecastSettings(client, org),
+    async listSpringLines(org, seasonYear) {
+      if (!isSpringLeagueOrg(org)) return [];
+      if (typeof client.enrollment?.findMany !== "function") {
+        throw missingStorage("Enrollment storage is not available");
+      }
+      const rows = (await client.enrollment.findMany({
+        where: { organizationId: org, seasonYear },
+        select: SPRING_ENROLLMENT_SELECT,
+      })) as Array<EnrollmentRow & { sportsConnectRowKey?: string | null }>;
+      return rows.map((row) => ({
+        fullName: row.fullName,
+        birthDate: row.birthDate,
+        orderPaymentStatus: row.orderPaymentStatus,
+        divisionName: row.divisionNameRaw,
+        ageGroup: row.ageGroup,
+        sportsConnectRowKey: row.sportsConnectRowKey?.trim() || null,
+      }));
+    },
   };
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { springCombinedRequestBlock } from "@/lib/admin/springCombined/view";
 import { gateDivisionAges } from "@/lib/ageDivisions/access";
 import { hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
@@ -13,6 +14,10 @@ export async function guardDivisionAges(
   | { ok: false; response: NextResponse }
 > {
   const auth = await ensureAdminModule(request, "DIVISION_AGES");
+  const blocked = springCombinedRequestBlock(request.nextUrl.searchParams.get("org"));
+  if (blocked && auth.ok) {
+    return { ok: false, response: NextResponse.json({ error: blocked.error }, { status: blocked.status }) };
+  }
   const gated = gateDivisionAges(
     auth.ok ? { ok: true, role: auth.role } : { ok: false, status: auth.status, message: auth.message },
     write,

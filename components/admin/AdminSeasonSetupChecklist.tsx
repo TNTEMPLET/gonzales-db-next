@@ -25,6 +25,8 @@ type ChecklistItem = {
 
 type Props = {
   targetOrg: ContentOrgId;
+  /** Combined Spring view. Loads the checklist and does not call write endpoints. */
+  readOnly?: boolean;
 };
 
 const statusStyles: Record<ChecklistItem["status"], string> = {
@@ -39,7 +41,7 @@ const statusLabels: Record<ChecklistItem["status"], string> = {
   INCOMPLETE: "Not started",
 };
 
-export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
+export default function AdminSeasonSetupChecklist({ targetOrg, readOnly = false }: Props) {
   const [seasonYear, setSeasonYear] = useState(() => getSeasonConfigForOrg(targetOrg).year);
   const [items, setItems] = useState<ChecklistItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -89,12 +91,15 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
   };
 
   useEffect(() => {
+    // Existing load-on-org effect. Combined mode skips the settings read.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchChecklist();
-    void fetchFee();
+    if (!readOnly) void fetchFee();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [targetOrg, seasonYear]);
+  }, [targetOrg, seasonYear, readOnly]);
 
   const saveFee = async () => {
+    if (readOnly) return;
     setFeeBusy(true);
     setFeeNotice("");
     setError(null);
@@ -124,6 +129,7 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
   };
 
   const toggleManual = async (itemKey: string, ageGroup: string | undefined, next: boolean) => {
+    if (readOnly) return;
     setSavingKey(`${itemKey}|${ageGroup ?? ""}`);
     setError(null);
     try {
@@ -163,6 +169,7 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
         )}
       </div>
 
+      {readOnly ? null : (
       <div className="rounded-xl border border-zinc-800 bg-zinc-950/70 p-4">
         <p className="text-sm font-semibold text-white">Parish registration fee</p>
         <p className="mt-1 text-xs text-zinc-400">
@@ -195,6 +202,7 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
         </div>
         {feeNotice ? <p className="mt-2 text-xs text-emerald-300">{feeNotice}</p> : null}
       </div>
+      )}
 
       {error && (
         <div className="rounded-lg bg-rose-500/10 border border-rose-500/30 p-3 text-xs text-rose-400">
@@ -218,7 +226,7 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
               >
                 <div className="flex flex-wrap items-center justify-between gap-3">
                   <div className="flex items-center gap-3 min-w-0">
-                    {item.manual && !item.subItems ? (
+                    {item.manual && !item.subItems && !readOnly ? (
                       <input
                         type="checkbox"
                         checked={item.status === "COMPLETE"}
@@ -266,7 +274,7 @@ export default function AdminSeasonSetupChecklist({ targetOrg }: Props) {
                           className="flex items-center justify-between rounded-lg bg-zinc-900 px-3 py-1.5 text-xs"
                         >
                           <div className="flex min-w-0 items-center gap-2">
-                            {item.manual ? (
+                            {item.manual && !readOnly ? (
                               <input
                                 type="checkbox"
                                 checked={sub.status === "COMPLETE"}

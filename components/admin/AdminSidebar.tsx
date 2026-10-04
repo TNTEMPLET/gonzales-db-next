@@ -40,6 +40,7 @@ export default function AdminSidebar({
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
 
   const currentOrgParam = searchParams.get("org");
+  const springView = currentOrgParam === "spring";
 
   useEffect(() => {
     let active = true;
@@ -75,8 +76,8 @@ export default function AdminSidebar({
   }
 
   const masterRole = adminRole ? toAdminRole(adminRole) : null;
-  const effectiveOrgParam = currentOrgParam ?? getPrimaryLiveContentOrg();
-  const orgSuffix = `?org=${encodeURIComponent(effectiveOrgParam)}`;
+  const effectiveOrgParam = springView ? "gonzales" : (currentOrgParam ?? getPrimaryLiveContentOrg());
+  const orgSuffix = springView ? "?org=spring" : `?org=${encodeURIComponent(effectiveOrgParam)}`;
   const currentMasterOrg = isContentOrgId(effectiveOrgParam) ? effectiveOrgParam : null;
 
   const allowModule = (module: AdminModule) =>
