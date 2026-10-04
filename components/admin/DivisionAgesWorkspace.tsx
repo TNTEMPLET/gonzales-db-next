@@ -10,7 +10,9 @@ import {
   divisionAgesSourceLabel,
   moveDivision,
   seasonCutoffIso,
+  setAllDivisionRosters,
   setDivisionBirthdate,
+  setDivisionRoster,
   stripBirthdatesMatchingCutoff,
 } from "@/lib/ageDivisions/draft";
 import {
@@ -119,6 +121,8 @@ export function DivisionAgesSettingsDialog({
   onStartFromLastSeason: () => void;
   onResetSeason: () => void;
 }) {
+  const [setAllMin, setSetAllMin] = useState("");
+  const [setAllMax, setSetAllMax] = useState("");
   const preview = seasonAgeHeadlineForRule(
     draft.org,
     { cutoffMonth: draft.cutoffMonth, cutoffDay: draft.cutoffDay, yearOffset: draft.yearOffset },
@@ -201,49 +205,132 @@ export function DivisionAgesSettingsDialog({
           {preview}
         </p>
 
+        <div className="mt-5 rounded-xl border border-zinc-800 p-3">
+          <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Roster size (min–max)</p>
+          <p className="mt-1 text-sm text-zinc-400">Blank uses the default 11–12. Applies to every division below.</p>
+          <div className="mt-2 flex flex-wrap items-center gap-2">
+            <input
+              aria-label="Set all roster minimum"
+              className={`${fieldClass} w-24`}
+              inputMode="numeric"
+              placeholder="11"
+              value={setAllMin}
+              onChange={(event) => {
+                const raw = event.target.value;
+                if (raw === "" || /^\d{1,2}$/.test(raw)) setSetAllMin(raw);
+              }}
+            />
+            <span aria-hidden="true" className="text-zinc-500">–</span>
+            <input
+              aria-label="Set all roster maximum"
+              className={`${fieldClass} w-24`}
+              inputMode="numeric"
+              placeholder="12"
+              value={setAllMax}
+              onChange={(event) => {
+                const raw = event.target.value;
+                if (raw === "" || /^\d{1,2}$/.test(raw)) setSetAllMax(raw);
+              }}
+            />
+            <button
+              type="button"
+              className={buttonClass}
+              data-testid="roster-set-all"
+              onClick={() =>
+                onDraft({
+                  ...draft,
+                  divisions: setAllDivisionRosters(draft.divisions, setAllMin, setAllMax),
+                })
+              }
+            >
+              Set all
+            </button>
+          </div>
+        </div>
+
         <div className="mt-5 space-y-3">
           {draft.divisions.map((division, index) => (
-            <div key={`${division.sortOrder}-${index}`} className="grid gap-2 rounded-xl border border-zinc-800 p-3 sm:grid-cols-[1fr_1.4fr_5rem_5rem_auto]">
-              <input
-                aria-label={`Default code ${index + 1}`}
-                className={fieldClass}
-                value={division.code}
-                onChange={(event) => patchDivision(index, { code: event.target.value })}
-              />
-              <input
-                aria-label={`Default label ${index + 1}`}
-                className={fieldClass}
-                value={division.label}
-                onChange={(event) => patchDivision(index, { label: event.target.value })}
-              />
-              <input
-                aria-label={`Default minimum age ${index + 1}`}
-                className={fieldClass}
-                inputMode="numeric"
-                value={division.minAge}
-                onChange={(event) => patchDivision(index, { minAge: Number(event.target.value) })}
-              />
-              <input
-                aria-label={`Default maximum age ${index + 1}`}
-                className={fieldClass}
-                inputMode="numeric"
-                value={division.maxAge}
-                onChange={(event) => patchDivision(index, { maxAge: Number(event.target.value) })}
-              />
-              <div className="flex gap-2">
-                <button type="button" className={buttonClass} onClick={() => onDraft({ ...draft, divisions: moveDivision(draft.divisions, index, -1) })}>
-                  Up
-                </button>
-                <button type="button" className={buttonClass} onClick={() => onDraft({ ...draft, divisions: moveDivision(draft.divisions, index, 1) })}>
-                  Down
-                </button>
-                <button
-                  type="button"
-                  className={buttonClass}
-                  onClick={() => onDraft({ ...draft, divisions: draft.divisions.filter((_, divisionIndex) => divisionIndex !== index) })}
-                >
-                  Remove
-                </button>
+            <div key={`${division.sortOrder}-${index}`} className="rounded-xl border border-zinc-800 p-3">
+              <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr_5rem_5rem_auto]">
+                <input
+                  aria-label={`Default code ${index + 1}`}
+                  className={fieldClass}
+                  value={division.code}
+                  onChange={(event) => patchDivision(index, { code: event.target.value })}
+                />
+                <input
+                  aria-label={`Default label ${index + 1}`}
+                  className={fieldClass}
+                  value={division.label}
+                  onChange={(event) => patchDivision(index, { label: event.target.value })}
+                />
+                <input
+                  aria-label={`Default minimum age ${index + 1}`}
+                  className={fieldClass}
+                  inputMode="numeric"
+                  value={division.minAge}
+                  onChange={(event) => patchDivision(index, { minAge: Number(event.target.value) })}
+                />
+                <input
+                  aria-label={`Default maximum age ${index + 1}`}
+                  className={fieldClass}
+                  inputMode="numeric"
+                  value={division.maxAge}
+                  onChange={(event) => patchDivision(index, { maxAge: Number(event.target.value) })}
+                />
+                <div className="flex gap-2">
+                  <button type="button" className={buttonClass} onClick={() => onDraft({ ...draft, divisions: moveDivision(draft.divisions, index, -1) })}>
+                    Up
+                  </button>
+                  <button type="button" className={buttonClass} onClick={() => onDraft({ ...draft, divisions: moveDivision(draft.divisions, index, 1) })}>
+                    Down
+                  </button>
+                  <button
+                    type="button"
+                    className={buttonClass}
+                    onClick={() => onDraft({ ...draft, divisions: draft.divisions.filter((_, divisionIndex) => divisionIndex !== index) })}
+                  >
+                    Remove
+                  </button>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-2">
+                <span className="w-full text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Roster size (min–max)</span>
+                <input
+                  aria-label={`Roster minimum ${index + 1}`}
+                  className={`${fieldClass} w-24`}
+                  inputMode="numeric"
+                  placeholder="11"
+                  value={division.rosterMin ?? ""}
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    if (raw !== "" && !/^\d{1,2}$/.test(raw)) return;
+                    onDraft({
+                      ...draft,
+                      divisions: draft.divisions.map((item, divisionIndex) =>
+                        divisionIndex === index ? setDivisionRoster(item, "rosterMin", raw) : item,
+                      ),
+                    });
+                  }}
+                />
+                <span aria-hidden="true" className="text-zinc-500">–</span>
+                <input
+                  aria-label={`Roster maximum ${index + 1}`}
+                  className={`${fieldClass} w-24`}
+                  inputMode="numeric"
+                  placeholder="12"
+                  value={division.rosterMax ?? ""}
+                  onChange={(event) => {
+                    const raw = event.target.value;
+                    if (raw !== "" && !/^\d{1,2}$/.test(raw)) return;
+                    onDraft({
+                      ...draft,
+                      divisions: draft.divisions.map((item, divisionIndex) =>
+                        divisionIndex === index ? setDivisionRoster(item, "rosterMax", raw) : item,
+                      ),
+                    });
+                  }}
+                />
               </div>
             </div>
           ))}

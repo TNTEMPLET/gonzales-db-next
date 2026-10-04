@@ -84,4 +84,35 @@ describe("division ages editor", () => {
     assert.match(html, /Reset season to league defaults/);
     assert.match(html, /Save league defaults/);
   });
+
+  it("shows a roster size field per division and a set-all control", () => {
+    const html = renderToStaticMarkup(
+      createElement(DivisionAgesSettingsDialog, {
+        seasonYear: 2027,
+        draft: {
+          org: "gonzales",
+          cutoffMonth: 4,
+          cutoffDay: 30,
+          yearOffset: 0,
+          divisions: [{ code: "9U", label: "9U", minAge: 9, maxAge: 9, sortOrder: 1, rosterMin: 10, rosterMax: 14 }],
+          saving: false,
+          loading: false,
+          message: null,
+          fieldErrors: [],
+        },
+        onDraft: () => {},
+        onSave: () => {},
+        onClose: () => {},
+        onStartFromLastSeason: () => {},
+        onResetSeason: () => {},
+      }),
+    );
+    assert.match(html, /Roster size \(min–max\)/);
+    assert.match(html, /Set all/);
+    assert.match(html, /aria-label="Roster minimum 1"/);
+    assert.match(html, /aria-label="Roster maximum 1"/);
+    assert.match(html, /value="10"/);
+    assert.match(html, /value="14"/);
+    assert.match(html, /Blank uses the default 11–12/);
+  });
 });

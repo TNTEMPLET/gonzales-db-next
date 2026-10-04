@@ -2,7 +2,8 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
-import DivisionAgesExplorer from "@/components/admin/DivisionAgesExplorer";
+import DivisionAgesExplorer, { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
+import DivisionAgesForecast from "@/components/admin/DivisionAgesForecast";
 import DivisionAgesWorkspace from "@/components/admin/DivisionAgesWorkspace";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
@@ -21,7 +22,7 @@ export function generateMetadata() {
   const site = getSiteConfig();
   return {
     title: `Division Ages | ${site.name}`,
-    description: "Cutoff dates, division birthdate ranges, and a birthdate eligibility lookup.",
+    description: "Cutoff dates, division birthdate ranges, an eligibility lookup, and a counts-only forecast.",
   };
 }
 
@@ -100,23 +101,29 @@ export default async function DivisionAgesPage({
           />
           <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Division Ages</h1>
           <p className="max-w-3xl text-zinc-400">
-            Cutoff dates, birthdate ranges, coverage warnings, and an eligibility lookup.
+            Cutoff dates, birthdate ranges, coverage warnings, and an eligibility lookup. The Forecast
+            tab compares this season&apos;s counts with a proposed cutoff.
             {canEdit ? " Admins can edit birthdates, save this season, and change league defaults." : ""}
           </p>
         </div>
-        {canEdit ? (
-          <DivisionAgesWorkspace
-            orgs={orgs}
-            defaultSeasonYear={defaultSeasonYear}
-            seasonYears={seasonYears}
-          />
-        ) : (
-          <DivisionAgesExplorer
-            orgs={orgs}
-            defaultSeasonYear={defaultSeasonYear}
-            seasonYears={seasonYears}
-          />
-        )}
+        <DivisionAgesModeTabs
+          divisions={
+            canEdit ? (
+              <DivisionAgesWorkspace
+                orgs={orgs}
+                defaultSeasonYear={defaultSeasonYear}
+                seasonYears={seasonYears}
+              />
+            ) : (
+              <DivisionAgesExplorer
+                orgs={orgs}
+                defaultSeasonYear={defaultSeasonYear}
+                seasonYears={seasonYears}
+              />
+            )
+          }
+          forecast={<DivisionAgesForecast key={orgs.join(",")} orgs={orgs} seasonYears={seasonYears} />}
+        />
       </section>
     </main>
   );

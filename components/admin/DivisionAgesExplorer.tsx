@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 
 import {
   coverageWarningLines,
@@ -24,6 +24,76 @@ type DivisionAgesViewProps = {
 
 function isCompleteBirthdate(value: string): boolean {
   return /^\d{4}-\d{2}-\d{2}$/.test(value);
+}
+
+function tabButton(selected: boolean): string {
+  return selected
+    ? "inline-flex min-h-11 items-center justify-center rounded-xl border border-zinc-100 bg-zinc-100 px-4 text-sm font-semibold text-zinc-950"
+    : "inline-flex min-h-11 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-950 px-4 text-sm font-semibold text-zinc-100 hover:border-zinc-500";
+}
+
+export function DivisionAgesModeTabs({
+  divisions,
+  forecast,
+}: {
+  divisions: ReactNode;
+  forecast: ReactNode;
+}) {
+  const [tab, setTab] = useState<"divisions" | "forecast">("divisions");
+  const [forecastMounted, setForecastMounted] = useState(false);
+
+  function select(next: "divisions" | "forecast") {
+    if (next === "forecast") setForecastMounted(true);
+    setTab(next);
+  }
+
+  return (
+    <div className="space-y-6">
+      <div role="tablist" aria-label="Division ages" className="flex flex-wrap gap-2">
+        <button
+          type="button"
+          role="tab"
+          id="division-ages-tab-divisions"
+          aria-controls="division-ages-panel-divisions"
+          aria-selected={tab === "divisions"}
+          className={tabButton(tab === "divisions")}
+          onClick={() => select("divisions")}
+        >
+          Divisions
+        </button>
+        <button
+          type="button"
+          role="tab"
+          id="division-ages-tab-forecast"
+          aria-controls="division-ages-panel-forecast"
+          aria-selected={tab === "forecast"}
+          data-testid="division-ages-forecast-tab"
+          className={tabButton(tab === "forecast")}
+          onClick={() => select("forecast")}
+        >
+          Forecast
+        </button>
+      </div>
+      <div
+        role="tabpanel"
+        id="division-ages-panel-divisions"
+        aria-labelledby="division-ages-tab-divisions"
+        hidden={tab !== "divisions"}
+      >
+        {divisions}
+      </div>
+      {forecastMounted ? (
+        <div
+          role="tabpanel"
+          id="division-ages-panel-forecast"
+          aria-labelledby="division-ages-tab-forecast"
+          hidden={tab !== "forecast"}
+        >
+          {forecast}
+        </div>
+      ) : null}
+    </div>
+  );
 }
 
 export function DivisionAgesView({

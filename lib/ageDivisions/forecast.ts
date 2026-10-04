@@ -107,6 +107,12 @@ export type ForecastRow = {
    * (in exactly one of the two division sets).
    */
   movers: number;
+  /** `0 < expected < roster.min` on that side. */
+  currentShortRoster: boolean;
+  proposedShortRoster: boolean;
+  /** Players in this division who are also eligible for another division. */
+  currentOverlap: number;
+  proposedOverlap: number;
 };
 
 export type ForecastPopulation = {
@@ -335,26 +341,36 @@ function emptySide(): ForecastSide {
   return { own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 };
 }
 
-function sideFor(
+type BuiltSide = {
+  side: ForecastSide;
+  shortRoster: boolean;
+  overlap: number;
+};
+
+function buildSide(
   assignment: BucketAssignment,
   code: string,
   present: boolean,
   options: ForecastOptions,
   roster: RosterSize,
-): ForecastSide {
-  if (!present) return emptySide();
+): BuiltSide {
+  if (!present) return { side: emptySide(), shortRoster: false, overlap: 0 };
   const row = assignment.divisions.find((division) => division.code === code);
   const own = row?.own ?? 0;
   const feeder = row?.feeder ?? 0;
   const projected = projectDivision({ own, feeder }, options);
   const teams = teamCountRange(projected.expected, roster);
   return {
-    own,
-    feeder,
-    pool: projected.pool,
-    expected: projected.expected,
-    minTeams: teams.minTeams,
-    maxTeams: teams.maxTeams,
+    side: {
+      own,
+      feeder,
+      pool: projected.pool,
+      expected: projected.expected,
+      minTeams: teams.minTeams,
+      maxTeams: teams.maxTeams,
+    },
+    shortRoster: teams.shortRoster,
+    overlap: row?.overlap ?? 0,
   };
 }
 
@@ -447,18 +463,22 @@ export function compareConfigs(
   const rows = [...meta.entries()]
     .map(([code, row]) => {
       const roster = options.rosterFor(code);
-      const currentSide = sideFor(currentAssignment, code, row.inCurrent, options, roster);
-      const proposedSide = sideFor(proposedAssignment, code, row.inProposed, options, roster);
+      const currentBuilt = buildSide(currentAssignment, code, row.inCurrent, options, roster);
+      const proposedBuilt = buildSide(proposedAssignment, code, row.inProposed, options, roster);
       return {
         code,
         label: row.label,
         sortOrder: row.sortOrder,
         inCurrent: row.inCurrent,
         inProposed: row.inProposed,
-        current: currentSide,
-        proposed: proposedSide,
-        delta: subtractSide(proposedSide, currentSide),
+        current: currentBuilt.side,
+        proposed: proposedBuilt.side,
+        delta: subtractSide(proposedBuilt.side, currentBuilt.side),
         movers: moversByCode.get(code) ?? 0,
+        currentShortRoster: currentBuilt.shortRoster,
+        proposedShortRoster: proposedBuilt.shortRoster,
+        currentOverlap: currentBuilt.overlap,
+        proposedOverlap: proposedBuilt.overlap,
       };
     })
     .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));

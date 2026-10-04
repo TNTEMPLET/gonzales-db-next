@@ -36,6 +36,12 @@ const ageField = z
   .min(0, "Age must be between 0 and 25.")
   .max(25, "Age must be between 0 and 25.");
 
+const rosterBound = z
+  .number()
+  .int("Roster size must be a whole number.")
+  .min(1, "Roster size must be between 1 and 30.")
+  .max(30, "Roster size must be between 1 and 30.");
+
 const optionalIsoDate = z
   .string()
   .trim()
@@ -112,6 +118,8 @@ const leagueDivisionSchema = z
     minAge: ageField,
     maxAge: ageField,
     sortOrder: z.number().int().min(-1000).max(10000),
+    rosterMin: rosterBound.optional(),
+    rosterMax: rosterBound.optional(),
   })
   .superRefine((division, ctx) => {
     if (division.minAge > division.maxAge) {
@@ -119,6 +127,21 @@ const leagueDivisionSchema = z
         code: "custom",
         path: ["minAge"],
         message: "Minimum age must be less than or equal to maximum age.",
+      });
+    }
+    const hasMin = division.rosterMin != null;
+    const hasMax = division.rosterMax != null;
+    if (hasMin !== hasMax) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rosterMin"],
+        message: "Enter both a minimum and a maximum roster size, or leave both blank.",
+      });
+    } else if (hasMin && hasMax && division.rosterMin! > division.rosterMax!) {
+      ctx.addIssue({
+        code: "custom",
+        path: ["rosterMin"],
+        message: "Roster minimum must be less than or equal to roster maximum.",
       });
     }
   });
@@ -262,6 +285,8 @@ function numberDivisions(divisions: DivisionAgeConfig[]): DivisionAgeConfig[] {
     };
     if (division.oldestBirthdate) next.oldestBirthdate = division.oldestBirthdate;
     if (division.youngestBirthdate) next.youngestBirthdate = division.youngestBirthdate;
+    if (division.rosterMin != null) next.rosterMin = division.rosterMin;
+    if (division.rosterMax != null) next.rosterMax = division.rosterMax;
     return next;
   });
 }
@@ -301,13 +326,18 @@ export function validateLeagueDefaults(
   const parsed = leagueDefaultsSchema.safeParse(input);
   if (!parsed.success) return failure(issueList(parsed.error));
   const divisions = numberDivisions(
-    parsed.data.divisions.map((division) => ({
-      code: division.code,
-      label: division.label,
-      minAge: division.minAge,
-      maxAge: division.maxAge,
-      sortOrder: division.sortOrder,
-    })),
+    parsed.data.divisions.map((division) => {
+      const next: DivisionAgeConfig = {
+        code: division.code,
+        label: division.label,
+        minAge: division.minAge,
+        maxAge: division.maxAge,
+        sortOrder: division.sortOrder,
+      };
+      if (division.rosterMin != null) next.rosterMin = division.rosterMin;
+      if (division.rosterMax != null) next.rosterMax = division.rosterMax;
+      return next;
+    }),
   );
   return {
     ok: true,
