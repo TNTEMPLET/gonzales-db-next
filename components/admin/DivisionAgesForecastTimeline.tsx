@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 
 import { seasonCutoffIso } from "@/lib/ageDivisions/draft";
 import {
@@ -294,6 +294,7 @@ export function DivisionAgesForecastTimeline({
   onLinkEdges,
   onReset,
   readOnly = false,
+  impact = null,
 }: {
   proposed: ProposedConfig;
   baseline: ProposedConfig | null;
@@ -308,6 +309,8 @@ export function DivisionAgesForecastTimeline({
   onReset: () => void;
   /** Hide drag, presets, and age edits. The bars, gaps, and counts stay. */
   readOnly?: boolean;
+  /** Session impact, shown under the cutoff fields while this editor is interactive. */
+  impact?: ReactNode;
 }) {
   const cutoffIso = seasonCutoffIso(proposed.cutoff, targetSeason);
   const baselineIso = baseline ? seasonCutoffIso(baseline.cutoff, targetSeason) : cutoffIso;
@@ -740,6 +743,8 @@ export function DivisionAgesForecastTimeline({
           </select>
         </label>
       </div>
+
+      {impact}
 
       <div className="space-y-2">
         <label className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-100">
