@@ -292,6 +292,7 @@ export function DivisionAgesForecastTimeline({
   onReplace,
   onLinkEdges,
   onReset,
+  readOnly = false,
 }: {
   proposed: ProposedConfig;
   baseline: ProposedConfig | null;
@@ -304,6 +305,8 @@ export function DivisionAgesForecastTimeline({
   onReplace: (next: ProposedConfig) => void;
   onLinkEdges: (value: boolean) => void;
   onReset: () => void;
+  /** Hide drag, presets, and age edits. The bars, gaps, and counts stay. */
+  readOnly?: boolean;
 }) {
   const cutoffIso = seasonCutoffIso(proposed.cutoff, targetSeason);
   const baselineIso = baseline ? seasonCutoffIso(baseline.cutoff, targetSeason) : cutoffIso;
@@ -562,6 +565,87 @@ export function DivisionAgesForecastTimeline({
   const legend = [...(proposedModel?.bands.flatMap((band) => band.members) ?? [])].sort(
     (a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code),
   );
+
+  if (readOnly) {
+    return (
+      <div className="space-y-4" data-testid="birthdate-timeline">
+        <div>
+          <h3 className="text-sm font-semibold text-white">Birthdate windows</h3>
+          <p className="mt-1 text-sm text-zinc-400">
+            Each bar is who belongs in that division. Red is a gap. Stripes are an overlap. This view is read-only.
+          </p>
+        </div>
+        <div className="overflow-x-auto" data-testid="timeline-strips">
+          <div className="min-w-[40rem] space-y-2">
+            <div data-testid="timeline-proposed">
+              {proposedModel ? (
+                <TimelineTrack
+                  model={proposedModel}
+                  interactive={false}
+                  counts={counts}
+                  selected={null}
+                  splitCursor={null}
+                  onEdgePointerDown={() => {}}
+                  onEdgePointerMove={() => {}}
+                  onEdgePointerUp={() => {}}
+                  onEdgeKeyDown={() => {}}
+                  onEdgeClick={() => {}}
+                  onEdgeFocus={() => {}}
+                  onBandClick={() => {}}
+                  onBandKeyDown={() => {}}
+                />
+              ) : (
+                <p className="text-sm text-zinc-400">No birthdate windows to show.</p>
+              )}
+            </div>
+            <div className="relative h-5">
+              {proposedModel?.ticks.map((tick) => (
+                <span
+                  key={`label-${tick.label}`}
+                  className="absolute top-0 -translate-x-1/2 text-[10px] tabular-nums text-zinc-500"
+                  style={{ left: `${tick.left}%` }}
+                >
+                  {tick.label}
+                </span>
+              ))}
+            </div>
+          </div>
+        </div>
+        <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-300">
+          {legend.map((member) => {
+            const count = counts?.find((row) => row.code === member.code);
+            return (
+              <li key={member.code} className="inline-flex items-center gap-1.5">
+                <span className="h-2.5 w-2.5 rounded-sm" style={{ backgroundColor: bandColor(member.sortOrder) }} />
+                <span>
+                  {member.label}
+                  {count ? ` · ${count.pool} players · ${formatTeamRange(count.minTeams, count.maxTeams)} teams` : ""}
+                </span>
+              </li>
+            );
+          })}
+          {proposedModel && proposedModel.gaps.length > 0 ? (
+            <li className="inline-flex items-center gap-1.5">
+              <span className="h-2.5 w-2.5 rounded-sm border border-red-400 bg-red-950" />
+              Gap
+            </li>
+          ) : null}
+          {proposedModel && proposedModel.overlaps.length > 0 ? (
+            <li className="inline-flex items-center gap-1.5">
+              <span
+                className="h-2.5 w-2.5 rounded-sm"
+                style={{
+                  backgroundImage:
+                    "repeating-linear-gradient(-45deg, #fbbf24, #fbbf24 2px, #27272a 2px, #27272a 4px)",
+                }}
+              />
+              Overlap
+            </li>
+          ) : null}
+        </ul>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-4" data-testid="birthdate-timeline">

@@ -2,6 +2,7 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
+import { DivisionAgesBuilder } from "@/components/admin/DivisionAgesBuilder";
 import DivisionAgesExplorer, { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
 import DivisionAgesForecast from "@/components/admin/DivisionAgesForecast";
 import DivisionAgesWorkspace from "@/components/admin/DivisionAgesWorkspace";
@@ -101,12 +102,17 @@ export default async function DivisionAgesPage({
           />
           <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Division Ages</h1>
           <p className="max-w-3xl text-zinc-400">
-            Cutoff dates, birthdate ranges, coverage warnings, and an eligibility lookup. The Forecast
-            tab compares this season&apos;s counts with a proposed cutoff.
+            The Division Builder starts blank so any admin can try ages, cutoffs, and player counts. It stays in this
+            browser and does not change registration or the saved table. The Divisions tab is the saved cutoff,
+            birthdate ranges, and eligibility lookup. The Forecast tab compares this season&apos;s counts with a proposed
+            cutoff.
             {canEdit ? " Admins can edit birthdates, save this season, and change league defaults." : ""}
           </p>
         </div>
         <DivisionAgesModeTabs
+          builder={
+            <DivisionAgesBuilder orgs={orgs} defaultSeasonYear={defaultSeasonYear} seasonYears={seasonYears} />
+          }
           divisions={
             canEdit ? (
               <DivisionAgesWorkspace

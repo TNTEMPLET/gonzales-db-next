@@ -35,14 +35,16 @@ function tabButton(selected: boolean): string {
 export function DivisionAgesModeTabs({
   divisions,
   forecast,
+  builder,
 }: {
   divisions: ReactNode;
   forecast: ReactNode;
+  builder?: ReactNode;
 }) {
-  const [tab, setTab] = useState<"divisions" | "forecast">("divisions");
+  const [tab, setTab] = useState<"builder" | "divisions" | "forecast">(builder ? "builder" : "divisions");
   const [forecastMounted, setForecastMounted] = useState(false);
 
-  function select(next: "divisions" | "forecast") {
+  function select(next: "builder" | "divisions" | "forecast") {
     if (next === "forecast") setForecastMounted(true);
     setTab(next);
   }
@@ -50,6 +52,20 @@ export function DivisionAgesModeTabs({
   return (
     <div className="space-y-6">
       <div role="tablist" aria-label="Division ages" className="flex flex-wrap gap-2">
+        {builder ? (
+          <button
+            type="button"
+            role="tab"
+            id="division-ages-tab-builder"
+            aria-controls="division-ages-panel-builder"
+            aria-selected={tab === "builder"}
+            data-testid="division-ages-builder-tab"
+            className={tabButton(tab === "builder")}
+            onClick={() => select("builder")}
+          >
+            Division Builder
+          </button>
+        ) : null}
         <button
           type="button"
           role="tab"
@@ -74,6 +90,16 @@ export function DivisionAgesModeTabs({
           Forecast
         </button>
       </div>
+      {builder ? (
+        <div
+          role="tabpanel"
+          id="division-ages-panel-builder"
+          aria-labelledby="division-ages-tab-builder"
+          hidden={tab !== "builder"}
+        >
+          {builder}
+        </div>
+      ) : null}
       <div
         role="tabpanel"
         id="division-ages-panel-divisions"
