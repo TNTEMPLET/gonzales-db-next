@@ -168,7 +168,6 @@ function view(overrides: Partial<ComponentProps<typeof DivisionAgesForecastView>
     onRetentionText: () => {},
     onResetRetention: () => {},
     onCutoff: () => {},
-    onDivision: () => {},
     onDivisions: () => {},
     onLinkEdges: () => {},
     onResetProposed: () => {},
@@ -377,6 +376,21 @@ describe("forecast tab", () => {
     const cleared = setDivisionRoster(all[0]!, "rosterMin", "");
     assert.equal("rosterMin" in cleared, false);
     assert.equal(cleared.rosterMax, 14);
+  });
+
+  it("renders the birthdate timeline, cutoff presets, and precise date entry", () => {
+    const html = renderToStaticMarkup(view());
+    assert.match(html, /data-testid="birthdate-timeline"/);
+    assert.match(html, /data-testid="timeline-proposed"/);
+    assert.match(html, /Little League \(Aug 31\)/);
+    assert.match(html, /DYB \(Apr 30\)/);
+    assert.match(html, /data-testid="cutoff-preset-custom"/);
+    assert.match(html, /data-testid="age-editor"/);
+    assert.match(html, /Minimum age for 9U/);
+    assert.match(html, /data-testid="precise-dates"/);
+    assert.match(html, /data-testid="reset-proposed"/);
+    assert.match(html, /born on or after May 1, 2017/);
+    assert.match(html, /Move neighbor edge too/);
   });
 
   it("shows the effective dates, edited badge, in/out movers, and where kids move", () => {

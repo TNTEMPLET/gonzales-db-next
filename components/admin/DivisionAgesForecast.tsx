@@ -6,9 +6,10 @@ import { effectiveRange } from "@/lib/ageDivisions/compute";
 import {
   divisionAgesSourceLabel,
   seasonCutoffIso,
-  stripBirthdatesMatchingCutoff,
 } from "@/lib/ageDivisions/draft";
 import type { ForecastSide } from "@/lib/ageDivisions/forecast";
+import { applyAgeSpan } from "@/lib/ageDivisions/forecastTimeline";
+import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
 import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
@@ -53,6 +54,8 @@ import {
 import type { DivisionAgesSource } from "@/lib/ageDivisions/schema";
 import type { DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDivisions/types";
 import { getOrgDisplayName, type ContentOrgId } from "@/lib/siteConfig";
+
+const FORECAST_MAX_WAIT_MS = 400;
 
 const fieldClass =
   "min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-base text-white";
@@ -214,10 +217,10 @@ export function DivisionAgesForecastView({
   onRetentionText,
   onResetRetention,
   onCutoff,
-  onDivision,
   onDivisions,
   onLinkEdges,
   onResetProposed,
+  onReplace = () => {},
 }: {
   org: ContentOrgId;
   orgs: ContentOrgId[];
@@ -247,10 +250,10 @@ export function DivisionAgesForecastView({
   onRetentionText: (value: string) => void;
   onResetRetention: () => void;
   onCutoff: (patch: Partial<LeagueAgeRule>) => void;
-  onDivision: (index: number, next: DivisionAgeConfig) => void;
   onDivisions: (divisions: DivisionAgeConfig[]) => void;
   onLinkEdges: (value: boolean) => void;
   onResetProposed: () => void;
+  onReplace?: (next: ProposedConfig) => void;
 }) {
   const retentionValue = shownRetentionPercent({
     dirty: retentionDirty,
@@ -273,6 +276,20 @@ export function DivisionAgesForecastView({
   const selectedCodes = proposed ? combineCodes.filter((code) => proposed.divisions.some((division) => division.code === code)) : [];
   const scenario =
     baseline && proposed && forecast ? structuralScenario(baseline, proposed, forecast, targetSeason) : null;
+  const timelineCounts = useMemo<TimelineCount[] | null>(
+    () =>
+      forecast
+        ? forecast.rows.map((row) => ({
+            code: row.code,
+            label: row.label,
+            pool: row.proposed.pool,
+            expected: row.proposed.expected,
+            minTeams: row.proposed.minTeams,
+            maxTeams: row.proposed.maxTeams,
+          }))
+        : null,
+    [forecast],
+  );
 
   function toggleCombine(code: string, checked: boolean) {
     setScenarioError(null);
@@ -414,16 +431,11 @@ export function DivisionAgesForecastView({
             <h2 className="text-xl font-semibold text-white">Proposed cutoffs</h2>
             <p className="mt-1 text-sm text-zinc-400">Starts as a copy of the current table for {targetSeason}. Nothing here is saved.</p>
           </div>
-          <div className="flex flex-col items-start gap-2 sm:items-end">
-            {editedSummary ? (
-              <p className="text-sm text-violet-100" data-testid="edited-summary">
-                {editedSummary}
-              </p>
-            ) : null}
-            <button type="button" className={buttonClass} disabled={!proposed} onClick={onResetProposed}>
-              Reset proposed to current
-            </button>
-          </div>
+          {editedSummary ? (
+            <p className="text-sm text-violet-100" data-testid="edited-summary">
+              {editedSummary}
+            </p>
+          ) : null}
         </div>
         {configError ? (
           <p className="mb-3 text-sm text-amber-200" role="status">
@@ -433,58 +445,22 @@ export function DivisionAgesForecastView({
         {!proposed ? <p className="text-sm text-zinc-300">Loading the current division ages…</p> : null}
         {proposed ? (
           <div className="space-y-4">
-            <div className="grid gap-3 sm:grid-cols-3">
-              <label className="text-sm text-zinc-300">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Cutoff month</span>
-                <select
-                  className={fieldClass}
-                  aria-label="Proposed cutoff month"
-                  value={proposed.cutoff.cutoffMonth}
-                  onChange={(event) => onCutoff({ cutoffMonth: Number(event.target.value) })}
-                >
-                  {Array.from({ length: 12 }, (_, index) => (
-                    <option key={index + 1} value={index + 1}>
-                      {index + 1}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="text-sm text-zinc-300">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Cutoff day</span>
-                <input
-                  className={fieldClass}
-                  aria-label="Proposed cutoff day"
-                  data-testid="proposed-cutoff-day"
-                  inputMode="numeric"
-                  value={proposed.cutoff.cutoffDay}
-                  onChange={(event) => onCutoff({ cutoffDay: Number(event.target.value) })}
-                />
-              </label>
-              <label className="text-sm text-zinc-300">
-                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Year offset</span>
-                <select
-                  className={fieldClass}
-                  aria-label="Proposed year offset"
-                  value={proposed.cutoff.yearOffset}
-                  onChange={(event) => onCutoff({ yearOffset: Number(event.target.value) })}
-                >
-                  <option value={-1}>-1</option>
-                  <option value={0}>0</option>
-                  <option value={1}>+1</option>
-                  <option value={2}>+2</option>
-                </select>
-              </label>
-            </div>
-            <label className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-100">
-              <input
-                type="checkbox"
-                data-testid="link-edges"
-                checked={linkEdges}
-                onChange={(event) => onLinkEdges(event.target.checked)}
-              />
-              Move neighbor edge too
-            </label>
-            <div className="space-y-3">
+            <DivisionAgesForecastTimeline
+              proposed={proposed}
+              baseline={baseline}
+              targetSeason={targetSeason}
+              linkEdges={linkEdges}
+              counts={timelineCounts}
+              countsLoading={loading}
+              onDivisions={onDivisions}
+              onCutoff={onCutoff}
+              onReplace={onReplace}
+              onLinkEdges={onLinkEdges}
+              onReset={onResetProposed}
+            />
+            <details className="rounded-xl border border-zinc-800" data-testid="precise-dates">
+              <summary className="cursor-pointer px-3 py-3 text-sm font-semibold text-white">Precise dates</summary>
+              <div className="space-y-3 px-3 pb-3">
               {proposed.divisions.map((division, index) => {
                 const range = cutoffIso ? effectiveRange(division, cutoffIso) : null;
                 const edited = editedCodes.includes(division.code);
@@ -517,15 +493,11 @@ export function DivisionAgesForecastView({
                         aria-label={`Proposed minimum age ${index + 1}`}
                         inputMode="numeric"
                         value={division.minAge}
-                        onChange={(event) =>
-                          onDivision(
-                            index,
-                            stripBirthdatesMatchingCutoff(
-                              { ...division, minAge: Number(event.target.value) },
-                              cutoffIso,
-                            ),
-                          )
-                        }
+                        onChange={(event) => {
+                          const minAge = Number(event.target.value);
+                          if (!Number.isInteger(minAge)) return;
+                          onDivisions(applyAgeSpan(proposed.divisions, index, minAge, division.maxAge, cutoffIso, linkEdges));
+                        }}
                       />
                     </label>
                     <label className="text-sm text-zinc-300">
@@ -535,15 +507,11 @@ export function DivisionAgesForecastView({
                         aria-label={`Proposed maximum age ${index + 1}`}
                         inputMode="numeric"
                         value={division.maxAge}
-                        onChange={(event) =>
-                          onDivision(
-                            index,
-                            stripBirthdatesMatchingCutoff(
-                              { ...division, maxAge: Number(event.target.value) },
-                              cutoffIso,
-                            ),
-                          )
-                        }
+                        onChange={(event) => {
+                          const maxAge = Number(event.target.value);
+                          if (!Number.isInteger(maxAge)) return;
+                          onDivisions(applyAgeSpan(proposed.divisions, index, division.minAge, maxAge, cutoffIso, linkEdges));
+                        }}
                       />
                     </label>
                     <label className="text-sm text-zinc-300">
@@ -604,7 +572,6 @@ export function DivisionAgesForecastView({
                 </div>
                 );
               })}
-            </div>
             <div className="mt-4 flex flex-wrap items-end gap-3" data-testid="scenario-controls">
               <button
                 type="button"
@@ -659,6 +626,8 @@ export function DivisionAgesForecastView({
               Combine adjacent divisions into one window, or split one division at a birthdate. The result stays in this
               browser until you reset it.
             </p>
+              </div>
+            </details>
           </div>
         ) : null}
       </section>
@@ -1010,8 +979,11 @@ export default function DivisionAgesForecast({
   const [forecastError, setForecastError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const retentionDirtyRef = useRef(retentionDirty);
-  retentionDirtyRef.current = retentionDirty;
+  useEffect(() => {
+    retentionDirtyRef.current = retentionDirty;
+  }, [retentionDirty]);
   const requestGen = useRef(0);
+  const dirtySince = useRef<number | null>(null);
 
   const years = useMemo(
     () => forecastSeasonChoices(seasonYears, sourceSeason, targetSeason),
@@ -1082,13 +1054,17 @@ export default function DivisionAgesForecast({
 
   useEffect(() => {
     if (!ready) {
-      setLoading(false);
+      dirtySince.current = null;
       return;
     }
     const generation = requestGen.current + 1;
     requestGen.current = generation;
     const controller = new AbortController();
+    if (dirtySince.current == null) dirtySince.current = Date.now();
+    const elapsed = Date.now() - dirtySince.current;
+    const wait = elapsed >= FORECAST_MAX_WAIT_MS ? 0 : FORECAST_DEBOUNCE_MS;
     const handle = setTimeout(() => {
+      dirtySince.current = null;
       void (async () => {
         if (requestGen.current !== generation) return;
         setLoading(true);
@@ -1125,7 +1101,7 @@ export default function DivisionAgesForecast({
           if (requestGen.current === generation) setLoading(false);
         }
       })();
-    }, FORECAST_DEBOUNCE_MS);
+    }, wait);
     return () => {
       controller.abort();
       clearTimeout(handle);
@@ -1163,7 +1139,7 @@ export default function DivisionAgesForecast({
       baseline={baseline}
       currentSourceLabel={sourceLabel}
       forecast={forecast}
-      loading={loading}
+      loading={ready && loading}
       error={forecastError}
       configError={configError}
       linkEdges={linkEdges}
@@ -1203,12 +1179,8 @@ export default function DivisionAgesForecast({
         if (!proposed) return;
         commitProposed(withProposedCutoff(proposed, patch));
       }}
-      onDivision={(index, next) => {
-        if (!proposed) return;
-        commitProposed({
-          ...proposed,
-          divisions: proposed.divisions.map((division, divisionIndex) => (divisionIndex === index ? next : division)),
-        });
+      onReplace={(next) => {
+        commitProposed(next);
       }}
       onDivisions={(divisions) => {
         if (!proposed) return;
