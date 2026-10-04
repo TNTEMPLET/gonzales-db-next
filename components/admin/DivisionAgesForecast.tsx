@@ -2,16 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import { effectiveRange } from "@/lib/ageDivisions/compute";
 import {
   divisionAgesSourceLabel,
   seasonCutoffIso,
-  setDivisionBirthdate,
   stripBirthdatesMatchingCutoff,
 } from "@/lib/ageDivisions/draft";
 import type { ForecastSide } from "@/lib/ageDivisions/forecast";
 import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
+  applyLinkedEdge,
+  betweenDivisionCount,
   buildForecastRequest,
   carryoverReferenceLabel,
   cloneProposed,
@@ -19,17 +21,26 @@ import {
   dataSourceLabel,
   defaultIncludeFeeder,
   defaultRetentionText,
+  editedDivisionCodes,
+  forecastDraftKey,
+  forecastEditedSummary,
   forecastQueryKey,
   forecastSeasonChoices,
   formatDelta,
   formatDeltaTeams,
   formatRetentionPercent,
   formatTeamRange,
+  gapWarningText,
   isForecastResponse,
+  moverCellCount,
+  moverTooltip,
+  newOverlapMessages,
   parseRetentionPercent,
   populationTotal,
   retentionSourceLabel,
+  sameProposedConfig,
   shownRetentionPercent,
+  whereKidsMoveLines,
   withProposedCutoff,
   type ForecastResponse,
   type ProposedConfig,
@@ -42,6 +53,78 @@ const fieldClass =
   "min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-base text-white";
 const buttonClass =
   "inline-flex min-h-11 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 hover:border-zinc-500 disabled:opacity-60";
+const DRAFT_PREFIX = "gonzales-forecast-draft:v1:";
+
+function dateFieldClass(overridden: boolean): string {
+  return overridden
+    ? "min-h-11 w-full rounded-xl border border-sky-400 bg-zinc-950 px-3 text-base text-white"
+    : "min-h-11 w-full rounded-xl border border-dashed border-zinc-600 bg-zinc-950 px-3 text-base text-zinc-300";
+}
+
+function isStoredProposed(value: unknown): value is ProposedConfig {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  const record = value as {
+    cutoff?: { cutoffMonth?: unknown; cutoffDay?: unknown; yearOffset?: unknown };
+    divisions?: unknown;
+  };
+  if (!record.cutoff || typeof record.cutoff !== "object") return false;
+  if (typeof record.cutoff.cutoffMonth !== "number" || typeof record.cutoff.cutoffDay !== "number") return false;
+  if (typeof record.cutoff.yearOffset !== "number" || !Array.isArray(record.divisions)) return false;
+  return record.divisions.every((division) => {
+    if (!division || typeof division !== "object") return false;
+    const row = division as DivisionAgeConfig;
+    return typeof row.code === "string" && typeof row.label === "string" && typeof row.sortOrder === "number";
+  });
+}
+
+function readStoredDraft(
+  org: string,
+  targetSeason: number,
+  memory: Map<string, ProposedConfig>,
+): ProposedConfig | null {
+  const key = forecastDraftKey(org, targetSeason);
+  const cached = memory.get(key);
+  if (cached) return cloneProposed(cached);
+  if (typeof sessionStorage === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(DRAFT_PREFIX + key);
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (!isStoredProposed(parsed)) return null;
+    const cloned = cloneProposed(parsed);
+    memory.set(key, cloned);
+    return cloneProposed(cloned);
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredDraft(
+  org: string,
+  targetSeason: number,
+  proposed: ProposedConfig | null,
+  baseline: ProposedConfig | null,
+  memory: Map<string, ProposedConfig>,
+): void {
+  const key = forecastDraftKey(org, targetSeason);
+  const storageKey = DRAFT_PREFIX + key;
+  if (!proposed || !baseline || sameProposedConfig(proposed, baseline)) {
+    memory.delete(key);
+    try {
+      sessionStorage.removeItem(storageKey);
+    } catch {
+      /* private mode or a full quota */
+    }
+    return;
+  }
+  const cloned = cloneProposed(proposed);
+  memory.set(key, cloned);
+  try {
+    sessionStorage.setItem(storageKey, JSON.stringify(cloned));
+  } catch {
+    /* private mode or a full quota */
+  }
+}
 
 function readError(payload: unknown, fallback: string): string {
   if (payload && typeof payload === "object" && "error" in payload && typeof payload.error === "string") {
@@ -115,6 +198,9 @@ export function DivisionAgesForecastView({
   loading,
   error,
   configError,
+  linkEdges,
+  editedCodes,
+  editedSummary,
   onOrg,
   onSourceSeason,
   onTargetSeason,
@@ -123,6 +209,8 @@ export function DivisionAgesForecastView({
   onResetRetention,
   onCutoff,
   onDivision,
+  onDivisions,
+  onLinkEdges,
   onResetProposed,
 }: {
   org: ContentOrgId;
@@ -142,6 +230,9 @@ export function DivisionAgesForecastView({
   loading: boolean;
   error: string | null;
   configError: string | null;
+  linkEdges: boolean;
+  editedCodes: readonly string[];
+  editedSummary: string;
   onOrg: (org: ContentOrgId) => void;
   onSourceSeason: (year: number) => void;
   onTargetSeason: (year: number) => void;
@@ -150,6 +241,8 @@ export function DivisionAgesForecastView({
   onResetRetention: () => void;
   onCutoff: (patch: Partial<LeagueAgeRule>) => void;
   onDivision: (index: number, next: DivisionAgeConfig) => void;
+  onDivisions: (divisions: DivisionAgeConfig[]) => void;
+  onLinkEdges: (value: boolean) => void;
   onResetProposed: () => void;
 }) {
   const retentionValue = shownRetentionPercent({
@@ -159,6 +252,13 @@ export function DivisionAgesForecastView({
     org,
   });
   const cutoffIso = proposed ? seasonCutoffIso(proposed.cutoff, targetSeason) : "";
+  const gapMessage = forecast
+    ? gapWarningText(forecast.proposedWarnings, forecast.proposed.unmatched, forecast.includeFeeder)
+    : null;
+  const overlapMessages = forecast ? newOverlapMessages(forecast.currentWarnings, forecast.proposedWarnings) : [];
+  const moveLines = forecast
+    ? whereKidsMoveLines(forecast.flows, { includeFeeder: forecast.includeFeeder, feederShare: forecast.feederShare })
+    : [];
 
   return (
     <div className="space-y-6" data-testid="forecast-tab">
@@ -266,9 +366,16 @@ export function DivisionAgesForecastView({
             <h2 className="text-xl font-semibold text-white">Proposed cutoffs</h2>
             <p className="mt-1 text-sm text-zinc-400">Starts as a copy of the current table for {targetSeason}. Nothing here is saved.</p>
           </div>
-          <button type="button" className={buttonClass} disabled={!proposed} onClick={onResetProposed}>
-            Reset proposed to current
-          </button>
+          <div className="flex flex-col items-start gap-2 sm:items-end">
+            {editedSummary ? (
+              <p className="text-sm text-violet-100" data-testid="edited-summary">
+                {editedSummary}
+              </p>
+            ) : null}
+            <button type="button" className={buttonClass} disabled={!proposed} onClick={onResetProposed}>
+              Reset proposed to current
+            </button>
+          </div>
         </div>
         {configError ? (
           <p className="mb-3 text-sm text-amber-200" role="status">
@@ -320,11 +427,28 @@ export function DivisionAgesForecastView({
                 </select>
               </label>
             </div>
+            <label className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-100">
+              <input
+                type="checkbox"
+                data-testid="link-edges"
+                checked={linkEdges}
+                onChange={(event) => onLinkEdges(event.target.checked)}
+              />
+              Move neighbor edge too
+            </label>
             <div className="space-y-3">
-              {proposed.divisions.map((division, index) => (
+              {proposed.divisions.map((division, index) => {
+                const range = cutoffIso ? effectiveRange(division, cutoffIso) : null;
+                const edited = editedCodes.includes(division.code);
+                return (
                 <div key={`${division.code}-${index}`} className="rounded-xl border border-zinc-800 p-3">
                   <p className="text-sm font-semibold text-white">
                     {division.label} <span className="font-normal text-zinc-500">{division.code}</span>
+                    {edited ? (
+                      <span className="ml-2 inline-flex rounded-full border border-violet-400/40 bg-violet-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-100" data-testid="division-edited">
+                        edited
+                      </span>
+                    ) : null}
                   </p>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     <label className="text-sm text-zinc-300">
@@ -364,38 +488,63 @@ export function DivisionAgesForecastView({
                       />
                     </label>
                     <label className="text-sm text-zinc-300">
-                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Oldest override</span>
+                      <span className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+                        Oldest
+                        <span className={range?.oldestOverridden ? "text-sky-300" : "text-zinc-500"}>
+                          {range?.oldestOverridden ? "override" : "calc"}
+                        </span>
+                      </span>
                       <input
                         type="date"
-                        className={fieldClass}
+                        className={dateFieldClass(range?.oldestOverridden === true)}
                         aria-label={`Proposed oldest birthdate ${index + 1}`}
-                        value={division.oldestBirthdate ?? ""}
+                        data-testid={`proposed-oldest-${index + 1}`}
+                        value={range?.oldest ?? ""}
                         onChange={(event) =>
-                          onDivision(
-                            index,
-                            setDivisionBirthdate(division, "oldestBirthdate", event.target.value, cutoffIso),
+                          onDivisions(
+                            applyLinkedEdge(
+                              proposed.divisions,
+                              index,
+                              "oldestBirthdate",
+                              event.target.value,
+                              cutoffIso,
+                              linkEdges,
+                            ),
                           )
                         }
                       />
                     </label>
                     <label className="text-sm text-zinc-300">
-                      <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Youngest override</span>
+                      <span className="mb-1 flex items-center gap-2 text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">
+                        Youngest
+                        <span className={range?.youngestOverridden ? "text-sky-300" : "text-zinc-500"}>
+                          {range?.youngestOverridden ? "override" : "calc"}
+                        </span>
+                      </span>
                       <input
                         type="date"
-                        className={fieldClass}
+                        className={dateFieldClass(range?.youngestOverridden === true)}
                         aria-label={`Proposed youngest birthdate ${index + 1}`}
-                        value={division.youngestBirthdate ?? ""}
+                        data-testid={`proposed-youngest-${index + 1}`}
+                        value={range?.youngest ?? ""}
                         onChange={(event) =>
-                          onDivision(
-                            index,
-                            setDivisionBirthdate(division, "youngestBirthdate", event.target.value, cutoffIso),
+                          onDivisions(
+                            applyLinkedEdge(
+                              proposed.divisions,
+                              index,
+                              "youngestBirthdate",
+                              event.target.value,
+                              cutoffIso,
+                              linkEdges,
+                            ),
                           )
                         }
                       />
                     </label>
                   </div>
                 </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         ) : null}
@@ -413,8 +562,18 @@ export function DivisionAgesForecastView({
         ) : null}
         {forecast ? (
           <>
+            {gapMessage ? (
+              <p className="mb-3 rounded-xl border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm text-red-100" role="alert" data-testid="gap-warning">
+                {gapMessage}
+              </p>
+            ) : null}
+            {overlapMessages.map((message) => (
+              <p key={message} className="mb-3 rounded-xl border border-amber-400/50 bg-amber-400/10 px-3 py-2 text-sm text-amber-100" role="status" data-testid="overlap-warning">
+                {message}
+              </p>
+            ))}
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[72rem] text-left text-sm" data-testid="forecast-table">
+              <table className="w-full min-w-[80rem] text-left text-sm" data-testid="forecast-table">
                 <caption className="sr-only">Current and proposed division headcount. Counts only.</caption>
                 <thead className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
                   <tr>
@@ -428,13 +587,16 @@ export function DivisionAgesForecastView({
                       Proposed
                     </th>
                     <th className="py-2 pr-3 font-semibold" rowSpan={2}>
+                      Δ players
+                    </th>
+                    <th className="py-2 pr-3 font-semibold" rowSpan={2}>
                       Δ expected
                     </th>
                     <th className="py-2 pr-3 font-semibold" rowSpan={2}>
                       Δ teams
                     </th>
                     <th className="py-2 font-semibold" rowSpan={2}>
-                      Movers
+                      In / out
                     </th>
                   </tr>
                   <tr>
@@ -464,6 +626,9 @@ export function DivisionAgesForecastView({
                         <EmptySideCells />
                       )}
                       <td className="py-2 pr-3 align-top tabular-nums">
+                        {pool.current && pool.proposed ? formatDelta(pool.proposed.pool - pool.current.pool) : "—"}
+                      </td>
+                      <td className="py-2 pr-3 align-top tabular-nums">
                         {pool.current && pool.proposed ? formatDelta(pool.proposed.expected - pool.current.expected) : "—"}
                       </td>
                       <td className="py-2 pr-3 align-top tabular-nums">
@@ -480,7 +645,14 @@ export function DivisionAgesForecastView({
                     return (
                       <tr key={row.code} className="border-t border-zinc-800 text-zinc-200">
                         <td className="py-2 pr-3 align-top">
-                          <p className="font-medium text-white">{row.label}</p>
+                          <p className="font-medium text-white">
+                            {row.label}
+                            {editedCodes.includes(row.code) ? (
+                              <span className="ml-2 inline-flex rounded-full border border-violet-400/40 bg-violet-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-100" data-testid="division-edited">
+                                edited
+                              </span>
+                            ) : null}
+                          </p>
                           {shared ? (
                             <p
                               className="mt-1 inline-flex rounded-full border border-sky-400/40 bg-sky-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-100"
@@ -501,23 +673,45 @@ export function DivisionAgesForecastView({
                         </td>
                         <SideCells side={row.current} shortRoster={row.currentShortRoster === true} includeFeeder={forecast.includeFeeder} />
                         <SideCells side={row.proposed} shortRoster={row.proposedShortRoster === true} includeFeeder={forecast.includeFeeder} />
+                        <td className="py-2 pr-3 align-top tabular-nums" data-testid="delta-players">
+                          {formatDelta(row.delta.pool)}
+                        </td>
                         <td className="py-2 pr-3 align-top tabular-nums">{formatDelta(row.delta.expected)}</td>
                         <td className="py-2 pr-3 align-top tabular-nums">
                           {formatDeltaTeams(row.delta.minTeams, row.delta.maxTeams)}
                         </td>
-                        <td className="py-2 align-top tabular-nums">{row.movers}</td>
+                        <td
+                          className="py-2 align-top tabular-nums"
+                          data-testid="movers-in-out"
+                          title={moverTooltip(row.moversIn, row.moversOut)}
+                        >
+                          +{moverCellCount(row.moversIn, forecast.includeFeeder)} / −{moverCellCount(row.moversOut, forecast.includeFeeder)}
+                        </td>
                       </tr>
                     );
                   })}
                 </tbody>
               </table>
             </div>
+            <div className="mt-4" data-testid="where-kids-move">
+              <h3 className="text-sm font-semibold text-white">Where kids move</h3>
+              {moveLines.length === 0 ? (
+                <p className="mt-1 text-sm text-zinc-400">No players change divisions.</p>
+              ) : (
+                <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-zinc-200">
+                  {moveLines.map((line) => (
+                    <li key={line}>{line}</li>
+                  ))}
+                </ul>
+              )}
+            </div>
             <div className="mt-4 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2" data-testid="forecast-footer">
               <p data-testid="league-totals">
                 League total, each player once: current {forecast.league.current.expected} expected, teams{" "}
                 {formatTeamRange(forecast.league.current.minTeams, forecast.league.current.maxTeams)}; proposed{" "}
                 {forecast.league.proposed.expected} expected, teams{" "}
-                {formatTeamRange(forecast.league.proposed.minTeams, forecast.league.proposed.maxTeams)}.
+                {formatTeamRange(forecast.league.proposed.minTeams, forecast.league.proposed.maxTeams)}. Δ players{" "}
+                {formatDelta(forecast.league.delta.pool)}.
               </p>
               <p>
                 Players, counted once: current {populationTotal(forecast.current.distinctTotal)}, proposed{" "}
@@ -528,6 +722,10 @@ export function DivisionAgesForecastView({
               </p>
               <p>
                 Aged out: current {forecast.current.agedOut.total}, proposed {forecast.proposed.agedOut.total}.
+              </p>
+              <p data-testid="between-divisions">
+                Between divisions: current {betweenDivisionCount(forecast.current.unmatched, forecast.includeFeeder)}, proposed{" "}
+                {betweenDivisionCount(forecast.proposed.unmatched, forecast.includeFeeder)}.
               </p>
               <p>
                 Data source: {dataSourceLabel(forecast.source)}. Birthdate coverage:{" "}
@@ -585,6 +783,8 @@ export default function DivisionAgesForecast({
   const [retentionOverride, setRetentionOverride] = useState<number | null>(null);
   const [proposed, setProposed] = useState<ProposedConfig | null>(null);
   const [baseline, setBaseline] = useState<ProposedConfig | null>(null);
+  const [linkEdges, setLinkEdges] = useState(true);
+  const draftsRef = useRef(new Map<string, ProposedConfig>());
   const [loadedSource, setLoadedSource] = useState<DivisionAgesSource | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
@@ -612,10 +812,21 @@ export default function DivisionAgesForecast({
   );
   const requestKey = forecastQueryKey(org, requestBody);
   const ready = proposed != null || configError != null;
+  const editedCodes = useMemo(
+    () => (proposed && baseline ? editedDivisionCodes(proposed, baseline) : []),
+    [proposed, baseline],
+  );
+  const editedSummary = proposed && baseline ? forecastEditedSummary(proposed, baseline) : "";
+
+  function commitProposed(next: ProposedConfig | null, base: ProposedConfig | null = baseline) {
+    setProposed(next);
+    writeStoredDraft(org, targetSeason, next, base, draftsRef.current);
+  }
 
   useEffect(() => {
     let cancelled = false;
-    setProposed(null);
+    const draft = readStoredDraft(org, targetSeason, draftsRef.current);
+    setProposed(draft);
     setBaseline(null);
     setConfigError(null);
     setLoadedSource(null);
@@ -639,7 +850,7 @@ export default function DivisionAgesForecast({
         const copy = cloneProposed({ cutoff: payload.cutoff, divisions: payload.divisions });
         setLoadedSource(payload.source);
         setBaseline(copy);
-        setProposed(cloneProposed(copy));
+        setProposed(draft ?? cloneProposed(copy));
       } catch {
         if (!cancelled) setConfigError("Could not load the current division ages.");
       }
@@ -703,6 +914,7 @@ export default function DivisionAgesForecast({
   }, [ready, requestKey, org, requestBody]);
 
   function selectOrg(next: ContentOrgId) {
+    writeStoredDraft(org, targetSeason, proposed, baseline, draftsRef.current);
     setOrg(next);
     setIncludeFeeder(defaultIncludeFeeder(next));
     setRetentionDirty(false);
@@ -734,12 +946,21 @@ export default function DivisionAgesForecast({
       loading={loading}
       error={forecastError}
       configError={configError}
+      linkEdges={linkEdges}
+      editedCodes={editedCodes}
+      editedSummary={editedSummary}
       onOrg={selectOrg}
       onSourceSeason={(year) => {
+        writeStoredDraft(org, targetSeason, proposed, baseline, draftsRef.current);
         setSourceSeason(year);
         setTargetSeason(year + 1);
       }}
-      onTargetSeason={setTargetSeason}
+      onTargetSeason={(year) => {
+        if (year === targetSeason) return;
+        writeStoredDraft(org, targetSeason, proposed, baseline, draftsRef.current);
+        setTargetSeason(year);
+      }}
+      onLinkEdges={setLinkEdges}
       onIncludeFeeder={setIncludeFeeder}
       onRetentionText={(value) => {
         setRetentionDirty(true);
@@ -758,15 +979,27 @@ export default function DivisionAgesForecast({
         setRetentionOverride(null);
         setRetentionText(defaultRetentionText(org));
       }}
-      onCutoff={(patch) => setProposed((current) => (current ? withProposedCutoff(current, patch) : current))}
-      onDivision={(index, next) =>
-        setProposed((current) =>
-          current
-            ? { ...current, divisions: current.divisions.map((division, divisionIndex) => (divisionIndex === index ? next : division)) }
-            : current,
-        )
-      }
-      onResetProposed={() => setProposed(baseline ? cloneProposed(baseline) : null)}
+      onCutoff={(patch) => {
+        if (!proposed) return;
+        commitProposed(withProposedCutoff(proposed, patch));
+      }}
+      onDivision={(index, next) => {
+        if (!proposed) return;
+        commitProposed({
+          ...proposed,
+          divisions: proposed.divisions.map((division, divisionIndex) => (divisionIndex === index ? next : division)),
+        });
+      }}
+      onDivisions={(divisions) => {
+        if (!proposed) return;
+        commitProposed({ ...proposed, divisions });
+      }}
+      onResetProposed={() => {
+        if (!baseline) return;
+        const edited = proposed != null && !sameProposedConfig(proposed, baseline);
+        if (edited && !window.confirm("Discard the proposed cutoff changes for this season?")) return;
+        commitProposed(cloneProposed(baseline), baseline);
+      }}
     />
   );
 }
