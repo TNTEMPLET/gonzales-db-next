@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 
 import prisma from "@/lib/prisma";
 
+import { PLAYER_REG_HISTORY_REPORT_KIND } from "./registrationHistoryKind";
 import type {
   SportsConnectImportRunView,
   SportsConnectReportKind,
@@ -43,8 +44,14 @@ const RUN_STATUSES = new Set<string>([
   "CANCELLED",
 ]);
 
-function asStatus(value: string): SportsConnectRunStatus {
+function asStatus(value: string): SportsConnectImportRunView["status"] {
+  if (value === "UNDONE") return "UNDONE";
   return RUN_STATUSES.has(value) ? (value as SportsConnectRunStatus) : "PREVIEW";
+}
+
+function asReportKind(value: string): SportsConnectImportRunView["reportKind"] {
+  if (value === PLAYER_REG_HISTORY_REPORT_KIND) return PLAYER_REG_HISTORY_REPORT_KIND;
+  return isSportsConnectReportKind(value) ? value : "PLAYER_REG";
 }
 
 function asSummary(value: Prisma.JsonValue | null): Record<string, unknown> | null {
@@ -74,9 +81,7 @@ export function mapImportRunRow(row: {
     id: row.id,
     organizationId: row.organizationId,
     seasonYear: row.seasonYear,
-    reportKind: isSportsConnectReportKind(row.reportKind)
-      ? row.reportKind
-      : "PLAYER_REG",
+    reportKind: asReportKind(row.reportKind),
     status: asStatus(row.status),
     sourceFileName: row.sourceFileName,
     presetId: row.presetId,

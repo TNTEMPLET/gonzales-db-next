@@ -4,6 +4,7 @@ import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { draftApiError } from "@/lib/draft/apiError";
 import { normalizeLooseName } from "@/app/api/admin/teams/import/route";
 import { toCsvDocument } from "@/lib/export/csv";
+import { excludeRegistrationHistoryEnrollment } from "@/lib/enrollment/operationalEnrollment";
 import prisma from "@/lib/prisma";
 import type { TeamCoachRole } from "@prisma/client";
 
@@ -71,11 +72,11 @@ async function buildExportRows(session: {
   });
 
   const enrollments = await prisma.enrollment.findMany({
-    where: {
+    where: excludeRegistrationHistoryEnrollment({
       organizationId: session.organizationId,
       seasonYear: session.seasonYear,
       ageGroup: session.ageGroup,
-    },
+    }),
     select: { fullName: true, sportsConnectPlayerId: true },
   });
   const enrollmentsByName = new Map<string, { sportsConnectPlayerId: string | null }[]>();

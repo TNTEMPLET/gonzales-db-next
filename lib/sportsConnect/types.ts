@@ -123,8 +123,8 @@ export type SportsConnectImportRunView = {
   id: string;
   organizationId: string;
   seasonYear: number;
-  reportKind: SportsConnectReportKind;
-  status: SportsConnectRunStatus;
+  reportKind: SportsConnectReportKind | "PLAYER_REG_HISTORY";
+  status: SportsConnectRunStatus | "UNDONE";
   sourceFileName: string | null;
   presetId: string | null;
   summary: Record<string, unknown> | null;

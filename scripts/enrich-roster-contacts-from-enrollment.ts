@@ -111,6 +111,20 @@ function findNicknameEnrollmentMatch(
   return sameTeamLast[0]!;
 }
 
+/**
+ * This script reads an export file, not the Enrollment table, so a
+ * registration-history import cannot change its matches. Non-completed and
+ * umpire rows are ignored so a combined export cannot fill a roster contact
+ * from a cancelled or umpire line.
+ */
+function rowEligibleForContactEnrich(row: EnrollmentRow): boolean {
+  const status = String(row["Order Payment Status"] || "").trim().toLowerCase();
+  if (status && status !== "completed") return false;
+  const division = String(row["Division Name"] || row["Division"] || "");
+  if (division.toLowerCase().includes("umpire")) return false;
+  return true;
+}
+
 function findEnrollmentMatch(
   enrollmentRows: EnrollmentRow[],
   playerFullName: string,
@@ -151,9 +165,11 @@ async function main() {
   const workbook = XLSX.readFile(enrollmentPath);
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error("Enrollment workbook has no sheets.");
-  const enrollmentRows = XLSX.utils.sheet_to_json<EnrollmentRow>(workbook.Sheets[sheetName]!, {
-    defval: "",
-  });
+  const enrollmentRows = XLSX.utils
+    .sheet_to_json<EnrollmentRow>(workbook.Sheets[sheetName]!, {
+      defval: "",
+    })
+    .filter(rowEligibleForContactEnrich);
 
   const csv = readFileSync(inPath, "utf8");
   const table = parseCsv(csv);

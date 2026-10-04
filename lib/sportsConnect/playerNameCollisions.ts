@@ -1,6 +1,8 @@
 import "server-only";
 
+import { excludeRegistrationHistoryEnrollment } from "@/lib/enrollment/operationalEnrollment";
 import prisma from "@/lib/prisma";
+import { PLAYER_REG_HISTORY_REPORT_KIND } from "@/lib/sportsConnect/registrationHistoryKind";
 import { normalizeLooseName } from "@/app/api/admin/teams/import/route";
 import type {
   PlayerNameCollisionEnrollmentRow,
@@ -36,7 +38,7 @@ export async function getPlayerNameCollisionReport(params: {
 
   const [enrollments, teamPlayers] = await Promise.all([
     prisma.enrollment.findMany({
-      where: { organizationId, seasonYear },
+      where: excludeRegistrationHistoryEnrollment({ organizationId, seasonYear }),
       select: {
         id: true,
         fullName: true,
@@ -183,7 +185,10 @@ async function snapshotAndUpsertReview(params: {
   const { organizationId, seasonYear, ageGroup, normalizedName, findingType } = params;
   const [enrollmentIds, teamPlayerIds] = await Promise.all([
     prisma.enrollment
-      .findMany({ where: { organizationId, seasonYear, ageGroup }, select: { id: true, fullName: true } })
+      .findMany({
+        where: excludeRegistrationHistoryEnrollment({ organizationId, seasonYear, ageGroup }),
+        select: { id: true, fullName: true },
+      })
       .then((rows) => rows.filter((r) => normalizeLooseName(r.fullName) === normalizedName).map((r) => r.id).sort()),
     prisma.teamPlayer
       .findMany({
@@ -325,8 +330,14 @@ export async function createMissingTeamPlayerFromEnrollment(params: {
   teamId?: string | null;
   adminId: string | null;
 }): Promise<{ teamPlayerId: string }> {
-  const enrollment = await prisma.enrollment.findUnique({ where: { id: params.enrollmentId } });
+  const enrollment = await prisma.enrollment.findUnique({
+    where: { id: params.enrollmentId },
+    include: { importRun: { select: { reportKind: true } } },
+  });
   if (!enrollment) throw new Error("Enrollment row not found.");
+  if (enrollment.importRun?.reportKind === PLAYER_REG_HISTORY_REPORT_KIND) {
+    throw new Error("Registration history rows stay off the roster.");
+  }
 
   let teamId = params.teamId || enrollment.teamId;
   if (!teamId) {

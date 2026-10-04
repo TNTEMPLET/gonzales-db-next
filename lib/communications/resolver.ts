@@ -1,5 +1,6 @@
 import type { AdminRole, CommunicationAudienceLogicalMode, CommunicationAudienceRuleType } from "@prisma/client";
 
+import { excludeRegistrationHistoryEnrollment } from "@/lib/enrollment/operationalEnrollment";
 import prisma from "@/lib/prisma";
 
 import {
@@ -290,12 +291,12 @@ async function fetchDivisionParentCandidates(rule: AudienceRuleInput): Promise<A
   if (!organizationId || !seasonYear || ageGroups.length === 0) return [];
 
   const enrollments = await prisma.enrollment.findMany({
-    where: {
+    where: excludeRegistrationHistoryEnrollment({
       organizationId,
       seasonYear,
       ageGroup: { in: ageGroups },
       guardianEmail: { not: null },
-    },
+    }),
     select: {
       id: true,
       organizationId: true,
