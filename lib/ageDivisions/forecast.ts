@@ -6,12 +6,20 @@
  */
 
 import {
+  calculatedRange,
+  coverageWarnings,
   effectiveCutoffDate,
   effectiveRange,
   eligibleDivisions,
   leagueAge,
 } from "./compute";
-import type { DivisionAgeConfig, LeagueAgeRule, LeagueDivisionConfig } from "./types";
+import type { CoverageWarning, DivisionAgeConfig, LeagueAgeRule, LeagueDivisionConfig } from "./types";
+
+/** Aug 31 age cutoff. Year offset is applied by the caller via the target season year. */
+export const LITTLE_LEAGUE_RULE: LeagueAgeRule = { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 };
+
+/** Apr 30 age cutoff. Year offset is applied by the caller via the target season year. */
+export const DYB_RULE: LeagueAgeRule = { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 };
 
 /** Aggregate players sharing a birth date. No names. */
 export type BirthBucket = {
@@ -107,6 +115,10 @@ export type ForecastRow = {
    * (in exactly one of the two division sets).
    */
   movers: number;
+  /** Players who enter this division. Raw counts, before the return rate and feeder share. */
+  moversIn: PoolSplit;
+  /** Players who leave this division. Raw counts, before the return rate and feeder share. */
+  moversOut: PoolSplit;
   /** `0 < expected < roster.min` on that side. */
   currentShortRoster: boolean;
   proposedShortRoster: boolean;
@@ -144,6 +156,19 @@ export type ForecastPopulation = {
   unmatched: PoolSplit;
 };
 
+/**
+ * Players who move from one eligible set to another.
+ * `from` and `to` are the sorted division codes joined with `+`, or
+ * `none:tooYoung` | `none:agedOut` | `none:gap` when no division matches.
+ */
+export type ForecastFlow = {
+  from: string;
+  to: string;
+  own: number;
+  feeder: number;
+  total: number;
+};
+
 export type CompareConfigsResult = {
   rows: ForecastRow[];
   /** Overlapping divisions. Totals use each pool once instead of summing its members. */
@@ -152,6 +177,10 @@ export type CompareConfigsResult = {
   league: LeagueTotals;
   /** Players whose eligible division-code set differs, counted once. */
   movers: number;
+  /** One entry per from → to among movers. Totals sum to `movers`. */
+  flows: ForecastFlow[];
+  currentWarnings: CoverageWarning[];
+  proposedWarnings: CoverageWarning[];
   current: ForecastPopulation;
   proposed: ForecastPopulation;
 };
@@ -218,6 +247,22 @@ function assertCount(count: number): void {
   if (!Number.isFinite(count) || count < 0) {
     throw new RangeError(`Birth bucket count must be a finite number ≥ 0 (got ${count}).`);
   }
+}
+
+function placementKey(
+  birthDate: string,
+  codes: readonly string[],
+  config: ForecastConfig,
+  targetSeasonYear: number,
+): string {
+  if (codes.length > 0) return [...codes].sort((a, b) => a.localeCompare(b)).join("+");
+  const cutoff = effectiveCutoffDate(config.cutoff, targetSeasonYear);
+  const bounds = coveredBounds(config, targetSeasonYear);
+  const age = leagueAge(birthDate, cutoff);
+  if (!Number.isFinite(age) || bounds == null) return "none:gap";
+  if (birthDate < bounds.oldest) return "none:agedOut";
+  if (birthDate > bounds.youngest) return "none:tooYoung";
+  return "none:gap";
 }
 
 function eligibleCodes(birthDate: string, config: ForecastConfig, targetSeasonYear: number): string[] {
@@ -671,8 +716,15 @@ export function compareConfigs(
   }
 
   const moversByCode = new Map<string, number>();
-  for (const code of meta.keys()) moversByCode.set(code, 0);
+  const moversInByCode = new Map<string, PoolSplit>();
+  const moversOutByCode = new Map<string, PoolSplit>();
+  for (const code of meta.keys()) {
+    moversByCode.set(code, 0);
+    moversInByCode.set(code, emptySplit());
+    moversOutByCode.set(code, emptySplit());
+  }
   let movers = 0;
+  const flowMap = new Map<string, ForecastFlow>();
 
   for (const bucket of buckets) {
     assertPool(bucket.pool);
@@ -689,8 +741,22 @@ export function compareConfigs(
     for (const code of codes) {
       if (currentSet.has(code) === proposedSet.has(code)) continue;
       moversByCode.set(code, (moversByCode.get(code) ?? 0) + bucket.count);
+      const direction = currentSet.has(code) ? moversOutByCode : moversInByCode;
+      const split = direction.get(code) ?? emptySplit();
+      addSplit(split, bucket.pool, bucket.count);
+      direction.set(code, split);
     }
+    const from = placementKey(birthDate, currentCodes, current, targetSeasonYear);
+    const to = placementKey(birthDate, proposedCodes, proposed, targetSeasonYear);
+    if (from === to) continue;
+    const flowKey = `${from}\0${to}`;
+    const flow = flowMap.get(flowKey) ?? { from, to, ...emptySplit() };
+    addSplit(flow, bucket.pool, bucket.count);
+    flowMap.set(flowKey, flow);
   }
+  const flows = [...flowMap.values()].sort(
+    (a, b) => b.total - a.total || a.from.localeCompare(b.from) || a.to.localeCompare(b.to),
+  );
 
   const { pools, currentIds, proposedIds } = collectPools(
     buckets,
@@ -715,6 +781,8 @@ export function compareConfigs(
         proposed: proposedBuilt.side,
         delta: subtractSide(proposedBuilt.side, currentBuilt.side),
         movers: moversByCode.get(code) ?? 0,
+        moversIn: moversInByCode.get(code) ?? emptySplit(),
+        moversOut: moversOutByCode.get(code) ?? emptySplit(),
         currentShortRoster: currentBuilt.shortRoster,
         proposedShortRoster: proposedBuilt.shortRoster,
         currentOverlap: currentBuilt.overlap,
@@ -736,6 +804,9 @@ export function compareConfigs(
       delta: subtractSide(leagueProposed, leagueCurrent),
     },
     movers,
+    flows,
+    currentWarnings: coverageWarnings(current.divisions, effectiveCutoffDate(current.cutoff, targetSeasonYear)),
+    proposedWarnings: coverageWarnings(proposed.divisions, effectiveCutoffDate(proposed.cutoff, targetSeasonYear)),
     current: populationOf(currentAssignment),
     proposed: populationOf(proposedAssignment),
   };
@@ -745,6 +816,113 @@ export function compareConfigs(
  * Spring→Fall carryover. Null when the spring distinct count is 0
  * (no rate to compute). Otherwise `carriedToFall / springDistinct`.
  */
+export type EligibilitySide = {
+  own: number;
+  feeder: number;
+};
+
+/**
+ * One division's age span (minAge..maxAge) counted under both cutoff rules.
+ * Windows come from `calculatedRange`, not from birthdate overrides.
+ * Counts are raw headcount, before the return rate and feeder share.
+ */
+export type EligibilityContrast = {
+  code: string;
+  label: string;
+  sortOrder: number;
+  minAge: number;
+  maxAge: number;
+  llOldest: string;
+  llYoungest: string;
+  dybOldest: string;
+  dybYoungest: string;
+  ll: EligibilitySide;
+  dyb: EligibilitySide;
+  both: EligibilitySide;
+  llOnly: EligibilitySide;
+  dybOnly: EligibilitySide;
+};
+
+function emptyEligibilitySide(): EligibilitySide {
+  return { own: 0, feeder: 0 };
+}
+
+function addEligibility(side: EligibilitySide, pool: BirthBucket["pool"], count: number): void {
+  side[pool] += count;
+}
+
+function inBirthWindow(birthDate: string, oldest: string, youngest: string): boolean {
+  return Boolean(oldest && youngest && birthDate >= oldest && birthDate <= youngest);
+}
+
+/** LL vs DYB counts for each division's age span. Duplicate codes keep the first division. */
+export function eligibilityContrasts(
+  buckets: readonly BirthBucket[],
+  divisions: readonly DivisionAgeConfig[],
+  targetSeasonYear: number,
+): EligibilityContrast[] {
+  const llCutoff = effectiveCutoffDate(LITTLE_LEAGUE_RULE, targetSeasonYear);
+  const dybCutoff = effectiveCutoffDate(DYB_RULE, targetSeasonYear);
+  const rows: EligibilityContrast[] = [];
+  const seen = new Set<string>();
+  const ordered = [...divisions].sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));
+  for (const division of ordered) {
+    if (seen.has(division.code)) continue;
+    seen.add(division.code);
+    const llWindow = calculatedRange(division, llCutoff);
+    const dybWindow = calculatedRange(division, dybCutoff);
+    const row: EligibilityContrast = {
+      code: division.code,
+      label: division.label,
+      sortOrder: division.sortOrder,
+      minAge: division.minAge,
+      maxAge: division.maxAge,
+      llOldest: llWindow.oldest,
+      llYoungest: llWindow.youngest,
+      dybOldest: dybWindow.oldest,
+      dybYoungest: dybWindow.youngest,
+      ll: emptyEligibilitySide(),
+      dyb: emptyEligibilitySide(),
+      both: emptyEligibilitySide(),
+      llOnly: emptyEligibilitySide(),
+      dybOnly: emptyEligibilitySide(),
+    };
+    for (const bucket of buckets) {
+      if (bucket.count === 0) continue;
+      assertPool(bucket.pool);
+      assertCount(bucket.count);
+      const birthDate = bucket.birthDate.trim();
+      const inLl = inBirthWindow(birthDate, row.llOldest, row.llYoungest);
+      const inDyb = inBirthWindow(birthDate, row.dybOldest, row.dybYoungest);
+      if (inLl) addEligibility(row.ll, bucket.pool, bucket.count);
+      if (inDyb) addEligibility(row.dyb, bucket.pool, bucket.count);
+      if (inLl && inDyb) addEligibility(row.both, bucket.pool, bucket.count);
+      else if (inLl) addEligibility(row.llOnly, bucket.pool, bucket.count);
+      else if (inDyb) addEligibility(row.dybOnly, bucket.pool, bucket.count);
+    }
+    rows.push(row);
+  }
+  return rows;
+}
+
+/**
+ * Eligibility for the current and proposed division lists. A code present in
+ * both uses the proposed age span.
+ */
+export function eligibilityForConfigs(
+  buckets: readonly BirthBucket[],
+  current: readonly DivisionAgeConfig[],
+  proposed: readonly DivisionAgeConfig[],
+  targetSeasonYear: number,
+): EligibilityContrast[] {
+  const byCode = new Map<string, DivisionAgeConfig>();
+  for (const division of current) {
+    if (!byCode.has(division.code)) byCode.set(division.code, division);
+  }
+  for (const division of proposed) byCode.set(division.code, division);
+  return eligibilityContrasts(buckets, [...byCode.values()], targetSeasonYear);
+}
+
 export function carryoverRate(springDistinct: number, carriedToFall: number): number | null {
   if (!Number.isFinite(springDistinct) || !Number.isFinite(carriedToFall)) return null;
   if (springDistinct === 0) return null;

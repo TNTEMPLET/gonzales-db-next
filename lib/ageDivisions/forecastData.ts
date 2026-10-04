@@ -1,7 +1,8 @@
 /**
  * Read-only forecast loader. Birth dates are read only to build in-memory
- * counts. The returned object is per-division aggregates: no names, dates,
- * contact fields, or row ids.
+ * counts. The returned object is per-division aggregates: no names, player
+ * birth dates, contact fields, or row ids. Coverage warnings and LL/DYB
+ * eligibility include division window dates only.
  */
 
 import "server-only";
@@ -19,7 +20,9 @@ import {
   DEFAULT_ROSTER,
   carryoverRate,
   compareConfigs,
+  eligibilityForConfigs,
   type BirthBucket,
+  type EligibilityContrast,
   type ForecastConfig,
   type RosterSize,
 } from "./forecast";
@@ -103,6 +106,10 @@ export type ForecastPayload = {
   sharedPools: ReturnType<typeof compareConfigs>["sharedPools"];
   league: ReturnType<typeof compareConfigs>["league"];
   movers: number;
+  flows: ReturnType<typeof compareConfigs>["flows"];
+  currentWarnings: ReturnType<typeof compareConfigs>["currentWarnings"];
+  proposedWarnings: ReturnType<typeof compareConfigs>["proposedWarnings"];
+  eligibility: EligibilityContrast[];
   current: ReturnType<typeof compareConfigs>["current"];
   proposed: ReturnType<typeof compareConfigs>["proposed"];
 };
@@ -590,8 +597,9 @@ export async function runDivisionForecast(
 
     const current = toForecastConfig(currentView);
     const proposed = proposedConfig ?? current;
+    const buckets = [...bucketsFor(own.players, "own"), ...bucketsFor(feederPlayers, "feeder")];
     const compared = compareConfigs(
-      [...bucketsFor(own.players, "own"), ...bucketsFor(feederPlayers, "feeder")],
+      buckets,
       current,
       proposed,
       targetSeasonYear,
@@ -642,6 +650,10 @@ export async function runDivisionForecast(
       sharedPools: compared.sharedPools,
       league: compared.league,
       movers: compared.movers,
+      flows: compared.flows,
+      currentWarnings: compared.currentWarnings,
+      proposedWarnings: compared.proposedWarnings,
+      eligibility: eligibilityForConfigs(buckets, current.divisions, proposed.divisions, targetSeasonYear),
       current: compared.current,
       proposed: compared.proposed,
     };

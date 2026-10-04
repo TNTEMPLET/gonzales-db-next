@@ -118,7 +118,9 @@ function assertNoPii(value: unknown, path: string, leaked: string[]): void {
   if (typeof value !== "string") return;
   assert.equal(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value), false, `${path} email`);
   assert.equal(/\d{3}[-.\s]\d{3}[-.\s]\d{4}/.test(value), false, `${path} phone`);
-  assert.equal(/\d{4}-\d{2}-\d{2}/.test(value), false, `${path} date`);
+  const coverageWindow = /\.(currentWarnings|proposedWarnings)\[\d+\]\.(from|to)$/.test(path);
+  const eligibilityWindow = /\.eligibility\[\d+\]\.(llOldest|llYoungest|dybOldest|dybYoungest)$/.test(path);
+  if (!coverageWindow && !eligibilityWindow) assert.equal(/\d{4}-\d{2}-\d{2}/.test(value), false, `${path} date`);
   assert.equal(/birthdate/i.test(value), false, `${path} birth label`);
   for (const secret of leaked) {
     assert.equal(value.includes(secret), false, `${path} leaked ${secret}`);
@@ -558,6 +560,21 @@ describe("forecast configs", () => {
     assert.equal(division(result, "9U").proposed.own, 0);
     assert.equal(division(result, "8U").inCurrent, false);
     assert.ok(result.movers > 0);
+    assert.ok(result.flows.some((flow) => flow.from === "9U" && flow.total > 0));
+    assert.equal(result.flows.reduce((sum, flow) => sum + flow.total, 0), result.movers);
+    assert.ok(Array.isArray(result.currentWarnings));
+    assert.ok(Array.isArray(result.proposedWarnings));
+    assert.equal(division(result, "9U").moversOut.own, 1);
+    assert.equal(division(result, "9U").moversOut.total, division(result, "9U").movers);
+    assert.equal(division(result, "9U").moversIn.total, 0);
+    const nineEligibility = result.eligibility.find((row) => row.code === "9U");
+    assert.ok(nineEligibility);
+    assert.equal(nineEligibility.ll.own, 1);
+    assert.equal(nineEligibility.dyb.own, 1);
+    assert.equal(nineEligibility.both.own, 1);
+    assert.equal(nineEligibility.llOnly.own, 0);
+    assert.equal(nineEligibility.dybOnly.own, 0);
+    assert.equal(nineEligibility.ll.feeder, 0);
   });
 
   it("uses league roster bounds when they are stored and the default 11-12 otherwise", async () => {

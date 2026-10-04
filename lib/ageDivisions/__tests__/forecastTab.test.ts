@@ -5,16 +5,30 @@ import { describe, it } from "node:test";
 
 import { DivisionAgesForecastView } from "@/components/admin/DivisionAgesForecast";
 import { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
+import { effectiveRange } from "../compute";
 import { setAllDivisionRosters, setDivisionRoster } from "../draft";
-import type { ForecastSide } from "../forecast";
+import type { ForecastSide, PoolSplit } from "../forecast";
 import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
+  applyLinkedEdge,
+  betweenDivisionCount,
   buildForecastRequest,
+  combineDivisions,
+  eligibilityShown,
+  splitDivisionAt,
+  structuralScenario,
   carryoverReferenceLabel,
   defaultIncludeFeeder,
+  editedDivisionCodes,
+  forecastDraftKey,
+  forecastEditedSummary,
   forecastQueryKey,
+  gapWarningText,
+  newOverlapMessages,
+  sameProposedConfig,
   shownRetentionPercent,
+  whereKidsMoveLines,
   withProposedCutoff,
   type ForecastResponse,
   type ProposedConfig,
@@ -23,6 +37,10 @@ import type { DivisionAgeConfig } from "../types";
 
 function side(overrides: Partial<ForecastSide> = {}): ForecastSide {
   return { own: 10, feeder: 0, pool: 10, expected: 3, minTeams: 1, maxTeams: 1, ...overrides };
+}
+
+function split(own = 0, feeder = 0): PoolSplit {
+  return { own, feeder, total: own + feeder };
 }
 
 function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
@@ -56,6 +74,8 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
         proposed,
         delta: side({ own: 8, feeder: 0, pool: 8, expected: 8, minTeams: 3, maxTeams: 4 }),
         movers: 4,
+        moversIn: split(3, 1),
+        moversOut: split(1, 0),
         currentShortRoster: false,
         proposedShortRoster: false,
         currentOverlap: 0,
@@ -73,6 +93,8 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
         proposed: side({ own: 5, feeder: 0, pool: 5, expected: 5, minTeams: 1, maxTeams: 1 }),
         delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
         movers: 0,
+        moversIn: split(),
+        moversOut: split(),
         currentShortRoster: true,
         proposedShortRoster: true,
         currentOverlap: 0,
@@ -88,6 +110,9 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
       delta: side({ own: 8, feeder: 0, pool: 8, expected: 8, minTeams: 3, maxTeams: 4 }),
     },
     movers: 4,
+    flows: [{ from: "10U", to: "9U", own: 3, feeder: 1, total: 4 }],
+    currentWarnings: [],
+    proposedWarnings: [],
     current: {
       distinctTotal: { own: 80, feeder: 12, total: 92 },
       tooYoung: { own: 1, feeder: 0, total: 1 },
@@ -100,6 +125,7 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
       agedOut: { own: 1, feeder: 0, total: 1 },
       unmatched: { own: 0, feeder: 0, total: 0 },
     },
+    eligibility: [],
     ...overrides,
   };
 }
@@ -143,7 +169,13 @@ function view(overrides: Partial<ComponentProps<typeof DivisionAgesForecastView>
     onResetRetention: () => {},
     onCutoff: () => {},
     onDivision: () => {},
+    onDivisions: () => {},
+    onLinkEdges: () => {},
     onResetProposed: () => {},
+    baseline: null,
+    linkEdges: true,
+    editedCodes: [],
+    editedSummary: "",
     ...overrides,
   });
 }
@@ -261,6 +293,8 @@ describe("forecast tab", () => {
           proposed: side({ own: 20, feeder: 0, pool: 20, expected: 20, minTeams: 2, maxTeams: 2 }),
           delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
           movers: 0,
+          moversIn: split(),
+          moversOut: split(),
           currentShortRoster: false,
           proposedShortRoster: false,
           currentOverlap: 20,
@@ -343,5 +377,257 @@ describe("forecast tab", () => {
     const cleared = setDivisionRoster(all[0]!, "rosterMin", "");
     assert.equal("rosterMin" in cleared, false);
     assert.equal(cleared.rosterMax, 14);
+  });
+
+  it("shows the effective dates, edited badge, in/out movers, and where kids move", () => {
+    const html = renderToStaticMarkup(
+      view({
+        editedCodes: ["9U"],
+        editedSummary: "1 division edited",
+      }),
+    );
+    assert.match(inputTag(html, "proposed-oldest-1"), /value="2017-05-01"/);
+    assert.match(inputTag(html, "proposed-youngest-1"), /value="2018-04-30"/);
+    assert.match(html, />calc</);
+    assert.match(inputTag(html, "link-edges"), /checked/);
+    assert.match(html, /Move neighbor edge too/);
+    assert.match(html, /1 division edited/);
+    assert.match(html, /Δ players/);
+    assert.match(html, /data-testid="movers-in-out"/);
+    assert.match(html, /\+4 \/ −1/);
+    assert.match(html, /Where kids move/);
+    assert.match(html, /3 own: 10U → 9U/);
+    assert.match(html, /1 feeder \(×10% share ≈ 0.1\): 10U → 9U/);
+    assert.match(html, /Between divisions: current 0, proposed 0/);
+    assert.match(html, /Δ players \+8/);
+    assert.doesNotMatch(html, /data-testid="gap-warning"/);
+  });
+
+  it("shows a gap banner and a new overlap, and hides the built-in overlap", () => {
+    const forecast = response({
+      includeFeeder: false,
+      proposedWarnings: [
+        { kind: "gap", from: "2017-05-01", to: "2017-08-31", divisionCodes: ["9U KP", "10U KP"] },
+        { kind: "overlap", from: "2018-01-01", to: "2018-04-30", divisionCodes: ["8U MINOR", "9U KP"] },
+        { kind: "overlap", from: "2020-05-01", to: "2021-04-30", divisionCodes: ["6U MINOR", "6U MAJOR"] },
+      ],
+      currentWarnings: [
+        { kind: "overlap", from: "2020-05-01", to: "2021-04-30", divisionCodes: ["6U MAJOR", "6U MINOR"] },
+      ],
+      proposed: {
+        distinctTotal: { own: 394, feeder: 0, total: 394 },
+        tooYoung: { own: 0, feeder: 0, total: 0 },
+        agedOut: { own: 0, feeder: 0, total: 0 },
+        unmatched: { own: 33, feeder: 7, total: 40 },
+      },
+    });
+    const html = renderToStaticMarkup(view({ forecast, includeFeeder: false }));
+    assert.match(html, /data-testid="gap-warning"/);
+    assert.match(html, /33 players fall between 9U KP and 10U KP \(2017-05-01\.\.2017-08-31\) and are not counted/);
+    assert.match(html, /New overlap: 8U MINOR and 9U KP/);
+    assert.doesNotMatch(html, /New overlap: 6U/);
+    assert.match(html, /Between divisions: current 0, proposed 33/);
+  });
+});
+
+describe("what-if editor helpers", () => {
+  const cutoff = "2027-04-30";
+  const divisions: DivisionAgeConfig[] = [
+    { code: "8U MINOR", label: "8U Minor", minAge: 8, maxAge: 8, sortOrder: 6 },
+    { code: "9U KP", label: "9U Kid Pitch", minAge: 9, maxAge: 9, sortOrder: 7 },
+    { code: "10U KP", label: "10U Kid Pitch", minAge: 10, maxAge: 10, sortOrder: 8 },
+    { code: "6U MINOR", label: "6U Minor", minAge: 6, maxAge: 6, sortOrder: 3 },
+    { code: "6U MAJOR", label: "6U Major", minAge: 6, maxAge: 6, sortOrder: 4 },
+    { code: "5U TB", label: "5U", minAge: 5, maxAge: 5, sortOrder: 2 },
+    { code: "7U MINOR", label: "7U", minAge: 7, maxAge: 7, sortOrder: 5 },
+  ];
+
+  it("moves the next-older youngest when the oldest edge moves", () => {
+    const nine = divisions.findIndex((division) => division.code === "9U KP");
+    const linked = applyLinkedEdge(divisions, nine, "oldestBirthdate", "2017-09-01", cutoff, true);
+    const byCode = new Map(linked.map((division) => [division.code, division]));
+    assert.equal(byCode.get("9U KP")?.oldestBirthdate, "2017-09-01");
+    assert.equal(byCode.get("10U KP")?.youngestBirthdate, "2017-08-31");
+    assert.equal(byCode.get("8U MINOR")?.oldestBirthdate, undefined);
+
+    const alone = applyLinkedEdge(divisions, nine, "oldestBirthdate", "2017-09-01", cutoff, false);
+    const aloneByCode = new Map(alone.map((division) => [division.code, division]));
+    assert.equal(aloneByCode.get("9U KP")?.oldestBirthdate, "2017-09-01");
+    assert.equal(aloneByCode.get("10U KP")?.youngestBirthdate, undefined);
+  });
+
+  it("moves the next-younger oldest and shared 6U windows together", () => {
+    const nine = divisions.findIndex((division) => division.code === "9U KP");
+    const younger = applyLinkedEdge(divisions, nine, "youngestBirthdate", "2018-08-31", cutoff, true);
+    const byCode = new Map(younger.map((division) => [division.code, division]));
+    assert.equal(byCode.get("9U KP")?.youngestBirthdate, "2018-08-31");
+    assert.equal(byCode.get("8U MINOR")?.oldestBirthdate, "2018-09-01");
+
+    const minor = divisions.findIndex((division) => division.code === "6U MINOR");
+    const siblings = applyLinkedEdge(divisions, minor, "youngestBirthdate", "2021-01-31", cutoff, true);
+    const siblingByCode = new Map(siblings.map((division) => [division.code, division]));
+    assert.equal(siblingByCode.get("6U MINOR")?.youngestBirthdate, "2021-01-31");
+    assert.equal(siblingByCode.get("6U MAJOR")?.youngestBirthdate, "2021-01-31");
+    assert.equal(siblingByCode.get("5U TB")?.oldestBirthdate, "2021-02-01");
+    assert.equal(siblingByCode.get("7U MINOR")?.youngestBirthdate, undefined);
+  });
+
+  it("keeps a draft key per org and season and describes edited divisions", () => {
+    assert.equal(forecastDraftKey("gonzales", 2027), "gonzales|2027");
+    const baseline: ProposedConfig = {
+      cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+      divisions: [
+        { code: "9U KP", label: "9U", minAge: 9, maxAge: 9, sortOrder: 1 },
+        { code: "10U KP", label: "10U", minAge: 10, maxAge: 10, sortOrder: 2 },
+      ],
+    };
+    const edited: ProposedConfig = {
+      ...baseline,
+      divisions: [
+        { code: "9U KP", label: "9U", minAge: 9, maxAge: 9, sortOrder: 1, oldestBirthdate: "2017-09-01" },
+        { code: "10U KP", label: "10U", minAge: 10, maxAge: 10, sortOrder: 2, youngestBirthdate: "2017-08-31" },
+      ],
+    };
+    assert.equal(sameProposedConfig(baseline, baseline), true);
+    assert.deepEqual(editedDivisionCodes(edited, baseline), ["9U KP", "10U KP"]);
+    assert.equal(forecastEditedSummary(edited, baseline), "2 divisions edited");
+    assert.equal(whereKidsMoveLines(
+      [
+        { from: "9U KP", to: "10U KP", own: 33, feeder: 7, total: 40 },
+        { from: "8U MINOR", to: "9U KP", own: 0, feeder: 47, total: 47 },
+      ],
+      { includeFeeder: true, feederShare: 0.1 },
+    )[0], "47 feeder (×10% share ≈ 4.7): 8U MINOR → 9U KP");
+    assert.equal(betweenDivisionCount({ own: 33, feeder: 7, total: 40 }, false), 33);
+    assert.equal(betweenDivisionCount({ own: 33, feeder: 7, total: 40 }, true), 40);
+    assert.equal(
+      gapWarningText(
+        [{ kind: "gap", from: "2017-05-01", to: "2017-08-31", divisionCodes: ["9U KP", "10U KP"] }],
+        { own: 33, feeder: 0, total: 33 },
+        false,
+      ),
+      "33 players fall between 9U KP and 10U KP (2017-05-01..2017-08-31) and are not counted.",
+    );
+    assert.deepEqual(
+      newOverlapMessages(
+        [{ kind: "overlap", from: "2020-05-01", to: "2021-04-30", divisionCodes: ["6U MAJOR", "6U MINOR"] }],
+        [{ kind: "overlap", from: "2020-05-01", to: "2021-04-30", divisionCodes: ["6U MINOR", "6U MAJOR"] }],
+      ),
+      [],
+    );
+  });
+
+  it("combines adjacent divisions, splits one window, and renders eligibility", () => {
+    const cutoff = "2027-04-30";
+    const baseline: ProposedConfig = {
+      cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+      divisions: [
+        { code: "7U MINOR", label: "7U Minor", minAge: 7, maxAge: 7, sortOrder: 5 },
+        { code: "8U MINOR", label: "8U Minor", minAge: 8, maxAge: 8, sortOrder: 6 },
+        { code: "9U KP", label: "9U", minAge: 9, maxAge: 9, sortOrder: 7 },
+      ],
+    };
+    const blocked = combineDivisions(baseline.divisions, ["7U MINOR", "9U KP"], cutoff);
+    assert.equal(blocked.ok, false);
+    const combined = combineDivisions(baseline.divisions, ["7U MINOR", "8U MINOR"], cutoff);
+    assert.equal(combined.ok, true);
+    if (!combined.ok) return;
+    assert.deepEqual(
+      combined.divisions.map((division) => division.code),
+      ["7/8U MINOR", "9U KP"],
+    );
+    assert.equal(combined.divisions[0]?.minAge, 7);
+    assert.equal(combined.divisions[0]?.maxAge, 8);
+    assert.equal(combined.divisions[0]?.oldestBirthdate, undefined);
+    assert.equal(combined.divisions[0]?.youngestBirthdate, undefined);
+
+    const split = splitDivisionAt(baseline.divisions, "9U KP", "2017-12-31", cutoff);
+    assert.equal(split.ok, true);
+    if (!split.ok) return;
+    const young = split.divisions.find((division) => division.code === "9U KP young");
+    const old = split.divisions.find((division) => division.code === "9U KP old");
+    assert.ok(young && old);
+    assert.deepEqual(
+      { oldest: effectiveRange(young, cutoff).oldest, youngest: effectiveRange(young, cutoff).youngest },
+      { oldest: "2018-01-01", youngest: "2018-04-30" },
+    );
+    assert.deepEqual(
+      { oldest: effectiveRange(old, cutoff).oldest, youngest: effectiveRange(old, cutoff).youngest },
+      { oldest: "2017-05-01", youngest: "2017-12-31" },
+    );
+    assert.equal(young.sortOrder < old.sortOrder, true);
+
+    const proposed: ProposedConfig = { ...baseline, divisions: combined.divisions };
+    const forecast = response({
+      rows: [
+        {
+          ...response().rows[0]!,
+          code: "7U MINOR",
+          label: "7U Minor",
+          inCurrent: true,
+          inProposed: false,
+          current: side({ pool: 17, expected: 17, minTeams: 2, maxTeams: 2 }),
+          proposed: side({ pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+        },
+        {
+          ...response().rows[1]!,
+          code: "8U MINOR",
+          label: "8U Minor",
+          inCurrent: true,
+          inProposed: false,
+          current: side({ pool: 13, expected: 13, minTeams: 2, maxTeams: 2 }),
+          proposed: side({ pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+        },
+        {
+          ...response().rows[0]!,
+          code: "7/8U MINOR",
+          label: "7/8U Minor",
+          inCurrent: false,
+          inProposed: true,
+          current: side({ pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+          proposed: side({ pool: 29, expected: 29, minTeams: 3, maxTeams: 3 }),
+        },
+      ],
+      sharedPools: [],
+      eligibility: [
+        {
+          code: "7U MINOR",
+          label: "7U Minor",
+          sortOrder: 5,
+          minAge: 7,
+          maxAge: 7,
+          llOldest: "2019-09-01",
+          llYoungest: "2020-08-31",
+          dybOldest: "2019-05-01",
+          dybYoungest: "2020-04-30",
+          ll: { own: 0, feeder: 173 },
+          dyb: { own: 0, feeder: 169 },
+          both: { own: 0, feeder: 113 },
+          llOnly: { own: 0, feeder: 60 },
+          dybOnly: { own: 0, feeder: 56 },
+        },
+      ],
+    });
+    const summary = structuralScenario(baseline, proposed, forecast, 2027);
+    assert.ok(summary);
+    assert.equal(summary.kind, "combine");
+    assert.equal(summary.exact, true);
+    assert.equal(summary.beforeTotal.pool, 30);
+    assert.equal(summary.afterTotal.pool, 29);
+    assert.equal(summary.beforeTotal.minTeams, 4);
+    assert.equal(summary.afterTotal.minTeams, 3);
+    assert.equal(eligibilityShown({ own: 0, feeder: 173 }, true), 173);
+    assert.equal(eligibilityShown({ own: 0, feeder: 173 }, false), 0);
+
+    const html = renderToStaticMarkup(view({ baseline, proposed, forecast }));
+    assert.match(html, /Combine selected/);
+    assert.match(html, /Split division/);
+    assert.match(html, /Combined vs separate/);
+    assert.match(html, /Separate total/);
+    assert.match(html, /Δ players -1/);
+    assert.match(html, /Little League vs DYB eligibility/);
+    assert.match(html, /LL-only/);
+    assert.match(html, />173</);
+    assert.match(html, /2019-09-01\.\.2020-08-31/);
   });
 });

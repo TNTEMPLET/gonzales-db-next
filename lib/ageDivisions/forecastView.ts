@@ -5,17 +5,23 @@
 
 import type { ContentOrgId } from "@/lib/siteConfig";
 
+import { effectiveRange } from "./compute";
+import { seasonCutoffIso, setDivisionBirthdate } from "./draft";
 import {
   DEFAULT_RETURN_RATE,
   FALLBACK_RETENTION,
+  type EligibilityContrast,
+  type EligibilitySide,
+  type ForecastFlow,
   type ForecastPopulation,
   type ForecastRow,
   type ForecastSide,
   type LeagueTotals,
+  type PoolSplit,
   type SharedPool,
 } from "./forecast";
 import type { DivisionAgesSource } from "./schema";
-import type { DivisionAgeConfig, LeagueAgeRule } from "./types";
+import type { CoverageWarning, DivisionAgeConfig, LeagueAgeRule } from "./types";
 
 export const FORECAST_DEBOUNCE_MS = 300;
 
@@ -61,6 +67,10 @@ export type ForecastResponse = {
   sharedPools: SharedPool[];
   league: LeagueTotals;
   movers: number;
+  flows: ForecastFlow[];
+  currentWarnings: CoverageWarning[];
+  proposedWarnings: CoverageWarning[];
+  eligibility: EligibilityContrast[];
   current: ForecastPopulation;
   proposed: ForecastPopulation;
 };
@@ -154,6 +164,541 @@ export function cloneProposed(config: ProposedConfig): ProposedConfig {
 
 export function withProposedCutoff(config: ProposedConfig, patch: Partial<LeagueAgeRule>): ProposedConfig {
   return { ...config, cutoff: { ...config.cutoff, ...patch } };
+}
+
+export function forecastDraftKey(org: string, targetSeason: number): string {
+  return `${org}|${targetSeason}`;
+}
+
+export function sameProposedConfig(a: ProposedConfig, b: ProposedConfig): boolean {
+  return JSON.stringify(cloneProposed(a)) === JSON.stringify(cloneProposed(b));
+}
+
+export function editedDivisionCodes(proposed: ProposedConfig, baseline: ProposedConfig): string[] {
+  const baselineByCode = new Map(baseline.divisions.map((division) => [division.code, division]));
+  const codes: string[] = [];
+  for (const division of proposed.divisions) {
+    const previous = baselineByCode.get(division.code);
+    const changed =
+      !previous ||
+      division.minAge !== previous.minAge ||
+      division.maxAge !== previous.maxAge ||
+      division.sortOrder !== previous.sortOrder ||
+      (division.oldestBirthdate ?? "") !== (previous.oldestBirthdate ?? "") ||
+      (division.youngestBirthdate ?? "") !== (previous.youngestBirthdate ?? "");
+    if (changed) codes.push(division.code);
+  }
+  return codes;
+}
+
+export function forecastEditedSummary(proposed: ProposedConfig, baseline: ProposedConfig): string {
+  const cutoffEdited =
+    proposed.cutoff.cutoffMonth !== baseline.cutoff.cutoffMonth ||
+    proposed.cutoff.cutoffDay !== baseline.cutoff.cutoffDay ||
+    proposed.cutoff.yearOffset !== baseline.cutoff.yearOffset;
+  const count = editedDivisionCodes(proposed, baseline).length;
+  const parts: string[] = [];
+  if (cutoffEdited) parts.push("Cutoff edited");
+  if (count === 1) parts.push("1 division edited");
+  else if (count > 1) parts.push(`${count} divisions edited`);
+  return parts.join(" · ");
+}
+
+function shiftIsoDays(iso: string, days: number): string {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(iso);
+  if (!match) return "";
+  const utc = new Date(Date.UTC(Number(match[1]), Number(match[2]) - 1, Number(match[3])));
+  if (Number.isNaN(utc.getTime())) return "";
+  utc.setUTCDate(utc.getUTCDate() + days);
+  const year = utc.getUTCFullYear();
+  const month = String(utc.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(utc.getUTCDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function sameWindow(left: { oldest: string; youngest: string }, right: { oldest: string; youngest: string }): boolean {
+  return Boolean(left.oldest) && left.oldest === right.oldest && left.youngest === right.youngest;
+}
+
+/**
+ * Apply one edge edit. With linking on, shared-window siblings move together
+ * and the neighboring division's touching edge moves to the adjacent day.
+ */
+export function applyLinkedEdge(
+  divisions: readonly DivisionAgeConfig[],
+  index: number,
+  field: "oldestBirthdate" | "youngestBirthdate",
+  value: string,
+  cutoffIso: string,
+  linkEdges: boolean,
+): DivisionAgeConfig[] {
+  const current = divisions[index];
+  if (!current) return divisions.map((division) => ({ ...division }));
+  if (!linkEdges) {
+    return divisions.map((division, divisionIndex) =>
+      divisionIndex === index ? setDivisionBirthdate(division, field, value, cutoffIso) : { ...division },
+    );
+  }
+
+  const before = effectiveRange(current, cutoffIso);
+  const ordered = divisions
+    .map((division, divisionIndex) => ({
+      divisionIndex,
+      range: effectiveRange(division, cutoffIso),
+      sortOrder: division.sortOrder,
+      code: division.code,
+    }))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));
+  const selfPos = ordered.findIndex((item) => item.divisionIndex === index);
+  let start = selfPos;
+  let end = selfPos;
+  if (selfPos >= 0 && before.oldest && before.youngest) {
+    while (start > 0 && sameWindow(ordered[start - 1]!.range, before)) start -= 1;
+    while (end + 1 < ordered.length && sameWindow(ordered[end + 1]!.range, before)) end += 1;
+  }
+
+  const updatedSelf = setDivisionBirthdate(current, field, value, cutoffIso);
+  const updatedRange = effectiveRange(updatedSelf, cutoffIso);
+  const nextEdge = field === "oldestBirthdate" ? updatedRange.oldest : updatedRange.youngest;
+  const next = divisions.map((division) => ({ ...division }));
+  if (!nextEdge || selfPos < 0) {
+    next[index] = updatedSelf;
+    return next;
+  }
+
+  for (let pos = start; pos <= end; pos += 1) {
+    const item = ordered[pos]!;
+    next[item.divisionIndex] = setDivisionBirthdate(next[item.divisionIndex]!, field, nextEdge, cutoffIso);
+  }
+
+  if (field === "youngestBirthdate") {
+    const neighborPos = start - 1;
+    if (neighborPos >= 0) {
+      const neighborRange = ordered[neighborPos]!.range;
+      let neighborStart = neighborPos;
+      while (neighborStart > 0 && sameWindow(ordered[neighborStart - 1]!.range, neighborRange)) neighborStart -= 1;
+      const dayAfter = shiftIsoDays(nextEdge, 1);
+      if (dayAfter) {
+        for (let pos = neighborStart; pos <= neighborPos; pos += 1) {
+          const item = ordered[pos]!;
+          next[item.divisionIndex] = setDivisionBirthdate(next[item.divisionIndex]!, "oldestBirthdate", dayAfter, cutoffIso);
+        }
+      }
+    }
+  } else if (end + 1 < ordered.length) {
+    const neighborPos = end + 1;
+    const neighborRange = ordered[neighborPos]!.range;
+    let neighborEnd = neighborPos;
+    while (neighborEnd + 1 < ordered.length && sameWindow(ordered[neighborEnd + 1]!.range, neighborRange)) neighborEnd += 1;
+    const dayBefore = shiftIsoDays(nextEdge, -1);
+    if (dayBefore) {
+      for (let pos = neighborPos; pos <= neighborEnd; pos += 1) {
+        const item = ordered[pos]!;
+        next[item.divisionIndex] = setDivisionBirthdate(next[item.divisionIndex]!, "youngestBirthdate", dayBefore, cutoffIso);
+      }
+    }
+  }
+  return next;
+}
+
+export type DivisionEditResult =
+  | { ok: true; divisions: DivisionAgeConfig[] }
+  | { ok: false; error: string };
+
+function orderedDivisions(divisions: readonly DivisionAgeConfig[]): DivisionAgeConfig[] {
+  return [...divisions]
+    .map((division) => ({ ...division }))
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));
+}
+
+function combinedCode(selected: readonly DivisionAgeConfig[]): string {
+  const parsed = selected.map((division) => /^(\d+(?:-\d+)?)U(?:\s+(.*))?$/.exec(division.code.trim()));
+  if (parsed.every((match) => match != null)) {
+    const suffixes = parsed.map((match) => (match?.[2] ?? "").trim());
+    if (suffixes.every((suffix) => suffix === suffixes[0])) {
+      const ages = parsed.map((match) => match?.[1] ?? "");
+      const suffix = suffixes[0] ? ` ${suffixes[0]}` : "";
+      const code = `${ages.join("/")}U${suffix}`.trim();
+      if (code.length <= 40) return code;
+    }
+  }
+  const joined = selected.map((division) => division.code).join("/");
+  if (joined.length <= 40) return joined;
+  return `Combined ${selected.length}`.slice(0, 40);
+}
+
+function combinedLabel(selected: readonly DivisionAgeConfig[], code: string): string {
+  const joined = selected.map((division) => division.label).join(" / ");
+  if (joined.length > 0 && joined.length <= 80) return joined;
+  return code.slice(0, 80);
+}
+
+/** Replace adjacent divisions with one division covering the union of their windows. */
+export function combineDivisions(
+  divisions: readonly DivisionAgeConfig[],
+  codes: readonly string[],
+  cutoffIso: string,
+): DivisionEditResult {
+  const wanted = new Set(codes);
+  if (wanted.size < 2) return { ok: false, error: "Select at least two divisions to combine." };
+  const ordered = orderedDivisions(divisions);
+  const positions = ordered.flatMap((division, index) => (wanted.has(division.code) ? [index] : []));
+  if (positions.length !== wanted.size) return { ok: false, error: "Those divisions are not in this list." };
+  const first = positions[0]!;
+  const last = positions[positions.length - 1]!;
+  if (last - first + 1 !== positions.length) {
+    return { ok: false, error: "Choose adjacent divisions with nothing between them." };
+  }
+  const selected = ordered.slice(first, last + 1);
+  const remove = new Set(selected.map((division) => division.code));
+  const code = combinedCode(selected);
+  if (ordered.some((division) => division.code === code && !remove.has(division.code))) {
+    return { ok: false, error: "A division with that combined code already exists." };
+  }
+  const ranges = selected.map((division) => effectiveRange(division, cutoffIso));
+  const oldest = ranges.map((range) => range.oldest).filter(Boolean).sort()[0] ?? "";
+  const youngest = ranges.map((range) => range.youngest).filter(Boolean).sort().at(-1) ?? "";
+  let combined: DivisionAgeConfig = {
+    code,
+    label: combinedLabel(selected, code),
+    minAge: Math.min(...selected.map((division) => division.minAge)),
+    maxAge: Math.max(...selected.map((division) => division.maxAge)),
+    sortOrder: selected[0]!.sortOrder,
+  };
+  const rosterMin = selected[0]?.rosterMin;
+  const rosterMax = selected[0]?.rosterMax;
+  if (
+    rosterMin != null &&
+    rosterMax != null &&
+    selected.every((division) => division.rosterMin === rosterMin && division.rosterMax === rosterMax)
+  ) {
+    combined = { ...combined, rosterMin, rosterMax };
+  }
+  if (oldest) combined = setDivisionBirthdate(combined, "oldestBirthdate", oldest, cutoffIso);
+  if (youngest) combined = setDivisionBirthdate(combined, "youngestBirthdate", youngest, cutoffIso);
+  const next: DivisionAgeConfig[] = [];
+  let inserted = false;
+  for (const division of ordered) {
+    if (remove.has(division.code)) {
+      if (!inserted) {
+        next.push(combined);
+        inserted = true;
+      }
+      continue;
+    }
+    next.push(division);
+  }
+  return { ok: true, divisions: next };
+}
+
+function halfCode(code: string, half: "young" | "old"): string {
+  const suffix = half === "young" ? " young" : " old";
+  return `${code.slice(0, Math.max(1, 40 - suffix.length))}${suffix}`;
+}
+
+function halfLabel(label: string, half: "younger" | "older"): string {
+  const suffix = half === "younger" ? " (younger)" : " (older)";
+  return `${label.slice(0, Math.max(1, 80 - suffix.length))}${suffix}`;
+}
+
+/** Split one division at `splitOn`, the last birthdate of the older half. */
+export function splitDivisionAt(
+  divisions: readonly DivisionAgeConfig[],
+  code: string,
+  splitOn: string,
+  cutoffIso: string,
+): DivisionEditResult {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(splitOn)) {
+    return { ok: false, error: "Enter the birthdate where the older half ends." };
+  }
+  const ordered = orderedDivisions(divisions);
+  const current = ordered.find((division) => division.code === code);
+  if (!current) return { ok: false, error: "Choose a division to split." };
+  const range = effectiveRange(current, cutoffIso);
+  if (!range.oldest || !range.youngest || range.oldest > range.youngest) {
+    return { ok: false, error: "That division has no birthdate window to split." };
+  }
+  if (splitOn < range.oldest || splitOn >= range.youngest) {
+    return { ok: false, error: "Pick a date inside the window, before the youngest birthdate." };
+  }
+  const youngerStart = shiftIsoDays(splitOn, 1);
+  if (!youngerStart || youngerStart > range.youngest) {
+    return { ok: false, error: "That date does not leave a younger half." };
+  }
+  const youngCode = halfCode(code, "young");
+  const oldCode = halfCode(code, "old");
+  if (
+    youngCode === oldCode ||
+    ordered.some((division) => division.code !== code && (division.code === youngCode || division.code === oldCode))
+  ) {
+    return { ok: false, error: "The split codes would collide with an existing division." };
+  }
+  const withoutDates = (division: DivisionAgeConfig): DivisionAgeConfig => {
+    const next = { ...division };
+    delete next.oldestBirthdate;
+    delete next.youngestBirthdate;
+    return next;
+  };
+  let younger = withoutDates({ ...current, code: youngCode, label: halfLabel(current.label, "younger"), sortOrder: current.sortOrder });
+  let older = withoutDates({ ...current, code: oldCode, label: halfLabel(current.label, "older"), sortOrder: current.sortOrder + 1 });
+  younger = setDivisionBirthdate(younger, "oldestBirthdate", youngerStart, cutoffIso);
+  younger = setDivisionBirthdate(younger, "youngestBirthdate", range.youngest, cutoffIso);
+  older = setDivisionBirthdate(older, "oldestBirthdate", range.oldest, cutoffIso);
+  older = setDivisionBirthdate(older, "youngestBirthdate", splitOn, cutoffIso);
+  const next: DivisionAgeConfig[] = [];
+  for (const division of ordered) {
+    if (division.code === code) {
+      next.push(younger, older);
+      continue;
+    }
+    const sortOrder = division.sortOrder > current.sortOrder ? division.sortOrder + 1 : division.sortOrder;
+    next.push({ ...division, sortOrder });
+  }
+  return { ok: true, divisions: next };
+}
+
+export type ScenarioLine = {
+  code: string;
+  label: string;
+  oldest: string;
+  youngest: string;
+  pool: number;
+  expected: number;
+  minTeams: number;
+  maxTeams: number;
+};
+
+export type StructuralScenario = {
+  kind: "combine" | "split";
+  beforeLabel: string;
+  afterLabel: string;
+  before: ScenarioLine[];
+  after: ScenarioLine[];
+  beforeTotal: ScenarioLine;
+  afterTotal: ScenarioLine;
+  /** False when an overlap reaches outside the group and the total can double-count. */
+  exact: boolean;
+};
+
+function zeroSide(): ForecastSide {
+  return { own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 };
+}
+
+function addForecastSide(left: ForecastSide, right: ForecastSide): ForecastSide {
+  return {
+    own: left.own + right.own,
+    feeder: left.feeder + right.feeder,
+    pool: left.pool + right.pool,
+    expected: left.expected + right.expected,
+    minTeams: left.minTeams + right.minTeams,
+    maxTeams: left.maxTeams + right.maxTeams,
+  };
+}
+
+function lineFrom(division: DivisionAgeConfig, side: ForecastSide, cutoffIso: string): ScenarioLine {
+  const range = effectiveRange(division, cutoffIso);
+  return {
+    code: division.code,
+    label: division.label,
+    oldest: range.oldest,
+    youngest: range.youngest,
+    pool: side.pool,
+    expected: side.expected,
+    minTeams: side.minTeams,
+    maxTeams: side.maxTeams,
+  };
+}
+
+function summedLines(lines: readonly ScenarioLine[], code: string, label: string): ScenarioLine {
+  return lines.reduce<ScenarioLine>(
+    (total, line) => ({
+      code,
+      label,
+      oldest: total.oldest && line.oldest ? (total.oldest < line.oldest ? total.oldest : line.oldest) : total.oldest || line.oldest,
+      youngest: total.youngest && line.youngest ? (total.youngest > line.youngest ? total.youngest : line.youngest) : total.youngest || line.youngest,
+      pool: total.pool + line.pool,
+      expected: total.expected + line.expected,
+      minTeams: total.minTeams + line.minTeams,
+      maxTeams: total.maxTeams + line.maxTeams,
+    }),
+    { code, label, oldest: "", youngest: "", pool: 0, expected: 0, minTeams: 0, maxTeams: 0 },
+  );
+}
+
+function distinctGroupSide(
+  rows: readonly ForecastRow[],
+  pools: readonly SharedPool[],
+  codes: readonly string[],
+  side: "current" | "proposed",
+): { side: ForecastSide; exact: boolean } {
+  const set = new Set(codes);
+  const presentKey = side === "current" ? "inCurrent" : "inProposed";
+  const sharedKey = side === "current" ? "currentSharedPoolId" : "proposedSharedPoolId";
+  const present = rows.filter((row) => set.has(row.code) && row[presentKey]);
+  let total = zeroSide();
+  let exact = true;
+  const used = new Set<string>();
+  const poolIds = new Set(present.map((row) => row[sharedKey]).filter((id): id is string => Boolean(id)));
+  for (const id of poolIds) {
+    const pool = pools.find((item) => item.poolKey === id);
+    const poolSide = pool?.[side];
+    if (!pool || !poolSide || !pool.codes.every((code) => set.has(code))) {
+      exact = false;
+      continue;
+    }
+    total = addForecastSide(total, poolSide);
+    for (const poolCode of pool.codes) used.add(poolCode);
+  }
+  for (const row of present) {
+    if (used.has(row.code)) continue;
+    if (row[sharedKey]) exact = false;
+    total = addForecastSide(total, row[side]);
+  }
+  return { side: total, exact };
+}
+
+/**
+ * Current separate divisions vs a proposed combine, or one division vs a proposed split.
+ * Other proposed edits return null.
+ */
+export function structuralScenario(
+  baseline: ProposedConfig,
+  proposed: ProposedConfig,
+  forecast: Pick<ForecastResponse, "rows" | "sharedPools">,
+  targetSeason: number,
+): StructuralScenario | null {
+  const baselineCodes = new Set(baseline.divisions.map((division) => division.code));
+  const proposedCodes = new Set(proposed.divisions.map((division) => division.code));
+  const removed = baseline.divisions.filter((division) => !proposedCodes.has(division.code));
+  const added = proposed.divisions.filter((division) => !baselineCodes.has(division.code));
+  const kind = removed.length >= 2 && added.length === 1 ? "combine" : removed.length === 1 && added.length === 2 ? "split" : null;
+  if (!kind) return null;
+  const beforeCutoff = seasonCutoffIso(baseline.cutoff, targetSeason);
+  const afterCutoff = seasonCutoffIso(proposed.cutoff, targetSeason);
+  const rowByCode = new Map(forecast.rows.map((row) => [row.code, row]));
+  const before = removed
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code))
+    .map((division) => lineFrom(division, rowByCode.get(division.code)?.current ?? zeroSide(), beforeCutoff));
+  const after = added
+    .slice()
+    .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code))
+    .map((division) => lineFrom(division, rowByCode.get(division.code)?.proposed ?? zeroSide(), afterCutoff));
+  const beforeName = kind === "combine" ? "Separate total" : "Unsplit";
+  const afterName = kind === "combine" ? "Combined" : "Split total";
+  const beforeDistinct = distinctGroupSide(forecast.rows, forecast.sharedPools, removed.map((division) => division.code), "current");
+  const afterDistinct = distinctGroupSide(forecast.rows, forecast.sharedPools, added.map((division) => division.code), "proposed");
+  const beforeTotal = summedLines(before, "before", beforeName);
+  const afterTotal = summedLines(after, "after", afterName);
+  return {
+    kind,
+    beforeLabel: kind === "combine" ? "Separate" : "Unsplit",
+    afterLabel: kind === "combine" ? "Combined" : "Split",
+    before,
+    after,
+    beforeTotal: {
+      ...beforeTotal,
+      pool: beforeDistinct.side.pool,
+      expected: beforeDistinct.side.expected,
+      minTeams: beforeDistinct.side.minTeams,
+      maxTeams: beforeDistinct.side.maxTeams,
+    },
+    afterTotal: {
+      ...afterTotal,
+      pool: afterDistinct.side.pool,
+      expected: afterDistinct.side.expected,
+      minTeams: afterDistinct.side.minTeams,
+      maxTeams: afterDistinct.side.maxTeams,
+    },
+    exact: beforeDistinct.exact && afterDistinct.exact,
+  };
+}
+
+export function eligibilityShown(side: EligibilitySide, includeFeeder: boolean): number {
+  return includeFeeder ? side.own + side.feeder : side.own;
+}
+
+export function eligibilityTooltip(side: EligibilitySide): string {
+  return `Own ${side.own}, feeder ${side.feeder} (raw, before share).`;
+}
+
+function formatApproxCount(value: number): string {
+  const rounded = Math.round(value * 10) / 10;
+  if (!Number.isFinite(rounded)) return "0";
+  return Number.isInteger(rounded) ? String(rounded) : rounded.toFixed(1);
+}
+
+export function whereKidsMoveLines(
+  flows: readonly ForecastFlow[],
+  options: { includeFeeder: boolean; feederShare: number },
+): string[] {
+  const lines: { count: number; text: string }[] = [];
+  for (const flow of flows) {
+    if (flow.own > 0) {
+      lines.push({ count: flow.own, text: `${flow.own} own: ${flow.from} → ${flow.to}` });
+    }
+    if (options.includeFeeder && flow.feeder > 0) {
+      const pct = formatRetentionPercent(options.feederShare);
+      const approx = formatApproxCount(flow.feeder * options.feederShare);
+      lines.push({
+        count: flow.feeder,
+        text: `${flow.feeder} feeder (×${pct}% share ≈ ${approx}): ${flow.from} → ${flow.to}`,
+      });
+    }
+  }
+  lines.sort((a, b) => b.count - a.count || a.text.localeCompare(b.text));
+  return lines.map((line) => line.text);
+}
+
+function joinCodes(codes: readonly string[]): string {
+  if (codes.length === 0) return "divisions";
+  if (codes.length === 1) return codes[0]!;
+  if (codes.length === 2) return `${codes[0]} and ${codes[1]}`;
+  return `${codes.slice(0, -1).join(", ")}, and ${codes[codes.length - 1]}`;
+}
+
+export function betweenDivisionCount(split: PoolSplit, includeFeeder: boolean): number {
+  return includeFeeder ? split.total : split.own;
+}
+
+export function gapWarningText(
+  warnings: readonly CoverageWarning[],
+  unmatched: PoolSplit,
+  includeFeeder: boolean,
+): string | null {
+  const gaps = warnings.filter((warning) => warning.kind === "gap");
+  const count = betweenDivisionCount(unmatched, includeFeeder);
+  if (gaps.length === 0 && count <= 0) return null;
+  const splitNote = includeFeeder && unmatched.feeder > 0 ? ` (${unmatched.own} own, ${unmatched.feeder} feeder)` : "";
+  if (gaps.length === 0) return `${count} players are not in a division and are not counted${splitNote}.`;
+  if (gaps.length === 1) {
+    const gap = gaps[0]!;
+    return `${count} players fall between ${joinCodes(gap.divisionCodes)} (${gap.from}..${gap.to}) and are not counted${splitNote}.`;
+  }
+  const spans = gaps.map((gap) => `${joinCodes(gap.divisionCodes)} (${gap.from}..${gap.to})`).join("; ");
+  return `${count} players fall between divisions and are not counted${splitNote}: ${spans}.`;
+}
+
+export function newOverlapMessages(
+  currentWarnings: readonly CoverageWarning[],
+  proposedWarnings: readonly CoverageWarning[],
+): string[] {
+  const existing = new Set(
+    currentWarnings
+      .filter((warning) => warning.kind === "overlap")
+      .map((warning) => [...warning.divisionCodes].sort().join("+")),
+  );
+  return proposedWarnings
+    .filter((warning) => warning.kind === "overlap" && !existing.has([...warning.divisionCodes].sort().join("+")))
+    .map((warning) => `New overlap: ${joinCodes(warning.divisionCodes)} (${warning.from}..${warning.to}).`);
+}
+
+export function moverCellCount(split: PoolSplit, includeFeeder: boolean): number {
+  return includeFeeder ? split.total : split.own;
+}
+
+export function moverTooltip(moversIn: PoolSplit, moversOut: PoolSplit): string {
+  return `In: own ${moversIn.own}, feeder ${moversIn.feeder}. Out: own ${moversOut.own}, feeder ${moversOut.feeder}.`;
 }
 
 export function buildForecastRequest(input: {
@@ -259,15 +804,61 @@ export function isForecastResponse(value: unknown): value is ForecastResponse {
   if (!isRecord(value.sources) || !isPoolSource(value.sources.own) || !isPoolSource(value.sources.feeder)) return false;
   if (typeof value.coveragePct !== "number" && value.coveragePct !== null) return false;
   if (value.currentSource !== "season" && value.currentSource !== "league" && value.currentSource !== "builtin") return false;
+  if (!Array.isArray(value.flows) || !value.flows.every(isFlow)) return false;
+  if (!Array.isArray(value.currentWarnings) || !value.currentWarnings.every(isCoverageWarning)) return false;
+  if (!Array.isArray(value.proposedWarnings) || !value.proposedWarnings.every(isCoverageWarning)) return false;
+  if (!Array.isArray(value.eligibility) || !value.eligibility.every(isEligibility)) return false;
   return typeof value.movers === "number" && typeof value.seasonYear === "number" && typeof value.includeFeeder === "boolean";
+}
+
+function isEligibilitySide(value: unknown): value is EligibilitySide {
+  return isRecord(value) && typeof value.own === "number" && typeof value.feeder === "number";
+}
+
+function isEligibility(value: unknown): value is EligibilityContrast {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.code === "string" &&
+    typeof value.label === "string" &&
+    typeof value.minAge === "number" &&
+    typeof value.maxAge === "number" &&
+    typeof value.llOldest === "string" &&
+    typeof value.llYoungest === "string" &&
+    typeof value.dybOldest === "string" &&
+    typeof value.dybYoungest === "string" &&
+    isEligibilitySide(value.ll) &&
+    isEligibilitySide(value.dyb) &&
+    isEligibilitySide(value.both) &&
+    isEligibilitySide(value.llOnly) &&
+    isEligibilitySide(value.dybOnly)
+  );
 }
 
 function isSplit(value: unknown): boolean {
   return isRecord(value) && typeof value.total === "number";
 }
 
+function isPoolSplit(value: unknown): value is PoolSplit {
+  return isRecord(value) && typeof value.own === "number" && typeof value.feeder === "number" && typeof value.total === "number";
+}
+
+function isFlow(value: unknown): value is ForecastFlow {
+  return isRecord(value) && typeof value.from === "string" && typeof value.to === "string" && isPoolSplit(value);
+}
+
+function isCoverageWarning(value: unknown): value is CoverageWarning {
+  if (!isRecord(value)) return false;
+  return (
+    (value.kind === "gap" || value.kind === "overlap" || value.kind === "invalid") &&
+    typeof value.from === "string" &&
+    typeof value.to === "string" &&
+    Array.isArray(value.divisionCodes) &&
+    value.divisionCodes.every((code) => typeof code === "string")
+  );
+}
+
 function isPopulation(value: Record<string, unknown>): boolean {
-  return isSplit(value.distinctTotal) && isSplit(value.tooYoung) && isSplit(value.agedOut);
+  return isSplit(value.distinctTotal) && isSplit(value.tooYoung) && isSplit(value.agedOut) && isSplit(value.unmatched);
 }
 
 function isPoolSource(value: unknown): boolean {
@@ -284,5 +875,13 @@ function isSharedPool(value: unknown): boolean {
 
 function isForecastRow(value: unknown): value is ForecastRow {
   if (!isRecord(value)) return false;
-  return typeof value.code === "string" && typeof value.label === "string" && isSide(value.current) && isSide(value.proposed) && isSide(value.delta);
+  return (
+    typeof value.code === "string" &&
+    typeof value.label === "string" &&
+    isSide(value.current) &&
+    isSide(value.proposed) &&
+    isSide(value.delta) &&
+    isPoolSplit(value.moversIn) &&
+    isPoolSplit(value.moversOut)
+  );
 }
