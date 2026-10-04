@@ -1,5 +1,6 @@
 import "server-only";
 
+import { excludeRegistrationHistoryEnrollment } from "@/lib/enrollment/operationalEnrollment";
 import prisma from "@/lib/prisma";
 import {
   getEnrollmentKpiSummary,
@@ -77,7 +78,11 @@ export async function getRegistrationSummary(orgs: ContentOrgId[]): Promise<Regi
   const trendRows = await Promise.all(
     perOrg.map(({ organizationId, seasonYear }) =>
       prisma.enrollment.findMany({
-        where: { organizationId, seasonYear, orderDate: { not: null } },
+        where: excludeRegistrationHistoryEnrollment({
+          organizationId,
+          seasonYear,
+          orderDate: { not: null },
+        }),
         select: { orderDate: true, amountPaidCents: true },
       }),
     ),

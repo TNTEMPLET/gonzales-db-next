@@ -16,6 +16,7 @@ import {
   buildParishRegistrationPdf,
   parishEnrollmentCsv,
 } from "@/lib/admin/parishEnrollmentReport";
+import { excludeRegistrationHistoryEnrollment } from "@/lib/enrollment/operationalEnrollment";
 import prisma from "@/lib/prisma";
 
 export async function loadParishEnrollmentRows(params: {
@@ -23,7 +24,10 @@ export async function loadParishEnrollmentRows(params: {
   seasonYear: number;
 }): Promise<ParishEnrollmentRow[]> {
   const rows = await prisma.enrollment.findMany({
-    where: { organizationId: params.organizationId, seasonYear: params.seasonYear },
+    where: excludeRegistrationHistoryEnrollment({
+      organizationId: params.organizationId,
+      seasonYear: params.seasonYear,
+    }),
     select: {
       fullName: true,
       firstName: true,

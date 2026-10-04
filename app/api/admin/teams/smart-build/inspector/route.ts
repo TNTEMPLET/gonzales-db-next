@@ -10,7 +10,11 @@ import {
   listImportRuns,
 } from "@/lib/sportsConnect/importRuns";
 import { getReportCatalogEntry, recommendedLoadOrder } from "@/lib/sportsConnect/reportCatalog";
-import type { SportsConnectImportRunView, SportsConnectReportKind } from "@/lib/sportsConnect/types";
+import {
+  isSportsConnectReportKind,
+  type SportsConnectImportRunView,
+  type SportsConnectReportKind,
+} from "@/lib/sportsConnect/types";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -69,6 +73,7 @@ export async function GET(request: NextRequest) {
       // show up as selectable under the Player Reg slot even though nothing
       // about them was actually confirmed to be a player registration export.
       if (run.status !== "DONE") continue;
+      if (!isSportsConnectReportKind(run.reportKind)) continue;
       runsByKind[run.reportKind].push(run);
     }
 

@@ -8,6 +8,7 @@ import {
   type OrgSeasonPicture,
 } from "@/lib/admin/dashboard/seasonPulse";
 import { getAllActiveOrgAlerts, type OrgAlertRecord } from "@/lib/orgAlerts";
+import { excludeRegistrationHistoryEnrollment } from "@/lib/enrollment/operationalEnrollment";
 import prisma from "@/lib/prisma";
 import { loadPublicScheduleGames, loadPublicScheduleWindow } from "@/lib/schedule/publicScheduleLoad";
 import { dateKey as utcDateKey } from "@/lib/scheduler/validation";
@@ -150,7 +151,10 @@ async function loadOrgPicture(
       select: { gameExternalId: true, homeScore: true, awayScore: true },
     }),
     prisma.enrollment.aggregate({
-      where: { organizationId: org, seasonYear: season.year - 1 },
+      where: excludeRegistrationHistoryEnrollment({
+        organizationId: org,
+        seasonYear: season.year - 1,
+      }),
       _count: { _all: true },
       _sum: { amountCents: true },
     }),
