@@ -7,6 +7,7 @@ import {
   isSpringContentOrg,
   isSpringPublicOffSeason,
   offSeasonSeasonInfoMessage,
+  seasonNameFromFinalLabel,
   springPublicPhase,
   type CompletedSeasonRecord,
   type PublicRegistrationStatus,
@@ -86,22 +87,18 @@ export function PublicStandingsSection({
       ? standingsLabel
       : finalStandingsLabel(org, asOf, completedSeasons);
 
-  if (phase === "before" && !resolvedStandingsLabel && isSpringContentOrg(org)) {
-    return (
-      <>
+  if (phase === "before" && isSpringContentOrg(org)) {
+    const seasonTitle = resolvedStandingsLabel
+      ? seasonNameFromFinalLabel(resolvedStandingsLabel)
+      : "";
+    const rowsMatch = Boolean(seasonTitle) && seasonName.trim() === seasonTitle;
+    if (!resolvedStandingsLabel || !rowsMatch) {
+      return (
         <div>
-          <h1 className="mb-2 text-3xl font-bold tracking-tight md:text-5xl">
-            Standings
-          </h1>
           <p className="text-zinc-400">{offSeasonSeasonInfoMessage(org, asOf)}</p>
         </div>
-        {children}
-      </>
-    );
-  }
-
-  if ((phase === "after" || phase === "before") && resolvedStandingsLabel && isSpringContentOrg(org)) {
-    const seasonTitle = resolvedStandingsLabel.replace(/ Final Standings$/, "");
+      );
+    }
     return (
       <>
         <div>
@@ -109,8 +106,25 @@ export function PublicStandingsSection({
             {resolvedStandingsLabel}
           </h1>
           <p className="text-zinc-400">
-            Final results from {phase === "after" ? getSeasonLabel(org) : seasonTitle}. These
-            standings stay posted through the off-season.
+            Final results from {seasonTitle}. These standings stay posted through the
+            off-season.
+          </p>
+        </div>
+        {children}
+      </>
+    );
+  }
+
+  if (phase === "after" && resolvedStandingsLabel && isSpringContentOrg(org)) {
+    return (
+      <>
+        <div>
+          <h1 className="mb-2 text-3xl font-bold tracking-tight md:text-5xl">
+            {resolvedStandingsLabel}
+          </h1>
+          <p className="text-zinc-400">
+            Final results from {getSeasonLabel(org)}. These standings stay posted through the
+            off-season.
           </p>
         </div>
         {children}

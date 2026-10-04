@@ -3,6 +3,7 @@ import "server-only";
 import prisma from "@/lib/prisma";
 import {
   finalStandingsLabel,
+  mostRecentCompletedSeason,
   springPublicPhase,
   type CompletedSeasonRecord,
   type SpringContentOrgId,
@@ -50,6 +51,19 @@ export async function loadCompletedPublicSeasons(
   }
 }
 
+/**
+ * The one completed season a pre-season Spring page may name.
+ * Null during the window, after it, and when nothing earlier is on file.
+ */
+export async function resolveCompletedPublicSeason(
+  org: SpringContentOrgId,
+  asOf: Date = new Date(),
+): Promise<CompletedSeasonRecord | null> {
+  if (springPublicPhase(org, asOf) !== "before") return null;
+  const seasons = await loadCompletedPublicSeasons(org, asOf);
+  return mostRecentCompletedSeason(org, asOf, seasons);
+}
+
 /** Label for the public final-standings link, or null when none should show. */
 export async function resolvePublicStandingsLabel(
   org: SpringContentOrgId,
@@ -58,6 +72,6 @@ export async function resolvePublicStandingsLabel(
   const phase = springPublicPhase(org, asOf);
   if (phase === "after") return finalStandingsLabel(org, asOf);
   if (phase !== "before") return null;
-  const seasons = await loadCompletedPublicSeasons(org, asOf);
-  return finalStandingsLabel(org, asOf, seasons);
+  const completed = await resolveCompletedPublicSeason(org, asOf);
+  return completed ? `${completed.label} Final Standings` : null;
 }

@@ -81,6 +81,24 @@ function standings(
   );
 }
 
+function finalHeadingSeason(html: string): string | null {
+  const heading = html.match(/<h1[^>]*>([^<]+)<\/h1>/)?.[1]?.replace(/\s+/g, " ").trim() ?? "";
+  if (!heading.endsWith("Final Standings")) return null;
+  return heading.slice(0, -" Final Standings".length);
+}
+
+/** A final heading is present only when the rendered rows name that same season. */
+function assertLabelMatchesRows(html: string) {
+  const headingSeason = finalHeadingSeason(html);
+  const rowSeason = html.match(/data-season="([^"]*)"/)?.[1] ?? "";
+  if (headingSeason) {
+    assert.equal(rowSeason, headingSeason);
+    return;
+  }
+  assert.equal(rowSeason, "");
+  assert.equal(html.includes("Final Standings"), false);
+}
+
 describe("spring public off-season visibility", () => {
   for (const org of ["gonzales", "ascension"] as const) {
     it(`${org} before opening day treats the configured season as upcoming`, () => {
@@ -246,19 +264,19 @@ describe("rendered public season surfaces", () => {
       assert.match(withHistory, /href="\/standings"/);
       assert.equal(withHistory.includes("Spring 2026 Final"), false);
 
-      const standingsHtml = markup(
+      const withoutHistory = markup(
         standings(
           { org, seasonName: "Spring 2026", asOf: SPRING_BEFORE },
-          createElement("table", null, "Configured year row"),
+          createElement("table", { "data-season": "Spring 2026" }, "Configured year row"),
         ),
       );
-      assert.match(standingsHtml, />\s*Standings\s*</);
-      assert.match(standingsHtml, /once the season begins on March 1, 2026\./);
-      assert.match(standingsHtml, /Configured year row/);
-      assert.equal(standingsHtml.includes("Final Standings"), false);
-      assert.equal(standingsHtml.includes("View Schedule"), false);
+      assert.match(withoutHistory, /once the season begins on March 1, 2026\./);
+      assert.equal(withoutHistory.includes("Configured year row"), false);
+      assert.equal(withoutHistory.includes("Standings"), false);
+      assert.equal(withoutHistory.includes("View Schedule"), false);
+      assertLabelMatchesRows(withoutHistory);
 
-      const priorStandings = markup(
+      const mismatched = markup(
         standings(
           {
             org,
@@ -266,13 +284,30 @@ describe("rendered public season surfaces", () => {
             asOf: SPRING_BEFORE,
             completedSeasons: PRIOR_SEASONS,
           },
-          createElement("table", null, "12U finished 10-0"),
+          createElement("table", { "data-season": "Spring 2026" }, "Configured year row"),
         ),
       );
-      assert.match(priorStandings, /Spring 2025 Final Standings/);
-      assert.match(priorStandings, /12U finished 10-0/);
-      assert.equal(priorStandings.includes("Spring 2026 Final"), false);
-      assert.equal(priorStandings.includes("View Schedule"), false);
+      assert.equal(mismatched.includes("Spring 2025 Final Standings"), false);
+      assert.equal(mismatched.includes("Configured year row"), false);
+      assert.match(mismatched, /once the season begins on March 1, 2026\./);
+      assertLabelMatchesRows(mismatched);
+
+      const matched = markup(
+        standings(
+          {
+            org,
+            seasonName: "Spring 2025",
+            asOf: SPRING_BEFORE,
+            completedSeasons: PRIOR_SEASONS,
+          },
+          createElement("table", { "data-season": "Spring 2025" }, "12U finished 10-0"),
+        ),
+      );
+      assert.match(matched, /Spring 2025 Final Standings/);
+      assert.match(matched, /12U finished 10-0/);
+      assert.equal(matched.includes("Spring 2026"), false);
+      assert.equal(matched.includes("View Schedule"), false);
+      assertLabelMatchesRows(matched);
     }
   });
 
@@ -307,11 +342,12 @@ describe("rendered public season surfaces", () => {
     const html = markup(
       standings(
         { org: "ascension", seasonName: "Spring 2026", asOf: SPRING_OFF },
-        createElement("table", null, "12U finished 10-0"),
+        createElement("table", { "data-season": "Spring 2026" }, "12U finished 10-0"),
       ),
     );
     assert.match(html, /Spring 2026 Final Standings/);
     assert.match(html, /12U finished 10-0/);
+    assertLabelMatchesRows(html);
     assert.equal(html.includes("View Schedule"), false);
     assert.equal(html.includes("href=\"/schedule\""), false);
   });

@@ -15,8 +15,9 @@ export type SeasonStandingsResult = {
 
 export async function loadSeasonStandings(
   orgId: ContentOrgId,
+  seasonRequest?: { seasonYear: number; seasonName: string },
 ): Promise<SeasonStandingsResult> {
-  const { games, seasonName, seasonYear } = await loadPostedSeasonGames(orgId);
+  const { games, seasonName, seasonYear } = await loadPostedSeasonGames(orgId, seasonRequest);
   if (games.length === 0) {
     return { standings: [], seasonName, seasonYear };
   }

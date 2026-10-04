@@ -121,11 +121,11 @@ export function finalStandingsLabel(
   return completed ? `${completed} Final Standings` : null;
 }
 
-export function mostRecentCompletedSeasonLabel(
+export function mostRecentCompletedSeason(
   org: SpringContentOrgId,
   asOf: Date = new Date(),
   completedSeasons?: readonly CompletedSeasonRecord[] | null,
-): string | null {
+): CompletedSeasonRecord | null {
   const config = getSeasonConfigForOrg(org);
   const day = leagueCalendarDate(asOf);
   const ranked = (completedSeasons ?? [])
@@ -147,7 +147,20 @@ export function mostRecentCompletedSeasonLabel(
       const rightKey = right.endDate ?? `${String(right.year ?? 0).padStart(4, "0")}-12-31`;
       return rightKey.localeCompare(leftKey);
     });
-  return ranked[0]?.label ?? null;
+  return ranked[0] ?? null;
+}
+
+export function mostRecentCompletedSeasonLabel(
+  org: SpringContentOrgId,
+  asOf: Date = new Date(),
+  completedSeasons?: readonly CompletedSeasonRecord[] | null,
+): string | null {
+  return mostRecentCompletedSeason(org, asOf, completedSeasons)?.label ?? null;
+}
+
+/** Season name carried by a "… Final Standings" heading. */
+export function seasonNameFromFinalLabel(label: string): string {
+  return label.replace(/ Final Standings$/, "").trim();
 }
 
 export function offSeasonSeasonInfoMessage(
