@@ -564,7 +564,7 @@ function namedMinorsTable(organizationId = "ascension", seasonYear = SEASON): Bu
 }
 
 describe("7U and 8U Minors default cutoffs", () => {
-  it("maps Spring 2027 so May 1–Aug 31 is 8U and 7U stops on Apr 30", () => {
+  it("maps Spring 2027 so 8U is every Dixie 8-year-old plus the gap, and 7U stops on Apr 30", () => {
     const table = namedMinorsTable();
     const seven = table.rows.find((item) => item.id === "seven");
     const eight = table.rows.find((item) => item.id === "eight");
@@ -584,27 +584,25 @@ describe("7U and 8U Minors default cutoffs", () => {
 
     const sevenWindow = builderRowWindow(seven, SEASON);
     const eightWindow = builderRowWindow(eight, SEASON);
-    assert.equal(eightWindow.oldest, "2019-05-01");
+    assert.equal(eightWindow.oldest, "2018-05-01");
     assert.equal(eightWindow.youngest, "2019-08-31");
-    assert.equal(eightWindow.label, "born May 1, 2019 – Aug 31, 2019 (using your override)");
+    assert.equal(eightWindow.label, "born May 1, 2018 – Aug 31, 2019 (using your override)");
     assert.equal(sevenWindow.oldest, "2019-09-01");
     assert.equal(sevenWindow.youngest, "2020-04-30");
     assert.equal(sevenWindow.label, "born Sep 1, 2019 – Apr 30, 2020 (using your override)");
-    assert.deepEqual(llMinorsDefaultPatch("8U", SEASON).oldestOverride, eight.oldestOverride);
-    assert.deepEqual(llMinorsDefaultPatch("7U", SEASON).oldestOverride, seven.oldestOverride);
+    assert.equal(llMinorsDefaultPatch("8U", SEASON).oldestOverride, eight.oldestOverride);
+    assert.equal(llMinorsDefaultPatch("7U", SEASON).oldestOverride, seven.oldestOverride);
 
-    assert.equal(leagueAge("2019-04-30", effectiveCutoffDate(DYB_RULE, SEASON)), 8);
-    assert.equal(leagueAge("2019-04-30", effectiveCutoffDate(LL_RULE, SEASON)), 8);
-    assert.equal(isSplitWindow("2019-04-30", DYB_RULE, LL_RULE, SEASON), false);
-    assert.equal(birthdateFits(eightWindow, "2019-04-30"), false);
-    assert.equal(birthdateFits(sevenWindow, "2019-04-30"), false);
+    assert.equal(leagueAge("2018-04-30", effectiveCutoffDate(DYB_RULE, SEASON)), 9);
+    assert.equal(birthdateFits(eightWindow, "2018-04-30"), false);
+    assert.equal(birthdateFits(sevenWindow, "2018-04-30"), false);
 
-    assert.equal(leagueAge("2019-05-01", effectiveCutoffDate(DYB_RULE, SEASON)), 7);
-    assert.equal(leagueAge("2019-05-01", effectiveCutoffDate(LL_RULE, SEASON)), 8);
-    assert.equal(isSplitWindow("2019-05-01", DYB_RULE, LL_RULE, SEASON), true);
-    assert.equal(birthdateFits(eightWindow, "2019-05-01"), true);
-    assert.equal(birthdateFits(sevenWindow, "2019-05-01"), false);
+    assert.equal(leagueAge("2018-05-01", effectiveCutoffDate(DYB_RULE, SEASON)), 8);
+    assert.equal(leagueAge("2018-05-01", effectiveCutoffDate(LL_RULE, SEASON)), 9);
+    assert.equal(birthdateFits(eightWindow, "2018-05-01"), true);
+    assert.equal(birthdateFits(sevenWindow, "2018-05-01"), false);
 
+    assert.equal(leagueAge("2019-08-31", effectiveCutoffDate(DYB_RULE, SEASON)), 7);
     assert.equal(leagueAge("2019-08-31", effectiveCutoffDate(LL_RULE, SEASON)), 8);
     assert.equal(isSplitWindow("2019-08-31", DYB_RULE, LL_RULE, SEASON), true);
     assert.equal(birthdateFits(eightWindow, "2019-08-31"), true);
@@ -612,7 +610,6 @@ describe("7U and 8U Minors default cutoffs", () => {
 
     assert.equal(leagueAge("2019-09-01", effectiveCutoffDate(DYB_RULE, SEASON)), 7);
     assert.equal(leagueAge("2019-09-01", effectiveCutoffDate(LL_RULE, SEASON)), 7);
-    assert.equal(isSplitWindow("2019-09-01", DYB_RULE, LL_RULE, SEASON), false);
     assert.equal(birthdateFits(eightWindow, "2019-09-01"), false);
     assert.equal(birthdateFits(sevenWindow, "2019-09-01"), true);
 
@@ -633,7 +630,7 @@ describe("7U and 8U Minors default cutoffs", () => {
     const table = namedMinorsTable("gonzales", 2026);
     const seven = builderRowWindow(table.rows.find((item) => item.id === "seven")!, 2026);
     const eight = builderRowWindow(table.rows.find((item) => item.id === "eight")!, 2026);
-    assert.equal(eight.oldest, "2018-05-01");
+    assert.equal(eight.oldest, "2017-05-01");
     assert.equal(eight.youngest, "2018-08-31");
     assert.equal(seven.oldest, "2018-09-01");
     assert.equal(seven.youngest, "2019-04-30");
@@ -697,7 +694,7 @@ describe("7U and 8U Minors default cutoffs", () => {
       initialTable,
     };
     const tableHtml = renderToStaticMarkup(createElement(DivisionAgesBuilder, shared));
-    assert.match(tableHtml, /born May 1, 2019 – Aug 31, 2019/);
+    assert.match(tableHtml, /born May 1, 2018 – Aug 31, 2019/);
     assert.match(tableHtml, /born Sep 1, 2019 – Apr 30, 2020/);
     assert.match(tableHtml, /7U Minors LLB/);
     assert.match(tableHtml, /8U Minors LLB/);
@@ -706,7 +703,7 @@ describe("7U and 8U Minors default cutoffs", () => {
       createElement(DivisionAgesBuilder, { ...shared, initialMode: "wizard", initialStep: 3 }),
     );
     assert.match(wizardHtml, /3\. Choose cutoffs/);
-    assert.match(wizardHtml, /born May 1, 2019 – Aug 31, 2019/);
+    assert.match(wizardHtml, /born May 1, 2018 – Aug 31, 2019/);
     assert.match(wizardHtml, /born Sep 1, 2019 – Apr 30, 2020/);
     assert.match(wizardHtml, /Custom cutoff month for 7U Minors LLB/);
     assert.match(wizardHtml, /Custom cutoff month for 8U Minors LLB/);

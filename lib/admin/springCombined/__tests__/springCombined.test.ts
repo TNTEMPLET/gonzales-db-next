@@ -312,7 +312,7 @@ describe("spring combined template", () => {
     assert.ok(seven && eight);
     const sevenWindow = builderRowWindow(seven, 2027);
     const eightWindow = builderRowWindow(eight, 2027);
-    assert.equal(eightWindow.oldest, "2019-05-01");
+    assert.equal(eightWindow.oldest, "2018-05-01");
     assert.equal(eightWindow.youngest, "2019-08-31");
     assert.equal(sevenWindow.oldest, "2019-09-01");
     assert.equal(sevenWindow.youngest, "2020-04-30");

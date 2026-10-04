@@ -232,11 +232,13 @@ const DYB_CUTOFF = { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 } as const;
  * Little League 7U/8U Minors use a custom cutoff, not a pure Aug 31 or Apr 30 preset.
  *
  * The age formula is oldest = cutoff − (age + 1) years + 1 day, youngest = cutoff − age years.
- * One cutoff always spans a full year, so the May 1–August 31 split (age 8 on August 31,
- * age 7 on April 30) cannot be both edges of one preset. For season year Y:
+ * One cutoff always spans a full year, so 8U Minors takes its two edges from two cutoffs.
+ * For season year Y:
  *
- * - 8U Minors: custom August 31, ages 8–8, oldest override May 1 of year Y−8
- *   (the Diamond/Dixie age-7 oldest). Window May 1, Y−8 through August 31, Y−8.
+ * - 8U Minors: every Diamond/Dixie 8-year-old, plus kids who are 8 on August 31 and 7
+ *   on April 30. Custom August 31, ages 8–8, so the youngest birthday is the Little
+ *   League age-8 youngest (August 31, Y−8). The oldest override is the Diamond/Dixie
+ *   age-8 oldest (May 1, Y−9). Window May 1, Y−9 through August 31, Y−8.
  * - 7U Minors: custom April 30, ages 7–7, oldest override September 1 of year Y−8
  *   (the Little League age-7 oldest, the day after 8U). Window September 1, Y−8
  *   through April 30, Y−7.
@@ -256,7 +258,7 @@ export function llMinorsDefaultPatch(kind: LlMinorsKind, seasonYear: number): Ll
       customMonth: LL_CUTOFF.cutoffMonth,
       customDay: LL_CUTOFF.cutoffDay,
       yearOffset: 0,
-      oldestOverride: calculatedRange({ minAge: 7, maxAge: 7 }, dybCutoff).oldest,
+      oldestOverride: calculatedRange({ minAge: 8, maxAge: 8 }, dybCutoff).oldest,
       youngestOverride: "",
     };
   }
