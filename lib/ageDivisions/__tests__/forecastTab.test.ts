@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 
 import { DivisionAgesForecastView } from "@/components/admin/DivisionAgesForecast";
 import { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
+import { effectiveRange } from "../compute";
 import { setAllDivisionRosters, setDivisionRoster } from "../draft";
 import type { ForecastSide, PoolSplit } from "../forecast";
 import {
@@ -13,6 +14,10 @@ import {
   applyLinkedEdge,
   betweenDivisionCount,
   buildForecastRequest,
+  combineDivisions,
+  eligibilityShown,
+  splitDivisionAt,
+  structuralScenario,
   carryoverReferenceLabel,
   defaultIncludeFeeder,
   editedDivisionCodes,
@@ -120,6 +125,7 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
       agedOut: { own: 1, feeder: 0, total: 1 },
       unmatched: { own: 0, feeder: 0, total: 0 },
     },
+    eligibility: [],
     ...overrides,
   };
 }
@@ -166,6 +172,7 @@ function view(overrides: Partial<ComponentProps<typeof DivisionAgesForecastView>
     onDivisions: () => {},
     onLinkEdges: () => {},
     onResetProposed: () => {},
+    baseline: null,
     linkEdges: true,
     editedCodes: [],
     editedSummary: "",
@@ -508,5 +515,119 @@ describe("what-if editor helpers", () => {
       ),
       [],
     );
+  });
+
+  it("combines adjacent divisions, splits one window, and renders eligibility", () => {
+    const cutoff = "2027-04-30";
+    const baseline: ProposedConfig = {
+      cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+      divisions: [
+        { code: "7U MINOR", label: "7U Minor", minAge: 7, maxAge: 7, sortOrder: 5 },
+        { code: "8U MINOR", label: "8U Minor", minAge: 8, maxAge: 8, sortOrder: 6 },
+        { code: "9U KP", label: "9U", minAge: 9, maxAge: 9, sortOrder: 7 },
+      ],
+    };
+    const blocked = combineDivisions(baseline.divisions, ["7U MINOR", "9U KP"], cutoff);
+    assert.equal(blocked.ok, false);
+    const combined = combineDivisions(baseline.divisions, ["7U MINOR", "8U MINOR"], cutoff);
+    assert.equal(combined.ok, true);
+    if (!combined.ok) return;
+    assert.deepEqual(
+      combined.divisions.map((division) => division.code),
+      ["7/8U MINOR", "9U KP"],
+    );
+    assert.equal(combined.divisions[0]?.minAge, 7);
+    assert.equal(combined.divisions[0]?.maxAge, 8);
+    assert.equal(combined.divisions[0]?.oldestBirthdate, undefined);
+    assert.equal(combined.divisions[0]?.youngestBirthdate, undefined);
+
+    const split = splitDivisionAt(baseline.divisions, "9U KP", "2017-12-31", cutoff);
+    assert.equal(split.ok, true);
+    if (!split.ok) return;
+    const young = split.divisions.find((division) => division.code === "9U KP young");
+    const old = split.divisions.find((division) => division.code === "9U KP old");
+    assert.ok(young && old);
+    assert.deepEqual(
+      { oldest: effectiveRange(young, cutoff).oldest, youngest: effectiveRange(young, cutoff).youngest },
+      { oldest: "2018-01-01", youngest: "2018-04-30" },
+    );
+    assert.deepEqual(
+      { oldest: effectiveRange(old, cutoff).oldest, youngest: effectiveRange(old, cutoff).youngest },
+      { oldest: "2017-05-01", youngest: "2017-12-31" },
+    );
+    assert.equal(young.sortOrder < old.sortOrder, true);
+
+    const proposed: ProposedConfig = { ...baseline, divisions: combined.divisions };
+    const forecast = response({
+      rows: [
+        {
+          ...response().rows[0]!,
+          code: "7U MINOR",
+          label: "7U Minor",
+          inCurrent: true,
+          inProposed: false,
+          current: side({ pool: 17, expected: 17, minTeams: 2, maxTeams: 2 }),
+          proposed: side({ pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+        },
+        {
+          ...response().rows[1]!,
+          code: "8U MINOR",
+          label: "8U Minor",
+          inCurrent: true,
+          inProposed: false,
+          current: side({ pool: 13, expected: 13, minTeams: 2, maxTeams: 2 }),
+          proposed: side({ pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+        },
+        {
+          ...response().rows[0]!,
+          code: "7/8U MINOR",
+          label: "7/8U Minor",
+          inCurrent: false,
+          inProposed: true,
+          current: side({ pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+          proposed: side({ pool: 29, expected: 29, minTeams: 3, maxTeams: 3 }),
+        },
+      ],
+      sharedPools: [],
+      eligibility: [
+        {
+          code: "7U MINOR",
+          label: "7U Minor",
+          sortOrder: 5,
+          minAge: 7,
+          maxAge: 7,
+          llOldest: "2019-09-01",
+          llYoungest: "2020-08-31",
+          dybOldest: "2019-05-01",
+          dybYoungest: "2020-04-30",
+          ll: { own: 0, feeder: 173 },
+          dyb: { own: 0, feeder: 169 },
+          both: { own: 0, feeder: 113 },
+          llOnly: { own: 0, feeder: 60 },
+          dybOnly: { own: 0, feeder: 56 },
+        },
+      ],
+    });
+    const summary = structuralScenario(baseline, proposed, forecast, 2027);
+    assert.ok(summary);
+    assert.equal(summary.kind, "combine");
+    assert.equal(summary.exact, true);
+    assert.equal(summary.beforeTotal.pool, 30);
+    assert.equal(summary.afterTotal.pool, 29);
+    assert.equal(summary.beforeTotal.minTeams, 4);
+    assert.equal(summary.afterTotal.minTeams, 3);
+    assert.equal(eligibilityShown({ own: 0, feeder: 173 }, true), 173);
+    assert.equal(eligibilityShown({ own: 0, feeder: 173 }, false), 0);
+
+    const html = renderToStaticMarkup(view({ baseline, proposed, forecast }));
+    assert.match(html, /Combine selected/);
+    assert.match(html, /Split division/);
+    assert.match(html, /Combined vs separate/);
+    assert.match(html, /Separate total/);
+    assert.match(html, /Δ players -1/);
+    assert.match(html, /Little League vs DYB eligibility/);
+    assert.match(html, /LL-only/);
+    assert.match(html, />173</);
+    assert.match(html, /2019-09-01\.\.2020-08-31/);
   });
 });

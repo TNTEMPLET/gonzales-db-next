@@ -17,11 +17,14 @@ import {
   buildForecastRequest,
   carryoverReferenceLabel,
   cloneProposed,
+  combineDivisions,
   coverageLabel,
   dataSourceLabel,
   defaultIncludeFeeder,
   defaultRetentionText,
   editedDivisionCodes,
+  eligibilityShown,
+  eligibilityTooltip,
   forecastDraftKey,
   forecastEditedSummary,
   forecastQueryKey,
@@ -38,6 +41,8 @@ import {
   parseRetentionPercent,
   populationTotal,
   retentionSourceLabel,
+  splitDivisionAt,
+  structuralScenario,
   sameProposedConfig,
   shownRetentionPercent,
   whereKidsMoveLines,
@@ -193,6 +198,7 @@ export function DivisionAgesForecastView({
   appliedRetention,
   retentionHint,
   proposed,
+  baseline,
   currentSourceLabel,
   forecast,
   loading,
@@ -225,6 +231,7 @@ export function DivisionAgesForecastView({
   appliedRetention: number | null;
   retentionHint: string | null;
   proposed: ProposedConfig | null;
+  baseline: ProposedConfig | null;
   currentSourceLabel: string | null;
   forecast: ForecastResponse | null;
   loading: boolean;
@@ -259,6 +266,47 @@ export function DivisionAgesForecastView({
   const moveLines = forecast
     ? whereKidsMoveLines(forecast.flows, { includeFeeder: forecast.includeFeeder, feederShare: forecast.feederShare })
     : [];
+  const [combineCodes, setCombineCodes] = useState<string[]>([]);
+  const [splitCode, setSplitCode] = useState("");
+  const [splitDate, setSplitDate] = useState("");
+  const [scenarioError, setScenarioError] = useState<string | null>(null);
+  const selectedCodes = proposed ? combineCodes.filter((code) => proposed.divisions.some((division) => division.code === code)) : [];
+  const scenario =
+    baseline && proposed && forecast ? structuralScenario(baseline, proposed, forecast, targetSeason) : null;
+
+  function toggleCombine(code: string, checked: boolean) {
+    setScenarioError(null);
+    setCombineCodes((current) => {
+      const without = current.filter((item) => item !== code);
+      return checked ? [...without, code] : without;
+    });
+  }
+
+  function onCombine() {
+    if (!proposed) return;
+    const result = combineDivisions(proposed.divisions, selectedCodes, cutoffIso);
+    if (!result.ok) {
+      setScenarioError(result.error);
+      return;
+    }
+    setScenarioError(null);
+    setCombineCodes([]);
+    onDivisions(result.divisions);
+  }
+
+  function onSplit() {
+    if (!proposed) return;
+    const code = proposed.divisions.some((division) => division.code === splitCode)
+      ? splitCode
+      : proposed.divisions[0]?.code ?? "";
+    const result = splitDivisionAt(proposed.divisions, code, splitDate, cutoffIso);
+    if (!result.ok) {
+      setScenarioError(result.error);
+      return;
+    }
+    setScenarioError(null);
+    onDivisions(result.divisions);
+  }
 
   return (
     <div className="space-y-6" data-testid="forecast-tab">
@@ -442,14 +490,25 @@ export function DivisionAgesForecastView({
                 const edited = editedCodes.includes(division.code);
                 return (
                 <div key={`${division.code}-${index}`} className="rounded-xl border border-zinc-800 p-3">
-                  <p className="text-sm font-semibold text-white">
-                    {division.label} <span className="font-normal text-zinc-500">{division.code}</span>
-                    {edited ? (
-                      <span className="ml-2 inline-flex rounded-full border border-violet-400/40 bg-violet-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-100" data-testid="division-edited">
-                        edited
-                      </span>
-                    ) : null}
-                  </p>
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-white">
+                      {division.label} <span className="font-normal text-zinc-500">{division.code}</span>
+                      {edited ? (
+                        <span className="ml-2 inline-flex rounded-full border border-violet-400/40 bg-violet-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-100" data-testid="division-edited">
+                          edited
+                        </span>
+                      ) : null}
+                    </p>
+                    <label className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-300">
+                      <input
+                        type="checkbox"
+                        data-testid={`combine-${index + 1}`}
+                        checked={selectedCodes.includes(division.code)}
+                        onChange={(event) => toggleCombine(division.code, event.target.checked)}
+                      />
+                      Combine
+                    </label>
+                  </div>
                   <div className="mt-2 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                     <label className="text-sm text-zinc-300">
                       <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Min age</span>
@@ -546,6 +605,60 @@ export function DivisionAgesForecastView({
                 );
               })}
             </div>
+            <div className="mt-4 flex flex-wrap items-end gap-3" data-testid="scenario-controls">
+              <button
+                type="button"
+                className={buttonClass}
+                data-testid="combine-divisions"
+                disabled={selectedCodes.length < 2}
+                onClick={onCombine}
+              >
+                Combine selected
+              </button>
+              <label className="text-sm text-zinc-300">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Split</span>
+                <select
+                  className={fieldClass}
+                  data-testid="split-division"
+                  value={proposed.divisions.some((division) => division.code === splitCode) ? splitCode : proposed.divisions[0]?.code ?? ""}
+                  onChange={(event) => {
+                    setScenarioError(null);
+                    setSplitCode(event.target.value);
+                  }}
+                >
+                  {proposed.divisions.map((division) => (
+                    <option key={division.code} value={division.code}>
+                      {division.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="text-sm text-zinc-300">
+                <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Older half ends</span>
+                <input
+                  type="date"
+                  className={fieldClass}
+                  data-testid="split-date"
+                  value={splitDate}
+                  onChange={(event) => {
+                    setScenarioError(null);
+                    setSplitDate(event.target.value);
+                  }}
+                />
+              </label>
+              <button type="button" className={buttonClass} data-testid="split-division-apply" onClick={onSplit}>
+                Split division
+              </button>
+            </div>
+            {scenarioError ? (
+              <p className="mt-3 text-sm text-amber-200" role="alert" data-testid="scenario-error">
+                {scenarioError}
+              </p>
+            ) : null}
+            <p className="mt-3 text-sm text-zinc-400">
+              Combine adjacent divisions into one window, or split one division at a birthdate. The result stays in this
+              browser until you reset it.
+            </p>
           </div>
         ) : null}
       </section>
@@ -562,6 +675,73 @@ export function DivisionAgesForecastView({
         ) : null}
         {forecast ? (
           <>
+            {scenario ? (
+              <div className="mb-4 rounded-xl border border-zinc-700 p-3" data-testid="structural-scenario">
+                <h3 className="text-sm font-semibold text-white">
+                  {scenario.kind === "combine" ? "Combined vs separate" : "Split vs unsplit"}
+                </h3>
+                <div className="mt-2 overflow-x-auto">
+                  <table className="w-full min-w-[36rem] text-left text-sm">
+                    <thead className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                      <tr>
+                        <th className="py-1 pr-3">{scenario.beforeLabel}</th>
+                        <th className="py-1 pr-3">Window</th>
+                        <th className="py-1 pr-3">Players</th>
+                        <th className="py-1 pr-3">Expected</th>
+                        <th className="py-1 pr-3">Teams</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {scenario.before.map((line) => (
+                        <tr key={`before-${line.code}`} data-testid="scenario-before">
+                          <td className="py-1 pr-3 text-zinc-100">{line.label}</td>
+                          <td className="py-1 pr-3 tabular-nums text-zinc-400">{line.oldest}..{line.youngest}</td>
+                          <td className="py-1 pr-3 tabular-nums">{line.pool}</td>
+                          <td className="py-1 pr-3 tabular-nums">{line.expected}</td>
+                          <td className="py-1 pr-3 tabular-nums">{formatTeamRange(line.minTeams, line.maxTeams)}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t border-zinc-800 font-semibold text-white" data-testid="scenario-before-total">
+                        <td className="py-1 pr-3">{scenario.beforeTotal.label}</td>
+                        <td className="py-1 pr-3 tabular-nums text-zinc-400">{scenario.beforeTotal.oldest}..{scenario.beforeTotal.youngest}</td>
+                        <td className="py-1 pr-3 tabular-nums">{scenario.beforeTotal.pool}</td>
+                        <td className="py-1 pr-3 tabular-nums">{scenario.beforeTotal.expected}</td>
+                        <td className="py-1 pr-3 tabular-nums">{formatTeamRange(scenario.beforeTotal.minTeams, scenario.beforeTotal.maxTeams)}</td>
+                      </tr>
+                      {scenario.after.map((line) => (
+                        <tr key={`after-${line.code}`} data-testid="scenario-after">
+                          <td className="py-1 pr-3 text-zinc-100">{scenario.afterLabel}: {line.label}</td>
+                          <td className="py-1 pr-3 tabular-nums text-zinc-400">{line.oldest}..{line.youngest}</td>
+                          <td className="py-1 pr-3 tabular-nums">{line.pool}</td>
+                          <td className="py-1 pr-3 tabular-nums">{line.expected}</td>
+                          <td className="py-1 pr-3 tabular-nums">{formatTeamRange(line.minTeams, line.maxTeams)}</td>
+                        </tr>
+                      ))}
+                      <tr className="border-t border-zinc-800 font-semibold text-white" data-testid="scenario-after-total">
+                        <td className="py-1 pr-3">{scenario.afterTotal.label}</td>
+                        <td className="py-1 pr-3 tabular-nums text-zinc-400">{scenario.afterTotal.oldest}..{scenario.afterTotal.youngest}</td>
+                        <td className="py-1 pr-3 tabular-nums">{scenario.afterTotal.pool}</td>
+                        <td className="py-1 pr-3 tabular-nums">{scenario.afterTotal.expected}</td>
+                        <td className="py-1 pr-3 tabular-nums">{formatTeamRange(scenario.afterTotal.minTeams, scenario.afterTotal.maxTeams)}</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-2 text-sm text-zinc-200" data-testid="scenario-delta">
+                  Δ players {formatDelta(scenario.afterTotal.pool - scenario.beforeTotal.pool)}. Δ teams{" "}
+                  {formatDeltaTeams(
+                    scenario.afterTotal.minTeams - scenario.beforeTotal.minTeams,
+                    scenario.afterTotal.maxTeams - scenario.beforeTotal.maxTeams,
+                  )}
+                  .
+                </p>
+                {scenario.exact ? null : (
+                  <p className="mt-1 text-sm text-amber-200">
+                    An overlap reaches outside this group, so that total can count a player twice.
+                  </p>
+                )}
+              </div>
+            ) : null}
             {gapMessage ? (
               <p className="mb-3 rounded-xl border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm text-red-100" role="alert" data-testid="gap-warning">
                 {gapMessage}
@@ -704,6 +884,45 @@ export function DivisionAgesForecastView({
                   ))}
                 </ul>
               )}
+            </div>
+            <div className="mt-4" data-testid="eligibility-contrast">
+              <h3 className="text-sm font-semibold text-white">Little League vs DYB eligibility</h3>
+              <p className="mt-1 text-sm text-zinc-400">
+                Raw counts for each division&apos;s age span. Little League uses Aug 31. DYB uses Apr 30. Feeder counts
+                are before the share
+                {forecast.includeFeeder ? " and are included in the numbers below." : " and are hidden while feeder is off."}
+              </p>
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full min-w-[40rem] text-left text-sm">
+                  <thead className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+                    <tr>
+                      <th className="py-1 pr-3">Division</th>
+                      <th className="py-1 pr-3">LL</th>
+                      <th className="py-1 pr-3">DYB</th>
+                      <th className="py-1 pr-3">Both</th>
+                      <th className="py-1 pr-3">LL-only</th>
+                      <th className="py-1 pr-3">DYB-only</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {forecast.eligibility.map((row) => (
+                      <tr key={row.code} data-testid="eligibility-row">
+                        <td className="py-1 pr-3 text-zinc-100">
+                          {row.label}
+                          <span className="mt-0.5 block text-xs text-zinc-500">
+                            LL {row.llOldest}..{row.llYoungest} · DYB {row.dybOldest}..{row.dybYoungest}
+                          </span>
+                        </td>
+                        {([row.ll, row.dyb, row.both, row.llOnly, row.dybOnly] as const).map((side, index) => (
+                          <td key={index} className="py-1 pr-3 tabular-nums" title={eligibilityTooltip(side)}>
+                            {eligibilityShown(side, forecast.includeFeeder)}
+                          </td>
+                        ))}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
             <div className="mt-4 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2" data-testid="forecast-footer">
               <p data-testid="league-totals">
@@ -941,6 +1160,7 @@ export default function DivisionAgesForecast({
       appliedRetention={retentionDirty ? null : forecast?.retention.applied ?? null}
       retentionHint={forecast ? retentionSourceLabel(forecast.retention.source) : null}
       proposed={proposed}
+      baseline={baseline}
       currentSourceLabel={sourceLabel}
       forecast={forecast}
       loading={loading}

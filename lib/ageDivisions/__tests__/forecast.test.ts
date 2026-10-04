@@ -7,9 +7,11 @@ import {
   DEFAULT_RETURN_RATE,
   DEFAULT_ROSTER,
   FALLBACK_RETENTION,
+  appliedFeeder,
   assignBuckets,
   carryoverRate,
   compareConfigs,
+  eligibilityContrasts,
   projectDivision,
   teamCountRange,
   type BirthBucket,
@@ -655,5 +657,162 @@ describe("assignBuckets rejects bad buckets", () => {
     const assigned = assignBuckets([bucket("2016-02-31", 2), bucket("not-a-date", 1, "feeder")], config, SEASON);
     assert.deepEqual(assigned.unmatched, { own: 2, feeder: 1, total: 3 });
     assert.equal(assigned.distinctTotal.total, 0);
+  });
+});
+
+describe("combine, split, and LL vs DYB counts", () => {
+  const rosterFor = () => DEFAULT_ROSTER;
+  const seven = division("7U MINOR", 7, 7, 1);
+  const eight = division("8U MINOR", 8, 8, 2);
+
+  it("counts a combined window once and keeps the shared pool from double counting", () => {
+    const current = dyb([seven, eight]);
+    const combined = dyb([division("7/8U MINOR", 7, 8, 1)]);
+    const buckets = [bucket("2020-01-01", 10), bucket("2019-01-01", 8), bucket("2019-06-01", 4)];
+    const compared = compareConfigs(buckets, current, combined, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      feederShare: 0.1,
+      rosterFor,
+    });
+    assert.equal(compared.rows.find((row) => row.code === "7U MINOR")?.current.pool, 14);
+    assert.equal(compared.rows.find((row) => row.code === "8U MINOR")?.current.pool, 8);
+    assert.equal(compared.rows.find((row) => row.code === "7/8U MINOR")?.proposed.pool, 22);
+    assert.equal(compared.league.current.pool, 22);
+    assert.equal(compared.league.proposed.pool, 22);
+    const overlapCurrent = dyb([
+      division("6U MINOR", 6, 6, 1),
+      division("6U MAJOR", 6, 6, 2),
+    ]);
+    const overlapProposed = dyb([division("6U MINOR/6U MAJOR", 6, 6, 1)]);
+    const overlap = compareConfigs([bucket("2020-08-01", 10)], overlapCurrent, overlapProposed, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      feederShare: 0.1,
+      rosterFor,
+    });
+    assert.equal(overlap.rows.find((row) => row.code === "6U MINOR")?.current.pool, 10);
+    assert.equal(overlap.rows.find((row) => row.code === "6U MAJOR")?.current.pool, 10);
+    assert.equal(overlap.sharedPools[0]?.current?.pool, 10);
+    assert.equal(overlap.league.current.pool, 10);
+    assert.equal(overlap.rows.find((row) => row.code === "6U MINOR/6U MAJOR")?.proposed.pool, 10);
+    assert.equal(overlap.league.proposed.pool, 10);
+  });
+
+  it("matches the 7U plus 8U team and feeder-share arithmetic", () => {
+    assert.deepEqual(
+      [teamCountRange(173, DEFAULT_ROSTER).minTeams, teamCountRange(173, DEFAULT_ROSTER).maxTeams],
+      [15, 15],
+    );
+    assert.deepEqual(
+      [teamCountRange(134, DEFAULT_ROSTER).minTeams, teamCountRange(134, DEFAULT_ROSTER).maxTeams],
+      [12, 12],
+    );
+    assert.deepEqual(
+      [teamCountRange(307, DEFAULT_ROSTER).minTeams, teamCountRange(307, DEFAULT_ROSTER).maxTeams],
+      [26, 27],
+    );
+    assert.equal(appliedFeeder(169, { includeFeeder: true, feederShare: 0.1 }), 17);
+    assert.equal(appliedFeeder(125, { includeFeeder: true, feederShare: 0.1 }), 13);
+    assert.equal(appliedFeeder(294, { includeFeeder: true, feederShare: 0.1 }), 29);
+
+    const current = dyb([seven, eight]);
+    const proposed = dyb([division("7/8U MINOR", 7, 8, 1)]);
+    const buckets = [bucket("2020-01-01", 169, "feeder"), bucket("2019-01-01", 125, "feeder")];
+    const compared = compareConfigs(buckets, current, proposed, SEASON, {
+      retentionRate: 1,
+      includeFeeder: true,
+      feederShare: 0.1,
+      rosterFor,
+    });
+    assert.equal(compared.rows.find((row) => row.code === "7U MINOR")?.current.pool, 17);
+    assert.equal(compared.rows.find((row) => row.code === "8U MINOR")?.current.pool, 13);
+    assert.equal(compared.rows.find((row) => row.code === "7/8U MINOR")?.proposed.pool, 29);
+    assert.equal(compared.league.current.pool, 30);
+    assert.equal(compared.league.proposed.pool, 29);
+    assert.equal(compared.league.current.minTeams, 4);
+    assert.equal(compared.rows.find((row) => row.code === "7/8U MINOR")?.proposed.minTeams, 3);
+
+    const ascension = compareConfigs(
+      [bucket("2020-01-01", 173), bucket("2019-01-01", 134)],
+      {
+        cutoff: { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 },
+        divisions: [seven, eight],
+      },
+      {
+        cutoff: { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 },
+        divisions: [division("7/8U MINOR", 7, 8, 1)],
+      },
+      SEASON,
+      { retentionRate: 1, includeFeeder: false, feederShare: 0.1, rosterFor },
+    );
+    assert.equal(ascension.rows.find((row) => row.code === "7U MINOR")?.current.pool, 173);
+    assert.equal(ascension.rows.find((row) => row.code === "8U MINOR")?.current.pool, 134);
+    assert.equal(ascension.rows.find((row) => row.code === "7/8U MINOR")?.proposed.pool, 307);
+    assert.equal(ascension.league.current.pool, 307);
+    assert.equal(ascension.league.proposed.pool, 307);
+    assert.equal(ascension.league.current.minTeams, 27);
+    assert.equal(ascension.rows.find((row) => row.code === "7/8U MINOR")?.proposed.minTeams, 26);
+    assert.equal(ascension.rows.find((row) => row.code === "7/8U MINOR")?.proposed.maxTeams, 27);
+  });
+
+  it("splits a division so the halves partition the players", () => {
+    const current = dyb([division("9U KP", 9, 9, 1)]);
+    const proposed = dyb([
+      division("9U KP young", 9, 9, 1, { oldestBirthdate: "2018-01-01", youngestBirthdate: "2018-04-30" }),
+      division("9U KP old", 9, 9, 2, { oldestBirthdate: "2017-05-01", youngestBirthdate: "2017-12-31" }),
+    ]);
+    const buckets = [bucket("2017-08-01", 4), bucket("2018-02-01", 6), bucket("2018-02-01", 1, "feeder")];
+    const compared = compareConfigs(buckets, current, proposed, SEASON, {
+      retentionRate: 1,
+      includeFeeder: true,
+      feederShare: 1,
+      rosterFor,
+    });
+    assert.equal(compared.rows.find((row) => row.code === "9U KP")?.current.own, 10);
+    assert.equal(compared.rows.find((row) => row.code === "9U KP old")?.proposed.own, 4);
+    assert.equal(compared.rows.find((row) => row.code === "9U KP young")?.proposed.own, 6);
+    assert.equal(compared.rows.find((row) => row.code === "9U KP young")?.proposed.feeder, 1);
+    assert.equal(compared.league.current.pool, compared.league.proposed.pool);
+    const youngCodes = compared.rows.find((row) => row.code === "9U KP young");
+    const oldCodes = compared.rows.find((row) => row.code === "9U KP old");
+    assert.ok(youngCodes && oldCodes);
+    assert.equal(youngCodes.proposed.own + oldCodes.proposed.own, 10);
+  });
+
+  it("counts LL-only, DYB-only, and both for an age span", () => {
+    const rows = eligibilityContrasts(
+      [
+        bucket("2020-06-01", 2),
+        bucket("2019-06-01", 3),
+        bucket("2020-01-15", 4),
+        bucket("2020-06-01", 1, "feeder"),
+        bucket("2018-01-01", 9),
+      ],
+      [seven, eight, division("7/8U MINOR", 7, 8, 3)],
+      SEASON,
+    );
+    const age7 = rows.find((row) => row.code === "7U MINOR");
+    assert.ok(age7);
+    assert.equal(age7.llOldest, "2019-09-01");
+    assert.equal(age7.llYoungest, "2020-08-31");
+    assert.equal(age7.dybOldest, "2019-05-01");
+    assert.equal(age7.dybYoungest, "2020-04-30");
+    assert.deepEqual(age7.ll, { own: 6, feeder: 1 });
+    assert.deepEqual(age7.dyb, { own: 7, feeder: 0 });
+    assert.deepEqual(age7.both, { own: 4, feeder: 0 });
+    assert.deepEqual(age7.llOnly, { own: 2, feeder: 1 });
+    assert.deepEqual(age7.dybOnly, { own: 3, feeder: 0 });
+    const combined = rows.find((row) => row.code === "7/8U MINOR");
+    assert.ok(combined);
+    assert.equal(combined.llOldest, "2018-09-01");
+    assert.equal(combined.llYoungest, "2020-08-31");
+    assert.equal(combined.dybOldest, "2018-05-01");
+    assert.equal(combined.dybYoungest, "2020-04-30");
+    assert.equal(combined.ll.own, 9);
+    assert.equal(combined.dyb.own, 7);
+    assert.equal(combined.both.own, 7);
+    assert.equal(combined.llOnly.own, 2);
+    assert.equal(combined.dybOnly.own, 0);
   });
 });

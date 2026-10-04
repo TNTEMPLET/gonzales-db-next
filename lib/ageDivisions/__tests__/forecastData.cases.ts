@@ -119,7 +119,8 @@ function assertNoPii(value: unknown, path: string, leaked: string[]): void {
   assert.equal(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(value), false, `${path} email`);
   assert.equal(/\d{3}[-.\s]\d{3}[-.\s]\d{4}/.test(value), false, `${path} phone`);
   const coverageWindow = /\.(currentWarnings|proposedWarnings)\[\d+\]\.(from|to)$/.test(path);
-  if (!coverageWindow) assert.equal(/\d{4}-\d{2}-\d{2}/.test(value), false, `${path} date`);
+  const eligibilityWindow = /\.eligibility\[\d+\]\.(llOldest|llYoungest|dybOldest|dybYoungest)$/.test(path);
+  if (!coverageWindow && !eligibilityWindow) assert.equal(/\d{4}-\d{2}-\d{2}/.test(value), false, `${path} date`);
   assert.equal(/birthdate/i.test(value), false, `${path} birth label`);
   for (const secret of leaked) {
     assert.equal(value.includes(secret), false, `${path} leaked ${secret}`);
@@ -566,6 +567,14 @@ describe("forecast configs", () => {
     assert.equal(division(result, "9U").moversOut.own, 1);
     assert.equal(division(result, "9U").moversOut.total, division(result, "9U").movers);
     assert.equal(division(result, "9U").moversIn.total, 0);
+    const nineEligibility = result.eligibility.find((row) => row.code === "9U");
+    assert.ok(nineEligibility);
+    assert.equal(nineEligibility.ll.own, 1);
+    assert.equal(nineEligibility.dyb.own, 1);
+    assert.equal(nineEligibility.both.own, 1);
+    assert.equal(nineEligibility.llOnly.own, 0);
+    assert.equal(nineEligibility.dybOnly.own, 0);
+    assert.equal(nineEligibility.ll.feeder, 0);
   });
 
   it("uses league roster bounds when they are stored and the default 11-12 otherwise", async () => {
