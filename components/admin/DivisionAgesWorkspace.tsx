@@ -45,6 +45,8 @@ type SettingsDraft = {
   cutoffDay: number;
   yearOffset: number;
   divisions: DivisionAgeConfig[];
+  returnRatePercent: number;
+  feederSharePercent: number;
   saving: boolean;
   loading: boolean;
   message: string | null;
@@ -203,6 +205,44 @@ export function DivisionAgesSettingsDialog({
         </div>
         <p className="mt-3 text-sm text-zinc-200" data-testid="division-ages-cutoff-preview">
           {preview}
+        </p>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2">
+          <label className="text-sm text-zinc-300">
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Return rate %</span>
+            <input
+              className={fieldClass}
+              inputMode="decimal"
+              aria-label="Return rate percent"
+              data-testid="return-rate-percent"
+              value={draft.returnRatePercent}
+              onChange={(event) => {
+                const raw = event.target.value;
+                if (raw !== "" && !/^\d{0,3}(\.\d{0,2})?$/.test(raw)) return;
+                onDraft({ ...draft, returnRatePercent: raw === "" ? 0 : Number(raw) });
+              }}
+            />
+          </label>
+          <label className="text-sm text-zinc-300">
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Feeder share %</span>
+            <input
+              className={fieldClass}
+              inputMode="decimal"
+              aria-label="Feeder share percent"
+              data-testid="feeder-share-percent"
+              value={draft.feederSharePercent}
+              onChange={(event) => {
+                const raw = event.target.value;
+                if (raw !== "" && !/^\d{0,3}(\.\d{0,2})?$/.test(raw)) return;
+                onDraft({ ...draft, feederSharePercent: raw === "" ? 0 : Number(raw) });
+              }}
+            />
+          </label>
+        </div>
+        <p className="mt-2 text-sm text-zinc-400">
+          Return rate is the share of players expected back next season. 100% means no drop-off. Feeder share is the
+          portion of Ascension players added to each Gonzales division after players already in Gonzales are removed.
+          Spring→Fall carryover is reference only.
         </p>
 
         <div className="mt-5 rounded-xl border border-zinc-800 p-3">
@@ -777,6 +817,8 @@ export default function DivisionAgesWorkspace({
       cutoffDay: 30,
       yearOffset: 0,
       divisions: [],
+      returnRatePercent: 100,
+      feederSharePercent: 10,
       saving: false,
       loading: true,
       message: null,
@@ -798,6 +840,8 @@ export default function DivisionAgesWorkspace({
       cutoffDay: Number(payload.cutoffDay),
       yearOffset: Number(payload.yearOffset),
       divisions: (payload.divisions as DivisionAgeConfig[]).map((division) => ({ ...division })),
+      returnRatePercent: typeof payload.returnRatePercent === "number" ? payload.returnRatePercent : 100,
+      feederSharePercent: typeof payload.feederSharePercent === "number" ? payload.feederSharePercent : 10,
       saving: false,
       loading: false,
       message: typeof payload.storageNote === "string" ? payload.storageNote : null,

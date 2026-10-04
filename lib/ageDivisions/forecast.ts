@@ -45,7 +45,7 @@ export type DivisionAssignment = {
   sortOrder: number;
   own: number;
   feeder: number;
-  /** `own + feeder`. A player in two divisions is counted in both. */
+  /** `own + feeder` eligible for this division. League totals count a shared player once. */
   total: number;
   /** Players in this division who are also eligible for another division. */
   overlap: number;
@@ -113,6 +113,28 @@ export type ForecastRow = {
   /** Players in this division who are also eligible for another division. */
   currentOverlap: number;
   proposedOverlap: number;
+  /** Set when this division's current window overlaps another division. */
+  currentSharedPoolId: string | null;
+  /** Set when this division's proposed window overlaps another division. */
+  proposedSharedPoolId: string | null;
+};
+
+/** Divisions whose age windows overlap. Headcount and teams are for the pool once. */
+export type SharedPool = {
+  poolKey: string;
+  codes: string[];
+  label: string;
+  current: ForecastSide | null;
+  proposed: ForecastSide | null;
+  currentShortRoster: boolean;
+  proposedShortRoster: boolean;
+};
+
+/** League headcount and team range with each player counted once. */
+export type LeagueTotals = {
+  current: ForecastSide;
+  proposed: ForecastSide;
+  delta: ForecastSide;
 };
 
 export type ForecastPopulation = {
@@ -124,6 +146,10 @@ export type ForecastPopulation = {
 
 export type CompareConfigsResult = {
   rows: ForecastRow[];
+  /** Overlapping divisions. Totals use each pool once instead of summing its members. */
+  sharedPools: SharedPool[];
+  /** Current and proposed league totals. Shared-pool members are not summed. */
+  league: LeagueTotals;
   /** Players whose eligible division-code set differs, counted once. */
   movers: number;
   current: ForecastPopulation;
@@ -131,18 +157,29 @@ export type CompareConfigsResult = {
 };
 
 export type ForecastOptions = {
-  /** Fraction in 0–1 applied to the whole pool. */
+  /** Year-to-year return rate, fraction in 0–1. Default product value is 1 (100%). */
   retentionRate: number;
   includeFeeder: boolean;
+  /**
+   * Fraction in 0–1 of the feeder headcount added per division.
+   * Omitted means {@link DEFAULT_FEEDER_SHARE} (10%).
+   */
+  feederShare?: number;
   rosterFor: (divisionCode: string) => RosterSize;
 };
 
 /** Default team size until a season stores its own roster bounds. */
 export const DEFAULT_ROSTER: RosterSize = Object.freeze({ min: 11, max: 12 });
 
+/** Return rate used when a league has not saved one. 1 means every player returns. */
+export const DEFAULT_RETURN_RATE = 1;
+
+/** Feeder share used when a league has not saved one. */
+export const DEFAULT_FEEDER_SHARE = 0.1;
+
 /**
- * 2026 Spring→Fall carryover, rounded, for when a live rate cannot be
- * computed. Gonzales 0.29, Ascension 0.44. No other org is listed.
+ * Observed 2026 Spring→Fall carryover, rounded. Gonzales 0.29, Ascension 0.44.
+ * Reference text only. Forecast math does not multiply by these rates.
  */
 export const FALLBACK_RETENTION = Object.freeze({
   gonzales: 0.29,
@@ -289,16 +326,40 @@ function assertRetention(retentionRate: number): void {
   }
 }
 
-/** Apply one retention rate to the own pool, optionally plus the feeder pool. */
+function assertShare(feederShare: number): void {
+  if (!Number.isFinite(feederShare) || feederShare < 0 || feederShare > 1) {
+    throw new RangeError(`feederShare must be between 0 and 1 (got ${feederShare}).`);
+  }
+}
+
+function shareOf(options: { feederShare?: number }): number {
+  const share = options.feederShare ?? DEFAULT_FEEDER_SHARE;
+  assertShare(share);
+  return share;
+}
+
+/** Feeder players added after the share. The toggle off contributes 0. Rounded to the nearest player. */
+export function appliedFeeder(
+  feeder: number,
+  options: { includeFeeder: boolean; feederShare?: number },
+): number {
+  if (!Number.isFinite(feeder) || feeder < 0) {
+    throw new RangeError("Division headcount must be finite.");
+  }
+  if (!options.includeFeeder) return 0;
+  return Math.round(feeder * shareOf(options));
+}
+
+/** Apply the return rate to the own pool plus the feeder share. */
 export function projectDivision(
   counts: { own: number; feeder: number },
-  options: { retentionRate: number; includeFeeder: boolean },
+  options: { retentionRate: number; includeFeeder: boolean; feederShare?: number },
 ): Projection {
   assertRetention(options.retentionRate);
   if (!Number.isFinite(counts.own) || !Number.isFinite(counts.feeder)) {
     throw new RangeError("Division headcount must be finite.");
   }
-  const pool = counts.own + (options.includeFeeder ? counts.feeder : 0);
+  const pool = counts.own + appliedFeeder(counts.feeder, options);
   return {
     pool,
     expected: Math.round(pool * options.retentionRate),
@@ -356,21 +417,38 @@ function buildSide(
 ): BuiltSide {
   if (!present) return { side: emptySide(), shortRoster: false, overlap: 0 };
   const row = assignment.divisions.find((division) => division.code === code);
-  const own = row?.own ?? 0;
-  const feeder = row?.feeder ?? 0;
-  const projected = projectDivision({ own, feeder }, options);
+  const built = sideFromCounts({ own: row?.own ?? 0, feeder: row?.feeder ?? 0 }, options, roster);
+  return { ...built, overlap: row?.overlap ?? 0 };
+}
+
+function sideFromCounts(
+  counts: { own: number; feeder: number },
+  options: ForecastOptions,
+  roster: RosterSize,
+): { side: ForecastSide; shortRoster: boolean } {
+  const projected = projectDivision(counts, options);
   const teams = teamCountRange(projected.expected, roster);
   return {
     side: {
-      own,
-      feeder,
+      own: counts.own,
+      feeder: appliedFeeder(counts.feeder, options),
       pool: projected.pool,
       expected: projected.expected,
       minTeams: teams.minTeams,
       maxTeams: teams.maxTeams,
     },
     shortRoster: teams.shortRoster,
-    overlap: row?.overlap ?? 0,
+  };
+}
+
+function addSide(left: ForecastSide, right: ForecastSide): ForecastSide {
+  return {
+    own: left.own + right.own,
+    feeder: left.feeder + right.feeder,
+    pool: left.pool + right.pool,
+    expected: left.expected + right.expected,
+    minTeams: left.minTeams + right.minTeams,
+    maxTeams: left.maxTeams + right.maxTeams,
   };
 }
 
@@ -398,6 +476,159 @@ type RowMeta = {
   inProposed: boolean;
 };
 
+function rangesOverlap(
+  left: { oldest: string; youngest: string },
+  right: { oldest: string; youngest: string },
+): boolean {
+  if (!left.oldest || !left.youngest || !right.oldest || !right.youngest) return false;
+  if (left.oldest > left.youngest || right.oldest > right.youngest) return false;
+  return left.oldest <= right.youngest && right.oldest <= left.youngest;
+}
+
+/** Connected divisions whose effective birthdate windows intersect. */
+function overlappingGroups(config: ForecastConfig, targetSeasonYear: number): string[][] {
+  const cutoff = effectiveCutoffDate(config.cutoff, targetSeasonYear);
+  const ordered: DivisionAgeConfig[] = [];
+  const seen = new Set<string>();
+  const divisions = [...config.divisions].sort(
+    (a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code),
+  );
+  for (const division of divisions) {
+    if (seen.has(division.code)) continue;
+    seen.add(division.code);
+    ordered.push(division);
+  }
+  const parent = new Map<string, string>();
+  const find = (code: string): string => {
+    let root = code;
+    while (parent.get(root) !== root) root = parent.get(root)!;
+    let cursor = code;
+    while (cursor !== root) {
+      const next = parent.get(cursor)!;
+      parent.set(cursor, root);
+      cursor = next;
+    }
+    return root;
+  };
+  const union = (left: string, right: string) => {
+    const a = find(left);
+    const b = find(right);
+    if (a !== b) parent.set(b, a);
+  };
+  for (const division of ordered) parent.set(division.code, division.code);
+  const ranges = new Map(ordered.map((division) => [division.code, effectiveRange(division, cutoff)]));
+  for (let i = 0; i < ordered.length; i += 1) {
+    for (let j = i + 1; j < ordered.length; j += 1) {
+      const left = ranges.get(ordered[i]!.code)!;
+      const right = ranges.get(ordered[j]!.code)!;
+      if (rangesOverlap(left, right)) union(ordered[i]!.code, ordered[j]!.code);
+    }
+  }
+  const groups = new Map<string, string[]>();
+  for (const division of ordered) {
+    const root = find(division.code);
+    const list = groups.get(root);
+    if (list) list.push(division.code);
+    else groups.set(root, [division.code]);
+  }
+  return [...groups.values()].filter((codes) => codes.length > 1);
+}
+
+function eligibleHeadcount(
+  buckets: readonly BirthBucket[],
+  config: ForecastConfig,
+  targetSeasonYear: number,
+  codes: ReadonlySet<string>,
+): { own: number; feeder: number } {
+  let own = 0;
+  let feeder = 0;
+  for (const bucket of buckets) {
+    if (bucket.count === 0) continue;
+    const matched = eligibleCodes(bucket.birthDate.trim(), config, targetSeasonYear);
+    if (!matched.some((code) => codes.has(code))) continue;
+    if (bucket.pool === "own") own += bucket.count;
+    else feeder += bucket.count;
+  }
+  return { own, feeder };
+}
+
+function collectPools(
+  buckets: readonly BirthBucket[],
+  current: ForecastConfig,
+  proposed: ForecastConfig,
+  targetSeasonYear: number,
+  options: ForecastOptions,
+  meta: Map<string, RowMeta>,
+): { pools: SharedPool[]; currentIds: Map<string, string>; proposedIds: Map<string, string> } {
+  const byId = new Map<string, SharedPool>();
+  const currentIds = new Map<string, string>();
+  const proposedIds = new Map<string, string>();
+  const ensure = (codes: string[]): SharedPool => {
+    const poolKey = [...codes].sort().join("+");
+    const existing = byId.get(poolKey);
+    if (existing) return existing;
+    const created: SharedPool = {
+      poolKey,
+      codes,
+      label: `Shared pool: ${codes.map((code) => meta.get(code)?.label ?? code).join(", ")}`,
+      current: null,
+      proposed: null,
+      currentShortRoster: false,
+      proposedShortRoster: false,
+    };
+    byId.set(poolKey, created);
+    return created;
+  };
+  const fill = (
+    config: ForecastConfig,
+    groups: string[][],
+    side: "current" | "proposed",
+    ids: Map<string, string>,
+  ) => {
+    for (const codes of groups) {
+      const pool = ensure(codes);
+      for (const code of codes) ids.set(code, pool.poolKey);
+      const ordered = [...codes].sort((left, right) => {
+        const leftDivision = config.divisions.find((division) => division.code === left);
+        const rightDivision = config.divisions.find((division) => division.code === right);
+        return (leftDivision?.sortOrder ?? 0) - (rightDivision?.sortOrder ?? 0) || left.localeCompare(right);
+      });
+      const roster = options.rosterFor(ordered[0] ?? codes[0] ?? "");
+      const counts = eligibleHeadcount(buckets, config, targetSeasonYear, new Set(codes));
+      const built = sideFromCounts(counts, options, roster);
+      if (side === "current") {
+        pool.current = built.side;
+        pool.currentShortRoster = built.shortRoster;
+      } else {
+        pool.proposed = built.side;
+        pool.proposedShortRoster = built.shortRoster;
+      }
+    }
+  };
+  fill(current, overlappingGroups(current, targetSeasonYear), "current", currentIds);
+  fill(proposed, overlappingGroups(proposed, targetSeasonYear), "proposed", proposedIds);
+  return { pools: [...byId.values()], currentIds, proposedIds };
+}
+
+function leagueSide(rows: readonly ForecastRow[], pools: readonly SharedPool[], side: "current" | "proposed"): ForecastSide {
+  const pooled = new Set<string>();
+  for (const pool of pools) {
+    if (pool[side] == null) continue;
+    for (const code of pool.codes) pooled.add(code);
+  }
+  const presentKey = side === "current" ? "inCurrent" : "inProposed";
+  let total = emptySide();
+  for (const row of rows) {
+    if (!row[presentKey] || pooled.has(row.code)) continue;
+    total = addSide(total, row[side]);
+  }
+  for (const pool of pools) {
+    const poolSide = pool[side];
+    if (poolSide) total = addSide(total, poolSide);
+  }
+  return total;
+}
+
 /**
  * Side-by-side current vs proposed configs. Rows are the union of division
  * codes, ordered by `sortOrder` (current's order when the code is in both).
@@ -411,6 +642,7 @@ export function compareConfigs(
   options: ForecastOptions,
 ): CompareConfigsResult {
   assertRetention(options.retentionRate);
+  shareOf(options);
   const currentAssignment = assignBuckets(buckets, current, targetSeasonYear);
   const proposedAssignment = assignBuckets(buckets, proposed, targetSeasonYear);
 
@@ -460,6 +692,14 @@ export function compareConfigs(
     }
   }
 
+  const { pools, currentIds, proposedIds } = collectPools(
+    buckets,
+    current,
+    proposed,
+    targetSeasonYear,
+    options,
+    meta,
+  );
   const rows = [...meta.entries()]
     .map(([code, row]) => {
       const roster = options.rosterFor(code);
@@ -479,12 +719,22 @@ export function compareConfigs(
         proposedShortRoster: proposedBuilt.shortRoster,
         currentOverlap: currentBuilt.overlap,
         proposedOverlap: proposedBuilt.overlap,
+        currentSharedPoolId: currentIds.get(code) ?? null,
+        proposedSharedPoolId: proposedIds.get(code) ?? null,
       };
     })
     .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));
 
+  const leagueCurrent = leagueSide(rows, pools, "current");
+  const leagueProposed = leagueSide(rows, pools, "proposed");
   return {
     rows,
+    sharedPools: pools,
+    league: {
+      current: leagueCurrent,
+      proposed: leagueProposed,
+      delta: subtractSide(leagueProposed, leagueCurrent),
+    },
     movers,
     current: populationOf(currentAssignment),
     proposed: populationOf(proposedAssignment),

@@ -5,15 +5,25 @@
 
 import type { ContentOrgId } from "@/lib/siteConfig";
 
-import { FALLBACK_RETENTION, type ForecastPopulation, type ForecastRow, type ForecastSide } from "./forecast";
+import {
+  DEFAULT_RETURN_RATE,
+  FALLBACK_RETENTION,
+  type ForecastPopulation,
+  type ForecastRow,
+  type ForecastSide,
+  type LeagueTotals,
+  type SharedPool,
+} from "./forecast";
 import type { DivisionAgesSource } from "./schema";
 import type { DivisionAgeConfig, LeagueAgeRule } from "./types";
 
 export const FORECAST_DEBOUNCE_MS = 300;
 
 export const FORECAST_CAVEATS = [
-  "Estimate. Retention uses the 2026 Spring→Fall carryover because 2025 data is archived.",
-  "Feeder = Ascension 2026 registrants not already in Gonzales.",
+  "Estimate. The return rate comes from league settings and defaults to 100%.",
+  "Spring→Fall carryover is reference only and is not used in the forecast.",
+  "Feeder = a share of Ascension 2026 registrants not already in Gonzales. The share defaults to 10%.",
+  "Overlapping divisions share one pool. League and team totals count each player once.",
   "Counts only.",
 ] as const;
 
@@ -27,6 +37,7 @@ export type ForecastResponse = {
   seasonYear: number;
   targetSeasonYear: number;
   includeFeeder: boolean;
+  feederShare: number;
   notes: string[];
   source: "enrollment" | "roster";
   coveragePct: number | null;
@@ -42,11 +53,13 @@ export type ForecastResponse = {
   };
   retention: {
     applied: number;
-    source: "override" | "carryover" | "fallback" | "unadjusted";
+    source: "override" | "league" | "default";
   };
   currentSource: DivisionAgesSource;
   proposedSource: "request" | "current";
   rows: ForecastRow[];
+  sharedPools: SharedPool[];
+  league: LeagueTotals;
   movers: number;
   current: ForecastPopulation;
   proposed: ForecastPopulation;
@@ -70,9 +83,8 @@ export function formatRetentionPercent(rate: number): string {
 }
 
 export function defaultRetentionText(org: ContentOrgId): string {
-  if (org === "gonzales") return formatRetentionPercent(FALLBACK_RETENTION.gonzales);
-  if (org === "ascension") return formatRetentionPercent(FALLBACK_RETENTION.ascension);
-  return "";
+  void org;
+  return formatRetentionPercent(DEFAULT_RETURN_RATE);
 }
 
 export function shownRetentionPercent(input: {
@@ -186,19 +198,26 @@ export function coverageLabel(pct: number | null, dated: number, players: number
   return `${pct}% (${dated} of ${players})`;
 }
 
-export function carryoverLabel(
+export function carryoverReferenceLabel(
+  org: ContentOrgId,
   seasonYear: number,
-  carryover: { springDistinct: number; carried: number; rate: number | null },
+  carryover: { rate: number | null },
 ): string {
-  const rate = carryover.rate == null ? "no rate" : `${formatRetentionPercent(carryover.rate)}%`;
-  return `${seasonYear} Spring\u2192Fall carryover: ${carryover.carried} of ${carryover.springDistinct} (${rate}).`;
+  if (carryover.rate != null && Number.isFinite(carryover.rate)) {
+    return `Spring\u2192Fall ${seasonYear} carryover: ${formatRetentionPercent(carryover.rate)}%, reference only`;
+  }
+  const published =
+    org === "gonzales" ? FALLBACK_RETENTION.gonzales : org === "ascension" ? FALLBACK_RETENTION.ascension : null;
+  if (published != null) {
+    return `Spring\u2192Fall 2026 carryover: ${formatRetentionPercent(published)}%, reference only`;
+  }
+  return "Spring\u2192Fall carryover is reference only.";
 }
 
 export function retentionSourceLabel(source: ForecastResponse["retention"]["source"]): string {
-  if (source === "carryover") return "Using the Spring\u2192Fall carryover.";
-  if (source === "fallback") return "Using the fallback rate.";
   if (source === "override") return "Using the percent entered for this session.";
-  return "No carryover rate, so expected headcount is not reduced.";
+  if (source === "league") return "Using the league return rate.";
+  return "Using the default return rate of 100%.";
 }
 
 export function populationTotal(split: ForecastPopulation["distinctTotal"]): number {
@@ -234,6 +253,9 @@ export function isForecastResponse(value: unknown): value is ForecastResponse {
   }
   if (!isRecord(value.current) || !isPopulation(value.current)) return false;
   if (!isRecord(value.proposed) || !isPopulation(value.proposed)) return false;
+  if (!isRecord(value.league) || !isSide(value.league.current) || !isSide(value.league.proposed)) return false;
+  if (!Array.isArray(value.sharedPools) || !value.sharedPools.every(isSharedPool)) return false;
+  if (typeof value.feederShare !== "number") return false;
   if (!isRecord(value.sources) || !isPoolSource(value.sources.own) || !isPoolSource(value.sources.feeder)) return false;
   if (typeof value.coveragePct !== "number" && value.coveragePct !== null) return false;
   if (value.currentSource !== "season" && value.currentSource !== "league" && value.currentSource !== "builtin") return false;
@@ -250,6 +272,14 @@ function isPopulation(value: Record<string, unknown>): boolean {
 
 function isPoolSource(value: unknown): boolean {
   return isRecord(value) && typeof value.players === "number" && typeof value.datedPlayers === "number";
+}
+
+function isSharedPool(value: unknown): boolean {
+  if (!isRecord(value)) return false;
+  if (typeof value.poolKey !== "string" || typeof value.label !== "string" || !Array.isArray(value.codes)) return false;
+  if (value.current != null && !isSide(value.current)) return false;
+  if (value.proposed != null && !isSide(value.proposed)) return false;
+  return true;
 }
 
 function isForecastRow(value: unknown): value is ForecastRow {

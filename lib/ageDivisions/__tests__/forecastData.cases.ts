@@ -135,6 +135,7 @@ async function run(
     view?: SeasonDivisionAgesView;
     loadSeasonConfig?: ForecastDeps["loadSeasonConfig"];
     loadRosterMap?: ForecastDeps["loadRosterMap"];
+    loadForecastSettings?: ForecastDeps["loadForecastSettings"];
     readJson?: () => Promise<unknown>;
   } = {},
 ) {
@@ -147,6 +148,7 @@ async function run(
       reader,
       loadSeasonConfig: extras.loadSeasonConfig ?? (async () => extras.view ?? nineUView()),
       loadRosterMap: extras.loadRosterMap,
+      loadForecastSettings: extras.loadForecastSettings,
     },
   );
   if (result.status === 200) {
@@ -320,7 +322,7 @@ describe("forecast pools", () => {
       line({ fullName: "Player Two", birthDate: "2018-02-01" }),
     ]);
     reader.putEnrollment("fallball", 2026, []);
-    const result = ok(await run({ retentionRate: 1 }, reader));
+    const result = ok(await run({ retentionRate: 1, feederShare: 1 }, reader));
     assert.equal(result.includeFeeder, true);
     const row = division(result, "9U");
     assert.equal(row.current.own, 1);
@@ -367,12 +369,13 @@ describe("forecast carryover and retention", () => {
     assert.equal(result.carryover.springDistinct, 2);
     assert.equal(result.carryover.carried, 1);
     assert.equal(result.carryover.rate, 0.5);
-    assert.equal(result.retention.source, "carryover");
-    assert.equal(result.retention.applied, 0.5);
-    assert.equal(division(result, "9U").current.expected, 1);
+    assert.equal(result.retention.source, "default");
+    assert.equal(result.retention.applied, 1);
+    assert.equal(division(result, "9U").current.expected, 2);
+    assert.notEqual(result.retention.applied, result.carryover.rate);
   });
 
-  it("returns a null rate when nothing matches so the fallback retention is used", async () => {
+  it("keeps a missing carryover as reference and still uses the 100% return rate", async () => {
     const reader = new FakeReader();
     reader.putEnrollment(
       "gonzales",
@@ -383,11 +386,11 @@ describe("forecast carryover and retention", () => {
     const result = ok(await run({ includeFeeder: false }, reader));
     assert.equal(result.carryover.rate, null);
     assert.equal(result.carryover.carried, 0);
-    assert.match(result.carryover.note ?? "", /fallback rate/);
-    assert.equal(result.retention.source, "fallback");
-    assert.equal(result.retention.applied, 0.29);
+    assert.match(result.carryover.note ?? "", /reference only/);
+    assert.equal(result.retention.source, "default");
+    assert.equal(result.retention.applied, 1);
     assert.equal(division(result, "9U").current.own, 10);
-    assert.equal(division(result, "9U").current.expected, 3);
+    assert.equal(division(result, "9U").current.expected, 10);
   });
 
   it("does not match on a name alone when the birth date is missing", async () => {
@@ -410,6 +413,57 @@ describe("forecast carryover and retention", () => {
     assert.equal(result.retention.source, "override");
     assert.equal(result.retention.applied, 0.5);
     assert.equal(division(result, "9U").current.expected, 1);
+  });
+
+  it("uses a saved league return rate and an edited feeder share", async () => {
+    const reader = new FakeReader();
+    reader.putEnrollment(
+      "gonzales",
+      2026,
+      Array.from({ length: 10 }, (_, index) => line({ fullName: `Own ${index}`, birthDate: "2018-01-15" })),
+    );
+    reader.putEnrollment(
+      "ascension",
+      2026,
+      Array.from({ length: 10 }, (_, index) => line({ fullName: `Feeder ${index}`, birthDate: "2018-02-02" })),
+    );
+    reader.putEnrollment("fallball", 2026, [line({ fullName: "Own 0", birthDate: "2018-01-15" })]);
+    const saved = ok(
+      await run({ includeFeeder: true }, reader, {
+        loadForecastSettings: async () => ({
+          roster: new Map(),
+          returnRate: 0.5,
+          feederShare: 0.1,
+          returnRateSource: "league",
+          feederShareSource: "league",
+        }),
+      }),
+    );
+    assert.equal(saved.carryover.rate, 0.1);
+    assert.equal(saved.retention.source, "league");
+    assert.equal(saved.retention.applied, 0.5);
+    assert.equal(saved.feederShare, 0.1);
+    assert.equal(division(saved, "9U").current.own, 10);
+    assert.equal(division(saved, "9U").current.feeder, 1);
+    assert.equal(division(saved, "9U").current.pool, 11);
+    assert.equal(division(saved, "9U").current.expected, 6);
+    assert.notEqual(saved.retention.applied, saved.carryover.rate);
+
+    const defaults = ok(await run({ includeFeeder: true }, reader));
+    assert.equal(defaults.retention.source, "default");
+    assert.equal(defaults.retention.applied, 1);
+    assert.equal(defaults.feederShare, 0.1);
+    assert.equal(division(defaults, "9U").current.feeder, 1);
+    assert.equal(division(defaults, "9U").current.expected, 11);
+
+    const edited = ok(await run({ includeFeeder: true, feederShare: 0.5, retentionRate: 1 }, reader));
+    assert.equal(edited.feederShare, 0.5);
+    assert.equal(division(edited, "9U").current.feeder, 5);
+    assert.equal(division(edited, "9U").current.expected, 15);
+
+    const off = ok(await run({ includeFeeder: false }, reader));
+    assert.equal(division(off, "9U").current.feeder, 0);
+    assert.equal(division(off, "9U").current.pool, 10);
   });
 });
 

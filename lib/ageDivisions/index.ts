@@ -38,15 +38,20 @@ export type {
   ForecastPopulation,
   ForecastRow,
   ForecastSide,
+  LeagueTotals,
   PoolSplit,
   Projection,
   RosterSize,
+  SharedPool,
   TeamCountRange,
 } from "./forecast";
 
 export {
+  DEFAULT_FEEDER_SHARE,
+  DEFAULT_RETURN_RATE,
   DEFAULT_ROSTER,
   FALLBACK_RETENTION,
+  appliedFeeder,
   assignBuckets,
   carryoverRate,
   compareConfigs,

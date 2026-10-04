@@ -11,6 +11,7 @@ import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
   buildForecastRequest,
+  carryoverReferenceLabel,
   defaultIncludeFeeder,
   forecastQueryKey,
   shownRetentionPercent,
@@ -32,7 +33,8 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
     seasonYear: 2026,
     targetSeasonYear: 2027,
     includeFeeder: true,
-    notes: ["No Fall Ball registration matches, so retention uses the fallback rate."],
+    feederShare: 0.1,
+    notes: ["Spring→Fall carryover is reference only and is not used in the forecast."],
     source: "enrollment",
     coveragePct: 100,
     sources: {
@@ -40,7 +42,7 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
       feeder: { source: "enrollment", players: 12, datedPlayers: 12, coveragePct: 100 },
     },
     carryover: { springDistinct: 40, carried: 12, rate: 0.3, note: null },
-    retention: { applied: 0.29, source: "fallback" },
+    retention: { applied: 1, source: "default" },
     currentSource: "league",
     proposedSource: "request",
     rows: [
@@ -58,6 +60,8 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
         proposedShortRoster: false,
         currentOverlap: 0,
         proposedOverlap: 2,
+        currentSharedPoolId: null,
+        proposedSharedPoolId: null,
       },
       {
         code: "10U",
@@ -73,8 +77,16 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
         proposedShortRoster: true,
         currentOverlap: 0,
         proposedOverlap: 0,
+        currentSharedPoolId: null,
+        proposedSharedPoolId: null,
       },
     ],
+    sharedPools: [],
+    league: {
+      current,
+      proposed,
+      delta: side({ own: 8, feeder: 0, pool: 8, expected: 8, minTeams: 3, maxTeams: 4 }),
+    },
     movers: 4,
     current: {
       distinctTotal: { own: 80, feeder: 12, total: 92 },
@@ -115,8 +127,8 @@ function view(overrides: Partial<ComponentProps<typeof DivisionAgesForecastView>
     retentionText: "",
     retentionDirty: false,
     retentionError: null,
-    appliedRetention: 0.29,
-    retentionHint: "Using the fallback rate.",
+    appliedRetention: 1,
+    retentionHint: "Using the default return rate of 100%.",
     proposed: proposedConfig,
     currentSourceLabel: "League defaults",
     forecast: response(),
@@ -159,23 +171,31 @@ describe("forecast tab", () => {
     assert.doesNotMatch(fallball, /feeder-toggle/);
   });
 
-  it("defaults retention to the carryover percent and offers reset only after an edit", () => {
+  it("defaults the return rate to 100% and offers reset only after an edit", () => {
     assert.equal(
-      shownRetentionPercent({ dirty: false, text: "10", applied: 0.29, org: "gonzales" }),
-      "29",
+      shownRetentionPercent({ dirty: false, text: "10", applied: 1, org: "gonzales" }),
+      "100",
     );
     assert.equal(
       shownRetentionPercent({ dirty: false, text: "", applied: null, org: "ascension" }),
-      "44",
+      "100",
     );
     assert.equal(
-      shownRetentionPercent({ dirty: true, text: "33", applied: 0.29, org: "gonzales" }),
+      shownRetentionPercent({ dirty: true, text: "33", applied: 1, org: "gonzales" }),
       "33",
     );
-    assert.equal(shownRetentionPercent({ dirty: false, text: "", applied: null, org: "fallball" }), "");
+    assert.equal(shownRetentionPercent({ dirty: false, text: "", applied: null, org: "fallball" }), "100");
+    assert.equal(
+      carryoverReferenceLabel("gonzales", 2026, { rate: null }),
+      "Spring→Fall 2026 carryover: 29%, reference only",
+    );
+    assert.equal(
+      carryoverReferenceLabel("gonzales", 2026, { rate: 0.3 }),
+      "Spring→Fall 2026 carryover: 30%, reference only",
+    );
 
     const initial = renderToStaticMarkup(view());
-    assert.match(inputTag(initial, "retention-percent"), /value="29"/);
+    assert.match(inputTag(initial, "retention-percent"), /value="100"/);
     assert.doesNotMatch(initial, /data-testid="retention-reset"/);
 
     const edited = renderToStaticMarkup(view({ retentionDirty: true, retentionText: "33", appliedRetention: null }));
@@ -207,7 +227,55 @@ describe("forecast tab", () => {
     assert.match(html, /Too young: current 1, proposed 0/);
     assert.match(html, /Aged out: current 2, proposed 1/);
     assert.match(html, /Data source: Enrollment/);
-    assert.match(html, /2026 Spring→Fall carryover: 12 of 40 \(30%\)/);
+    assert.match(html, /Spring→Fall 2026 carryover: 30%, reference only/);
+    assert.match(html, /League total, each player once/);
+    assert.match(html, /Feeder share 10%/);
+  });
+
+  it("marks overlapping divisions as a shared pool", () => {
+    const forecast = response({
+      sharedPools: [
+        {
+          poolKey: "6U-major+6U-minor",
+          codes: ["6U-minor", "6U-major"],
+          label: "Shared pool: 6U Minor, 6U Major",
+          current: side({ own: 20, feeder: 0, pool: 20, expected: 20, minTeams: 2, maxTeams: 2 }),
+          proposed: side({ own: 20, feeder: 0, pool: 20, expected: 20, minTeams: 2, maxTeams: 2 }),
+          currentShortRoster: false,
+          proposedShortRoster: false,
+        },
+      ],
+      league: {
+        current: side({ own: 20, feeder: 0, pool: 20, expected: 20, minTeams: 2, maxTeams: 2 }),
+        proposed: side({ own: 20, feeder: 0, pool: 20, expected: 20, minTeams: 2, maxTeams: 2 }),
+        delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+      },
+      rows: [
+        {
+          code: "6U-minor",
+          label: "6U Minor",
+          sortOrder: 1,
+          inCurrent: true,
+          inProposed: true,
+          current: side({ own: 20, feeder: 0, pool: 20, expected: 20, minTeams: 2, maxTeams: 2 }),
+          proposed: side({ own: 20, feeder: 0, pool: 20, expected: 20, minTeams: 2, maxTeams: 2 }),
+          delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+          movers: 0,
+          currentShortRoster: false,
+          proposedShortRoster: false,
+          currentOverlap: 20,
+          proposedOverlap: 20,
+          currentSharedPoolId: "6U-major+6U-minor",
+          proposedSharedPoolId: "6U-major+6U-minor",
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(view({ forecast }));
+    assert.match(html, /data-testid="shared-pool"/);
+    assert.match(html, /Shared pool: 6U Minor, 6U Major/);
+    assert.match(html, /Counted once/);
+    assert.match(html, /data-testid="shared-pool-member"/);
+    assert.match(html, /League total, each player once: current 20 expected, teams 2–2/);
   });
 
   it("changes the forecast request when a proposed cutoff is edited", () => {

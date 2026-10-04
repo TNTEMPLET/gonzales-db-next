@@ -151,6 +151,17 @@ const leagueDivisionListSchema = z
   .max(MAX_DIVISION_COUNT, "Keep the list to 40 divisions or fewer.")
   .superRefine(uniqueDivisionCodes);
 
+/** Year-to-year return rate when a saved league row has no value. */
+export const DEFAULT_RETURN_RATE_PERCENT = 100;
+
+/** Ascension feeder share when a saved league row has no value. */
+export const DEFAULT_FEEDER_SHARE_PERCENT = 10;
+
+const percentField = z
+  .number()
+  .min(0, "Enter a percent from 0 to 100.")
+  .max(100, "Enter a percent from 0 to 100.");
+
 export const leagueDefaultsSchema = z
   .object({
     cutoffMonth: z.number().int().min(1, "Month must be from 1 to 12.").max(12, "Month must be from 1 to 12."),
@@ -161,6 +172,8 @@ export const leagueDefaultsSchema = z
       .min(-1, "Year offset must be between -1 and 2.")
       .max(2, "Year offset must be between -1 and 2."),
     divisions: leagueDivisionListSchema,
+    returnRatePercent: percentField.optional(),
+    feederSharePercent: percentField.optional(),
   })
   .superRefine((value, ctx) => {
     const maxDay = daysInMonth(value.cutoffMonth);
@@ -202,6 +215,10 @@ export type LeagueDefaultsInput = {
   cutoffDay: number;
   yearOffset: number;
   divisions: DivisionAgeConfig[];
+  /** 0–100. Missing on old rows means {@link DEFAULT_RETURN_RATE_PERCENT}. */
+  returnRatePercent: number;
+  /** 0–100. Missing on old rows means {@link DEFAULT_FEEDER_SHARE_PERCENT}. */
+  feederSharePercent: number;
 };
 
 export type SeasonDivisionAgesRecord = {
@@ -235,9 +252,65 @@ export type LeagueDefaultsView = {
   cutoffDay: number;
   yearOffset: number;
   divisions: DivisionAgeConfig[];
+  returnRatePercent: number;
+  feederSharePercent: number;
   updatedAt: string | null;
   updatedByAdminId: string | null;
 };
+
+export type UnpackedLeagueDivisions = {
+  divisions: unknown;
+  returnRatePercent?: number;
+  feederSharePercent?: number;
+  returnRateSource: "league" | "default";
+  feederShareSource: "league" | "default";
+};
+
+function percentOrUndefined(value: unknown): number | undefined {
+  if (typeof value !== "number" || !Number.isFinite(value) || value < 0 || value > 100) return undefined;
+  return value;
+}
+
+/**
+ * `divisionsJson` is either a legacy division array or
+ * `{ divisions, returnRatePercent?, feederSharePercent? }`.
+ * Missing percents stay unset so callers can default them.
+ */
+export function unpackLeagueDivisionsJson(raw: unknown): UnpackedLeagueDivisions {
+  if (Array.isArray(raw)) {
+    return { divisions: raw, returnRateSource: "default", feederShareSource: "default" };
+  }
+  if (raw && typeof raw === "object" && Array.isArray((raw as { divisions?: unknown }).divisions)) {
+    const record = raw as {
+      divisions: unknown;
+      returnRatePercent?: unknown;
+      feederSharePercent?: unknown;
+    };
+    const returnRatePercent = percentOrUndefined(record.returnRatePercent);
+    const feederSharePercent = percentOrUndefined(record.feederSharePercent);
+    return {
+      divisions: record.divisions,
+      returnRatePercent,
+      feederSharePercent,
+      returnRateSource: returnRatePercent == null ? "default" : "league",
+      feederShareSource: feederSharePercent == null ? "default" : "league",
+    };
+  }
+  return { divisions: raw, returnRateSource: "default", feederShareSource: "default" };
+}
+
+/** Shape written into `LeagueAgeDivisionDefaults.divisionsJson`. No new column. */
+export function packLeagueDivisionsJson(input: LeagueDefaultsInput): {
+  divisions: DivisionAgeConfig[];
+  returnRatePercent: number;
+  feederSharePercent: number;
+} {
+  return {
+    divisions: input.divisions.map((division) => ({ ...division })),
+    returnRatePercent: input.returnRatePercent,
+    feederSharePercent: input.feederSharePercent,
+  };
+}
 
 export type FieldIssue = { path: string; message: string };
 
@@ -346,6 +419,8 @@ export function validateLeagueDefaults(
       cutoffDay: parsed.data.cutoffDay,
       yearOffset: parsed.data.yearOffset,
       divisions,
+      returnRatePercent: parsed.data.returnRatePercent ?? DEFAULT_RETURN_RATE_PERCENT,
+      feederSharePercent: parsed.data.feederSharePercent ?? DEFAULT_FEEDER_SHARE_PERCENT,
     },
   };
 }
