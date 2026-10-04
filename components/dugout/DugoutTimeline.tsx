@@ -17,7 +17,13 @@ import {
 import type { Game } from "@/lib/fetchGames";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 import StandingsTabs from "@/components/standings/StandingsTabs";
+import { OffSeasonNotice } from "@/components/publicSeason/OffSeasonNotice";
 import type { AgeGroupStandings } from "@/lib/standings";
+import {
+  finalStandingsLabel,
+  type PublicRegistrationStatus,
+  type SpringContentOrgId,
+} from "@/lib/publicSeason/offSeason";
 import { MAX_COMMENT_LENGTH, MAX_POST_LENGTH } from "@/lib/dugout/constants";
 import {
   formatPostTime,
@@ -74,6 +80,9 @@ type DugoutTimelineProps = {
   initialPosts: DugoutPost[];
   initialScheduleGames?: Game[];
   initialStandings?: AgeGroupStandings[];
+  /** Set only for a Spring league that is not live. Omit to keep the schedule view. */
+  offSeasonOrg?: SpringContentOrgId | null;
+  registrationStatus?: PublicRegistrationStatus | null;
   leagueName?: string;
   orgId?: string;
   isAdmin?: boolean;
@@ -1035,6 +1044,8 @@ export default function DugoutTimeline({
   initialPosts,
   initialScheduleGames = [],
   initialStandings = [],
+  offSeasonOrg = null,
+  registrationStatus = null,
   leagueName = "the league",
   orgId,
   isAdmin = false,
@@ -3199,6 +3210,13 @@ export default function DugoutTimeline({
         </section>
       ) : showingScheduleView ? (
         <section className="flex-1 overflow-y-auto scrollbar-hide border border-t-0 border-zinc-800 bg-zinc-900/70 p-3 sm:p-4 md:p-5">
+          {offSeasonOrg ? (
+            <OffSeasonNotice
+              org={offSeasonOrg}
+              registrationStatus={registrationStatus}
+            />
+          ) : (
+            <>
           <div className="mb-4">
             <h3 className="text-base font-semibold">Schedule</h3>
             <p className="mt-1 text-sm text-zinc-400">
@@ -3288,6 +3306,8 @@ export default function DugoutTimeline({
               ))}
             </div>
           )}
+            </>
+          )}
 
           <div className="mt-7 rounded-2xl border border-zinc-800 bg-zinc-950/40 p-3 sm:p-4">
             <div className="mb-3 flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
@@ -3295,7 +3315,7 @@ export default function DugoutTimeline({
                 Standings Snapshot
               </h4>
               <span className="text-[11px] text-zinc-500">
-                Active season
+                {offSeasonOrg ? finalStandingsLabel(offSeasonOrg) : "Active season"}
               </span>
             </div>
             <StandingsTabs standings={initialStandings} />

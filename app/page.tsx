@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import ScheduleTable from "@/components/ScheduleTable";
 import HeroNewsRotator from "@/components/home/HeroNewsRotator";
+import { OffSeasonNotice } from "@/components/publicSeason/OffSeasonNotice";
 import {
   loadPublicPracticeSlots,
   loadPublicScheduleGames,
@@ -28,6 +29,11 @@ import {
 } from "@/lib/siteConfig";
 import { getOrgCapabilities } from "@/lib/org/capabilities";
 import { getActiveOrgAlert } from "@/lib/orgAlerts";
+import {
+  finalStandingsLabel,
+  isSpringContentOrg,
+  isSpringPublicOffSeason,
+} from "@/lib/publicSeason/offSeason";
 import {
   SEASON_END_DATE,
   SEASON_START_DATE,
@@ -275,6 +281,10 @@ export default async function Home({
   const viewMode = (resolvedSearchParams.view as ViewMode) || "thisWeek";
   const site = getSiteConfig();
   const contentOrg = getDefaultContentOrg();
+  const springOffSeasonOrg =
+    isSpringContentOrg(contentOrg) && isSpringPublicOffSeason(contentOrg)
+      ? contentOrg
+      : null;
   const homepageCopy = getHomepageCopy(contentOrg);
   const orgCaps = getOrgCapabilities(contentOrg);
   const volunteerRegistrationUrl = getSportsConnectVolunteerRegistrationUrl();
@@ -329,7 +339,8 @@ export default async function Home({
     seasonName: string;
   };
 
-  const schedulePromise: Promise<SchedulePayload> = scheduleLive
+  const schedulePromise: Promise<SchedulePayload> =
+    scheduleLive && !springOffSeasonOrg
     ? loadPublicScheduleWindow(contentOrg)
         .then(async (window) => {
           const rangeStart = viewMode === "fullSeason" ? window.startDate : startDate;
@@ -401,7 +412,12 @@ export default async function Home({
   // SportsConnect hub stays reachable even when spring internal reg window is closed.
   const showRegistrationCta =
     regOpen || regWaitlist || orgCaps.registration === "sportsconnect";
-  const heroBadge = regWaitlist ? "WAITLIST OPEN" : homepageCopy.seasonBadge;
+  const heroBadge = regWaitlist
+    ? "WAITLIST OPEN"
+    : springOffSeasonOrg
+      ? "OFF SEASON"
+      : homepageCopy.seasonBadge;
+  const showScheduleCta = scheduleLive && !springOffSeasonOrg;
 
   const heroRotatorItems = rotatorPosts
     .filter((post: HomepageRotatorPost) => Boolean(post.imageUrl))
@@ -522,7 +538,7 @@ export default async function Home({
           </a>
         )
       ) : null}
-      {scheduleLive ? (
+      {showScheduleCta ? (
         <a
           href="#schedule"
           className={
@@ -600,7 +616,7 @@ export default async function Home({
                   },
                 ]
               : []),
-            ...(scheduleLive
+            ...(showScheduleCta
               ? [
                   {
                     label: "View Schedules",
@@ -665,7 +681,11 @@ export default async function Home({
           <div>
             <div className="text-6xl mb-3">🏟️</div>
             <h3 className="font-semibold text-xl mb-3 text-white">Park Status</h3>
-            {venueStats.length > 0 ? (
+            {springOffSeasonOrg ? (
+              <p className="text-zinc-400">
+                Parks are quiet until the next season begins.
+              </p>
+            ) : venueStats.length > 0 ? (
               <div className="space-y-2">
                 {venueStats.map(([, venue]) => {
                   const statusLabel =
@@ -778,11 +798,23 @@ export default async function Home({
             ) : null}
           </div>
           <div>
-            <div className="text-6xl mb-3">📱</div>
+            <div className="text-6xl mb-3">{springOffSeasonOrg ? "🏆" : "📱"}</div>
             <h3 className="font-semibold text-xl mb-1 text-white">
-              {scheduleLive ? "Live Scores" : "Schedules"}
+              {springOffSeasonOrg
+                ? "Final Standings"
+                : scheduleLive
+                  ? "Live Scores"
+                  : "Schedules"}
             </h3>
-            <p className="text-zinc-400">{homepageCopy.liveScoresText}</p>
+            {springOffSeasonOrg ? (
+              <p className="text-zinc-400">
+                <Link href="/standings" className="font-semibold text-brand-gold hover:text-brand-gold/80">
+                  {finalStandingsLabel(springOffSeasonOrg)}
+                </Link>
+              </p>
+            ) : (
+              <p className="text-zinc-400">{homepageCopy.liveScoresText}</p>
+            )}
           </div>
         </div>
       </section>
@@ -852,7 +884,17 @@ export default async function Home({
         </section>
       ) : null}
 
-      {scheduleLive ? (
+      {springOffSeasonOrg ? (
+        <section
+          id="schedule"
+          className="border-b border-zinc-800 bg-zinc-950 py-12 sm:py-16"
+        >
+          <OffSeasonNotice
+            org={springOffSeasonOrg}
+            registrationStatus={registrationStatus}
+          />
+        </section>
+      ) : scheduleLive ? (
         <ScheduleTable
           siteName={site.name}
           seasonName={seasonName}

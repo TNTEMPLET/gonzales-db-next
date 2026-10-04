@@ -16,6 +16,8 @@ type FooterProps = {
     displayNameLine2: string;
     logoPath: string;
     tournamentOnly?: boolean;
+    /** Spring league outside its season window. Fall Ball and other orgs stay false. */
+    springOffSeason?: boolean;
   };
 };
 
@@ -154,12 +156,21 @@ export default function Footer({ brand }: FooterProps) {
             ) : (
               <>
                 <li>
-                  <a
-                    href="/schedule"
-                    className="text-zinc-100 hover:text-brand-gold transition"
-                  >
-                    Schedules &amp; Standings
-                  </a>
+                  {brand.springOffSeason ? (
+                    <Link
+                      href="/standings"
+                      className="text-zinc-100 hover:text-brand-gold transition"
+                    >
+                      Final Standings
+                    </Link>
+                  ) : (
+                    <a
+                      href="/schedule"
+                      className="text-zinc-100 hover:text-brand-gold transition"
+                    >
+                      Schedules &amp; Standings
+                    </a>
+                  )}
                 </li>
                 <li>
                   <a

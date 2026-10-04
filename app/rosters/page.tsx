@@ -1,8 +1,11 @@
 import Link from "next/link";
 import { connection } from "next/server";
 
+import { OffSeasonPage } from "@/components/publicSeason/OffSeasonNotice";
 import prisma from "@/lib/prisma";
-import { getBracketOrgForDeployment, getSiteConfig } from "@/lib/siteConfig";
+import { isSpringContentOrg, isSpringPublicOffSeason } from "@/lib/publicSeason/offSeason";
+import { getRegistrationStatus } from "@/lib/registrationStatus";
+import { getBracketOrgForDeployment, getOrgId, getSiteConfig } from "@/lib/siteConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -133,6 +136,12 @@ export function generateMetadata() {
 }
 
 export default async function RostersPage() {
+  const siteOrg = getOrgId();
+  if (isSpringContentOrg(siteOrg) && isSpringPublicOffSeason(siteOrg)) {
+    const registrationStatus = await getRegistrationStatus(siteOrg);
+    return <OffSeasonPage org={siteOrg} registrationStatus={registrationStatus} />;
+  }
+
   await connection();
   const site = getSiteConfig();
   const divisionRosters = await getDivisionRosters();

@@ -8,6 +8,7 @@ import {
   getSportsConnectRegistrationUrl,
   getSportsConnectVolunteerRegistrationUrl,
 } from "@/lib/sportsConnect/registrationUrl";
+import { springOffSeasonPublicNav } from "@/lib/publicSeason/offSeason";
 import { CURRENT_SEASON_LABEL } from "@/lib/seasonConfig";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 import { headerShopNavItem } from "@/lib/auth/ordersModule";
@@ -38,6 +39,8 @@ type HeaderProps = {
      * must not read `ORDERS_ENABLED` itself.
      */
     ordersModuleEnabled: boolean;
+    /** Spring league outside its season window. Fall Ball and other orgs stay false. */
+    springOffSeason?: boolean;
   };
 };
 
@@ -237,7 +240,7 @@ export default function Header({ brand }: HeaderProps) {
     isCoachingInterestEnabled(contentOrgForCaps) &&
     isPublicNavEnabledForOrg(contentOrgForCaps, "coaching-interest");
 
-  const publicNavLinks = (isTournamentOnly
+  const basePublicNavLinks = (isTournamentOnly
     ? [
         { href: "/", label: "Home" },
         { href: "/today", label: "Today", key: "today" },
@@ -264,6 +267,9 @@ export default function Header({ brand }: HeaderProps) {
       ]).filter((link) =>
         isPublicNavEnabledForOrg(isFallBallHeader ? "fallball" : shopNavOrg, link.key ?? link.label.toLowerCase()),
       );
+  const publicNavLinks = brand.springOffSeason
+    ? springOffSeasonPublicNav(basePublicNavLinks)
+    : basePublicNavLinks;
 
   const fallBallCoachCornerLinks = isFallBallHeader
     ? [
@@ -562,7 +568,11 @@ export default function Header({ brand }: HeaderProps) {
                   onClick={() => setIsMenuOpen(false)}
                   className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
                 >
-                  {regWaitlist ? "Join the Waitlist" : `Register for ${CURRENT_SEASON_LABEL}`}
+                  {regWaitlist
+                    ? "Join the Waitlist"
+                    : brand.springOffSeason
+                      ? "Register Now"
+                      : `Register for ${CURRENT_SEASON_LABEL}`}
                 </a>
               ) : (
                 <Link
@@ -570,7 +580,11 @@ export default function Header({ brand }: HeaderProps) {
                   onClick={() => setIsMenuOpen(false)}
                   className="mt-2 rounded-lg bg-brand-purple py-3 text-center font-semibold text-white hover:bg-brand-purple-dark"
                 >
-                  {regWaitlist ? "Join the Waitlist" : `Register for ${CURRENT_SEASON_LABEL}`}
+                  {regWaitlist
+                    ? "Join the Waitlist"
+                    : brand.springOffSeason
+                      ? "Register Now"
+                      : `Register for ${CURRENT_SEASON_LABEL}`}
                 </Link>
               )
             )}
