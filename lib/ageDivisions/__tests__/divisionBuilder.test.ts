@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 
 import { DivisionAgesBuilder } from "@/components/admin/DivisionAgesBuilder";
 import { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
+import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
 import { effectiveRange } from "../compute";
 import { DYB_RULE } from "../forecast";
 import { effectiveCutoffDate } from "../compute";
@@ -14,7 +15,9 @@ import {
   builderBackupKey,
   builderCoverageIssues,
   builderForecastProposed,
+  builderLeagueTimelines,
   builderOverlapRowIds,
+  builderRowViews,
   builderRowWindow,
   builderStorageKey,
   clearBuilderTable,
@@ -26,10 +29,13 @@ import {
   parseBuilderTable,
   patchForCharterChange,
   removeBuilderRow,
+  replaceWholeBuilderTable,
+  restoreBuilderUndo,
   saveBuilderTable,
   serializeBuilderTable,
   startOverBuilderTable,
   updateBuilderRow,
+  type BuilderForecastDraft,
   type BuilderRow,
   type BuilderTable,
   type KeyValueStore,
@@ -327,6 +333,40 @@ describe("league cutoff defaults", () => {
     assert.deepEqual(restored.rows.map((item) => item.id), ["a", "b", "c"]);
     assert.equal(insertBuilderRow(source, source.rows[1]!, 0).rows.length, 3);
   });
+
+  it("clears pending undo when the whole table is replaced", () => {
+    const source = tableWith([
+      row("a", { name: "7U", minAge: 7, maxAge: 7, charter: "ll" }),
+      row("b", { name: "8U", minAge: 8, maxAge: 8, charter: "ll" }),
+    ]);
+    const removed = removeBuilderRow(source, "b");
+    const pending = { row: source.rows[1]!, index: 1 };
+    assert.deepEqual(
+      restoreBuilderUndo(removed, pending).rows.map((item) => item.id),
+      ["a", "b"],
+    );
+
+    const cleared = replaceWholeBuilderTable(startOverBuilderTable(removed));
+    assert.equal(cleared.pendingUndo, null);
+    assert.deepEqual(restoreBuilderUndo(cleared.table, cleared.pendingUndo).rows, []);
+
+    const loaded = replaceWholeBuilderTable(tableWith([row("c", { name: "10U", minAge: 10, maxAge: 10 })]));
+    assert.equal(loaded.pendingUndo, null);
+    assert.deepEqual(
+      restoreBuilderUndo(loaded.table, loaded.pendingUndo).rows.map((item) => item.id),
+      ["c"],
+    );
+
+    const pasted = parseBuilderTable(serializeBuilderTable(tableWith([row("d", { name: "9U", minAge: 9, maxAge: 9 })])));
+    assert.equal(pasted.ok, true);
+    if (!pasted.ok) return;
+    const adopted = replaceWholeBuilderTable(pasted.table);
+    assert.equal(adopted.pendingUndo, null);
+    assert.deepEqual(
+      restoreBuilderUndo(adopted.table, adopted.pendingUndo).rows.map((item) => item.id),
+      ["d"],
+    );
+  });
 });
 
 describe("forecast payload", () => {
@@ -349,7 +389,96 @@ describe("forecast payload", () => {
     assert.ok(diamond);
     assert.equal(effectiveRange(diamond, dybCutoff).oldest, "2017-05-01");
   });
+
+  it("uses one code per row so a shared name keeps its own count on each timeline", () => {
+    const source = tableWith([
+      row("ll", { name: "8U", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+      row("dyb", { name: "8U", minAge: 8, maxAge: 8, charter: "dyb", cutoff: "dyb" }),
+    ]);
+    const views = builderRowViews(source);
+    const littleCode = views.find((view) => view.row.id === "ll")?.code;
+    const diamondCode = views.find((view) => view.row.id === "dyb")?.code;
+    assert.equal(littleCode, "8U");
+    assert.equal(diamondCode, "8U (2)");
+
+    const forecast = builderForecastProposed(source, views);
+    assert.deepEqual(
+      forecast.proposed?.divisions.map((division) => division.code),
+      [littleCode, diamondCode],
+    );
+
+    const leagues = builderLeagueTimelines(source, views);
+    const littleTimeline = leagues.find((league) => league.id === "ll")?.draft.proposed;
+    const diamondTimeline = leagues.find((league) => league.id === "dyb")?.draft.proposed;
+    assert.ok(littleTimeline);
+    assert.ok(diamondTimeline);
+    assert.deepEqual(
+      littleTimeline.divisions.map((division) => division.code),
+      [littleCode],
+    );
+    assert.deepEqual(
+      diamondTimeline.divisions.map((division) => division.code),
+      [diamondCode],
+    );
+
+    const counts: TimelineCount[] = [
+      { code: littleCode ?? "", label: "8U (LL)", pool: 11, expected: 11, minTeams: 1, maxTeams: 1 },
+      { code: diamondCode ?? "", label: "8U (DYB/DBB)", pool: 22, expected: 22, minTeams: 2, maxTeams: 2 },
+    ];
+    const diamondHtml = renderReadOnlyTimeline(diamondTimeline, counts);
+    assert.match(diamondHtml, /22 players/);
+    assert.doesNotMatch(diamondHtml, /11 players/);
+    const littleHtml = renderReadOnlyTimeline(littleTimeline, counts);
+    assert.match(littleHtml, /11 players/);
+    assert.doesNotMatch(littleHtml, /22 players/);
+
+    const second = tableWith([
+      row("ll1", { name: "8U", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+      row("dyb2", { name: "8U", minAge: 8, maxAge: 8, charter: "dyb", cutoff: "dyb" }),
+      row("ll2", { name: "8U", minAge: 7, maxAge: 7, charter: "ll", cutoff: "little-league" }),
+    ]);
+    const secondViews = builderRowViews(second);
+    const littleLeague = builderLeagueTimelines(second, secondViews).find((league) => league.id === "ll");
+    assert.deepEqual(
+      littleLeague?.draft.proposed?.divisions.map((division) => division.code),
+      ["8U", "8U (3)"],
+    );
+
+    const html = renderToStaticMarkup(
+      createElement(DivisionAgesBuilder, {
+        orgs: ["gonzales"],
+        defaultSeasonYear: SEASON,
+        seasonYears: [2026, SEASON],
+        persist: false,
+        initialTable: source,
+      }),
+    );
+    assert.equal((html.match(/data-testid="timeline-band-8U"/g) ?? []).length, 1);
+    assert.match(html, /data-testid="timeline-band-8U \(2\)"/);
+  });
 });
+
+function renderReadOnlyTimeline(
+  proposed: NonNullable<BuilderForecastDraft["proposed"]>,
+  counts: readonly TimelineCount[],
+): string {
+  return renderToStaticMarkup(
+    createElement(DivisionAgesForecastTimeline, {
+      readOnly: true,
+      proposed,
+      baseline: null,
+      targetSeason: SEASON,
+      linkEdges: false,
+      counts,
+      countsLoading: false,
+      onDivisions() {},
+      onCutoff() {},
+      onReplace() {},
+      onLinkEdges() {},
+      onReset() {},
+    }),
+  );
+}
 
 describe("builder storage", () => {
   it("round-trips a table and rejects a file that is not one", () => {

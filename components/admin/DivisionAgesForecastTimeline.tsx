@@ -216,6 +216,7 @@ function TimelineTrack({
                 key={member.code}
                 className="relative flex min-w-0 flex-1 flex-col justify-center px-1 text-left"
                 style={{ backgroundColor: color, color: bandForeground(color) }}
+                data-testid={`timeline-band-${member.code}`}
               >
                 <span className="block truncate text-[10px] font-semibold leading-tight">{member.label}</span>
               </div>

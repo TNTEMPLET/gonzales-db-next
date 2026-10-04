@@ -179,6 +179,25 @@ export function startOverBuilderTable(table: BuilderTable): BuilderTable {
   return blankBuilderTable(table.organizationId, table.seasonYear);
 }
 
+export type BuilderPendingUndo = {
+  row: BuilderRow;
+  index: number;
+};
+
+/**
+ * Start over, load from file, and paste saved layout replace every row.
+ * Pending Undo is cleared so it cannot insert a removed row into the new table.
+ */
+export function replaceWholeBuilderTable(table: BuilderTable): { table: BuilderTable; pendingUndo: null } {
+  return { table: cloneTable(table), pendingUndo: null };
+}
+
+/** Puts a removed row back. A cleared undo leaves the table as it is. */
+export function restoreBuilderUndo(table: BuilderTable, pendingUndo: BuilderPendingUndo | null): BuilderTable {
+  if (!pendingUndo) return table;
+  return insertBuilderRow(table, pendingUndo.row, pendingUndo.index);
+}
+
 export function charterTag(charter: BuilderCharter): string {
   return BUILDER_CHARTERS.find((item) => item.id === charter)?.tag ?? "Other";
 }
@@ -384,9 +403,54 @@ export type BuilderForecastDraft = {
 /**
  * One cutoff plus explicit birthdate overrides, so the existing forecast can
  * count a table whose rows do not all share a cutoff. Read-only payload.
+ * Pass the table's `builderRowViews` when the caller already has them so the
+ * counts table and every league timeline share one row-id to code mapping.
  */
-export function builderForecastProposed(table: BuilderTable): BuilderForecastDraft {
-  const views = builderRowViews(table);
+export function builderForecastProposed(
+  table: BuilderTable,
+  views: readonly BuilderRowView[] = builderRowViews(table),
+): BuilderForecastDraft {
+  return forecastDraftFromViews(views, table.seasonYear, table.rows.length);
+}
+
+export type BuilderLeagueTimeline = {
+  id: BuilderCoveragePoolId;
+  label: string;
+  draft: BuilderForecastDraft;
+};
+
+/**
+ * One timeline per league. Codes come from `views` (the full table), not from
+ * each league's own rows. A Little League "8U" and a Diamond "8U" stay "8U"
+ * and "8U (2)", so each bar looks up its own player count.
+ */
+export function builderLeagueTimelines(
+  table: BuilderTable,
+  views: readonly BuilderRowView[] = builderRowViews(table),
+): BuilderLeagueTimeline[] {
+  const byId = new Map(views.map((view) => [view.row.id, view]));
+  return builderLeagueTables(table).flatMap((league) => {
+    const members: BuilderRowView[] = [];
+    for (const row of league.table.rows) {
+      const view = byId.get(row.id);
+      if (view) members.push(view);
+    }
+    if (members.length === 0) return [];
+    return [
+      {
+        id: league.id,
+        label: league.label,
+        draft: forecastDraftFromViews(members, table.seasonYear, members.length),
+      },
+    ];
+  });
+}
+
+function forecastDraftFromViews(
+  views: readonly BuilderRowView[],
+  seasonYear: number,
+  rowCount: number,
+): BuilderForecastDraft {
   const skipped: string[] = [];
   const divisions: DivisionAgeConfig[] = [];
   for (const view of views) {
@@ -408,13 +472,15 @@ export function builderForecastProposed(table: BuilderTable): BuilderForecastDra
     return {
       proposed: null,
       skipped,
-      error: table.rows.length === 0 ? null : "Finish the highlighted divisions to see player counts.",
+      error: rowCount === 0 ? null : "Finish the highlighted divisions to see player counts.",
     };
   }
   const firstReady = views.find((view) => view.issues.length === 0 && view.window.usable);
-  const cutoff = firstReady ? normalizedRowRule(firstReady.row, table.seasonYear) : { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 };
+  const cutoff = firstReady
+    ? normalizedRowRule(firstReady.row, seasonYear)
+    : { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 };
   const proposed = { cutoff, divisions };
-  const validated = validateSeasonWrite(proposed, table.seasonYear);
+  const validated = validateSeasonWrite(proposed, seasonYear);
   if (!validated.ok) {
     return { proposed: null, skipped, error: validated.error };
   }
