@@ -258,7 +258,7 @@ BEGIN
   -- The SportsConnect follow-up ("please explain / describe the condition")
   -- has no medical/allergy word of its own, but it is the free-text detail.
   IF lk ~ '^health_'
-     OR lk ~ '(medical|allerg|medication|\yhealth\y|describe the condition)' THEN
+     OR lk ~ '(medical|allerg|medication|\yhealth\y|describe the condition|physical condition|tetanus|immuni[sz]|vaccin|shot date|condition|physician|insur|\ydoctor\y)' THEN
     RETURN 'medical';
   END IF;
   IF lk ~ 'birth[ _]?date' OR lk ~ 'date[ _]?of[ _]?birth'
@@ -1053,7 +1053,7 @@ SET
   "stringValue" = NULL
 FROM "SurveyQuestion" AS q
 WHERE a."questionId" = q.id
-  AND q."questionText" ~* '(medical|allerg|medication|\yhealth\y|describe the condition)'
+  AND q."questionText" ~* '(medical|allerg|medication|\yhealth\y|describe the condition|physical condition|tetanus|immuni[sz]|vaccin|shot date|condition|physician|insur|\ydoctor\y)'
   AND (a."textValue" IS NOT NULL OR a."stringValue" IS NOT NULL);
 
 UPDATE "CoachPlayerProtection"

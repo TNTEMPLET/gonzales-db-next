@@ -21,7 +21,7 @@ export function sportsConnectExportColumnKind(header: string): SportsConnectScru
   if (!lk) return "keep";
   if (/e-?mail/.test(lk)) return "email";
   if (
-    /medical|allerg|insur|physician|medication|\bhealth\b|describe the condition|\bdoctor\b/.test(
+    /medical|allerg|insur|physician|medication|\bhealth\b|describe the condition|\bdoctor\b|physical condition|tetanus|immuni[sz]|vaccin|shot date|condition/.test(
       lk,
     ) ||
     lk === "policy number"
