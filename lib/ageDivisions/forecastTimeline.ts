@@ -243,7 +243,11 @@ function siblingBounds(ordered: readonly OrderedDivision[], selfPos: number): { 
   return { start, end };
 }
 
-/** Keep a division and its linked neighbor at least one day wide. */
+/**
+ * Keep one division's oldest on or before its youngest. A shared window uses
+ * that same bound. Neighboring divisions are not a bound, so the edge may
+ * overlap them.
+ */
 export function clampEdgeDate(
   divisions: readonly DivisionAgeConfig[],
   divisionIndex: number,
@@ -258,28 +262,19 @@ export function clampEdgeDate(
   if (selfPos < 0) return "";
   const self = ordered[selfPos]!;
   const { start, end } = linkEdges ? siblingBounds(ordered, selfPos) : { start: selfPos, end: selfPos };
-  let next = date;
+  const oldest = ordered[start]?.range.oldest || self.range.oldest;
+  const youngest = ordered[end]?.range.youngest || self.range.youngest;
   if (field === "oldestBirthdate") {
-    if (self.range.youngest && next > self.range.youngest) next = self.range.youngest;
-    if (linkEdges && end + 1 < ordered.length) {
-      const neighborOldest = ordered[end + 1]!.range.oldest;
-      const floor = neighborOldest ? addDays(neighborOldest, 1) : "";
-      if (floor && next < floor) next = floor;
-    }
-  } else {
-    if (self.range.oldest && next < self.range.oldest) next = self.range.oldest;
-    if (linkEdges && start > 0) {
-      const neighborYoungest = ordered[start - 1]!.range.youngest;
-      const cap = neighborYoungest ? addDays(neighborYoungest, -1) : "";
-      if (cap && next > cap) next = cap;
-    }
+    if (youngest && date > youngest) return youngest;
+    return date;
   }
-  return next;
+  if (oldest && date < oldest) return oldest;
+  return date;
 }
 
 /**
- * Move one edge to `date`. Linked edges also move shared-window siblings
- * and the neighboring division's touching side.
+ * Move one edge to `date`. Linked edges also move divisions that already
+ * share this window. Neighboring divisions stay put.
  */
 export function dragBoundaryUpdate(
   divisions: readonly DivisionAgeConfig[],
@@ -318,7 +313,8 @@ export function nudgeEdge(
 
 /**
  * Set ages on the cutoff date and derive the birthdate window.
- * Linked edges move the neighbor and any shared-window sibling.
+ * Linked edges also move a division that already shares this window.
+ * Neighboring divisions stay put, so the new window may overlap them.
  */
 export function applyAgeSpan(
   divisions: readonly DivisionAgeConfig[],

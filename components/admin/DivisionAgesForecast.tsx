@@ -468,7 +468,7 @@ export function DivisionAgesForecastView({
                 const range = cutoffIso ? effectiveRange(division, cutoffIso) : null;
                 const edited = editedCodes.includes(division.code);
                 return (
-                <div key={`${division.code}-${index}`} className="rounded-xl border border-zinc-800 p-3">
+                <div key={`proposed-division-${index}`} data-row-key={`proposed-division-${index}`} className="rounded-xl border border-zinc-800 p-3">
                   <div className="flex flex-wrap items-center justify-between gap-2">
                     <p className="text-sm font-semibold text-white">
                       {division.label} <span className="font-normal text-zinc-500">{division.code}</span>

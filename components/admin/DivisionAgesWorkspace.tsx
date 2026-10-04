@@ -290,7 +290,7 @@ export function DivisionAgesSettingsDialog({
 
         <div className="mt-5 space-y-3">
           {draft.divisions.map((division, index) => (
-            <div key={`${division.sortOrder}-${index}`} className="rounded-xl border border-zinc-800 p-3">
+            <div key={`default-division-${index}`} data-row-key={`default-division-${index}`} className="rounded-xl border border-zinc-800 p-3">
               <div className="grid gap-2 sm:grid-cols-[1fr_1.4fr_5rem_5rem_auto]">
                 <input
                   aria-label={`Default code ${index + 1}`}
@@ -507,7 +507,7 @@ export function DivisionAgesEditorCard({
               const oldestValue = division.oldestBirthdate ?? calculated.oldest;
               const youngestValue = division.youngestBirthdate ?? calculated.youngest;
               return (
-                <tr key={`${division.code}-${index}`} className="border-t border-zinc-800 align-top text-zinc-200">
+                <tr key={`division-row-${index}`} data-row-key={`division-row-${index}`} className="border-t border-zinc-800 align-top text-zinc-200">
                   <td className="py-2 pr-3">
                     <div className="flex flex-col gap-2">
                       <button type="button" className={buttonClass} onClick={() => onCard({ ...card, dirty: true, divisions: moveDivision(card.divisions, index, -1) })}>
