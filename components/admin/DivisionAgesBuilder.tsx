@@ -12,15 +12,16 @@ import {
   blankBuilderTable,
   builderCoverageIssues,
   builderForecastProposed,
-  builderLeagueTables,
+  builderLeagueTimelines,
   builderOverlapRowIds,
   builderRowViews,
+  replaceWholeBuilderTable,
+  restoreBuilderUndo,
   builderStorageKey,
   classifyBuilderRaw,
   clearBuilderTable,
   createBuilderRowId,
   formatBirthdateWindow,
-  insertBuilderRow,
   moveBuilderRow,
   parseBuilderTable,
   patchForCharterChange,
@@ -210,7 +211,7 @@ export function DivisionAgesBuilder({
 
   function undoRemove() {
     if (!removed) return;
-    const next = insertBuilderRow(table, removed.row, removed.index);
+    const next = restoreBuilderUndo(table, removed);
     if (!next.rows.some((row) => row.id === removed.row.id)) return;
     edit(next);
   }
@@ -224,13 +225,14 @@ export function DivisionAgesBuilder({
 
   function switchContext(organizationId: string, seasonYear: number) {
     if (organizationId === table.organizationId && seasonYear === table.seasonYear) return;
+    const replaced = replaceWholeBuilderTable(blankBuilderTable(organizationId, seasonYear));
     setConfirmReset(false);
-    setRemoved(null);
+    setRemoved(replaced.pendingUndo);
     setImportError(null);
     setIncludeFeeder(organizationId === "gonzales");
     setSourceSeason(previousSeason(seasonYear, seasonYears));
     setContext({ organizationId, seasonYear });
-    if (!persist || storageBlocked) setMemoryTable(blankBuilderTable(organizationId, seasonYear));
+    if (!persist || storageBlocked) setMemoryTable(replaced.table);
   }
 
   function onExport() {
@@ -253,30 +255,33 @@ export function DivisionAgesBuilder({
       setImportError("This file is for a different league. Open that league, then import it there.");
       return;
     }
-    setContext({ organizationId: parsed.table.organizationId, seasonYear: parsed.table.seasonYear });
-    setSourceSeason(previousSeason(parsed.table.seasonYear, seasonYears));
-    setIncludeFeeder(parsed.table.organizationId === "gonzales");
+    const replaced = replaceWholeBuilderTable(parsed.table);
+    setContext({ organizationId: replaced.table.organizationId, seasonYear: replaced.table.seasonYear });
+    setSourceSeason(previousSeason(replaced.table.seasonYear, seasonYears));
+    setIncludeFeeder(replaced.table.organizationId === "gonzales");
     setImportError(null);
     setConfirmReset(false);
+    setRemoved(replaced.pendingUndo);
     if (!persist || storageBlocked) {
-      setMemoryTable(parsed.table);
+      setMemoryTable(replaced.table);
       return;
     }
     try {
-      writeBuilderRaw(parsed.table);
+      writeBuilderRaw(replaced.table);
     } catch {
       setStorageBlocked(true);
       setImportError("This browser blocked saving the imported table.");
-      setMemoryTable(parsed.table);
+      setMemoryTable(replaced.table);
     }
   }
 
   function onStartOver() {
-    const cleared = startOverBuilderTable(table);
+    const replaced = replaceWholeBuilderTable(startOverBuilderTable(table));
     setConfirmReset(false);
     setImportError(null);
+    setRemoved(replaced.pendingUndo);
     if (!persist || storageBlocked) {
-      setMemoryTable(cleared);
+      setMemoryTable(replaced.table);
       return;
     }
     try {
@@ -284,7 +289,7 @@ export function DivisionAgesBuilder({
       notifyBuilderStore();
     } catch {
       setStorageBlocked(true);
-      setMemoryTable(cleared);
+      setMemoryTable(replaced.table);
     }
   }
 
@@ -1092,9 +1097,9 @@ function BuilderCounts({
   onSourceSeason: (year: number) => void;
   onIncludeFeeder: (value: boolean) => void;
 }) {
-  const draft = useMemo(() => builderForecastProposed(table), [table]);
+  const draft = useMemo(() => builderForecastProposed(table, views), [table, views]);
   const overlapIds = useMemo(() => new Set(builderOverlapRowIds(table)), [table]);
-  const leagueTables = useMemo(() => builderLeagueTables(table), [table]);
+  const leagueTimelines = useMemo(() => builderLeagueTimelines(table, views), [table, views]);
   const [loaded, setLoaded] = useState<{ key: string; forecast: ForecastResponse | null; error: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
   const body = useMemo(() => {
@@ -1286,15 +1291,14 @@ function BuilderCounts({
       ) : null}
       {draft.proposed ? (
         <div data-testid="builder-timeline" className="space-y-6">
-          {leagueTables.map((league) => {
-            const leagueDraft = builderForecastProposed(league.table);
-            if (!leagueDraft.proposed) return null;
+          {leagueTimelines.map((league) => {
+            if (!league.draft.proposed) return null;
             return (
               <div key={league.id}>
                 <h4 className="mb-2 text-sm font-semibold text-white">{league.label} birthdate windows</h4>
                 <DivisionAgesForecastTimeline
                   readOnly
-                  proposed={leagueDraft.proposed}
+                  proposed={league.draft.proposed}
                   baseline={null}
                   targetSeason={table.seasonYear}
                   linkEdges={false}
