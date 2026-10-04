@@ -143,6 +143,15 @@ export function removeBuilderRow(table: BuilderTable, id: string): BuilderTable 
   return { ...cloneTable(table), rows: table.rows.filter((row) => row.id !== id).map(cloneRow) };
 }
 
+export function insertBuilderRow(table: BuilderTable, row: BuilderRow, index: number): BuilderTable {
+  if (table.rows.length >= MAX_DIVISION_COUNT) return cloneTable(table);
+  if (table.rows.some((item) => item.id === row.id)) return cloneTable(table);
+  const rows = table.rows.map(cloneRow);
+  const at = Math.max(0, Math.min(Math.trunc(index) || 0, rows.length));
+  rows.splice(at, 0, normalizeRow(row));
+  return { ...cloneTable(table), rows };
+}
+
 export function updateBuilderRow(
   table: BuilderTable,
   id: string,
@@ -172,6 +181,31 @@ export function startOverBuilderTable(table: BuilderTable): BuilderTable {
 
 export function charterTag(charter: BuilderCharter): string {
   return BUILDER_CHARTERS.find((item) => item.id === charter)?.tag ?? "Other";
+}
+
+/** Little League starts on Aug 31. Diamond / Dixie starts on Apr 30. Other leagues have no default. */
+export function defaultCutoffForCharter(charter: BuilderCharter): Extract<BuilderCutoff, "little-league" | "dyb"> | null {
+  if (charter === "ll") return "little-league";
+  if (charter === "dyb") return "dyb";
+  return null;
+}
+
+/**
+ * Switch the cutoff only when it is still the previous league's default.
+ * A Custom cutoff is left alone.
+ */
+export function patchForCharterChange(
+  row: BuilderRow,
+  nextCharter: BuilderCharter,
+): Partial<Omit<BuilderRow, "id">> {
+  const patch: Partial<Omit<BuilderRow, "id">> = { charter: nextCharter };
+  if (row.cutoff === "custom") return patch;
+  const previousDefault = defaultCutoffForCharter(row.charter);
+  const nextDefault = defaultCutoffForCharter(nextCharter);
+  if (previousDefault && nextDefault && row.cutoff === previousDefault) {
+    patch.cutoff = nextDefault;
+  }
+  return patch;
 }
 
 export function rowRule(row: BuilderRow): LeagueAgeRule {
@@ -275,6 +309,30 @@ export function builderRowViews(table: BuilderTable): BuilderRowView[] {
   }));
 }
 
+export type BuilderCoveragePoolId = "ll" | "dyb" | "teeball" | "other";
+
+const COVERAGE_POOLS: { id: BuilderCoveragePoolId; label: string; charters: readonly BuilderCharter[] }[] = [
+  { id: "ll", label: "Little League", charters: ["ll", "both"] },
+  { id: "dyb", label: "Diamond / Dixie", charters: ["dyb", "both"] },
+  { id: "teeball", label: "Tee-ball", charters: ["teeball"] },
+  { id: "other", label: "Other", charters: ["other"] },
+];
+
+export function builderLeagueTables(
+  table: BuilderTable,
+): { id: BuilderCoveragePoolId; label: string; table: BuilderTable }[] {
+  return COVERAGE_POOLS.flatMap((pool) => {
+    const rows = table.rows.filter((row) => pool.charters.includes(row.charter));
+    if (rows.length === 0) return [];
+    return [{ id: pool.id, label: pool.label, table: { ...table, rows } }];
+  });
+}
+
+/**
+ * Gaps and overlaps are checked inside one league at a time. Little League 8U
+ * and Diamond 8U can share birthdays without being an overlap. A "Both leagues"
+ * row is checked with Little League and with Diamond / Dixie.
+ */
 export function builderCoverageIssues(table: BuilderTable): BuilderIssue[] {
   const views = builderRowViews(table);
   const issues: BuilderIssue[] = [];
@@ -283,26 +341,38 @@ export function builderCoverageIssues(table: BuilderTable): BuilderIssue[] {
       issues.push({ kind: "incomplete", message: `${view.title}: ${message}`, rowIds: [view.row.id] });
     }
   }
-  const divisions: DivisionAgeConfig[] = [];
-  const idByCode = new Map<string, string>();
-  for (const view of views) {
-    if (!view.window.usable) continue;
-    idByCode.set(view.code, view.row.id);
-    divisions.push({
-      code: view.code,
-      label: view.title,
-      minAge: view.row.minAge,
-      maxAge: view.row.maxAge,
-      sortOrder: view.index + 1,
-      oldestBirthdate: view.window.oldest,
-      youngestBirthdate: view.window.youngest,
-    });
-  }
-  const warnings = coverageWarnings(divisions, "2000-06-15");
-  for (const warning of warnings) {
-    issues.push(issueFromWarning(warning, views, idByCode));
+  for (const pool of COVERAGE_POOLS) {
+    const members = views.filter((view) => pool.charters.includes(view.row.charter) && view.window.usable);
+    if (members.length === 0) continue;
+    const divisions: DivisionAgeConfig[] = [];
+    const idByCode = new Map<string, string>();
+    for (const view of members) {
+      idByCode.set(view.code, view.row.id);
+      divisions.push({
+        code: view.code,
+        label: view.title,
+        minAge: view.row.minAge,
+        maxAge: view.row.maxAge,
+        sortOrder: view.index + 1,
+        oldestBirthdate: view.window.oldest,
+        youngestBirthdate: view.window.youngest,
+      });
+    }
+    const warnings = coverageWarnings(divisions, "2000-06-15");
+    for (const warning of warnings) {
+      issues.push(issueFromWarning(warning, members, idByCode, pool.label));
+    }
   }
   return issues;
+}
+
+export function builderOverlapRowIds(table: BuilderTable): string[] {
+  const ids = new Set<string>();
+  for (const issue of builderCoverageIssues(table)) {
+    if (issue.kind !== "overlap") continue;
+    for (const id of issue.rowIds) ids.add(id);
+  }
+  return [...ids];
 }
 
 export type BuilderForecastDraft = {
@@ -356,6 +426,52 @@ export function builderForecastProposed(table: BuilderTable): BuilderForecastDra
 
 export function builderStorageKey(organizationId: string, seasonYear: number): string {
   return `apbaseball-division-builder:v${BUILDER_STORAGE_VERSION}:${organizationId}:${seasonYear}`;
+}
+
+export function builderBackupKey(organizationId: string, seasonYear: number): string {
+  return `apbaseball-division-builder-backup:v${BUILDER_STORAGE_VERSION}:${organizationId}:${seasonYear}`;
+}
+
+export const CORRUPT_BUILDER_NOTICE =
+  "This browser had a saved division layout that could not be read. A copy of that unreadable layout is kept in this browser before a new layout replaces it. A blank table is showing. You can start again or load a file.";
+
+export function classifyBuilderRaw(
+  raw: string | null,
+  organizationId: string,
+  seasonYear: number,
+): "empty" | "ok" | "corrupt" {
+  if (raw == null || raw === "") return "empty";
+  return readableBuilderTable(raw, organizationId, seasonYear) ? "ok" : "corrupt";
+}
+
+/** Copies an unreadable saved layout to the backup key. Leaves an existing backup in place. */
+export function backupUnreadableBuilderRaw(
+  store: KeyValueStore,
+  organizationId: string,
+  seasonYear: number,
+): boolean {
+  const key = builderStorageKey(organizationId, seasonYear);
+  let raw: string | null;
+  try {
+    raw = store.getItem(key);
+  } catch {
+    return false;
+  }
+  if (raw == null || raw === "" || readableBuilderTable(raw, organizationId, seasonYear)) return false;
+  const backupKey = builderBackupKey(organizationId, seasonYear);
+  let existing: string | null = null;
+  try {
+    existing = store.getItem(backupKey);
+  } catch {
+    return false;
+  }
+  if (existing != null && existing !== "") return true;
+  try {
+    store.setItem(backupKey, raw);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 export function serializeBuilderTable(table: BuilderTable): string {
@@ -413,6 +529,7 @@ export function loadBuilderTable(
   organizationId: string,
   seasonYear: number,
 ): BuilderTable | null {
+  backupUnreadableBuilderRaw(store, organizationId, seasonYear);
   let raw: string | null;
   try {
     raw = store.getItem(builderStorageKey(organizationId, seasonYear));
@@ -427,10 +544,12 @@ export function loadBuilderTable(
 }
 
 export function saveBuilderTable(store: KeyValueStore, table: BuilderTable): void {
+  backupUnreadableBuilderRaw(store, table.organizationId, table.seasonYear);
   store.setItem(builderStorageKey(table.organizationId, table.seasonYear), serializeBuilderTable(table));
 }
 
 export function clearBuilderTable(store: KeyValueStore, organizationId: string, seasonYear: number): void {
+  backupUnreadableBuilderRaw(store, organizationId, seasonYear);
   store.removeItem(builderStorageKey(organizationId, seasonYear));
 }
 
@@ -438,6 +557,7 @@ function issueFromWarning(
   warning: CoverageWarning,
   views: readonly BuilderRowView[],
   idByCode: ReadonlyMap<string, string>,
+  poolLabel: string,
 ): BuilderIssue {
   const titles = warning.divisionCodes.map((code) => views.find((view) => view.code === code)?.title ?? code);
   const names = titles.length <= 1 ? titles[0] ?? "A division" : `${titles.slice(0, -1).join(", ")} and ${titles[titles.length - 1]}`;
@@ -446,22 +566,27 @@ function issueFromWarning(
   if (warning.kind === "gap") {
     return {
       kind: "gap",
-      message: `Gap: kids born ${span} are not in a division. The nearest divisions are ${names}.`,
+      message: `${poolLabel}: Gap: kids born ${span} are not in a division. The nearest divisions are ${names}.`,
       rowIds,
     };
   }
   if (warning.kind === "overlap") {
     return {
       kind: "overlap",
-      message: `Overlap: kids born ${span} fit in more than one division (${names}).`,
+      message: `${poolLabel}: Overlap: kids born ${span} fit in more than one division (${names}).`,
       rowIds,
     };
   }
   return {
     kind: "invalid",
-    message: `Check ${names}: the birthdate window is not usable (${span}).`,
+    message: `${poolLabel}: Check ${names}: the birthdate window is not usable (${span}).`,
     rowIds,
   };
+}
+
+function readableBuilderTable(raw: string, organizationId: string, seasonYear: number): boolean {
+  const parsed = parseBuilderTable(raw);
+  return parsed.ok && parsed.table.organizationId === organizationId && parsed.table.seasonYear === seasonYear;
 }
 
 function divisionTitle(row: BuilderRow, index: number): string {

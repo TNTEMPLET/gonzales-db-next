@@ -11,15 +11,20 @@ import { effectiveCutoffDate } from "../compute";
 import {
   addBuilderRow,
   blankBuilderTable,
+  builderBackupKey,
   builderCoverageIssues,
   builderForecastProposed,
+  builderOverlapRowIds,
   builderRowWindow,
   builderStorageKey,
   clearBuilderTable,
+  classifyBuilderRaw,
+  insertBuilderRow,
   loadBuilderTable,
   moveBuilderRow,
   newBuilderRow,
   parseBuilderTable,
+  patchForCharterChange,
   removeBuilderRow,
   saveBuilderTable,
   serializeBuilderTable,
@@ -197,41 +202,130 @@ describe("gap and overlap detection", () => {
     assert.deepEqual(issues, []);
   });
 
-  it("flags the birthdays between an LL 8U row and a DYB 9U row", () => {
+  it("does not treat a Little League row and a Diamond row as one chart", () => {
+    const sideBySide = tableWith([
+      row("eight", { name: "8U Minors", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+      row("nine", { name: "9U", minAge: 9, maxAge: 9, charter: "dyb", cutoff: "dyb" }),
+      row("dyb8", { name: "8U DYB", minAge: 8, maxAge: 8, charter: "dyb", cutoff: "dyb" }),
+    ]);
+    const issues = builderCoverageIssues(sideBySide);
+    assert.deepEqual(
+      issues.filter((issue) => issue.kind === "gap" || issue.kind === "overlap"),
+      [],
+    );
+    assert.deepEqual(builderOverlapRowIds(sideBySide), []);
+  });
+
+  it("flags a hole inside one league", () => {
     const issues = builderCoverageIssues(
       tableWith([
         row("eight", { name: "8U Minors", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
-        row("nine", { name: "9U", minAge: 9, maxAge: 9, charter: "dyb", cutoff: "dyb" }),
+        row("ten", { name: "10U", minAge: 10, maxAge: 10, charter: "ll", cutoff: "little-league" }),
+        row("dyb", { name: "9U", minAge: 9, maxAge: 9, charter: "dyb", cutoff: "dyb" }),
       ]),
     );
     const gap = issues.find((issue) => issue.kind === "gap");
     assert.ok(gap);
+    assert.match(gap.message, /Little League/);
     assert.match(gap.message, /Gap/);
-    assert.match(gap.message, /May 1, 2018/);
+    assert.match(gap.message, /Sep 1, 2017/);
     assert.match(gap.message, /Aug 31, 2018/);
-    assert.deepEqual(gap.rowIds.sort(), ["eight", "nine"]);
+    assert.deepEqual(gap.rowIds.sort(), ["eight", "ten"]);
   });
 
-  it("flags birthdays that land in two divisions with different cutoffs", () => {
+  it("flags two Little League rows that cover the same birthdays and leaves Diamond out", () => {
     const issues = builderCoverageIssues(
       tableWith([
-        row("ll", { name: "8U LL", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+        row("ll-a", { name: "8U LL", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+        row("ll-b", { name: "8U LL again", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
         row("dyb", { name: "8U DYB", minAge: 8, maxAge: 8, charter: "dyb", cutoff: "dyb" }),
       ]),
     );
-    const overlap = issues.find((issue) => issue.kind === "overlap");
-    assert.ok(overlap);
-    assert.match(overlap.message, /Overlap/);
+    const overlaps = issues.filter((issue) => issue.kind === "overlap");
+    assert.equal(overlaps.length, 1);
+    const overlap = overlaps[0]!;
+    assert.match(overlap.message, /Little League/);
     assert.match(overlap.message, /8U LL/);
-    assert.match(overlap.message, /8U DYB/);
-    assert.match(overlap.message, /Sep 1, 2018/);
-    assert.match(overlap.message, /Apr 30, 2019/);
+    assert.match(overlap.message, /8U LL again/);
+    assert.doesNotMatch(overlap.message, /8U DYB/);
+    assert.deepEqual(overlap.rowIds.sort(), ["ll-a", "ll-b"]);
+    assert.deepEqual(builderOverlapRowIds(tableWith([
+      row("ll-a", { name: "8U LL", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+      row("ll-b", { name: "8U LL again", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+      row("dyb", { name: "8U DYB", minAge: 8, maxAge: 8, charter: "dyb", cutoff: "dyb" }),
+    ])).sort(), ["ll-a", "ll-b"]);
+  });
+
+  it("checks a Both leagues row inside Little League and inside Diamond", () => {
+    const issues = builderCoverageIssues(
+      tableWith([
+        row("ll", { name: "8U LL", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+        row("both", { name: "8U Both", minAge: 8, maxAge: 8, charter: "both", cutoff: "little-league" }),
+        row("dyb", { name: "8U DYB", minAge: 8, maxAge: 8, charter: "dyb", cutoff: "dyb" }),
+      ]),
+    );
+    const overlaps = issues.filter((issue) => issue.kind === "overlap");
+    const little = overlaps.find((issue) => issue.message.startsWith("Little League"));
+    const diamond = overlaps.find((issue) => issue.message.startsWith("Diamond / Dixie"));
+    assert.ok(little);
+    assert.ok(diamond);
+    assert.deepEqual(little.rowIds.sort(), ["both", "ll"]);
+    assert.deepEqual(diamond.rowIds.sort(), ["both", "dyb"]);
+    assert.equal(overlaps.some((issue) => issue.rowIds.includes("ll") && issue.rowIds.includes("dyb")), false);
+  });
+
+  it("accepts a side-by-side Little League and Diamond chart", () => {
+    const rows: BuilderRow[] = [
+      row("tee", { name: "Tee-ball", minAge: 4, maxAge: 5, charter: "teeball", cutoff: "little-league" }),
+    ];
+    for (let age = 6; age <= 12; age += 1) {
+      rows.push(row(`ll-${age}`, { name: `${age}U LL`, minAge: age, maxAge: age, charter: "ll", cutoff: "little-league" }));
+      rows.push(row(`dyb-${age}`, { name: `${age}U DYB`, minAge: age, maxAge: age, charter: "dyb", cutoff: "dyb" }));
+    }
+    rows.push(row("dyb-13", { name: "13-14 DYB", minAge: 13, maxAge: 14, charter: "dyb", cutoff: "dyb" }));
+    rows.push(row("dyb-15", { name: "15-17 DYB", minAge: 15, maxAge: 17, charter: "dyb", cutoff: "dyb" }));
+    const issues = builderCoverageIssues(tableWith(rows));
+    assert.deepEqual(
+      issues.filter((issue) => issue.kind === "gap" || issue.kind === "overlap"),
+      [],
+    );
+    assert.deepEqual(builderOverlapRowIds(tableWith(rows)), []);
   });
 
   it("names a division that still needs a name", () => {
     const issues = builderCoverageIssues(tableWith([row("blank", { name: "", minAge: 6, maxAge: 6 })]));
     assert.equal(issues[0]?.kind, "incomplete");
     assert.match(issues[0]?.message ?? "", /Name this division/);
+  });
+});
+
+describe("league cutoff defaults", () => {
+  it("moves Aug 31 to Apr 30 when the league changes and the cutoff was still the default", () => {
+    const little = row("a", { charter: "ll", cutoff: "little-league" });
+    assert.deepEqual(patchForCharterChange(little, "dyb"), { charter: "dyb", cutoff: "dyb" });
+    const diamond = row("b", { charter: "dyb", cutoff: "dyb" });
+    assert.deepEqual(patchForCharterChange(diamond, "ll"), { charter: "ll", cutoff: "little-league" });
+  });
+
+  it("leaves a custom cutoff and a hand-picked cutoff alone", () => {
+    const custom = row("c", { charter: "ll", cutoff: "custom", customMonth: 7, customDay: 15 });
+    assert.deepEqual(patchForCharterChange(custom, "dyb"), { charter: "dyb" });
+    const picked = row("d", { charter: "ll", cutoff: "dyb" });
+    assert.deepEqual(patchForCharterChange(picked, "dyb"), { charter: "dyb" });
+    const both = row("e", { charter: "both", cutoff: "little-league" });
+    assert.deepEqual(patchForCharterChange(both, "dyb"), { charter: "dyb" });
+  });
+
+  it("puts a removed row back at its old place", () => {
+    const source = tableWith([
+      row("a", { name: "7U" }),
+      row("b", { name: "8U" }),
+      row("c", { name: "9U" }),
+    ]);
+    const removed = removeBuilderRow(source, "b");
+    const restored = insertBuilderRow(removed, source.rows[1]!, 1);
+    assert.deepEqual(restored.rows.map((item) => item.id), ["a", "b", "c"]);
+    assert.equal(insertBuilderRow(source, source.rows[1]!, 0).rows.length, 3);
   });
 });
 
@@ -308,15 +402,26 @@ describe("builder storage", () => {
     assert.ok(loadBuilderTable(store, "ascension", 2027));
   });
 
-  it("ignores a stored value that does not parse", () => {
+  it("keeps a backup when the saved layout cannot be read", () => {
     const key = builderStorageKey("gonzales", 2027);
+    const backup = builderBackupKey("gonzales", 2027);
     const store = memoryStore({ [key]: "not-json" });
+    assert.equal(classifyBuilderRaw("not-json", "gonzales", 2027), "corrupt");
     assert.equal(loadBuilderTable(store, "gonzales", 2027), null);
+    assert.equal(store.getItem(backup), "not-json");
+    saveBuilderTable(store, blankBuilderTable("gonzales", 2027));
+    assert.equal(store.getItem(backup), "not-json");
+    assert.notEqual(store.getItem(key), "not-json");
+
+    const later = memoryStore({ [key]: "second-bad", [backup]: "first-bad" });
+    clearBuilderTable(later, "gonzales", 2027);
+    assert.equal(later.getItem(key), null);
+    assert.equal(later.getItem(backup), "first-bad");
   });
 });
 
 describe("division builder screen", () => {
-  it("opens on a blank table with the wizard available", () => {
+  it("opens a blank builder on the step-by-step view", () => {
     const html = renderToStaticMarkup(
       createElement(DivisionAgesBuilder, {
         orgs: ["gonzales", "ascension"],
@@ -327,14 +432,20 @@ describe("division builder screen", () => {
     );
     assert.match(html, /Division Builder/);
     assert.match(html, /starts blank/);
-    assert.match(html, /Add a division/);
+    assert.match(html, /1\. Pick the season/);
     assert.match(html, /Start over/);
     assert.match(html, /Step by step/);
+    assert.match(html, />Table</);
+    assert.match(html, /Save to file/);
+    assert.match(html, /Load from file/);
+    assert.match(html, /Paste saved layout/);
+    assert.doesNotMatch(html, /Export JSON/);
+    assert.doesNotMatch(html, /Import JSON/);
     assert.match(html, /does not change saved Division Ages or registration/);
     assert.doesNotMatch(html, /Casey Example/);
   });
 
-  it("shows a derived window, a gap, and the read-only timeline", () => {
+  it("shows a derived window, a same-league gap, and the read-only timeline", () => {
     const html = renderToStaticMarkup(
       createElement(DivisionAgesBuilder, {
         orgs: ["gonzales"],
@@ -343,12 +454,14 @@ describe("division builder screen", () => {
         persist: false,
         initialTable: tableWith([
           row("ll", { name: "7U Minors", minAge: 7, maxAge: 7, charter: "ll", cutoff: "little-league" }),
-          row("dyb", { name: "9U", minAge: 9, maxAge: 9, charter: "dyb", cutoff: "dyb" }),
+          row("ten", { name: "10U", minAge: 10, maxAge: 10, charter: "ll", cutoff: "little-league" }),
         ]),
       }),
     );
     assert.match(html, /born Sep 1, 2019 – Aug 31, 2020/);
-    assert.match(html, /Gap/);
+    assert.match(html, /Little League: Gap/);
+    assert.match(html, /sticky left-0/);
+    assert.match(html, /Advanced/);
     assert.match(html, /data-testid="builder-timeline"/);
     assert.match(html, /data-testid="birthdate-timeline"/);
     assert.doesNotMatch(html, /data-testid="age-editor"/);
@@ -375,6 +488,23 @@ describe("division builder screen", () => {
     assert.match(html, /born Sep 1, 2014 – Aug 31, 2018/);
     assert.match(html, /No gaps or overlaps/);
     assert.match(html, /Player and team counts/);
+  });
+
+  it("keeps an unfinished row on the review step", () => {
+    const html = renderToStaticMarkup(
+      createElement(DivisionAgesBuilder, {
+        orgs: ["ascension"],
+        defaultSeasonYear: 2027,
+        seasonYears: [2027],
+        persist: false,
+        initialMode: "wizard",
+        initialStep: 4,
+        initialTable: tableWith([row("blank", { name: "", minAge: 8, maxAge: 8 })], "ascension", 2027),
+      }),
+    );
+    assert.match(html, /Name this division/);
+    assert.match(html, /data-testid="builder-incomplete"/);
+    assert.doesNotMatch(html, /No gaps or overlaps/);
   });
 
   it("adds a Division Builder tab without hiding the forecast until it is opened", () => {

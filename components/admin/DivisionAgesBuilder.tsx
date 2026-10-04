@@ -6,22 +6,30 @@ import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/a
 import {
   BUILDER_CHARTERS,
   BUILDER_CUTOFFS,
+  CORRUPT_BUILDER_NOTICE,
   addBuilderRow,
+  backupUnreadableBuilderRaw,
   blankBuilderTable,
   builderCoverageIssues,
   builderForecastProposed,
+  builderLeagueTables,
+  builderOverlapRowIds,
   builderRowViews,
   builderStorageKey,
+  classifyBuilderRaw,
   clearBuilderTable,
   createBuilderRowId,
   formatBirthdateWindow,
+  insertBuilderRow,
   moveBuilderRow,
   parseBuilderTable,
+  patchForCharterChange,
   removeBuilderRow,
   saveBuilderTable,
   serializeBuilderTable,
   startOverBuilderTable,
   updateBuilderRow,
+  type BuilderCharter,
   type BuilderCutoff,
   type BuilderIssue,
   type BuilderRow,
@@ -110,7 +118,7 @@ export function DivisionAgesBuilder({
   defaultSeasonYear,
   seasonYears,
   initialTable,
-  initialMode = "table",
+  initialMode,
   initialStep = 1,
   persist = true,
 }: {
@@ -135,7 +143,19 @@ export function DivisionAgesBuilder({
   );
   const [storageBlocked, setStorageBlocked] = useState(false);
   const table = persist && !storageBlocked ? storedTable : memoryTable;
-  const [mode, setMode] = useState<Mode>(initialMode);
+  const [mode, setMode] = useState<Mode>(initialMode ?? (seed.rows.length === 0 ? "wizard" : "table"));
+  const [removed, setRemoved] = useState<{ row: BuilderRow; index: number } | null>(null);
+  const layoutStatus =
+    persist && !storageBlocked ? classifyBuilderRaw(storedRaw, context.organizationId, context.seasonYear) : "empty";
+
+  useEffect(() => {
+    if (layoutStatus !== "corrupt") return;
+    try {
+      backupUnreadableBuilderRaw(window.localStorage, context.organizationId, context.seasonYear);
+    } catch {
+      // The notice still tells the admin the saved layout could not be read.
+    }
+  }, [layoutStatus, context.organizationId, context.seasonYear]);
   const [step, setStep] = useState<Step>(initialStep);
   const [includeFeeder, setIncludeFeeder] = useState(seed.organizationId === "gonzales");
   const [sourceSeason, setSourceSeason] = useState(previousSeason(seed.seasonYear, seasonYears));
@@ -161,8 +181,9 @@ export function DivisionAgesBuilder({
   }, [seasonYears, table.seasonYear]);
   const showCounts = views.length > 0 && (mode === "table" || step === 4);
 
-  function edit(next: BuilderTable) {
+  function edit(next: BuilderTable, options?: { keepUndo?: boolean }) {
     setConfirmReset(false);
+    if (!options?.keepUndo) setRemoved(null);
     if (!persist || storageBlocked) {
       setMemoryTable(next);
       return;
@@ -180,6 +201,20 @@ export function DivisionAgesBuilder({
     edit(updateBuilderRow(table, id, patch));
   }
 
+  function removeRow(id: string) {
+    const index = table.rows.findIndex((row) => row.id === id);
+    if (index < 0) return;
+    setRemoved({ row: { ...table.rows[index]! }, index });
+    edit(removeBuilderRow(table, id), { keepUndo: true });
+  }
+
+  function undoRemove() {
+    if (!removed) return;
+    const next = insertBuilderRow(table, removed.row, removed.index);
+    if (!next.rows.some((row) => row.id === removed.row.id)) return;
+    edit(next);
+  }
+
   function addDivision(patch: Partial<Omit<BuilderRow, "id">> = {}) {
     if (table.rows.length >= MAX_DIVISION_COUNT) return;
     const id = createBuilderRowId();
@@ -190,6 +225,7 @@ export function DivisionAgesBuilder({
   function switchContext(organizationId: string, seasonYear: number) {
     if (organizationId === table.organizationId && seasonYear === table.seasonYear) return;
     setConfirmReset(false);
+    setRemoved(null);
     setImportError(null);
     setIncludeFeeder(organizationId === "gonzales");
     setSourceSeason(previousSeason(seasonYear, seasonYears));
@@ -298,17 +334,17 @@ export function DivisionAgesBuilder({
         </div>
         <div className="mt-4 flex flex-wrap gap-2">
           <button type="button" className={buttonClass} onClick={onExport}>
-            Export JSON
+            Save to file
           </button>
           <button type="button" className={buttonClass} onClick={() => fileRef.current?.click()}>
-            Import JSON
+            Load from file
           </button>
           <input
             ref={fileRef}
             type="file"
             accept="application/json,.json"
             className="sr-only"
-            aria-label="Import a division builder JSON file"
+            aria-label="Load a saved division layout file"
             onChange={(event) => {
               const file = event.target.files?.[0];
               event.target.value = "";
@@ -331,10 +367,24 @@ export function DivisionAgesBuilder({
             </button>
           )}
         </div>
+        <p className="mt-3 text-xs text-zinc-500">Saved files use JSON.</p>
         <details className="mt-3">
-          <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Paste JSON</summary>
+          <summary className="cursor-pointer text-sm font-semibold text-zinc-200">Paste saved layout</summary>
           <PasteJson onImport={onImportRaw} />
         </details>
+        {layoutStatus === "corrupt" ? (
+          <p className="mt-3 text-sm text-amber-200" role="alert">
+            {CORRUPT_BUILDER_NOTICE}
+          </p>
+        ) : null}
+        {removed ? (
+          <p className="mt-3 text-sm text-zinc-200" role="status">
+            Removed {removed.row.name.trim() || "that division"}.{" "}
+            <button type="button" className={buttonClass} onClick={undoRemove}>
+              Undo
+            </button>
+          </p>
+        ) : null}
         {importError ? (
           <p className="mt-3 text-sm text-amber-200" role="alert">
             {importError}
@@ -353,13 +403,13 @@ export function DivisionAgesBuilder({
           onStep={setStep}
           table={table}
           views={views}
-          issues={structural}
+          issues={issues}
           orgOptions={orgOptions}
           years={years}
           onContext={switchContext}
           onAdd={() => addDivision()}
           onPatch={patchRow}
-          onRemove={(id) => edit(removeBuilderRow(table, id))}
+          onRemove={removeRow}
           onMove={(id, direction) => edit(moveBuilderRow(table, id, direction))}
           atMax={table.rows.length >= MAX_DIVISION_COUNT}
         />
@@ -390,7 +440,7 @@ export function DivisionAgesBuilder({
             <BuilderTable
               views={views}
               onPatch={patchRow}
-              onRemove={(id) => edit(removeBuilderRow(table, id))}
+              onRemove={removeRow}
               onMove={(id, direction) => edit(moveBuilderRow(table, id, direction))}
             />
           )}
@@ -489,7 +539,7 @@ function PasteJson({ onImport }: { onImport: (raw: string) => void }) {
         />
       </label>
       <button type="button" className={buttonClass} onClick={() => onImport(text)}>
-        Use this JSON
+        Use this layout
       </button>
     </div>
   );
@@ -591,7 +641,7 @@ function CharterField({ row, onPatch }: { row: BuilderRow; onPatch: (patch: Part
         className={fieldClass}
         aria-label={`League for ${row.name || "this division"}`}
         value={row.charter}
-        onChange={(event) => onPatch({ charter: event.target.value as BuilderRow["charter"] })}
+        onChange={(event) => onPatch(patchForCharterChange(row, event.target.value as BuilderCharter))}
       >
         {BUILDER_CHARTERS.map((option) => (
           <option key={option.id} value={option.id}>
@@ -666,26 +716,29 @@ function CutoffFields({
           </label>
         </div>
       ) : null}
-      <label className="block text-sm text-zinc-300">
-        <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Year offset</span>
-        <select
-          className={fieldClass}
-          aria-label={`Year offset for ${row.name || "this division"}`}
-          value={row.yearOffset}
-          onChange={(event) => onPatch({ yearOffset: Number(event.target.value) })}
-        >
-          <option value={-1}>−1 (previous year)</option>
-          <option value={0}>0 (this season)</option>
-          <option value={1}>+1 (next year, Fall Ball)</option>
-          <option value={2}>+2</option>
-        </select>
-      </label>
       <p className="text-xs text-zinc-500">
         Ages are as of {formatCalendarDate(window.cutoffIso) || "the cutoff"}.
       </p>
       <details>
-        <summary className="cursor-pointer py-2 text-sm font-semibold text-zinc-200">Optional birthdate overrides</summary>
-        <div className="mt-2 grid gap-2 sm:grid-cols-2">
+        <summary className="cursor-pointer py-2 text-sm font-semibold text-zinc-200">Advanced</summary>
+        <p className="mt-2 text-xs text-zinc-500">
+          Year offset 0 uses this season. +1 uses next year’s cutoff, which Fall Ball often needs.
+        </p>
+        <label className="mt-2 block text-sm text-zinc-300">
+          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Year offset</span>
+          <select
+            className={fieldClass}
+            aria-label={`Year offset for ${row.name || "this division"}`}
+            value={row.yearOffset}
+            onChange={(event) => onPatch({ yearOffset: Number(event.target.value) })}
+          >
+            <option value={-1}>−1 (previous year)</option>
+            <option value={0}>0 (this season)</option>
+            <option value={1}>+1 (next year, Fall Ball)</option>
+            <option value={2}>+2</option>
+          </select>
+        </label>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
           <label className="block text-sm text-zinc-300">
             <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Oldest birthday</span>
             <input
@@ -707,7 +760,7 @@ function CutoffFields({
             />
           </label>
         </div>
-        <p className="mt-2 text-xs text-zinc-500">Leave these blank to use the cutoff. A date here replaces the calculated one.</p>
+        <p className="mt-2 text-xs text-zinc-500">Leave the birthdays blank to use the cutoff. A date here replaces the calculated one.</p>
         {row.oldestOverride || row.youngestOverride ? (
           <button
             type="button"
@@ -744,20 +797,23 @@ function BuilderTable({
   onRemove: (id: string) => void;
   onMove: (id: string, direction: "up" | "down") => void;
 }) {
+  const stickyName =
+    "sticky left-0 z-10 min-w-52 border-b border-zinc-800 bg-zinc-950 px-3 py-3 text-left font-normal shadow-[4px_0_8px_rgba(0,0,0,0.35)]";
   return (
     <div className="overflow-x-auto rounded-2xl border border-zinc-800">
-      <table className="w-full min-w-[52rem] text-left text-sm">
+      <table className="w-full min-w-[52rem] border-separate border-spacing-0 text-left text-sm">
         <caption className="sr-only">
-          Editable division builder. Names, ages, league, and cutoff. Not saved to the league.
+          Editable division builder. Names, ages, league, and cutoff. Not saved to the league. Scroll sideways on a narrow screen. The division name stays in view.
         </caption>
-        <thead className="bg-zinc-900/80 text-[10px] uppercase tracking-[0.16em] text-zinc-500">
+        <thead className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
           <tr>
-            <th scope="col" className="px-3 py-3 font-semibold">Order</th>
-            <th scope="col" className="px-3 py-3 font-semibold">Division</th>
-            <th scope="col" className="px-3 py-3 font-semibold">Ages</th>
-            <th scope="col" className="px-3 py-3 font-semibold">League</th>
-            <th scope="col" className="px-3 py-3 font-semibold">Cutoff</th>
-            <th scope="col" className="px-3 py-3 font-semibold">
+            <th scope="col" className="sticky left-0 z-20 min-w-52 border-b border-zinc-800 bg-zinc-900 px-3 py-3 font-semibold">
+              Division
+            </th>
+            <th scope="col" className="border-b border-zinc-800 bg-zinc-900 px-3 py-3 font-semibold">Ages</th>
+            <th scope="col" className="border-b border-zinc-800 bg-zinc-900 px-3 py-3 font-semibold">League</th>
+            <th scope="col" className="border-b border-zinc-800 bg-zinc-900 px-3 py-3 font-semibold">Cutoff</th>
+            <th scope="col" className="border-b border-zinc-800 bg-zinc-900 px-3 py-3 font-semibold">
               <span className="sr-only">Remove</span>
             </th>
           </tr>
@@ -766,9 +822,9 @@ function BuilderTable({
           {views.map((view, index) => {
             const name = view.row.name.trim() || `Division ${index + 1}`;
             return (
-              <tr key={view.row.id} className="border-t border-zinc-800 align-top">
-                <td className="px-3 py-3">
-                  <div className="flex flex-col gap-2">
+              <tr key={view.row.id} className="align-top">
+                <th scope="row" className={stickyName}>
+                  <div className="mb-3 flex flex-wrap gap-2">
                     <button
                       type="button"
                       className={buttonClass}
@@ -788,28 +844,26 @@ function BuilderTable({
                       Move down
                     </button>
                   </div>
-                </td>
-                <td className="min-w-48 px-3 py-3">
                   <NameField row={view.row} onPatch={(patch) => onPatch(view.row.id, patch)} />
                   <div className="mt-3">
                     <WindowLine view={view} />
                     <RowIssues view={view} />
                   </div>
-                </td>
-                <td className="min-w-40 px-3 py-3">
+                </th>
+                <td className="min-w-40 border-b border-zinc-800 px-3 py-3">
                   <AgeFields row={view.row} onPatch={(patch) => onPatch(view.row.id, patch)} />
                 </td>
-                <td className="min-w-44 px-3 py-3">
+                <td className="min-w-44 border-b border-zinc-800 px-3 py-3">
                   <CharterField row={view.row} onPatch={(patch) => onPatch(view.row.id, patch)} />
                 </td>
-                <td className="min-w-56 px-3 py-3">
+                <td className="min-w-56 border-b border-zinc-800 px-3 py-3">
                   <CutoffFields
                     row={view.row}
                     window={view.window}
                     onPatch={(patch) => onPatch(view.row.id, patch)}
                   />
                 </td>
-                <td className="px-3 py-3">
+                <td className="border-b border-zinc-800 px-3 py-3">
                   <button
                     type="button"
                     className={buttonClass}
@@ -966,13 +1020,15 @@ function Wizard({
             4. Review gaps, overlaps, and player counts
           </h3>
           <p className="max-w-3xl text-sm text-zinc-300">
-            A gap is a birthday that fits in no division. An overlap is a birthday that fits in two. Player counts below
-            use registrations you already have. They do not change those registrations.
+            A gap is a birthday that fits in no division in that league. An overlap is a birthday that fits in two
+            divisions in the same league. Little League and Diamond are checked separately. A Both leagues row is
+            checked with each. Player counts below use registrations you already have. They do not change those
+            registrations.
           </p>
           {views.length === 0 ? <p className="text-sm text-zinc-400">Add a division to review it.</p> : null}
           {views.length > 0 && issues.length === 0 ? (
             <p className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-100" role="status">
-              No gaps or overlaps. Every birthday from the oldest player to the youngest player fits in exactly one division.
+              No gaps or overlaps. Inside each league, every birthday from the oldest player to the youngest player fits in one division.
             </p>
           ) : (
             <IssueList issues={issues} />
@@ -1037,6 +1093,8 @@ function BuilderCounts({
   onIncludeFeeder: (value: boolean) => void;
 }) {
   const draft = useMemo(() => builderForecastProposed(table), [table]);
+  const overlapIds = useMemo(() => new Set(builderOverlapRowIds(table)), [table]);
+  const leagueTables = useMemo(() => builderLeagueTables(table), [table]);
   const [loaded, setLoaded] = useState<{ key: string; forecast: ForecastResponse | null; error: string | null } | null>(null);
   const [loading, setLoading] = useState(false);
   const body = useMemo(() => {
@@ -1185,7 +1243,7 @@ function BuilderCounts({
                       <td className="py-2 pr-3 tabular-nums">{row ? row.proposed.pool : "—"}</td>
                       <td className="py-2 pr-3 tabular-nums">
                         {row ? row.proposed.expected : "—"}
-                        {row && row.proposedOverlap > 0 ? (
+                        {overlapIds.has(view.row.id) ? (
                           <span className="mt-1 block text-xs text-amber-100">Also fits another division</span>
                         ) : null}
                         {row?.proposedShortRoster ? (
@@ -1227,21 +1285,30 @@ function BuilderCounts({
         </>
       ) : null}
       {draft.proposed ? (
-        <div data-testid="builder-timeline">
-          <DivisionAgesForecastTimeline
-            readOnly
-            proposed={draft.proposed}
-            baseline={null}
-            targetSeason={table.seasonYear}
-            linkEdges={false}
-            counts={counts}
-            countsLoading={loading}
-            onDivisions={() => {}}
-            onCutoff={() => {}}
-            onReplace={() => {}}
-            onLinkEdges={() => {}}
-            onReset={() => {}}
-          />
+        <div data-testid="builder-timeline" className="space-y-6">
+          {leagueTables.map((league) => {
+            const leagueDraft = builderForecastProposed(league.table);
+            if (!leagueDraft.proposed) return null;
+            return (
+              <div key={league.id}>
+                <h4 className="mb-2 text-sm font-semibold text-white">{league.label} birthdate windows</h4>
+                <DivisionAgesForecastTimeline
+                  readOnly
+                  proposed={leagueDraft.proposed}
+                  baseline={null}
+                  targetSeason={table.seasonYear}
+                  linkEdges={false}
+                  counts={counts}
+                  countsLoading={loading}
+                  onDivisions={() => {}}
+                  onCutoff={() => {}}
+                  onReplace={() => {}}
+                  onLinkEdges={() => {}}
+                  onReset={() => {}}
+                />
+              </div>
+            );
+          })}
         </div>
       ) : null}
     </section>
