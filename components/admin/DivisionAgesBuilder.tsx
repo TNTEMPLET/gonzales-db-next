@@ -40,6 +40,7 @@ import {
 } from "@/lib/ageDivisions/divisionBuilder";
 import { formatCalendarDate } from "@/lib/ageDivisions/present";
 import { MAX_DIVISION_COUNT } from "@/lib/ageDivisions/schema";
+import { SPRING_BUILDER_ORG, springCombinedBuilderTable } from "@/lib/admin/springCombined/view";
 import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
@@ -122,6 +123,7 @@ export function DivisionAgesBuilder({
   initialMode,
   initialStep = 1,
   persist = true,
+  showSpringTemplate = false,
 }: {
   orgs: ContentOrgId[];
   defaultSeasonYear: number;
@@ -131,6 +133,8 @@ export function DivisionAgesBuilder({
   initialStep?: Step;
   /** When false, the table stays in memory. The page uses browser storage. */
   persist?: boolean;
+  /** Master Spring combined view. Scratch template only; nothing is saved to a league. */
+  showSpringTemplate?: boolean;
 }) {
   const firstOrg = orgs[0] ?? "gonzales";
   const seed = initialTable ?? blankBuilderTable(firstOrg, defaultSeasonYear);
@@ -162,6 +166,7 @@ export function DivisionAgesBuilder({
   const [sourceSeason, setSourceSeason] = useState(previousSeason(seed.seasonYear, seasonYears));
   const [importError, setImportError] = useState<string | null>(null);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [confirmTemplate, setConfirmTemplate] = useState(false);
   const focusId = useRef<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
@@ -251,7 +256,12 @@ export function DivisionAgesBuilder({
       setImportError(parsed.error);
       return;
     }
-    if (!isContentOrg(parsed.table.organizationId, orgs)) {
+    if (parsed.table.organizationId === SPRING_BUILDER_ORG) {
+      if (!showSpringTemplate) {
+        setImportError("This file is the Spring combined scratch table. Open Spring (combined) to load it.");
+        return;
+      }
+    } else if (!isContentOrg(parsed.table.organizationId, orgs)) {
       setImportError("This file is for a different league. Open that league, then import it there.");
       return;
     }
@@ -275,6 +285,37 @@ export function DivisionAgesBuilder({
     }
   }
 
+  function applyWholeTable(next: BuilderTable) {
+    const replaced = replaceWholeBuilderTable(next);
+    setConfirmReset(false);
+    setConfirmTemplate(false);
+    setImportError(null);
+    setRemoved(replaced.pendingUndo);
+    setIncludeFeeder(next.organizationId === "gonzales");
+    setSourceSeason(previousSeason(next.seasonYear, seasonYears));
+    setContext({ organizationId: next.organizationId, seasonYear: next.seasonYear });
+    setMode("table");
+    if (!persist || storageBlocked) {
+      setMemoryTable(replaced.table);
+      return;
+    }
+    try {
+      writeBuilderRaw(replaced.table);
+    } catch {
+      setStorageBlocked(true);
+      setMemoryTable(replaced.table);
+      setImportError("This browser blocked saving the scratch table. Your edits stay on screen until you leave.");
+    }
+  }
+
+  function onUseSpringTemplate() {
+    if (table.rows.length > 0 && !confirmTemplate) {
+      setConfirmTemplate(true);
+      return;
+    }
+    applyWholeTable(springCombinedBuilderTable(table.seasonYear));
+  }
+
   function onStartOver() {
     const replaced = replaceWholeBuilderTable(startOverBuilderTable(table));
     setConfirmReset(false);
@@ -293,7 +334,10 @@ export function DivisionAgesBuilder({
     }
   }
 
-  const orgOptions = isContentOrg(table.organizationId, orgs) ? orgs : [table.organizationId as ContentOrgId, ...orgs];
+  const orgOptions =
+    isContentOrg(table.organizationId, orgs) || table.organizationId === SPRING_BUILDER_ORG
+      ? orgs
+      : [table.organizationId as ContentOrgId, ...orgs];
 
   return (
     <div className="space-y-6" data-testid="division-builder">
@@ -303,7 +347,7 @@ export function DivisionAgesBuilder({
         <p className="mt-2 max-w-3xl text-sm text-zinc-300">
           Gonzales Diamond Youth and Ascension Little League share one registration portal. This table starts blank so
           any admin can try division ages before changing the saved table. It stays in this browser for{" "}
-          {formatOrganizationIdDisplay(table.organizationId)} {table.seasonYear}. It does not change saved Division Ages
+          {builderLeagueLabel(table.organizationId)} {table.seasonYear}. It does not change saved Division Ages
           or registration.
         </p>
         <div className="mt-4 flex flex-wrap gap-2" role="radiogroup" aria-label="How do you want to work">
@@ -371,6 +415,27 @@ export function DivisionAgesBuilder({
               Start over
             </button>
           )}
+          {showSpringTemplate ? (
+            confirmTemplate ? (
+              <>
+                <button type="button" className={primaryClass} onClick={onUseSpringTemplate}>
+                  Yes, use the Spring template
+                </button>
+                <button type="button" className={buttonClass} onClick={() => setConfirmTemplate(false)}>
+                  Keep my divisions
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                className={buttonClass}
+                data-testid="spring-combined-template"
+                onClick={onUseSpringTemplate}
+              >
+                Spring combined template
+              </button>
+            )
+          ) : null}
         </div>
         <p className="mt-3 text-xs text-zinc-500">Saved files use JSON.</p>
         <details className="mt-3">
@@ -400,6 +465,11 @@ export function DivisionAgesBuilder({
             Start over clears every division for this league and season in this browser.
           </p>
         ) : null}
+        {confirmTemplate ? (
+          <p className="mt-3 text-sm text-zinc-300" role="status">
+            The Spring combined template replaces the divisions in this scratch table. It stays in this browser.
+          </p>
+        ) : null}
       </div>
 
       {mode === "wizard" ? (
@@ -411,6 +481,7 @@ export function DivisionAgesBuilder({
           issues={issues}
           orgOptions={orgOptions}
           years={years}
+          showSpringTemplate={showSpringTemplate}
           onContext={switchContext}
           onAdd={() => addDivision()}
           onPatch={patchRow}
@@ -424,6 +495,7 @@ export function DivisionAgesBuilder({
             table={table}
             orgOptions={orgOptions}
             years={years}
+            showSpringTemplate={showSpringTemplate}
             onContext={switchContext}
           />
           <div className="flex flex-wrap items-center gap-3">
@@ -474,20 +546,28 @@ function previousSeason(seasonYear: number, seasonYears: readonly number[]): num
   return seasonYear;
 }
 
+function builderLeagueLabel(organizationId: string): string {
+  if (organizationId === SPRING_BUILDER_ORG) return "Spring (combined)";
+  return formatOrganizationIdDisplay(organizationId);
+}
+
 function SeasonFields({
   table,
   orgOptions,
   years,
+  showSpringTemplate = false,
   onContext,
 }: {
   table: BuilderTable;
   orgOptions: readonly ContentOrgId[];
   years: readonly number[];
+  showSpringTemplate?: boolean;
   onContext: (organizationId: string, seasonYear: number) => void;
 }) {
+  const showLeaguePicker = orgOptions.length > 1 || showSpringTemplate;
   return (
     <div className="grid gap-4 sm:grid-cols-2">
-      {orgOptions.length > 1 ? (
+      {showLeaguePicker ? (
         <label className="block text-sm text-zinc-300">
           <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">League</span>
           <select
@@ -495,6 +575,7 @@ function SeasonFields({
             value={table.organizationId}
             onChange={(event) => onContext(event.target.value, table.seasonYear)}
           >
+            {showSpringTemplate ? <option value={SPRING_BUILDER_ORG}>Spring (combined)</option> : null}
             {orgOptions.map((org) => (
               <option key={org} value={org}>
                 {formatOrganizationIdDisplay(org)}
@@ -505,7 +586,7 @@ function SeasonFields({
       ) : (
         <p className="text-sm text-zinc-300">
           <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">League</span>
-          {formatOrganizationIdDisplay(table.organizationId)}
+          {builderLeagueLabel(table.organizationId)}
         </p>
       )}
       <label className="block text-sm text-zinc-300">
@@ -895,6 +976,7 @@ function Wizard({
   issues,
   orgOptions,
   years,
+  showSpringTemplate,
   onContext,
   onAdd,
   onPatch,
@@ -909,6 +991,7 @@ function Wizard({
   issues: readonly BuilderIssue[];
   orgOptions: readonly ContentOrgId[];
   years: readonly number[];
+  showSpringTemplate: boolean;
   onContext: (organizationId: string, seasonYear: number) => void;
   onAdd: () => void;
   onPatch: (id: string, patch: Partial<Omit<BuilderRow, "id">>) => void;
@@ -944,7 +1027,13 @@ function Wizard({
             Choose the league and the season you are planning. Each league and season has its own scratch table in this
             browser. The saved Division Ages table is a different screen.
           </p>
-          <SeasonFields table={table} orgOptions={orgOptions} years={years} onContext={onContext} />
+          <SeasonFields
+            table={table}
+            orgOptions={orgOptions}
+            years={years}
+            showSpringTemplate={showSpringTemplate}
+            onContext={onContext}
+          />
         </section>
       ) : null}
 

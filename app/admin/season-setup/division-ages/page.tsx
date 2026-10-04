@@ -6,12 +6,21 @@ import { DivisionAgesBuilder } from "@/components/admin/DivisionAgesBuilder";
 import DivisionAgesExplorer, { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
 import DivisionAgesForecast from "@/components/admin/DivisionAgesForecast";
 import DivisionAgesWorkspace from "@/components/admin/DivisionAgesWorkspace";
+import SpringCombinedDivisions from "@/components/admin/SpringCombinedDivisions";
+import SpringCombinedForecast from "@/components/admin/SpringCombinedForecast";
+import {
+  canOfferSpringCombined,
+  divisionAgesAllOrgs,
+  isSpringCombinedParam,
+  resolveDivisionAgesView,
+  SPRING_COMBINED_SAVE_HINT,
+  springLeaguesAreLive,
+} from "@/lib/admin/springCombined/view";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import { getPrimaryLiveContentOrg, getSeasonConfigForOrg } from "@/lib/seasonConfig";
+import { getLiveContentOrgs, getSeasonConfigForOrg } from "@/lib/seasonConfig";
 import {
-  CONTENT_ORGS,
   getDefaultContentOrg,
   getSiteConfig,
   isContentOrgId,
@@ -44,27 +53,44 @@ export default async function DivisionAgesPage({
 }) {
   const { org } = await searchParams;
   const masterMode = isMasterDeployment();
-  const requestedOrg = isContentOrgId(org) ? org : null;
-  const showAll = masterMode && requestedOrg == null;
-  const orgs: ContentOrgId[] = !masterMode
-    ? [getDefaultContentOrg()]
-    : showAll
-      ? [...CONTENT_ORGS]
-      : [requestedOrg as ContentOrgId];
-
+  const liveOrgs = getLiveContentOrgs();
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
 
-  const returnPath = showAll
-    ? "/admin/season-setup/division-ages"
-    : `/admin/season-setup/division-ages?org=${orgs[0]}`;
+  const returnPath = isSpringCombinedParam(org)
+    ? "/admin/season-setup/division-ages?org=spring"
+    : org
+      ? `/admin/season-setup/division-ages?org=${org}`
+      : "/admin/season-setup/division-ages";
 
   if (!adminUser) {
     redirect(`/admin/login?next=${encodeURIComponent(returnPath)}`);
   }
 
-  const checkedOrgs = showAll ? CONTENT_ORGS : orgs;
+  const agesView = resolveDivisionAgesView({
+    isMaster: adminUser.isMaster,
+    masterDeployment: masterMode,
+    requestedOrg: org,
+    liveOrgs,
+  });
+  if (agesView === "denied") {
+    redirect("/admin?denied=division-ages");
+  }
+  if (agesView === "combined" && !isSpringCombinedParam(org)) {
+    redirect("/admin/season-setup/division-ages?org=spring");
+  }
+
+  const combined = agesView === "combined";
+  const showAll = agesView === "all-spring";
+  const requestedOrg = isContentOrgId(org) ? org : null;
+  const orgs: ContentOrgId[] = !masterMode
+    ? [getDefaultContentOrg()]
+    : combined || showAll
+      ? divisionAgesAllOrgs()
+      : [requestedOrg as ContentOrgId];
+
+  const checkedOrgs = combined || showAll ? divisionAgesAllOrgs() : orgs;
   const roleEntries = await Promise.all(
     checkedOrgs.map(async (orgId) => {
       const role = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, orgId);
@@ -82,9 +108,18 @@ export default async function DivisionAgesPage({
 
   const displayRole = allowing[1];
   const canEdit = hasAdminRoleAtLeast(displayRole, "ADMIN");
-  const headerOrg = showAll ? null : orgs[0];
-  const hubOrg = headerOrg ?? getPrimaryLiveContentOrg();
+  const headerOrg = combined || showAll ? null : orgs[0];
+  const hubOrg = combined ? "spring" : (headerOrg ?? divisionAgesAllOrgs()[0]);
+  const headerPath = combined
+    ? "/admin/season-setup/division-ages?org=spring"
+    : showAll
+      ? "/admin/season-setup/division-ages"
+      : `/admin/season-setup/division-ages?org=${orgs[0]}`;
   const { defaultSeasonYear, seasonYears } = seasonYearChoices(orgs);
+  const offerSpring = canOfferSpringCombined({ isMaster: adminUser.isMaster, masterDeployment: masterMode });
+  const springCombined = offerSpring
+    ? { selected: combined, suggested: !springLeaguesAreLive(liveOrgs) }
+    : null;
 
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
@@ -93,8 +128,9 @@ export default async function DivisionAgesPage({
           <AdminSectionHeader
             badge="DIVISION AGES"
             currentOrg={headerOrg}
-            currentPath={returnPath}
+            currentPath={headerPath}
             orgSwitcherShowAllSites
+            springCombined={springCombined}
             allowRolePreview={hasAdminRoleAtLeast(displayRole, "ADMIN")}
             allowViewByUser={adminUser.isMaster}
             moduleHubHref={`/admin/season-setup?org=${hubOrg}`}
@@ -102,19 +138,25 @@ export default async function DivisionAgesPage({
           />
           <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Division Ages</h1>
           <p className="max-w-3xl text-zinc-400">
-            The Division Builder starts blank so any admin can try ages, cutoffs, and player counts. It stays in this
-            browser and does not change registration or the saved table. The Divisions tab is the saved cutoff,
-            birthdate ranges, and eligibility lookup. The Forecast tab compares this season&apos;s counts with a proposed
-            cutoff.
-            {canEdit ? " Admins can edit birthdates, save this season, and change league defaults." : ""}
+            {combined
+              ? `Gonzales and Ascension together. Names show the league. ${SPRING_COMBINED_SAVE_HINT}. The Division Builder template stays in this browser.`
+              : "The Division Builder starts blank so any admin can try ages, cutoffs, and player counts. It stays in this browser and does not change registration or the saved table. The Divisions tab is the saved cutoff, birthdate ranges, and eligibility lookup. The Forecast tab compares this season's counts with a proposed cutoff."}
+            {!combined && canEdit ? " Admins can edit birthdates, save this season, and change league defaults." : ""}
           </p>
         </div>
         <DivisionAgesModeTabs
           builder={
-            <DivisionAgesBuilder orgs={orgs} defaultSeasonYear={defaultSeasonYear} seasonYears={seasonYears} />
+            <DivisionAgesBuilder
+              orgs={orgs}
+              defaultSeasonYear={defaultSeasonYear}
+              seasonYears={seasonYears}
+              showSpringTemplate={combined}
+            />
           }
           divisions={
-            canEdit ? (
+            combined ? (
+              <SpringCombinedDivisions defaultSeasonYear={defaultSeasonYear} seasonYears={seasonYears} />
+            ) : canEdit ? (
               <DivisionAgesWorkspace
                 orgs={orgs}
                 defaultSeasonYear={defaultSeasonYear}
@@ -128,7 +170,13 @@ export default async function DivisionAgesPage({
               />
             )
           }
-          forecast={<DivisionAgesForecast key={orgs.join(",")} orgs={orgs} seasonYears={seasonYears} />}
+          forecast={
+            combined ? (
+              <SpringCombinedForecast seasonYears={seasonYears} />
+            ) : (
+              <DivisionAgesForecast key={orgs.join(",")} orgs={orgs} seasonYears={seasonYears} />
+            )
+          }
         />
       </section>
     </main>

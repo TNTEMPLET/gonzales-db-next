@@ -15,6 +15,8 @@ type AdminSectionHeaderProps = {
   allowViewByUser?: boolean;
   moduleHubHref?: string;
   moduleHubLabel?: string;
+  /** Master admins on Season Setup. Hidden when omitted. */
+  springCombined?: { selected: boolean; suggested: boolean } | null;
 };
 
 export default function AdminSectionHeader({
@@ -27,6 +29,7 @@ export default function AdminSectionHeader({
   allowViewByUser = false,
   moduleHubHref,
   moduleHubLabel = "Module hub",
+  springCombined = null,
 }: AdminSectionHeaderProps) {
   const adminHref = currentOrg ? `/admin?org=${currentOrg}` : "/admin";
 
@@ -50,6 +53,7 @@ export default function AdminSectionHeader({
                 currentOrg={currentOrg ?? null}
                 currentPath={currentPath}
                 showAllSites={orgSwitcherShowAllSites}
+                springCombined={springCombined}
                 {...(orgSwitcherOrgs ? { orgs: orgSwitcherOrgs } : {})}
               />
             ) : null}

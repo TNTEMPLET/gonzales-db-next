@@ -1,0 +1,441 @@
+/**
+ * Master-admin "Spring (combined)" view.
+ *
+ * `spring` is a view selector (`?org=spring`). It is not a ContentOrgId and
+ * must never be stored as an organization id on a row. Scratch Division
+ * Builder tables may use the same word as a browser-storage key only.
+ */
+
+import { BUILDER_STORAGE_VERSION, newBuilderRow, type BuilderRow, type BuilderTable } from "@/lib/ageDivisions/divisionBuilder";
+import { effectiveCutoffDate, effectiveRange } from "@/lib/ageDivisions/compute";
+import { assignBuckets, type BirthBucket } from "@/lib/ageDivisions/forecast";
+import type { DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDivisions/types";
+import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
+
+export const SPRING_COMBINED_PARAM = "spring";
+
+/** Browser-storage key only. Not a content org and not written to the database. */
+export const SPRING_BUILDER_ORG = "spring";
+
+export const SPRING_LEAGUE_ORGS = ["gonzales", "ascension"] as const;
+export type SpringLeagueOrg = (typeof SPRING_LEAGUE_ORGS)[number];
+
+export const SPRING_COMBINED_READONLY_ERROR = "Spring combined is a read-only view.";
+
+export const SPRING_COMBINED_SAVE_HINT = "Switch to Gonzales or Ascension to save";
+
+/**
+ * 7U and 8U Minors are a Custom cutoff. No parish day is stored in code, so
+ * the starter uses August 31 until an admin edits it. The cutoff kind stays
+ * Custom either way.
+ */
+export const SPRING_MINORS_CUSTOM_CUTOFF = { month: 8, day: 31 } as const;
+
+const LEAGUE_SUFFIX: Record<SpringLeagueOrg, "DYB" | "LLB"> = {
+  gonzales: "DYB",
+  ascension: "LLB",
+};
+
+export function isSpringCombinedParam(value: string | null | undefined): boolean {
+  return value === SPRING_COMBINED_PARAM;
+}
+
+export function isSpringLeagueOrg(value: string | null | undefined): value is SpringLeagueOrg {
+  return value === "gonzales" || value === "ascension";
+}
+
+export function springLeagueSuffix(org: SpringLeagueOrg): "DYB" | "LLB" {
+  return LEAGUE_SUFFIX[org];
+}
+
+/** Display name only. Does not rewrite a saved division name. */
+export function leagueTaggedDivisionName(savedName: string, org: SpringLeagueOrg): string {
+  const suffix = LEAGUE_SUFFIX[org];
+  const name = savedName.trim();
+  if (!name) return suffix;
+  if (new RegExp(`(?:^|\\s)${suffix}$`, "i").test(name)) return name;
+  return `${name} ${suffix}`;
+}
+
+export function springCombinedRequestBlock(
+  requestedOrg: string | null | undefined,
+): { status: 403; error: string } | null {
+  if (!isSpringCombinedParam(requestedOrg)) return null;
+  return { status: 403, error: SPRING_COMBINED_READONLY_ERROR };
+}
+
+export function canOfferSpringCombined(input: { isMaster: boolean; masterDeployment: boolean }): boolean {
+  return input.isMaster && input.masterDeployment;
+}
+
+export function springLeaguesAreLive(liveOrgs: readonly string[]): boolean {
+  return liveOrgs.some((org) => org === "gonzales" || org === "ascension");
+}
+
+/** Landing suggestion when the URL has no org and neither spring league is in season. */
+export function suggestSpringCombined(input: {
+  isMaster: boolean;
+  masterDeployment: boolean;
+  requestedOrg?: string | null;
+  liveOrgs: readonly string[];
+}): boolean {
+  if (!canOfferSpringCombined(input)) return false;
+  if (input.requestedOrg != null && input.requestedOrg !== "") return false;
+  return !springLeaguesAreLive(input.liveOrgs);
+}
+
+export type SeasonSetupView = { mode: "denied" } | { mode: "combined" } | { mode: "single" };
+
+export function resolveSeasonSetupView(input: {
+  isMaster: boolean;
+  masterDeployment: boolean;
+  requestedOrg: string | null | undefined;
+  liveOrgs: readonly string[];
+}): SeasonSetupView {
+  if (isSpringCombinedParam(input.requestedOrg)) {
+    if (!canOfferSpringCombined(input)) return { mode: "denied" };
+    return { mode: "combined" };
+  }
+  if (
+    suggestSpringCombined({
+      isMaster: input.isMaster,
+      masterDeployment: input.masterDeployment,
+      requestedOrg: input.requestedOrg,
+      liveOrgs: input.liveOrgs,
+    })
+  ) {
+    return { mode: "combined" };
+  }
+  return { mode: "single" };
+}
+
+export type DivisionAgesView = "denied" | "combined" | "all-spring" | "single";
+
+export function resolveDivisionAgesView(input: {
+  isMaster: boolean;
+  masterDeployment: boolean;
+  requestedOrg: string | null | undefined;
+  liveOrgs: readonly string[];
+}): DivisionAgesView {
+  if (isSpringCombinedParam(input.requestedOrg)) {
+    if (!canOfferSpringCombined(input)) return "denied";
+    return "combined";
+  }
+  if (!input.masterDeployment) return "single";
+  if (
+    suggestSpringCombined({
+      isMaster: input.isMaster,
+      masterDeployment: input.masterDeployment,
+      requestedOrg: input.requestedOrg,
+      liveOrgs: input.liveOrgs,
+    })
+  ) {
+    return "combined";
+  }
+  const requested = input.requestedOrg ?? "";
+  if (requested === "" || requested === "all" || !isContentOrgId(requested)) return "all-spring";
+  return "single";
+}
+
+/** Master "all" division-ages list for Spring. Fall Ball stays its own link. */
+export function divisionAgesAllOrgs(): SpringLeagueOrg[] {
+  return [...SPRING_LEAGUE_ORGS];
+}
+
+export type SpringRegistrationInput = {
+  organizationId: string;
+  sportsConnectRowKey: string;
+  ageGroup: string;
+};
+
+export type SpringRegistrationSummary = {
+  seasonYear: number;
+  totalPlayers: number;
+  duplicatePlayers: number;
+  byLeague: Array<{ organizationId: SpringLeagueOrg; players: number }>;
+  byDivision: Array<{
+    organizationId: SpringLeagueOrg;
+    ageGroup: string;
+    displayName: string;
+    players: number;
+  }>;
+};
+
+/**
+ * One player per sportsConnectRowKey. A key present in both spring leagues
+ * counts once and is flagged. Fall Ball rows are ignored. Blank keys are not
+ * merged with each other.
+ */
+export function summarizeSpringRegistrations(
+  rows: readonly SpringRegistrationInput[],
+  seasonYear: number,
+): SpringRegistrationSummary {
+  const groups = new Map<string, Array<{ organizationId: SpringLeagueOrg; ageGroup: string }>>();
+  let blank = 0;
+  for (const row of rows) {
+    if (!isSpringLeagueOrg(row.organizationId)) continue;
+    const key = row.sportsConnectRowKey.trim();
+    const id = key || `blank-${blank++}`;
+    const list = groups.get(id) ?? [];
+    list.push({
+      organizationId: row.organizationId,
+      ageGroup: row.ageGroup.trim() || "Unassigned",
+    });
+    groups.set(id, list);
+  }
+
+  const exclusive: Record<SpringLeagueOrg, number> = { gonzales: 0, ascension: 0 };
+  let duplicatePlayers = 0;
+  const divisionCounts = new Map<
+    string,
+    { organizationId: SpringLeagueOrg; ageGroup: string; players: number }
+  >();
+
+  for (const appearances of groups.values()) {
+    const orgs = new Set(appearances.map((appearance) => appearance.organizationId));
+    if (orgs.size > 1) {
+      duplicatePlayers += 1;
+      continue;
+    }
+    const org = appearances[0]!.organizationId;
+    exclusive[org] += 1;
+    const ageGroup = appearances[0]!.ageGroup;
+    const divKey = `${org}\0${ageGroup}`;
+    const current = divisionCounts.get(divKey) ?? { organizationId: org, ageGroup, players: 0 };
+    current.players += 1;
+    divisionCounts.set(divKey, current);
+  }
+
+  const byDivision = [...divisionCounts.values()]
+    .map((row) => ({
+      ...row,
+      displayName: leagueTaggedDivisionName(row.ageGroup, row.organizationId),
+    }))
+    .sort((a, b) => {
+      const age = a.ageGroup.localeCompare(b.ageGroup, undefined, { numeric: true });
+      if (age !== 0) return age;
+      return a.organizationId.localeCompare(b.organizationId);
+    });
+
+  return {
+    seasonYear,
+    totalPlayers: groups.size,
+    duplicatePlayers,
+    byLeague: SPRING_LEAGUE_ORGS.map((organizationId) => ({
+      organizationId,
+      players: exclusive[organizationId],
+    })),
+    byDivision,
+  };
+}
+
+export type SpringPoolPlayer = {
+  sportsConnectRowKey: string | null;
+  matchKey: string | null;
+  birthDate: string | null;
+};
+
+/** Drop a second copy of the same player. Row key wins; otherwise the forecast match key. */
+export function dedupeSpringPool(players: readonly SpringPoolPlayer[]): {
+  players: SpringPoolPlayer[];
+  duplicateCount: number;
+} {
+  const seenRow = new Set<string>();
+  const seenMatch = new Set<string>();
+  const unique: SpringPoolPlayer[] = [];
+  let duplicateCount = 0;
+  for (const player of players) {
+    const rowKey = player.sportsConnectRowKey?.trim() ?? "";
+    if (rowKey) {
+      if (seenRow.has(rowKey)) {
+        duplicateCount += 1;
+        continue;
+      }
+      seenRow.add(rowKey);
+    } else if (player.matchKey) {
+      if (seenMatch.has(player.matchKey)) {
+        duplicateCount += 1;
+        continue;
+      }
+      seenMatch.add(player.matchKey);
+    }
+    unique.push(player);
+  }
+  return { players: unique, duplicateCount };
+}
+
+export type SpringLeagueDivisions = {
+  organizationId: SpringLeagueOrg;
+  cutoff: LeagueAgeRule;
+  divisions: readonly DivisionAgeConfig[];
+};
+
+export type TaggedDivisionRow = {
+  organizationId: SpringLeagueOrg;
+  code: string;
+  savedName: string;
+  displayName: string;
+  minAge: number;
+  maxAge: number;
+  oldest: string;
+  youngest: string;
+};
+
+/** One display table. Saved division objects are not renamed or mutated. */
+export function taggedDivisionRows(leagues: readonly SpringLeagueDivisions[], seasonYear: number): TaggedDivisionRow[] {
+  const rows: TaggedDivisionRow[] = [];
+  for (const league of leagues) {
+    if (!isSpringLeagueOrg(league.organizationId)) continue;
+    const cutoff = effectiveCutoffDate(league.cutoff, seasonYear);
+    for (const division of league.divisions) {
+      const savedName = division.label.trim() || division.code;
+      const range = effectiveRange(division, cutoff);
+      rows.push({
+        organizationId: league.organizationId,
+        code: `${league.organizationId}:${division.code}`,
+        savedName,
+        displayName: leagueTaggedDivisionName(savedName, league.organizationId),
+        minAge: division.minAge,
+        maxAge: division.maxAge,
+        oldest: range.oldest,
+        youngest: range.youngest,
+      });
+    }
+  }
+  return rows;
+}
+
+export function combinedForecastConfig(
+  leagues: readonly SpringLeagueDivisions[],
+  seasonYear: number,
+): { cutoff: LeagueAgeRule; divisions: DivisionAgeConfig[] } {
+  const divisions: DivisionAgeConfig[] = [];
+  for (const row of taggedDivisionRows(leagues, seasonYear)) {
+    divisions.push({
+      code: row.code,
+      label: row.displayName,
+      minAge: row.minAge,
+      maxAge: row.maxAge,
+      sortOrder: divisions.length + 1,
+      ...(row.oldest ? { oldestBirthdate: row.oldest } : {}),
+      ...(row.youngest ? { youngestBirthdate: row.youngest } : {}),
+    });
+  }
+  return {
+    cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+    divisions,
+  };
+}
+
+export type SpringCombinedCounts = {
+  totalPlayers: number;
+  datedPlayers: number;
+  duplicatePlayers: number;
+  rows: Array<{ code: string; label: string; count: number }>;
+};
+
+/** Assign the deduped pool with each division's own baked window. No feeder share. */
+export function countSpringCombinedPool(
+  players: readonly SpringPoolPlayer[],
+  config: { cutoff: LeagueAgeRule; divisions: DivisionAgeConfig[] },
+  seasonYear: number,
+): SpringCombinedCounts {
+  const deduped = dedupeSpringPool(players);
+  const buckets = new Map<string, number>();
+  let datedPlayers = 0;
+  for (const player of deduped.players) {
+    if (!player.birthDate) continue;
+    datedPlayers += 1;
+    buckets.set(player.birthDate, (buckets.get(player.birthDate) ?? 0) + 1);
+  }
+  const birthBuckets: BirthBucket[] = [...buckets.entries()].map(([birthDate, count]) => ({
+    birthDate,
+    count,
+    pool: "own",
+  }));
+  const assigned = assignBuckets(birthBuckets, config, seasonYear);
+  return {
+    totalPlayers: deduped.players.length,
+    datedPlayers,
+    duplicatePlayers: deduped.duplicateCount,
+    rows: assigned.divisions.map((division) => ({
+      code: division.code,
+      label: division.label,
+      count: division.total,
+    })),
+  };
+}
+
+type TemplateSpec = {
+  id: string;
+  name: string;
+  minAge: number;
+  maxAge: number;
+  charter: BuilderRow["charter"];
+  cutoff: BuilderRow["cutoff"];
+  customMonth?: number;
+  customDay?: number;
+};
+
+const SPRING_TEMPLATE_ROWS: readonly TemplateSpec[] = [
+  { id: "tee-llb", name: "Tee-ball LLB", minAge: 4, maxAge: 6, charter: "ll", cutoff: "dyb" },
+  {
+    id: "7u-minors-llb",
+    name: "7U Minors LLB",
+    minAge: 7,
+    maxAge: 7,
+    charter: "ll",
+    cutoff: "custom",
+    customMonth: SPRING_MINORS_CUSTOM_CUTOFF.month,
+    customDay: SPRING_MINORS_CUSTOM_CUTOFF.day,
+  },
+  {
+    id: "8u-minors-llb",
+    name: "8U Minors LLB",
+    minAge: 8,
+    maxAge: 8,
+    charter: "ll",
+    cutoff: "custom",
+    customMonth: SPRING_MINORS_CUSTOM_CUTOFF.month,
+    customDay: SPRING_MINORS_CUSTOM_CUTOFF.day,
+  },
+  { id: "78-majors-llb", name: "7/8 Majors LLB", minAge: 7, maxAge: 8, charter: "ll", cutoff: "little-league" },
+  { id: "9u-llb", name: "9U LLB", minAge: 9, maxAge: 9, charter: "ll", cutoff: "little-league" },
+  { id: "9u-dyb", name: "9U DYB", minAge: 9, maxAge: 9, charter: "dyb", cutoff: "dyb" },
+  { id: "10u-llb", name: "10U LLB", minAge: 10, maxAge: 10, charter: "ll", cutoff: "little-league" },
+  { id: "10u-dyb", name: "10U DYB", minAge: 10, maxAge: 10, charter: "dyb", cutoff: "dyb" },
+  { id: "11u-llb", name: "11U LLB", minAge: 11, maxAge: 11, charter: "ll", cutoff: "little-league" },
+  { id: "11u-dyb", name: "11U DYB", minAge: 11, maxAge: 11, charter: "dyb", cutoff: "dyb" },
+  { id: "12u-llb", name: "12U LLB", minAge: 12, maxAge: 12, charter: "ll", cutoff: "little-league" },
+  { id: "12u-dyb", name: "12U DYB", minAge: 12, maxAge: 12, charter: "dyb", cutoff: "dyb" },
+  { id: "1314-dyb", name: "13/14U DYB", minAge: 13, maxAge: 14, charter: "dyb", cutoff: "dyb" },
+  { id: "1517-dyb", name: "15-17U DYB", minAge: 15, maxAge: 17, charter: "dyb", cutoff: "dyb" },
+];
+
+/** Scratch table only. organizationId is the browser-storage key, not a content org. */
+export function springCombinedBuilderTable(seasonYear: number): BuilderTable {
+  return {
+    version: BUILDER_STORAGE_VERSION,
+    organizationId: SPRING_BUILDER_ORG,
+    seasonYear,
+    rows: SPRING_TEMPLATE_ROWS.map((spec) =>
+      newBuilderRow(spec.id, {
+        name: spec.name,
+        minAge: spec.minAge,
+        maxAge: spec.maxAge,
+        charter: spec.charter,
+        cutoff: spec.cutoff,
+        ...(spec.customMonth != null ? { customMonth: spec.customMonth } : {}),
+        ...(spec.customDay != null ? { customDay: spec.customDay } : {}),
+      }),
+    ),
+  };
+}
+
+export function springContentOrgsUnchanged(orgs: readonly ContentOrgId[]): boolean {
+  return orgs.length === 3 && orgs[0] === "gonzales" && orgs[1] === "ascension" && orgs[2] === "fallball";
+}
+
+export function springParamIsNotContentOrg(): boolean {
+  return isContentOrgId(SPRING_COMBINED_PARAM) === false;
+}
