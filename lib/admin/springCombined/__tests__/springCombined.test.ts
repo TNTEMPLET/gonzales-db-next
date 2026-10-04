@@ -7,13 +7,13 @@ import { describe, it } from "node:test";
 import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
 import SpringRegistrationSummary from "@/components/admin/SpringRegistrationSummary";
 import { builderLeagueTables, parseBuilderTable, serializeBuilderTable } from "@/lib/ageDivisions/divisionBuilder";
-import { CONTENT_ORGS, isContentOrgId } from "@/lib/siteConfig";
+import { buildAdminSidebarNav } from "@/lib/admin/sidebarNav";
+import { CONTENT_ORGS, isContentOrgId, resolveOrg } from "@/lib/siteConfig";
 
 import {
   canOfferSpringCombined,
   countSpringCombinedPool,
   dedupeSpringPool,
-  divisionAgesAllOrgs,
   isSpringCombinedParam,
   leagueTaggedDivisionName,
   resolveDivisionAgesView,
@@ -87,11 +87,19 @@ describe("spring combined access", () => {
     assert.equal(suggestSpringCombined({ ...master, requestedOrg: null, ...quiet }), true);
     assert.deepEqual(
       resolveSeasonSetupView({ ...master, requestedOrg: undefined, liveOrgs: [] }),
-      { mode: "combined" },
+      { mode: "single" },
     );
     assert.deepEqual(
       resolveSeasonSetupView({ ...master, requestedOrg: undefined, liveOrgs: ["ascension"] }),
       { mode: "single" },
+    );
+    assert.equal(
+      resolveDivisionAgesView({ ...master, requestedOrg: undefined, liveOrgs: [] }),
+      "default",
+    );
+    assert.equal(
+      resolveDivisionAgesView({ ...master, requestedOrg: "all", liveOrgs: ["fallball"] }),
+      "default",
     );
   });
 
@@ -107,18 +115,43 @@ describe("spring combined access", () => {
     );
     assert.equal(
       resolveDivisionAgesView({ ...master, requestedOrg: "fallball", liveOrgs: ["fallball"] }),
-      "single",
+      "default",
     );
     assert.equal(
       resolveDivisionAgesView({ isMaster: false, masterDeployment: false, requestedOrg: "fallball", liveOrgs: ["fallball"] }),
-      "single",
+      "default",
     );
-    assert.deepEqual(divisionAgesAllOrgs(), ["gonzales", "ascension"]);
-    assert.equal((divisionAgesAllOrgs() as readonly string[]).includes("fallball"), false);
-    assert.equal(
-      resolveDivisionAgesView({ ...master, requestedOrg: "all", liveOrgs: ["gonzales", "ascension"] }),
-      "all-spring",
-    );
+  });
+
+  it("resolveOrg('spring') outside season-setup never yields fallball", () => {
+    const onMaster = { masterDeployment: true, liveOrg: "fallball" as const, defaultOrg: "fallball" as const };
+    assert.equal(resolveOrg("fallball", onMaster), "fallball");
+    assert.equal(resolveOrg("ascension", onMaster), "ascension");
+    assert.equal(resolveOrg("not-a-real-org", onMaster), "fallball");
+    assert.equal(resolveOrg(undefined, onMaster), "fallball");
+    assert.equal(resolveOrg("spring", onMaster), "gonzales");
+    assert.notEqual(resolveOrg("spring", onMaster), "fallball");
+
+    const nav = buildAdminSidebarNav(() => true, false, "?org=spring");
+    const hrefs = [
+      nav.dashboardHref,
+      ...nav.groups.flatMap((group) => group.subcategories.flatMap((sub) => sub.leaves.map((leaf) => leaf.href))),
+    ];
+    assert.ok(hrefs.includes("/admin/season-setup?org=spring"));
+    assert.ok(hrefs.includes("/admin/season-setup/division-ages?org=spring"));
+    for (const href of hrefs) {
+      assert.doesNotMatch(href, /fallball/);
+      const path = href.split("?")[0] ?? href;
+      if (path === "/admin/season-setup" || path.startsWith("/admin/season-setup/")) continue;
+      assert.equal(href.endsWith("?org=gonzales"), true, href);
+      assert.doesNotMatch(href, /org=spring/);
+    }
+
+    const dashboard = readFileSync(new URL("../../../../app/admin/page.tsx", import.meta.url), "utf8");
+    const springRedirect = dashboard.indexOf('org === "spring"');
+    const liveRedirect = dashboard.indexOf("!requestedOrg && !allSitesRequested");
+    assert.ok(springRedirect > 0 && springRedirect < liveRedirect);
+    assert.match(dashboard.slice(springRedirect, liveRedirect), /resolveOrg\("spring"\)/);
   });
 });
 
@@ -138,15 +171,35 @@ describe("spring combined counts", () => {
     assert.equal(summary.byLeague.find((league) => league.organizationId === "gonzales")?.players, 1);
     assert.equal(summary.byLeague.find((league) => league.organizationId === "ascension")?.players, 0);
     assert.deepEqual(
-      summary.byDivision.map((row) => row.displayName),
-      ["10U DYB"],
+      summary.byDivision.map((row) => `${row.displayName}:${row.players}`),
+      ["10U DYB:1", "12U DYB:1"],
     );
+    assert.equal(
+      summary.byDivision.reduce((sum, row) => sum + row.players, 0),
+      summary.totalPlayers,
+    );
+    assert.equal(summary.byDivision.some((row) => row.displayName === "12U LLB"), false);
     assert.equal(summary.byDivision.some((row) => row.ageGroup === "8U"), false);
+
+    const crossed = summarizeSpringRegistrations(
+      [
+        { organizationId: "ascension", sportsConnectRowKey: "both-ages", ageGroup: "11U" },
+        { organizationId: "gonzales", sportsConnectRowKey: "both-ages", ageGroup: "12U" },
+      ],
+      2026,
+    );
+    assert.equal(crossed.totalPlayers, 1);
+    assert.equal(crossed.duplicatePlayers, 1);
+    assert.deepEqual(
+      crossed.byDivision.map((row) => `${row.displayName}:${row.players}`),
+      ["12U DYB:1"],
+    );
 
     const html = renderToStaticMarkup(createElement(SpringRegistrationSummary, { summary }));
     assert.match(html, /data-testid="spring-registration-summary"/);
     assert.match(html, /Counted once/);
     assert.match(html, /10U DYB/);
+    assert.match(html, /12U DYB/);
     assert.doesNotMatch(html, /Fall Ball/);
     assert.doesNotMatch(html, /same-row/);
   });
@@ -159,6 +212,34 @@ describe("spring combined counts", () => {
     ]);
     assert.equal(deduped.players.length, 2);
     assert.equal(deduped.duplicateCount, 1);
+
+    const rosterFirst = dedupeSpringPool([
+      { sportsConnectRowKey: null, matchKey: "sam|2014-01-01", birthDate: "2014-01-01" },
+      { sportsConnectRowKey: "row-1", matchKey: "sam|2014-01-01", birthDate: "2014-01-01" },
+    ]);
+    assert.equal(rosterFirst.players.length, 1);
+    assert.equal(rosterFirst.duplicateCount, 1);
+
+    const enrollmentFirst = dedupeSpringPool([
+      { sportsConnectRowKey: "row-1", matchKey: "sam|2014-01-01", birthDate: "2014-01-01" },
+      { sportsConnectRowKey: null, matchKey: "sam|2014-01-01", birthDate: "2014-01-01" },
+    ]);
+    assert.equal(enrollmentFirst.players.length, 1);
+    assert.equal(enrollmentFirst.duplicateCount, 1);
+
+    const distinctRows = dedupeSpringPool([
+      { sportsConnectRowKey: "row-1", matchKey: "sam|2014-01-01", birthDate: "2014-01-01" },
+      { sportsConnectRowKey: "row-2", matchKey: "sam|2014-01-01", birthDate: "2014-01-01" },
+    ]);
+    assert.equal(distinctRows.players.length, 2);
+    assert.equal(distinctRows.duplicateCount, 0);
+
+    const blank = dedupeSpringPool([
+      { sportsConnectRowKey: null, matchKey: null, birthDate: null },
+      { sportsConnectRowKey: null, matchKey: null, birthDate: null },
+    ]);
+    assert.equal(blank.players.length, 2);
+    assert.equal(blank.duplicateCount, 0);
 
     const counts = countSpringCombinedPool(
       deduped.players.concat(deduped.players[0]!),
@@ -318,11 +399,16 @@ describe("spring combined stays read-only", () => {
       new URL("../../../../app/admin/season-setup/division-ages/page.tsx", import.meta.url),
       "utf8",
     );
-    assert.match(ages, /divisionAgesAllOrgs/);
-    assert.doesNotMatch(ages, /CONTENT_ORGS/);
+    assert.match(ages, /CONTENT_ORGS/);
+    assert.match(ages, /DivisionAgesWorkspace/);
+    assert.doesNotMatch(ages, /divisionAgesAllOrgs/);
+    assert.doesNotMatch(ages, /redirect\("\/admin\/season-setup\/division-ages\?org=spring"\)/);
     assert.match(ages, /showSpringTemplate=\{combined\}/);
-    assert.match(ages, /org === "fallball"|isContentOrgId/);
+    assert.match(ages, /isContentOrgId/);
     assert.doesNotMatch(ages, /prisma|Enrollment|TeamPlayer/);
+
+    const setup = readFileSync(new URL("../../../../app/admin/season-setup/page.tsx", import.meta.url), "utf8");
+    assert.doesNotMatch(setup, /redirect\("\/admin\/season-setup\?org=spring"\)/);
 
     const forecastData = readFileSync(
       new URL("../../../ageDivisions/forecastData.ts", import.meta.url),

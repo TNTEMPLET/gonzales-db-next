@@ -41,8 +41,11 @@ export default async function SeasonSetupPage({
   const masterDeployment = isMasterDeployment();
 
   if (!adminUser) {
-    const nextOrg = isSpringCombinedParam(org) ? "spring" : (org ?? "");
-    redirect(`/admin/login?next=/admin/season-setup?org=${nextOrg}`);
+    if (isSpringCombinedParam(org)) {
+      redirect("/admin/login?next=/admin/season-setup?org=spring");
+    }
+    const loginOrg = resolveAdminTargetOrg(org);
+    redirect(`/admin/login?next=/admin/season-setup?org=${loginOrg}`);
   }
 
   const view = resolveSeasonSetupView({
@@ -53,9 +56,6 @@ export default async function SeasonSetupPage({
   });
   if (view.mode === "denied") {
     redirect("/admin?denied=season-setup");
-  }
-  if (view.mode === "combined" && !isSpringCombinedParam(org)) {
-    redirect("/admin/season-setup?org=spring");
   }
 
   const offerSpring = canOfferSpringCombined({ isMaster: adminUser.isMaster, masterDeployment });

@@ -10,17 +10,18 @@ import SpringCombinedDivisions from "@/components/admin/SpringCombinedDivisions"
 import SpringCombinedForecast from "@/components/admin/SpringCombinedForecast";
 import {
   canOfferSpringCombined,
-  divisionAgesAllOrgs,
   isSpringCombinedParam,
   resolveDivisionAgesView,
   SPRING_COMBINED_SAVE_HINT,
+  SPRING_LEAGUE_ORGS,
   springLeaguesAreLive,
 } from "@/lib/admin/springCombined/view";
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import { getLiveContentOrgs, getSeasonConfigForOrg } from "@/lib/seasonConfig";
+import { getLiveContentOrgs, getPrimaryLiveContentOrg, getSeasonConfigForOrg } from "@/lib/seasonConfig";
 import {
+  CONTENT_ORGS,
   getDefaultContentOrg,
   getSiteConfig,
   isContentOrgId,
@@ -58,11 +59,19 @@ export default async function DivisionAgesPage({
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
 
-  const returnPath = isSpringCombinedParam(org)
+  const requestedContentOrg = isContentOrgId(org) ? org : null;
+  const springRequested = isSpringCombinedParam(org);
+  const showAll = masterMode && !springRequested && requestedContentOrg == null;
+  const defaultOrgs: ContentOrgId[] = !masterMode
+    ? [getDefaultContentOrg()]
+    : showAll
+      ? [...CONTENT_ORGS]
+      : [requestedContentOrg as ContentOrgId];
+  const returnPath = springRequested
     ? "/admin/season-setup/division-ages?org=spring"
-    : org
-      ? `/admin/season-setup/division-ages?org=${org}`
-      : "/admin/season-setup/division-ages";
+    : showAll
+      ? "/admin/season-setup/division-ages"
+      : `/admin/season-setup/division-ages?org=${defaultOrgs[0]}`;
 
   if (!adminUser) {
     redirect(`/admin/login?next=${encodeURIComponent(returnPath)}`);
@@ -77,20 +86,11 @@ export default async function DivisionAgesPage({
   if (agesView === "denied") {
     redirect("/admin?denied=division-ages");
   }
-  if (agesView === "combined" && !isSpringCombinedParam(org)) {
-    redirect("/admin/season-setup/division-ages?org=spring");
-  }
 
   const combined = agesView === "combined";
-  const showAll = agesView === "all-spring";
-  const requestedOrg = isContentOrgId(org) ? org : null;
-  const orgs: ContentOrgId[] = !masterMode
-    ? [getDefaultContentOrg()]
-    : combined || showAll
-      ? divisionAgesAllOrgs()
-      : [requestedOrg as ContentOrgId];
+  const orgs: ContentOrgId[] = combined ? [...SPRING_LEAGUE_ORGS] : defaultOrgs;
 
-  const checkedOrgs = combined || showAll ? divisionAgesAllOrgs() : orgs;
+  const checkedOrgs = combined ? [...SPRING_LEAGUE_ORGS] : showAll ? CONTENT_ORGS : orgs;
   const roleEntries = await Promise.all(
     checkedOrgs.map(async (orgId) => {
       const role = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, orgId);
@@ -109,12 +109,8 @@ export default async function DivisionAgesPage({
   const displayRole = allowing[1];
   const canEdit = hasAdminRoleAtLeast(displayRole, "ADMIN");
   const headerOrg = combined || showAll ? null : orgs[0];
-  const hubOrg = combined ? "spring" : (headerOrg ?? divisionAgesAllOrgs()[0]);
-  const headerPath = combined
-    ? "/admin/season-setup/division-ages?org=spring"
-    : showAll
-      ? "/admin/season-setup/division-ages"
-      : `/admin/season-setup/division-ages?org=${orgs[0]}`;
+  const hubOrg = combined ? "spring" : (headerOrg ?? getPrimaryLiveContentOrg());
+  const headerPath = returnPath;
   const { defaultSeasonYear, seasonYears } = seasonYearChoices(orgs);
   const offerSpring = canOfferSpringCombined({ isMaster: adminUser.isMaster, masterDeployment: masterMode });
   const springCombined = offerSpring

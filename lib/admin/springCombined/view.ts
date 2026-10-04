@@ -96,50 +96,23 @@ export function resolveSeasonSetupView(input: {
     if (!canOfferSpringCombined(input)) return { mode: "denied" };
     return { mode: "combined" };
   }
-  if (
-    suggestSpringCombined({
-      isMaster: input.isMaster,
-      masterDeployment: input.masterDeployment,
-      requestedOrg: input.requestedOrg,
-      liveOrgs: input.liveOrgs,
-    })
-  ) {
-    return { mode: "combined" };
-  }
   return { mode: "single" };
 }
 
-export type DivisionAgesView = "denied" | "combined" | "all-spring" | "single";
+export type DivisionAgesView = "denied" | "combined" | "default";
 
+/** Combined only for an explicit `?org=spring`. Bare and `all` stay on the default screen. */
 export function resolveDivisionAgesView(input: {
   isMaster: boolean;
   masterDeployment: boolean;
   requestedOrg: string | null | undefined;
-  liveOrgs: readonly string[];
+  liveOrgs?: readonly string[];
 }): DivisionAgesView {
   if (isSpringCombinedParam(input.requestedOrg)) {
     if (!canOfferSpringCombined(input)) return "denied";
     return "combined";
   }
-  if (!input.masterDeployment) return "single";
-  if (
-    suggestSpringCombined({
-      isMaster: input.isMaster,
-      masterDeployment: input.masterDeployment,
-      requestedOrg: input.requestedOrg,
-      liveOrgs: input.liveOrgs,
-    })
-  ) {
-    return "combined";
-  }
-  const requested = input.requestedOrg ?? "";
-  if (requested === "" || requested === "all" || !isContentOrgId(requested)) return "all-spring";
-  return "single";
-}
-
-/** Master "all" division-ages list for Spring. Fall Ball stays its own link. */
-export function divisionAgesAllOrgs(): SpringLeagueOrg[] {
-  return [...SPRING_LEAGUE_ORGS];
+  return "default";
 }
 
 export type SpringRegistrationInput = {
@@ -161,16 +134,28 @@ export type SpringRegistrationSummary = {
   }>;
 };
 
+type RegistrationAppearance = { organizationId: SpringLeagueOrg; ageGroup: string };
+
+/** One division row for a player who is in both leagues. Gonzales wins ties. */
+function registrationDivisionAppearance(appearances: readonly RegistrationAppearance[]): RegistrationAppearance {
+  for (const org of SPRING_LEAGUE_ORGS) {
+    const hit = appearances.find((appearance) => appearance.organizationId === org);
+    if (hit) return hit;
+  }
+  return appearances[0]!;
+}
+
 /**
  * One player per sportsConnectRowKey. A key present in both spring leagues
- * counts once and is flagged. Fall Ball rows are ignored. Blank keys are not
- * merged with each other.
+ * counts once in the total and once in the division table, and is flagged.
+ * League-only counts stay exclusive. Fall Ball rows are ignored. Blank keys
+ * are not merged with each other.
  */
 export function summarizeSpringRegistrations(
   rows: readonly SpringRegistrationInput[],
   seasonYear: number,
 ): SpringRegistrationSummary {
-  const groups = new Map<string, Array<{ organizationId: SpringLeagueOrg; ageGroup: string }>>();
+  const groups = new Map<string, RegistrationAppearance[]>();
   let blank = 0;
   for (const row of rows) {
     if (!isSpringLeagueOrg(row.organizationId)) continue;
@@ -193,15 +178,15 @@ export function summarizeSpringRegistrations(
 
   for (const appearances of groups.values()) {
     const orgs = new Set(appearances.map((appearance) => appearance.organizationId));
-    if (orgs.size > 1) {
-      duplicatePlayers += 1;
-      continue;
-    }
-    const org = appearances[0]!.organizationId;
-    exclusive[org] += 1;
-    const ageGroup = appearances[0]!.ageGroup;
-    const divKey = `${org}\0${ageGroup}`;
-    const current = divisionCounts.get(divKey) ?? { organizationId: org, ageGroup, players: 0 };
+    if (orgs.size > 1) duplicatePlayers += 1;
+    else exclusive[appearances[0]!.organizationId] += 1;
+    const chosen = registrationDivisionAppearance(appearances);
+    const divKey = `${chosen.organizationId}\0${chosen.ageGroup}`;
+    const current = divisionCounts.get(divKey) ?? {
+      organizationId: chosen.organizationId,
+      ageGroup: chosen.ageGroup,
+      players: 0,
+    };
     current.players += 1;
     divisionCounts.set(divKey, current);
   }
@@ -235,29 +220,49 @@ export type SpringPoolPlayer = {
   birthDate: string | null;
 };
 
-/** Drop a second copy of the same player. Row key wins; otherwise the forecast match key. */
+/**
+ * Drop a second copy of the same player.
+ * A shared sportsConnectRowKey always collapses. When a league has no row key
+ * (roster fallback), the forecast match key is used instead. Two different
+ * row keys stay separate even if the match key is the same.
+ */
 export function dedupeSpringPool(players: readonly SpringPoolPlayer[]): {
   players: SpringPoolPlayer[];
   duplicateCount: number;
 } {
   const seenRow = new Set<string>();
-  const seenMatch = new Set<string>();
+  const rowMatch = new Set<string>();
+  const openRosterMatch = new Set<string>();
   const unique: SpringPoolPlayer[] = [];
   let duplicateCount = 0;
   for (const player of players) {
     const rowKey = player.sportsConnectRowKey?.trim() ?? "";
+    const match = player.matchKey?.trim() ?? "";
     if (rowKey) {
       if (seenRow.has(rowKey)) {
         duplicateCount += 1;
         continue;
       }
-      seenRow.add(rowKey);
-    } else if (player.matchKey) {
-      if (seenMatch.has(player.matchKey)) {
+      if (match && openRosterMatch.has(match)) {
+        openRosterMatch.delete(match);
+        seenRow.add(rowKey);
+        rowMatch.add(match);
         duplicateCount += 1;
         continue;
       }
-      seenMatch.add(player.matchKey);
+      seenRow.add(rowKey);
+      if (match) rowMatch.add(match);
+      unique.push(player);
+      continue;
+    }
+    if (match) {
+      if (rowMatch.has(match) || openRosterMatch.has(match)) {
+        duplicateCount += 1;
+        continue;
+      }
+      openRosterMatch.add(match);
+      unique.push(player);
+      continue;
     }
     unique.push(player);
   }

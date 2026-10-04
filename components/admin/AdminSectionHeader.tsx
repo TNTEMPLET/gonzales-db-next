@@ -31,7 +31,11 @@ export default function AdminSectionHeader({
   moduleHubLabel = "Module hub",
   springCombined = null,
 }: AdminSectionHeaderProps) {
-  const adminHref = currentOrg ? `/admin?org=${currentOrg}` : "/admin";
+  const adminHref = springCombined?.selected
+    ? "/admin?org=gonzales"
+    : currentOrg
+      ? `/admin?org=${currentOrg}`
+      : "/admin";
 
   if (isMasterDeployment()) {
     return (

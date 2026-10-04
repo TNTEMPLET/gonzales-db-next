@@ -211,8 +211,9 @@ export default function Header({ brand }: HeaderProps) {
 
   if (pathname.startsWith("/dugout") || pathname.startsWith("/tournament-rosters")) return null;
 
+  const headerOrgParam = currentOrgParam === "spring" ? "gonzales" : currentOrgParam;
   const masterOrgSuffix =
-    isMasterHeader && currentOrgParam ? `?org=${encodeURIComponent(currentOrgParam)}` : "";
+    isMasterHeader && headerOrgParam ? `?org=${encodeURIComponent(headerOrgParam)}` : "";
 
   const shopNavOrg = isFallBallHeader
     ? "fallball"

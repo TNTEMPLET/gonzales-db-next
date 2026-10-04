@@ -55,8 +55,25 @@ export function sidebarAllowsModule(input: {
   return hasAdminRoleAtLeast(input.role, getMinimumRoleForModule(input.module));
 }
 
+/**
+ * Org query for a sidebar or header link.
+ * Season Setup keeps `spring`. Every other module maps it to Gonzales so the
+ * link does not arrive as an unknown org and fall through to Fall Ball.
+ */
+export function orgQueryForAdminHref(basePath: string, orgParam: string): string {
+  if (orgParam !== "spring") return orgParam;
+  const path = basePath.split("?")[0] ?? basePath;
+  if (path === "/admin/season-setup" || path.startsWith("/admin/season-setup/")) return "spring";
+  return "gonzales";
+}
+
 /** A leaf that's its own real page (no ?tab=/?section= needed) -- just append the org param, if any. */
 function leafHref(basePath: string, orgSuffix: string): string {
+  if (orgSuffix.startsWith("?org=")) {
+    const orgParam = decodeURIComponent(orgSuffix.slice("?org=".length));
+    const mapped = orgQueryForAdminHref(basePath, orgParam);
+    if (mapped !== orgParam) return `${basePath}?org=${encodeURIComponent(mapped)}`;
+  }
   return `${basePath}${orgSuffix}`;
 }
 
@@ -180,7 +197,7 @@ export function buildAdminSidebarNav(
         : []),
       // Surveys stay under Publishing. Moving them under Comms is a later slice.
       ...(allowModule("SURVEYS")
-        ? [{ id: "surveys", label: "Surveys", href: `/admin/surveys${orgSuffix}` }]
+        ? [{ id: "surveys", label: "Surveys", href: leafHref("/admin/surveys", orgSuffix) }]
         : []),
     ],
   };
@@ -212,8 +229,8 @@ export function buildAdminSidebarNav(
     label: ADMIN_DASHBOARD_CATEGORY_META.allstar.label,
     leaves: allowModule("ALL_STAR_VAULT")
       ? [
-          { id: "vault", label: "All-Star Vault", href: `/admin/all-star${orgSuffix}` },
-          { id: "travel", label: "Travel Desk", href: `/admin/travel${orgSuffix}` },
+          { id: "vault", label: "All-Star Vault", href: leafHref("/admin/all-star", orgSuffix) },
+          { id: "travel", label: "Travel Desk", href: leafHref("/admin/travel", orgSuffix) },
         ]
       : [],
   };
@@ -225,5 +242,5 @@ export function buildAdminSidebarNav(
     { id: "program", label: "Program & Commerce", subcategories: withLeaves([publishing, orders, allstar]) },
   ].filter((g) => g.subcategories.length > 0);
 
-  return { dashboardHref: `/admin${orgSuffix}`, groups };
+  return { dashboardHref: leafHref("/admin", orgSuffix), groups };
 }
