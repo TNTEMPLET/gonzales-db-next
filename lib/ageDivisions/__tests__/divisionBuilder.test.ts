@@ -4,11 +4,11 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "node:test";
 
 import { DivisionAgesBuilder } from "@/components/admin/DivisionAgesBuilder";
+import { springCombinedBuilderTable } from "@/lib/admin/springCombined/view";
 import { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
 import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
-import { effectiveRange } from "../compute";
+import { effectiveCutoffDate, effectiveRange, isSplitWindow, leagueAge } from "../compute";
 import { DYB_RULE } from "../forecast";
-import { effectiveCutoffDate } from "../compute";
 import {
   addBuilderRow,
   blankBuilderTable,
@@ -23,6 +23,8 @@ import {
   clearBuilderTable,
   classifyBuilderRaw,
   insertBuilderRow,
+  llMinorsDefaultPatch,
+  llMinorsKindFromName,
   loadBuilderTable,
   moveBuilderRow,
   newBuilderRow,
@@ -546,6 +548,168 @@ describe("builder storage", () => {
     clearBuilderTable(later, "gonzales", 2027);
     assert.equal(later.getItem(key), null);
     assert.equal(later.getItem(backup), "first-bad");
+  });
+});
+
+const LL_RULE = { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 };
+
+function birthdateFits(window: { oldest: string; youngest: string }, iso: string): boolean {
+  return window.oldest !== "" && window.youngest !== "" && iso >= window.oldest && iso <= window.youngest;
+}
+
+function namedMinorsTable(organizationId = "ascension", seasonYear = SEASON): BuilderTable {
+  const blank = blankBuilderTable(organizationId, seasonYear);
+  const withSeven = updateBuilderRow(addBuilderRow(blank, {}, "seven"), "seven", { name: "7U Minors" });
+  return updateBuilderRow(addBuilderRow(withSeven, {}, "eight"), "eight", { name: "8U Minors" });
+}
+
+describe("7U and 8U Minors default cutoffs", () => {
+  it("maps Spring 2027 so May 1–Aug 31 is 8U and 7U stops on Apr 30", () => {
+    const table = namedMinorsTable();
+    const seven = table.rows.find((item) => item.id === "seven");
+    const eight = table.rows.find((item) => item.id === "eight");
+    assert.ok(seven && eight);
+    assert.equal(seven.charter, "ll");
+    assert.equal(eight.charter, "ll");
+    assert.equal(seven.cutoff, "custom");
+    assert.equal(eight.cutoff, "custom");
+    assert.deepEqual(
+      { month: seven.customMonth, day: seven.customDay, minAge: seven.minAge, maxAge: seven.maxAge },
+      { month: 4, day: 30, minAge: 7, maxAge: 7 },
+    );
+    assert.deepEqual(
+      { month: eight.customMonth, day: eight.customDay, minAge: eight.minAge, maxAge: eight.maxAge },
+      { month: 8, day: 31, minAge: 8, maxAge: 8 },
+    );
+
+    const sevenWindow = builderRowWindow(seven, SEASON);
+    const eightWindow = builderRowWindow(eight, SEASON);
+    assert.equal(eightWindow.oldest, "2019-05-01");
+    assert.equal(eightWindow.youngest, "2019-08-31");
+    assert.equal(eightWindow.label, "born May 1, 2019 – Aug 31, 2019 (using your override)");
+    assert.equal(sevenWindow.oldest, "2019-09-01");
+    assert.equal(sevenWindow.youngest, "2020-04-30");
+    assert.equal(sevenWindow.label, "born Sep 1, 2019 – Apr 30, 2020 (using your override)");
+    assert.deepEqual(llMinorsDefaultPatch("8U", SEASON).oldestOverride, eight.oldestOverride);
+    assert.deepEqual(llMinorsDefaultPatch("7U", SEASON).oldestOverride, seven.oldestOverride);
+
+    assert.equal(leagueAge("2019-04-30", effectiveCutoffDate(DYB_RULE, SEASON)), 8);
+    assert.equal(leagueAge("2019-04-30", effectiveCutoffDate(LL_RULE, SEASON)), 8);
+    assert.equal(isSplitWindow("2019-04-30", DYB_RULE, LL_RULE, SEASON), false);
+    assert.equal(birthdateFits(eightWindow, "2019-04-30"), false);
+    assert.equal(birthdateFits(sevenWindow, "2019-04-30"), false);
+
+    assert.equal(leagueAge("2019-05-01", effectiveCutoffDate(DYB_RULE, SEASON)), 7);
+    assert.equal(leagueAge("2019-05-01", effectiveCutoffDate(LL_RULE, SEASON)), 8);
+    assert.equal(isSplitWindow("2019-05-01", DYB_RULE, LL_RULE, SEASON), true);
+    assert.equal(birthdateFits(eightWindow, "2019-05-01"), true);
+    assert.equal(birthdateFits(sevenWindow, "2019-05-01"), false);
+
+    assert.equal(leagueAge("2019-08-31", effectiveCutoffDate(LL_RULE, SEASON)), 8);
+    assert.equal(isSplitWindow("2019-08-31", DYB_RULE, LL_RULE, SEASON), true);
+    assert.equal(birthdateFits(eightWindow, "2019-08-31"), true);
+    assert.equal(birthdateFits(sevenWindow, "2019-08-31"), false);
+
+    assert.equal(leagueAge("2019-09-01", effectiveCutoffDate(DYB_RULE, SEASON)), 7);
+    assert.equal(leagueAge("2019-09-01", effectiveCutoffDate(LL_RULE, SEASON)), 7);
+    assert.equal(isSplitWindow("2019-09-01", DYB_RULE, LL_RULE, SEASON), false);
+    assert.equal(birthdateFits(eightWindow, "2019-09-01"), false);
+    assert.equal(birthdateFits(sevenWindow, "2019-09-01"), true);
+
+    assert.equal(leagueAge("2020-04-30", effectiveCutoffDate(DYB_RULE, SEASON)), 7);
+    assert.equal(birthdateFits(sevenWindow, "2020-04-30"), true);
+    assert.equal(birthdateFits(eightWindow, "2020-04-30"), false);
+
+    assert.equal(leagueAge("2020-05-01", effectiveCutoffDate(DYB_RULE, SEASON)), 6);
+    assert.equal(leagueAge("2020-05-01", effectiveCutoffDate(LL_RULE, SEASON)), 7);
+    assert.equal(birthdateFits(sevenWindow, "2020-05-01"), false);
+    assert.equal(birthdateFits(eightWindow, "2020-05-01"), false);
+
+    const issues = builderCoverageIssues(table).filter((issue) => issue.kind === "gap" || issue.kind === "overlap");
+    assert.deepEqual(issues, []);
+  });
+
+  it("shifts the same edges for another season year", () => {
+    const table = namedMinorsTable("gonzales", 2026);
+    const seven = builderRowWindow(table.rows.find((item) => item.id === "seven")!, 2026);
+    const eight = builderRowWindow(table.rows.find((item) => item.id === "eight")!, 2026);
+    assert.equal(eight.oldest, "2018-05-01");
+    assert.equal(eight.youngest, "2018-08-31");
+    assert.equal(seven.oldest, "2018-09-01");
+    assert.equal(seven.youngest, "2019-04-30");
+    assert.deepEqual(
+      builderCoverageIssues(table).filter((issue) => issue.kind === "gap" || issue.kind === "overlap"),
+      [],
+    );
+  });
+
+  it("accepts the Spring template names and still lets an admin edit the cutoff", () => {
+    assert.equal(llMinorsKindFromName("7U Minors LLB"), "7U");
+    assert.equal(llMinorsKindFromName("8u minors"), "8U");
+    assert.equal(llMinorsKindFromName("8U Minor"), null);
+    assert.equal(llMinorsKindFromName("10U"), null);
+
+    const blank = blankBuilderTable("ascension", SEASON);
+    const named = updateBuilderRow(addBuilderRow(blank, {}, "seven"), "seven", { name: "7U Minors LLB" });
+    const seven = named.rows[0]!;
+    assert.equal(seven.cutoff, "custom");
+    assert.equal(seven.customMonth, 4);
+    assert.equal(seven.customDay, 30);
+
+    const edited = updateBuilderRow(named, "seven", { customDay: 15 });
+    const window = builderRowWindow(edited.rows[0]!, SEASON);
+    assert.equal(window.youngest, "2020-04-15");
+    assert.equal(window.oldest, "2019-09-01");
+    assert.equal(edited.rows[0]?.cutoff, "custom");
+
+    const switched = updateBuilderRow(edited, "seven", { cutoff: "little-league" });
+    const little = builderRowWindow(switched.rows[0]!, SEASON);
+    assert.equal(little.cutoffIso, "2027-08-31");
+    assert.equal(little.youngest, "2020-08-31");
+    assert.equal(little.oldest, "2019-09-01");
+  });
+
+  it("leaves a chosen cutoff, an ordinary name, and Fall Ball alone", () => {
+    const blank = blankBuilderTable("ascension", SEASON);
+    const chosen = updateBuilderRow(addBuilderRow(blank, { cutoff: "dyb" }, "row"), "row", { name: "7U Minors" });
+    assert.equal(chosen.rows[0]?.cutoff, "dyb");
+    assert.equal(chosen.rows[0]?.oldestOverride, "");
+
+    const ordinary = updateBuilderRow(addBuilderRow(blank, {}, "ten"), "ten", { name: "10U" });
+    assert.equal(ordinary.rows[0]?.cutoff, "little-league");
+    assert.equal(ordinary.rows[0]?.minAge, 8);
+
+    const fall = blankBuilderTable("fallball", SEASON);
+    const fallNamed = updateBuilderRow(addBuilderRow(fall, {}, "seven"), "seven", { name: "7U Minors" });
+    assert.equal(fallNamed.rows[0]?.cutoff, "little-league");
+    assert.equal(fallNamed.rows[0]?.oldestOverride, "");
+    assert.equal(fallNamed.organizationId, "fallball");
+  });
+
+  it("shows the Spring 2027 windows in the table and in the wizard cutoff step", () => {
+    const initialTable = springCombinedBuilderTable(SEASON);
+    const shared = {
+      orgs: ["gonzales", "ascension"] as ["gonzales", "ascension"],
+      defaultSeasonYear: SEASON,
+      seasonYears: [2026, 2027],
+      persist: false as const,
+      showSpringTemplate: true,
+      initialTable,
+    };
+    const tableHtml = renderToStaticMarkup(createElement(DivisionAgesBuilder, shared));
+    assert.match(tableHtml, /born May 1, 2019 – Aug 31, 2019/);
+    assert.match(tableHtml, /born Sep 1, 2019 – Apr 30, 2020/);
+    assert.match(tableHtml, /7U Minors LLB/);
+    assert.match(tableHtml, /8U Minors LLB/);
+
+    const wizardHtml = renderToStaticMarkup(
+      createElement(DivisionAgesBuilder, { ...shared, initialMode: "wizard", initialStep: 3 }),
+    );
+    assert.match(wizardHtml, /3\. Choose cutoffs/);
+    assert.match(wizardHtml, /born May 1, 2019 – Aug 31, 2019/);
+    assert.match(wizardHtml, /born Sep 1, 2019 – Apr 30, 2020/);
+    assert.match(wizardHtml, /Custom cutoff month for 7U Minors LLB/);
+    assert.match(wizardHtml, /Custom cutoff month for 8U Minors LLB/);
   });
 });
 

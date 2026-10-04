@@ -4,7 +4,7 @@
  * the database. Forecast math stays in `compute.ts` / `forecast.ts`.
  */
 
-import { coverageWarnings, effectiveCutoffDate, effectiveRange } from "./compute";
+import { calculatedRange, coverageWarnings, effectiveCutoffDate, effectiveRange } from "./compute";
 import { formatCalendarDate } from "./present";
 import { MAX_DIVISION_COUNT, validateSeasonWrite } from "./schema";
 import type { CoverageWarning, DivisionAgeConfig, LeagueAgeRule } from "./types";
@@ -160,7 +160,9 @@ export function updateBuilderRow(
   if (!table.rows.some((row) => row.id === id)) return cloneTable(table);
   return {
     ...cloneTable(table),
-    rows: table.rows.map((row) => (row.id === id ? normalizeRow({ ...row, ...patch, id }) : cloneRow(row))),
+    rows: table.rows.map((row) =>
+      row.id === id ? normalizeRow({ ...row, ...applyLlMinorsNameDefault(row, patch, table), id }) : cloneRow(row),
+    ),
   };
 }
 
@@ -207,6 +209,121 @@ export function defaultCutoffForCharter(charter: BuilderCharter): Extract<Builde
   if (charter === "ll") return "little-league";
   if (charter === "dyb") return "dyb";
   return null;
+}
+
+export type LlMinorsKind = "7U" | "8U";
+
+export type LlMinorsDefault = {
+  minAge: number;
+  maxAge: number;
+  cutoff: "custom";
+  customMonth: number;
+  customDay: number;
+  yearOffset: 0;
+  /** Season-specific oldest birthday. The custom cutoff still supplies the youngest. */
+  oldestOverride: string;
+  youngestOverride: "";
+};
+
+const LL_CUTOFF = { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 } as const;
+const DYB_CUTOFF = { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 } as const;
+
+/**
+ * Little League 7U/8U Minors use a custom cutoff, not a pure Aug 31 or Apr 30 preset.
+ *
+ * The age formula is oldest = cutoff − (age + 1) years + 1 day, youngest = cutoff − age years.
+ * One cutoff always spans a full year, so the May 1–August 31 split (age 8 on August 31,
+ * age 7 on April 30) cannot be both edges of one preset. For season year Y:
+ *
+ * - 8U Minors: custom August 31, ages 8–8, oldest override May 1 of year Y−8
+ *   (the Diamond/Dixie age-7 oldest). Window May 1, Y−8 through August 31, Y−8.
+ * - 7U Minors: custom April 30, ages 7–7, oldest override September 1 of year Y−8
+ *   (the Little League age-7 oldest, the day after 8U). Window September 1, Y−8
+ *   through April 30, Y−7.
+ *
+ * April 30 is 7U's youngest birthday, the Diamond/Dixie cap. September 1 is 7U's
+ * oldest birthday so the two rows meet with no gap and no shared day. Admins can
+ * still change the cutoff, the ages, and either birthday override.
+ */
+export function llMinorsDefaultPatch(kind: LlMinorsKind, seasonYear: number): LlMinorsDefault {
+  const llCutoff = effectiveCutoffDate(LL_CUTOFF, seasonYear);
+  const dybCutoff = effectiveCutoffDate(DYB_CUTOFF, seasonYear);
+  if (kind === "8U") {
+    return {
+      minAge: 8,
+      maxAge: 8,
+      cutoff: "custom",
+      customMonth: LL_CUTOFF.cutoffMonth,
+      customDay: LL_CUTOFF.cutoffDay,
+      yearOffset: 0,
+      oldestOverride: calculatedRange({ minAge: 7, maxAge: 7 }, dybCutoff).oldest,
+      youngestOverride: "",
+    };
+  }
+  return {
+    minAge: 7,
+    maxAge: 7,
+    cutoff: "custom",
+    customMonth: DYB_CUTOFF.cutoffMonth,
+    customDay: DYB_CUTOFF.cutoffDay,
+    yearOffset: 0,
+    oldestOverride: calculatedRange({ minAge: 7, maxAge: 7 }, llCutoff).oldest,
+    youngestOverride: "",
+  };
+}
+
+/** "7U Minors", "8U Minors", and the Spring template names with an LLB suffix. */
+export function llMinorsKindFromName(name: string): LlMinorsKind | null {
+  const normalized = name.trim().replace(/\s+/g, " ");
+  if (/^7U Minors(?: LLB)?$/i.test(normalized)) return "7U";
+  if (/^8U Minors(?: LLB)?$/i.test(normalized)) return "8U";
+  return null;
+}
+
+/**
+ * Naming a still-default Little League row "7U Minors" or "8U Minors" fills the
+ * custom cutoff above. A cutoff the admin already changed is left alone.
+ * Fall Ball scratch tables are not rewritten.
+ */
+function applyLlMinorsNameDefault(
+  row: BuilderRow,
+  patch: Partial<Omit<BuilderRow, "id">>,
+  table: BuilderTable,
+): Partial<Omit<BuilderRow, "id">> {
+  if (table.organizationId === "fallball") return patch;
+  if (patch.name == null || patch.name === row.name) return patch;
+  const kind = llMinorsKindFromName(patch.name);
+  if (!kind) return patch;
+  if ((patch.charter ?? row.charter) !== "ll") return patch;
+  if (!canReplaceWithLlMinorsDefault(row, table.seasonYear)) return patch;
+  return { ...llMinorsDefaultPatch(kind, table.seasonYear), ...patch };
+}
+
+function canReplaceWithLlMinorsDefault(row: BuilderRow, seasonYear: number): boolean {
+  if (row.charter !== "ll") return false;
+  const currentKind = llMinorsKindFromName(row.name);
+  if (currentKind && rowMatchesLlMinorsDefault(row, currentKind, seasonYear)) return true;
+  return (
+    row.cutoff === "little-league" &&
+    row.yearOffset === 0 &&
+    row.oldestOverride.trim() === "" &&
+    row.youngestOverride.trim() === ""
+  );
+}
+
+function rowMatchesLlMinorsDefault(row: BuilderRow, kind: LlMinorsKind, seasonYear: number): boolean {
+  const expected = llMinorsDefaultPatch(kind, seasonYear);
+  return (
+    row.charter === "ll" &&
+    row.minAge === expected.minAge &&
+    row.maxAge === expected.maxAge &&
+    row.cutoff === expected.cutoff &&
+    row.customMonth === expected.customMonth &&
+    row.customDay === expected.customDay &&
+    row.yearOffset === expected.yearOffset &&
+    row.oldestOverride === expected.oldestOverride &&
+    row.youngestOverride === expected.youngestOverride
+  );
 }
 
 /**

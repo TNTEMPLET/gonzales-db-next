@@ -6,7 +6,13 @@
  * Builder tables may use the same word as a browser-storage key only.
  */
 
-import { BUILDER_STORAGE_VERSION, newBuilderRow, type BuilderRow, type BuilderTable } from "@/lib/ageDivisions/divisionBuilder";
+import {
+  BUILDER_STORAGE_VERSION,
+  llMinorsDefaultPatch,
+  newBuilderRow,
+  type BuilderRow,
+  type BuilderTable,
+} from "@/lib/ageDivisions/divisionBuilder";
 import { effectiveCutoffDate, effectiveRange } from "@/lib/ageDivisions/compute";
 import { assignBuckets, type BirthBucket } from "@/lib/ageDivisions/forecast";
 import type { DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDivisions/types";
@@ -23,13 +29,6 @@ export type SpringLeagueOrg = (typeof SPRING_LEAGUE_ORGS)[number];
 export const SPRING_COMBINED_READONLY_ERROR = "Spring combined is a read-only view.";
 
 export const SPRING_COMBINED_SAVE_HINT = "Switch to Gonzales or Ascension to save";
-
-/**
- * 7U and 8U Minors are a Custom cutoff. No parish day is stored in code, so
- * the starter uses August 31 until an admin edits it. The cutoff kind stays
- * Custom either way.
- */
-export const SPRING_MINORS_CUSTOM_CUTOFF = { month: 8, day: 31 } as const;
 
 const LEAGUE_SUFFIX: Record<SpringLeagueOrg, "DYB" | "LLB"> = {
   gonzales: "DYB",
@@ -380,42 +379,57 @@ type TemplateSpec = {
   cutoff: BuilderRow["cutoff"];
   customMonth?: number;
   customDay?: number;
+  oldestOverride?: string;
+  youngestOverride?: string;
 };
 
-const SPRING_TEMPLATE_ROWS: readonly TemplateSpec[] = [
-  { id: "tee-llb", name: "Tee-ball LLB", minAge: 4, maxAge: 6, charter: "ll", cutoff: "dyb" },
-  {
-    id: "7u-minors-llb",
-    name: "7U Minors LLB",
-    minAge: 7,
-    maxAge: 7,
-    charter: "ll",
-    cutoff: "custom",
-    customMonth: SPRING_MINORS_CUSTOM_CUTOFF.month,
-    customDay: SPRING_MINORS_CUSTOM_CUTOFF.day,
-  },
-  {
-    id: "8u-minors-llb",
-    name: "8U Minors LLB",
-    minAge: 8,
-    maxAge: 8,
-    charter: "ll",
-    cutoff: "custom",
-    customMonth: SPRING_MINORS_CUSTOM_CUTOFF.month,
-    customDay: SPRING_MINORS_CUSTOM_CUTOFF.day,
-  },
-  { id: "78-majors-llb", name: "7/8 Majors LLB", minAge: 7, maxAge: 8, charter: "ll", cutoff: "little-league" },
-  { id: "9u-llb", name: "9U LLB", minAge: 9, maxAge: 9, charter: "ll", cutoff: "little-league" },
-  { id: "9u-dyb", name: "9U DYB", minAge: 9, maxAge: 9, charter: "dyb", cutoff: "dyb" },
-  { id: "10u-llb", name: "10U LLB", minAge: 10, maxAge: 10, charter: "ll", cutoff: "little-league" },
-  { id: "10u-dyb", name: "10U DYB", minAge: 10, maxAge: 10, charter: "dyb", cutoff: "dyb" },
-  { id: "11u-llb", name: "11U LLB", minAge: 11, maxAge: 11, charter: "ll", cutoff: "little-league" },
-  { id: "11u-dyb", name: "11U DYB", minAge: 11, maxAge: 11, charter: "dyb", cutoff: "dyb" },
-  { id: "12u-llb", name: "12U LLB", minAge: 12, maxAge: 12, charter: "ll", cutoff: "little-league" },
-  { id: "12u-dyb", name: "12U DYB", minAge: 12, maxAge: 12, charter: "dyb", cutoff: "dyb" },
-  { id: "1314-dyb", name: "13/14U DYB", minAge: 13, maxAge: 14, charter: "dyb", cutoff: "dyb" },
-  { id: "1517-dyb", name: "15-17U DYB", minAge: 15, maxAge: 17, charter: "dyb", cutoff: "dyb" },
-];
+/**
+ * 7U and 8U Minors stay Little League charter with a custom cutoff. The month,
+ * day, and oldest birthday come from `llMinorsDefaultPatch` so this template,
+ * the builder table, and the wizard share one season-year mapping.
+ */
+function springTemplateSpecs(seasonYear: number): TemplateSpec[] {
+  const seven = llMinorsDefaultPatch("7U", seasonYear);
+  const eight = llMinorsDefaultPatch("8U", seasonYear);
+  return [
+    { id: "tee-llb", name: "Tee-ball LLB", minAge: 4, maxAge: 6, charter: "ll", cutoff: "dyb" },
+    {
+      id: "7u-minors-llb",
+      name: "7U Minors LLB",
+      minAge: seven.minAge,
+      maxAge: seven.maxAge,
+      charter: "ll",
+      cutoff: seven.cutoff,
+      customMonth: seven.customMonth,
+      customDay: seven.customDay,
+      oldestOverride: seven.oldestOverride,
+      youngestOverride: seven.youngestOverride,
+    },
+    {
+      id: "8u-minors-llb",
+      name: "8U Minors LLB",
+      minAge: eight.minAge,
+      maxAge: eight.maxAge,
+      charter: "ll",
+      cutoff: eight.cutoff,
+      customMonth: eight.customMonth,
+      customDay: eight.customDay,
+      oldestOverride: eight.oldestOverride,
+      youngestOverride: eight.youngestOverride,
+    },
+    { id: "78-majors-llb", name: "7/8 Majors LLB", minAge: 7, maxAge: 8, charter: "ll", cutoff: "little-league" },
+    { id: "9u-llb", name: "9U LLB", minAge: 9, maxAge: 9, charter: "ll", cutoff: "little-league" },
+    { id: "9u-dyb", name: "9U DYB", minAge: 9, maxAge: 9, charter: "dyb", cutoff: "dyb" },
+    { id: "10u-llb", name: "10U LLB", minAge: 10, maxAge: 10, charter: "ll", cutoff: "little-league" },
+    { id: "10u-dyb", name: "10U DYB", minAge: 10, maxAge: 10, charter: "dyb", cutoff: "dyb" },
+    { id: "11u-llb", name: "11U LLB", minAge: 11, maxAge: 11, charter: "ll", cutoff: "little-league" },
+    { id: "11u-dyb", name: "11U DYB", minAge: 11, maxAge: 11, charter: "dyb", cutoff: "dyb" },
+    { id: "12u-llb", name: "12U LLB", minAge: 12, maxAge: 12, charter: "ll", cutoff: "little-league" },
+    { id: "12u-dyb", name: "12U DYB", minAge: 12, maxAge: 12, charter: "dyb", cutoff: "dyb" },
+    { id: "1314-dyb", name: "13/14U DYB", minAge: 13, maxAge: 14, charter: "dyb", cutoff: "dyb" },
+    { id: "1517-dyb", name: "15-17U DYB", minAge: 15, maxAge: 17, charter: "dyb", cutoff: "dyb" },
+  ];
+}
 
 /** Scratch table only. organizationId is the browser-storage key, not a content org. */
 export function springCombinedBuilderTable(seasonYear: number): BuilderTable {
@@ -423,7 +437,7 @@ export function springCombinedBuilderTable(seasonYear: number): BuilderTable {
     version: BUILDER_STORAGE_VERSION,
     organizationId: SPRING_BUILDER_ORG,
     seasonYear,
-    rows: SPRING_TEMPLATE_ROWS.map((spec) =>
+    rows: springTemplateSpecs(seasonYear).map((spec) =>
       newBuilderRow(spec.id, {
         name: spec.name,
         minAge: spec.minAge,
@@ -432,6 +446,8 @@ export function springCombinedBuilderTable(seasonYear: number): BuilderTable {
         cutoff: spec.cutoff,
         ...(spec.customMonth != null ? { customMonth: spec.customMonth } : {}),
         ...(spec.customDay != null ? { customDay: spec.customDay } : {}),
+        ...(spec.oldestOverride != null ? { oldestOverride: spec.oldestOverride } : {}),
+        ...(spec.youngestOverride != null ? { youngestOverride: spec.youngestOverride } : {}),
       }),
     ),
   };
