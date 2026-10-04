@@ -6,7 +6,13 @@ import { describe, it } from "node:test";
 
 import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
 import SpringRegistrationSummary from "@/components/admin/SpringRegistrationSummary";
-import { builderLeagueTables, parseBuilderTable, serializeBuilderTable } from "@/lib/ageDivisions/divisionBuilder";
+import {
+  builderCoverageIssues,
+  builderLeagueTables,
+  builderRowWindow,
+  parseBuilderTable,
+  serializeBuilderTable,
+} from "@/lib/ageDivisions/divisionBuilder";
 import { buildAdminSidebarNav } from "@/lib/admin/sidebarNav";
 import { CONTENT_ORGS, isContentOrgId, resolveOrg } from "@/lib/siteConfig";
 
@@ -293,8 +299,28 @@ describe("spring combined template", () => {
     const tee = byName.get("Tee-ball LLB");
     assert.equal(tee?.charter, "ll");
     assert.equal(tee?.cutoff, "dyb");
-    assert.equal(byName.get("7U Minors LLB")?.cutoff, "custom");
-    assert.equal(byName.get("8U Minors LLB")?.cutoff, "custom");
+    const seven = byName.get("7U Minors LLB");
+    const eight = byName.get("8U Minors LLB");
+    assert.equal(seven?.charter, "ll");
+    assert.equal(eight?.charter, "ll");
+    assert.equal(seven?.cutoff, "custom");
+    assert.equal(eight?.cutoff, "custom");
+    assert.equal(seven?.customMonth, 4);
+    assert.equal(seven?.customDay, 30);
+    assert.equal(eight?.customMonth, 8);
+    assert.equal(eight?.customDay, 31);
+    assert.ok(seven && eight);
+    const sevenWindow = builderRowWindow(seven, 2027);
+    const eightWindow = builderRowWindow(eight, 2027);
+    assert.equal(eightWindow.oldest, "2018-05-01");
+    assert.equal(eightWindow.youngest, "2019-08-31");
+    assert.equal(sevenWindow.oldest, "2019-09-01");
+    assert.equal(sevenWindow.youngest, "2020-04-30");
+    const pair = { ...table, rows: [seven, eight] };
+    assert.deepEqual(
+      builderCoverageIssues(pair).filter((issue) => issue.kind === "gap" || issue.kind === "overlap"),
+      [],
+    );
     assert.equal(byName.get("7/8 Majors LLB")?.charter, "ll");
     assert.equal(byName.get("7/8 Majors LLB")?.cutoff, "little-league");
     for (const age of [9, 10, 11, 12]) {
