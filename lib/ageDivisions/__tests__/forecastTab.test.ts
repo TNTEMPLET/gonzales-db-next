@@ -6,7 +6,7 @@ import { describe, it } from "node:test";
 import { DivisionAgesForecastView } from "@/components/admin/DivisionAgesForecast";
 import { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
 import { setAllDivisionRosters, setDivisionRoster } from "../draft";
-import type { ForecastSide } from "../forecast";
+import type { ForecastSide, PoolSplit } from "../forecast";
 import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
@@ -23,6 +23,10 @@ import type { DivisionAgeConfig } from "../types";
 
 function side(overrides: Partial<ForecastSide> = {}): ForecastSide {
   return { own: 10, feeder: 0, pool: 10, expected: 3, minTeams: 1, maxTeams: 1, ...overrides };
+}
+
+function split(own = 0, feeder = 0): PoolSplit {
+  return { own, feeder, total: own + feeder };
 }
 
 function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
@@ -56,6 +60,8 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
         proposed,
         delta: side({ own: 8, feeder: 0, pool: 8, expected: 8, minTeams: 3, maxTeams: 4 }),
         movers: 4,
+        moversIn: split(3, 1),
+        moversOut: split(1, 0),
         currentShortRoster: false,
         proposedShortRoster: false,
         currentOverlap: 0,
@@ -73,6 +79,8 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
         proposed: side({ own: 5, feeder: 0, pool: 5, expected: 5, minTeams: 1, maxTeams: 1 }),
         delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
         movers: 0,
+        moversIn: split(),
+        moversOut: split(),
         currentShortRoster: true,
         proposedShortRoster: true,
         currentOverlap: 0,
@@ -88,6 +96,9 @@ function response(overrides: Partial<ForecastResponse> = {}): ForecastResponse {
       delta: side({ own: 8, feeder: 0, pool: 8, expected: 8, minTeams: 3, maxTeams: 4 }),
     },
     movers: 4,
+    flows: [{ from: "10U", to: "9U", own: 3, feeder: 1, total: 4 }],
+    currentWarnings: [],
+    proposedWarnings: [],
     current: {
       distinctTotal: { own: 80, feeder: 12, total: 92 },
       tooYoung: { own: 1, feeder: 0, total: 1 },
@@ -261,6 +272,8 @@ describe("forecast tab", () => {
           proposed: side({ own: 20, feeder: 0, pool: 20, expected: 20, minTeams: 2, maxTeams: 2 }),
           delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
           movers: 0,
+          moversIn: split(),
+          moversOut: split(),
           currentShortRoster: false,
           proposedShortRoster: false,
           currentOverlap: 20,

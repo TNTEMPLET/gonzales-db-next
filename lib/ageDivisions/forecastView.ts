@@ -8,14 +8,16 @@ import type { ContentOrgId } from "@/lib/siteConfig";
 import {
   DEFAULT_RETURN_RATE,
   FALLBACK_RETENTION,
+  type ForecastFlow,
   type ForecastPopulation,
   type ForecastRow,
   type ForecastSide,
   type LeagueTotals,
+  type PoolSplit,
   type SharedPool,
 } from "./forecast";
 import type { DivisionAgesSource } from "./schema";
-import type { DivisionAgeConfig, LeagueAgeRule } from "./types";
+import type { CoverageWarning, DivisionAgeConfig, LeagueAgeRule } from "./types";
 
 export const FORECAST_DEBOUNCE_MS = 300;
 
@@ -61,6 +63,9 @@ export type ForecastResponse = {
   sharedPools: SharedPool[];
   league: LeagueTotals;
   movers: number;
+  flows: ForecastFlow[];
+  currentWarnings: CoverageWarning[];
+  proposedWarnings: CoverageWarning[];
   current: ForecastPopulation;
   proposed: ForecastPopulation;
 };
@@ -259,11 +264,33 @@ export function isForecastResponse(value: unknown): value is ForecastResponse {
   if (!isRecord(value.sources) || !isPoolSource(value.sources.own) || !isPoolSource(value.sources.feeder)) return false;
   if (typeof value.coveragePct !== "number" && value.coveragePct !== null) return false;
   if (value.currentSource !== "season" && value.currentSource !== "league" && value.currentSource !== "builtin") return false;
+  if (!Array.isArray(value.flows) || !value.flows.every(isFlow)) return false;
+  if (!Array.isArray(value.currentWarnings) || !value.currentWarnings.every(isCoverageWarning)) return false;
+  if (!Array.isArray(value.proposedWarnings) || !value.proposedWarnings.every(isCoverageWarning)) return false;
   return typeof value.movers === "number" && typeof value.seasonYear === "number" && typeof value.includeFeeder === "boolean";
 }
 
 function isSplit(value: unknown): boolean {
   return isRecord(value) && typeof value.total === "number";
+}
+
+function isPoolSplit(value: unknown): value is PoolSplit {
+  return isRecord(value) && typeof value.own === "number" && typeof value.feeder === "number" && typeof value.total === "number";
+}
+
+function isFlow(value: unknown): value is ForecastFlow {
+  return isRecord(value) && typeof value.from === "string" && typeof value.to === "string" && isPoolSplit(value);
+}
+
+function isCoverageWarning(value: unknown): value is CoverageWarning {
+  if (!isRecord(value)) return false;
+  return (
+    (value.kind === "gap" || value.kind === "overlap" || value.kind === "invalid") &&
+    typeof value.from === "string" &&
+    typeof value.to === "string" &&
+    Array.isArray(value.divisionCodes) &&
+    value.divisionCodes.every((code) => typeof code === "string")
+  );
 }
 
 function isPopulation(value: Record<string, unknown>): boolean {
@@ -284,5 +311,13 @@ function isSharedPool(value: unknown): boolean {
 
 function isForecastRow(value: unknown): value is ForecastRow {
   if (!isRecord(value)) return false;
-  return typeof value.code === "string" && typeof value.label === "string" && isSide(value.current) && isSide(value.proposed) && isSide(value.delta);
+  return (
+    typeof value.code === "string" &&
+    typeof value.label === "string" &&
+    isSide(value.current) &&
+    isSide(value.proposed) &&
+    isSide(value.delta) &&
+    isPoolSplit(value.moversIn) &&
+    isPoolSplit(value.moversOut)
+  );
 }

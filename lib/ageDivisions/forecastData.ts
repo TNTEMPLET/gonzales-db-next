@@ -103,6 +103,9 @@ export type ForecastPayload = {
   sharedPools: ReturnType<typeof compareConfigs>["sharedPools"];
   league: ReturnType<typeof compareConfigs>["league"];
   movers: number;
+  flows: ReturnType<typeof compareConfigs>["flows"];
+  currentWarnings: ReturnType<typeof compareConfigs>["currentWarnings"];
+  proposedWarnings: ReturnType<typeof compareConfigs>["proposedWarnings"];
   current: ReturnType<typeof compareConfigs>["current"];
   proposed: ReturnType<typeof compareConfigs>["proposed"];
 };
@@ -642,6 +645,9 @@ export async function runDivisionForecast(
       sharedPools: compared.sharedPools,
       league: compared.league,
       movers: compared.movers,
+      flows: compared.flows,
+      currentWarnings: compared.currentWarnings,
+      proposedWarnings: compared.proposedWarnings,
       current: compared.current,
       proposed: compared.proposed,
     };
