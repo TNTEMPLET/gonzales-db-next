@@ -653,7 +653,10 @@ export async function runDivisionForecast(
       flows: compared.flows,
       currentWarnings: compared.currentWarnings,
       proposedWarnings: compared.proposedWarnings,
-      eligibility: eligibilityForConfigs(buckets, current.divisions, proposed.divisions, targetSeasonYear),
+      eligibility: eligibilityForConfigs(buckets, current.divisions, proposed.divisions, targetSeasonYear, {
+        current: current.cutoff,
+        proposed: proposed.cutoff,
+      }),
       current: compared.current,
       proposed: compared.proposed,
     };

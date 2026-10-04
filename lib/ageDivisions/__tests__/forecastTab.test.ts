@@ -5,9 +5,9 @@ import { describe, it } from "node:test";
 
 import { DivisionAgesForecastView } from "@/components/admin/DivisionAgesForecast";
 import { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
-import { effectiveRange } from "../compute";
+import { effectiveCutoffDate, effectiveRange } from "../compute";
 import { setAllDivisionRosters, setDivisionRoster } from "../draft";
-import type { ForecastSide, PoolSplit } from "../forecast";
+import { compareConfigs, DEFAULT_ROSTER, type BirthBucket, type ForecastSide, type PoolSplit } from "../forecast";
 import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
@@ -17,6 +17,7 @@ import {
   combineDivisions,
   eligibilityShown,
   splitDivisionAt,
+  storedDraftAction,
   structuralScenario,
   carryoverReferenceLabel,
   defaultIncludeFeeder,
@@ -168,7 +169,6 @@ function view(overrides: Partial<ComponentProps<typeof DivisionAgesForecastView>
     onRetentionText: () => {},
     onResetRetention: () => {},
     onCutoff: () => {},
-    onDivision: () => {},
     onDivisions: () => {},
     onLinkEdges: () => {},
     onResetProposed: () => {},
@@ -331,6 +331,23 @@ describe("forecast tab", () => {
     });
     assert.equal(before.proposed?.cutoff.cutoffDay, 30);
     assert.equal(after.proposed?.cutoff.cutoffDay, 15);
+    const anchored = withProposedCutoff(
+      {
+        cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+        divisions: [{ code: "8U", label: "8U", minAge: 8, maxAge: 8, sortOrder: 1, oldestBirthdate: "2018-06-01" }],
+      },
+      { cutoffDay: 15 },
+    );
+    assert.equal(anchored.divisions[0]?.oldestBirthdate, undefined);
+    assert.equal(anchored.cutoff.cutoffDay, 15);
+    const kept = withProposedCutoff(
+      {
+        cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+        divisions: [{ code: "8U", label: "8U", minAge: 8, maxAge: 8, sortOrder: 1, oldestBirthdate: "2018-06-01" }],
+      },
+      { cutoffDay: 30 },
+    );
+    assert.equal(kept.divisions[0]?.oldestBirthdate, "2018-06-01");
     assert.notEqual(forecastQueryKey("gonzales", before), forecastQueryKey("gonzales", after));
 
     const html = renderToStaticMarkup(view({ proposed: edited }));
@@ -377,6 +394,21 @@ describe("forecast tab", () => {
     const cleared = setDivisionRoster(all[0]!, "rosterMin", "");
     assert.equal("rosterMin" in cleared, false);
     assert.equal(cleared.rosterMax, 14);
+  });
+
+  it("renders the birthdate timeline, cutoff presets, and precise date entry", () => {
+    const html = renderToStaticMarkup(view());
+    assert.match(html, /data-testid="birthdate-timeline"/);
+    assert.match(html, /data-testid="timeline-proposed"/);
+    assert.match(html, /Little League \(Aug 31\)/);
+    assert.match(html, /DYB \(Apr 30\)/);
+    assert.match(html, /data-testid="cutoff-preset-custom"/);
+    assert.match(html, /data-testid="age-editor"/);
+    assert.match(html, /Minimum age for 9U/);
+    assert.match(html, /data-testid="precise-dates"/);
+    assert.match(html, /data-testid="reset-proposed"/);
+    assert.match(html, /born on or after May 1, 2017/);
+    assert.match(html, /Move neighbor edge too/);
   });
 
   it("shows the effective dates, edited badge, in/out movers, and where kids move", () => {
@@ -629,5 +661,120 @@ describe("what-if editor helpers", () => {
     assert.match(html, /LL-only/);
     assert.match(html, />173</);
     assert.match(html, /2019-09-01\.\.2020-08-31/);
+  });
+});
+
+describe("shared pools outside the selected divisions", () => {
+  const rosterFor = () => DEFAULT_ROSTER;
+  const season = 2027;
+  const cutoff = { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 };
+  const seven = { code: "7U MINOR", label: "7U Minor", minAge: 7, maxAge: 7, sortOrder: 1 };
+  const eight = { code: "8U MINOR", label: "8U Minor", minAge: 8, maxAge: 8, sortOrder: 2 };
+  const major = { code: "7-8U MAJOR", label: "7-8 Major", minAge: 7, maxAge: 8, sortOrder: 3 };
+  const baseline: ProposedConfig = { cutoff, divisions: [seven, eight, major] };
+  const buckets: BirthBucket[] = [
+    { birthDate: "2019-10-01", count: 173, pool: "own" },
+    { birthDate: "2019-01-01", count: 134, pool: "own" },
+  ];
+
+  function scenarioFor(codes: string[]) {
+    const combined = combineDivisions(baseline.divisions, codes, effectiveCutoffDate(cutoff, season));
+    if (!combined.ok) throw new Error(combined.error);
+    const proposed: ProposedConfig = { cutoff, divisions: combined.divisions };
+    const compared = compareConfigs(buckets, baseline, proposed, season, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+    });
+    const summary = structuralScenario(baseline, proposed, compared, season);
+    assert.ok(summary);
+    return { summary, compared, proposed };
+  }
+
+  it("does not warn when 7U and 8U do not overlap, even if 7-8 shares the pool", () => {
+    const { summary, compared } = scenarioFor(["7U MINOR", "8U MINOR"]);
+    assert.equal(summary.exact, true);
+    assert.equal(summary.beforeTotal.pool, 307);
+    assert.equal(summary.beforeTotal.expected, 307);
+    assert.equal(summary.beforeTotal.minTeams, 27);
+    assert.equal(summary.beforeTotal.maxTeams, 27);
+    assert.equal(summary.afterTotal.pool, 307);
+    assert.equal(summary.afterTotal.minTeams, 26);
+    assert.equal(summary.afterTotal.maxTeams, 27);
+    assert.equal(compared.league.current.pool, 307);
+    assert.equal(compared.league.current.minTeams, 26);
+  });
+
+  it("counts 8U inside 7-8 once instead of adding both pools", () => {
+    const { summary, compared } = scenarioFor(["8U MINOR", "7-8U MAJOR"]);
+    assert.equal(summary.exact, true);
+    assert.equal(summary.beforeTotal.pool, 307);
+    assert.notEqual(summary.beforeTotal.pool, 134 + 307);
+    assert.equal(summary.afterTotal.pool, 307);
+    assert.equal(summary.afterTotal.pool - summary.beforeTotal.pool, 0);
+    assert.equal(compared.league.current.pool, 307);
+  });
+
+  it("still warns when selected windows partially overlap inside a larger pool", () => {
+    const narrow = {
+      code: "A",
+      label: "A",
+      minAge: 8,
+      maxAge: 8,
+      sortOrder: 1,
+      youngestBirthdate: "2019-03-01",
+    };
+    const wide = {
+      code: "B",
+      label: "B",
+      minAge: 8,
+      maxAge: 8,
+      sortOrder: 2,
+      oldestBirthdate: "2019-01-01",
+    };
+    const tail = {
+      code: "C",
+      label: "C",
+      minAge: 8,
+      maxAge: 8,
+      sortOrder: 3,
+      oldestBirthdate: "2019-06-01",
+      youngestBirthdate: "2019-08-31",
+    };
+    const current: ProposedConfig = { cutoff, divisions: [narrow, wide, tail] };
+    const combined = combineDivisions(current.divisions, ["A", "B"], effectiveCutoffDate(cutoff, season));
+    assert.equal(combined.ok, true);
+    if (!combined.ok) return;
+    const proposed: ProposedConfig = { cutoff, divisions: combined.divisions };
+    const compared = compareConfigs(
+      [{ birthDate: "2019-02-01", count: 10, pool: "own" }, { birthDate: "2019-07-01", count: 4, pool: "own" }],
+      current,
+      proposed,
+      season,
+      { retentionRate: 1, includeFeeder: false, rosterFor },
+    );
+    const summary = structuralScenario(current, proposed, compared, season);
+    assert.ok(summary);
+    assert.equal(summary.exact, false);
+    assert.ok(summary.beforeTotal.pool > 0);
+  });
+});
+
+describe("stored forecast drafts", () => {
+  const baseline: ProposedConfig = {
+    cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+    divisions: [{ code: "8U", label: "8U", minAge: 8, maxAge: 8, sortOrder: 1 }],
+  };
+
+  it("keeps a draft while the season baseline is still loading", () => {
+    const edited: ProposedConfig = {
+      ...baseline,
+      divisions: [{ ...baseline.divisions[0]!, oldestBirthdate: "2019-01-15" }],
+    };
+    assert.equal(storedDraftAction(edited, null), "save");
+    assert.equal(storedDraftAction(null, null), "retain");
+    assert.equal(storedDraftAction(baseline, baseline), "delete");
+    assert.equal(storedDraftAction(edited, baseline), "save");
+    assert.equal(storedDraftAction(null, baseline), "delete");
   });
 });
