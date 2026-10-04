@@ -67,6 +67,8 @@ describe("division ages editor", () => {
           cutoffDay: 30,
           yearOffset: 1,
           divisions: [],
+          returnRatePercent: 100,
+          feederSharePercent: 10,
           saving: false,
           loading: false,
           message: null,
@@ -95,6 +97,8 @@ describe("division ages editor", () => {
           cutoffDay: 30,
           yearOffset: 0,
           divisions: [{ code: "9U", label: "9U", minAge: 9, maxAge: 9, sortOrder: 1, rosterMin: 10, rosterMax: 14 }],
+          returnRatePercent: 100,
+          feederSharePercent: 10,
           saving: false,
           loading: false,
           message: null,
@@ -114,5 +118,11 @@ describe("division ages editor", () => {
     assert.match(html, /value="10"/);
     assert.match(html, /value="14"/);
     assert.match(html, /Blank uses the default 11–12/);
+    assert.match(html, /Return rate %/);
+    assert.match(html, /Feeder share %/);
+    assert.match(html, /aria-label="Return rate percent"/);
+    assert.match(html, /aria-label="Feeder share percent"/);
+    assert.match(html, /value="100"/);
+    assert.match(html, /value="10"/);
   });
 });

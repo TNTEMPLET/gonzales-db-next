@@ -13,7 +13,7 @@ import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
   buildForecastRequest,
-  carryoverLabel,
+  carryoverReferenceLabel,
   cloneProposed,
   coverageLabel,
   dataSourceLabel,
@@ -23,6 +23,7 @@ import {
   forecastSeasonChoices,
   formatDelta,
   formatDeltaTeams,
+  formatRetentionPercent,
   formatTeamRange,
   isForecastResponse,
   parseRetentionPercent,
@@ -47,6 +48,16 @@ function readError(payload: unknown, fallback: string): string {
     return payload.error;
   }
   return fallback;
+}
+
+function EmptySideCells() {
+  return (
+    <>
+      <td className="py-2 pr-3 align-top text-zinc-500">—</td>
+      <td className="py-2 pr-3 align-top text-zinc-500">—</td>
+      <td className="py-2 pr-3 align-top text-zinc-500">—</td>
+    </>
+  );
 }
 
 function SideCells({
@@ -206,11 +217,11 @@ export function DivisionAgesForecastView({
             </select>
           </label>
           <label className="block text-sm text-zinc-300">
-            <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Retention %</span>
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Return rate %</span>
             <input
               className={fieldClass}
               inputMode="decimal"
-              aria-label="Retention percent"
+              aria-label="Return rate percent"
               data-testid="retention-percent"
               value={retentionValue}
               onChange={(event) => onRetentionText(event.target.value)}
@@ -228,6 +239,11 @@ export function DivisionAgesForecastView({
               />
               Include Ascension feeder pool
             </label>
+          ) : null}
+          {org === "gonzales" && forecast ? (
+            <p className="text-sm text-zinc-400" data-testid="feeder-share">
+              Feeder share {formatRetentionPercent(forecast.feederShare)}%
+            </p>
           ) : null}
           {retentionDirty ? (
             <button type="button" className={`${buttonClass} underline`} data-testid="retention-reset" onClick={onResetRetention}>
@@ -431,12 +447,49 @@ export function DivisionAgesForecastView({
                   </tr>
                 </thead>
                 <tbody>
+                  {forecast.sharedPools.map((pool) => (
+                    <tr key={pool.poolKey} className="border-t border-amber-400/30 bg-amber-400/5 text-zinc-100" data-testid="shared-pool">
+                      <td className="py-2 pr-3 align-top">
+                        <p className="font-medium text-white">{pool.label}</p>
+                        <p className="mt-1 text-xs text-amber-100">Counted once. Do not add the divisions in this pool.</p>
+                      </td>
+                      {pool.current ? (
+                        <SideCells side={pool.current} shortRoster={pool.currentShortRoster} includeFeeder={forecast.includeFeeder} />
+                      ) : (
+                        <EmptySideCells />
+                      )}
+                      {pool.proposed ? (
+                        <SideCells side={pool.proposed} shortRoster={pool.proposedShortRoster} includeFeeder={forecast.includeFeeder} />
+                      ) : (
+                        <EmptySideCells />
+                      )}
+                      <td className="py-2 pr-3 align-top tabular-nums">
+                        {pool.current && pool.proposed ? formatDelta(pool.proposed.expected - pool.current.expected) : "—"}
+                      </td>
+                      <td className="py-2 pr-3 align-top tabular-nums">
+                        {pool.current && pool.proposed
+                          ? formatDeltaTeams(pool.proposed.minTeams - pool.current.minTeams, pool.proposed.maxTeams - pool.current.maxTeams)
+                          : "—"}
+                      </td>
+                      <td className="py-2 align-top text-zinc-500">—</td>
+                    </tr>
+                  ))}
                   {forecast.rows.map((row) => {
                     const overlap = (row.currentOverlap ?? 0) > 0 || (row.proposedOverlap ?? 0) > 0;
+                    const shared = Boolean(row.currentSharedPoolId || row.proposedSharedPoolId);
                     return (
                       <tr key={row.code} className="border-t border-zinc-800 text-zinc-200">
                         <td className="py-2 pr-3 align-top">
                           <p className="font-medium text-white">{row.label}</p>
+                          {shared ? (
+                            <p
+                              className="mt-1 inline-flex rounded-full border border-sky-400/40 bg-sky-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-100"
+                              data-testid="shared-pool-member"
+                              title="This division shares a pool. League and team totals count those players once."
+                            >
+                              Shared pool
+                            </p>
+                          ) : null}
                           {overlap ? (
                             <p
                               className="mt-1 inline-flex rounded-full border border-amber-400/40 bg-amber-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-amber-200"
@@ -460,6 +513,12 @@ export function DivisionAgesForecastView({
               </table>
             </div>
             <div className="mt-4 grid gap-2 text-sm text-zinc-300 sm:grid-cols-2" data-testid="forecast-footer">
+              <p data-testid="league-totals">
+                League total, each player once: current {forecast.league.current.expected} expected, teams{" "}
+                {formatTeamRange(forecast.league.current.minTeams, forecast.league.current.maxTeams)}; proposed{" "}
+                {forecast.league.proposed.expected} expected, teams{" "}
+                {formatTeamRange(forecast.league.proposed.minTeams, forecast.league.proposed.maxTeams)}.
+              </p>
               <p>
                 Players, counted once: current {populationTotal(forecast.current.distinctTotal)}, proposed{" "}
                 {populationTotal(forecast.proposed.distinctTotal)}.
@@ -479,7 +538,7 @@ export function DivisionAgesForecastView({
                 )}
                 .
               </p>
-              <p>{carryoverLabel(forecast.seasonYear, forecast.carryover)}</p>
+              <p data-testid="carryover-reference">{carryoverReferenceLabel(org, forecast.seasonYear, forecast.carryover)}</p>
               {forecast.includeFeeder ? (
                 <p>
                   Feeder pool: {forecast.sources.feeder.players} players, birthdate coverage{" "}

@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import { calculatedRange, coverageWarnings, effectiveRange } from "../compute";
 import { leagueDivisionDefaults as defaults } from "../defaults";
 import { clearDivisionBirthdates, setDivisionBirthdate } from "../draft";
-import { validateLeagueDefaults, validateSeasonWrite } from "../schema";
+import { unpackLeagueDivisionsJson, validateLeagueDefaults, validateSeasonWrite } from "../schema";
 
 const CUTOFF = { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 };
 const SEASON = 2027;
@@ -128,7 +128,33 @@ describe("division age validation", () => {
     if (oldShape.ok) {
       assert.equal(oldShape.data.divisions[0]?.rosterMin, undefined);
       assert.equal(oldShape.data.divisions[0]?.rosterMax, undefined);
+      assert.equal(oldShape.data.returnRatePercent, 100);
+      assert.equal(oldShape.data.feederSharePercent, 10);
     }
+
+    const legacyJson = unpackLeagueDivisionsJson([division()]);
+    assert.equal(legacyJson.returnRateSource, "default");
+    assert.equal(legacyJson.feederShareSource, "default");
+    assert.equal(Array.isArray(legacyJson.divisions), true);
+
+    const envelope = unpackLeagueDivisionsJson({
+      divisions: [division()],
+      returnRatePercent: 80,
+      feederSharePercent: 25,
+    });
+    assert.equal(envelope.returnRatePercent, 80);
+    assert.equal(envelope.feederSharePercent, 25);
+    assert.equal(envelope.returnRateSource, "league");
+    assert.equal(envelope.feederShareSource, "league");
+
+    const badPercent = validateLeagueDefaults({
+      cutoffMonth: 4,
+      cutoffDay: 30,
+      yearOffset: 0,
+      divisions: [division()],
+      returnRatePercent: 101,
+    });
+    assert.equal(badPercent.ok, false);
 
     const stored = validateLeagueDefaults({
       cutoffMonth: 4,

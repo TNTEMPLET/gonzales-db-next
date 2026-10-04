@@ -246,13 +246,21 @@ describe("league roster bounds", () => {
     assert.equal(saved.value.updatedByAdminId, "admin-roster");
 
     const raw = memory.leagues.get(ORG);
-    const storedDivisions = raw?.divisionsJson as Array<Record<string, unknown>>;
-    assert.equal(storedDivisions[0]?.rosterMin, 10);
-    assert.equal(storedDivisions[0]?.rosterMax, 14);
+    const stored = raw?.divisionsJson as {
+      divisions: Array<Record<string, unknown>>;
+      returnRatePercent: number;
+      feederSharePercent: number;
+    };
+    assert.equal(stored.divisions[0]?.rosterMin, 10);
+    assert.equal(stored.divisions[0]?.rosterMax, 14);
+    assert.equal(stored.returnRatePercent, 100);
+    assert.equal(stored.feederSharePercent, 10);
 
     const again = await getLeagueDefaults(memory.db, ORG);
     assert.equal(again.divisions[0]?.rosterMin, 10);
     assert.equal(again.divisions[0]?.rosterMax, 14);
+    assert.equal(again.returnRatePercent, 100);
+    assert.equal(again.feederSharePercent, 10);
 
     memory.leagues.set(ORG, {
       ...raw!,
@@ -263,6 +271,21 @@ describe("league roster bounds", () => {
     assert.equal(oldShape.divisions[0]?.code, "7U");
     assert.equal(oldShape.divisions[0]?.rosterMin, undefined);
     assert.equal(oldShape.divisions[0]?.rosterMax, undefined);
+    assert.equal(oldShape.returnRatePercent, 100);
+    assert.equal(oldShape.feederSharePercent, 10);
+
+    memory.leagues.set(ORG, {
+      ...raw!,
+      divisionsJson: {
+        divisions: [division({ code: "8U", label: "8U" })],
+        returnRatePercent: 80,
+        feederSharePercent: 25,
+      },
+    });
+    const savedRates = await getLeagueDefaults(memory.db, ORG);
+    assert.equal(savedRates.divisions[0]?.code, "8U");
+    assert.equal(savedRates.returnRatePercent, 80);
+    assert.equal(savedRates.feederSharePercent, 25);
   });
 });
 

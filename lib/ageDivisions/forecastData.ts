@@ -14,8 +14,9 @@ import type { ContentOrgId } from "@/lib/siteConfig";
 
 import { leagueDivisionDefaults } from "./defaults";
 import {
+  DEFAULT_FEEDER_SHARE,
+  DEFAULT_RETURN_RATE,
   DEFAULT_ROSTER,
-  FALLBACK_RETENTION,
   carryoverRate,
   compareConfigs,
   type BirthBucket,
@@ -24,6 +25,9 @@ import {
 } from "./forecast";
 import { DIVISION_AGES_STORAGE_NOTE, isDivisionAgeStorageMissing } from "./persistence";
 import {
+  DEFAULT_FEEDER_SHARE_PERCENT,
+  DEFAULT_RETURN_RATE_PERCENT,
+  unpackLeagueDivisionsJson,
   validateSeasonWrite,
   type DivisionAgesSource,
   type SeasonDivisionAgesView,
@@ -44,13 +48,8 @@ const FEEDER_ROSTER_MISSING = "Feeder roster storage is not available.";
 const FALL_STORAGE_MISSING =
   "Fall Ball enrollment storage is not available, so no carryover rate was computed.";
 const NO_SPRING_PLAYERS = "No spring players, so no carryover rate was computed.";
-const NO_FALL_MATCHES_FALLBACK =
-  "No Fall Ball registration matches, so retention uses the fallback rate.";
-const NO_FALL_MATCHES_OVERRIDE = "No Fall Ball registration matches.";
-const NO_FALL_MATCHES_UNADJUSTED =
-  "No Fall Ball registration matches, so expected headcount is not reduced.";
-const UNADJUSTED =
-  "No carryover rate or league fallback is available, so expected headcount is not reduced.";
+const CARRYOVER_REFERENCE =
+  "Spring→Fall carryover is reference only and is not used in the forecast.";
 
 export type PoolKind = "enrollment" | "roster" | "none";
 
@@ -69,13 +68,23 @@ export type ForecastCarryover = {
   note: string | null;
 };
 
-export type RetentionSource = "override" | "carryover" | "fallback" | "unadjusted";
+export type RetentionSource = "override" | "league" | "default";
+
+export type LeagueForecastSettings = {
+  roster: Map<string, RosterSize>;
+  returnRate: number;
+  feederShare: number;
+  returnRateSource: "league" | "default";
+  feederShareSource: "league" | "default";
+};
 
 export type ForecastPayload = {
   organizationId: ContentOrgId;
   seasonYear: number;
   targetSeasonYear: number;
   includeFeeder: boolean;
+  /** Feeder share actually applied, fraction in 0–1. */
+  feederShare: number;
   notes: string[];
   source: "enrollment" | "roster";
   coveragePct: number | null;
@@ -91,6 +100,8 @@ export type ForecastPayload = {
   currentSource: DivisionAgesSource;
   proposedSource: "request" | "current";
   rows: ReturnType<typeof compareConfigs>["rows"];
+  sharedPools: ReturnType<typeof compareConfigs>["sharedPools"];
+  league: ReturnType<typeof compareConfigs>["league"];
   movers: number;
   current: ReturnType<typeof compareConfigs>["current"];
   proposed: ReturnType<typeof compareConfigs>["proposed"];
@@ -128,6 +139,7 @@ export type ForecastDeps = {
   reader: ForecastReader;
   loadSeasonConfig: (org: ContentOrgId, seasonYear: number) => Promise<SeasonDivisionAgesView>;
   loadRosterMap?: (org: ContentOrgId) => Promise<ReadonlyMap<string, RosterSize>>;
+  loadForecastSettings?: (org: ContentOrgId) => Promise<LeagueForecastSettings>;
 };
 
 type CountedPlayer = {
@@ -146,6 +158,7 @@ const forecastBodySchema = z.object({
   targetSeasonYear: z.number().int().min(1990).max(2200).optional(),
   includeFeeder: z.boolean().optional(),
   retentionRate: z.number().min(0).max(1).optional(),
+  feederShare: z.number().min(0).max(1).optional(),
   proposed: z.unknown().optional(),
 });
 
@@ -241,11 +254,36 @@ function excludeOverlap(feeder: CountedPlayer[], own: CountedPlayer[]): CountedP
   return feeder.filter((player) => player.matchKey == null || !ownKeys.has(player.matchKey));
 }
 
+function defaultForecastSettings(roster: ReadonlyMap<string, RosterSize> = new Map()): LeagueForecastSettings {
+  return {
+    roster: new Map(roster),
+    returnRate: DEFAULT_RETURN_RATE,
+    feederShare: DEFAULT_FEEDER_SHARE,
+    returnRateSource: "default",
+    feederShareSource: "default",
+  };
+}
+
+/** Roster bounds plus forecast percents stored inside `divisionsJson`. */
+export function leagueForecastSettingsFromJson(raw: unknown): LeagueForecastSettings {
+  const unpacked = unpackLeagueDivisionsJson(raw);
+  const returnRatePercent = unpacked.returnRatePercent ?? DEFAULT_RETURN_RATE_PERCENT;
+  const feederSharePercent = unpacked.feederSharePercent ?? DEFAULT_FEEDER_SHARE_PERCENT;
+  return {
+    roster: rosterMapFromLeagueDivisions(raw),
+    returnRate: returnRatePercent / 100,
+    feederShare: feederSharePercent / 100,
+    returnRateSource: unpacked.returnRateSource,
+    feederShareSource: unpacked.feederShareSource,
+  };
+}
+
 /** Optional per-division roster bounds stored on league defaults by the settings cog. */
 export function rosterMapFromLeagueDivisions(divisions: unknown): Map<string, RosterSize> {
   const map = new Map<string, RosterSize>();
-  if (!Array.isArray(divisions)) return map;
-  for (const item of divisions) {
+  const list = unpackLeagueDivisionsJson(divisions).divisions;
+  if (!Array.isArray(list)) return map;
+  for (const item of list) {
     if (!item || typeof item !== "object") continue;
     const record = item as Record<string, unknown>;
     const code = typeof record.code === "string" ? record.code.trim() : "";
@@ -256,12 +294,6 @@ export function rosterMapFromLeagueDivisions(divisions: unknown): Map<string, Ro
     map.set(code, { min, max });
   }
   return map;
-}
-
-function fallbackRetention(org: ContentOrgId): number | null {
-  if (org === "gonzales") return FALLBACK_RETENTION.gonzales;
-  if (org === "ascension") return FALLBACK_RETENTION.ascension;
-  return null;
 }
 
 function builtinSeason(org: ContentOrgId): SeasonDivisionAgesView {
@@ -375,6 +407,24 @@ export async function readLeagueRosterMap(client: ForecastPrisma, org: ContentOr
   }
 }
 
+export async function readLeagueForecastSettings(
+  client: ForecastPrisma,
+  org: ContentOrgId,
+): Promise<LeagueForecastSettings> {
+  try {
+    if (typeof client.leagueAgeDivisionDefaults?.findUnique !== "function") return defaultForecastSettings();
+    const row = await client.leagueAgeDivisionDefaults.findUnique({
+      where: { organizationId: org },
+      select: { divisionsJson: true },
+    });
+    if (!row) return defaultForecastSettings();
+    return leagueForecastSettingsFromJson(row.divisionsJson);
+  } catch (error) {
+    if (isDivisionAgeStorageMissing(error)) return defaultForecastSettings();
+    throw error;
+  }
+}
+
 async function loadPool(
   org: ContentOrgId,
   seasonYear: number,
@@ -459,28 +509,11 @@ function carryoverFor(
 }
 
 function retentionFor(
-  org: ContentOrgId,
-  computed: number | null,
+  saved: { rate: number; source: "league" | "default" },
   override: number | undefined,
-  hadMatches: boolean,
-): { applied: number; source: RetentionSource; note: string | null } {
-  if (override != null) {
-    return {
-      applied: override,
-      source: "override",
-      note: hadMatches ? null : NO_FALL_MATCHES_OVERRIDE,
-    };
-  }
-  if (computed != null) return { applied: computed, source: "carryover", note: null };
-  const fallback = fallbackRetention(org);
-  if (fallback != null) {
-    return { applied: fallback, source: "fallback", note: hadMatches ? null : NO_FALL_MATCHES_FALLBACK };
-  }
-  return {
-    applied: 1,
-    source: "unadjusted",
-    note: hadMatches ? UNADJUSTED : NO_FALL_MATCHES_UNADJUSTED,
-  };
+): { applied: number; source: RetentionSource } {
+  if (override != null) return { applied: override, source: "override" };
+  return { applied: saved.rate, source: saved.source };
 }
 
 function missingStorage(message: string): Error & { code: string } {
@@ -534,23 +567,26 @@ export async function runDivisionForecast(
   }
 
   try {
-    const [own, feederLoaded, fall, currentView, rosterMap] = await Promise.all([
+    const [own, feederLoaded, fall, currentView, settings] = await Promise.all([
       loadPool(input.org, seasonYear, deps.reader, "own"),
       includeFeeder
         ? loadPool("ascension", seasonYear, deps.reader, "feeder")
         : Promise.resolve(null),
       loadFallLines(deps.reader, seasonYear),
       loadCurrent(input.org, targetSeasonYear, deps),
-      loadRosters(input.org, deps),
+      loadSettings(input.org, deps),
     ]);
 
     const feederPlayers = feederLoaded ? excludeOverlap(feederLoaded.players, own.players) : [];
     const carryover = carryoverFor(own.players, fall.lines, fall.note);
-    const hadMatches = carryover.carried > 0;
-    const retention = retentionFor(input.org, carryover.rate, parsedBody.data.retentionRate, hadMatches);
+    const retention = retentionFor(
+      { rate: settings.returnRate, source: settings.returnRateSource },
+      parsedBody.data.retentionRate,
+    );
     if (carryover.note == null && carryover.springDistinct > 0 && carryover.carried === 0) {
-      carryover.note = retention.note;
+      carryover.note = CARRYOVER_REFERENCE;
     }
+    const feederShare = parsedBody.data.feederShare ?? settings.feederShare;
 
     const current = toForecastConfig(currentView);
     const proposed = proposedConfig ?? current;
@@ -562,7 +598,8 @@ export async function runDivisionForecast(
       {
         retentionRate: retention.applied,
         includeFeeder,
-        rosterFor: (code) => rosterMap.get(code) ?? DEFAULT_ROSTER,
+        feederShare,
+        rosterFor: (code) => settings.roster.get(code) ?? DEFAULT_ROSTER,
       },
     );
 
@@ -587,6 +624,7 @@ export async function runDivisionForecast(
       seasonYear,
       targetSeasonYear,
       includeFeeder,
+      feederShare,
       notes,
       source: own.source,
       coveragePct: ownSource.coveragePct,
@@ -601,6 +639,8 @@ export async function runDivisionForecast(
       currentSource: currentView.source,
       proposedSource: proposedConfig ? "request" : "current",
       rows: compared.rows,
+      sharedPools: compared.sharedPools,
+      league: compared.league,
       movers: compared.movers,
       current: compared.current,
       proposed: compared.proposed,
@@ -616,6 +656,19 @@ export async function runDivisionForecast(
     console.error("[division-ages] forecast failed", code);
     return failure(500, "Could not load the forecast.");
   }
+}
+
+async function loadSettings(org: ContentOrgId, deps: ForecastDeps): Promise<LeagueForecastSettings> {
+  if (deps.loadForecastSettings) {
+    try {
+      return await deps.loadForecastSettings(org);
+    } catch (error) {
+      if (isDivisionAgeStorageMissing(error)) return defaultForecastSettings();
+      throw error;
+    }
+  }
+  const roster = await loadRosters(org, deps);
+  return defaultForecastSettings(roster);
 }
 
 async function loadRosters(org: ContentOrgId, deps: ForecastDeps): Promise<ReadonlyMap<string, RosterSize>> {
@@ -651,5 +704,6 @@ export async function forecastReaders(): Promise<ForecastDeps> {
     reader: createPrismaForecastReader(client),
     loadSeasonConfig: (org, seasonYear) => getSeasonDivisionAges(org, seasonYear),
     loadRosterMap: (org) => readLeagueRosterMap(client, org),
+    loadForecastSettings: (org) => readLeagueForecastSettings(client, org),
   };
 }

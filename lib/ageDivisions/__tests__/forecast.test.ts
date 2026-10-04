@@ -3,6 +3,8 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
+  DEFAULT_FEEDER_SHARE,
+  DEFAULT_RETURN_RATE,
   DEFAULT_ROSTER,
   FALLBACK_RETENTION,
   assignBuckets,
@@ -186,6 +188,7 @@ describe("overlapping divisions", () => {
     const compared = compareConfigs(buckets, config, ll(config.divisions), SEASON, {
       retentionRate: 1,
       includeFeeder: false,
+      feederShare: 1,
       rosterFor,
     });
     assert.equal(compared.movers, 8);
@@ -208,14 +211,14 @@ describe("projectDivision", () => {
       { pool: 10, expected: 10 },
     );
     assert.deepEqual(
-      projectDivision({ own: 10, feeder: 5 }, { retentionRate: 1, includeFeeder: true }),
+      projectDivision({ own: 10, feeder: 5 }, { retentionRate: 1, includeFeeder: true, feederShare: 1 }),
       { pool: 15, expected: 15 },
     );
   });
 
   it("rounds a fractional rate and keeps 0 and 1 exact", () => {
     assert.deepEqual(
-      projectDivision({ own: 10, feeder: 7 }, { retentionRate: 0, includeFeeder: true }),
+      projectDivision({ own: 10, feeder: 7 }, { retentionRate: 0, includeFeeder: true, feederShare: 1 }),
       { pool: 17, expected: 0 },
     );
     assert.deepEqual(
@@ -235,7 +238,7 @@ describe("projectDivision", () => {
       0,
     );
     assert.deepEqual(
-      projectDivision({ own: 10, feeder: 7 }, { retentionRate: 0.25, includeFeeder: true }),
+      projectDivision({ own: 10, feeder: 7 }, { retentionRate: 0.25, includeFeeder: true, feederShare: 1 }),
       { pool: 17, expected: 4 },
     );
   });
@@ -313,7 +316,7 @@ describe("compareConfigs", () => {
       current,
       proposed,
       SEASON,
-      { retentionRate: 0.5, includeFeeder: true, rosterFor },
+      { retentionRate: 0.5, includeFeeder: true, feederShare: 1, rosterFor },
     );
     assert.deepEqual(
       compared.rows.map((row) => row.code),
@@ -354,6 +357,7 @@ describe("compareConfigs", () => {
     const withFeeder = compareConfigs(buckets, config, config, SEASON, {
       retentionRate: 0.5,
       includeFeeder: true,
+      feederShare: 1,
       rosterFor,
     });
     const ownOnly = compareConfigs(buckets, config, config, SEASON, {
@@ -369,7 +373,7 @@ describe("compareConfigs", () => {
     assert.equal(included.current.expected, 15);
     assert.equal(included.current.minTeams, 2);
     assert.equal(included.current.maxTeams, 2);
-    assert.equal(excluded.current.feeder, 10);
+    assert.equal(excluded.current.feeder, 0);
     assert.equal(excluded.current.pool, 20);
     assert.equal(excluded.current.expected, 10);
     assert.equal(excluded.current.minTeams, 1);
@@ -432,6 +436,102 @@ describe("carryover and fallback constants", () => {
     assert.equal(Object.keys(FALLBACK_RETENTION).length, 2);
     assert.ok(Math.abs(carryoverRate(439, 128)! - FALLBACK_RETENTION.gonzales) < 0.01);
     assert.ok(Math.abs(carryoverRate(867, 384)! - FALLBACK_RETENTION.ascension) < 0.01);
+  });
+});
+
+describe("return rate, feeder share, and shared pools", () => {
+  it("uses a 100% return rate by default and does not apply the carryover reference", () => {
+    assert.equal(DEFAULT_RETURN_RATE, 1);
+    assert.notEqual(DEFAULT_RETURN_RATE, FALLBACK_RETENTION.gonzales);
+    assert.notEqual(DEFAULT_RETURN_RATE, FALLBACK_RETENTION.ascension);
+    const full = projectDivision({ own: 10, feeder: 0 }, { retentionRate: DEFAULT_RETURN_RATE, includeFeeder: false });
+    const reference = projectDivision(
+      { own: 10, feeder: 0 },
+      { retentionRate: FALLBACK_RETENTION.gonzales, includeFeeder: false },
+    );
+    assert.equal(full.expected, 10);
+    assert.equal(reference.expected, 3);
+  });
+
+  it("applies the default 10% feeder share per division, and 0 when the toggle is off", () => {
+    assert.equal(DEFAULT_FEEDER_SHARE, 0.1);
+    const config = dyb([division("9U", 9, 9, 1)]);
+    const buckets = [bucket("2017-06-01", 4), bucket("2017-06-01", 15, "feeder")];
+    const shared = compareConfigs(buckets, config, config, SEASON, {
+      retentionRate: DEFAULT_RETURN_RATE,
+      includeFeeder: true,
+      rosterFor,
+    });
+    const row = shared.rows[0]!;
+    assert.equal(row.current.own, 4);
+    assert.equal(row.current.feeder, 2);
+    assert.equal(row.current.pool, 6);
+    assert.equal(row.current.expected, 6);
+    assert.equal(shared.league.current.feeder, 2);
+    assert.equal(shared.league.current.expected, 6);
+
+    const off = compareConfigs(buckets, config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+    });
+    assert.equal(off.rows[0]!.current.feeder, 0);
+    assert.equal(off.rows[0]!.current.pool, 4);
+    assert.equal(off.league.current.expected, 4);
+
+    const edited = compareConfigs(buckets, config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: true,
+      feederShare: 0.4,
+      rosterFor,
+    });
+    assert.equal(edited.rows[0]!.current.feeder, 6);
+    assert.equal(edited.rows[0]!.current.pool, 10);
+    assert.equal(edited.league.current.feeder, 6);
+  });
+
+  it("counts an overlapping 6U Minor/Major pool once in league and team totals", () => {
+    const config = dyb([
+      division("6U-minor", 6, 6, 1),
+      division("6U-major", 6, 6, 2),
+      division("8U", 8, 8, 3),
+    ]);
+    config.divisions[0]!.label = "6U Minor";
+    config.divisions[1]!.label = "6U Major";
+    const buckets = [bucket("2020-06-01", 20), bucket("2018-06-01", 12)];
+    const compared = compareConfigs(buckets, config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+    });
+    const minor = compared.rows.find((row) => row.code === "6U-minor");
+    const major = compared.rows.find((row) => row.code === "6U-major");
+    const older = compared.rows.find((row) => row.code === "8U");
+    assert.ok(minor && major && older);
+    assert.equal(minor.current.own, 20);
+    assert.equal(major.current.own, 20);
+    assert.equal(older.current.own, 12);
+    assert.ok(minor.currentSharedPoolId);
+    assert.equal(minor.currentSharedPoolId, major.currentSharedPoolId);
+    assert.equal(minor.proposedSharedPoolId, major.proposedSharedPoolId);
+    assert.equal(older.currentSharedPoolId, null);
+    const pool = compared.sharedPools.find((item) => item.codes.includes("6U-minor"));
+    assert.ok(pool);
+    assert.match(pool.label, /Shared pool/);
+    assert.match(pool.label, /6U Minor/);
+    assert.match(pool.label, /6U Major/);
+    assert.equal(pool.current?.own, 20);
+    assert.equal(pool.current?.expected, 20);
+    assert.equal(pool.current?.minTeams, 2);
+    assert.equal(pool.current?.maxTeams, 2);
+    assert.equal(pool.proposed?.minTeams, 2);
+    assert.equal(compared.league.current.own, 32);
+    assert.equal(compared.league.current.expected, 32);
+    assert.equal(compared.league.current.minTeams, 3);
+    assert.equal(compared.league.current.maxTeams, 3);
+    assert.equal(compared.league.proposed.own, 32);
+    assert.equal(compared.league.proposed.minTeams, 3);
+    assert.notEqual(compared.league.current.minTeams, minor.current.minTeams + major.current.minTeams + older.current.minTeams);
   });
 });
 

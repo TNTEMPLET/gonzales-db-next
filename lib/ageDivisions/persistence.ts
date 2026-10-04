@@ -8,6 +8,10 @@ import type { ContentOrgId } from "@/lib/siteConfig";
 import { shiftIsoDateByYears } from "./compute";
 import { leagueDivisionDefaults } from "./defaults";
 import {
+  DEFAULT_FEEDER_SHARE_PERCENT,
+  DEFAULT_RETURN_RATE_PERCENT,
+  packLeagueDivisionsJson,
+  unpackLeagueDivisionsJson,
   validateLeagueDefaults,
   validateSeasonRecord,
   withoutRedundantOverrides,
@@ -88,6 +92,8 @@ function builtinLeague(org: ContentOrgId): LeagueDefaultsInput {
     cutoffDay: config.rule.cutoffDay,
     yearOffset: config.rule.yearOffset,
     divisions: config.divisions.map((division) => ({ ...division })),
+    returnRatePercent: DEFAULT_RETURN_RATE_PERCENT,
+    feederSharePercent: DEFAULT_FEEDER_SHARE_PERCENT,
   };
 }
 
@@ -104,6 +110,8 @@ function leagueViewFromInput(
     cutoffDay: input.cutoffDay,
     yearOffset: input.yearOffset,
     divisions: input.divisions.map((division) => ({ ...division })),
+    returnRatePercent: input.returnRatePercent,
+    feederSharePercent: input.feederSharePercent,
     updatedAt: extra?.updatedAt ?? null,
     updatedByAdminId: extra?.updatedByAdminId ?? null,
   };
@@ -188,11 +196,14 @@ async function readLeague(
   if (!row) {
     return { missing: false, view: leagueViewFromInput(builtinLeague(org), "builtin") };
   }
+  const unpacked = unpackLeagueDivisionsJson(row.divisionsJson);
   const parsed = validateLeagueDefaults({
     cutoffMonth: row.cutoffMonth,
     cutoffDay: row.cutoffDay,
     yearOffset: row.yearOffset,
-    divisions: row.divisionsJson,
+    divisions: unpacked.divisions,
+    ...(unpacked.returnRatePercent != null ? { returnRatePercent: unpacked.returnRatePercent } : {}),
+    ...(unpacked.feederSharePercent != null ? { feederSharePercent: unpacked.feederSharePercent } : {}),
   });
   if (!parsed.ok) {
     console.warn(
@@ -239,7 +250,7 @@ export async function saveLeagueDefaults(
       cutoffMonth: parsed.data.cutoffMonth,
       cutoffDay: parsed.data.cutoffDay,
       yearOffset: parsed.data.yearOffset,
-      divisionsJson: parsed.data.divisions,
+      divisionsJson: packLeagueDivisionsJson(parsed.data),
       updatedByAdminId: adminId,
     });
     logSave("league_defaults", org, adminId);

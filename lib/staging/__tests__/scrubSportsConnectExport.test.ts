@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
@@ -86,5 +87,54 @@ describe("scrubSportsConnectExport", () => {
     assert.equal(sportsConnectExportColumnKind("Insurance Company"), "blank");
     assert.equal(sportsConnectExportColumnKind("Physician Phone"), "blank");
     assert.equal(sportsConnectExportColumnKind(ALLERGY), "blank");
+    assert.equal(sportsConnectExportColumnKind("Player Physical Conditions"), "blank");
+    assert.equal(sportsConnectExportColumnKind("Tetanus Shot"), "blank");
+    assert.equal(sportsConnectExportColumnKind("Tetanus Shot Date"), "blank");
+    assert.equal(sportsConnectExportColumnKind("Immunization Record"), "blank");
+    assert.equal(sportsConnectExportColumnKind("Vaccination"), "blank");
+    assert.equal(sportsConnectExportColumnKind("Division Name"), "keep");
+    assert.equal(sportsConnectExportColumnKind("Birth Date"), "birth");
+    assert.equal(sportsConnectExportColumnKind("Player Gender"), "keep");
+    assert.equal(sportsConnectExportColumnKind("School"), "keep");
+    assert.equal(sportsConnectExportColumnKind("Grade"), "keep");
+  });
+
+  it("blanks physical conditions and tetanus columns and keeps league fields", () => {
+    const scrubbed = scrubSportsConnectRow({
+      "Division Name": "Tee Ball",
+      "Birth Date": "2015-06-15",
+      "Player Gender": "F",
+      School: "Sample School",
+      Grade: "1",
+      "Player Physical Conditions": "asthma note",
+      "Tetanus Shot": "yes",
+      "Tetanus Shot Date": "2024-04-01",
+      "Immunization Record": "sample record",
+    });
+    assert.equal(scrubbed["Division Name"], "Tee Ball");
+    assert.equal(scrubbed["Player Gender"], "F");
+    assert.equal(scrubbed.School, "Sample School");
+    assert.equal(scrubbed.Grade, "1");
+    assert.equal(scrubbed["Birth Date"], shiftBirthDateText("2015-06-15"));
+    assert.equal(scrubbed["Player Physical Conditions"], "");
+    assert.equal(scrubbed["Tetanus Shot"], "");
+    assert.equal(scrubbed["Tetanus Shot Date"], "");
+    assert.equal(scrubbed["Immunization Record"], "");
+    assert.equal(JSON.stringify(scrubbed).includes("asthma note"), false);
+    assert.equal(JSON.stringify(scrubbed).includes("2024-04-01"), false);
+  });
+
+  it("covers the same medical headers in scripts/staging/scrub.sql", () => {
+    const sql = readFileSync(new URL("../../../scripts/staging/scrub.sql", import.meta.url), "utf8");
+    const medical = sql.slice(sql.indexOf("staging_json_key_kind"), sql.indexOf("staging_scrub_scalar"));
+    for (const token of ["physical condition", "tetanus", "immuni[sz]", "vaccin", "shot date", "condition"]) {
+      assert.match(medical, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
+    const survey = sql.slice(sql.indexOf('UPDATE "SurveyAnswer"'));
+    for (const token of ["physical condition", "tetanus", "immuni[sz]", "vaccin", "shot date"]) {
+      assert.match(survey, new RegExp(token.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    }
+    assert.match(sql, /kind = 'medical'/);
+    assert.match(sql, /RETURN 'redacted'/);
   });
 });
