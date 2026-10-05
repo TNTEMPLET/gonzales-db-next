@@ -117,7 +117,7 @@ export function comparisonRowNotes(
 type TeamSpan = { min: number; max: number };
 
 function teamsReady(side: TeamSpan | null | undefined): side is TeamSpan {
-  return Boolean(side) && Number.isFinite(side.min) && Number.isFinite(side.max);
+  return side != null && Number.isFinite(side.min) && Number.isFinite(side.max);
 }
 
 /**
