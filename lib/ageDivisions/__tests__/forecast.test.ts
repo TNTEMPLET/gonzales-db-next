@@ -3,10 +3,12 @@ import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import { splitDivisionAt } from "../forecastView";
+import { forecastTimelineLayout } from "../springTimeline";
 import {
   DEFAULT_FEEDER_SHARE,
   DEFAULT_RETURN_RATE,
   DEFAULT_ROSTER,
+  EVEN_SPLIT_MIX_NOTE,
   FALLBACK_RETENTION,
   appliedFeeder,
   assignBuckets,
@@ -19,6 +21,7 @@ import {
   type BirthBucket,
   type DivisionAssignment,
   type ForecastConfig,
+  type MixSeason,
   type RosterSize,
 } from "../index";
 
@@ -906,5 +909,205 @@ describe("combine, split, and LL vs DYB counts", () => {
     assert.notEqual(`${both.llOldest}..${both.llYoungest}`, `${both.dybOldest}..${both.dybYoungest}`);
     assert.equal(both.llOldest <= both.llYoungest, true);
     assert.equal(both.dybOldest <= both.dybYoungest, true);
+  });
+});
+
+describe("spring overlap mix weights", () => {
+  const rosterFor = () => DEFAULT_ROSTER;
+  const older = "2015-06-01";
+  const younger = "2016-08-01";
+
+  function pair(minAge = 10, maxAge = 11, overrides: { youngestBirthdate?: string } = {}) {
+    return dyb([
+      division("MAJORS", minAge, maxAge, 1, overrides),
+      division("MINORS", minAge, maxAge, 2, overrides),
+      division("12U", 12, 12, 3),
+    ]);
+  }
+
+  function history(seasons: MixSeason[]): { seasons: MixSeason[] } {
+    return { seasons };
+  }
+
+  function players(birthDate: string, divisionName: string, count: number) {
+    return { birthDate, divisionName, ageGroup: "", count };
+  }
+
+  const eightyThreeHundred: MixSeason[] = [
+    {
+      seasonYear: 2025,
+      players: [players(older, "Majors", 80), players(younger, "Minors", 220)],
+    },
+  ];
+
+  const pool = [bucket(older, 80), bucket(younger, 220), bucket("2014-06-01", 12)];
+
+  it("weights an 80 of 300 Majors mix to about 27 percent", () => {
+    const config = pair();
+    config.divisions[0]!.label = "Majors";
+    config.divisions[1]!.label = "Minors";
+    const compared = compareConfigs(pool, config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: history(eightyThreeHundred),
+    });
+    const majors = compared.rows.find((row) => row.code === "MAJORS");
+    const minors = compared.rows.find((row) => row.code === "MINORS");
+    const olderDivision = compared.rows.find((row) => row.code === "12U");
+    assert.ok(majors && minors && olderDivision);
+    assert.equal(majors.current.pool, 80);
+    assert.equal(majors.current.expected, 80);
+    assert.equal(majors.currentMix?.sharePercent, 27);
+    assert.equal(majors.currentMix?.note, "27% of window, Spring 2025");
+    assert.ok(Math.abs((majors.currentMix?.share ?? 0) - 80 / 300) < 1e-9);
+    assert.equal(minors.current.pool, 220);
+    assert.equal(minors.current.expected, 220);
+    assert.equal(minors.currentMix?.sharePercent, 73);
+    assert.equal(minors.currentMix?.note, "73% of window, Spring 2025");
+    assert.deepEqual(
+      [majors.current.minTeams, majors.current.maxTeams],
+      [teamCountRange(80, DEFAULT_ROSTER).minTeams, teamCountRange(80, DEFAULT_ROSTER).maxTeams],
+    );
+    assert.equal(olderDivision.current.pool, 12);
+    assert.equal(olderDivision.current.expected, 12);
+    assert.equal(olderDivision.currentMix, null);
+    assert.equal(compared.sharedPools[0]?.current?.pool, 300);
+    assert.equal(compared.league.current.pool, 312);
+    assert.equal(compared.league.current.expected, 312);
+
+    const half = compareConfigs(pool, config, config, SEASON, {
+      retentionRate: 0.5,
+      includeFeeder: false,
+      rosterFor,
+      mix: history(eightyThreeHundred),
+    });
+    assert.equal(half.rows.find((row) => row.code === "MAJORS")?.current.expected, 40);
+    assert.equal(half.rows.find((row) => row.code === "MINORS")?.current.expected, 110);
+  });
+
+  it("averages prior Springs with equal weight per season", () => {
+    const config = pair();
+    config.divisions[0]!.label = "Majors";
+    config.divisions[1]!.label = "Minors";
+    const seasons: MixSeason[] = [
+      { seasonYear: 2024, players: [] },
+      { seasonYear: 2025, players: [players(older, "Majors", 8), players(younger, "Minors", 2)] },
+      { seasonYear: 2026, players: [players(older, "Majors", 10), players(younger, "Minors", 90)] },
+      { seasonYear: 2027, players: [players(older, "Majors", 300)] },
+    ];
+    const compared = compareConfigs([bucket(older, 200)], config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: history(seasons),
+    });
+    const majors = compared.rows.find((row) => row.code === "MAJORS");
+    const minors = compared.rows.find((row) => row.code === "MINORS");
+    assert.ok(majors && minors);
+    assert.equal(majors.current.expected, 90);
+    assert.equal(minors.current.expected, 110);
+    assert.equal(majors.currentMix?.note, "45% of window, avg of Spring 2025\u20132026");
+    assert.deepEqual(majors.currentMix?.seasons, [2025, 2026]);
+    assert.equal(majors.currentMix?.evenSplit, false);
+  });
+
+  it("uses an even split and a warning when Spring history is empty or a division is new", () => {
+    const config = pair();
+    config.divisions[0]!.label = "Majors";
+    config.divisions[1]!.label = "Minors";
+    const empty = compareConfigs(pool, config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: history([]),
+    });
+    const majors = empty.rows.find((row) => row.code === "MAJORS");
+    const minors = empty.rows.find((row) => row.code === "MINORS");
+    assert.ok(majors && minors);
+    assert.equal(majors.current.pool, 150);
+    assert.equal(minors.current.pool, 150);
+    assert.equal(majors.current.expected, 150);
+    assert.equal(majors.currentMix?.evenSplit, true);
+    assert.equal(majors.currentMix?.note, EVEN_SPLIT_MIX_NOTE);
+    assert.equal(minors.currentMix?.note, EVEN_SPLIT_MIX_NOTE);
+    assert.equal(empty.league.current.pool, 312);
+
+    const withRookie = dyb([
+      division("MAJORS", 10, 11, 1),
+      division("MINORS", 10, 11, 2),
+      division("ROOKIE", 10, 11, 3),
+    ]);
+    withRookie.divisions[0]!.label = "Majors";
+    withRookie.divisions[1]!.label = "Minors";
+    withRookie.divisions[2]!.label = "Rookie";
+    const fresh = compareConfigs([bucket(older, 300)], withRookie, withRookie, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: history(eightyThreeHundred),
+    });
+    for (const code of ["MAJORS", "MINORS", "ROOKIE"]) {
+      const row = fresh.rows.find((item) => item.code === code);
+      assert.ok(row);
+      assert.equal(row.current.expected, 100);
+      assert.equal(row.currentMix?.evenSplit, true);
+      assert.equal(row.currentMix?.note, EVEN_SPLIT_MIX_NOTE);
+    }
+  });
+
+  it("leaves a non-overlapping division and the Fall path on the full window", () => {
+    const config = pair();
+    config.divisions[0]!.label = "Majors";
+    config.divisions[1]!.label = "Minors";
+    const fall = compareConfigs(pool, config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+    });
+    assert.equal(fall.rows.find((row) => row.code === "MAJORS")?.current.pool, 300);
+    assert.equal(fall.rows.find((row) => row.code === "MINORS")?.current.pool, 300);
+    assert.equal(fall.rows.find((row) => row.code === "12U")?.current.pool, 12);
+    assert.equal(fall.rows.find((row) => row.code === "MAJORS")?.currentMix, undefined);
+    assert.equal(fall.league.current.pool, 312);
+    assert.equal(forecastTimelineLayout({ org: "fallball" }), "classic");
+    assert.equal(forecastTimelineLayout({ org: "gonzales" }), "spring-lanes");
+  });
+
+  it("changes shares when the proposed window drops one side of the mix", () => {
+    const current = pair();
+    current.divisions[0]!.label = "Majors";
+    current.divisions[1]!.label = "Minors";
+    const proposed = pair(10, 11, { youngestBirthdate: "2016-04-30" });
+    proposed.divisions[0]!.label = "Majors";
+    proposed.divisions[1]!.label = "Minors";
+    proposed.divisions[2]!.label = "12U";
+    const compared = compareConfigs(pool, current, proposed, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: history([
+        {
+          seasonYear: 2025,
+          players: [players(older, "Majors", 80), players(younger, "Minors", 220)],
+        },
+        {
+          seasonYear: 2026,
+          players: [players(older, "Majors", 80), players(younger, "Minors", 220)],
+        },
+      ]),
+    });
+    const currentMajors = compared.rows.find((row) => row.code === "MAJORS");
+    const proposedMajors = currentMajors?.proposed;
+    const proposedMinors = compared.rows.find((row) => row.code === "MINORS")?.proposed;
+    assert.equal(currentMajors?.current.expected, 80);
+    assert.equal(currentMajors?.currentMix?.note, "27% of window, avg of Spring 2025\u20132026");
+    assert.equal(proposedMajors?.expected, 80);
+    assert.equal(proposedMajors?.pool, 80);
+    assert.equal(currentMajors?.proposedMix?.sharePercent, 100);
+    assert.equal(currentMajors?.proposedMix?.note, "100% of window, avg of Spring 2025\u20132026");
+    assert.equal(proposedMinors?.expected, 0);
+    assert.equal(compared.rows.find((row) => row.code === "MINORS")?.proposedMix?.sharePercent, 0);
+    assert.equal(compared.rows.find((row) => row.code === "12U")?.proposed.pool, 12);
   });
 });

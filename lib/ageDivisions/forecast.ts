@@ -13,7 +13,11 @@ import {
   eligibleDivisions,
   leagueAge,
 } from "./compute";
+import { divisionMixShares, overlappingDivisionGroups, type DivisionMix, type MixSeason } from "./forecastMix";
 import type { CoverageWarning, DivisionAgeConfig, LeagueAgeRule, LeagueDivisionConfig } from "./types";
+
+export type { DivisionMix, MixHistoryPlayer, MixSeason } from "./forecastMix";
+export { EVEN_SPLIT_MIX_NOTE, divisionMixShares } from "./forecastMix";
 
 /** Aug 31 age cutoff. Year offset is applied by the caller via the target season year. */
 export const LITTLE_LEAGUE_RULE: LeagueAgeRule = { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 };
@@ -129,6 +133,14 @@ export type ForecastRow = {
   currentSharedPoolId: string | null;
   /** Set when this division's proposed window overlaps another division. */
   proposedSharedPoolId: string | null;
+  /**
+   * Spring mix for the current window. Absent when mix weighting is off
+   * (Fall, or a caller that did not pass history). Null when this division
+   * does not overlap another.
+   */
+  currentMix?: DivisionMix | null;
+  /** Spring mix for the proposed window. Same absence rules as `currentMix`. */
+  proposedMix?: DivisionMix | null;
 };
 
 /** Divisions whose age windows overlap. Headcount and teams are for the pool once. */
@@ -195,6 +207,12 @@ export type ForecastOptions = {
    */
   feederShare?: number;
   rosterFor: (divisionCode: string) => RosterSize;
+  /**
+   * Prior Spring registration mix. Omit it to keep every division at a 100%
+   * share (Fall, and any caller that has not loaded history).
+   * Seasons are completed Springs before the target season.
+   */
+  mix?: { seasons: readonly MixSeason[] };
 };
 
 /** Default team size until a season stores its own roster bounds. */
@@ -521,62 +539,29 @@ type RowMeta = {
   inProposed: boolean;
 };
 
-function rangesOverlap(
-  left: { oldest: string; youngest: string },
-  right: { oldest: string; youngest: string },
-): boolean {
-  if (!left.oldest || !left.youngest || !right.oldest || !right.youngest) return false;
-  if (left.oldest > left.youngest || right.oldest > right.youngest) return false;
-  return left.oldest <= right.youngest && right.oldest <= left.youngest;
-}
-
-/** Connected divisions whose effective birthdate windows intersect. */
-function overlappingGroups(config: ForecastConfig, targetSeasonYear: number): string[][] {
-  const cutoff = effectiveCutoffDate(config.cutoff, targetSeasonYear);
-  const ordered: DivisionAgeConfig[] = [];
-  const seen = new Set<string>();
-  const divisions = [...config.divisions].sort(
-    (a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code),
-  );
-  for (const division of divisions) {
-    if (seen.has(division.code)) continue;
-    seen.add(division.code);
-    ordered.push(division);
-  }
-  const parent = new Map<string, string>();
-  const find = (code: string): string => {
-    let root = code;
-    while (parent.get(root) !== root) root = parent.get(root)!;
-    let cursor = code;
-    while (cursor !== root) {
-      const next = parent.get(cursor)!;
-      parent.set(cursor, root);
-      cursor = next;
-    }
-    return root;
+function sideFromWindowShare(
+  counts: { own: number; feeder: number },
+  share: number,
+  options: ForecastOptions,
+  roster: RosterSize,
+): { side: ForecastSide; shortRoster: boolean } {
+  const windowPool = counts.own + appliedFeeder(counts.feeder, options);
+  const pool = Math.round(windowPool * share);
+  const expected = Math.round(windowPool * options.retentionRate * share);
+  const teams = teamCountRange(expected, roster);
+  const own = windowPool === 0 ? 0 : Math.round(pool * (counts.own / windowPool));
+  const feeder = pool - own;
+  return {
+    side: {
+      own,
+      feeder,
+      pool,
+      expected,
+      minTeams: teams.minTeams,
+      maxTeams: teams.maxTeams,
+    },
+    shortRoster: teams.shortRoster,
   };
-  const union = (left: string, right: string) => {
-    const a = find(left);
-    const b = find(right);
-    if (a !== b) parent.set(b, a);
-  };
-  for (const division of ordered) parent.set(division.code, division.code);
-  const ranges = new Map(ordered.map((division) => [division.code, effectiveRange(division, cutoff)]));
-  for (let i = 0; i < ordered.length; i += 1) {
-    for (let j = i + 1; j < ordered.length; j += 1) {
-      const left = ranges.get(ordered[i]!.code)!;
-      const right = ranges.get(ordered[j]!.code)!;
-      if (rangesOverlap(left, right)) union(ordered[i]!.code, ordered[j]!.code);
-    }
-  }
-  const groups = new Map<string, string[]>();
-  for (const division of ordered) {
-    const root = find(division.code);
-    const list = groups.get(root);
-    if (list) list.push(division.code);
-    else groups.set(root, [division.code]);
-  }
-  return [...groups.values()].filter((codes) => codes.length > 1);
 }
 
 function eligibleHeadcount(
@@ -650,8 +635,8 @@ function collectPools(
       }
     }
   };
-  fill(current, overlappingGroups(current, targetSeasonYear), "current", currentIds);
-  fill(proposed, overlappingGroups(proposed, targetSeasonYear), "proposed", proposedIds);
+  fill(current, overlappingDivisionGroups(current, targetSeasonYear), "current", currentIds);
+  fill(proposed, overlappingDivisionGroups(proposed, targetSeasonYear), "proposed", proposedIds);
   return { pools: [...byId.values()], currentIds, proposedIds };
 }
 
@@ -766,11 +751,53 @@ export function compareConfigs(
     options,
     meta,
   );
+  const mixSeasons = options.mix?.seasons;
+  const currentMix = mixSeasons ? divisionMixShares({ config: current, targetSeasonYear, seasons: mixSeasons }) : null;
+  const proposedMix = mixSeasons ? divisionMixShares({ config: proposed, targetSeasonYear, seasons: mixSeasons }) : null;
+  const currentGroups = mixSeasons ? overlappingDivisionGroups(current, targetSeasonYear) : [];
+  const proposedGroups = mixSeasons ? overlappingDivisionGroups(proposed, targetSeasonYear) : [];
+  const weightedSide = (
+    assignment: BucketAssignment,
+    config: ForecastConfig,
+    groups: string[][],
+    mix: Map<string, DivisionMix> | null,
+    code: string,
+    present: boolean,
+    roster: RosterSize,
+  ): BuiltSide => {
+    if (!present) return { side: emptySide(), shortRoster: false, overlap: 0 };
+    const weight = mix?.get(code);
+    const row = assignment.divisions.find((division) => division.code === code);
+    if (!weight) {
+      const built = buildSide(assignment, code, true, options, roster);
+      return { ...built, overlap: row?.overlap ?? 0 };
+    }
+    const group = groups.find((codes) => codes.includes(code)) ?? [code];
+    const counts = eligibleHeadcount(buckets, config, targetSeasonYear, new Set(group));
+    const built = sideFromWindowShare(counts, weight.share, options, roster);
+    return { ...built, overlap: row?.overlap ?? 0 };
+  };
   const rows = [...meta.entries()]
     .map(([code, row]) => {
       const roster = options.rosterFor(code);
-      const currentBuilt = buildSide(currentAssignment, code, row.inCurrent, options, roster);
-      const proposedBuilt = buildSide(proposedAssignment, code, row.inProposed, options, roster);
+      const currentBuilt = weightedSide(
+        currentAssignment,
+        current,
+        currentGroups,
+        currentMix,
+        code,
+        row.inCurrent,
+        roster,
+      );
+      const proposedBuilt = weightedSide(
+        proposedAssignment,
+        proposed,
+        proposedGroups,
+        proposedMix,
+        code,
+        row.inProposed,
+        roster,
+      );
       return {
         code,
         label: row.label,
@@ -789,6 +816,9 @@ export function compareConfigs(
         proposedOverlap: proposedBuilt.overlap,
         currentSharedPoolId: currentIds.get(code) ?? null,
         proposedSharedPoolId: proposedIds.get(code) ?? null,
+        ...(mixSeasons
+          ? { currentMix: currentMix?.get(code) ?? null, proposedMix: proposedMix?.get(code) ?? null }
+          : {}),
       };
     })
     .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));

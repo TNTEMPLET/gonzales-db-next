@@ -34,6 +34,8 @@ import {
   type BirthBucket,
   type EligibilityContrast,
   type ForecastConfig,
+  type MixHistoryPlayer,
+  type MixSeason,
   type RosterSize,
 } from "./forecast";
 import { DIVISION_AGES_STORAGE_NOTE, isDivisionAgeStorageMissing } from "./persistence";
@@ -150,6 +152,11 @@ export type RosterLine = {
 export type ForecastReader = {
   listEnrollment(org: ContentOrgId, seasonYear: number): Promise<EnrollmentLine[]>;
   listRoster(org: ContentOrgId, seasonYear: number): Promise<RosterLine[]>;
+  /**
+   * Distinct Spring season years on file for one org. Omit it to leave mix
+   * weighting off. Fall Ball must not be asked for these years.
+   */
+  listEnrollmentSeasons?(org: ContentOrgId): Promise<number[]>;
 };
 
 export type ForecastDeps = {
@@ -415,6 +422,21 @@ export function createPrismaForecastReader(client: ForecastPrisma): ForecastRead
         ageGroup: row.team?.ageGroup ?? "",
       }));
     },
+    async listEnrollmentSeasons(org) {
+      if (typeof client.enrollment?.findMany !== "function") {
+        throw missingStorage("Enrollment storage is not available");
+      }
+      const rows = (await client.enrollment.findMany({
+        where: { organizationId: org },
+        distinct: ["seasonYear"],
+        select: { seasonYear: true },
+      })) as unknown as Array<{ seasonYear?: unknown }>;
+      const years: number[] = [];
+      for (const row of rows) {
+        if (typeof row.seasonYear === "number" && Number.isInteger(row.seasonYear)) years.push(row.seasonYear);
+      }
+      return years;
+    },
   };
 }
 
@@ -556,6 +578,158 @@ export function forecastAuthFailure(
   return { status: auth.status, body: { error: auth.message } };
 }
 
+function springMixOrgs(org: ContentOrgId): ContentOrgId[] | null {
+  if (org === "gonzales" || org === "ascension") return [org];
+  return null;
+}
+
+function mixPlayerFromLine(line: EnrollmentLine & { sportsConnectRowKey?: string | null }): {
+  player: MixHistoryPlayer;
+  spring: SpringPoolPlayer & { divisionName: string; ageGroup: string };
+} | null {
+  const birthDate = birthIso(line.birthDate);
+  if (!birthDate) return null;
+  const divisionName = line.divisionName?.trim() ?? "";
+  const ageGroup = line.ageGroup?.trim() ?? "";
+  return {
+    player: { birthDate, divisionName, ageGroup, count: 1 },
+    spring: {
+      sportsConnectRowKey: line.sportsConnectRowKey?.trim() || null,
+      matchKey: matchKey(line.fullName ?? "", birthDate),
+      birthDate,
+      divisionName,
+      ageGroup,
+    },
+  };
+}
+
+function collapseMixLines(lines: EnrollmentLine[]): MixHistoryPlayer[] {
+  const seen = new Set<string>();
+  const players: MixHistoryPlayer[] = [];
+  for (const line of lines) {
+    const built = mixPlayerFromLine(line);
+    if (!built) continue;
+    const key = collapseKey(line.fullName ?? "", built.player.birthDate);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    players.push(built.player);
+  }
+  return players;
+}
+
+async function readMixLines(
+  org: ContentOrgId,
+  seasonYear: number,
+  deps: ForecastDeps,
+  combined: boolean,
+): Promise<Array<EnrollmentLine & { sportsConnectRowKey?: string | null }>> {
+  if (combined && (org === "gonzales" || org === "ascension") && deps.listSpringLines) {
+    return deps.listSpringLines(org, seasonYear);
+  }
+  const lines = await deps.reader.listEnrollment(org, seasonYear);
+  return lines.map((line) => ({ ...line, sportsConnectRowKey: null }));
+}
+
+async function loadOrgMixPlayers(
+  org: ContentOrgId,
+  seasonYear: number,
+  deps: ForecastDeps,
+): Promise<MixHistoryPlayer[]> {
+  try {
+    const lines = await readMixLines(org, seasonYear, deps, false);
+    const eligible = lines.filter(
+      (row) => isCompleted(row.orderPaymentStatus) && !isUmpireDivision(row.divisionName, row.ageGroup),
+    );
+    return collapseMixLines(eligible);
+  } catch (error) {
+    if (!isDivisionAgeStorageMissing(error)) throw error;
+    return [];
+  }
+}
+
+async function loadCombinedMixPlayers(
+  orgs: readonly ContentOrgId[],
+  seasonYear: number,
+  deps: ForecastDeps,
+): Promise<MixHistoryPlayer[]> {
+  const tagged: Array<SpringPoolPlayer & { divisionName: string; ageGroup: string }> = [];
+  for (const org of orgs) {
+    let lines: Array<EnrollmentLine & { sportsConnectRowKey?: string | null }>;
+    try {
+      lines = await readMixLines(org, seasonYear, deps, true);
+    } catch (error) {
+      if (!isDivisionAgeStorageMissing(error)) throw error;
+      continue;
+    }
+    const eligible = lines.filter(
+      (row) => isCompleted(row.orderPaymentStatus) && !isUmpireDivision(row.divisionName, row.ageGroup),
+    );
+    const seen = new Set<string>();
+    for (const line of eligible) {
+      const built = mixPlayerFromLine(line);
+      if (!built) continue;
+      const key = collapseKey(line.fullName ?? "", built.player.birthDate);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      tagged.push(built.spring);
+    }
+  }
+  const players: MixHistoryPlayer[] = [];
+  for (const player of dedupeSpringPool(tagged).players) {
+    const row = player as SpringPoolPlayer & { divisionName?: string; ageGroup?: string };
+    if (!row.birthDate) continue;
+    players.push({
+      birthDate: row.birthDate,
+      divisionName: row.divisionName ?? "",
+      ageGroup: row.ageGroup ?? "",
+      count: 1,
+    });
+  }
+  return players;
+}
+
+/**
+ * Prior Springs before `targetSeasonYear`. Null when this forecast does not
+ * weight by mix (Fall) or the reader cannot list seasons. Empty means Spring
+ * mix is on and there is no history yet.
+ */
+async function loadSpringMixSeasons(
+  orgs: readonly ContentOrgId[] | null,
+  targetSeasonYear: number,
+  deps: ForecastDeps,
+  combined: boolean,
+): Promise<MixSeason[] | null> {
+  if (!orgs || orgs.length === 0) return null;
+  const listYears = deps.reader.listEnrollmentSeasons;
+  if (!listYears) return null;
+  const years = new Set<number>();
+  for (const org of orgs) {
+    let listed: number[] = [];
+    try {
+      listed = await listYears(org);
+    } catch (error) {
+      if (!isDivisionAgeStorageMissing(error)) throw error;
+      continue;
+    }
+    for (const year of listed) {
+      if (Number.isInteger(year) && year >= 1990 && year < targetSeasonYear) years.add(year);
+    }
+  }
+  const seasons: MixSeason[] = [];
+  for (const seasonYear of [...years].sort((a, b) => a - b)) {
+    const players = combined
+      ? await loadCombinedMixPlayers(orgs, seasonYear, deps)
+      : await loadOrgMixPlayers(orgs[0]!, seasonYear, deps);
+    seasons.push({ seasonYear, players });
+  }
+  return seasons;
+}
+
+function mixForecastOption(seasons: MixSeason[] | null): { mix: { seasons: MixSeason[] } } | Record<string, never> {
+  if (seasons == null) return {};
+  return { mix: { seasons } };
+}
+
 export async function runDivisionForecast(
   input: { org: ContentOrgId; readJson: () => Promise<unknown> },
   deps: ForecastDeps,
@@ -592,7 +766,7 @@ export async function runDivisionForecast(
   }
 
   try {
-    const [own, feederLoaded, fall, currentView, settings] = await Promise.all([
+    const [own, feederLoaded, fall, currentView, settings, mixSeasons] = await Promise.all([
       loadPool(input.org, seasonYear, deps.reader, "own"),
       includeFeeder
         ? loadPool("ascension", seasonYear, deps.reader, "feeder")
@@ -600,6 +774,7 @@ export async function runDivisionForecast(
       loadFallLines(deps.reader, seasonYear),
       loadCurrent(input.org, targetSeasonYear, deps),
       loadSettings(input.org, deps),
+      loadSpringMixSeasons(springMixOrgs(input.org), targetSeasonYear, deps, false),
     ]);
 
     const feederPlayers = feederLoaded ? excludeOverlap(feederLoaded.players, own.players) : [];
@@ -626,6 +801,7 @@ export async function runDivisionForecast(
         includeFeeder,
         feederShare,
         rosterFor: (code) => settings.roster.get(code) ?? DEFAULT_ROSTER,
+        ...mixForecastOption(mixSeasons),
       },
     );
 
@@ -862,11 +1038,13 @@ export async function runSpringCombinedForecast(
       "own",
     );
     const retention = combinedForecastRetention(parsedBody.data.retentionRate, DEFAULT_RETURN_RATE);
+    const mixSeasons = await loadSpringMixSeasons([...SPRING_LEAGUE_ORGS], targetSeasonYear, deps, true);
     const compared = compareConfigs(buckets, sides.current, sides.proposed, targetSeasonYear, {
       retentionRate: retention.applied,
       includeFeeder: false,
       feederShare: 0,
       rosterFor: () => DEFAULT_ROSTER,
+      ...mixForecastOption(mixSeasons),
     });
     const notes = loaded.flatMap((entry) => entry.pool.notes);
     if (merged.duplicateCount > 0) {

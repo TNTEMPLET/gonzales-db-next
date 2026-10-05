@@ -533,6 +533,7 @@ export function buildCutoffImpact(input: {
     retentionRate: options.retentionRate ?? DEFAULT_RETURN_RATE,
     includeFeeder: options.includeFeeder ?? false,
     ...(options.feederShare != null ? { feederShare: options.feederShare } : {}),
+    ...(options.mix ? { mix: options.mix } : {}),
     rosterFor: options.rosterFor ?? (() => DEFAULT_ROSTER),
   });
   return impactFromComparison({
