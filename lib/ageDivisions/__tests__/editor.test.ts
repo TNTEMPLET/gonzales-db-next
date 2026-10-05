@@ -367,21 +367,26 @@ let installed: {
   Node: unknown;
   IS_REACT_ACT_ENVIRONMENT: unknown;
 } | null = null;
+let navigatorDescriptor: PropertyDescriptor | null = null;
 let hostNode: MiniNode | null = null;
 let reactRoot: Root | null = null;
 
 async function mountReact(): Promise<Root> {
   const document = new MiniDocument();
-  const windowStub = {
+  const navigatorStub = { userAgent: "node" };
+  const windowStub: Record<string, unknown> = {
     document,
     HTMLElement: MiniNode,
     HTMLIFrameElement: MiniIframe,
     Element: MiniNode,
     Node: MiniNode,
+    navigator: navigatorStub,
     getComputedStyle: () => ({ getPropertyValue: () => "" }),
     addEventListener: () => {},
     removeEventListener: () => {},
   };
+  windowStub.top = windowStub;
+  windowStub.self = windowStub;
   document.defaultView = windowStub;
   const globals = globalThis as Record<string, unknown>;
   installed = {
@@ -393,6 +398,8 @@ async function mountReact(): Promise<Root> {
     Node: globals.Node,
     IS_REACT_ACT_ENVIRONMENT: globals.IS_REACT_ACT_ENVIRONMENT,
   };
+  // Node 21+ exposes navigator as a getter-only accessor; assign/set throws in ESM.
+  navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator") ?? null;
   Object.assign(globals, {
     document,
     window: windowStub,
@@ -402,8 +409,15 @@ async function mountReact(): Promise<Root> {
     Node: MiniNode,
     IS_REACT_ACT_ENVIRONMENT: true,
   });
+  Object.defineProperty(globalThis, "navigator", {
+    value: navigatorStub,
+    configurable: true,
+    writable: true,
+    enumerable: true,
+  });
   hostNode = document.createElement("div");
   document.body.appendChild(hostNode);
+  // React's client build reads navigator.userAgent at import time (Node 20 has none).
   const { createRoot } = await import("react-dom/client");
   reactRoot = createRoot(hostNode as unknown as Element);
   return reactRoot;
@@ -421,6 +435,12 @@ function restoreDom() {
     if (value === undefined) delete globals[key];
     else globals[key] = value;
   }
+  if (navigatorDescriptor) {
+    Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+  } else {
+    delete (globalThis as { navigator?: unknown }).navigator;
+  }
+  navigatorDescriptor = null;
   installed = null;
   hostNode = null;
   reactRoot = null;
