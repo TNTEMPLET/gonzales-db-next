@@ -1,8 +1,10 @@
+import { splitImportDenial } from "./divisionLeagueSplit";
 import { REGISTRATION_HISTORY_PREVIEW_ORG } from "./registrationHistoryKind";
 import { PLAYER_REG_HISTORY_REPORT_KIND } from "./registrationHistoryKind";
 import {
   canonicalHistoryMapping,
   classifyRegistrationHistory,
+  existingKeyTargets,
   historyCountsSignature,
   normalizeHistoryMapping,
   programNamesInRows,
@@ -69,11 +71,10 @@ export async function storeRegistrationHistoryPreview(
     createdByAdminId: string | null;
   },
 ): Promise<{ id: string }> {
-  const mappedYear = input.normalizedMapping.find((entry) => entry.action === "map");
   const row = await db.sportsConnectImportRun.create({
     data: {
       organizationId: REGISTRATION_HISTORY_PREVIEW_ORG,
-      seasonYear: mappedYear?.action === "map" ? mappedYear.seasonYear : 2026,
+      seasonYear: mappingSeasonYear(input.normalizedMapping),
       reportKind: PLAYER_REG_HISTORY_REPORT_KIND,
       status: "PREVIEW",
       sourceFileName: input.fileName,
@@ -99,6 +100,7 @@ export async function commitRegistrationHistory(
     mapping: readonly HistoryMappingEntry[];
     rows: readonly Record<string, unknown>[];
     createdByAdminId: string | null;
+    isMaster?: boolean;
   },
 ): Promise<{
   previewRunId: string;
@@ -108,9 +110,13 @@ export async function commitRegistrationHistory(
     seasonYear: number;
     inserted: number;
     alreadyPresent: number;
+    alreadySameLeague: number;
+    alreadyOtherLeague: number;
   }>;
   totals: HistoryPreview["totals"];
 }> {
+  const denial = splitImportDenial(input.isMaster === true, input.mapping);
+  if (denial) throw new RegistrationHistoryError(denial, 403);
   const previewRun = await db.sportsConnectImportRun.findFirst({
     where: {
       id: input.previewRunId,
@@ -154,11 +160,11 @@ export async function commitRegistrationHistory(
     const stored = readSummary(current.summary);
 
     const normalized = normalizeHistoryMapping(programNamesInRows(input.rows), input.mapping);
-    const targets = uniqueTargets(normalized);
-    const existingKeys = targets.length
+    const keyTargets = existingKeyTargets(normalized);
+    const existingKeys = keyTargets.length
       ? await tx.enrollment.findMany({
           where: {
-            OR: targets.map((target) => ({
+            OR: keyTargets.map((target) => ({
               organizationId: target.organizationId,
               seasonYear: target.seasonYear,
             })),
@@ -183,7 +189,14 @@ export async function commitRegistrationHistory(
         409,
       );
     }
+    if (classified.preview.unplaceable.length > 0) {
+      throw new RegistrationHistoryError(
+        unplaceableCommitMessage(classified.preview.unplaceable),
+        409,
+      );
+    }
 
+    const targets = commitRunTargets(normalized, classified.preview);
     const grouped = groupInserts(classified.inserts);
     const runs: Array<{
       id: string;
@@ -191,6 +204,8 @@ export async function commitRegistrationHistory(
       seasonYear: number;
       inserted: number;
       alreadyPresent: number;
+      alreadySameLeague: number;
+      alreadyOtherLeague: number;
     }> = [];
     for (const target of targets) {
       const rows = grouped.get(`${target.organizationId}\0${target.seasonYear}`) ?? [];
@@ -218,6 +233,8 @@ export async function commitRegistrationHistory(
             previewRunId: input.previewRunId,
             wouldAdd: counts.wouldAdd,
             alreadyPresent: counts.alreadyPresent,
+            alreadySameLeague: counts.alreadySameLeague,
+            alreadyOtherLeague: counts.alreadyOtherLeague,
             inserted: rows.length,
           },
         },
@@ -235,7 +252,29 @@ export async function commitRegistrationHistory(
         seasonYear: target.seasonYear,
         inserted,
         alreadyPresent: counts.alreadyPresent,
+        alreadySameLeague: counts.alreadySameLeague,
+        alreadyOtherLeague: counts.alreadyOtherLeague,
       });
+    }
+
+    const splitCommit = normalized.some((entry) => entry.action === "split");
+    if (splitCommit && runs.length > 0) {
+      // Both league runs share this id list in summary JSON. No new column.
+      const splitBatchRunIds = runs.map((run) => run.id);
+      for (const run of runs) {
+        const storedRun = await tx.sportsConnectImportRun.findFirst({ where: { id: run.id } });
+        await tx.sportsConnectImportRun.update({
+          where: { id: run.id },
+          data: {
+            summary: {
+              ...asRecord(storedRun?.summary),
+              splitBatch: true,
+              splitBatchId: input.previewRunId,
+              splitBatchRunIds,
+            },
+          },
+        });
+      }
     }
 
     await tx.sportsConnectImportRun.update({
@@ -262,39 +301,58 @@ export async function commitRegistrationHistory(
 
 export async function countRegistrationHistoryUndo(
   db: HistoryTx,
-  input: { runId: string; organizationId: string },
-): Promise<{ enrollmentCount: number }> {
+  input: { runId: string; organizationId: string; isMaster?: boolean },
+): Promise<{ enrollmentCount: number; splitBatch: boolean; runCount: number }> {
   const run = await loadCommitRun(db, input);
-  const enrollmentCount = await db.enrollment.count({ where: { importRunId: run.id } });
-  return { enrollmentCount };
+  const batch = await loadUndoBatch(db, run, input.isMaster === true);
+  let enrollmentCount = 0;
+  for (const item of batch) {
+    enrollmentCount += await db.enrollment.count({ where: { importRunId: item.id } });
+  }
+  return {
+    enrollmentCount,
+    splitBatch: asRecord(run.summary).splitBatch === true,
+    runCount: batch.length,
+  };
 }
 
 export async function undoRegistrationHistory(
   db: HistoryDb,
-  input: { runId: string; organizationId: string },
-): Promise<{ enrollmentCount: number; undone: true }> {
+  input: { runId: string; organizationId: string; isMaster?: boolean },
+): Promise<{ enrollmentCount: number; undone: true; runCount: number }> {
   return db.$transaction(async (tx) => {
     const run = await loadCommitRun(tx, input);
-    const enrollmentCount = await tx.enrollment.count({ where: { importRunId: run.id } });
-    const deleted = await tx.enrollment.deleteMany({ where: { importRunId: run.id } });
-    if (deleted.count !== enrollmentCount) {
-      throw new RegistrationHistoryError(
-        "Undo stopped because the batch changed. Nothing was removed.",
-        409,
-      );
+    const batch = await loadUndoBatch(tx, run, input.isMaster === true);
+    const counts = new Map<string, number>();
+    let enrollmentCount = 0;
+    for (const item of batch) {
+      const count = await tx.enrollment.count({ where: { importRunId: item.id } });
+      counts.set(item.id, count);
+      enrollmentCount += count;
     }
-    await tx.sportsConnectImportRun.update({
-      where: { id: run.id },
-      data: {
-        status: "UNDONE",
-        completedAt: new Date(),
-        summary: {
-          ...asRecord(run.summary),
-          undoneEnrollmentCount: deleted.count,
+    for (const item of batch) {
+      const expected = counts.get(item.id) ?? 0;
+      const deleted = await tx.enrollment.deleteMany({ where: { importRunId: item.id } });
+      if (deleted.count !== expected) {
+        throw new RegistrationHistoryError(
+          "Undo stopped because the batch changed. Nothing was removed.",
+          409,
+        );
+      }
+      await tx.sportsConnectImportRun.update({
+        where: { id: item.id },
+        data: {
+          status: "UNDONE",
+          completedAt: new Date(),
+          summary: {
+            ...asRecord(item.summary),
+            undoneEnrollmentCount: deleted.count,
+            batchUndoneEnrollmentCount: enrollmentCount,
+          },
         },
-      },
-    });
-    return { enrollmentCount: deleted.count, undone: true };
+      });
+    }
+    return { enrollmentCount, undone: true, runCount: batch.length };
   });
 }
 
@@ -372,6 +430,45 @@ function asRecord(summary: unknown): Record<string, unknown> {
   return summary as Record<string, unknown>;
 }
 
+function mappingSeasonYear(mapping: readonly NormalizedHistoryMappingEntry[]): number {
+  for (const entry of mapping) {
+    if (entry.action === "map" || entry.action === "split") return entry.seasonYear;
+  }
+  return 2026;
+}
+
+function unplaceableCommitMessage(
+  divisions: HistoryPreview["unplaceable"],
+): string {
+  const names = divisions.map((division) => division.divisionName);
+  const shown = names.slice(0, 12);
+  const extra = names.length > shown.length ? ` and ${names.length - shown.length} more` : "";
+  return `Assign a league for each division that could not be placed, then dry-run again. Still waiting: ${shown.join(", ")}${extra}.`;
+}
+
+function commitRunTargets(
+  mapping: readonly NormalizedHistoryMappingEntry[],
+  preview: HistoryPreview,
+): Array<{ organizationId: HistoryOrgId; seasonYear: number }> {
+  const targets = uniqueTargets(mapping);
+  const seen = new Set(targets.map((target) => `${target.organizationId}\0${target.seasonYear}`));
+  for (const program of preview.programs) {
+    if (program.disposition !== "split" || program.seasonYear == null) continue;
+    for (const league of program.leagues) {
+      const active = league.wouldAdd + league.alreadySameLeague + league.alreadyOtherLeague > 0;
+      if (!active) continue;
+      const id = `${league.organizationId}\0${program.seasonYear}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      targets.push({ organizationId: league.organizationId, seasonYear: program.seasonYear });
+    }
+  }
+  targets.sort(
+    (a, b) => a.organizationId.localeCompare(b.organizationId) || a.seasonYear - b.seasonYear,
+  );
+  return targets;
+}
+
 function uniqueTargets(mapping: readonly NormalizedHistoryMappingEntry[]): Array<{
   organizationId: HistoryOrgId;
   seasonYear: number;
@@ -405,12 +502,85 @@ function groupInserts(inserts: readonly HistoryEnrollmentInsert[]): Map<string, 
 function totalsForTarget(preview: HistoryPreview, organizationId: string, seasonYear: number) {
   let wouldAdd = 0;
   let alreadyPresent = 0;
+  let alreadySameLeague = 0;
+  let alreadyOtherLeague = 0;
   for (const program of preview.programs) {
+    if (program.disposition === "split") {
+      if (program.seasonYear !== seasonYear) continue;
+      const league = program.leagues.find((item) => item.organizationId === organizationId);
+      if (!league) continue;
+      wouldAdd += league.wouldAdd;
+      alreadyPresent += league.alreadySameLeague + league.alreadyOtherLeague;
+      alreadySameLeague += league.alreadySameLeague;
+      alreadyOtherLeague += league.alreadyOtherLeague;
+      continue;
+    }
     if (program.organizationId !== organizationId || program.seasonYear !== seasonYear) continue;
     wouldAdd += program.totals.wouldAdd;
     alreadyPresent += program.totals.alreadyPresent;
   }
-  return { wouldAdd, alreadyPresent };
+  return { wouldAdd, alreadyPresent, alreadySameLeague, alreadyOtherLeague };
+}
+
+async function loadUndoBatch(
+  db: HistoryTx,
+  run: HistoryRunRow,
+  isMaster: boolean,
+): Promise<HistoryRunRow[]> {
+  const summary = asRecord(run.summary);
+  if (summary.splitBatch !== true) return [run];
+  if (!isMaster) {
+    throw new RegistrationHistoryError(
+      "Only a master admin can undo a split Spring import.",
+      403,
+    );
+  }
+  const ids = stringArray(summary.splitBatchRunIds);
+  if (!ids.includes(run.id)) {
+    throw new RegistrationHistoryError(
+      "This split import is missing its batch link. Nothing was removed.",
+      409,
+    );
+  }
+  const runs: HistoryRunRow[] = [];
+  for (const id of ids) {
+    const item =
+      id === run.id
+        ? run
+        : await db.sportsConnectImportRun.findFirst({
+            where: { id, reportKind: PLAYER_REG_HISTORY_REPORT_KIND },
+          });
+    if (!item || item.reportKind !== PLAYER_REG_HISTORY_REPORT_KIND) {
+      throw new RegistrationHistoryError(
+        "This split import is missing a league batch. Nothing was removed.",
+        409,
+      );
+    }
+    if (item.status === "UNDONE") {
+      throw new RegistrationHistoryError("This import was already undone.", 409);
+    }
+    if (item.status !== "DONE" || summaryRole(item.summary) !== "commit") {
+      throw new RegistrationHistoryError(
+        "Only a finished registration-history import can be undone.",
+        409,
+      );
+    }
+    const itemSummary = asRecord(item.summary);
+    const itemIds = stringArray(itemSummary.splitBatchRunIds);
+    if (itemSummary.splitBatch !== true || itemIds.join("\0") !== ids.join("\0")) {
+      throw new RegistrationHistoryError(
+        "This split import is missing its batch link. Nothing was removed.",
+        409,
+      );
+    }
+    runs.push(item);
+  }
+  return runs;
+}
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string" && item.length > 0);
 }
 
 async function insertEnrollmentRows(

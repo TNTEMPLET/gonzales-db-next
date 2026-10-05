@@ -2,6 +2,13 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import {
+  formatCents,
+  springLeagueLabel,
+  unplaceableReasonText,
+  type SpringSplitOrg,
+  type UnplaceableReason,
+} from "@/lib/sportsConnect/divisionLeagueSplit";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 type Suggestion = {
@@ -15,6 +22,25 @@ type ProgramInventory = {
   programName: string;
   rowCount: number;
   suggestion: Suggestion;
+  springSplitEligible?: boolean;
+};
+
+type LeagueTotals = {
+  organizationId: SpringSplitOrg;
+  seasonYear: number;
+  wouldAdd: number;
+  alreadySameLeague: number;
+  alreadyOtherLeague: number;
+  amountCents: number;
+  amountPaidCents: number;
+  balanceCents: number;
+};
+
+type UnplaceableDivision = {
+  programName: string;
+  divisionName: string;
+  rowCount: number;
+  reason: UnplaceableReason;
 };
 
 type SkipCounts = {
@@ -29,10 +55,18 @@ type HistoryPreview = {
   totalRows: number;
   birthDateCoveragePercent: number;
   keyNote: string;
-  totals: { wouldAdd: number; alreadyPresent: number; skipped: SkipCounts };
+  totals: {
+    wouldAdd: number;
+    alreadyPresent: number;
+    skipped: SkipCounts;
+    unplaceable?: number;
+    alreadyOtherLeague?: number;
+  };
+  leagues?: LeagueTotals[];
+  unplaceable?: UnplaceableDivision[];
   programs: Array<{
     programName: string;
-    disposition: "skip" | "map";
+    disposition: "skip" | "map" | "split";
     organizationId: string | null;
     seasonYear: number | null;
     divisions: Array<{
@@ -40,6 +74,11 @@ type HistoryPreview = {
       wouldAdd: number;
       alreadyPresent: number;
       skipped: SkipCounts;
+      organizationId?: SpringSplitOrg | null;
+      alreadySameLeague?: number;
+      alreadyOtherLeague?: number;
+      unplaceable?: number;
+      placement?: "tag" | "fixed" | "override" | "unplaceable";
     }>;
     totals: { wouldAdd: number; alreadyPresent: number; skipped: SkipCounts };
   }>;
@@ -53,16 +92,25 @@ type HistoryRun = {
   createdAt: string;
   inserted: number | null;
   alreadyPresent: number | null;
+  alreadyOtherLeague: number | null;
   undoneEnrollmentCount: number | null;
+  splitBatch?: boolean;
+};
+
+type DivisionOverride = {
+  divisionName: string;
+  organizationId: SpringSplitOrg;
 };
 
 type MapRow = {
   programName: string;
   rowCount: number;
   fallLocked: boolean;
-  action: "skip" | "map";
+  springSplitEligible: boolean;
+  action: "skip" | "map" | "split";
   organizationId: "gonzales" | "ascension" | "fallball";
   seasonYear: number;
+  divisionOverrides: DivisionOverride[];
 };
 
 const SKIP_LABELS: Record<keyof SkipCounts, string> = {
@@ -73,7 +121,11 @@ const SKIP_LABELS: Record<keyof SkipCounts, string> = {
   unparseable: "Unparseable",
 };
 
-const ORGS = ["gonzales", "ascension", "fallball"] as const;
+const ORGS = [
+  { id: "gonzales", label: "Gonzales DYB" },
+  { id: "ascension", label: "Ascension LL" },
+  { id: "fallball", label: "Fall Ball" },
+] as const;
 
 async function readJson(response: Response) {
   const text = await response.text();
@@ -81,7 +133,13 @@ async function readJson(response: Response) {
   return JSON.parse(text) as Record<string, unknown>;
 }
 
-export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOrg: ContentOrgId }) {
+export default function RegistrationHistoryImportPanel({
+  targetOrg,
+  canSplitByDivision = false,
+}: {
+  targetOrg: ContentOrgId;
+  canSplitByDivision?: boolean;
+}) {
   const orgQuery = `org=${targetOrg}`;
   const [file, setFile] = useState<File | null>(null);
   const [programs, setPrograms] = useState<MapRow[]>([]);
@@ -92,6 +150,7 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
   const [busy, setBusy] = useState("");
   const [runs, setRuns] = useState<HistoryRun[]>([]);
   const [undoCounts, setUndoCounts] = useState<Record<string, number>>({});
+  const [previewStale, setPreviewStale] = useState(false);
 
   const loadRuns = useCallback(async () => {
     const response = await fetch(`/api/admin/sports-connect/registration-history?${orgQuery}`, {
@@ -110,16 +169,25 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
   }, [loadRuns]);
 
   function mappingPayload() {
-    return programs.map((program) =>
-      program.fallLocked || program.action === "skip"
-        ? { programName: program.programName, action: "skip" }
-        : {
-            programName: program.programName,
-            action: "map",
-            organizationId: program.organizationId,
-            seasonYear: program.seasonYear,
-          },
-    );
+    return programs.map((program) => {
+      if (program.fallLocked || program.action === "skip") {
+        return { programName: program.programName, action: "skip" };
+      }
+      if (program.action === "split") {
+        return {
+          programName: program.programName,
+          action: "split",
+          seasonYear: program.seasonYear,
+          divisionOverrides: program.divisionOverrides,
+        };
+      }
+      return {
+        programName: program.programName,
+        action: "map",
+        organizationId: program.organizationId,
+        seasonYear: program.seasonYear,
+      };
+    });
   }
 
   function formWithFile(action: string) {
@@ -135,6 +203,7 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
     setError("");
     setPreview(null);
     setPreviewRunId("");
+    setPreviewStale(false);
     setCommitResult("");
     setBusy("inspect");
     try {
@@ -146,14 +215,24 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
       if (!response.ok) throw new Error(String(json.error || "Could not read the file."));
       const data = json.data as { programs?: ProgramInventory[] };
       setPrograms(
-        (data.programs || []).map((program) => ({
-          programName: program.programName,
-          rowCount: program.rowCount,
-          fallLocked: program.suggestion.fallLocked,
-          action: program.suggestion.action,
-          organizationId: program.suggestion.organizationId || "gonzales",
-          seasonYear: program.suggestion.seasonYear || new Date().getFullYear(),
-        })),
+        (data.programs || []).map((program) => {
+          const springSplitEligible = program.springSplitEligible === true;
+          const suggestSplit =
+            canSplitByDivision &&
+            springSplitEligible &&
+            !program.suggestion.fallLocked &&
+            program.suggestion.action === "skip";
+          return {
+            programName: program.programName,
+            rowCount: program.rowCount,
+            fallLocked: program.suggestion.fallLocked,
+            springSplitEligible,
+            action: suggestSplit ? "split" : program.suggestion.action,
+            organizationId: program.suggestion.organizationId || "gonzales",
+            seasonYear: program.suggestion.seasonYear || new Date().getFullYear(),
+            divisionOverrides: [],
+          };
+        }),
       );
     } catch (err) {
       setPrograms([]);
@@ -177,6 +256,7 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
       const data = json.data as { previewRunId?: string; preview?: HistoryPreview };
       setPreviewRunId(data.previewRunId || "");
       setPreview(data.preview || null);
+      setPreviewStale(false);
     } catch (err) {
       setPreview(null);
       setPreviewRunId("");
@@ -200,16 +280,34 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
       if (!response.ok) throw new Error(String(json.error || "Commit failed."));
       const data = json.data as {
         totals?: HistoryPreview["totals"];
-        runs?: Array<{ organizationId: string; seasonYear: number; inserted: number }>;
+        runs?: Array<{
+          organizationId: string;
+          seasonYear: number;
+          inserted: number;
+          alreadyOtherLeague?: number;
+        }>;
       };
       const lines = (data.runs || []).map(
-        (run) => `${run.organizationId} ${run.seasonYear}: inserted ${run.inserted}`,
+        (run) => `${leagueName(run.organizationId)} ${run.seasonYear}: added ${run.inserted}`,
+      );
+      const otherLeague = (data.runs || []).reduce(
+        (sum, run) => sum + (run.alreadyOtherLeague ?? 0),
+        0,
       );
       setCommitResult(
-        `Committed. Would add ${data.totals?.wouldAdd ?? 0}, already present ${data.totals?.alreadyPresent ?? 0}. ${lines.join(" ")}`,
+        [
+          `Committed. Added ${data.totals?.wouldAdd ?? 0}. Already on file ${data.totals?.alreadyPresent ?? 0}.`,
+          otherLeague > 0
+            ? `${otherLeague} already in the other league were left there.`
+            : "",
+          lines.join(" "),
+        ]
+          .filter(Boolean)
+          .join(" "),
       );
       setPreview(null);
       setPreviewRunId("");
+      setPreviewStale(false);
       await loadRuns();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Commit failed.");
@@ -261,7 +359,25 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
   function updateProgram(index: number, patch: Partial<MapRow>) {
     setPreview(null);
     setPreviewRunId("");
+    setPreviewStale(false);
     setPrograms((current) => current.map((program, i) => (i === index ? { ...program, ...patch } : program)));
+  }
+
+  function setDivisionLeague(index: number, divisionName: string, organizationId: string) {
+    setPreviewStale(true);
+    setPrograms((current) =>
+      current.map((program, i) => {
+        if (i !== index) return program;
+        const rest = program.divisionOverrides.filter((entry) => entry.divisionName !== divisionName);
+        if (organizationId !== "gonzales" && organizationId !== "ascension") {
+          return { ...program, divisionOverrides: rest };
+        }
+        return {
+          ...program,
+          divisionOverrides: [...rest, { divisionName, organizationId }],
+        };
+      }),
+    );
   }
 
   return (
@@ -275,6 +391,9 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
           Writes Enrollment rows with no team. It does not create teams, roster players, jerseys,
           or coaches. Completed rows only. Fall programs stay on the roster importer. A dry-run is
           required before commit, and undo removes only that batch.
+          {canSplitByDivision
+            ? " Split by division league saves Gonzales and Ascension from one Spring program. Undo of that import removes both leagues."
+            : ""}
         </p>
       </div>
 
@@ -289,6 +408,7 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
             setPrograms([]);
             setPreview(null);
             setPreviewRunId("");
+            setPreviewStale(false);
             setCommitResult("");
             setError("");
           }}
@@ -314,7 +434,12 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
         </button>
         <button
           type="button"
-          disabled={!previewRunId || busy !== ""}
+          disabled={
+            !previewRunId ||
+            previewStale ||
+            (preview?.unplaceable?.length ?? 0) > 0 ||
+            busy !== ""
+          }
           onClick={() => void commitImport()}
           className="rounded-lg bg-emerald-700 px-4 py-2 text-sm font-semibold text-white disabled:opacity-50"
         >
@@ -347,10 +472,17 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
                     ) : (
                       <select
                         aria-label={`Mapping for ${program.programName}`}
-                        value={program.action === "skip" ? "skip" : program.organizationId}
+                        value={
+                          program.action === "split"
+                            ? "split"
+                            : program.action === "skip"
+                              ? "skip"
+                              : program.organizationId
+                        }
                         onChange={(event) => {
                           const value = event.target.value;
                           if (value === "skip") updateProgram(index, { action: "skip" });
+                          else if (value === "split") updateProgram(index, { action: "split" });
                           else {
                             updateProgram(index, {
                               action: "map",
@@ -362,10 +494,13 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
                       >
                         <option value="skip">Skip</option>
                         {ORGS.map((org) => (
-                          <option key={org} value={org}>
-                            {org}
+                          <option key={org.id} value={org.id}>
+                            {org.label}
                           </option>
                         ))}
+                        {canSplitByDivision && program.springSplitEligible ? (
+                          <option value="split">Split by division league</option>
+                        ) : null}
                       </select>
                     )}
                   </td>
@@ -388,6 +523,14 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
               ))}
             </tbody>
           </table>
+          {canSplitByDivision && programs.some((program) => program.springSplitEligible) ? (
+            <p className="mt-2 text-xs text-zinc-400">
+              Split by division league reads each division name. DYB goes to Gonzales. LLB goes to
+              Ascension. Tee-ball, 7U Minors, 8U Minors, and 7/8 Majors go to Ascension. 14U and 17U
+              go to Gonzales. If a division does not fit, pick the league yourself. Commit stays off
+              until you do.
+            </p>
+          ) : null}
         </div>
       ) : null}
 
@@ -395,24 +538,89 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
         <div className="space-y-3 rounded-lg border border-zinc-800 bg-zinc-950/50 p-4">
           <p className="text-sm text-zinc-200">
             {preview.totalRows} rows. Birth date coverage {preview.birthDateCoveragePercent}%. Would
-            add {preview.totals.wouldAdd}. Already present {preview.totals.alreadyPresent}.
+            add {preview.totals.wouldAdd}. Already on file {preview.totals.alreadyPresent}.
+            {(preview.totals.alreadyOtherLeague ?? 0) > 0
+              ? ` ${preview.totals.alreadyOtherLeague} of those are already in the other league and will be left there.`
+              : ""}
           </p>
+          {previewStale ? (
+            <p className="text-sm text-amber-200">
+              League choices changed. Dry-run again before commit.
+            </p>
+          ) : null}
           <p className="text-xs text-zinc-400">{preview.keyNote}</p>
           <SkipLine skipped={preview.totals.skipped} />
+          {(preview.leagues?.length ?? 0) > 0 ? (
+            <div className="space-y-1">
+              <h3 className="text-sm font-semibold text-zinc-100">By league</h3>
+              {preview.leagues?.map((league) => (
+                <p key={`${league.organizationId}-${league.seasonYear}`} className="text-sm text-zinc-200">
+                  {springLeagueLabel(league.organizationId)} {league.seasonYear}: add {league.wouldAdd}.
+                  Already on file in this league {league.alreadySameLeague}. Already on file in the
+                  other league {league.alreadyOtherLeague}. Fees {formatCents(league.amountCents)}{" "}
+                  (paid {formatCents(league.amountPaidCents)}, balance {formatCents(league.balanceCents)}).
+                </p>
+              ))}
+            </div>
+          ) : null}
+          {(preview.unplaceable?.length ?? 0) > 0 ? (
+            <div className="space-y-2 rounded-lg border border-amber-900/60 bg-amber-950/30 p-3">
+              <p className="text-sm text-amber-100">
+                These divisions need a league. Commit stays off until each one has a league and you
+                dry-run again.
+              </p>
+              {preview.unplaceable?.map((division) => {
+                const index = programs.findIndex((program) => program.programName === division.programName);
+                const chosen =
+                  programs[index]?.divisionOverrides.find(
+                    (entry) => entry.divisionName === division.divisionName,
+                  )?.organizationId ?? "";
+                return (
+                  <div
+                    key={`${division.programName}-${division.divisionName}`}
+                    className="flex flex-wrap items-center gap-2 text-sm"
+                  >
+                    <span className="text-zinc-100">
+                      {division.divisionName}: {division.rowCount}{" "}
+                      {division.rowCount === 1 ? "player" : "players"}. {unplaceableReasonText(division.reason)}
+                    </span>
+                    <select
+                      aria-label={`League for ${division.divisionName}`}
+                      value={chosen}
+                      onChange={(event) => setDivisionLeague(index, division.divisionName, event.target.value)}
+                      className="rounded-lg border border-zinc-700 bg-zinc-950 px-2 py-1"
+                    >
+                      <option value="">Choose a league</option>
+                      <option value="gonzales">Gonzales DYB</option>
+                      <option value="ascension">Ascension LL</option>
+                    </select>
+                  </div>
+                );
+              })}
+            </div>
+          ) : null}
           {preview.programs.map((program) => (
             <div key={program.programName} className="space-y-1">
               <p className="text-sm text-zinc-100">
                 {program.programName}
                 {program.disposition === "map"
-                  ? ` → ${program.organizationId} ${program.seasonYear}`
-                  : " → skip"}
-                . Would add {program.totals.wouldAdd}. Already present {program.totals.alreadyPresent}.
+                  ? ` → ${leagueName(program.organizationId || "")} ${program.seasonYear}`
+                  : program.disposition === "split"
+                    ? ` → split by division league, ${program.seasonYear}`
+                    : " → skip"}
+                . Would add {program.totals.wouldAdd}. Already on file {program.totals.alreadyPresent}.
               </p>
               <ul className="space-y-1 text-xs text-zinc-400">
                 {program.divisions.map((division) => (
                   <li key={division.divisionName}>
-                    {division.divisionName}: add {division.wouldAdd}, present {division.alreadyPresent}
-                    . <SkipLine skipped={division.skipped} />
+                    {division.divisionName}
+                    {division.organizationId ? ` → ${springLeagueLabel(division.organizationId)}` : ""}
+                    {division.unplaceable ? " → needs a league" : ""}: add {division.wouldAdd}
+                    {program.disposition === "split"
+                      ? `, already in this league ${division.alreadySameLeague ?? 0}, already in the other league ${division.alreadyOtherLeague ?? 0}`
+                      : `, present ${division.alreadyPresent}`}
+                    {division.unplaceable ? `, need a league ${division.unplaceable}` : ""}.{" "}
+                    <SkipLine skipped={division.skipped} />
                   </li>
                 ))}
               </ul>
@@ -430,11 +638,20 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
             {runs.map((run) => (
               <li key={run.id} className="rounded-lg border border-zinc-800 px-3 py-2 text-sm">
                 <p>
-                  {run.seasonYear} · {run.status} · inserted {run.inserted ?? 0} · already present{" "}
+                  {run.seasonYear} · {run.status} · inserted {run.inserted ?? 0} · already on file{" "}
                   {run.alreadyPresent ?? 0}
+                  {(run.alreadyOtherLeague ?? 0) > 0
+                    ? ` · ${run.alreadyOtherLeague} left in the other league`
+                    : ""}
+                  {run.splitBatch ? " · split import" : ""}
                   {run.sourceFileName ? ` · ${run.sourceFileName}` : ""}
                 </p>
                 {run.status === "DONE" ? (
+                  run.splitBatch && !canSplitByDivision ? (
+                    <p className="mt-2 text-xs text-zinc-400">
+                      A master admin has to undo this split import.
+                    </p>
+                  ) : (
                   <div className="mt-2 flex flex-wrap items-center gap-2">
                     <button
                       type="button"
@@ -446,8 +663,9 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
                     {undoCounts[run.id] !== undefined ? (
                       <>
                         <span className="text-xs text-zinc-300">
-                          This deletes {undoCounts[run.id]} enrollment rows from this batch. Rows
-                          that were already present stay.
+                          {run.splitBatch
+                            ? `This deletes ${undoCounts[run.id]} enrollment rows from this split import. Every league saved in that import is removed. Rows that were already on file stay.`
+                            : `This deletes ${undoCounts[run.id]} enrollment rows from this batch. Rows that were already present stay.`}
                         </span>
                         <button
                           type="button"
@@ -460,6 +678,7 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
                       </>
                     ) : null}
                   </div>
+                  )
                 ) : (
                   <p className="text-xs text-zinc-500">
                     Undone
@@ -475,6 +694,13 @@ export default function RegistrationHistoryImportPanel({ targetOrg }: { targetOr
       </div>
     </section>
   );
+}
+
+function leagueName(org: string): string {
+  if (org === "gonzales") return "Gonzales DYB";
+  if (org === "ascension") return "Ascension LL";
+  if (org === "fallball") return "Fall Ball";
+  return org;
 }
 
 function SkipLine({ skipped }: { skipped: SkipCounts }) {
