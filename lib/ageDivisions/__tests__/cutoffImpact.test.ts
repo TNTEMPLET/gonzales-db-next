@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "node:test";
 
 import { DivisionAgesCutoffImpact } from "@/components/admin/DivisionAgesCutoffImpact";
-import { teamCountRange, type BirthBucket, type RosterSize } from "../forecast";
+import { compareConfigs, teamCountRange, type BirthBucket, type RosterSize } from "../forecast";
 import {
   buildCutoffImpact,
   formatImpactPlayers,
@@ -37,6 +37,29 @@ function minors(cutoff: { cutoffMonth: number; cutoffDay: number }): ProposedCon
     ],
   };
 }
+
+function sixes(cutoff: { cutoffMonth: number; cutoffDay: number }): ProposedConfig {
+  return {
+    cutoff: { ...cutoff, yearOffset: 0 },
+    divisions: [
+      division("6U MAJOR", "6U Major", 6, 6, 1),
+      division("6U MINOR", "6U Minor", 6, 6, 2),
+    ],
+  };
+}
+
+/** 6U Major covers only the younger part of the 6U Minor year, so the windows overlap in part. */
+function partialSixes(cutoff: { cutoffMonth: number; cutoffDay: number }): ProposedConfig {
+  return {
+    cutoff: { ...cutoff, yearOffset: 0 },
+    divisions: [
+      division("6U MINOR", "6U Minor", 6, 6, 1),
+      division("6U MAJOR", "6U Major", 6, 6, 2, { oldestBirthdate: "2018-09-01" }),
+    ],
+  };
+}
+
+const forecastOptions = { retentionRate: 1, includeFeeder: false, rosterFor: () => ({ min: 11, max: 12 }) };
 
 function bucket(birthDate: string, count: number): BirthBucket {
   return { birthDate, count, pool: "own" };
@@ -97,6 +120,8 @@ function assertSevenEightShift(impact: ReturnType<typeof buildCutoffImpact>, lea
   assert.equal(eight.afterMinTeams, 4);
   assert.equal(eight.minTeamDelta, 1);
   assert.equal(eight.maxTeamDelta, 1);
+  assert.equal(seven.shared, false);
+  assert.equal(eight.shared, false);
   assert.match(formatWindowShift(seven), new RegExp(`Left this division: ${leaving}`));
   assert.match(formatWindowShift(eight), new RegExp(`Entered this division: ${entering}`));
   assert.match(impact.summary, /moves 7 players from 7U Minors to 8U Minors \(−1 team \/ \+1 team\)/);
@@ -188,6 +213,89 @@ describe("cutoff impact diff", () => {
     );
   });
 
+  it("counts an identical 6U Major and 6U Minor window once", () => {
+    const baseline = sixes({ cutoffMonth: 4, cutoffDay: 30 });
+    const proposed = sixes({ cutoffMonth: 5, cutoffDay: 1 });
+    const buckets = [bucket("2018-06-15", 20), bucket("2019-05-01", 10)];
+    const compared = compareConfigs(buckets, baseline, proposed, 2025, forecastOptions);
+    const impact = buildCutoffImpact({
+      buckets,
+      baseline,
+      proposed,
+      targetSeasonYear: 2025,
+    });
+    const pool = compared.sharedPools[0];
+    assert.equal(compared.sharedPools.length, 1);
+    assert.equal(pool?.current?.pool, 20);
+    assert.equal(pool?.proposed?.pool, 30);
+    assert.equal(pool?.current?.minTeams, 2);
+    assert.equal(pool?.proposed?.minTeams, 3);
+    const minor = compared.rows.find((row) => row.code === "6U MINOR");
+    const major = compared.rows.find((row) => row.code === "6U MAJOR");
+    assert.equal(minor?.current.pool, 20);
+    assert.equal(major?.current.pool, 20);
+    assert.equal(impact.divisions.length, 1);
+    const card = impact.divisions[0]!;
+    assert.equal(card.shared, true);
+    assert.equal(card.label, "6U Major + 6U Minor (shared pool)");
+    assert.deepEqual([...card.codes].sort(), ["6U MAJOR", "6U MINOR"]);
+    assert.equal(formatImpactPlayers(card.beforePlayers, card.afterPlayers), "20 → 30 (+10)");
+    assert.equal(card.playerDelta, 10);
+    assert.equal(card.minTeamDelta, 1);
+    assert.equal(card.maxTeamDelta, 1);
+    assert.equal(
+      impact.divisions.reduce((sum, division) => sum + division.playerDelta, 0),
+      10,
+    );
+    assert.equal(
+      impact.divisions.reduce((sum, division) => sum + division.minTeamDelta, 0),
+      1,
+    );
+    assert.match(formatWindowShift(card), /Entered this pool: May 1, 2019/);
+    assert.equal(
+      impact.summary,
+      "Moving the cutoff to May 1 moves 10 players from too young to 6U Major and 6U Minor (+1 team).",
+    );
+    assert.equal(impact.summary.includes("+1 team / +1 team"), false);
+  });
+
+  it("follows the forecast pool when 6U windows only partly overlap", () => {
+    const baseline = partialSixes({ cutoffMonth: 4, cutoffDay: 30 });
+    const proposed = partialSixes({ cutoffMonth: 5, cutoffDay: 1 });
+    const buckets = [bucket("2018-06-15", 8), bucket("2018-10-15", 12), bucket("2019-05-01", 10)];
+    const compared = compareConfigs(buckets, baseline, proposed, 2025, forecastOptions);
+    const impact = buildCutoffImpact({
+      buckets,
+      baseline,
+      proposed,
+      targetSeasonYear: 2025,
+    });
+    assert.equal(compared.sharedPools.length, 1);
+    const pool = compared.sharedPools[0]!;
+    const minor = compared.rows.find((row) => row.code === "6U MINOR")!;
+    const major = compared.rows.find((row) => row.code === "6U MAJOR")!;
+    assert.notEqual(minor.current.pool, major.current.pool);
+    assert.equal(minor.current.pool + major.current.pool, 32);
+    assert.equal(pool.current?.pool, 20);
+    assert.equal(pool.proposed?.pool, 30);
+    assert.equal(impact.divisions.length, 1);
+    const card = impact.divisions[0]!;
+    assert.equal(card.shared, true);
+    assert.equal(card.label, "6U Major + 6U Minor (shared pool)");
+    assert.equal(card.beforePlayers, pool.current?.pool);
+    assert.equal(card.afterPlayers, pool.proposed?.pool);
+    assert.equal(card.beforeMinTeams, pool.current?.minTeams);
+    assert.equal(card.afterMinTeams, pool.proposed?.minTeams);
+    assert.equal(card.playerDelta, 10);
+    assert.equal(card.minTeamDelta, 1);
+    assert.equal(
+      impact.divisions.reduce((sum, division) => sum + division.playerDelta, 0),
+      pool.proposed!.pool - pool.current!.pool,
+    );
+    assert.match(impact.summary, /moves 10 players from too young to 6U Major and 6U Minor \(\+1 team\)/);
+    assert.equal(impact.summary.includes("20 players"), false);
+  });
+
   it("says nothing moves when the proposed table matches the start", () => {
     const config = minors({ cutoffMonth: 4, cutoffDay: 30 });
     const impact = buildCutoffImpact({
@@ -237,6 +345,35 @@ describe("cutoff impact chart", () => {
     assert.match(html, /Reset to starting table/);
     const chart = html.slice(html.indexOf('data-testid="cutoff-impact"'));
     assert.equal(chart.includes("9U Kid Pitch"), false);
+    assert.doesNotMatch(html, /fullName|guardianEmail|@example\.com/);
+  });
+
+  it("renders one shared-pool card for identical 6U windows", () => {
+    const baseline = sixes({ cutoffMonth: 4, cutoffDay: 30 });
+    const proposed = sixes({ cutoffMonth: 5, cutoffDay: 1 });
+    const buckets = [bucket("2018-06-15", 20), bucket("2019-05-01", 10)];
+    const compared = compareConfigs(buckets, baseline, proposed, 2025, forecastOptions);
+    const html = renderToStaticMarkup(
+      createElement(DivisionAgesCutoffImpact, {
+        baseline,
+        proposed,
+        counted: proposed,
+        targetSeason: 2025,
+        counts: { rows: compared.rows, flows: compared.flows, sharedPools: compared.sharedPools },
+        pending: false,
+        stale: false,
+        onReset: () => {},
+      }),
+    );
+    const cards = html.match(/data-testid="cutoff-impact-division"/g) ?? [];
+    assert.equal(cards.length, 1);
+    assert.match(html, /data-shared="true"/);
+    assert.match(html, /6U Major \+ 6U Minor \(shared pool\)/);
+    assert.equal((html.match(/20 → 30 \(\+10\)/g) ?? []).length, 1);
+    assert.match(html, /Teams 2 → 3 \(\+1 team\)/);
+    assert.match(html, /moves 10 players from too young to 6U Major and 6U Minor \(\+1 team\)/);
+    assert.match(html, /Entered this pool: May 1, 2019/);
+    assert.equal(html.includes("+1 team / +1 team"), false);
     assert.doesNotMatch(html, /fullName|guardianEmail|@example\.com/);
   });
 

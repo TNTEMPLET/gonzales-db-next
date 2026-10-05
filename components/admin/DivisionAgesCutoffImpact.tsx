@@ -9,7 +9,7 @@ import {
   impactFromComparison,
   type DivisionImpact,
 } from "@/lib/ageDivisions/cutoffImpact";
-import type { ForecastFlow, ForecastRow } from "@/lib/ageDivisions/forecast";
+import type { ForecastFlow, ForecastRow, SharedPool } from "@/lib/ageDivisions/forecast";
 import { sameProposedConfig, type ProposedConfig } from "@/lib/ageDivisions/forecastView";
 
 const buttonClass =
@@ -18,6 +18,7 @@ const buttonClass =
 type CountSnapshot = {
   rows: readonly ForecastRow[];
   flows: readonly ForecastFlow[];
+  sharedPools?: readonly SharedPool[];
 };
 
 function barWidth(count: number, max: number): string {
@@ -36,7 +37,11 @@ function DivisionImpactRow({ division, maxPlayers }: { division: DivisionImpact;
   const range = formatWindowShift(division);
   const expectedMoved = division.beforeExpected !== division.beforePlayers || division.afterExpected !== division.afterPlayers;
   return (
-    <li className={`rounded-xl border border-zinc-800 border-l-4 ${accent} bg-zinc-950/80 p-3`} data-testid="cutoff-impact-division">
+    <li
+      className={`rounded-xl border border-zinc-800 border-l-4 ${accent} bg-zinc-950/80 p-3`}
+      data-testid="cutoff-impact-division"
+      data-shared={division.shared ? "true" : "false"}
+    >
       <div className="flex flex-wrap items-baseline justify-between gap-2">
         <h4 className="text-base font-semibold text-white">{division.label}</h4>
         <p className="text-base font-semibold tabular-nums text-zinc-100" data-testid="cutoff-impact-players">
@@ -105,6 +110,7 @@ export const DivisionAgesCutoffImpact = memo(function DivisionAgesCutoffImpact({
       targetSeasonYear: targetSeason,
       rows: counts.rows,
       flows: counts.flows,
+      sharedPools: counts.sharedPools ?? [],
     });
   }, [baseline, counted, counts, targetSeason]);
 
@@ -133,7 +139,7 @@ export const DivisionAgesCutoffImpact = memo(function DivisionAgesCutoffImpact({
           </h3>
           <p className="mt-1 text-sm text-zinc-400">
             Compared with the table from when you opened this season. Only divisions whose players or teams change are
-            listed.
+            listed. Overlapping divisions are one shared-pool card, counted once.
           </p>
         </div>
         {dirty ? (
@@ -152,7 +158,7 @@ export const DivisionAgesCutoffImpact = memo(function DivisionAgesCutoffImpact({
       ) : null}
       {impact && impact.divisions.length > 0 ? (
         <>
-          <ul className="mt-4 space-y-3" aria-label="Divisions whose player or team count changes">
+          <ul className="mt-4 space-y-3" aria-label="Divisions and shared pools whose player or team count changes">
             {impact.divisions.map((division) => (
               <DivisionImpactRow key={division.code} division={division} maxPlayers={maxPlayers} />
             ))}

@@ -14,6 +14,8 @@ import {
   type ForecastFlow,
   type ForecastOptions,
   type ForecastRow,
+  type ForecastSide,
+  type SharedPool,
 } from "./forecast";
 import { formatTimelineDate } from "./forecastTimeline";
 import { formatDeltaTeams, type ProposedConfig } from "./forecastView";
@@ -24,9 +26,14 @@ export type ShiftedSlice = {
 };
 
 export type DivisionImpact = {
+  /** Division code, or the forecast pool key when `shared` is true. */
   code: string;
   label: string;
   sortOrder: number;
+  /** True when this card is one shared pool, not one division. */
+  shared: boolean;
+  /** Member division codes. A division card lists only itself. */
+  codes: string[];
   beforePlayers: number;
   afterPlayers: number;
   playerDelta: number;
@@ -200,9 +207,48 @@ export function formatWindowShift(division: DivisionImpact): string {
   if (before || after) parts.push(`Was ${before || "outside every division"}. Now ${after || "outside every division"}.`);
   const left = division.leftDivision.map(formatShiftedSlice).filter(Boolean);
   const entered = division.enteredDivision.map(formatShiftedSlice).filter(Boolean);
-  if (left.length > 0) parts.push(`Left this division: ${left.join("; ")}.`);
-  if (entered.length > 0) parts.push(`Entered this division: ${entered.join("; ")}.`);
+  const place = division.shared ? "pool" : "division";
+  if (left.length > 0) parts.push(`Left this ${place}: ${left.join("; ")}.`);
+  if (entered.length > 0) parts.push(`Entered this ${place}: ${entered.join("; ")}.`);
   return parts.join(" ");
+}
+
+function emptySide(): Pick<ForecastSide, "pool" | "expected" | "minTeams" | "maxTeams"> {
+  return { pool: 0, expected: 0, minTeams: 0, maxTeams: 0 };
+}
+
+function withCounts(
+  card: Omit<
+    DivisionImpact,
+    | "beforePlayers"
+    | "afterPlayers"
+    | "playerDelta"
+    | "beforeExpected"
+    | "afterExpected"
+    | "beforeMinTeams"
+    | "beforeMaxTeams"
+    | "afterMinTeams"
+    | "afterMaxTeams"
+    | "minTeamDelta"
+    | "maxTeamDelta"
+  >,
+  before: Pick<ForecastSide, "pool" | "expected" | "minTeams" | "maxTeams">,
+  after: Pick<ForecastSide, "pool" | "expected" | "minTeams" | "maxTeams">,
+): DivisionImpact {
+  return {
+    ...card,
+    beforePlayers: before.pool,
+    afterPlayers: after.pool,
+    playerDelta: after.pool - before.pool,
+    beforeExpected: before.expected,
+    afterExpected: after.expected,
+    beforeMinTeams: before.minTeams,
+    beforeMaxTeams: before.maxTeams,
+    afterMinTeams: after.minTeams,
+    afterMaxTeams: after.maxTeams,
+    minTeamDelta: after.minTeams - before.minTeams,
+    maxTeamDelta: after.maxTeams - before.maxTeams,
+  };
 }
 
 function divisionFromRow(
@@ -213,26 +259,73 @@ function divisionFromRow(
 ): DivisionImpact {
   const beforeWindow = windowFor(baseline, row.code, targetSeasonYear);
   const afterWindow = windowFor(proposed, row.code, targetSeasonYear);
+  // A side that belongs to a shared pool is counted on that pool's card.
+  const before = row.currentSharedPoolId ? emptySide() : row.current;
+  const after = row.proposedSharedPoolId ? emptySide() : row.proposed;
+  return withCounts(
+    {
+      code: row.code,
+      label: row.label,
+      sortOrder: row.sortOrder,
+      shared: false,
+      codes: [row.code],
+      beforeWindow,
+      afterWindow,
+      leftDivision: windowDifference(beforeWindow, afterWindow),
+      enteredDivision: windowDifference(afterWindow, beforeWindow),
+    },
+    before,
+    after,
+  );
+}
+
+function unionWindow(windows: readonly ShiftedSlice[]): ShiftedSlice {
+  const usable = windows.filter((window) => window.oldest && window.youngest && window.oldest <= window.youngest);
+  const first = usable[0];
+  if (!first) return emptyWindow();
   return {
-    code: row.code,
-    label: row.label,
-    sortOrder: row.sortOrder,
-    beforePlayers: row.current.pool,
-    afterPlayers: row.proposed.pool,
-    playerDelta: row.proposed.pool - row.current.pool,
-    beforeExpected: row.current.expected,
-    afterExpected: row.proposed.expected,
-    beforeMinTeams: row.current.minTeams,
-    beforeMaxTeams: row.current.maxTeams,
-    afterMinTeams: row.proposed.minTeams,
-    afterMaxTeams: row.proposed.maxTeams,
-    minTeamDelta: row.proposed.minTeams - row.current.minTeams,
-    maxTeamDelta: row.proposed.maxTeams - row.current.maxTeams,
-    beforeWindow,
-    afterWindow,
-    leftDivision: windowDifference(beforeWindow, afterWindow),
-    enteredDivision: windowDifference(afterWindow, beforeWindow),
+    oldest: usable.reduce((oldest, window) => (window.oldest < oldest ? window.oldest : oldest), first.oldest),
+    youngest: usable.reduce((youngest, window) => (window.youngest > youngest ? window.youngest : youngest), first.youngest),
   };
+}
+
+function poolWindow(config: ProposedConfig, codes: readonly string[], targetSeasonYear: number, active: boolean): ShiftedSlice {
+  if (!active) return emptyWindow();
+  return unionWindow(codes.map((code) => windowFor(config, code, targetSeasonYear)));
+}
+
+/** One card for the pool. Member labels stay in alphabetical order, for example "6U Major + 6U Minor (shared pool)". */
+function poolCardLabel(pool: SharedPool, rows: readonly ForecastRow[]): string {
+  const labels = new Map(rows.map((row) => [row.code, row.label]));
+  const names = [...pool.codes].map((code) => labels.get(code) ?? code).sort((left, right) => left.localeCompare(right));
+  return `${names.join(" + ")} (shared pool)`;
+}
+
+function poolFromShared(
+  pool: SharedPool,
+  rows: readonly ForecastRow[],
+  baseline: ProposedConfig,
+  proposed: ProposedConfig,
+  targetSeasonYear: number,
+): DivisionImpact {
+  const beforeWindow = poolWindow(baseline, pool.codes, targetSeasonYear, pool.current != null);
+  const afterWindow = poolWindow(proposed, pool.codes, targetSeasonYear, pool.proposed != null);
+  const sortOrders = pool.codes.map((code) => rows.find((row) => row.code === code)?.sortOrder ?? Number.POSITIVE_INFINITY);
+  return withCounts(
+    {
+      code: pool.poolKey,
+      label: poolCardLabel(pool, rows),
+      sortOrder: Math.min(...sortOrders),
+      shared: true,
+      codes: [...pool.codes],
+      beforeWindow,
+      afterWindow,
+      leftDivision: windowDifference(beforeWindow, afterWindow),
+      enteredDivision: windowDifference(afterWindow, beforeWindow),
+    },
+    pool.current ?? emptySide(),
+    pool.proposed ?? emptySide(),
+  );
 }
 
 function countsChanged(division: DivisionImpact): boolean {
@@ -266,10 +359,8 @@ function flowSentence(
   byCode: ReadonlyMap<string, DivisionImpact>,
   labels: ReadonlyMap<string, string>,
 ): string {
-  const fromCode = singleDivisionCode(flow.from);
-  const toCode = singleDivisionCode(flow.to);
-  const from = fromCode ? byCode.get(fromCode) : undefined;
-  const to = toCode ? byCode.get(toCode) : undefined;
+  const from = byCode.get(flow.from);
+  const to = byCode.get(flow.to);
   const count = transferCount(flow, from, to);
   const players = `${count} ${count === 1 ? "player" : "players"}`;
   const clause = teamClause(from, to);
@@ -342,10 +433,18 @@ export function impactFromComparison(input: {
   targetSeasonYear: number;
   rows: readonly ForecastRow[];
   flows: readonly ForecastFlow[];
+  /** Forecast shared pools. Members are one card, using the pool's own counts. */
+  sharedPools?: readonly SharedPool[];
 }): CutoffImpact {
   const labels = new Map(input.rows.map((row) => [row.code, row.label]));
-  const divisions = input.rows
-    .map((row) => divisionFromRow(row, input.baseline, input.proposed, input.targetSeasonYear))
+  const sharedPools = input.sharedPools ?? [];
+  const poolCards = sharedPools.map((pool) =>
+    poolFromShared(pool, input.rows, input.baseline, input.proposed, input.targetSeasonYear),
+  );
+  const divisionCards = input.rows
+    .filter((row) => !(row.currentSharedPoolId && row.proposedSharedPoolId))
+    .map((row) => divisionFromRow(row, input.baseline, input.proposed, input.targetSeasonYear));
+  const divisions = [...poolCards, ...divisionCards]
     .filter(countsChanged)
     .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));
   return {
@@ -376,5 +475,6 @@ export function buildCutoffImpact(input: {
     targetSeasonYear: input.targetSeasonYear,
     rows: compared.rows,
     flows: compared.flows,
+    sharedPools: compared.sharedPools,
   });
 }

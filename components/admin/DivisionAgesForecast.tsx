@@ -302,7 +302,7 @@ export function DivisionAgesForecastView({
     [forecast],
   );
   const impactCounts = useMemo(
-    () => (forecast ? { rows: forecast.rows, flows: forecast.flows } : null),
+    () => (forecast ? { rows: forecast.rows, flows: forecast.flows, sharedPools: forecast.sharedPools } : null),
     [forecast],
   );
 
