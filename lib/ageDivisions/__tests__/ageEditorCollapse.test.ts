@@ -215,6 +215,7 @@ class MemoryStorage {
 }
 
 let installed: Record<string, unknown> | null = null;
+let navigatorDescriptor: PropertyDescriptor | null = null;
 let hostNode: MiniNode | null = null;
 let reactRoot: Root | null = null;
 let storage: MemoryStorage | null = null;
@@ -253,7 +254,6 @@ async function mountReact(): Promise<Root> {
   installed = {
     document: globals.document,
     window: globals.window,
-    navigator: globals.navigator,
     HTMLElement: globals.HTMLElement,
     HTMLIFrameElement: globals.HTMLIFrameElement,
     Element: globals.Element,
@@ -262,10 +262,11 @@ async function mountReact(): Promise<Root> {
     CSS: globals.CSS,
     IS_REACT_ACT_ENVIRONMENT: globals.IS_REACT_ACT_ENVIRONMENT,
   };
+  // Node 21+ exposes navigator as a getter-only accessor; assign/set throws in ESM.
+  navigatorDescriptor = Object.getOwnPropertyDescriptor(globalThis, "navigator") ?? null;
   Object.assign(globals, {
     document,
     window: windowStub,
-    navigator: navigatorStub,
     HTMLElement: MiniNode,
     HTMLIFrameElement: MiniIframe,
     Element: MiniNode,
@@ -273,6 +274,12 @@ async function mountReact(): Promise<Root> {
     ResizeObserver: windowStub.ResizeObserver,
     CSS: windowStub.CSS,
     IS_REACT_ACT_ENVIRONMENT: true,
+  });
+  Object.defineProperty(globalThis, "navigator", {
+    value: navigatorStub,
+    configurable: true,
+    writable: true,
+    enumerable: true,
   });
   hostNode = document.createElement("div");
   document.body.appendChild(hostNode);
@@ -294,6 +301,12 @@ function restoreDom() {
     if (value === undefined) delete globals[key];
     else globals[key] = value;
   }
+  if (navigatorDescriptor) {
+    Object.defineProperty(globalThis, "navigator", navigatorDescriptor);
+  } else {
+    delete (globalThis as { navigator?: unknown }).navigator;
+  }
+  navigatorDescriptor = null;
   installed = null;
   hostNode = null;
   reactRoot = null;
