@@ -25,6 +25,19 @@ export function hasSplitSummaryField(summary: Record<string, unknown>): boolean 
 }
 
 /**
+ * Generic run creation cannot store split-batch fields.
+ * Only the split commit writes them, on its own transaction client.
+ */
+export function assertImportRunSummaryCreate(
+  summary: Record<string, unknown> | null | undefined,
+): void {
+  if (summary == null) return;
+  if (hasSplitSummaryField(summary)) {
+    throw new ImportRunSummaryError("Split batch fields cannot be added to an import run.");
+  }
+}
+
+/**
  * `nextSummary === undefined` means this update does not touch summary.
  * A split-batch run cannot have its summary replaced, cleared, or edited.
  * A normal run cannot gain split-batch fields.

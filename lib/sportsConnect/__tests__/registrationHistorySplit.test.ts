@@ -4,7 +4,10 @@ import { describe, it } from "node:test";
 
 import { springDivisionAgesLockKey } from "@/lib/ageDivisions/persistence";
 import { deriveSportsConnectRowKey } from "@/lib/sportsConnect/enrollmentRowKey";
-import { assertImportRunSummaryPatch } from "@/lib/sportsConnect/splitBatchSummary";
+import {
+  assertImportRunSummaryCreate,
+  assertImportRunSummaryPatch,
+} from "@/lib/sportsConnect/splitBatchSummary";
 import { springEnrollmentLockKey } from "@/lib/sportsConnect/springEnrollmentLock";
 import {
   classifyRegistrationHistory,
@@ -613,7 +616,7 @@ describe("split guards", () => {
     );
   });
 
-  it("still adds a single-league row that already exists only in the other league", () => {
+  it("skips a single-league Spring row that already exists in the other league", () => {
     const rows = [
       player({
         program: GONZALES,
@@ -640,10 +643,80 @@ describe("split guards", () => {
       fileName: FILE_NAME,
       fileSha256: FILE_SHA,
     });
-    assert.equal(classified.preview.totals.wouldAdd, 1);
-    assert.equal(classified.preview.totals.alreadyPresent, 0);
-    assert.equal(classified.inserts[0]?.organizationId, "gonzales");
-    assert.equal(classified.preview.leagues.length, 0);
+    assert.equal(classified.preview.totals.wouldAdd, 0);
+    assert.equal(classified.preview.totals.alreadyPresent, 1);
+    assert.equal(classified.preview.totals.alreadyOtherLeague, 1);
+    assert.equal(classified.inserts.length, 0);
+    assert.match(classified.preview.keyNote, /other league/);
+
+    const otherWay = classifyRegistrationHistory({
+      rows: [
+        player({
+          program: ASCENSION,
+          division: "Tee Ball",
+          order: "A9",
+          first: "Player",
+          last: "Kept",
+        }),
+      ],
+      mapping: [
+        { programName: ASCENSION, action: "map", organizationId: "ascension", seasonYear: 2026 },
+      ],
+      existingKeys: [
+        {
+          organizationId: "gonzales",
+          seasonYear: 2026,
+          sportsConnectRowKey: rowKey("A9", "Player", "Kept"),
+        },
+      ],
+      fileName: FILE_NAME,
+      fileSha256: FILE_SHA,
+    });
+    assert.equal(otherWay.preview.totals.wouldAdd, 0);
+    assert.equal(otherWay.preview.totals.alreadyOtherLeague, 1);
+    assert.equal(otherWay.inserts.length, 0);
+
+    const fallball = classifyRegistrationHistory({
+      rows: [player({ program: "2026 Rec Season", division: "8U", order: "R9", first: "Player", last: "Rec" })],
+      mapping: [{ programName: "2026 Rec Season", action: "map", organizationId: "fallball", seasonYear: 2026 }],
+      existingKeys: [
+        {
+          organizationId: "gonzales",
+          seasonYear: 2026,
+          sportsConnectRowKey: rowKey("R9", "Player", "Rec"),
+        },
+      ],
+      fileName: FILE_NAME,
+      fileSha256: FILE_SHA,
+    });
+    assert.equal(fallball.preview.totals.wouldAdd, 1);
+    assert.equal(fallball.preview.totals.alreadyOtherLeague, 0);
+    assert.equal(fallball.inserts[0]?.organizationId, "fallball");
+
+    const sharedOrder = classifyRegistrationHistory({
+      rows: [
+        player({ program: GONZALES, division: "8U", order: "SAME", first: "Player", last: "Twin" }),
+        player({ program: ASCENSION, division: "Tee Ball", order: "SAME", first: "Player", last: "Twin" }),
+        player({ program: ASCENSION, division: "Tee Ball", order: "OTHER", first: "Player", last: "Twin" }),
+      ],
+      mapping: [
+        { programName: GONZALES, action: "map", organizationId: "gonzales", seasonYear: 2026 },
+        { programName: ASCENSION, action: "map", organizationId: "ascension", seasonYear: 2026 },
+      ],
+      existingKeys: [],
+      fileName: FILE_NAME,
+      fileSha256: FILE_SHA,
+    });
+    assert.equal(sharedOrder.preview.totals.wouldAdd, 2);
+    assert.equal(sharedOrder.preview.totals.alreadyOtherLeague, 1);
+    assert.equal(
+      sharedOrder.inserts.filter((row) => row.sportsConnectOrderNo === "OTHER").length,
+      1,
+    );
+    assert.equal(
+      sharedOrder.inserts.filter((row) => row.sportsConnectOrderNo === "SAME").length,
+      1,
+    );
   });
 
   it("does not link a two-program import for batch undo", async () => {
@@ -797,7 +870,7 @@ describe("split review fixes", () => {
     );
   });
 
-  it("refuses undo when a forged summary shares a batch id with a Fall run", async () => {
+  it("undo ignores a stray run that copies a split batch id", async () => {
     const db = new MemoryDb();
     const rows = [
       player({ division: "12U DYB", order: "F10", first: "Player", last: "North" }),
@@ -809,12 +882,36 @@ describe("split review fixes", () => {
     assert.ok(gonzales && ascension);
     const batchId = (db.runs.find((run) => run.id === gonzales.id)?.summary as { splitBatchId: string })
       .splitBatchId;
-    const reportKind = db.runs.find((run) => run.id === gonzales.id)?.reportKind ?? "";
     db.runs.push({
-      id: "fall-run",
+      id: "stray-run",
+      organizationId: "gonzales",
+      seasonYear: 2027,
+      reportKind: "PLAYER_REG",
+      status: "DONE",
+      sourceFileName: "roster.xlsx",
+      summary: {
+        role: "commit",
+        source: "split",
+        programName: SPRING,
+        splitBatch: true,
+        splitBatchId: batchId,
+        splitBatchRunIds: [gonzales.id, "stray-run"],
+      },
+    });
+    db.enrollments.push({
+      id: "stray-row",
+      organizationId: "gonzales",
+      seasonYear: 2027,
+      sportsConnectRowKey: "stray-key",
+      importRunId: "stray-run",
+      teamId: null,
+      fullName: "Player Stray",
+    });
+    db.runs.push({
+      id: "fall-copy",
       organizationId: "fallball",
       seasonYear: 2026,
-      reportKind,
+      reportKind: db.runs.find((run) => run.id === gonzales.id)?.reportKind ?? "",
       status: "DONE",
       sourceFileName: "fall.xlsx",
       summary: {
@@ -823,7 +920,7 @@ describe("split review fixes", () => {
         programName: FALL,
         splitBatch: true,
         splitBatchId: batchId,
-        splitBatchRunIds: [gonzales.id, "fall-run"],
+        splitBatchRunIds: ["fall-copy"],
       },
     });
     db.enrollments.push({
@@ -831,31 +928,28 @@ describe("split review fixes", () => {
       organizationId: "fallball",
       seasonYear: 2026,
       sportsConnectRowKey: "fall-key",
-      importRunId: "fall-run",
+      importRunId: "fall-copy",
       teamId: null,
       fullName: "Player Fall",
     });
     const gonzalesSummary = db.runs.find((run) => run.id === gonzales.id)?.summary as {
       splitBatchRunIds: string[];
     };
-    gonzalesSummary.splitBatchRunIds = [gonzales.id, "fall-run"];
-    const before = db.enrollments.map((row) => row.id).sort();
-    await assert.rejects(
-      () =>
-        undoRegistrationHistory(asDb(db), {
-          runId: gonzales.id,
-          organizationId: "gonzales",
-          isMaster: true,
-        }),
-      (err: unknown) =>
-        err instanceof RegistrationHistoryError &&
-        err.status === 409 &&
-        /Nothing was removed/.test(err.message),
-    );
-    assert.deepEqual(db.enrollments.map((row) => row.id).sort(), before);
-    assert.equal(db.runs.find((run) => run.id === gonzales.id)?.status, "DONE");
-    assert.equal(db.runs.find((run) => run.id === ascension.id)?.status, "DONE");
-    assert.equal(db.runs.find((run) => run.id === "fall-run")?.status, "DONE");
+    gonzalesSummary.splitBatchRunIds = [gonzales.id, "stray-run"];
+    const undone = await undoRegistrationHistory(asDb(db), {
+      runId: gonzales.id,
+      organizationId: "gonzales",
+      isMaster: true,
+    });
+    assert.equal(undone.runCount, 2);
+    assert.equal(db.runs.find((run) => run.id === gonzales.id)?.status, "UNDONE");
+    assert.equal(db.runs.find((run) => run.id === ascension.id)?.status, "UNDONE");
+    assert.equal(db.runs.find((run) => run.id === "stray-run")?.status, "DONE");
+    assert.equal(db.runs.find((run) => run.id === "fall-copy")?.status, "DONE");
+    assert.equal(db.enrollments.some((row) => row.importRunId === "stray-run"), true);
+    assert.equal(db.enrollments.some((row) => row.importRunId === "fall-copy"), true);
+    assert.equal(db.enrollments.some((row) => row.importRunId === gonzales.id), false);
+    assert.equal(db.enrollments.some((row) => row.importRunId === ascension.id), false);
   });
 
   it("undo from either league removes both runs and ignores a forged id list", async () => {
@@ -935,6 +1029,25 @@ describe("split review fixes", () => {
       (err: unknown) => err instanceof Error && /cannot be added/.test(err.message),
     );
     assert.doesNotThrow(() => assertImportRunSummaryPatch(splitSummary, undefined));
+    for (const field of ["splitBatch", "splitBatchId", "splitBatchRunIds"] as const) {
+      assert.throws(
+        () => assertImportRunSummaryCreate({ [field]: field === "splitBatch" ? true : "copied" }),
+        (err: unknown) => err instanceof Error && /cannot be added/.test(err.message),
+      );
+    }
+    assert.doesNotThrow(() => assertImportRunSummaryCreate(null));
+    assert.doesNotThrow(() => assertImportRunSummaryCreate({ role: "commit", source: "google_drive_sync" }));
+    const importRuns = readFileSync(new URL("../importRuns.ts", import.meta.url), "utf8");
+    const createBody = importRuns.slice(
+      importRuns.indexOf("export async function createImportRun"),
+      importRuns.indexOf("export async function updateImportRun"),
+    );
+    assert.match(createBody, /assertImportRunSummaryCreate\(input\.summary\)/);
+    const runsPost = readFileSync(
+      new URL("../../../app/api/admin/sports-connect/runs/route.ts", import.meta.url),
+      "utf8",
+    );
+    assert.match(runsPost, /ImportRunSummaryError/);
     assert.doesNotThrow(() =>
       assertImportRunSummaryPatch({ role: "commit", source: "map" }, { role: "commit", source: "map" }),
     );
@@ -942,7 +1055,6 @@ describe("split review fixes", () => {
       new URL("../../../app/api/admin/sports-connect/runs/[id]/route.ts", import.meta.url),
       "utf8",
     );
-    const importRuns = readFileSync(new URL("../importRuns.ts", import.meta.url), "utf8");
     assert.match(importRuns, /assertImportRunSummaryPatch\(/);
     assert.match(runsRoute, /ImportRunSummaryError/);
   });
@@ -1067,7 +1179,11 @@ describe("split review fixes", () => {
         sportsConnectRowKey: rowKey("G9", "Player", "Only"),
       },
     ]);
-    assert.equal(spring.committed.runs[0]?.inserted, 1);
+    assert.equal(spring.open.preview.totals.wouldAdd, 0);
+    assert.equal(spring.open.preview.totals.alreadyOtherLeague, 1);
+    assert.equal(spring.committed.runs[0]?.inserted, 0);
+    assert.equal(spring.committed.runs[0]?.alreadyOtherLeague, 1);
+    assert.equal(springDb.enrollments.some((row) => row.organizationId === "gonzales"), false);
     assertLockBefore(springDb.ops, "enrollment.findMany");
     assert.deepEqual(
       springDb.lastKeyRead.map((target) => target.organizationId).sort(),
@@ -1117,6 +1233,11 @@ describe("split review fixes", () => {
     assert.match(lockSource, /spring-enrollment:/);
     assert.match(lockSource, /pg_advisory_xact_lock/);
     assert.equal(lockSource.includes("spring-division-ages"), false);
+    const prune = readFileSync(new URL("../pruneStaleEnrollments.ts", import.meta.url), "utf8");
+    const pruneLock = prune.indexOf("await lockSpringEnrollment(tx, input.seasonYear);");
+    const pruneRead = prune.indexOf("db.enrollment.findMany");
+    assert.ok(pruneLock > 0 && pruneRead > pruneLock);
+    assert.match(prune, /organizationId === "gonzales" \|\| input\.organizationId === "ascension"/);
     assert.notEqual(springEnrollmentLockKey(2027), springDivisionAgesLockKey(2027));
     assert.notEqual(springEnrollmentLockKey(2026), springEnrollmentLockKey(2027));
   });

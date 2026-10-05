@@ -5,7 +5,7 @@ import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 
 import { PLAYER_REG_HISTORY_REPORT_KIND } from "./registrationHistoryKind";
-import { assertImportRunSummaryPatch } from "./splitBatchSummary";
+import { assertImportRunSummaryCreate, assertImportRunSummaryPatch } from "./splitBatchSummary";
 import type {
   SportsConnectImportRunView,
   SportsConnectReportKind,
@@ -165,6 +165,7 @@ export async function createImportRun(input: {
   revisionToken?: string | null;
   leaseExpiresAt?: Date | null;
 }): Promise<SportsConnectImportRunView> {
+  assertImportRunSummaryCreate(input.summary);
   const row = await prisma.sportsConnectImportRun.create({
     data: {
       organizationId: input.organizationId,

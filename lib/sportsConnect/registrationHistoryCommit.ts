@@ -563,6 +563,8 @@ function totalsForTarget(preview: HistoryPreview, organizationId: string, season
     if (program.organizationId !== organizationId || program.seasonYear !== seasonYear) continue;
     wouldAdd += program.totals.wouldAdd;
     alreadyPresent += program.totals.alreadyPresent;
+    alreadySameLeague += program.totals.alreadySameLeague;
+    alreadyOtherLeague += program.totals.alreadyOtherLeague;
   }
   return { wouldAdd, alreadyPresent, alreadySameLeague, alreadyOtherLeague };
 }
@@ -617,11 +619,29 @@ async function loadUndoBatch(
       summary: { path: ["splitBatchId"], equals: batchId },
     },
   });
-  if (!found.some((item) => item.id === run.id)) {
+  const members = found.filter((item) => isQualifiedSplitMember(item, batchId, run.seasonYear));
+  if (!members.some((item) => item.id === run.id)) {
     throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
   }
-  validateSplitUndoBatch(found, batchId);
-  return found;
+  validateSplitUndoBatch(members, batchId);
+  return members;
+}
+
+function isQualifiedSplitMember(item: HistoryRunRow, batchId: string, seasonYear: number): boolean {
+  const summary = asRecord(item.summary);
+  const programName = typeof summary.programName === "string" ? summary.programName : "";
+  return (
+    item.reportKind === PLAYER_REG_HISTORY_REPORT_KIND &&
+    item.status === "DONE" &&
+    item.seasonYear === seasonYear &&
+    summary.role === "commit" &&
+    summary.source === "split" &&
+    summary.splitBatch === true &&
+    summary.splitBatchId === batchId &&
+    isSpringSplitOrg(item.organizationId) &&
+    isSpringProgramName(programName) &&
+    !isFallProgramName(programName)
+  );
 }
 
 function splitBatchIdOf(summary: unknown): string | null {

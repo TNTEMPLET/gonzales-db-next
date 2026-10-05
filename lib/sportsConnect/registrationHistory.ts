@@ -263,6 +263,9 @@ export type ProgramInventoryEntry = {
 const KEY_NOTE =
   "Would-add counts a new organization, season, and order-line key. A repeated key in this file, or a key already stored, counts as already present and is left unchanged.";
 
+const SPRING_MAP_KEY_NOTE =
+  "Would-add counts a new organization, season, and order-line key. A repeated key in this file, or a key already stored for this season in Gonzales or Ascension, is left where it is. A Spring row aimed at the other league is counted as already in the other league and is not moved.";
+
 const SPLIT_KEY_NOTE =
   "Would-add counts a new player for that league. A repeated row in this file, or a player already stored for this season in Gonzales or Ascension, is left where they are. If this file would place them in the other league, they are counted and not moved.";
 
@@ -650,6 +653,34 @@ export function classifyRegistrationHistory(input: {
       continue;
     }
 
+    if (usesSpringCrossOrgDedupe(mapping)) {
+      const hit = crossOrgHit(
+        crossOrg,
+        mapping.seasonYear,
+        sportsConnectRowKey,
+        mapping.organizationId,
+      );
+      if (hit === "same" || hit === "other") {
+        classificationRows.push({
+          index,
+          sportsConnectRowKey,
+          organizationId: mapping.organizationId,
+          disposition: hit === "same" ? "same_league" : "other_league",
+        });
+        program.totals.alreadyPresent += 1;
+        division.alreadyPresent += 1;
+        if (hit === "same") {
+          program.totals.alreadySameLeague += 1;
+          division.alreadySameLeague = (division.alreadySameLeague ?? 0) + 1;
+        } else {
+          program.totals.alreadyOtherLeague += 1;
+          division.alreadyOtherLeague = (division.alreadyOtherLeague ?? 0) + 1;
+        }
+        continue;
+      }
+      claimCrossOrg(crossOrg, mapping.seasonYear, sportsConnectRowKey, mapping.organizationId);
+    }
+
     const takenId = `${mapping.organizationId}\0${mapping.seasonYear}\0${sportsConnectRowKey}`;
     if (taken.has(takenId)) {
       classificationRows.push({
@@ -712,6 +743,9 @@ export function classifyRegistrationHistory(input: {
   const leagues = mergeLeagueTotals(previewPrograms);
   const unplaceable = unplaceableDivisions(previewPrograms);
   const splitUsed = previewPrograms.some((program) => program.disposition === "split");
+  const springMapUsed = normalizedMapping.some(
+    (entry) => entry.action === "map" && usesSpringCrossOrgDedupe(entry),
+  );
 
   const preview: HistoryPreview = {
     fileName: input.fileName,
@@ -723,7 +757,7 @@ export function classifyRegistrationHistory(input: {
     leagues,
     unplaceable,
     mapping: normalizedMapping,
-    keyNote: splitUsed ? SPLIT_KEY_NOTE : KEY_NOTE,
+    keyNote: splitUsed ? SPLIT_KEY_NOTE : springMapUsed ? SPRING_MAP_KEY_NOTE : KEY_NOTE,
   };
   return {
     preview,
@@ -982,6 +1016,14 @@ function buildCrossOrgIndex(existingKeys: readonly ExistingHistoryKey[]): CrossO
     index.set(id, orgs);
   }
   return index;
+}
+
+function usesSpringCrossOrgDedupe(
+  mapping: Extract<NormalizedHistoryMappingEntry, { action: "map" }>,
+): mapping is Extract<NormalizedHistoryMappingEntry, { action: "map" }> & {
+  organizationId: SpringSplitOrg;
+} {
+  return isSpringSplitOrg(mapping.organizationId) && isSpringProgramName(mapping.programName);
 }
 
 function crossOrgHit(
