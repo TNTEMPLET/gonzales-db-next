@@ -690,16 +690,17 @@ describe("spring comparison collapse", () => {
     const root = await mountReact();
     try {
       function Harness() {
-        return createElement(
-          WithSpringComparisonState,
-          { enabled: true },
-          createElement(SpringComparisonHeader, { summary: SUMMARY, loading: false }),
-          createElement(
-            SpringComparisonDetail,
-            { spring: true, springCombined: true },
-            createElement("p", { "data-testid": "comparison-panel-body" }, "table"),
-          ),
-        );
+        return createElement(WithSpringComparisonState, {
+          enabled: true,
+          children: [
+            createElement(SpringComparisonHeader, { summary: SUMMARY, loading: false }),
+            createElement(SpringComparisonDetail, {
+              spring: true,
+              springCombined: true,
+              children: createElement("p", { "data-testid": "comparison-panel-body" }, "table"),
+            }),
+          ],
+        });
       }
       await act(async () => {
         root.render(createElement(Harness));
@@ -746,12 +747,17 @@ describe("spring comparison collapse", () => {
       storage?.setItem(SPRING_COMPARISON_STORAGE_KEY, "open");
       await act(async () => {
         root.render(
-          createElement(
-            WithSpringComparisonState,
-            { enabled: true },
-            createElement(SpringComparisonHeader, { summary: SUMMARY, loading: false }),
-            createElement(SpringComparisonDetail, { spring: true, springCombined: false }, createElement("p", null, "open")),
-          ),
+          createElement(WithSpringComparisonState, {
+            enabled: true,
+            children: [
+              createElement(SpringComparisonHeader, { summary: SUMMARY, loading: false }),
+              createElement(SpringComparisonDetail, {
+                spring: true,
+                springCombined: false,
+                children: createElement("p", null, "open"),
+              }),
+            ],
+          }),
         );
       });
       const host = rootHost();
