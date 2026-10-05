@@ -18,6 +18,7 @@ import { applyAgeSpan, type TimelineEdge } from "@/lib/ageDivisions/forecastTime
 import { DivisionAgesCutoffImpact } from "@/components/admin/DivisionAgesCutoffImpact";
 import { SpringCombinedSavePanel } from "@/components/admin/SpringCombinedSavePanel";
 import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
+import { forecastTimelineLayout, springLeagueFallback } from "@/lib/ageDivisions/springTimeline";
 import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
@@ -515,6 +516,8 @@ export function DivisionAgesForecastView({
               unlinkedBoundaries={unlinkedBoundaries}
               onToggleBoundary={onToggleBoundary}
               combinedPresets={springCombined}
+              layout={forecastTimelineLayout({ org, springCombined })}
+              leagueFallback={springLeagueFallback({ org, springCombined })}
               impact={
                 <DivisionAgesCutoffImpact
                   baseline={baseline}

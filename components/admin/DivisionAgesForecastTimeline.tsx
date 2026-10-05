@@ -29,6 +29,16 @@ import {
   type TimelineMember,
   type TimelineModel,
 } from "@/lib/ageDivisions/forecastTimeline";
+import { DivisionAgesSpringStrips } from "@/components/admin/DivisionAgesSpringTimeline";
+import {
+  changedDivisionCodes,
+  SPRING_AXIS_PAD_DAYS,
+  springDivisionSummary,
+  springLeagueLabel,
+  springLeagueOf,
+  type ForecastTimelineLayout,
+  type SpringLeagueId,
+} from "@/lib/ageDivisions/springTimeline";
 import {
   combineDivisions,
   formatTeamRange,
@@ -357,6 +367,9 @@ export function DivisionAgesForecastTimeline({
   unlinkedBoundaries = NO_UNLINKED,
   onToggleBoundary = () => {},
   combinedPresets = false,
+  layout = "classic",
+  leagueFallback = null,
+  assumedTrackWidth = 360,
 }: {
   proposed: ProposedConfig;
   baseline: ProposedConfig | null;
@@ -377,6 +390,15 @@ export function DivisionAgesForecastTimeline({
    * The shared month, day, and year fields stay off this view.
    */
   combinedPresets?: boolean;
+  /**
+   * `spring-lanes` is the Spring forecast chart. Fall and the division
+   * builder omit this and keep the classic strip below.
+   */
+  layout?: ForecastTimelineLayout;
+  /** Single-league Spring. Combined Spring reads the code prefix instead. */
+  leagueFallback?: SpringLeagueId | null;
+  /** Year-label density until the plot width is measured. */
+  assumedTrackWidth?: number;
   /** Hide drag, presets, and age edits. The bars, gaps, and counts stay. */
   readOnly?: boolean;
   /** Session impact, shown under the cutoff fields while this editor is interactive. */
@@ -417,6 +439,8 @@ export function DivisionAgesForecastTimeline({
     });
   }
   const [frozenAxis, setFrozenAxis] = useState<{ oldest: string; youngest: string } | null>(null);
+  const [draggingEdgeId, setDraggingEdgeId] = useState<string | null>(null);
+  const [selectedDivision, setSelectedDivision] = useState<string | null>(null);
   const trackRef = useRef<HTMLDivElement>(null);
   const dayRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -433,8 +457,8 @@ export function DivisionAgesForecastTimeline({
       ...divisionBirthdateSpans(proposed.divisions, cutoffIso),
       ...(baseline ? divisionBirthdateSpans(baseline.divisions, baselineIso) : []),
     ];
-    return unionBirthdateAxis(ranges);
-  }, [proposed.divisions, baseline, cutoffIso, baselineIso]);
+    return unionBirthdateAxis(ranges, layout === "spring-lanes" ? SPRING_AXIS_PAD_DAYS : undefined);
+  }, [proposed.divisions, baseline, cutoffIso, baselineIso, layout]);
   const layoutAxis = frozenAxis ?? axis;
   const proposedModel = useMemo(
     () => buildTimelineModel(displayDivisions, cutoffIso, layoutAxis),
@@ -530,6 +554,7 @@ export function DivisionAgesForecastTimeline({
     tipAnchor.current = null;
     setEdgeTip(null);
     event.currentTarget.setPointerCapture(event.pointerId);
+    setDraggingEdgeId(edge.id);
     setSelected({ code: edge.code, field: edge.field });
     rememberCounts();
     draggingRef.current = true;
@@ -578,6 +603,7 @@ export function DivisionAgesForecastTimeline({
   function onEdgePointerUp(event: PointerEvent<HTMLButtonElement>) {
     const drag = dragRef.current;
     if (!drag || event.pointerId !== drag.pointerId) return;
+    setDraggingEdgeId(null);
     draggingRef.current = false;
     dragRef.current = null;
     setFrozenAxis(null);
@@ -666,6 +692,23 @@ export function DivisionAgesForecastTimeline({
   const legend = [...(proposedModel?.bands.flatMap((band) => band.members) ?? [])].sort(
     (a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code),
   );
+  const springLanes = layout === "spring-lanes" && !readOnly;
+  const changedSet = new Set(
+    springLanes ? changedDivisionCodes(displayDivisions, baseline, cutoffIso, baselineIso) : [],
+  );
+  const selectedMember =
+    proposedModel?.bands.flatMap((band) => band.members).find((member) => member.code === selectedDivision) ?? null;
+  const selectedSummary =
+    springLanes && selectedMember
+      ? springDivisionSummary({
+          label: selectedMember.label,
+          league: springLeagueLabel(springLeagueOf(selectedMember, leagueFallback)),
+          oldest: selectedMember.oldest,
+          youngest: selectedMember.youngest,
+          count: counts?.find((row) => row.code === selectedMember.code) ?? null,
+          changed: changedSet.has(selectedMember.code),
+        })
+      : null;
 
   if (readOnly) {
     return (
@@ -677,7 +720,7 @@ export function DivisionAgesForecastTimeline({
           </p>
         </div>
         <div className="overflow-x-auto" data-testid="timeline-strips">
-          <div className="min-w-[40rem] space-y-2">
+          <div className="min-w-[40rem] space-y-2" data-testid="timeline-layout-classic">
             <div data-testid="timeline-proposed">
               {proposedModel ? (
                 <TimelineTrack
@@ -876,8 +919,39 @@ export function DivisionAgesForecastTimeline({
         ) : null}
       </div>
 
-      <div className="overflow-x-auto" data-testid="timeline-strips" onScroll={refreshEdgeTip}>
-        <div className="min-w-[40rem] space-y-2">
+      <div className={springLanes ? "" : "overflow-x-auto"} data-testid="timeline-strips" onScroll={refreshEdgeTip}>
+        {springLanes ? (
+          proposedModel ? (
+            <DivisionAgesSpringStrips
+              model={proposedModel}
+              counts={counts}
+              changedCodes={changedSet}
+              leagueFallback={leagueFallback}
+              linkEdges={linkEdges}
+              unlinkedBoundaries={unlinkedBoundaries}
+              selectedEdge={activeSelection}
+              splitCursor={splitCursor}
+              draggingEdgeId={draggingEdgeId}
+              selectedCode={selectedDivision}
+              trackRef={trackRef}
+              onSelectDivision={setSelectedDivision}
+              onEdgePointerDown={onEdgePointerDown}
+              onEdgePointerMove={onEdgePointerMove}
+              onEdgePointerUp={onEdgePointerUp}
+              onEdgeKeyDown={onEdgeKeyDown}
+              onEdgeClick={onEdgeClick}
+              onEdgeFocus={(edge) => setSelected({ code: edge.code, field: edge.field })}
+              onEdgeTip={placeEdgeTip}
+              onToggleBoundary={onToggleBoundary}
+              onBandClick={onBandClick}
+              onBandKeyDown={onBandKeyDown}
+              assumedTrackWidth={assumedTrackWidth}
+            />
+          ) : (
+            <p className="text-sm text-zinc-400">No birthdate windows to show.</p>
+          )
+        ) : (
+        <div className="min-w-[40rem] space-y-2" data-testid="timeline-layout-classic">
           {currentModel ? (
             <div className="grid grid-cols-[4.5rem_minmax(0,1fr)] items-center gap-2">
               <p className="text-[10px] font-bold uppercase tracking-[0.16em] text-zinc-500">Current</p>
@@ -941,6 +1015,7 @@ export function DivisionAgesForecastTimeline({
             ))}
           </div>
         </div>
+        )}
       </div>
       {edgeTip ? (
         <p
@@ -954,6 +1029,7 @@ export function DivisionAgesForecastTimeline({
         </p>
       ) : null}
 
+      {springLanes ? null : (
       <ul className="flex flex-wrap gap-x-3 gap-y-1 text-xs text-zinc-300">
         {legend.map((member) => {
           const count = counts?.find((row) => row.code === member.code);
@@ -986,8 +1062,17 @@ export function DivisionAgesForecastTimeline({
           </li>
         ) : null}
       </ul>
+      )}
 
       <div className="rounded-xl border border-zinc-800 bg-zinc-950/80 p-3">
+        {selectedSummary ? (
+          <p className="mb-2 text-sm text-zinc-100" data-testid="selected-division">
+            <span className="font-semibold text-white">{selectedSummary.title}</span>
+            <span className="mt-0.5 block text-zinc-400">{selectedSummary.dates}</span>
+            {selectedSummary.counts ? <span className="mt-0.5 block text-zinc-300">{selectedSummary.counts}</span> : null}
+            {selectedSummary.changed ? <span className="mt-0.5 block text-sky-300">{selectedSummary.changed}</span> : null}
+          </p>
+        ) : null}
         <p className="text-sm text-zinc-100" data-testid="selected-edge">
           {selectedEdge ? (
             <>
