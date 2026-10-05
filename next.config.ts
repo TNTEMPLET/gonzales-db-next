@@ -6,7 +6,7 @@ import type { NextConfig } from "next";
 const projectRoot = path.dirname(fileURLToPath(import.meta.url));
 
 /** Hostnames only (no ports) — required for LAN/tunnel dev access to client JS + HMR. */
-const ALLOWED_DEV_ORIGIN_HOSTS = [
+const DEFAULT_ALLOWED_DEV_ORIGIN_HOSTS = [
   "dev.duckroostdigital.com",
   "gonzales-dev.duckroostdigital.com",
   "ascension-dev.duckroostdigital.com",
@@ -16,9 +16,24 @@ const ALLOWED_DEV_ORIGIN_HOSTS = [
   "fallball-dev.duckroostdigital.com",
   "192.168.100.156",
   "10.42.10.171",
+  // Self-hosted admin dev site (CT108, behind Cloudflare Access + Caddy).
+  "apdev.tntech.io",
   "localhost",
   "127.0.0.1",
 ] as const;
+
+/**
+ * Optional extra dev hosts, comma-separated (e.g. `ALLOWED_DEV_ORIGINS=foo.example.com,10.0.0.5`).
+ * Only affects `next dev`; unset/empty leaves the defaults above unchanged.
+ */
+const EXTRA_ALLOWED_DEV_ORIGIN_HOSTS = (process.env.ALLOWED_DEV_ORIGINS ?? "")
+  .split(",")
+  .map((host) => host.trim().toLowerCase())
+  .filter(Boolean);
+
+const ALLOWED_DEV_ORIGIN_HOSTS = Array.from(
+  new Set<string>([...DEFAULT_ALLOWED_DEV_ORIGIN_HOSTS, ...EXTRA_ALLOWED_DEV_ORIGIN_HOSTS]),
+);
 
 const nextConfig: NextConfig = {
   output: "standalone",
