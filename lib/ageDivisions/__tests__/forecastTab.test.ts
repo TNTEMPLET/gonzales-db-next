@@ -357,10 +357,10 @@ describe("forecast tab", () => {
       ],
     });
     const html = renderToStaticMarkup(view({ forecast }));
-    assert.match(html, /data-testid="mix-share"/);
-    assert.match(html, /27% of window, avg of Spring 2025\u20132026/);
     assert.match(html, /data-testid="mix-even-split"/);
     assert.match(html, /No prior Spring mix; using even split/);
+    assert.doesNotMatch(html, /27% of window, avg of Spring 2025\u20132026/);
+    assert.doesNotMatch(html, /data-testid="mix-share"/);
   });
 
   it("shows the combined Spring league share and its even-split note", () => {
@@ -404,10 +404,10 @@ describe("forecast tab", () => {
       ],
     });
     const html = renderToStaticMarkup(view({ forecast }));
-    assert.match(html, /data-testid="league-mix-share"/);
-    assert.match(html, /DYB share 0%, Spring 2026/);
     assert.match(html, /data-testid="league-mix-even-split"/);
     assert.match(html, /No prior Spring league mix; using even split/);
+    assert.doesNotMatch(html, /DYB share 0%, Spring 2026/);
+    assert.doesNotMatch(html, /data-testid="league-mix-share"/);
   });
 
   it("changes the forecast request when a proposed cutoff is edited", () => {

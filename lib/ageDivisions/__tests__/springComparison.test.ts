@@ -17,7 +17,9 @@ import {
   comparisonBarPercent,
   comparisonBarScale,
   comparisonDeltaSign,
+  comparisonRowNotes,
   formatComparisonDelta,
+  formatComparisonTeamDelta,
   springComparisonSummary,
   SPRING_COMPARISON_PANEL_ID,
   SPRING_COMPARISON_STORAGE_KEY,
@@ -575,6 +577,45 @@ describe("spring comparison presentation", () => {
     assert.equal(comparisonDeltaSign(Number.NaN), "zero");
   });
 
+  it("formats a team-range delta as one sign or a signed range", () => {
+    assert.equal(formatComparisonTeamDelta(1, 1), "+1");
+    assert.equal(formatComparisonTeamDelta(-2, -2), "\u22122");
+    assert.equal(formatComparisonTeamDelta(0, 0), "0");
+    assert.equal(formatComparisonTeamDelta(-0, 0), "0");
+    assert.equal(formatComparisonTeamDelta(Number.NaN, Number.NaN), "0");
+    assert.equal(formatComparisonTeamDelta(0, 1), "+0 to +1");
+    assert.equal(formatComparisonTeamDelta(1, 0), "+1 to +0");
+    assert.equal(formatComparisonTeamDelta(-1, 2), "\u22121 to +2");
+    assert.equal(formatComparisonTeamDelta(1, -1), "+1 to \u22121");
+  });
+
+  it("shows each row note once, preferring the proposed sentence", () => {
+    const same = comparisonRowNotes(
+      { note: "LLB 22% of kids this age last Spring", evenSplit: false },
+      { note: "LLB 22% of kids this age last Spring", evenSplit: false },
+      { note: "75% of window, Spring 2026", evenSplit: false },
+      { note: "75% of window, Spring 2026", evenSplit: false },
+    );
+    assert.deepEqual(
+      same.map((note) => note.note),
+      ["LLB 22% of kids this age last Spring", "75% of window, Spring 2026"],
+    );
+    const differed = comparisonRowNotes(
+      { note: "DYB share 0%, Spring 2026", evenSplit: false },
+      { note: "No prior Spring league mix; using even split", evenSplit: true },
+      { note: "27% of window, avg of Spring 2025\u20132026", evenSplit: false },
+      { note: "No prior Spring mix; using even split", evenSplit: true },
+    );
+    assert.deepEqual(
+      differed.map((note) => [note.note, note.testId]),
+      [
+        ["No prior Spring league mix; using even split", "league-mix-even-split"],
+        ["No prior Spring mix; using even split", "mix-even-split"],
+      ],
+    );
+    assert.deepEqual(comparisonRowNotes({ note: "current only", evenSplit: false }, null, null, null), []);
+  });
+
   it("starts collapsed on Spring and leaves Fall on the existing table", () => {
     const combined = renderToStaticMarkup(
       forecastView({ springCombined: true, orgs: ["gonzales", "ascension"], includeFeeder: false }),
@@ -597,6 +638,8 @@ describe("spring comparison presentation", () => {
     assert.match(combined, /\u221220/);
     assert.match(combined, /data-delta-sign="positive"/);
     assert.match(combined, /data-muted="true"/);
+    assert.match(combined, /max-w-\[18rem\] truncate text-xs leading-4 text-zinc-500/);
+    assert.doesNotMatch(combined, /text-sky-200/);
     assert.match(combined, /No DYB registrations at this age last Spring/);
     assert.match(combined, /LLB 22% of kids this age last Spring/);
     assert.match(combined, /25% of window, Spring 2026/);
@@ -625,6 +668,8 @@ describe("spring comparison presentation", () => {
     assert.doesNotMatch(fall, /data-testid="spring-comparison-legend"/);
     assert.doesNotMatch(fall, /of kids this age last Spring/);
     assert.match(fall, /DYB share 0%, Spring 2026/);
+    assert.match(fall, /text-sky-200/);
+    assert.doesNotMatch(fall, /data-testid="comparison-team-delta"/);
     assert.match(fall, /<h3 class="text-sm font-semibold text-white">Edit by age<\/h3>/);
   });
 });
