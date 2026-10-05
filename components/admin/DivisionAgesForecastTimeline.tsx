@@ -135,7 +135,7 @@ function BoundaryLockIcon({ open }: { open: boolean }) {
 
 const NO_UNLINKED = new Set<string>();
 
-/** Per-browser Spring preference. Fall does not read or write this. */
+/** Per-browser Spring preference. Fall may read the value but ignores it (no toggle / write). */
 export const SPRING_AGE_EDITOR_STORAGE_KEY = "gdb-division-ages-spring-age-editor-open";
 
 export function springAgeEditorSummary(count: number): string {

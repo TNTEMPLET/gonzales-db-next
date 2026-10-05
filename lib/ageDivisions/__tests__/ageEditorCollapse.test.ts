@@ -222,13 +222,15 @@ let storage: MemoryStorage | null = null;
 async function mountReact(): Promise<Root> {
   const document = new MiniDocument();
   storage = new MemoryStorage();
-  const windowStub = {
+  const navigatorStub = { userAgent: "node" };
+  const windowStub: Record<string, unknown> = {
     document,
     localStorage: storage,
     HTMLElement: MiniNode,
     HTMLIFrameElement: MiniIframe,
     Element: MiniNode,
     Node: MiniNode,
+    navigator: navigatorStub,
     ResizeObserver: class {
       observe() {}
       unobserve() {}
@@ -244,11 +246,14 @@ async function mountReact(): Promise<Root> {
     addEventListener: () => {},
     removeEventListener: () => {},
   };
+  windowStub.top = windowStub;
+  windowStub.self = windowStub;
   document.defaultView = windowStub;
   const globals = globalThis as Record<string, unknown>;
   installed = {
     document: globals.document,
     window: globals.window,
+    navigator: globals.navigator,
     HTMLElement: globals.HTMLElement,
     HTMLIFrameElement: globals.HTMLIFrameElement,
     Element: globals.Element,
@@ -260,6 +265,7 @@ async function mountReact(): Promise<Root> {
   Object.assign(globals, {
     document,
     window: windowStub,
+    navigator: navigatorStub,
     HTMLElement: MiniNode,
     HTMLIFrameElement: MiniIframe,
     Element: MiniNode,
@@ -270,6 +276,7 @@ async function mountReact(): Promise<Root> {
   });
   hostNode = document.createElement("div");
   document.body.appendChild(hostNode);
+  // React's client build reads navigator.userAgent at import time (Node 20 has none).
   const { createRoot } = await import("react-dom/client");
   reactRoot = createRoot(hostNode as unknown as Element);
   return reactRoot;
