@@ -1126,7 +1126,11 @@ export function DivisionAgesForecastView({
                         <EmptySideCells comparison={Boolean(comparisonBars)} groupStart={Boolean(comparisonBars)} />
                       )}
                       <td className={comparisonBars ? "py-2 pr-3 text-right align-middle text-sm leading-5 tabular-nums whitespace-nowrap" : "py-2 pr-3 align-top tabular-nums"}>
-                        {pool.current && pool.proposed ? formatDelta(pool.proposed.pool - pool.current.pool) : "—"}
+                        {pool.current && pool.proposed
+                          ? comparisonBars
+                            ? formatComparisonDelta(pool.proposed.pool - pool.current.pool)
+                            : formatDelta(pool.proposed.pool - pool.current.pool)
+                          : "—"}
                       </td>
                       {pool.current && pool.proposed ? (
                         comparisonDeltaCell(pool.proposed.expected - pool.current.expected, poolMuted)
@@ -1223,7 +1227,7 @@ export function DivisionAgesForecastView({
                           groupStart={Boolean(comparisonBars)}
                         />
                         <td className={comparisonBars ? "py-2 pr-3 text-right align-middle text-sm leading-5 tabular-nums whitespace-nowrap" : "py-2 pr-3 align-top tabular-nums"} data-testid="delta-players">
-                          {formatDelta(row.delta.pool)}
+                          {comparisonBars ? formatComparisonDelta(row.delta.pool) : formatDelta(row.delta.pool)}
                         </td>
                         {comparisonDeltaCell(row.delta.expected, muted)}
                         {comparisonTeamDeltaCell(row.delta.minTeams, row.delta.maxTeams, muted)}

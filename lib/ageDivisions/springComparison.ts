@@ -80,13 +80,14 @@ export function comparisonTeamDeltaUnchanged(minDelta: number, maxDelta: number)
 type ComparisonNote = { note: string; evenSplit?: boolean } | null | undefined;
 
 /**
- * One copy of each Spring row note. The proposed sentence wins when the
- * two sides differ, including when only the current side has a note.
+ * One copy of each Spring row note. The proposed sentence wins when both
+ * sides have text and they differ. A blank proposed note keeps the current
+ * sentence, which is the only explanation of that column.
  */
 function chosenRowNote(current: ComparisonNote, proposed: ComparisonNote): ComparisonNote {
   const proposedNote = proposed?.note?.trim() ?? "";
   const currentNote = current?.note?.trim() ?? "";
-  if (!proposedNote) return null;
+  if (!proposedNote) return currentNote ? current : null;
   if (currentNote && currentNote !== proposedNote) return proposed;
   return proposed;
 }

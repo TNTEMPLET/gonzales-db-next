@@ -613,7 +613,14 @@ describe("spring comparison presentation", () => {
         ["No prior Spring mix; using even split", "mix-even-split"],
       ],
     );
-    assert.deepEqual(comparisonRowNotes({ note: "current only", evenSplit: false }, null, null, null), []);
+    assert.deepEqual(comparisonRowNotes({ note: "current only", evenSplit: false }, null, null, null), [
+      { note: "current only", evenSplit: false, testId: "league-mix-share" },
+    ]);
+    assert.deepEqual(
+      comparisonRowNotes(null, { note: "   ", evenSplit: false }, { note: "Current windows overlap", evenSplit: false }, null),
+      [{ note: "Current windows overlap", evenSplit: false, testId: "mix-share" }],
+    );
+    assert.deepEqual(comparisonRowNotes({ note: "  ", evenSplit: false }, null, null, null), []);
   });
 
   it("starts collapsed on Spring and leaves Fall on the existing table", () => {
@@ -636,6 +643,8 @@ describe("spring comparison presentation", () => {
     assert.match(combined, /data-testid="comparison-bar-proposed"/);
     assert.match(combined, /data-delta-sign="negative"/);
     assert.match(combined, /\u221220/);
+    assert.match(combined, /data-testid="delta-players"[^>]*>\u221220</);
+    assert.doesNotMatch(combined, /data-testid="delta-players"[^>]*>-20</);
     assert.match(combined, /data-delta-sign="positive"/);
     assert.match(combined, /data-muted="true"/);
     assert.match(combined, /max-w-\[18rem\] truncate text-xs leading-4 text-zinc-500/);
@@ -669,6 +678,8 @@ describe("spring comparison presentation", () => {
     assert.doesNotMatch(fall, /of kids this age last Spring/);
     assert.match(fall, /DYB share 0%, Spring 2026/);
     assert.match(fall, /text-sky-200/);
+    assert.match(fall, /data-testid="delta-players"[^>]*>-20</);
+    assert.doesNotMatch(fall, /data-testid="delta-players"[^>]*>\u221220</);
     assert.doesNotMatch(fall, /data-testid="comparison-team-delta"/);
     assert.match(fall, /<h3 class="text-sm font-semibold text-white">Edit by age<\/h3>/);
   });
