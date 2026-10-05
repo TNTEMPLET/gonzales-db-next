@@ -6,7 +6,7 @@
 
 import { calculatedRange, coverageWarnings, effectiveRange, leagueAge } from "./compute";
 import { stripBirthdatesMatchingCutoff } from "./draft";
-import { applyLinkedEdge, combineDivisions, type ProposedConfig } from "./forecastView";
+import { applyLinkedEdge, combineDivisions, type LinkEditOptions, type ProposedConfig } from "./forecastView";
 import type { DivisionAgeConfig } from "./types";
 
 export const AXIS_PAD_DAYS = 180;
@@ -273,8 +273,8 @@ export function clampEdgeDate(
 }
 
 /**
- * Move one edge to `date`. Linked edges also move divisions that already
- * share this window. Neighboring divisions stay put.
+ * Move one edge to `date`. Linked edges also move a same-window division and
+ * the touching neighbor, so that shared line does not open a gap.
  */
 export function dragBoundaryUpdate(
   divisions: readonly DivisionAgeConfig[],
@@ -283,6 +283,7 @@ export function dragBoundaryUpdate(
   date: string,
   cutoffIso: string,
   linkEdges: boolean,
+  options?: LinkEditOptions,
 ): DivisionAgeConfig[] {
   const current = divisions[divisionIndex];
   if (!current) return cloneDivisions(divisions);
@@ -290,7 +291,7 @@ export function dragBoundaryUpdate(
   const currentDate = field === "oldestBirthdate" ? range.oldest : range.youngest;
   const clamped = clampEdgeDate(divisions, divisionIndex, field, date, cutoffIso, linkEdges);
   if (!clamped || clamped === currentDate) return cloneDivisions(divisions);
-  return applyLinkedEdge(divisions, divisionIndex, field, clamped, cutoffIso, linkEdges);
+  return applyLinkedEdge(divisions, divisionIndex, field, clamped, cutoffIso, linkEdges, options);
 }
 
 export function nudgeEdge(
@@ -301,6 +302,7 @@ export function nudgeEdge(
   unit: NudgeUnit,
   cutoffIso: string,
   linkEdges: boolean,
+  options?: LinkEditOptions,
 ): DivisionAgeConfig[] {
   const current = divisions[divisionIndex];
   if (!current) return cloneDivisions(divisions);
@@ -308,13 +310,12 @@ export function nudgeEdge(
   const from = field === "oldestBirthdate" ? range.oldest : range.youngest;
   const shifted = from ? shiftIsoDate(from, amount, unit) : "";
   if (!shifted) return cloneDivisions(divisions);
-  return dragBoundaryUpdate(divisions, divisionIndex, field, shifted, cutoffIso, linkEdges);
+  return dragBoundaryUpdate(divisions, divisionIndex, field, shifted, cutoffIso, linkEdges, options);
 }
 
 /**
  * Set ages on the cutoff date and derive the birthdate window.
- * Linked edges also move a division that already shares this window.
- * Neighboring divisions stay put, so the new window may overlap them.
+ * Linked edges also move a same-window division and a touching neighbor.
  */
 export function applyAgeSpan(
   divisions: readonly DivisionAgeConfig[],
@@ -323,6 +324,7 @@ export function applyAgeSpan(
   maxAge: number,
   cutoffIso: string,
   linkEdges: boolean,
+  options?: LinkEditOptions,
 ): DivisionAgeConfig[] {
   const current = divisions[divisionIndex];
   if (
@@ -338,8 +340,8 @@ export function applyAgeSpan(
   const desired = calculatedRange({ minAge, maxAge }, cutoffIso);
   if (!desired.oldest || !desired.youngest || desired.oldest > desired.youngest) return cloneDivisions(divisions);
   const originalRange = effectiveRange(current, cutoffIso);
-  let next = dragBoundaryUpdate(divisions, divisionIndex, "oldestBirthdate", desired.oldest, cutoffIso, linkEdges);
-  next = dragBoundaryUpdate(next, divisionIndex, "youngestBirthdate", desired.youngest, cutoffIso, linkEdges);
+  let next = dragBoundaryUpdate(divisions, divisionIndex, "oldestBirthdate", desired.oldest, cutoffIso, linkEdges, options);
+  next = dragBoundaryUpdate(next, divisionIndex, "youngestBirthdate", desired.youngest, cutoffIso, linkEdges, options);
   return next.map((division, index) => {
     const source = divisions[index];
     if (!source) return division;
@@ -566,6 +568,12 @@ function buildEdges(
     const touchesPrevious = previous != null && addDays(previous[0]!.youngest, 1) === primary.oldest;
     const touchesNext = next != null && addDays(primary.youngest, 1) === next[0]!.oldest;
     if (!touchesPrevious) {
+      const older = clusters.filter((other) => {
+        const head = other[0]!;
+        if (head.code === primary.code) return false;
+        if (addDays(head.youngest, 1) !== primary.oldest) return false;
+        return head.youngest < primary.oldest;
+      });
       edges.push({
         id: `start:${cluster.map((member) => member.code).join("+")}`,
         code: primary.code,
@@ -575,9 +583,9 @@ function buildEdges(
         date: primary.oldest,
         kind: "start",
         canCombine: false,
-        olderCodes: [],
+        olderCodes: older.flatMap((group) => group.map((member) => member.code)),
         youngerCodes: cluster.map((member) => member.code),
-        olderLabels: [],
+        olderLabels: older.flatMap((group) => group.map((member) => member.label)),
         youngerLabels: cluster.map((member) => member.label),
       });
     }

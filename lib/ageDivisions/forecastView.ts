@@ -265,10 +265,115 @@ function boundedEdgeValue(
   return value;
 }
 
+export type LinkEditOptions = {
+  /** This gesture does not pull a touching neighbor. Same-window divisions still move. */
+  unlinkTouching?: boolean;
+  /** Boundary keys from {@link touchingBoundaryKey} that stay independent. */
+  unlinked?: ReadonlySet<string>;
+};
+
 /**
- * Apply one edge edit to that division only. With linking on, divisions that
- * already share the exact window move together. A neighboring division is left
- * where it is, so the windows may overlap.
+ * Stable id for the shared line between an older division and the next one.
+ * Older code, then younger code.
+ */
+export function touchingBoundaryKey(olderCode: string, youngerCode: string): string {
+  return `${olderCode}>${youngerCode}`;
+}
+
+/**
+ * Click a lock to open that shared line, or click again to join it.
+ * Joined means every older/younger pair is absent from the set.
+ */
+export function toggleTouchingBoundary(
+  unlinked: ReadonlySet<string>,
+  olderCodes: readonly string[],
+  youngerCodes: readonly string[],
+): Set<string> {
+  const keys = olderCodes.flatMap((older) => youngerCodes.map((younger) => touchingBoundaryKey(older, younger)));
+  const joined = keys.length > 0 && keys.every((key) => !unlinked.has(key));
+  const next = new Set(unlinked);
+  for (const key of keys) {
+    if (joined) next.add(key);
+    else next.delete(key);
+  }
+  return next;
+}
+
+function windowsOverlap(
+  left: { oldest: string; youngest: string },
+  right: { oldest: string; youngest: string },
+): boolean {
+  if (!left.oldest || !left.youngest || !right.oldest || !right.youngest) return false;
+  if (left.oldest > left.youngest || right.oldest > right.youngest) return false;
+  return left.oldest <= right.youngest && right.oldest <= left.youngest;
+}
+
+type TouchPartner = {
+  index: number;
+  code: string;
+  range: { oldest: string; youngest: string };
+};
+
+/**
+ * Divisions that meet this edge with no gap and no shared day.
+ * An overlapping window (7/8 Majors across 7U and 8U, or an identical 6U pair)
+ * is not a partner. Identical windows move together in {@link applyLinkedEdge}.
+ */
+function touchingPartners(
+  divisions: readonly DivisionAgeConfig[],
+  index: number,
+  field: "oldestBirthdate" | "youngestBirthdate",
+  cutoffIso: string,
+): TouchPartner[] {
+  const self = divisions[index];
+  if (!self) return [];
+  const range = effectiveRange(self, cutoffIso);
+  if (!range.oldest || !range.youngest) return [];
+  const partners: TouchPartner[] = [];
+  divisions.forEach((division, divisionIndex) => {
+    if (divisionIndex === index) return;
+    const other = effectiveRange(division, cutoffIso);
+    if (!other.oldest || !other.youngest || windowsOverlap(range, other)) return;
+    const touches =
+      field === "youngestBirthdate"
+        ? shiftIsoDays(range.youngest, 1) === other.oldest
+        : shiftIsoDays(other.youngest, 1) === range.oldest;
+    if (!touches) return;
+    partners.push({ index: divisionIndex, code: division.code, range: other });
+  });
+  return partners;
+}
+
+function clampToPartners(
+  field: "oldestBirthdate" | "youngestBirthdate",
+  date: string,
+  partners: readonly TouchPartner[],
+): string {
+  let next = date;
+  if (!next) return next;
+  for (const partner of partners) {
+    if (field === "oldestBirthdate") {
+      const min = shiftIsoDays(partner.range.oldest, 1);
+      if (min && next < min) next = min;
+    } else {
+      const max = shiftIsoDays(partner.range.youngest, -1);
+      if (max && next > max) next = max;
+    }
+  }
+  return next;
+}
+
+/**
+ * Move one birthdate edge.
+ *
+ * With linking on, two rules apply:
+ * 1. Same window. Divisions with the exact same oldest and youngest move that
+ *    edge together (6U Major and 6U Minor).
+ * 2. Touching ladder. When A's youngest is the day before B's oldest, that
+ *    shared boundary stays joined: B starts on the new day and A ends the day
+ *    before. Overlapping windows are not joined. A key in `unlinked`, or
+ *    `unlinkTouching`, leaves that pair where it is so a gap can open.
+ * With linking off, only the edited division changes.
  */
 export function applyLinkedEdge(
   divisions: readonly DivisionAgeConfig[],
@@ -277,10 +382,20 @@ export function applyLinkedEdge(
   value: string,
   cutoffIso: string,
   linkEdges: boolean,
+  options?: LinkEditOptions,
 ): DivisionAgeConfig[] {
   const current = divisions[index];
   if (!current) return divisions.map((division) => ({ ...division }));
-  const bounded = boundedEdgeValue(current, field, value, cutoffIso);
+  const unlinked = options?.unlinked;
+  const partners =
+    linkEdges && !options?.unlinkTouching
+      ? touchingPartners(divisions, index, field, cutoffIso).filter((partner) => {
+          const older = field === "youngestBirthdate" ? current.code : partner.code;
+          const younger = field === "youngestBirthdate" ? partner.code : current.code;
+          return !unlinked?.has(touchingBoundaryKey(older, younger));
+        })
+      : [];
+  const bounded = clampToPartners(field, boundedEdgeValue(current, field, value, cutoffIso), partners);
   if (!linkEdges) {
     return divisions.map((division, divisionIndex) =>
       divisionIndex === index ? setDivisionBirthdate(division, field, bounded, cutoffIso) : { ...division },
@@ -313,9 +428,19 @@ export function applyLinkedEdge(
     return next;
   }
 
+  const sameWindowIndexes = new Set<number>();
   for (let pos = start; pos <= end; pos += 1) {
     const item = ordered[pos]!;
+    sameWindowIndexes.add(item.divisionIndex);
     next[item.divisionIndex] = setDivisionBirthdate(next[item.divisionIndex]!, field, nextEdge, cutoffIso);
+  }
+  const partnerEdge = field === "oldestBirthdate" ? shiftIsoDays(nextEdge, -1) : shiftIsoDays(nextEdge, 1);
+  const partnerField = field === "oldestBirthdate" ? "youngestBirthdate" : "oldestBirthdate";
+  if (partnerEdge) {
+    for (const partner of partners) {
+      if (sameWindowIndexes.has(partner.index)) continue;
+      next[partner.index] = setDivisionBirthdate(next[partner.index]!, partnerField, partnerEdge, cutoffIso);
+    }
   }
   return next;
 }

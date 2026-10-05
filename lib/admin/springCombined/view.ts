@@ -28,7 +28,8 @@ export type SpringLeagueOrg = (typeof SPRING_LEAGUE_ORGS)[number];
 
 export const SPRING_COMBINED_READONLY_ERROR = "Spring combined is a read-only view.";
 
-export const SPRING_COMBINED_SAVE_HINT = "Switch to Gonzales or Ascension to save";
+export const SPRING_COMBINED_SAVE_HINT =
+  "Combined changes are a what-if; saving comes with the combined registration setup";
 
 const LEAGUE_SUFFIX: Record<SpringLeagueOrg, "DYB" | "LLB"> = {
   gonzales: "DYB",
@@ -100,7 +101,12 @@ export function resolveSeasonSetupView(input: {
 
 export type DivisionAgesView = "denied" | "combined" | "default";
 
-/** Combined only for an explicit `?org=spring`. Bare and `all` stay on the default screen. */
+/**
+ * Master admins on the master site see one combined Spring table when the URL
+ * has no org, or when it asks for `?org=spring`. `all`, one league, and Fall
+ * Ball stay on the default screen. Non-masters never get the combined view.
+ * The season-setup hub stays single unless `?org=spring` is explicit.
+ */
 export function resolveDivisionAgesView(input: {
   isMaster: boolean;
   masterDeployment: boolean;
@@ -111,6 +117,8 @@ export function resolveDivisionAgesView(input: {
     if (!canOfferSpringCombined(input)) return "denied";
     return "combined";
   }
+  const bare = input.requestedOrg == null || input.requestedOrg === "";
+  if (bare && canOfferSpringCombined(input)) return "combined";
   return "default";
 }
 
@@ -329,6 +337,23 @@ export function combinedForecastConfig(
     cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
     divisions,
   };
+}
+
+/**
+ * Saved league windows are the current side. A proposed config from the
+ * editor is the other side. Omitting it compares the saved table with itself.
+ */
+export function springForecastComparison(
+  leagues: readonly SpringLeagueDivisions[],
+  seasonYear: number,
+  proposed: { cutoff: LeagueAgeRule; divisions: DivisionAgeConfig[] } | null,
+): {
+  current: { cutoff: LeagueAgeRule; divisions: DivisionAgeConfig[] };
+  proposed: { cutoff: LeagueAgeRule; divisions: DivisionAgeConfig[] };
+} {
+  const current = combinedForecastConfig(leagues, seasonYear);
+  if (!proposed) return { current, proposed: current };
+  return { current, proposed };
 }
 
 export type SpringCombinedCounts = {
