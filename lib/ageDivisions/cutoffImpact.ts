@@ -47,6 +47,13 @@ export type DivisionImpact = {
   maxTeamDelta: number;
   beforeWindow: ShiftedSlice;
   afterWindow: ShiftedSlice;
+  /**
+   * Birthdate intervals this card actually covers. Set for a shared pool so a
+   * side where the pool has not formed yet still shows its member windows.
+   * A division card leaves these unset and uses `beforeWindow` / `afterWindow`.
+   */
+  beforeCoverage?: ShiftedSlice[];
+  afterCoverage?: ShiftedSlice[];
   /** Birthdates that were in the division and are not in the proposed window. */
   leftDivision: ShiftedSlice[];
   /** Birthdates that are in the proposed window and were not before. */
@@ -200,9 +207,14 @@ export function formatShiftedSlice(slice: ShiftedSlice): string {
   return `${oldest}–${formatTimelineDate(slice.youngest)}`;
 }
 
+function coverageLabel(slices: readonly ShiftedSlice[] | undefined, fallback: ShiftedSlice): string {
+  const list = slices ?? (fallback.oldest && fallback.youngest && fallback.oldest <= fallback.youngest ? [fallback] : []);
+  return list.map(formatShiftedSlice).filter(Boolean).join(" and ");
+}
+
 export function formatWindowShift(division: DivisionImpact): string {
-  const before = formatShiftedSlice(division.beforeWindow);
-  const after = formatShiftedSlice(division.afterWindow);
+  const before = coverageLabel(division.beforeCoverage, division.beforeWindow);
+  const after = coverageLabel(division.afterCoverage, division.afterWindow);
   const parts: string[] = [];
   if (before || after) parts.push(`Was ${before || "outside every division"}. Now ${after || "outside every division"}.`);
   const left = division.leftDivision.map(formatShiftedSlice).filter(Boolean);
@@ -279,8 +291,12 @@ function divisionFromRow(
   );
 }
 
+function usableWindow(window: ShiftedSlice): boolean {
+  return Boolean(window.oldest && window.youngest && window.oldest <= window.youngest);
+}
+
 function unionWindow(windows: readonly ShiftedSlice[]): ShiftedSlice {
-  const usable = windows.filter((window) => window.oldest && window.youngest && window.oldest <= window.youngest);
+  const usable = windows.filter(usableWindow);
   const first = usable[0];
   if (!first) return emptyWindow();
   return {
@@ -289,9 +305,49 @@ function unionWindow(windows: readonly ShiftedSlice[]): ShiftedSlice {
   };
 }
 
-function poolWindow(config: ProposedConfig, codes: readonly string[], targetSeasonYear: number, active: boolean): ShiftedSlice {
-  if (!active) return emptyWindow();
-  return unionWindow(codes.map((code) => windowFor(config, code, targetSeasonYear)));
+/** Merge overlapping or touching birthdate intervals. A gap stays a gap. */
+function mergeWindows(windows: readonly ShiftedSlice[]): ShiftedSlice[] {
+  const sorted = windows.filter(usableWindow).sort((left, right) => left.oldest.localeCompare(right.oldest) || left.youngest.localeCompare(right.youngest));
+  const merged: ShiftedSlice[] = [];
+  for (const window of sorted) {
+    const last = merged[merged.length - 1];
+    const touches = last ? window.oldest <= addDays(last.youngest, 1) : false;
+    if (!last || !touches) {
+      merged.push({ oldest: window.oldest, youngest: window.youngest });
+      continue;
+    }
+    if (window.youngest > last.youngest) last.youngest = window.youngest;
+  }
+  return merged;
+}
+
+/** Dates covered by `source` and not by `other`. */
+function subtractWindows(source: readonly ShiftedSlice[], other: readonly ShiftedSlice[]): ShiftedSlice[] {
+  let rest = mergeWindows(source);
+  for (const cut of mergeWindows(other)) {
+    const next: ShiftedSlice[] = [];
+    for (const span of rest) {
+      if (span.youngest < cut.oldest || span.oldest > cut.youngest) {
+        next.push(span);
+        continue;
+      }
+      if (span.oldest < cut.oldest) {
+        const end = addDays(cut.oldest, -1);
+        if (end && span.oldest <= end) next.push({ oldest: span.oldest, youngest: end });
+      }
+      if (span.youngest > cut.youngest) {
+        const start = addDays(cut.youngest, 1);
+        if (start && start <= span.youngest) next.push({ oldest: start, youngest: span.youngest });
+      }
+    }
+    rest = next;
+  }
+  return rest;
+}
+
+/** Member windows on this side, including a side where those divisions do not share a pool yet. */
+function memberCoverage(config: ProposedConfig, codes: readonly string[], targetSeasonYear: number): ShiftedSlice[] {
+  return mergeWindows(codes.map((code) => windowFor(config, code, targetSeasonYear)));
 }
 
 /** One card for the pool. Member labels stay in alphabetical order, for example "6U Major + 6U Minor (shared pool)". */
@@ -308,8 +364,8 @@ function poolFromShared(
   proposed: ProposedConfig,
   targetSeasonYear: number,
 ): DivisionImpact {
-  const beforeWindow = poolWindow(baseline, pool.codes, targetSeasonYear, pool.current != null);
-  const afterWindow = poolWindow(proposed, pool.codes, targetSeasonYear, pool.proposed != null);
+  const beforeCoverage = memberCoverage(baseline, pool.codes, targetSeasonYear);
+  const afterCoverage = memberCoverage(proposed, pool.codes, targetSeasonYear);
   const sortOrders = pool.codes.map((code) => rows.find((row) => row.code === code)?.sortOrder ?? Number.POSITIVE_INFINITY);
   return withCounts(
     {
@@ -318,10 +374,12 @@ function poolFromShared(
       sortOrder: Math.min(...sortOrders),
       shared: true,
       codes: [...pool.codes],
-      beforeWindow,
-      afterWindow,
-      leftDivision: windowDifference(beforeWindow, afterWindow),
-      enteredDivision: windowDifference(afterWindow, beforeWindow),
+      beforeWindow: unionWindow(beforeCoverage),
+      afterWindow: unionWindow(afterCoverage),
+      beforeCoverage,
+      afterCoverage,
+      leftDivision: subtractWindows(beforeCoverage, afterCoverage),
+      enteredDivision: subtractWindows(afterCoverage, beforeCoverage),
     },
     pool.current ?? emptySide(),
     pool.proposed ?? emptySide(),
@@ -349,7 +407,15 @@ function singleDivisionCode(token: string): string | null {
   return token;
 }
 
+/** A flow whose from/to set is a shared pool, or a card for one. */
+function poolMembershipFlow(flow: ForecastFlow, from: DivisionImpact | undefined, to: DivisionImpact | undefined): boolean {
+  return Boolean(from?.shared || to?.shared || flow.from.includes("+") || flow.to.includes("+"));
+}
+
 function transferCount(flow: ForecastFlow, from: DivisionImpact | undefined, to: DivisionImpact | undefined): number {
+  // Card deltas recount players who stayed in a member division when a pool forms or splits.
+  // The forecast flow is only the birthdates whose division assignment changed.
+  if (poolMembershipFlow(flow, from, to)) return flow.total;
   if (from && to && -from.playerDelta === to.playerDelta && to.playerDelta > 0) return to.playerDelta;
   return flow.total;
 }

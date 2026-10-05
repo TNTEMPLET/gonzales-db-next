@@ -296,6 +296,108 @@ describe("cutoff impact diff", () => {
     assert.equal(impact.summary.includes("20 players"), false);
   });
 
+  it("counts only the 12 players whose assignment changes when a partial pool splits", () => {
+    const baseline = partialSixes({ cutoffMonth: 4, cutoffDay: 30 });
+    const proposed: ProposedConfig = {
+      cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+      divisions: [
+        division("6U MINOR", "6U Minor", 6, 6, 1),
+        division("6U MAJOR", "6U Major", 6, 6, 2, {
+          oldestBirthdate: "2017-05-01",
+          youngestBirthdate: "2018-04-30",
+        }),
+      ],
+    };
+    const buckets = [bucket("2018-06-15", 8), bucket("2018-10-15", 12)];
+    const compared = compareConfigs(buckets, baseline, proposed, 2025, forecastOptions);
+    const impact = buildCutoffImpact({ buckets, baseline, proposed, targetSeasonYear: 2025 });
+    const flow = compared.flows.find((item) => item.total === 12);
+    assert.ok(flow);
+    assert.equal(flow.total, 12);
+    assert.match(impact.summary, /moves 12 players from 6U Major and 6U Minor to 6U Minor/);
+    assert.equal(impact.summary.includes("moves 20 players"), false);
+    const pool = impact.divisions.find((division) => division.shared);
+    const minor = impact.divisions.find((division) => division.code === "6U MINOR");
+    assert.ok(pool && minor);
+    assert.equal(formatImpactPlayers(pool.beforePlayers, pool.afterPlayers), "20 → 0 (−20)");
+    assert.equal(formatImpactPlayers(minor.beforePlayers, minor.afterPlayers), "0 → 20 (+20)");
+    const poolWindow = formatWindowShift(pool);
+    const minorWindow = formatWindowShift(minor);
+    assert.match(poolWindow, /Was May 1, 2018–Apr 30, 2019/);
+    assert.match(poolWindow, /Now May 1, 2017–Apr 30, 2019/);
+    assert.doesNotMatch(poolWindow, /outside every division/);
+    assert.doesNotMatch(poolWindow, /Left this pool: May 1, 2018–Apr 30, 2019/);
+    assert.match(minorWindow, /Was May 1, 2018–Apr 30, 2019\. Now May 1, 2018–Apr 30, 2019/);
+    assert.doesNotMatch(minorWindow, /Left this division/);
+    assert.doesNotMatch(minorWindow, /outside every division/);
+  });
+
+  it("does not call a division outside every division when it joins a pool", () => {
+    const baseline: ProposedConfig = {
+      cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+      divisions: [
+        division("6U MINOR", "6U Minor", 6, 6, 1),
+        division("6U MAJOR", "6U Major", 6, 6, 2, {
+          oldestBirthdate: "2017-05-01",
+          youngestBirthdate: "2018-04-30",
+        }),
+      ],
+    };
+    const proposed: ProposedConfig = {
+      cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+      divisions: [
+        division("6U MINOR", "6U Minor", 6, 6, 1),
+        division("6U MAJOR", "6U Major", 6, 6, 2, {
+          oldestBirthdate: "2018-09-01",
+          youngestBirthdate: "2019-04-30",
+        }),
+      ],
+    };
+    const buckets = [bucket("2018-06-15", 8), bucket("2018-10-15", 12)];
+    const impact = buildCutoffImpact({ buckets, baseline, proposed, targetSeasonYear: 2025 });
+    assert.match(impact.summary, /moves 12 players from 6U Minor to 6U Major and 6U Minor/);
+    assert.equal(impact.summary.includes("moves 20 players"), false);
+    const pool = impact.divisions.find((division) => division.shared);
+    assert.ok(pool);
+    const window = formatWindowShift(pool);
+    assert.doesNotMatch(window, /outside every division/);
+    assert.match(window, /Was May 1, 2017–Apr 30, 2019/);
+    assert.match(window, /Now May 1, 2018–Apr 30, 2019/);
+    assert.match(window, /Left this pool: May 1, 2017–Apr 30, 2018/);
+    assert.doesNotMatch(window, /Entered this pool: May 1, 2018–Apr 30, 2019/);
+  });
+
+  it("keeps both separate windows when two divisions form a pool", () => {
+    const baseline: ProposedConfig = {
+      cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+      divisions: [
+        division("6U MINOR", "6U Minor", 6, 6, 1, {
+          oldestBirthdate: "2018-09-01",
+          youngestBirthdate: "2019-04-30",
+        }),
+        division("6U MAJOR", "6U Major", 6, 6, 2, {
+          oldestBirthdate: "2018-05-01",
+          youngestBirthdate: "2018-08-31",
+        }),
+      ],
+    };
+    const proposed = sixes({ cutoffMonth: 4, cutoffDay: 30 });
+    const buckets = [bucket("2018-10-15", 10), bucket("2018-06-15", 8)];
+    const impact = buildCutoffImpact({ buckets, baseline, proposed, targetSeasonYear: 2025 });
+    assert.match(impact.summary, /moves 10 players from 6U Minor to 6U Major and 6U Minor/);
+    assert.match(impact.summary, /moves 8 players from 6U Major to 6U Major and 6U Minor/);
+    assert.equal(impact.summary.includes("moves 18 players"), false);
+    const pool = impact.divisions.find((division) => division.shared);
+    assert.ok(pool);
+    assert.equal(pool.beforePlayers, 0);
+    assert.equal(pool.afterPlayers, 18);
+    const window = formatWindowShift(pool);
+    assert.doesNotMatch(window, /outside every division/);
+    assert.match(window, /Was May 1, 2018–Apr 30, 2019\. Now May 1, 2018–Apr 30, 2019/);
+    assert.doesNotMatch(window, /Left this pool/);
+    assert.doesNotMatch(window, /Entered this pool/);
+  });
+
   it("says nothing moves when the proposed table matches the start", () => {
     const config = minors({ cutoffMonth: 4, cutoffDay: 30 });
     const impact = buildCutoffImpact({
