@@ -3,7 +3,7 @@
  * window. Fall forecast does not call this. No names, no database.
  */
 
-import { effectiveCutoffDate, effectiveRange, eligibleDivisions } from "./compute";
+import { effectiveCutoffDate, effectiveRange, eligibleDivisions, shiftIsoDateByYears } from "./compute";
 import type { DivisionAgeConfig } from "./types";
 import type { ForecastConfig } from "./forecast";
 
@@ -314,18 +314,50 @@ function divisionsByCode(config: ForecastConfig): Map<string, DivisionAgeConfig>
   return map;
 }
 
+/**
+ * Copy of `config` with absolute birthdate overrides shifted into `historyYear`.
+ * Age-derived edges already move with the season cutoff; overrides are stored
+ * as calendar dates for the target season and must slide back by the same gap.
+ */
+function configForHistorySeason(
+  config: ForecastConfig,
+  targetSeasonYear: number,
+  historySeasonYear: number,
+): ForecastConfig {
+  const deltaYears = historySeasonYear - targetSeasonYear;
+  if (deltaYears === 0) return config;
+  return {
+    cutoff: config.cutoff,
+    divisions: config.divisions.map((division) => {
+      const next = { ...division };
+      if (division.oldestBirthdate) {
+        next.oldestBirthdate = shiftIsoDateByYears(division.oldestBirthdate, deltaYears);
+      }
+      if (division.youngestBirthdate) {
+        next.youngestBirthdate = shiftIsoDateByYears(division.youngestBirthdate, deltaYears);
+      }
+      return next;
+    }),
+  };
+}
+
 function inGroupWindow(
   birthDate: string,
   config: ForecastConfig,
-  targetSeasonYear: number,
+  seasonYear: number,
   codes: ReadonlySet<string>,
 ): boolean {
-  return eligibleCodes(birthDate.trim(), config, targetSeasonYear).some((code) => codes.has(code));
+  return eligibleCodes(birthDate.trim(), config, seasonYear).some((code) => codes.has(code));
 }
 
 /**
  * Historical Spring shares for each division in an overlap group.
  * Seasons are every prior Spring strictly before `targetSeasonYear`.
+ * For each prior season Y, players are tested against the overlap windows
+ * as they existed in year Y (age windows shifted back by target−Y, including
+ * any absolute birthdate overrides). That way an 8U Minor cohort from Spring
+ * Y counts toward 8 Minor in the mix for a later target year, instead of
+ * aging out of the target window.
  * Each season with at least one in-window registration has equal weight.
  * Shares are normalized to 100% inside the group.
  * A group with no in-window season even-splits every sibling and each row
@@ -355,6 +387,7 @@ export function divisionMixShares(input: {
     const seasonShares: { year: number; shares: Map<string, number> }[] = [];
 
     for (const season of seasons) {
+      const historyConfig = configForHistorySeason(input.config, input.targetSeasonYear, season.seasonYear);
       const counts = new Map<string, number>();
       let total = 0;
       for (const player of season.players) {
@@ -363,7 +396,8 @@ export function divisionMixShares(input: {
         const code = matchDivision(player, members);
         if (!code) continue;
         seen.add(code);
-        if (!inGroupWindow(player.birthDate, input.config, input.targetSeasonYear, codeSet)) continue;
+        // Window for season Y, not the target year — keeps same-age cohorts aligned.
+        if (!inGroupWindow(player.birthDate, historyConfig, season.seasonYear, codeSet)) continue;
         counts.set(code, (counts.get(code) ?? 0) + count);
         total += count;
       }

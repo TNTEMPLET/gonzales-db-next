@@ -916,8 +916,15 @@ describe("combine, split, and LL vs DYB counts", () => {
 
 describe("spring overlap mix weights", () => {
   const rosterFor = () => DEFAULT_ROSTER;
+  // Target-year (2027) birthdates for the forecast pool under DYB ages 10–11.
   const older = "2015-06-01";
   const younger = "2016-08-01";
+  // Same age band in Spring 2025 (windows shifted back two years).
+  const olderIn2025 = "2013-06-01";
+  const youngerIn2025 = "2014-08-01";
+  // Same age band in Spring 2026.
+  const olderIn2026 = "2014-06-01";
+  const youngerIn2026 = "2015-08-01";
 
   function pair(minAge = 10, maxAge = 11, overrides: { youngestBirthdate?: string } = {}) {
     return dyb([
@@ -938,7 +945,7 @@ describe("spring overlap mix weights", () => {
   const eightyThreeHundred: MixSeason[] = [
     {
       seasonYear: 2025,
-      players: [players(older, "Majors", 80), players(younger, "Minors", 220)],
+      players: [players(olderIn2025, "Majors", 80), players(youngerIn2025, "Minors", 220)],
     },
   ];
 
@@ -994,8 +1001,8 @@ describe("spring overlap mix weights", () => {
     config.divisions[1]!.label = "Minors";
     const seasons: MixSeason[] = [
       { seasonYear: 2024, players: [] },
-      { seasonYear: 2025, players: [players(older, "Majors", 8), players(younger, "Minors", 2)] },
-      { seasonYear: 2026, players: [players(older, "Majors", 10), players(younger, "Minors", 90)] },
+      { seasonYear: 2025, players: [players(olderIn2025, "Majors", 8), players(youngerIn2025, "Minors", 2)] },
+      { seasonYear: 2026, players: [players(olderIn2026, "Majors", 10), players(youngerIn2026, "Minors", 90)] },
       { seasonYear: 2027, players: [players(older, "Majors", 300)] },
     ];
     const compared = compareConfigs([bucket(older, 200)], config, config, SEASON, {
@@ -1108,11 +1115,11 @@ describe("spring overlap mix weights", () => {
       mix: history([
         {
           seasonYear: 2025,
-          players: [players(older, "Majors", 80), players(younger, "Minors", 220)],
+          players: [players(olderIn2025, "Majors", 80), players(youngerIn2025, "Minors", 220)],
         },
         {
           seasonYear: 2026,
-          players: [players(older, "Majors", 80), players(younger, "Minors", 220)],
+          players: [players(olderIn2026, "Majors", 80), players(youngerIn2026, "Minors", 220)],
         },
       ]),
     });
@@ -1195,10 +1202,10 @@ describe("spring overlap mix weights", () => {
         { code: "9-10U MAJOR", label: "9-10 Major LLB", minAge: 9, maxAge: 10, sortOrder: 4 },
       ],
     };
-    // Birthdates that sit in the 7–8 shared window under an Aug 31, 2027 cutoff.
-    const age7 = "2019-09-01";
-    const age8 = "2018-09-01";
-    const age910 = "2016-09-01";
+    // Birthdates in the Spring 2026 7–8 windows (Aug 31, 2026 cutoff), not 2027.
+    const age7 = "2018-09-01";
+    const age8 = "2017-09-01";
+    const age910 = "2015-09-01";
     const seasons: MixSeason[] = [
       {
         seasonYear: 2026,
@@ -1238,6 +1245,40 @@ describe("spring overlap mix weights", () => {
     );
     assert.equal(compared.rows.find((row) => row.code === "7U MINOR")?.currentMix?.evenSplit, false);
     assert.equal(compared.rows.find((row) => row.code === "9-10U MAJOR")?.currentMix, null);
+  });
+
+  it("counts a prior-year 8U Minor cohort toward 8 Minor for a later target year", () => {
+    // Regression for the target-year window bug: Spring 2026 8-year-olds (born
+    // 2017-09-01) age into the 2027 9 band, so filtering on the *target* window
+    // zeroed 8 Minor. History-year windows keep them in the 8 Minor share.
+    const config: ForecastConfig = {
+      cutoff: { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 },
+      divisions: [
+        { code: "8U MINOR", label: "Coach Pitch 8 Minor", minAge: 8, maxAge: 8, sortOrder: 1 },
+        { code: "8U MAJOR", label: "Coach Pitch 8 Major", minAge: 8, maxAge: 8, sortOrder: 2 },
+      ],
+    };
+    const spring2026Age8 = "2017-09-01"; // age 8 on Aug 31, 2026; age 9 on Aug 31, 2027
+    const seasons: MixSeason[] = [
+      {
+        seasonYear: 2026,
+        players: [
+          players(spring2026Age8, "Little League Coaches Pitch 8 year-old MINOR", 200),
+          players(spring2026Age8, "Coach Pitch 8 Major", 50),
+        ],
+      },
+    ];
+    const mix = divisionMixShares({ config, targetSeasonYear: 2027, seasons });
+    const minor = mix.get("8U MINOR");
+    const major = mix.get("8U MAJOR");
+    assert.ok(minor && major);
+    assert.equal(minor.evenSplit, false);
+    assert.equal(major.evenSplit, false);
+    assert.ok(Math.abs((minor.share ?? 0) - 200 / 250) < 1e-9);
+    assert.ok(Math.abs((major.share ?? 0) - 50 / 250) < 1e-9);
+    assert.equal(minor.sharePercent, 80);
+    assert.equal(major.sharePercent, 20);
+    assert.notEqual(minor.note, EVEN_SPLIT_MIX_NOTE);
   });
 
 
