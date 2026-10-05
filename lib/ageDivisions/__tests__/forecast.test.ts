@@ -10,8 +10,11 @@ import {
   DEFAULT_FEEDER_SHARE,
   DEFAULT_RETURN_RATE,
   DEFAULT_ROSTER,
+  DYB_RULE,
+  EVEN_SPLIT_LEAGUE_MIX_NOTE,
   EVEN_SPLIT_MIX_NOTE,
   FALLBACK_RETENTION,
+  LITTLE_LEAGUE_RULE,
   appliedFeeder,
   assignBuckets,
   carryoverRate,
@@ -29,7 +32,7 @@ import {
   type RosterSize,
 } from "../index";
 
-import { divisionMixShares, matchMixRegistration, overlappingDivisionGroups } from "../forecastMix";
+import { crossLeagueShares, divisionMixShares, matchMixRegistration, overlappingDivisionGroups } from "../forecastMix";
 
 const SEASON = 2027;
 
@@ -973,6 +976,7 @@ describe("spring overlap mix weights", () => {
     assert.equal(majors.current.expected, 80);
     assert.equal(majors.currentMix?.sharePercent, 27);
     assert.equal(majors.currentMix?.note, "27% of window, Spring 2025");
+    assert.equal(majors.currentLeagueMix, undefined);
     assert.ok(Math.abs((majors.currentMix?.share ?? 0) - 80 / 300) < 1e-9);
     assert.equal(minors.current.pool, 220);
     assert.equal(minors.current.expected, 220);
@@ -1099,6 +1103,7 @@ describe("spring overlap mix weights", () => {
     assert.equal(fall.rows.find((row) => row.code === "MINORS")?.current.pool, 300);
     assert.equal(fall.rows.find((row) => row.code === "12U")?.current.pool, 12);
     assert.equal(fall.rows.find((row) => row.code === "MAJORS")?.currentMix, undefined);
+    assert.equal(fall.rows.find((row) => row.code === "MAJORS")?.currentLeagueMix, undefined);
     assert.equal(fall.league.current.pool, 312);
     assert.equal(forecastTimelineLayout({ org: "fallball" }), "classic");
     assert.equal(forecastTimelineLayout({ org: "gonzales" }), "spring-lanes");
@@ -1384,10 +1389,17 @@ describe("spring overlap mix weights", () => {
     assert.equal(row("gonzales:6U MINOR")?.current.pool, 75);
     assert.equal(row("gonzales:6U MINOR")?.currentMix?.sharePercent, 75);
     assert.equal(row("gonzales:6U MINOR")?.currentMix?.evenSplit, false);
+    assert.equal(row("gonzales:6U MINOR")?.currentLeagueMix?.note, "DYB share 100%, Spring 2026");
+    assert.equal(row("gonzales:6U MINOR")?.currentLeagueMix?.evenSplit, false);
     assert.equal(row("gonzales:6U MAJOR")?.current.pool, 25);
     assert.equal(row("gonzales:6U MAJOR")?.currentMix?.sharePercent, 25);
-    assert.equal(row("gonzales:3-4U TB")?.current.pool, 50);
+    assert.equal(row("gonzales:6U MAJOR")?.currentLeagueMix?.sharePercent, 100);
+    // Oldest 3-4U edge also fits Ascension 5U, and that band has no prior Spring league mix.
+    assert.equal(row("gonzales:3-4U TB")?.current.pool, 25);
     assert.equal(row("gonzales:3-4U TB")?.currentMix, null);
+    assert.equal(row("gonzales:3-4U TB")?.currentLeagueMix?.note, EVEN_SPLIT_LEAGUE_MIX_NOTE);
+    assert.equal(row("ascension:5U TB")?.current.pool, 25);
+    assert.equal(row("ascension:5U TB")?.currentLeagueMix?.evenSplit, true);
     assert.equal(row("ascension:6U MOD")?.currentMix?.evenSplit, true);
     assert.equal(row("ascension:6U MOD")?.currentMix?.share, 0.5);
     assert.equal(row("ascension:6U CP")?.currentMix?.share, 0.5);
@@ -1397,5 +1409,359 @@ describe("spring overlap mix weights", () => {
     assert.equal(chain.codes.length, 18);
     assert.equal(chain.codes.includes("ascension:11-12U MAJOR"), true);
     assert.equal(chain.codes.includes("gonzales:6U MINOR"), true);
+    assert.equal(chain.current?.pool, 150);
+    assert.equal(compared.league.current.pool, 150);
+    const rowSum = compared.rows.reduce((sum, item) => sum + item.current.pool, 0);
+    assert.equal(rowSum, 150);
+  });
+});
+
+describe("combined Spring league share", () => {
+  const rosterFor = () => DEFAULT_ROSTER;
+
+  function named(code: string, label: string, minAge: number, maxAge: number, sortOrder: number) {
+    return { ...division(code, minAge, maxAge, sortOrder), label };
+  }
+
+  function springTable(divisions: {
+    gonzales: ForecastConfig["divisions"];
+    ascension: ForecastConfig["divisions"];
+  }) {
+    return combinedForecastConfig(
+      [
+        { organizationId: "gonzales", cutoff: DYB_RULE, divisions: divisions.gonzales },
+        { organizationId: "ascension", cutoff: LITTLE_LEAGUE_RULE, divisions: divisions.ascension },
+      ],
+      SEASON,
+    );
+  }
+
+  function players(
+    birthDate: string,
+    divisionName: string,
+    count: number,
+    league: "gonzales" | "ascension",
+  ) {
+    return { birthDate, divisionName, ageGroup: "", count, league };
+  }
+
+  it("drops the double count and gives young DYB rows the prior LLB share", () => {
+    const config = springTable({
+      gonzales: [named("7U", "7U Minor Coach Pitch", 7, 7, 1)],
+      ascension: [named("7U", "Coach Pitch 7 Minor", 7, 7, 1)],
+    });
+    // Spring 2026 age-7 overlap (year-Y windows). Not the 2027 forecast dates.
+    const historyAge7 = "2018-10-01";
+    // Inside the 2027 7U overlap, so a target-year window filter would count it. Age 6 in 2026.
+    const decoyInTargetWindow = "2019-10-01";
+    const forecastAge7 = "2020-01-15";
+    const seasons: MixSeason[] = [
+      {
+        seasonYear: 2026,
+        players: [
+          players(historyAge7, "Coach Pitch 7 Minor LLB", 100, "ascension"),
+          players(decoyInTargetWindow, "7U Minor Coach Pitch DYB", 500, "gonzales"),
+        ],
+      },
+    ];
+    const compared = compareConfigs([bucket(forecastAge7, 40)], config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: { seasons },
+    });
+    const dyb = compared.rows.find((row) => row.code === "gonzales:7U");
+    const llb = compared.rows.find((row) => row.code === "ascension:7U");
+    assert.ok(dyb && llb);
+    assert.equal(dyb.current.pool, 0);
+    assert.equal(dyb.current.expected, 0);
+    assert.equal(dyb.current.minTeams, 0);
+    assert.equal(llb.current.pool, 40);
+    assert.equal(llb.current.expected, 40);
+    assert.equal(dyb.current.pool + llb.current.pool, compared.league.current.pool);
+    assert.equal(compared.league.current.pool, 40);
+    assert.equal(compared.sharedPools[0]?.current?.pool, 40);
+    assert.equal(dyb.currentLeagueMix?.note, "DYB share 0%, Spring 2026");
+    assert.equal(dyb.currentLeagueMix?.evenSplit, false);
+    assert.equal(dyb.currentLeagueMix?.share, 0);
+    assert.equal(llb.currentLeagueMix?.note, "LLB share 100%, Spring 2026");
+    assert.equal(llb.currentLeagueMix?.sharePercent, 100);
+    assert.deepEqual(dyb.currentLeagueMix?.seasons, [2026]);
+  });
+
+  it("uses year-Y windows and averages prior Springs with equal weight", () => {
+    const config = springTable({
+      gonzales: [named("9U", "9U Kid Pitch", 9, 9, 1)],
+      ascension: [named("9U", "9-10 Major", 9, 9, 1)],
+    });
+    // Same age band shifted back: 2025 is two years before the 2027 target, 2026 is one.
+    const in2025 = "2016-01-15";
+    const in2026 = "2017-01-15";
+    const forecast = "2018-01-15";
+    const seasons: MixSeason[] = [
+      {
+        seasonYear: 2025,
+        players: [
+          players(in2025, "9U Kid Pitch DYB", 20, "gonzales"),
+          players(in2025, "9-10 Major LLB", 80, "ascension"),
+        ],
+      },
+      {
+        seasonYear: 2026,
+        players: [
+          players(in2026, "9U Kid Pitch DYB", 40, "gonzales"),
+          players(in2026, "9-10 Major LLB", 60, "ascension"),
+        ],
+      },
+    ];
+    const shares = crossLeagueShares({
+      config,
+      targetSeasonYear: SEASON,
+      seasons,
+      bands: [["gonzales:9U", "ascension:9U"]],
+    });
+    const band = shares.get("ascension:9U+gonzales:9U");
+    assert.ok(band);
+    // 2025 is 20%, 2026 is 40%. Equal-weight average is 30%, not the pooled 60/200.
+    assert.ok(Math.abs(band.gonzales.share - 0.3) < 1e-9);
+    assert.ok(Math.abs(band.ascension.share - 0.7) < 1e-9);
+    assert.equal(band.gonzales.evenSplit, false);
+    assert.deepEqual(band.gonzales.seasons, [2025, 2026]);
+    assert.equal(band.gonzales.note, "DYB share 30%, avg of Spring 2025\u20132026");
+    assert.equal(band.ascension.note, "LLB share 70%, avg of Spring 2025\u20132026");
+
+    const compared = compareConfigs([bucket(forecast, 100)], config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: { seasons },
+    });
+    const dyb = compared.rows.find((row) => row.code === "gonzales:9U");
+    const llb = compared.rows.find((row) => row.code === "ascension:9U");
+    assert.equal(dyb?.current.pool, 30);
+    assert.equal(llb?.current.pool, 70);
+    assert.equal(dyb?.current.expected, 30);
+    assert.equal((dyb?.current.pool ?? 0) + (llb?.current.pool ?? 0), 100);
+    assert.equal(compared.league.current.pool, 100);
+    assert.equal(dyb?.currentLeagueMix?.note, "DYB share 30%, avg of Spring 2025\u20132026");
+  });
+
+  it("even-splits a cross-league overlap that has no prior in-window mix", () => {
+    const config = springTable({
+      gonzales: [named("10U", "10U Kid Pitch", 10, 10, 1)],
+      ascension: [named("10U", "10U Major", 10, 10, 1)],
+    });
+    const compared = compareConfigs([bucket("2017-01-15", 40)], config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: {
+        seasons: [
+          {
+            seasonYear: 2026,
+            players: [players("2008-01-01", "10U Kid Pitch DYB", 90, "gonzales")],
+          },
+        ],
+      },
+    });
+    const dyb = compared.rows.find((row) => row.code === "gonzales:10U");
+    const llb = compared.rows.find((row) => row.code === "ascension:10U");
+    assert.equal(dyb?.current.pool, 20);
+    assert.equal(llb?.current.pool, 20);
+    assert.equal(dyb?.current.expected, 20);
+    assert.equal(llb?.currentLeagueMix?.note, EVEN_SPLIT_LEAGUE_MIX_NOTE);
+    assert.equal(dyb?.currentLeagueMix?.evenSplit, true);
+    assert.equal(dyb?.currentLeagueMix?.share, 0.5);
+    assert.deepEqual(dyb?.currentLeagueMix?.seasons, []);
+    assert.equal(compared.league.current.pool, 40);
+    assert.equal((dyb?.current.pool ?? 0) + (llb?.current.pool ?? 0), 40);
+  });
+
+  it("applies the within-league mix inside each league's portion", () => {
+    const config = springTable({
+      gonzales: [
+        named("7U MINOR", "7U Minor Coach Pitch", 7, 7, 1),
+        named("7U MAJOR", "7U Major Coach Pitch", 7, 7, 2),
+      ],
+      ascension: [named("7U", "Coach Pitch 7 Minor", 7, 7, 1)],
+    });
+    const historyAge7 = "2018-10-01";
+    const seasons: MixSeason[] = [
+      {
+        seasonYear: 2026,
+        players: [
+          players(historyAge7, "7U Minor Coach Pitch DYB", 30, "gonzales"),
+          players(historyAge7, "7U Major Coach Pitch DYB", 10, "gonzales"),
+          players(historyAge7, "Coach Pitch 7 Minor LLB", 40, "ascension"),
+        ],
+      },
+    ];
+    const compared = compareConfigs([bucket("2020-01-15", 100)], config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: { seasons },
+    });
+    const minor = compared.rows.find((row) => row.code === "gonzales:7U MINOR");
+    const major = compared.rows.find((row) => row.code === "gonzales:7U MAJOR");
+    const llb = compared.rows.find((row) => row.code === "ascension:7U");
+    assert.ok(minor && major && llb);
+    assert.equal(minor.currentMix?.sharePercent, 75);
+    assert.equal(major.currentMix?.sharePercent, 25);
+    assert.equal(minor.currentLeagueMix?.share, 0.5);
+    assert.equal(llb.currentLeagueMix?.note, "LLB share 50%, Spring 2026");
+    // League portion is 50. Within DYB that is 75/25 → 38 and 13 after rounding.
+    assert.equal(minor.current.pool, 38);
+    assert.equal(major.current.pool, 13);
+    assert.equal(llb.current.pool, 50);
+    assert.equal(compared.league.current.pool, 100);
+    const rowSum = minor.current.pool + major.current.pool + llb.current.pool;
+    assert.ok(Math.abs(rowSum - 100) <= 1);
+  });
+
+  it("leaves a single-league Spring table and a Fall table on the full window", () => {
+    const single = dyb([
+      division("MAJORS", 10, 11, 1),
+      division("MINORS", 10, 11, 2),
+    ]);
+    single.divisions[0]!.label = "Majors";
+    single.divisions[1]!.label = "Minors";
+    const older = "2015-06-01";
+    const younger = "2016-08-01";
+    const singleCompared = compareConfigs(
+      [bucket(older, 80), bucket(younger, 220)],
+      single,
+      single,
+      SEASON,
+      {
+        retentionRate: 1,
+        includeFeeder: false,
+        rosterFor,
+        mix: {
+          seasons: [
+            {
+              seasonYear: 2025,
+              players: [
+                players("2013-06-01", "Majors", 80, "gonzales"),
+                players("2014-08-01", "Minors", 220, "gonzales"),
+              ],
+            },
+          ],
+        },
+      },
+    );
+    assert.equal(singleCompared.rows.find((row) => row.code === "MAJORS")?.current.pool, 80);
+    assert.equal(singleCompared.rows.find((row) => row.code === "MINORS")?.current.pool, 220);
+    assert.equal(singleCompared.rows.find((row) => row.code === "MAJORS")?.currentLeagueMix, undefined);
+    assert.equal(singleCompared.league.current.pool, 300);
+
+    const fall = compareConfigs([bucket(older, 10)], single, single, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+    });
+    assert.equal(fall.rows.find((row) => row.code === "MAJORS")?.current.pool, 10);
+    assert.equal(fall.rows.find((row) => row.code === "MINORS")?.current.pool, 10);
+    assert.equal(fall.rows.find((row) => row.code === "MAJORS")?.currentMix, undefined);
+    assert.equal(fall.rows.find((row) => row.code === "MAJORS")?.currentLeagueMix, undefined);
+    assert.equal(fall.league.current.pool, 10);
+  });
+
+  it("splits a realistic combined Spring table without double counting", () => {
+    const gonzales = leagueDivisionDefaults("gonzales");
+    const ascension = leagueDivisionDefaults("ascension");
+    const config = combinedForecastConfig(
+      [
+        { organizationId: "gonzales", cutoff: gonzales.rule, divisions: gonzales.divisions },
+        { organizationId: "ascension", cutoff: ascension.rule, divisions: ascension.divisions },
+      ],
+      SEASON,
+    );
+    const label = (code: string) => {
+      const found = config.divisions.find((division) => division.code === code);
+      assert.ok(found, code);
+      return found.label;
+    };
+    // Target-year births in the shared part of each age, plus the same age in Spring 2026.
+    const ages = {
+      age4: { forecast: "2023-01-15", history: "2022-01-15", count: 40 },
+      age6: { forecast: "2021-01-15", history: "2020-01-15", count: 80 },
+      age7: { forecast: "2020-01-15", history: "2019-01-15", count: 100 },
+      age8: { forecast: "2019-01-15", history: "2018-01-15", count: 90 },
+      age9: { forecast: "2018-01-15", history: "2017-01-15", count: 70 },
+      age10: { forecast: "2017-01-15", history: "2016-01-15", count: 60 },
+      age12: { forecast: "2015-01-15", history: "2014-01-15", count: 50 },
+      age13: { forecast: "2014-01-15", history: "2013-01-15", count: 40 },
+    };
+    const seasons: MixSeason[] = [
+      {
+        seasonYear: 2026,
+        players: [
+          // Under 9 ran under the LL charter. No DYB registrations in those windows.
+          players(ages.age4.history, label("ascension:3-4U TB"), 30, "ascension"),
+          players(ages.age6.history, label("ascension:6U MOD"), 40, "ascension"),
+          players(ages.age6.history, label("ascension:6U CP"), 20, "ascension"),
+          players(ages.age7.history, label("ascension:7U MINOR"), 50, "ascension"),
+          players(ages.age7.history, label("ascension:7-8U MAJOR"), 10, "ascension"),
+          players(ages.age8.history, label("ascension:8U MINOR"), 40, "ascension"),
+          players(ages.age8.history, label("ascension:7-8U MAJOR"), 10, "ascension"),
+          // 9U+ follows the synthetic prior-Spring split.
+          players(ages.age9.history, label("gonzales:9U KP"), 20, "gonzales"),
+          players(ages.age9.history, label("ascension:9-10U MAJOR"), 30, "ascension"),
+          players(ages.age10.history, label("gonzales:10U KP"), 30, "gonzales"),
+          players(ages.age10.history, label("ascension:9-10U MAJOR"), 20, "ascension"),
+          players(ages.age12.history, label("gonzales:11-12U"), 25, "gonzales"),
+          players(ages.age12.history, label("ascension:11-12U MAJOR"), 25, "ascension"),
+          players(ages.age13.history, label("gonzales:13-14U"), 15, "gonzales"),
+        ],
+      },
+    ];
+    const buckets = [
+      bucket(ages.age4.forecast, ages.age4.count),
+      bucket(ages.age6.forecast, ages.age6.count),
+      bucket(ages.age7.forecast, ages.age7.count),
+      bucket(ages.age8.forecast, ages.age8.count),
+      bucket(ages.age9.forecast, ages.age9.count),
+      bucket(ages.age10.forecast, ages.age10.count),
+      bucket(ages.age12.forecast, ages.age12.count),
+      bucket(ages.age13.forecast, ages.age13.count),
+    ];
+    const distinct = buckets.reduce((sum, item) => sum + item.count, 0);
+    const compared = compareConfigs(buckets, config, config, SEASON, {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: { seasons },
+    });
+    const row = (code: string) => {
+      const found = compared.rows.find((item) => item.code === code);
+      assert.ok(found, code);
+      return found;
+    };
+    assert.equal(row("gonzales:3-4U TB").current.pool, 0);
+    assert.equal(row("gonzales:6U MINOR").current.pool, 0);
+    assert.equal(row("gonzales:6U MAJOR").current.pool, 0);
+    assert.equal(row("gonzales:7U MINOR").current.pool, 0);
+    assert.equal(row("gonzales:8U MINOR").current.pool, 0);
+    assert.equal(row("gonzales:7U MINOR").currentLeagueMix?.note, "DYB share 0%, Spring 2026");
+    assert.equal(row("ascension:7U MINOR").currentLeagueMix?.note, "LLB share 100%, Spring 2026");
+    assert.equal(row("ascension:3-4U TB").current.pool, 40);
+    assert.equal(row("gonzales:9U KP").current.pool, 28);
+    assert.equal(row("gonzales:9U KP").currentLeagueMix?.note, "DYB share 40%, Spring 2026");
+    assert.equal(row("gonzales:10U KP").current.pool, 36);
+    assert.equal(row("gonzales:10U KP").currentLeagueMix?.note, "DYB share 60%, Spring 2026");
+    assert.equal(row("ascension:9-10U MAJOR").current.pool, 66);
+    assert.equal(row("gonzales:11-12U").current.pool, 25);
+    assert.equal(row("ascension:11-12U MAJOR").current.pool, 25);
+    assert.equal(row("gonzales:11-12U").currentLeagueMix?.note, "DYB share 50%, Spring 2026");
+    // 13U does not fit an LLB window, so it stays whole and has no league note.
+    assert.equal(row("gonzales:13-14U").current.pool, 40);
+    assert.equal(row("gonzales:13-14U").currentLeagueMix, null);
+    assert.equal(compared.league.current.pool, distinct);
+    const rowSum = compared.rows.reduce((sum, item) => sum + item.current.pool, 0);
+    assert.ok(Math.abs(rowSum - distinct) <= 3, `row sum ${rowSum} vs pool ${distinct}`);
+    const youngDyb = ["gonzales:3-4U TB", "gonzales:5U TB", "gonzales:6U MINOR", "gonzales:6U MAJOR", "gonzales:7U MINOR", "gonzales:8U MINOR"];
+    const youngDybPool = youngDyb.reduce((sum, code) => sum + row(code).current.pool, 0);
+    assert.equal(youngDybPool, 0);
   });
 });

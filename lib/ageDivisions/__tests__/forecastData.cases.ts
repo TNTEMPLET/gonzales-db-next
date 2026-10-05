@@ -790,17 +790,17 @@ describe("spring mix from enrollment history", () => {
     reader.listEnrollmentSeasons = async () => [2025, 2026];
     const shared = line({
       fullName: "Shared Registrant",
-      birthDate: "2017-01-15",
+      birthDate: "2015-01-15",
       divisionName: "Majors",
       ageGroup: "Majors",
     });
     const gonzalesHistory = [
       shared,
-      ...cohort("Gonzales", 79, "Majors", "2017-01-15"),
+      ...cohort("Gonzales", 79, "Majors", "2015-01-15"),
     ];
     const ascensionHistory = [
       { ...shared, divisionName: "Minors", ageGroup: "Minors" },
-      ...cohort("Ascension", 220, "Minors", "2017-01-15"),
+      ...cohort("Ascension", 220, "Minors", "2015-01-15"),
     ];
     const gonzalesPool = cohort("Pool G", 150, "Open", "2017-01-15");
     const ascensionPool = cohort("Pool A", 150, "Open", "2017-01-15");
@@ -845,14 +845,19 @@ describe("spring mix from enrollment history", () => {
     const majors = result.body.rows.find((row) => row.code === "gonzales:MAJORS");
     const minors = result.body.rows.find((row) => row.code === "ascension:MINORS");
     assert.ok(majors && minors);
-    // Aug 31 and Apr 30 windows overlap, but each league has one division, so
-    // there is no within-league mix. The shared pool still counts the players once.
-    assert.equal(majors.current.expected, 300);
-    assert.equal(minors.current.expected, 300);
-    assert.equal(majors.current.pool, 300);
-    assert.equal(minors.current.pool, 300);
+    // Each league has one division, so there is no within-league mix. The 300
+    // forecast kids fit both windows. Spring 2025 history (year-Y ages) is
+    // 80 DYB registrations and 221 LLB registrations, including one child in both.
+    assert.equal(majors.current.pool, 80);
+    assert.equal(minors.current.pool, 220);
+    assert.equal(majors.current.expected, 80);
+    assert.equal(minors.current.expected, 220);
+    assert.equal(majors.current.pool + minors.current.pool, 300);
     assert.equal(majors.currentMix, null);
     assert.equal(minors.currentMix, null);
+    assert.equal(majors.currentLeagueMix?.note, "DYB share 27%, Spring 2025");
+    assert.equal(majors.currentLeagueMix?.evenSplit, false);
+    assert.equal(minors.currentLeagueMix?.note, "LLB share 73%, Spring 2025");
     assert.equal(result.body.sharedPools.length, 1);
     assert.equal(result.body.sharedPools[0]?.current?.pool, 300);
     assert.equal(result.body.league.current.pool, 300);

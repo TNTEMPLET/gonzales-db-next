@@ -10,6 +10,12 @@ import type { ForecastConfig } from "./forecast";
 /** Shown when an overlap group has no usable prior Spring mix. */
 export const EVEN_SPLIT_MIX_NOTE = "No prior Spring mix; using even split";
 
+/**
+ * Shown when a combined Spring age band fits both leagues and no prior
+ * Spring registration falls in that band's year-Y windows.
+ */
+export const EVEN_SPLIT_LEAGUE_MIX_NOTE = "No prior Spring league mix; using even split";
+
 /** One registration cohort. `count` defaults to 1. No player names. */
 export type MixHistoryPlayer = {
   birthDate: string;
@@ -18,12 +24,41 @@ export type MixHistoryPlayer = {
   /** Registered age group. Used when the division name does not match. */
   ageGroup: string;
   count?: number;
+  /**
+   * League the child registered in. Combined Spring history sets this.
+   * Omitted rows can still be read from a DYB/LLB tag in the division name.
+   */
+  league?: "gonzales" | "ascension";
 };
 
 /** Completed Spring registrations for one season, already collapsed to counts. */
 export type MixSeason = {
   seasonYear: number;
   players: readonly MixHistoryPlayer[];
+};
+
+/**
+ * Share of one cross-league age band assigned to DYB or LLB.
+ * Combined Spring only. Single-league forecasts never build these.
+ */
+export type LeagueMix = {
+  league: "gonzales" | "ascension";
+  /** Fraction in 0–1. The two leagues in a band sum to 1. */
+  share: number;
+  /** `Math.round(share × 100)` for display. */
+  sharePercent: number;
+  /** Prior seasons that had at least one in-band registration, ascending. */
+  seasons: number[];
+  /** True when the band used an even split instead of history. */
+  evenSplit: boolean;
+  /** UI copy. The even-split warning, or this league's share and season span. */
+  note: string;
+};
+
+/** DYB and LLB shares for one age band. The two shares sum to 1. */
+export type CrossLeagueShare = {
+  gonzales: LeagueMix;
+  ascension: LeagueMix;
 };
 
 /** Share of an overlap group's window assigned to one division. */
@@ -325,6 +360,22 @@ export function formatDivisionMixNote(share: number, seasons: readonly number[],
   return `${percent}% of window, avg of Spring ${span}`;
 }
 
+const LEAGUE_SHARE_LABEL = { gonzales: "DYB", ascension: "LLB" } as const;
+
+export function formatLeagueMixNote(
+  league: "gonzales" | "ascension",
+  share: number,
+  seasons: readonly number[],
+  evenSplit: boolean,
+): string {
+  if (evenSplit) return EVEN_SPLIT_LEAGUE_MIX_NOTE;
+  const percent = Math.round(share * 100);
+  const span = formatMixSeasonSpan(seasons);
+  const label = LEAGUE_SHARE_LABEL[league];
+  if (seasons.length <= 1) return `${label} share ${percent}%, Spring ${span}`;
+  return `${label} share ${percent}%, avg of Spring ${span}`;
+}
+
 function mixFor(code: string, share: number, seasons: readonly number[], evenSplit: boolean): DivisionMix {
   return {
     share,
@@ -476,4 +527,192 @@ export function divisionMixShares(input: {
   }
 
   return result;
+}
+
+export function leaguePrefix(code: string): "gonzales" | "ascension" | null {
+  if (code.startsWith("gonzales:")) return "gonzales";
+  if (code.startsWith("ascension:")) return "ascension";
+  return null;
+}
+
+/** True when the table has both a Gonzales row and an Ascension row. */
+export function configSpansBothLeagues(config: ForecastConfig): boolean {
+  let gonzales = false;
+  let ascension = false;
+  for (const division of config.divisions) {
+    const league = leaguePrefix(division.code);
+    if (league === "gonzales") gonzales = true;
+    else if (league === "ascension") ascension = true;
+  }
+  return gonzales && ascension;
+}
+
+export function spansBothLeagues(codes: readonly string[]): boolean {
+  let gonzales = false;
+  let ascension = false;
+  for (const code of codes) {
+    const league = leaguePrefix(code);
+    if (league === "gonzales") gonzales = true;
+    else if (league === "ascension") ascension = true;
+  }
+  return gonzales && ascension;
+}
+
+/** Stable key for one eligible-code set. Order does not matter. */
+export function crossLeagueBandKey(codes: readonly string[]): string {
+  return [...codes].sort((left, right) => left.localeCompare(right)).join("+");
+}
+
+/**
+ * League a history row registered in. An explicit `league` wins. Otherwise
+ * a single DYB/LLB tag on the division or age-group label is enough.
+ */
+export function registeredLeague(player: MixHistoryPlayer): "gonzales" | "ascension" | null {
+  if (player.league === "gonzales" || player.league === "ascension") return player.league;
+  const raw = `${player.divisionName} ${player.ageGroup}`;
+  let gonzales = false;
+  let ascension = false;
+  if (/\blittle league\b/i.test(raw) || /(^|[^A-Za-z0-9])LLB(?![A-Za-z0-9])/i.test(raw)) ascension = true;
+  if (/\bdiamond boys\b/i.test(raw) || /(^|[^A-Za-z0-9])(DYB|DBB)(?![A-Za-z0-9])/i.test(raw)) gonzales = true;
+  if (gonzales && !ascension) return "gonzales";
+  if (ascension && !gonzales) return "ascension";
+  return null;
+}
+
+function inCrossLeagueBand(eligible: readonly string[], band: ReadonlySet<string>): boolean {
+  let gonzales = false;
+  let ascension = false;
+  for (const code of eligible) {
+    if (!band.has(code)) continue;
+    const league = leaguePrefix(code);
+    if (league === "gonzales") gonzales = true;
+    else if (league === "ascension") ascension = true;
+  }
+  return gonzales && ascension;
+}
+
+function leagueMixFor(
+  league: "gonzales" | "ascension",
+  share: number,
+  seasons: readonly number[],
+  evenSplit: boolean,
+): LeagueMix {
+  return {
+    league,
+    share,
+    sharePercent: Math.round(share * 100),
+    seasons: [...seasons],
+    evenSplit,
+    note: formatLeagueMixNote(league, share, seasons, evenSplit),
+  };
+}
+
+function evenLeagueSplit(): CrossLeagueShare {
+  return {
+    gonzales: leagueMixFor("gonzales", 0.5, [], true),
+    ascension: leagueMixFor("ascension", 0.5, [], true),
+  };
+}
+
+/**
+ * Prior-Spring DYB vs LLB share for each cross-league age band.
+ * A band is the set of divisions one birthdate fits. History uses each
+ * prior season Y's windows (absolute dates shifted back by target−Y), the
+ * same way {@link divisionMixShares} does. A registration counts when that
+ * year's windows make the child eligible for at least one Gonzales code and
+ * one Ascension code in the band. Seasons with any in-band registration have
+ * equal weight. No such season → even split and {@link EVEN_SPLIT_LEAGUE_MIX_NOTE}.
+ * A league with zero in-band registrations keeps a real 0% share.
+ */
+export function crossLeagueShares(input: {
+  config: ForecastConfig;
+  targetSeasonYear: number;
+  seasons: readonly MixSeason[];
+  bands: readonly (readonly string[])[];
+}): Map<string, CrossLeagueShare> {
+  const result = new Map<string, CrossLeagueShare>();
+  const unique = new Map<string, string[]>();
+  for (const band of input.bands) {
+    if (!spansBothLeagues(band)) continue;
+    const codes = [...new Set(band)];
+    const key = crossLeagueBandKey(codes);
+    if (!unique.has(key)) unique.set(key, codes);
+  }
+  if (unique.size === 0) return result;
+
+  const seasons = priorSeasons(input.seasons, input.targetSeasonYear);
+  const eligibleCache = new Map<string, string[]>();
+  const eligibleIn = (birthDate: string, config: ForecastConfig, seasonYear: number): string[] => {
+    const key = `${seasonYear}\0${birthDate}`;
+    const hit = eligibleCache.get(key);
+    if (hit) return hit;
+    const codes = eligibleCodes(birthDate, config, seasonYear);
+    eligibleCache.set(key, codes);
+    return codes;
+  };
+
+  for (const [key, codes] of unique) {
+    const band = new Set(codes);
+    const seasonShares: { year: number; dyb: number }[] = [];
+    for (const season of seasons) {
+      const historyConfig = configForHistorySeason(input.config, input.targetSeasonYear, season.seasonYear);
+      let dyb = 0;
+      let llb = 0;
+      for (const player of season.players) {
+        const count = playerCount(player);
+        if (count === 0) continue;
+        const league = registeredLeague(player);
+        if (!league) continue;
+        const birthDate = player.birthDate.trim();
+        if (!birthDate) continue;
+        if (!inCrossLeagueBand(eligibleIn(birthDate, historyConfig, season.seasonYear), band)) continue;
+        if (league === "gonzales") dyb += count;
+        else llb += count;
+      }
+      const total = dyb + llb;
+      if (total <= 0) continue;
+      seasonShares.push({ year: season.seasonYear, dyb: dyb / total });
+    }
+    if (seasonShares.length === 0) {
+      result.set(key, evenLeagueSplit());
+      continue;
+    }
+    let dybSum = 0;
+    for (const season of seasonShares) dybSum += season.dyb;
+    const dybShare = dybSum / seasonShares.length;
+    const years = seasonShares.map((season) => season.year);
+    result.set(key, {
+      gonzales: leagueMixFor("gonzales", dybShare, years, false),
+      ascension: leagueMixFor("ascension", 1 - dybShare, years, false),
+    });
+  }
+  return result;
+}
+
+/**
+ * One note for a division whose players came from several age bands.
+ * Even split only when every band with players used the even split.
+ * Otherwise the note is the player-weighted average share.
+ */
+export function mergeLeagueMix(
+  league: "gonzales" | "ascension",
+  parts: readonly { mix: LeagueMix; players: number }[],
+): LeagueMix | null {
+  const usable = parts.filter((part) => part.players > 0 && part.mix.league === league);
+  if (usable.length === 0) return null;
+  const allEven = usable.every((part) => part.mix.evenSplit);
+  if (allEven) return leagueMixFor(league, 0.5, [], true);
+  let players = 0;
+  let weighted = 0;
+  const years = new Set<number>();
+  for (const part of usable) {
+    players += part.players;
+    weighted += part.mix.share * part.players;
+    if (!part.mix.evenSplit) {
+      for (const year of part.mix.seasons) years.add(year);
+    }
+  }
+  if (!(players > 0)) return null;
+  const seasons = [...years].sort((left, right) => left - right);
+  return leagueMixFor(league, weighted / players, seasons, false);
 }

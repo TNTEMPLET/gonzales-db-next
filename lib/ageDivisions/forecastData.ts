@@ -603,7 +603,10 @@ function mixPlayerFromLine(line: EnrollmentLine & { sportsConnectRowKey?: string
   };
 }
 
-function collapseMixLines(lines: EnrollmentLine[]): MixHistoryPlayer[] {
+function collapseMixLines(
+  lines: EnrollmentLine[],
+  league?: MixHistoryPlayer["league"],
+): MixHistoryPlayer[] {
   const seen = new Set<string>();
   const players: MixHistoryPlayer[] = [];
   for (const line of lines) {
@@ -612,7 +615,7 @@ function collapseMixLines(lines: EnrollmentLine[]): MixHistoryPlayer[] {
     const key = collapseKey(line.fullName ?? "", built.player.birthDate);
     if (seen.has(key)) continue;
     seen.add(key);
-    players.push(built.player);
+    players.push(league ? { ...built.player, league } : built.player);
   }
   return players;
 }
@@ -652,8 +655,12 @@ async function loadCombinedMixPlayers(
   seasonYear: number,
   deps: ForecastDeps,
 ): Promise<MixHistoryPlayer[]> {
-  const tagged: Array<SpringPoolPlayer & { divisionName: string; ageGroup: string }> = [];
+  // Keep each league's registration. A child in both leagues counts in each
+  // league's history so the DYB/LLB share can see both. The forecast pool
+  // still dedupes that child once. Names stay inside the collapse key.
+  const players: MixHistoryPlayer[] = [];
   for (const org of orgs) {
+    if (org !== "gonzales" && org !== "ascension") continue;
     let lines: Array<EnrollmentLine & { sportsConnectRowKey?: string | null }>;
     try {
       lines = await readMixLines(org, seasonYear, deps, true);
@@ -664,26 +671,7 @@ async function loadCombinedMixPlayers(
     const eligible = lines.filter(
       (row) => isCompleted(row.orderPaymentStatus) && !isUmpireDivision(row.divisionName, row.ageGroup),
     );
-    const seen = new Set<string>();
-    for (const line of eligible) {
-      const built = mixPlayerFromLine(line);
-      if (!built) continue;
-      const key = collapseKey(line.fullName ?? "", built.player.birthDate);
-      if (seen.has(key)) continue;
-      seen.add(key);
-      tagged.push(built.spring);
-    }
-  }
-  const players: MixHistoryPlayer[] = [];
-  for (const player of dedupeSpringPool(tagged).players) {
-    const row = player as SpringPoolPlayer & { divisionName?: string; ageGroup?: string };
-    if (!row.birthDate) continue;
-    players.push({
-      birthDate: row.birthDate,
-      divisionName: row.divisionName ?? "",
-      ageGroup: row.ageGroup ?? "",
-      count: 1,
-    });
+    players.push(...collapseMixLines(eligible, org));
   }
   return players;
 }
