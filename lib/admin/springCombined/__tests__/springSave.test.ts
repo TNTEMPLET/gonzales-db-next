@@ -10,6 +10,7 @@ import { combineDivisions } from "@/lib/ageDivisions/forecastView";
 import {
   divisionAgesBaselineToken,
   getSeasonDivisionAges,
+  springDivisionAgesLockKey,
   STALE_SAVE_ERROR,
   type DivisionAgeDb,
   type LeagueDefaultsRow,
@@ -22,6 +23,7 @@ import { validateSeasonRecord } from "@/lib/ageDivisions/schema";
 import type { DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDivisions/types";
 
 import {
+  buildCombinedSaveRecords,
   buildUndoRecords,
   combinedSavePreview,
   splitCombinedTable,
@@ -97,15 +99,21 @@ function baselinesFor(seasons: Map<string, unknown | null>, year = SEASON) {
 
 function memorySpring(failOn: "gonzales" | "ascension" | null = null) {
   const seasons = new Map<string, unknown | null>();
+  const events: string[] = [];
   const db: SpringCombinedDb = {
     async transaction(run) {
       const snapshot = new Map(seasons);
       const tx: SpringSeasonTx = {
+        async lockSpringDivisionAges() {
+          events.push("lock");
+        },
         async findSeasonDivisionAges(organizationId, seasonYear) {
+          events.push("read");
           const key = `${organizationId}:${seasonYear}`;
           return seasons.has(key) ? (seasons.get(key) ?? null) : null;
         },
         async saveSeasonDivisionAges(organizationId, seasonYear, divisionAgesJson) {
+          events.push("write");
           if (failOn && organizationId === failOn) throw new Error("write failed");
           seasons.set(`${organizationId}:${seasonYear}`, divisionAgesJson);
         },
@@ -119,7 +127,7 @@ function memorySpring(failOn: "gonzales" | "ascension" | null = null) {
       }
     },
   };
-  return { db, seasons };
+  return { db, seasons, events };
 }
 
 describe("combined spring save", () => {
@@ -133,14 +141,14 @@ describe("combined spring save", () => {
     assert.deepEqual(dyb.cutoff, DYB);
     assert.deepEqual(ll.cutoff, LL);
     assert.equal(dyb.divisions[0]?.code, "8U");
-    assert.equal(dyb.divisions[0]?.cutoffPreset, "dyb");
+    assert.equal(dyb.divisions[0]?.cutoffPreset, undefined);
     assert.equal(dyb.divisions[0]?.oldestBirthdate, undefined);
     assert.equal(dyb.divisions[0]?.youngestBirthdate, undefined);
     assert.equal(ll.divisions.some((division) => division.code === "8U"), false);
 
     const twelve = ll.divisions.find((division) => division.code === "12U");
     assert.equal(twelve?.label, "12U");
-    assert.equal(twelve?.cutoffPreset, "little-league");
+    assert.equal(twelve?.cutoffPreset, undefined);
     assert.equal(twelve?.oldestBirthdate, undefined);
 
     const tee = ll.divisions.find((division) => division.code === "TEE");
@@ -419,6 +427,16 @@ describe("combined spring save", () => {
     const writer = persistence.slice(persistence.indexOf("export async function saveSpringCombinedSeasons"));
     assert.match(writer, /for \(const org of SPRING_LEAGUE_ORGS\)/);
     assert.doesNotMatch(writer, /fallball/);
+    const saveFn = writer.slice(0, writer.indexOf("export async function undoSpringCombinedSeasons"));
+    const undoFn = writer.slice(writer.indexOf("export async function undoSpringCombinedSeasons"));
+    assert.ok(saveFn.indexOf("lockSpringDivisionAges") < saveFn.indexOf("findSeasonDivisionAges"));
+    assert.ok(undoFn.indexOf("lockSpringDivisionAges") < undoFn.indexOf("findSeasonDivisionAges"));
+    assert.match(store, /pg_advisory_xact_lock/);
+    assert.match(store, /springDivisionAgesLockKey/);
+    assert.match(store, /withSpringSeasonLock/);
+    assert.match(store, /function saveSeasonDivisionAges/);
+    assert.match(store, /function clearSeasonDivisionAges/);
+    assert.match(store, /function copyFromSeason/);
 
     const guard = readFileSync(new URL("../../../../app/api/admin/division-ages/guard.ts", import.meta.url), "utf8");
     assert.match(guard, /springCombinedRequestBlock/);
@@ -529,7 +547,7 @@ describe("combined spring save", () => {
     const ascension = memory.seasons.get("ascension:2027") as { divisions: DivisionAgeConfig[] };
     const stored = ascension.divisions.find((row) => row.code === "12U");
     assert.ok(stored);
-    assert.equal(stored.cutoffPreset, "little-league");
+    assert.equal(stored.cutoffPreset, undefined);
     assert.equal(stored.oldestBirthdate, undefined);
     assert.equal(stored.youngestBirthdate, undefined);
     const range = effectiveRange(stored, effectiveCutoffDate(LL, SEASON));
@@ -676,6 +694,132 @@ describe("combined spring save", () => {
     assert.equal(gonzales.confirmedByAdminId, undefined);
     assert.equal(ascension.confirmedAt, "2026-03-01T00:00:00.000Z");
     assert.equal(ascension.confirmedByAdminId, "confirmer-ll");
+  });
+
+  it("takes the season lock before reading on save and undo", async () => {
+    const memory = memorySpring();
+    const current = leagues();
+    memory.seasons.set("gonzales:2027", {
+      cutoff: DYB,
+      divisions: [division({ code: "8U", label: "8U", minAge: 8, maxAge: 8 })],
+    });
+    const proposed = proposedFrom(current);
+    const eight = proposed.divisions.find((row) => row.code === "gonzales:8U");
+    assert.ok(eight);
+    eight.youngestBirthdate = "2019-05-15";
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
+    assert.equal(saved.ok, true);
+    assert.deepEqual(memory.events.slice(0, 3), ["lock", "read", "read"]);
+    assert.ok(memory.events.indexOf("write") > memory.events.lastIndexOf("read"));
+    const key = springDivisionAgesLockKey(SEASON);
+    assert.equal(springDivisionAgesLockKey(SEASON), key);
+    assert.notEqual(springDivisionAgesLockKey(SEASON + 1), key);
+    assert.ok(key >= BigInt("-9223372036854775808") && key <= BigInt("9223372036854775807"));
+
+    memory.events.length = 0;
+    const undone = await undoSpringCombinedSeasons(memory.db, SEASON, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
+    assert.equal(undone.ok, true);
+    assert.deepEqual(memory.events.slice(0, 3), ["lock", "read", "read"]);
+    assert.ok(memory.events.indexOf("write") > 2);
+  });
+
+  it("round-trips a legacy code that contains a colon and keeps an unchanged table", async () => {
+    const blocked = splitCombinedTable(
+      {
+        cutoff: DYB,
+        divisions: [
+          { code: "gonzales:8U/ascension:12U", label: "Mixed", minAge: 8, maxAge: 12, sortOrder: 1 },
+          { code: "ascension:12U", label: "12U", minAge: 12, maxAge: 12, sortOrder: 2 },
+        ],
+      },
+      leagues(),
+      SEASON,
+    );
+    assert.equal(blocked.ok, false);
+    if (!blocked.ok) assert.match(blocked.error, /exactly one league/);
+
+    const memory = memorySpring();
+    const gonzalesDivisions = [division({ code: "8U:RED", label: "8U Red", minAge: 8, maxAge: 8, sortOrder: 1 })];
+    const ascensionDivisions = [division({ code: "12U", label: "12U", minAge: 12, maxAge: 12, sortOrder: 1 })];
+    const confirmedAt = "2026-04-01T00:00:00.000Z";
+    memory.seasons.set("gonzales:2027", {
+      cutoff: DYB,
+      divisions: gonzalesDivisions,
+      confirmedAt,
+      confirmedByAdminId: "confirmer-dyb",
+    });
+    memory.seasons.set("ascension:2027", {
+      cutoff: LL,
+      divisions: ascensionDivisions,
+      confirmedAt,
+      confirmedByAdminId: "confirmer-ll",
+    });
+    const current: SpringLeagueTable[] = [
+      { organizationId: "gonzales", cutoff: DYB, divisions: gonzalesDivisions },
+      { organizationId: "ascension", cutoff: LL, divisions: ascensionDivisions },
+    ];
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposedFrom(current), current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
+    assert.equal(saved.ok, true);
+    const gonzales = memory.seasons.get("gonzales:2027") as {
+      divisions: DivisionAgeConfig[];
+      confirmedAt?: string;
+      confirmedByAdminId?: string;
+    };
+    const ascension = memory.seasons.get("ascension:2027") as { divisions: DivisionAgeConfig[]; confirmedAt?: string };
+    assert.equal(gonzales.divisions[0]?.code, "8U:RED");
+    assert.equal(gonzales.divisions[0]?.cutoffPreset, undefined);
+    assert.deepEqual(gonzales.divisions, gonzalesDivisions);
+    assert.equal(gonzales.confirmedAt, confirmedAt);
+    assert.equal(gonzales.confirmedByAdminId, "confirmer-dyb");
+    assert.deepEqual(ascension.divisions, ascensionDivisions);
+    assert.equal(ascension.confirmedAt, confirmedAt);
+  });
+
+  it("keeps confirmation when the only difference is the cutoff badge", () => {
+    const storedGonzales = {
+      cutoff: DYB,
+      divisions: [division({ code: "8U", label: "8U", minAge: 8, maxAge: 8, sortOrder: 1 })],
+      confirmedAt: "2026-02-01T00:00:00.000Z",
+      confirmedByAdminId: "confirmer-dyb",
+    };
+    const storedAscension = {
+      cutoff: LL,
+      divisions: [division({ code: "12U", label: "12U", minAge: 12, maxAge: 12, sortOrder: 1 })],
+      confirmedAt: "2026-03-01T00:00:00.000Z",
+      confirmedByAdminId: "confirmer-ll",
+    };
+    const built = buildCombinedSaveRecords(
+      {
+        gonzales: {
+          cutoff: DYB,
+          divisions: [division({ code: "8U", label: "8U", minAge: 8, maxAge: 8, sortOrder: 1, cutoffPreset: "dyb" })],
+        },
+        ascension: {
+          cutoff: LL,
+          divisions: [division({ code: "12U", label: "12U", minAge: 12, maxAge: 12, sortOrder: 1, cutoffPreset: "little-league" })],
+        },
+      },
+      { gonzales: storedGonzales, ascension: storedAscension },
+      SEASON,
+      "admin-1",
+      new Date("2026-10-05T00:00:00.000Z"),
+    );
+    assert.equal(built.ok, true);
+    if (!built.ok) return;
+    assert.equal(built.records.gonzales.confirmedAt, storedGonzales.confirmedAt);
+    assert.equal(built.records.gonzales.confirmedByAdminId, "confirmer-dyb");
+    assert.equal(built.records.ascension.confirmedAt, storedAscension.confirmedAt);
+    assert.equal(built.records.gonzales.divisions[0]?.cutoffPreset, "dyb");
+  });
+
+  it("tells the editor to reload when the baseline is stale", () => {
+    assert.equal(STALE_SAVE_ERROR, "Someone else saved changes. Reload this page to see them.");
   });
 });
 

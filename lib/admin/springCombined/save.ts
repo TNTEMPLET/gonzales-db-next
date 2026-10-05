@@ -149,7 +149,7 @@ function divisionCode(raw: string): { org: SpringLeagueOrg; code: string } | { e
   if (!match) return { error: "Every division must belong to Gonzales DYB or Ascension LL." };
   const org = match[1];
   const code = match[2]?.trim() ?? "";
-  if (!isSpringLeagueOrg(org) || !code || code.length > 40 || code.includes(":") || /(gonzales|ascension|fallball|spring):/.test(code)) {
+  if (!isSpringLeagueOrg(org) || !code || code.length > 40 || /(^|\/)(gonzales|ascension|fallball|spring):/.test(code)) {
     return { error: "Each saved division must belong to exactly one league." };
   }
   return { org, code };
@@ -201,14 +201,29 @@ export function splitCombinedTable(
       return { ok: false, error: `${division.label || parsedCode.code} needs a real birthdate range.` };
     }
     const existing = league.divisions.find((row) => row.code === parsedCode.code);
+    const label = persistLabel(division.label, parsedCode.org, existing?.label);
+    const sortOrder = built[parsedCode.org].length + 1;
+    const existingRange = existing ? effectiveRange(existing, leagueIso) : null;
+    if (
+      existing &&
+      existingRange &&
+      existing.label === label &&
+      existing.minAge === division.minAge &&
+      existing.maxAge === division.maxAge &&
+      existing.sortOrder === sortOrder &&
+      sameWindow(existingRange, range)
+    ) {
+      built[parsedCode.org].push({ ...existing });
+      continue;
+    }
     const calculated = calculatedRange(division, leagueIso);
     const preset = presetForWindow(division, range, seasonYear, league.cutoff.yearOffset);
     const next: DivisionAgeConfig = {
       code: parsedCode.code,
-      label: persistLabel(division.label, parsedCode.org, existing?.label),
+      label,
       minAge: division.minAge,
       maxAge: division.maxAge,
-      sortOrder: built[parsedCode.org].length + 1,
+      sortOrder,
       cutoffPreset: preset,
     };
     if (!sameWindow(range, calculated)) {
@@ -318,24 +333,30 @@ function copyAudit(record: SeasonDivisionAgesRecord, target: SeasonDivisionAgesR
   if (record.confirmedByAdminId) target.confirmedByAdminId = record.confirmedByAdminId;
 }
 
-function divisionIdentity(division: DivisionAgeConfig) {
+function divisionEffect(division: DivisionAgeConfig, cutoffIso: string) {
+  const range = effectiveRange(division, cutoffIso);
   return {
     code: division.code,
     label: division.label,
     minAge: division.minAge,
     maxAge: division.maxAge,
-    oldestBirthdate: division.oldestBirthdate || undefined,
-    youngestBirthdate: division.youngestBirthdate || undefined,
+    oldest: range.oldest,
+    youngest: range.youngest,
     sortOrder: division.sortOrder,
-    cutoffPreset: division.cutoffPreset,
   };
 }
 
-function sameDivisions(left: readonly DivisionAgeConfig[], right: readonly DivisionAgeConfig[]): boolean {
+function sameDivisions(
+  left: readonly DivisionAgeConfig[],
+  right: readonly DivisionAgeConfig[],
+  cutoff: LeagueAgeRule,
+  seasonYear: number,
+): boolean {
   if (left.length !== right.length) return false;
+  const cutoffIso = effectiveCutoffDate(cutoff, seasonYear);
   return left.every((division, index) => {
     const other = right[index];
-    return other != null && JSON.stringify(divisionIdentity(division)) === JSON.stringify(divisionIdentity(other));
+    return other != null && JSON.stringify(divisionEffect(division, cutoffIso)) === JSON.stringify(divisionEffect(other, cutoffIso));
   });
 }
 
@@ -386,7 +407,9 @@ export function buildCombinedSaveRecords(
       updatedByAdminId: adminId,
       previous: prior.previous,
     };
-    if (prior.current && sameDivisions(prior.current.divisions, next.divisions)) copyAudit(prior.current, next);
+    if (prior.current && sameDivisions(prior.current.divisions, next.divisions, next.cutoff, seasonYear)) {
+      copyAudit(prior.current, next);
+    }
     const checked = validateSeasonRecord(next, seasonYear);
     if (!checked.ok) return { ok: false, error: checked.error };
     records[org] = checked.data;

@@ -36,7 +36,13 @@ export const DIVISION_AGES_STORAGE_NOTE =
 export const DIVISION_AGES_SAVE_NOT_READY =
   "Settings storage not ready. Apply the division ages migration, then save again.";
 
-export const STALE_SAVE_ERROR = "Someone else saved changes, reload";
+export const STALE_SAVE_ERROR = "Someone else saved changes. Reload this page to see them.";
+
+/** Stable signed 64-bit key so combined and single-league writes of one season share a lock. */
+export function springDivisionAgesLockKey(seasonYear: number): bigint {
+  const digest = createHash("sha256").update(`spring-division-ages:${Math.trunc(seasonYear)}`).digest();
+  return BigInt.asIntN(64, digest.readBigUInt64BE(0));
+}
 
 export function divisionAgesBaselineToken(raw: unknown | null): string {
   if (raw == null) return "absent";
@@ -476,6 +482,8 @@ export class SpringSaveRejected extends Error {
 }
 
 export type SpringSeasonTx = {
+  /** Transaction-scoped lock. Must run before either league row is read. Covers absent rows. */
+  lockSpringDivisionAges(seasonYear: number): Promise<void>;
   findSeasonDivisionAges(organizationId: string, seasonYear: number): Promise<unknown | null>;
   saveSeasonDivisionAges(
     organizationId: string,
@@ -564,6 +572,7 @@ export async function saveSpringCombinedSeasons(
   const now = options?.now ?? new Date();
   try {
     await db.transaction(async (tx) => {
+      await tx.lockSpringDivisionAges(seasonYear);
       const stored = {} as Record<SpringLeagueOrg, unknown | null>;
       for (const org of SPRING_LEAGUE_ORGS) {
         stored[org] = await tx.findSeasonDivisionAges(org, seasonYear);
@@ -602,6 +611,7 @@ export async function undoSpringCombinedSeasons(
   const now = options?.now ?? new Date();
   try {
     await db.transaction(async (tx) => {
+      await tx.lockSpringDivisionAges(seasonYear);
       const stored = {} as Record<SpringLeagueOrg, unknown | null>;
       for (const org of SPRING_LEAGUE_ORGS) {
         stored[org] = await tx.findSeasonDivisionAges(org, seasonYear);
