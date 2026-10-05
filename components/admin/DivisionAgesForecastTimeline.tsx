@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 
 import { seasonCutoffIso } from "@/lib/ageDivisions/draft";
 import {
@@ -134,6 +134,119 @@ function BoundaryLockIcon({ open }: { open: boolean }) {
 }
 
 const NO_UNLINKED = new Set<string>();
+
+/** Per-browser Spring preference. Fall does not read or write this. */
+export const SPRING_AGE_EDITOR_STORAGE_KEY = "gdb-division-ages-spring-age-editor-open";
+
+export function springAgeEditorSummary(count: number): string {
+  const total = Number.isFinite(count) ? Math.max(0, Math.trunc(count)) : 0;
+  return `${total} ${total === 1 ? "division" : "divisions"}`;
+}
+
+export function readSpringAgeEditorOpen(
+  storage: { getItem(key: string): string | null } | null | undefined,
+): boolean {
+  if (!storage) return false;
+  try {
+    return storage.getItem(SPRING_AGE_EDITOR_STORAGE_KEY) === "open";
+  } catch {
+    return false;
+  }
+}
+
+export function writeSpringAgeEditorOpen(
+  storage: { setItem(key: string, value: string): void } | null | undefined,
+  open: boolean,
+): void {
+  if (!storage) return;
+  try {
+    storage.setItem(SPRING_AGE_EDITOR_STORAGE_KEY, open ? "open" : "closed");
+  } catch {
+    /* ignore quota / private mode */
+  }
+}
+
+function browserAgeEditorStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
+const springAgeEditorListeners = new Set<() => void>();
+
+function subscribeSpringAgeEditor(onStoreChange: () => void) {
+  springAgeEditorListeners.add(onStoreChange);
+  return () => {
+    springAgeEditorListeners.delete(onStoreChange);
+  };
+}
+
+function emitSpringAgeEditor() {
+  for (const listener of springAgeEditorListeners) listener();
+}
+
+function springAgeEditorSnapshot(): boolean {
+  return readSpringAgeEditorOpen(browserAgeEditorStorage());
+}
+
+function springAgeEditorServerSnapshot(): boolean {
+  return false;
+}
+
+function AgeEditorChevron({ open }: { open: boolean }) {
+  return (
+    <svg
+      className={`h-4 w-4 shrink-0 text-zinc-400 transition-transform ${open ? "rotate-180" : ""}`}
+      viewBox="0 0 24 24"
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M7 10l5 5 5-5z" />
+    </svg>
+  );
+}
+
+function AgeEditorGrid({
+  legend,
+  divisions,
+  onAge,
+}: {
+  legend: readonly TimelineMember[];
+  divisions: readonly DivisionAgeConfig[];
+  onAge: (code: string, field: "minAge" | "maxAge", raw: string) => void;
+}) {
+  return (
+    <div className="mt-2 flex flex-wrap gap-2" data-testid="age-editor">
+      {legend.map((member) => {
+        const division = divisions.find((item) => item.code === member.code);
+        return (
+          <div key={member.code} className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-950 px-2 py-1">
+            <span className="max-w-[7rem] truncate text-xs font-semibold text-zinc-200" title={member.label}>
+              {member.label}
+            </span>
+            <input
+              className="h-9 w-12 rounded-lg border border-zinc-700 bg-zinc-900 text-center text-sm text-white"
+              inputMode="numeric"
+              aria-label={`Minimum age for ${member.label}`}
+              value={division?.minAge ?? member.minAge}
+              onChange={(event) => onAge(member.code, "minAge", event.target.value)}
+            />
+            <span className="text-xs text-zinc-500">to</span>
+            <input
+              className="h-9 w-12 rounded-lg border border-zinc-700 bg-zinc-900 text-center text-sm text-white"
+              inputMode="numeric"
+              aria-label={`Maximum age for ${member.label}`}
+              value={division?.maxAge ?? member.maxAge}
+              onChange={(event) => onAge(member.code, "maxAge", event.target.value)}
+            />
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 function samePools(origin: readonly { code: string; pool: number }[], counts: readonly TimelineCount[]): boolean {
   if (origin.length !== counts.length) return false;
@@ -441,6 +554,11 @@ export function DivisionAgesForecastTimeline({
   const [frozenAxis, setFrozenAxis] = useState<{ oldest: string; youngest: string } | null>(null);
   const [draggingEdgeId, setDraggingEdgeId] = useState<string | null>(null);
   const [selectedDivision, setSelectedDivision] = useState<string | null>(null);
+  const ageEditorOpen = useSyncExternalStore(
+    subscribeSpringAgeEditor,
+    springAgeEditorSnapshot,
+    springAgeEditorServerSnapshot,
+  );
   const trackRef = useRef<HTMLDivElement>(null);
   const dayRef = useRef<HTMLInputElement>(null);
   const dragRef = useRef<DragState | null>(null);
@@ -511,6 +629,11 @@ export function DivisionAgesForecastTimeline({
       applyAgeSpan(displayDivisions, index, minAge, maxAge, cutoffIso, linkEdges, { unlinked: unlinkedBoundaries }),
       true,
     );
+  }
+
+  function toggleAgeEditor() {
+    writeSpringAgeEditorOpen(browserAgeEditorStorage(), !ageEditorOpen);
+    emitSpringAgeEditor();
   }
 
   function nudge(amount: number, unit: NudgeUnit) {
@@ -1122,36 +1245,49 @@ export function DivisionAgesForecastTimeline({
         ) : null}
       </div>
 
+      {springLanes ? (
+        <div className="rounded-xl border border-zinc-800 bg-zinc-950/40" data-testid="age-editor-section">
+          <button
+            type="button"
+            className="flex min-h-11 w-full items-center gap-2 rounded-xl px-3 py-2 text-left hover:bg-zinc-900/70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-zinc-400"
+            aria-expanded={ageEditorOpen}
+            aria-controls="division-ages-age-editor"
+            data-testid="age-editor-toggle"
+            onClick={toggleAgeEditor}
+          >
+            <span className="text-sm font-semibold text-white">Edit by age</span>
+            {ageEditorOpen ? (
+              <span className="min-w-0 flex-1" />
+            ) : (
+              <span
+                className="min-w-0 flex-1 truncate text-sm font-normal text-zinc-400"
+                data-testid="age-editor-summary"
+              >
+                {springAgeEditorSummary(legend.length)}
+              </span>
+            )}
+            <AgeEditorChevron open={ageEditorOpen} />
+          </button>
+          <div
+            id="division-ages-age-editor"
+            hidden={!ageEditorOpen}
+            className={ageEditorOpen ? "border-t border-zinc-800 px-3 pb-3 pt-3" : undefined}
+          >
+            <p className="text-sm text-zinc-400">
+              Ages on {formatTimelineDate(cutoffIso)}. The birthdate window follows these ages.
+            </p>
+            <AgeEditorGrid legend={legend} divisions={displayDivisions} onAge={onAge} />
+          </div>
+        </div>
+      ) : (
       <div>
         <h3 className="text-sm font-semibold text-white">Edit by age</h3>
         <p className="mt-1 text-sm text-zinc-400">
           Ages on {formatTimelineDate(cutoffIso)}. The birthdate window follows these ages.
         </p>
-        <div className="mt-2 flex flex-wrap gap-2" data-testid="age-editor">
-          {legend.map((member) => (
-            <div key={member.code} className="flex items-center gap-1 rounded-xl border border-zinc-800 bg-zinc-950 px-2 py-1">
-              <span className="max-w-[7rem] truncate text-xs font-semibold text-zinc-200" title={member.label}>
-                {member.label}
-              </span>
-              <input
-                className="h-9 w-12 rounded-lg border border-zinc-700 bg-zinc-900 text-center text-sm text-white"
-                inputMode="numeric"
-                aria-label={`Minimum age for ${member.label}`}
-                value={displayDivisions.find((division) => division.code === member.code)?.minAge ?? member.minAge}
-                onChange={(event) => onAge(member.code, "minAge", event.target.value)}
-              />
-              <span className="text-xs text-zinc-500">to</span>
-              <input
-                className="h-9 w-12 rounded-lg border border-zinc-700 bg-zinc-900 text-center text-sm text-white"
-                inputMode="numeric"
-                aria-label={`Maximum age for ${member.label}`}
-                value={displayDivisions.find((division) => division.code === member.code)?.maxAge ?? member.maxAge}
-                onChange={(event) => onAge(member.code, "maxAge", event.target.value)}
-              />
-            </div>
-          ))}
-        </div>
+        <AgeEditorGrid legend={legend} divisions={displayDivisions} onAge={onAge} />
       </div>
+      )}
 
       {actionError ? (
         <p className="text-sm text-amber-200" role="alert" data-testid="timeline-action-error">
