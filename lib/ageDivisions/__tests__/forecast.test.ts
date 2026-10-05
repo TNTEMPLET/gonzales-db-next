@@ -1403,7 +1403,12 @@ describe("spring overlap mix weights", () => {
     assert.equal(row("ascension:6U MOD")?.currentMix?.evenSplit, true);
     assert.equal(row("ascension:6U MOD")?.currentMix?.share, 0.5);
     assert.equal(row("ascension:6U CP")?.currentMix?.share, 0.5);
-    assert.ok(Math.abs((row("ascension:7U MINOR")?.currentMix?.share ?? 0) - 1 / 3) < 1e-12);
+    // Those 6U kids also fit the 7U/8U group, and that league portion is 0.
+    // The even-split within-league note stays off; the league note is enough.
+    assert.equal(row("ascension:7U MINOR")?.currentMix, null);
+    assert.equal(row("ascension:8U MINOR")?.currentMix, null);
+    assert.equal(row("ascension:7-8U MAJOR")?.currentMix, null);
+    assert.equal(row("ascension:7U MINOR")?.currentLeagueMix?.note, "LLB share 0%, Spring 2026");
     const chain = compared.sharedPools.find((pool) => pool.codes.includes("gonzales:3-4U TB"));
     assert.ok(chain);
     assert.equal(chain.codes.length, 18);
@@ -1502,15 +1507,15 @@ describe("combined Spring league share", () => {
       {
         seasonYear: 2025,
         players: [
-          players(in2025, "9U Kid Pitch DYB", 20, "gonzales"),
-          players(in2025, "9-10 Major LLB", 80, "ascension"),
+          players(in2025, "9U Kid Pitch DYB", 10, "gonzales"),
+          players(in2025, "9-10 Major LLB", 90, "ascension"),
         ],
       },
       {
         seasonYear: 2026,
         players: [
-          players(in2026, "9U Kid Pitch DYB", 40, "gonzales"),
-          players(in2026, "9-10 Major LLB", 60, "ascension"),
+          players(in2026, "9U Kid Pitch DYB", 6, "gonzales"),
+          players(in2026, "9-10 Major LLB", 4, "ascension"),
         ],
       },
     ];
@@ -1522,13 +1527,14 @@ describe("combined Spring league share", () => {
     });
     const band = shares.get("ascension:9U+gonzales:9U");
     assert.ok(band);
-    // 2025 is 20%, 2026 is 40%. Equal-weight average is 30%, not the pooled 60/200.
-    assert.ok(Math.abs(band.gonzales.share - 0.3) < 1e-9);
-    assert.ok(Math.abs(band.ascension.share - 0.7) < 1e-9);
+    // 2025 is 10 of 100 (10%). 2026 is 6 of 10 (60%). Equal-weight average is 35%.
+    // A pooled count would be 16/110.
+    assert.ok(Math.abs(band.gonzales.share - 0.35) < 1e-9);
+    assert.ok(Math.abs(band.ascension.share - 0.65) < 1e-9);
     assert.equal(band.gonzales.evenSplit, false);
     assert.deepEqual(band.gonzales.seasons, [2025, 2026]);
-    assert.equal(band.gonzales.note, "DYB share 30%, avg of Spring 2025\u20132026");
-    assert.equal(band.ascension.note, "LLB share 70%, avg of Spring 2025\u20132026");
+    assert.equal(band.gonzales.note, "DYB share 35%, avg of Spring 2025\u20132026");
+    assert.equal(band.ascension.note, "LLB share 65%, avg of Spring 2025\u20132026");
 
     const compared = compareConfigs([bucket(forecast, 100)], config, config, SEASON, {
       retentionRate: 1,
@@ -1538,12 +1544,12 @@ describe("combined Spring league share", () => {
     });
     const dyb = compared.rows.find((row) => row.code === "gonzales:9U");
     const llb = compared.rows.find((row) => row.code === "ascension:9U");
-    assert.equal(dyb?.current.pool, 30);
-    assert.equal(llb?.current.pool, 70);
-    assert.equal(dyb?.current.expected, 30);
+    assert.equal(dyb?.current.pool, 35);
+    assert.equal(llb?.current.pool, 65);
+    assert.equal(dyb?.current.expected, 35);
     assert.equal((dyb?.current.pool ?? 0) + (llb?.current.pool ?? 0), 100);
     assert.equal(compared.league.current.pool, 100);
-    assert.equal(dyb?.currentLeagueMix?.note, "DYB share 30%, avg of Spring 2025\u20132026");
+    assert.equal(dyb?.currentLeagueMix?.note, "DYB share 35%, avg of Spring 2025\u20132026");
   });
 
   it("even-splits a cross-league overlap that has no prior in-window mix", () => {
@@ -1575,6 +1581,42 @@ describe("combined Spring league share", () => {
     assert.deepEqual(dyb?.currentLeagueMix?.seasons, []);
     assert.equal(compared.league.current.pool, 40);
     assert.equal((dyb?.current.pool ?? 0) + (llb?.current.pool ?? 0), 40);
+  });
+
+  it("gives a one-child and a three-child even split integer rows that sum to the pool", () => {
+    const config = springTable({
+      gonzales: [named("10U", "10U Kid Pitch", 10, 10, 1)],
+      ascension: [named("10U", "10U Major", 10, 10, 1)],
+    });
+    const options = {
+      retentionRate: 1,
+      includeFeeder: false,
+      rosterFor,
+      mix: { seasons: [] as MixSeason[] },
+    };
+    const one = compareConfigs([bucket("2017-01-15", 1)], config, config, SEASON, options);
+    const oneDyb = one.rows.find((row) => row.code === "gonzales:10U");
+    const oneLlb = one.rows.find((row) => row.code === "ascension:10U");
+    assert.equal(oneDyb?.current.pool, 1);
+    assert.equal(oneLlb?.current.pool, 0);
+    assert.equal(oneDyb?.current.minTeams, 1);
+    assert.equal(oneDyb?.current.maxTeams, 1);
+    assert.equal(oneDyb?.currentShortRoster, true);
+    assert.equal(oneLlb?.current.minTeams, 0);
+    assert.equal(oneLlb?.current.maxTeams, 0);
+    assert.equal((oneDyb?.current.pool ?? 0) + (oneLlb?.current.pool ?? 0), 1);
+
+    const three = compareConfigs([bucket("2017-01-15", 3)], config, config, SEASON, options);
+    const threeDyb = three.rows.find((row) => row.code === "gonzales:10U");
+    const threeLlb = three.rows.find((row) => row.code === "ascension:10U");
+    assert.equal(threeDyb?.current.pool, 2);
+    assert.equal(threeLlb?.current.pool, 1);
+    assert.equal(threeDyb?.current.minTeams, 1);
+    assert.equal(threeDyb?.current.maxTeams, 1);
+    assert.equal(threeLlb?.current.minTeams, 1);
+    assert.equal(threeLlb?.current.maxTeams, 1);
+    assert.equal((threeDyb?.current.pool ?? 0) + (threeLlb?.current.pool ?? 0), 3);
+    assert.equal(three.league.current.pool, 3);
   });
 
   it("applies the within-league mix inside each league's portion", () => {
@@ -1610,13 +1652,14 @@ describe("combined Spring league share", () => {
     assert.equal(major.currentMix?.sharePercent, 25);
     assert.equal(minor.currentLeagueMix?.share, 0.5);
     assert.equal(llb.currentLeagueMix?.note, "LLB share 50%, Spring 2026");
-    // League portion is 50. Within DYB that is 75/25 → 38 and 13 after rounding.
+    // League portion is 50. Within DYB, 75/25 of 50 is 37.5 and 12.5.
+    // Largest remainder gives the leftover player to the larger share: 38 and 12.
     assert.equal(minor.current.pool, 38);
-    assert.equal(major.current.pool, 13);
+    assert.equal(major.current.pool, 12);
     assert.equal(llb.current.pool, 50);
     assert.equal(compared.league.current.pool, 100);
     const rowSum = minor.current.pool + major.current.pool + llb.current.pool;
-    assert.ok(Math.abs(rowSum - 100) <= 1);
+    assert.equal(rowSum, 100);
   });
 
   it("leaves a single-league Spring table and a Fall table on the full window", () => {
@@ -1741,6 +1784,10 @@ describe("combined Spring league share", () => {
     assert.equal(row("gonzales:3-4U TB").current.pool, 0);
     assert.equal(row("gonzales:6U MINOR").current.pool, 0);
     assert.equal(row("gonzales:6U MAJOR").current.pool, 0);
+    assert.equal(row("gonzales:6U MINOR").currentMix, null);
+    assert.equal(row("gonzales:6U MAJOR").currentMix, null);
+    assert.equal(row("gonzales:6U MINOR").currentLeagueMix?.note, "DYB share 0%, Spring 2026");
+    assert.equal(row("gonzales:6U MAJOR").currentLeagueMix?.note, "DYB share 0%, Spring 2026");
     assert.equal(row("gonzales:7U MINOR").current.pool, 0);
     assert.equal(row("gonzales:8U MINOR").current.pool, 0);
     assert.equal(row("gonzales:7U MINOR").currentLeagueMix?.note, "DYB share 0%, Spring 2026");
@@ -1759,7 +1806,7 @@ describe("combined Spring league share", () => {
     assert.equal(row("gonzales:13-14U").currentLeagueMix, null);
     assert.equal(compared.league.current.pool, distinct);
     const rowSum = compared.rows.reduce((sum, item) => sum + item.current.pool, 0);
-    assert.ok(Math.abs(rowSum - distinct) <= 3, `row sum ${rowSum} vs pool ${distinct}`);
+    assert.equal(rowSum, distinct);
     const youngDyb = ["gonzales:3-4U TB", "gonzales:5U TB", "gonzales:6U MINOR", "gonzales:6U MAJOR", "gonzales:7U MINOR", "gonzales:8U MINOR"];
     const youngDybPool = youngDyb.reduce((sum, code) => sum + row(code).current.pool, 0);
     assert.equal(youngDybPool, 0);

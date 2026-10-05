@@ -560,37 +560,61 @@ type RowMeta = {
   inProposed: boolean;
 };
 
-function nearlyInteger(value: number): boolean {
-  return Number.isFinite(value) && Math.abs(value - Math.round(value)) < 1e-6;
+type RemainderPart = { key: string; share: number; sortOrder: number };
+
+/**
+ * Split `total` into integers that sum to `total`. Each part gets
+ * floor(total × share); leftover seats go to the largest fractional
+ * remainders. Ties break toward the larger share, then the earlier
+ * sort order, then the key. A 1-child even split is 1 and 0, not 1 and 1.
+ */
+function largestRemainder(total: number, parts: readonly RemainderPart[]): Map<string, number> {
+  const result = new Map<string, number>();
+  for (const part of parts) result.set(part.key, 0);
+  if (!Number.isInteger(total) || total <= 0 || parts.length === 0) return result;
+  const shareSum = parts.reduce((sum, part) => sum + (Number.isFinite(part.share) ? part.share : 0), 0);
+  const ranked = parts.map((part) => {
+    const weight = shareSum > 0 ? part.share / shareSum : 1 / parts.length;
+    const exact = total * weight;
+    const nearest = Math.round(exact);
+    const whole = Math.abs(exact - nearest) < 1e-6;
+    const base = whole ? nearest : Math.floor(exact);
+    return { ...part, base, frac: whole ? 0 : exact - base };
+  });
+  let left = total - ranked.reduce((sum, part) => sum + part.base, 0);
+  ranked.sort((leftPart, rightPart) => {
+    if (rightPart.frac !== leftPart.frac) return rightPart.frac - leftPart.frac;
+    if (rightPart.share !== leftPart.share) return rightPart.share - leftPart.share;
+    if (leftPart.sortOrder !== rightPart.sortOrder) return leftPart.sortOrder - rightPart.sortOrder;
+    return leftPart.key.localeCompare(rightPart.key);
+  });
+  for (const part of ranked) result.set(part.key, part.base);
+  if (left > 0) {
+    let index = 0;
+    while (left > 0) {
+      const part = ranked[index % ranked.length]!;
+      result.set(part.key, (result.get(part.key) ?? 0) + 1);
+      left -= 1;
+      index += 1;
+    }
+  } else {
+    let index = ranked.length - 1;
+    while (left < 0 && ranked.length > 0) {
+      const part = ranked[(index + ranked.length) % ranked.length]!;
+      const current = result.get(part.key) ?? 0;
+      if (current > 0) {
+        result.set(part.key, current - 1);
+        left += 1;
+      }
+      index -= 1;
+      if (index < -ranked.length * (total + 1)) break;
+    }
+  }
+  return result;
 }
 
-function sideFromApportionedCounts(
-  counts: { own: number; feeder: number },
-  options: ForecastOptions,
-  roster: RosterSize,
-): { side: ForecastSide; shortRoster: boolean } {
-  const own = nearlyInteger(counts.own) ? Math.round(counts.own) : counts.own;
-  const feeder = nearlyInteger(counts.feeder) ? Math.round(counts.feeder) : counts.feeder;
-  if (Number.isInteger(own) && Number.isInteger(feeder)) {
-    return sideFromCounts({ own, feeder }, options, roster);
-  }
-  const feederApplied = appliedFeeder(feeder, options);
-  const rawPool = own + feederApplied;
-  const pool = Math.round(rawPool);
-  const expected = Math.round(rawPool * options.retentionRate);
-  const teams = teamCountRange(expected, roster);
-  const ownCount = rawPool === 0 ? 0 : Math.round(pool * (own / rawPool));
-  return {
-    side: {
-      own: ownCount,
-      feeder: pool - ownCount,
-      pool,
-      expected,
-      minTeams: teams.minTeams,
-      maxTeams: teams.maxTeams,
-    },
-    shortRoster: teams.shortRoster,
-  };
+function nearlyInteger(value: number): boolean {
+  return Number.isFinite(value) && Math.abs(value - Math.round(value)) < 1e-6;
 }
 
 function sideFromWindowShare(
@@ -709,37 +733,109 @@ function leagueApportionment(
   return { shares, eligible, notes };
 }
 
-function leagueFactor(codes: readonly string[], league: LeagueApportionment, divisionLeague: "gonzales" | "ascension"): number {
-  if (!spansBothLeagues(codes)) return 1;
-  const share = league.shares.get(crossLeagueBandKey(codes));
-  if (!share) return 1;
-  return share[divisionLeague].share;
-}
+type ApportionedCounts = {
+  counts: Map<string, { own: number; feeder: number }>;
+  /** Within-league even-split rows whose league portion is 0. The league note stands alone. */
+  hideMix: Set<string>;
+};
 
 /**
- * Headcount for `codes`, with each cross-league child scaled to this
- * division's league share. Children who fit only this league stay at 1.
+ * Integer row counts for combined Spring. Each birthdate band is split
+ * into league portions with {@link largestRemainder}, then each portion
+ * is split again by the within-league mix. Sibling rows sum to the
+ * integer headcount. Single-league forecasts do not call this.
  */
-function leagueWeightedHeadcount(
+function allocateApportionedCounts(
   buckets: readonly BirthBucket[],
   config: ForecastConfig,
   targetSeasonYear: number,
-  codes: ReadonlySet<string>,
+  mix: Map<string, DivisionMix> | null,
+  groups: readonly (readonly string[])[],
   league: LeagueApportionment,
-): { own: number; feeder: number } {
-  let own = 0;
-  let feeder = 0;
-  const divisionLeague = [...codes].map((code) => leaguePrefix(code)).find((value) => value != null) ?? null;
+): ApportionedCounts {
+  const counts = new Map<string, { own: number; feeder: number }>();
+  const groupByCode = new Map<string, readonly string[]>();
+  for (const group of groups) {
+    for (const code of group) groupByCode.set(code, group);
+  }
+  const sortOrder = new Map(config.divisions.map((division) => [division.code, division.sortOrder]));
+  const groupRaw = new Map<string, number>();
+  const groupGiven = new Map<string, number>();
+  const groupMembers = new Map<string, readonly string[]>();
+
+  const add = (code: string, pool: BirthBucket["pool"], amount: number) => {
+    if (amount <= 0) return;
+    const current = counts.get(code) ?? { own: 0, feeder: 0 };
+    current[pool] += amount;
+    counts.set(code, current);
+  };
+  const rememberGroup = (group: readonly string[], raw: number, given: number) => {
+    if (group.length < 2) return;
+    const id = [...group].join("\0");
+    groupMembers.set(id, group);
+    groupRaw.set(id, (groupRaw.get(id) ?? 0) + raw);
+    groupGiven.set(id, (groupGiven.get(id) ?? 0) + given);
+  };
+  const distribute = (codesInLeague: readonly string[], portion: number, raw: number, pool: BirthBucket["pool"]) => {
+    if (codesInLeague.length === 0) return;
+    let group: readonly string[] | null = null;
+    for (const code of codesInLeague) {
+      const found = groupByCode.get(code);
+      if (found) {
+        group = found;
+        break;
+      }
+    }
+    if (!group) {
+      rememberGroup(codesInLeague, raw, portion);
+      if (portion <= 0) return;
+      if (codesInLeague.length === 1) {
+        add(codesInLeague[0]!, pool, portion);
+        return;
+      }
+      for (const code of codesInLeague) add(code, pool, portion);
+      return;
+    }
+    rememberGroup(group, raw, portion);
+    if (portion <= 0) return;
+    const parts = largestRemainder(
+      portion,
+      group.map((code) => ({
+        key: code,
+        share: mix?.get(code)?.share ?? 1 / group.length,
+        sortOrder: sortOrder.get(code) ?? 0,
+      })),
+    );
+    for (const [code, amount] of parts) add(code, pool, amount);
+  };
+
   for (const bucket of buckets) {
     if (bucket.count === 0) continue;
     const matched = cachedEligible(league.eligible, bucket.birthDate.trim(), config, targetSeasonYear);
-    if (!matched.some((code) => codes.has(code))) continue;
-    const factor = divisionLeague ? leagueFactor(matched, league, divisionLeague) : 1;
-    const amount = bucket.count * factor;
-    if (bucket.pool === "own") own += amount;
-    else feeder += amount;
+    if (matched.length === 0) continue;
+    if (!spansBothLeagues(matched)) {
+      distribute(matched, bucket.count, bucket.count, bucket.pool);
+      continue;
+    }
+    const band = league.shares.get(crossLeagueBandKey(matched));
+    const split = largestRemainder(bucket.count, [
+      { key: "gonzales", share: band?.gonzales.share ?? 0.5, sortOrder: 0 },
+      { key: "ascension", share: band?.ascension.share ?? 0.5, sortOrder: 1 },
+    ]);
+    for (const leagueId of ["gonzales", "ascension"] as const) {
+      const codes = matched.filter((code) => leaguePrefix(code) === leagueId);
+      distribute(codes, split.get(leagueId) ?? 0, bucket.count, bucket.pool);
+    }
   }
-  return { own, feeder };
+
+  const hideMix = new Set<string>();
+  for (const [id, raw] of groupRaw) {
+    if (raw <= 0 || (groupGiven.get(id) ?? 0) > 0) continue;
+    for (const code of groupMembers.get(id) ?? []) {
+      if (mix?.get(code)?.evenSplit) hideMix.add(code);
+    }
+  }
+  return { counts, hideMix };
 }
 
 function collectPools(
@@ -924,33 +1020,36 @@ export function compareConfigs(
     : [];
   const currentLeague = leagueApportionment(buckets, current, targetSeasonYear, mixSeasons);
   const proposedLeague = leagueApportionment(buckets, proposed, targetSeasonYear, mixSeasons);
+  const currentAlloc = currentLeague
+    ? allocateApportionedCounts(buckets, current, targetSeasonYear, currentMix, currentGroups, currentLeague)
+    : null;
+  const proposedAlloc = proposedLeague
+    ? allocateApportionedCounts(buckets, proposed, targetSeasonYear, proposedMix, proposedGroups, proposedLeague)
+    : null;
   const weightedSide = (
     assignment: BucketAssignment,
     config: ForecastConfig,
     groups: string[][],
     mix: Map<string, DivisionMix> | null,
-    league: LeagueApportionment | null,
+    alloc: ApportionedCounts | null,
     code: string,
     present: boolean,
     roster: RosterSize,
   ): BuiltSide => {
     if (!present) return { side: emptySide(), shortRoster: false, overlap: 0 };
-    const weight = mix?.get(code);
     const row = assignment.divisions.find((division) => division.code === code);
     const overlap = row?.overlap ?? 0;
+    if (alloc) {
+      const built = sideFromCounts(alloc.counts.get(code) ?? { own: 0, feeder: 0 }, options, roster);
+      return { ...built, overlap };
+    }
+    const weight = mix?.get(code);
     if (!weight) {
-      if (!league) {
-        const built = buildSide(assignment, code, true, options, roster);
-        return { ...built, overlap };
-      }
-      const counts = leagueWeightedHeadcount(buckets, config, targetSeasonYear, new Set([code]), league);
-      const built = sideFromApportionedCounts(counts, options, roster);
+      const built = buildSide(assignment, code, true, options, roster);
       return { ...built, overlap };
     }
     const group = groups.find((codes) => codes.includes(code)) ?? [code];
-    const counts = league
-      ? leagueWeightedHeadcount(buckets, config, targetSeasonYear, new Set(group), league)
-      : eligibleHeadcount(buckets, config, targetSeasonYear, new Set(group));
+    const counts = eligibleHeadcount(buckets, config, targetSeasonYear, new Set(group));
     const built = sideFromWindowShare(counts, weight.share, options, roster);
     return { ...built, overlap };
   };
@@ -962,7 +1061,7 @@ export function compareConfigs(
         current,
         currentGroups,
         currentMix,
-        currentLeague,
+        currentAlloc,
         code,
         row.inCurrent,
         roster,
@@ -972,7 +1071,7 @@ export function compareConfigs(
         proposed,
         proposedGroups,
         proposedMix,
-        proposedLeague,
+        proposedAlloc,
         code,
         row.inProposed,
         roster,
@@ -996,7 +1095,10 @@ export function compareConfigs(
         currentSharedPoolId: currentIds.get(code) ?? null,
         proposedSharedPoolId: proposedIds.get(code) ?? null,
         ...(mixSeasons
-          ? { currentMix: currentMix?.get(code) ?? null, proposedMix: proposedMix?.get(code) ?? null }
+          ? {
+              currentMix: currentAlloc?.hideMix.has(code) ? null : (currentMix?.get(code) ?? null),
+              proposedMix: proposedAlloc?.hideMix.has(code) ? null : (proposedMix?.get(code) ?? null),
+            }
           : {}),
         ...(currentLeague || proposedLeague
           ? {
