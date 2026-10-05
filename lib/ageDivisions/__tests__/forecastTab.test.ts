@@ -202,6 +202,11 @@ describe("forecast tab", () => {
       view({ org: "fallball", orgs: ["fallball"], includeFeeder: false }),
     );
     assert.doesNotMatch(fallball, /feeder-toggle/);
+    assert.doesNotMatch(fallball, /data-testid="age-editor-toggle"/);
+    assert.doesNotMatch(fallball, /id="division-ages-age-editor"/);
+    assert.match(fallball, /<h3 class="text-sm font-semibold text-white">Edit by age<\/h3>/);
+    assert.match(fallball, /data-testid="age-editor"/);
+    assert.match(fallball, /The birthdate window follows these ages\./);
   });
 
   it("defaults the return rate to 100% and offers reset only after an edit", () => {
@@ -449,6 +454,10 @@ describe("forecast tab", () => {
     assert.match(html, /Little League \(Aug 31\)/);
     assert.match(html, /DYB \(Apr 30\)/);
     assert.match(html, /data-testid="cutoff-preset-custom"/);
+    assert.match(html, /data-testid="age-editor-toggle"/);
+    assert.match(html, /aria-expanded="false"/);
+    assert.match(html, /data-testid="age-editor-summary"[^>]*>1 division</);
+    assert.match(html, /id="division-ages-age-editor" hidden=""/);
     assert.match(html, /data-testid="age-editor"/);
     assert.match(html, /Minimum age for 9U/);
     assert.match(html, /data-testid="precise-dates"/);

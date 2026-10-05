@@ -4,6 +4,12 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "node:test";
 
 import { DivisionAgesForecastView } from "@/components/admin/DivisionAgesForecast";
+import {
+  readSpringAgeEditorOpen,
+  springAgeEditorSummary,
+  SPRING_AGE_EDITOR_STORAGE_KEY,
+  writeSpringAgeEditorOpen,
+} from "@/components/admin/DivisionAgesForecastTimeline";
 import { combinedForecastConfig } from "@/lib/admin/springCombined/view";
 import { leagueDivisionDefaults } from "../defaults";
 import type { ProposedConfig } from "../forecastView";
@@ -102,6 +108,12 @@ describe("spring timeline layout gate", () => {
     assert.match(fall, /data-testid="timeline-layout-classic"/);
     assert.match(fall, /min-w-\[40rem\]/);
     assert.doesNotMatch(fall, /data-testid="timeline-layout-spring"/);
+    assert.doesNotMatch(fall, /data-testid="age-editor-toggle"/);
+    assert.doesNotMatch(fall, /data-testid="age-editor-section"/);
+    assert.doesNotMatch(fall, /id="division-ages-age-editor"/);
+    assert.match(fall, /<h3 class="text-sm font-semibold text-white">Edit by age<\/h3>/);
+    assert.match(fall, /data-testid="age-editor"/);
+    assert.match(fall, /Minimum age for 9U/);
     assert.doesNotMatch(fall, /data-testid="timeline-lane-/);
     assert.match(bandContents(fall, "9U"), /9U/);
 
@@ -119,6 +131,13 @@ describe("spring timeline layout gate", () => {
     assert.doesNotMatch(fallOverlap, /data-testid="timeline-layout-spring"/);
 
     const gonzales = renderToStaticMarkup(forecastView());
+    assert.match(gonzales, /data-testid="age-editor-toggle"/);
+    assert.match(gonzales, /aria-expanded="false"/);
+    assert.match(gonzales, /aria-controls="division-ages-age-editor"/);
+    assert.match(gonzales, /type="button"/);
+    assert.match(gonzales, /data-testid="age-editor-summary"[^>]*>1 division</);
+    assert.match(gonzales, /id="division-ages-age-editor" hidden=""/);
+    assert.doesNotMatch(gonzales, /<h3 class="text-sm font-semibold text-white">Edit by age<\/h3>/);
     assert.match(gonzales, /data-testid="timeline-layout-spring"/);
     assert.match(gonzales, /data-testid="timeline-lane-dyb"/);
     assert.match(gonzales, /data-testid="timeline-lanes-scroll"/);
@@ -161,6 +180,9 @@ describe("spring timeline layout gate", () => {
       }),
     );
     assert.match(html, /data-testid="timeline-layout-spring"/);
+    assert.match(html, /data-testid="age-editor-summary"[^>]*>20 divisions</);
+    assert.match(html, /aria-expanded="false"/);
+    assert.match(html, /id="division-ages-age-editor" hidden=""/);
     assert.match(html, /data-testid="timeline-lane-llb"/);
     assert.match(html, /data-testid="timeline-lane-dyb"/);
     assert.doesNotMatch(html, /data-testid="timeline-layout-classic"/);
@@ -318,5 +340,39 @@ describe("spring timeline labels and rows", () => {
       bandWidth: 40,
     });
     assert.equal(clearOfLabel, 298);
+  });
+});
+
+describe("spring age editor collapse", () => {
+  it("summarizes the division count and remembers open or closed in this browser", () => {
+    assert.equal(springAgeEditorSummary(0), "0 divisions");
+    assert.equal(springAgeEditorSummary(1), "1 division");
+    assert.equal(springAgeEditorSummary(20), "20 divisions");
+    assert.equal(springAgeEditorSummary(20.9), "20 divisions");
+
+    const saved = new Map<string, string>();
+    const storage = {
+      getItem: (key: string) => saved.get(key) ?? null,
+      setItem: (key: string, value: string) => {
+        saved.set(key, value);
+      },
+    };
+    assert.equal(readSpringAgeEditorOpen(null), false);
+    assert.equal(readSpringAgeEditorOpen(storage), false);
+    writeSpringAgeEditorOpen(storage, true);
+    assert.equal(saved.get(SPRING_AGE_EDITOR_STORAGE_KEY), "open");
+    assert.equal(readSpringAgeEditorOpen(storage), true);
+    writeSpringAgeEditorOpen(storage, false);
+    assert.equal(saved.get(SPRING_AGE_EDITOR_STORAGE_KEY), "closed");
+    assert.equal(readSpringAgeEditorOpen(storage), false);
+    saved.set(SPRING_AGE_EDITOR_STORAGE_KEY, "open");
+    storage.getItem = () => {
+      throw new Error("blocked");
+    };
+    storage.setItem = () => {
+      throw new Error("blocked");
+    };
+    assert.equal(readSpringAgeEditorOpen(storage), false);
+    writeSpringAgeEditorOpen(storage, true);
   });
 });
