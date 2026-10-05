@@ -313,6 +313,51 @@ describe("forecast tab", () => {
     assert.match(html, /League total, each player once: current 20 expected, teams 2–2/);
   });
 
+  it("shows the Spring mix percent and the even-split warning", () => {
+    const forecast = response({
+      rows: [
+        {
+          code: "MAJORS",
+          label: "Majors",
+          sortOrder: 1,
+          inCurrent: true,
+          inProposed: true,
+          current: side({ own: 80, feeder: 0, pool: 80, expected: 80, minTeams: 7, maxTeams: 7 }),
+          proposed: side({ own: 80, feeder: 0, pool: 80, expected: 80, minTeams: 7, maxTeams: 7 }),
+          delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+          movers: 0,
+          moversIn: split(),
+          moversOut: split(),
+          currentShortRoster: false,
+          proposedShortRoster: false,
+          currentOverlap: 80,
+          proposedOverlap: 80,
+          currentSharedPoolId: "MAJORS+MINORS",
+          proposedSharedPoolId: "MAJORS+MINORS",
+          currentMix: {
+            share: 80 / 300,
+            sharePercent: 27,
+            seasons: [2025, 2026],
+            evenSplit: false,
+            note: "27% of window, avg of Spring 2025\u20132026",
+          },
+          proposedMix: {
+            share: 0.5,
+            sharePercent: 50,
+            seasons: [],
+            evenSplit: true,
+            note: "No prior Spring mix; using even split",
+          },
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(view({ forecast }));
+    assert.match(html, /data-testid="mix-share"/);
+    assert.match(html, /27% of window, avg of Spring 2025\u20132026/);
+    assert.match(html, /data-testid="mix-even-split"/);
+    assert.match(html, /No prior Spring mix; using even split/);
+  });
+
   it("changes the forecast request when a proposed cutoff is edited", () => {
     assert.equal(FORECAST_DEBOUNCE_MS, 300);
     const before = buildForecastRequest({

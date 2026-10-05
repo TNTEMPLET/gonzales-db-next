@@ -16,6 +16,7 @@ import {
   readLeagueRosterMap,
   rosterMapFromLeagueDivisions,
   runDivisionForecast,
+  runSpringCombinedForecast,
   type EnrollmentLine,
   type ForecastDeps,
   type ForecastPayload,
@@ -71,6 +72,7 @@ class FakeReader implements ForecastReader {
   missing = new Set<string>();
   calls: string[] = [];
   boom: Error | null = null;
+  listEnrollmentSeasons?: (org: ContentOrgId) => Promise<number[]>;
 
   putEnrollment(org: ContentOrgId, year: number, rows: EnrollmentLine[]) {
     this.enrollments.set(`${org}:${year}`, rows);
@@ -684,6 +686,172 @@ describe("forecast failure and prisma reads", () => {
       throw { code: "P2021" };
     };
     assert.equal((await readLeagueRosterMap(client, "gonzales")).size, 0);
+  });
+});
+
+function overlapView(source: SeasonDivisionAgesView["source"] = "season"): SeasonDivisionAgesView {
+  return {
+    source,
+    storageReady: true,
+    storageNote: null,
+    cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+    divisions: [
+      { code: "MAJORS", label: "Majors", minAge: 10, maxAge: 11, sortOrder: 1 },
+      { code: "MINORS", label: "Minors", minAge: 10, maxAge: 11, sortOrder: 2 },
+      { code: "12U", label: "12U", minAge: 12, maxAge: 12, sortOrder: 3 },
+    ],
+    confirmedAt: null,
+    confirmedByAdminId: null,
+    updatedAt: null,
+    updatedByAdminId: null,
+  };
+}
+
+function cohort(prefix: string, count: number, divisionName: string, birthDate: string, status = "Completed"): EnrollmentLine[] {
+  return Array.from({ length: count }, (_, index) =>
+    line({
+      fullName: `${prefix} ${index + 1}`,
+      birthDate,
+      divisionName,
+      ageGroup: divisionName,
+      orderPaymentStatus: status,
+    }),
+  );
+}
+
+describe("spring mix from enrollment history", () => {
+  const older = "2015-06-01";
+  const younger = "2016-08-01";
+
+  it("weights Gonzales by the prior Spring mix and skips an empty later season", async () => {
+    const reader = new FakeReader();
+    reader.listEnrollmentSeasons = async () => [2025, 2026];
+    reader.putEnrollment("gonzales", 2025, [
+      ...cohort("Older", 80, "Majors", older),
+      ...cohort("Younger", 220, "Minors", younger),
+      line({ fullName: "Pending Kid", birthDate: older, divisionName: "Majors", orderPaymentStatus: "Pending" }),
+      line({ fullName: "Umpire Kid", birthDate: older, divisionName: "Umpire Clinic", ageGroup: "Umpire" }),
+    ]);
+    reader.putEnrollment("gonzales", 2026, cohort("Window", 300, "Open", older));
+    reader.putEnrollment("fallball", 2026, []);
+    const result = ok(
+      await run({ seasonYear: 2026, targetSeasonYear: 2027, includeFeeder: false, retentionRate: 1 }, reader, {
+        view: overlapView(),
+      }),
+    );
+    const majors = division(result, "MAJORS");
+    const minors = division(result, "MINORS");
+    assert.equal(majors.current.pool, 80);
+    assert.equal(majors.current.expected, 80);
+    assert.equal(majors.currentMix?.sharePercent, 27);
+    assert.equal(majors.currentMix?.note, "27% of window, Spring 2025");
+    assert.equal(minors.current.expected, 220);
+    assert.equal(minors.currentMix?.sharePercent, 73);
+    assert.equal(division(result, "12U").current.pool, 0);
+    assert.equal(division(result, "12U").currentMix, null);
+    assert.equal(result.sharedPools[0]?.current?.pool, 300);
+    assert.equal(result.includeFeeder, false);
+  });
+
+  it("leaves Fall Ball on the full window and does not read Spring mix seasons", async () => {
+    const reader = new FakeReader();
+    let seasonLists = 0;
+    reader.listEnrollmentSeasons = async () => {
+      seasonLists += 1;
+      return [2025];
+    };
+    reader.putEnrollment("fallball", 2025, [
+      ...cohort("Older", 8, "Majors", "2018-01-15"),
+      ...cohort("Younger", 2, "Minors", "2018-01-15"),
+    ]);
+    reader.putEnrollment("fallball", 2026, cohort("Window", 10, "Majors", "2018-01-15"));
+    const fallView: SeasonDivisionAgesView = {
+      ...overlapView(),
+      divisions: [
+        { code: "MAJORS", label: "Majors", minAge: 9, maxAge: 9, sortOrder: 1 },
+        { code: "MINORS", label: "Minors", minAge: 9, maxAge: 9, sortOrder: 2 },
+      ],
+    };
+    const result = ok(
+      await run({ seasonYear: 2026, targetSeasonYear: 2027, includeFeeder: true, retentionRate: 1 }, reader, {
+        org: "fallball",
+        view: fallView,
+      }),
+    );
+    assert.equal(seasonLists, 0);
+    assert.equal(division(result, "MAJORS").current.pool, 10);
+    assert.equal(division(result, "MINORS").current.pool, 10);
+    assert.equal(division(result, "MAJORS").currentMix, undefined);
+    assert.equal(result.includeFeeder, false);
+  });
+
+  it("averages both Spring leagues in the combined forecast and counts a shared player once", async () => {
+    const reader = new FakeReader();
+    reader.listEnrollmentSeasons = async () => [2025, 2026];
+    const shared = line({
+      fullName: "Shared Registrant",
+      birthDate: "2017-01-15",
+      divisionName: "Majors",
+      ageGroup: "Majors",
+    });
+    const gonzalesHistory = [
+      shared,
+      ...cohort("Gonzales", 79, "Majors", "2017-01-15"),
+    ];
+    const ascensionHistory = [
+      { ...shared, divisionName: "Minors", ageGroup: "Minors" },
+      ...cohort("Ascension", 220, "Minors", "2017-01-15"),
+    ];
+    const gonzalesPool = cohort("Pool G", 150, "Open", "2017-01-15");
+    const ascensionPool = cohort("Pool A", 150, "Open", "2017-01-15");
+    const byKey = new Map<string, Array<EnrollmentLine & { sportsConnectRowKey: string | null }>>();
+    const tag = (org: string, year: number, rows: EnrollmentLine[], rowKey?: (row: EnrollmentLine, index: number) => string | null) => {
+      byKey.set(
+        `${org}:${year}`,
+        rows.map((row, index) => ({
+          ...row,
+          sportsConnectRowKey: rowKey ? rowKey(row, index) : `row-${org}-${year}-${index}`,
+        })),
+      );
+    };
+    tag("gonzales", 2025, gonzalesHistory, (row, index) => (index === 0 ? "shared-row" : `g-${index}`));
+    tag("ascension", 2025, ascensionHistory, (row, index) => (index === 0 ? "shared-row" : `a-${index}`));
+    tag("gonzales", 2026, gonzalesPool);
+    tag("ascension", 2026, ascensionPool);
+    const deps: ForecastDeps = {
+      reader,
+      loadSeasonConfig: async (org) => {
+        if (org === "ascension") {
+          return {
+            ...overlapView(),
+            cutoff: { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 },
+            divisions: [{ code: "MINORS", label: "Minors", minAge: 10, maxAge: 10, sortOrder: 1 }],
+          };
+        }
+        return {
+          ...overlapView(),
+          divisions: [{ code: "MAJORS", label: "Majors", minAge: 10, maxAge: 10, sortOrder: 1 }],
+        };
+      },
+      async listSpringLines(org, seasonYear) {
+        return byKey.get(`${org}:${seasonYear}`) ?? [];
+      },
+    };
+    const result = await runSpringCombinedForecast({ readJson: async () => ({ seasonYear: 2026, targetSeasonYear: 2027, retentionRate: 1 }) }, deps);
+    assert.equal(result.status, 200, JSON.stringify(result.body));
+    if (result.status !== 200) return;
+    assert.equal(result.body.includeFeeder, false);
+    assert.equal(result.body.springCombined, true);
+    const majors = result.body.rows.find((row) => row.code === "gonzales:MAJORS");
+    const minors = result.body.rows.find((row) => row.code === "ascension:MINORS");
+    assert.ok(majors && minors);
+    assert.equal(majors.current.expected, 80);
+    assert.equal(minors.current.expected, 220);
+    assert.equal(majors.currentMix?.sharePercent, 27);
+    assert.equal(minors.currentMix?.sharePercent, 73);
+    assert.equal(majors.currentMix?.note, "27% of window, Spring 2025");
+    assert.equal(JSON.stringify(result.body).includes("Shared Registrant"), false);
+    assert.equal(reader.calls.includes("enrollment:fallball:2026"), false);
   });
 });
 
