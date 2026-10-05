@@ -479,12 +479,21 @@ export function DivisionAgesForecastView({
     [forecast],
   );
   const springLanes = forecastTimelineLayout({ org, springCombined }) === "spring-lanes";
+  /**
+   * Combined Spring already splits each age across LLB and DYB by last Spring's
+   * league share, so those rows sum to the pool. The extra shared-pool row is
+   * only shown for one league, and for Fall.
+   */
+  const visibleSharedPools = useMemo(
+    () => (forecast && !springCombined ? forecast.sharedPools : []),
+    [forecast, springCombined],
+  );
   const comparisonBars = useMemo(() => {
     if (!forecast || !springLanes) return null;
     return buildSpringComparisonBars({
       leagueFallback: springLeagueFallback({ org, springCombined }),
       entries: [
-        ...forecast.sharedPools.map((pool) => ({
+        ...visibleSharedPools.map((pool) => ({
           key: `pool:${pool.poolKey}`,
           code: pool.codes[0] ?? pool.poolKey,
           label: pool.label,
@@ -500,7 +509,7 @@ export function DivisionAgesForecastView({
         })),
       ],
     });
-  }, [forecast, org, springCombined, springLanes]);
+  }, [forecast, org, springCombined, springLanes, visibleSharedPools]);
   const comparisonSummary = forecast && comparisonBars ? springComparisonSummaryFromLeague(forecast.league) : "";
 
   function expectedBar(
@@ -1088,7 +1097,7 @@ export function DivisionAgesForecastView({
                   </tr>
                 </thead>
                 <tbody>
-                  {forecast.sharedPools.map((pool) => {
+                  {visibleSharedPools.map((pool) => {
                     const poolKey = `pool:${pool.poolKey}`;
                     const poolMuted = comparisonBars?.[poolKey]?.muted === true;
                     return (
@@ -1189,7 +1198,7 @@ export function DivisionAgesForecastView({
                               {note.note}
                             </p>
                           ))}
-                          {shared ? (
+                          {shared && !springCombined ? (
                             <p
                               className="mt-1 inline-flex rounded-full border border-sky-400/40 bg-sky-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-100"
                               data-testid="shared-pool-member"
