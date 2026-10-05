@@ -7,6 +7,8 @@ import { deriveSportsConnectRowKey } from "@/lib/sportsConnect/enrollmentRowKey"
 import {
   assertImportRunSummaryCreate,
   assertImportRunSummaryPatch,
+  assertRegistrationHistoryRunImmutable,
+  ImportRunSummaryError,
 } from "@/lib/sportsConnect/splitBatchSummary";
 import { springEnrollmentLockKey } from "@/lib/sportsConnect/springEnrollmentLock";
 import {
@@ -932,10 +934,6 @@ describe("split review fixes", () => {
       teamId: null,
       fullName: "Player Fall",
     });
-    const gonzalesSummary = db.runs.find((run) => run.id === gonzales.id)?.summary as {
-      splitBatchRunIds: string[];
-    };
-    gonzalesSummary.splitBatchRunIds = [gonzales.id, "stray-run"];
     const undone = await undoRegistrationHistory(asDb(db), {
       runId: gonzales.id,
       organizationId: "gonzales",
@@ -981,7 +979,25 @@ describe("split review fixes", () => {
       fullName: "Player Fall",
     });
     const summary = db.runs.find((run) => run.id === gonzales.id)?.summary as { splitBatchRunIds: string[] };
+    const recordedIds = [...summary.splitBatchRunIds];
     summary.splitBatchRunIds = [gonzales.id, "fall-run"];
+    const before = structuredClone(db.enrollments);
+    await assert.rejects(
+      () =>
+        undoRegistrationHistory(asDb(db), {
+          runId: gonzales.id,
+          organizationId: "gonzales",
+          isMaster: true,
+        }),
+      (err: unknown) =>
+        err instanceof RegistrationHistoryError && err.status === 409 && /Nothing was removed/.test(err.message),
+    );
+    assert.equal(db.runs.find((run) => run.id === gonzales.id)?.status, "DONE");
+    assert.equal(db.runs.find((run) => run.id === ascension.id)?.status, "DONE");
+    assert.equal(db.runs.find((run) => run.id === "fall-run")?.status, "DONE");
+    assert.deepEqual(db.enrollments, before);
+    const restored = db.runs.find((run) => run.id === gonzales.id)?.summary as { splitBatchRunIds: string[] };
+    restored.splitBatchRunIds = recordedIds;
     db.ops = [];
     const undone = await undoRegistrationHistory(asDb(db), {
       runId: gonzales.id,
@@ -1240,5 +1256,206 @@ describe("split review fixes", () => {
     assert.match(prune, /organizationId === "gonzales" \|\| input\.organizationId === "ascension"/);
     assert.notEqual(springEnrollmentLockKey(2027), springDivisionAgesLockKey(2027));
     assert.notEqual(springEnrollmentLockKey(2026), springEnrollmentLockKey(2027));
+  });
+
+  it("rejects every generic mutation of a registration-history run", () => {
+    assert.throws(
+      () => assertRegistrationHistoryRunImmutable("PLAYER_REG_HISTORY"),
+      (err: unknown) =>
+        err instanceof ImportRunSummaryError &&
+        err.status === 409 &&
+        /cannot be changed here/.test(err.message),
+    );
+    assert.doesNotThrow(() => assertRegistrationHistoryRunImmutable("PLAYER_REG"));
+    assert.doesNotThrow(() => assertRegistrationHistoryRunImmutable(undefined));
+    assert.doesNotThrow(() =>
+      assertImportRunSummaryPatch({ role: "commit", source: "map", programName: GONZALES }, undefined),
+    );
+
+    const importRuns = readFileSync(new URL("../importRuns.ts", import.meta.url), "utf8");
+    const updateBody = importRuns.slice(
+      importRuns.indexOf("export async function updateImportRun"),
+      importRuns.indexOf("export async function recordImportRunSafe"),
+    );
+    const guardAt = updateBody.indexOf("assertRegistrationHistoryRunImmutable(existing.reportKind)");
+    const requestedAt = updateBody.indexOf("assertRegistrationHistoryRunImmutable(input.reportKind)");
+    const writeAt = updateBody.indexOf("prisma.sportsConnectImportRun.update");
+    assert.ok(guardAt > 0 && requestedAt > guardAt && writeAt > requestedAt);
+    const createBody = importRuns.slice(
+      importRuns.indexOf("export async function createImportRun"),
+      importRuns.indexOf("export async function updateImportRun"),
+    );
+    assert.match(createBody, /assertRegistrationHistoryRunImmutable\(input\.reportKind\)/);
+    const deleteBody = importRuns.slice(importRuns.indexOf("export async function deleteImportRun"));
+    assert.match(deleteBody, /assertRegistrationHistoryRunImmutable\(existing\.reportKind\)/);
+    assert.equal(deleteBody.includes("sportsConnectImportRun.delete"), false);
+    assert.match(importRuns, /completeImportRunSafe[\s\S]*updateImportRun\(/);
+    assert.match(importRuns, /recordImportRunSafe[\s\S]*createImportRun\(/);
+
+    const runsRoute = readFileSync(
+      new URL("../../../app/api/admin/sports-connect/runs/[id]/route.ts", import.meta.url),
+      "utf8",
+    );
+    assert.match(runsRoute, /export async function DELETE/);
+    assert.match(runsRoute, /deleteImportRun\(/);
+    assert.match(runsRoute, /status,/);
+    assert.equal(runsRoute.includes("sportsConnectImportRun.delete"), false);
+    const driveSync = readFileSync(new URL("../driveSync.ts", import.meta.url), "utf8");
+    const leaseAt = driveSync.indexOf("assertRegistrationHistoryRunImmutable(existingRun.reportKind)");
+    const leaseWrite = driveSync.indexOf("prisma.sportsConnectImportRun.updateMany");
+    assert.ok(leaseAt > 0 && leaseWrite > leaseAt);
+    const commit = readFileSync(new URL("../registrationHistoryCommit.ts", import.meta.url), "utf8");
+    assert.equal(commit.includes("assertRegistrationHistoryRunImmutable"), false);
+    assert.match(commit, /splitBatchRunIds/);
+
+    for (const status of ["PREVIEW", "RUNNING", "FAILED", "CANCELLED"] as const) {
+      assert.throws(
+        () => assertRegistrationHistoryRunImmutable("PLAYER_REG_HISTORY"),
+        (err: unknown) => err instanceof ImportRunSummaryError && /cannot be changed here/.test(err.message),
+        status,
+      );
+    }
+  });
+
+  it("refuses undo from either side when a split partner is not finished", async () => {
+    for (const status of ["PREVIEW", "RUNNING", "FAILED", "CANCELLED"] as const) {
+      const db = new MemoryDb();
+      const rows = [
+        player({ division: "12U DYB", order: `D-${status}`, first: "Player", last: "North" }),
+        player({ division: "12U LLB", order: `A-${status}`, first: "Player", last: "South" }),
+      ];
+      const { committed } = await previewAndCommit(db, rows, splitMapping(), []);
+      const gonzales = committed.runs.find((run) => run.organizationId === "gonzales");
+      const ascension = committed.runs.find((run) => run.organizationId === "ascension");
+      assert.ok(gonzales && ascension);
+      const partner = db.runs.find((run) => run.id === ascension.id);
+      assert.ok(partner);
+      partner.status = status;
+      const before = structuredClone(db.enrollments);
+
+      await assert.rejects(
+        () =>
+          undoRegistrationHistory(asDb(db), {
+            runId: gonzales.id,
+            organizationId: "gonzales",
+            isMaster: true,
+          }),
+        (err: unknown) =>
+          err instanceof RegistrationHistoryError &&
+          err.status === 409 &&
+          /not finished/.test(err.message) &&
+          /Nothing was removed/.test(err.message),
+      );
+      assert.equal(db.runs.find((run) => run.id === gonzales.id)?.status, "DONE");
+      assert.equal(db.runs.find((run) => run.id === ascension.id)?.status, status);
+      assert.deepEqual(db.enrollments, before);
+
+      await assert.rejects(
+        () =>
+          countRegistrationHistoryUndo(asDb(db), {
+            runId: gonzales.id,
+            organizationId: "gonzales",
+            isMaster: true,
+          }),
+        (err: unknown) => err instanceof RegistrationHistoryError && /Nothing was removed/.test(err.message),
+      );
+      await assert.rejects(
+        () =>
+          undoRegistrationHistory(asDb(db), {
+            runId: ascension.id,
+            organizationId: "ascension",
+            isMaster: true,
+          }),
+        (err: unknown) =>
+          err instanceof RegistrationHistoryError &&
+          err.status === 409 &&
+          /finished/.test(err.message),
+      );
+      assert.equal(db.runs.find((run) => run.id === gonzales.id)?.status, "DONE");
+      assert.equal(db.runs.find((run) => run.id === ascension.id)?.status, status);
+      assert.deepEqual(db.enrollments, before);
+    }
+  });
+
+  it("undoes a genuine one-run split batch and a two-run batch from either league", async () => {
+    const oneDb = new MemoryDb();
+    const one = await previewAndCommit(
+      oneDb,
+      [
+        player({ division: "12U DYB", order: "O1", first: "Player", last: "North" }),
+        player({ division: "14U", order: "O2", first: "Player", last: "Older" }),
+      ],
+      splitMapping(),
+      [],
+    );
+    assert.equal(one.committed.runs.length, 1);
+    const only = one.committed.runs[0]!;
+    assert.equal(only.organizationId, "gonzales");
+    const onlySummary = oneDb.runs.find((run) => run.id === only.id)?.summary as { splitBatchRunIds: string[] };
+    assert.deepEqual(onlySummary.splitBatchRunIds, [only.id]);
+    const undoneOne = await undoRegistrationHistory(asDb(oneDb), {
+      runId: only.id,
+      organizationId: "gonzales",
+      isMaster: true,
+    });
+    assert.equal(undoneOne.runCount, 1);
+    assert.equal(oneDb.runs.find((run) => run.id === only.id)?.status, "UNDONE");
+    assert.equal(oneDb.enrollments.some((row) => row.importRunId === only.id), false);
+
+    const rows = [
+      player({ division: "12U DYB", order: "T1", first: "Player", last: "North" }),
+      player({ division: "12U LLB", order: "T2", first: "Player", last: "South" }),
+    ];
+    for (const side of ["gonzales", "ascension"] as const) {
+      const db = new MemoryDb();
+      const { committed } = await previewAndCommit(db, rows, splitMapping(), []);
+      assert.equal(committed.runs.length, 2);
+      const clicked = committed.runs.find((run) => run.organizationId === side);
+      const other = committed.runs.find((run) => run.organizationId !== side);
+      assert.ok(clicked && other);
+      const undone = await undoRegistrationHistory(asDb(db), {
+        runId: clicked.id,
+        organizationId: side,
+        isMaster: true,
+      });
+      assert.equal(undone.runCount, 2);
+      assert.equal(db.runs.find((run) => run.id === clicked.id)?.status, "UNDONE");
+      assert.equal(db.runs.find((run) => run.id === other.id)?.status, "UNDONE");
+      assert.equal(db.enrollments.some((row) => row.importRunId === clicked.id), false);
+      assert.equal(db.enrollments.some((row) => row.importRunId === other.id), false);
+    }
+  });
+
+  it("refuses undo when an expected split partner is missing", async () => {
+    const db = new MemoryDb();
+    const { committed } = await previewAndCommit(
+      db,
+      [
+        player({ division: "12U DYB", order: "M1", first: "Player", last: "North" }),
+        player({ division: "12U LLB", order: "M2", first: "Player", last: "South" }),
+      ],
+      splitMapping(),
+      [],
+    );
+    const gonzales = committed.runs.find((run) => run.organizationId === "gonzales");
+    const ascension = committed.runs.find((run) => run.organizationId === "ascension");
+    assert.ok(gonzales && ascension);
+    db.runs = db.runs.filter((run) => run.id !== ascension.id);
+    const before = structuredClone(db.enrollments);
+    await assert.rejects(
+      () =>
+        undoRegistrationHistory(asDb(db), {
+          runId: gonzales.id,
+          organizationId: "gonzales",
+          isMaster: true,
+        }),
+      (err: unknown) =>
+        err instanceof RegistrationHistoryError &&
+        err.status === 409 &&
+        /missing or is not finished/.test(err.message) &&
+        /Nothing was removed/.test(err.message),
+    );
+    assert.equal(db.runs.find((run) => run.id === gonzales.id)?.status, "DONE");
+    assert.deepEqual(db.enrollments, before);
   });
 });

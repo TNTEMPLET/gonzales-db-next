@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 
 import { ensureAdminModule } from "@/lib/news/auth";
 import {
+  deleteImportRun,
   getImportRun,
   updateImportRun,
 } from "@/lib/sportsConnect/importRuns";
@@ -155,5 +156,46 @@ export async function PATCH(
   return NextResponse.json(
     { data },
     { headers: { "Cache-Control": "no-store, max-age=0" } },
+  );
+}
+
+export async function DELETE(
+  request: NextRequest,
+  context: { params: Promise<{ id: string }> },
+) {
+  const auth = await ensureAdminModule(request, "SPORTS_CONNECT");
+  if (!auth.ok) {
+    return NextResponse.json(
+      { error: auth.message || "Unauthorized" },
+      { status: auth.status },
+    );
+  }
+
+  const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
+  if (!isContentOrgId(targetOrg)) {
+    return NextResponse.json(
+      { error: "Select a concrete site." },
+      { status: 400 },
+    );
+  }
+
+  const { id } = await context.params;
+  try {
+    const found = await deleteImportRun({
+      id: id?.trim() || "",
+      organizationId: targetOrg,
+    });
+    if (!found) {
+      return NextResponse.json({ error: "Import run not found" }, { status: 404 });
+    }
+  } catch (err) {
+    if (err instanceof ImportRunSummaryError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    throw err;
+  }
+  return NextResponse.json(
+    { error: "Import runs cannot be deleted from this screen." },
+    { status: 409 },
   );
 }

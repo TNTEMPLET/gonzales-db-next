@@ -25,6 +25,9 @@ export const REGISTRATIONS_CHANGED_MESSAGE =
 const SPLIT_BATCH_MISMATCH =
   "This split import cannot be undone because the batch is not one Spring program shared by Gonzales DYB and Ascension LL. Nothing was removed.";
 
+const SPLIT_MEMBER_UNFINISHED =
+  "This split import cannot be undone because a league run is missing or is not finished. Nothing was removed.";
+
 export type HistoryRunRow = {
   id: string;
   organizationId: string;
@@ -619,20 +622,45 @@ async function loadUndoBatch(
       summary: { path: ["splitBatchId"], equals: batchId },
     },
   });
-  const members = found.filter((item) => isQualifiedSplitMember(item, batchId, run.seasonYear));
-  if (!members.some((item) => item.id === run.id)) {
+  const shaped = found.filter((item) => isSplitBatchShape(item, batchId, run.seasonYear));
+  if (!shaped.some((item) => item.id === run.id)) {
     throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
   }
-  validateSplitUndoBatch(members, batchId);
+  const expectedIds = agreedSplitBatchRunIds(shaped);
+  if (!expectedIds.includes(run.id)) {
+    throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
+  }
+
+  const byId = new Map(found.map((item) => [item.id, item]));
+  const members: HistoryRunRow[] = [];
+  for (const id of expectedIds) {
+    const loaded = byId.get(id) ?? (await db.sportsConnectImportRun.findFirst({ where: { id } }));
+    if (!loaded) {
+      throw new RegistrationHistoryError(SPLIT_MEMBER_UNFINISHED, 409);
+    }
+    members.push(loaded);
+  }
+
+  const expectedSet = new Set(expectedIds);
+  const shapedIds = new Set(shaped.map((item) => item.id));
+  if (
+    shapedIds.size !== expectedIds.length ||
+    expectedIds.some((id) => !shapedIds.has(id)) ||
+    shaped.some((item) => !expectedSet.has(item.id))
+  ) {
+    throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
+  }
+
+  validateSplitUndoBatch(members, batchId, expectedIds);
   return members;
 }
 
-function isQualifiedSplitMember(item: HistoryRunRow, batchId: string, seasonYear: number): boolean {
+/** Structural batch membership. Status is checked later so a non-DONE partner cannot be dropped. */
+function isSplitBatchShape(item: HistoryRunRow, batchId: string, seasonYear: number): boolean {
   const summary = asRecord(item.summary);
   const programName = typeof summary.programName === "string" ? summary.programName : "";
   return (
     item.reportKind === PLAYER_REG_HISTORY_REPORT_KIND &&
-    item.status === "DONE" &&
     item.seasonYear === seasonYear &&
     summary.role === "commit" &&
     summary.source === "split" &&
@@ -649,13 +677,48 @@ function splitBatchIdOf(summary: unknown): string | null {
   return typeof id === "string" && id.length > 0 ? id : null;
 }
 
-function validateSplitUndoBatch(runs: readonly HistoryRunRow[], batchId: string): void {
-  if (runs.length < 1 || runs.length > 2) {
+function splitBatchRunIdsOf(summary: unknown): string[] | null {
+  const value = asRecord(summary).splitBatchRunIds;
+  if (!Array.isArray(value) || value.length < 1 || value.length > 2) return null;
+  if (!value.every((item) => typeof item === "string" && item.length > 0)) return null;
+  if (new Set(value).size !== value.length) return null;
+  return value as string[];
+}
+
+/** The recorded id list must be identical, including order, on every shaped member. */
+function agreedSplitBatchRunIds(members: readonly HistoryRunRow[]): string[] {
+  const first = splitBatchRunIdsOf(members[0]?.summary);
+  if (!first) {
+    throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
+  }
+  const same = members.every((item) => {
+    const list = splitBatchRunIdsOf(item.summary);
+    return !!list && list.length === first.length && list.every((id, index) => id === first[index]);
+  });
+  if (!same) {
+    throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
+  }
+  return first;
+}
+
+function validateSplitUndoBatch(
+  runs: readonly HistoryRunRow[],
+  batchId: string,
+  expectedIds: readonly string[],
+): void {
+  if (runs.length !== expectedIds.length || runs.length < 1 || runs.length > 2) {
     throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
   }
   const orgs = new Set<string>();
   let seasonYear: number | null = null;
-  for (const item of runs) {
+  for (let index = 0; index < runs.length; index += 1) {
+    const item = runs[index]!;
+    if (item.id !== expectedIds[index]) {
+      throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
+    }
+    if (item.status !== "DONE") {
+      throw new RegistrationHistoryError(SPLIT_MEMBER_UNFINISHED, 409);
+    }
     const summary = asRecord(item.summary);
     const programName = typeof summary.programName === "string" ? summary.programName : "";
     const orgOk = isSpringSplitOrg(item.organizationId) && !orgs.has(item.organizationId);
@@ -663,7 +726,6 @@ function validateSplitUndoBatch(runs: readonly HistoryRunRow[], batchId: string)
     const springOk = isSpringProgramName(programName) && !isFallProgramName(programName);
     if (
       item.reportKind !== PLAYER_REG_HISTORY_REPORT_KIND ||
-      item.status !== "DONE" ||
       summary.role !== "commit" ||
       summary.source !== "split" ||
       summary.splitBatch !== true ||

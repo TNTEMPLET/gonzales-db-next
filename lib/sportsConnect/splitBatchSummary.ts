@@ -1,6 +1,8 @@
+import { PLAYER_REG_HISTORY_REPORT_KIND } from "./registrationHistoryKind";
+
 /**
  * Split-batch summary fields are written only by the split commit.
- * PATCH and other run updates cannot add or remove them.
+ * Registration-history runs are changed only by that commit and its undo.
  */
 
 export const SPLIT_SUMMARY_FIELDS = ["splitBatch", "splitBatchId", "splitBatchRunIds"] as const;
@@ -11,6 +13,13 @@ export class ImportRunSummaryError extends Error {
   constructor(message: string) {
     super(message);
     this.name = "ImportRunSummaryError";
+  }
+}
+
+/** Generic create/update/delete cannot touch a registration-history run. */
+export function assertRegistrationHistoryRunImmutable(reportKind: string | null | undefined): void {
+  if (reportKind === PLAYER_REG_HISTORY_REPORT_KIND) {
+    throw new ImportRunSummaryError("This registration history import cannot be changed here.");
   }
 }
 
