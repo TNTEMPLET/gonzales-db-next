@@ -46,8 +46,61 @@ function asLeague(config: ForecastConfig): LeagueShape {
   return { rule: config.cutoff, divisions: config.divisions };
 }
 
+/**
+ * Collapse punctuation and SportsConnect noise so history labels line up with
+ * Forecast division names. Keeps league tags (llb/dyb) for the alias table;
+ * trailing tags are stripped again during scoring.
+ */
 function normalizeMixLabel(value: string): string {
-  return value.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, " ")
+    .replace(/\blittle league\b/g, " ")
+    .replace(/\byear olds?\b/g, " ")
+    .replace(/\byr olds?\b/g, " ")
+    .replace(/\bcoaches\b/g, "coach")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+/** Drop a trailing LLB/DYB/DBB token (and optional charter noise). */
+function stripLeagueTag(value: string): string {
+  return value.replace(/\s+(llb|dyb|dbb)$/g, "").trim();
+}
+
+/**
+ * SportsConnect Spring names (staging Ascension/Gonzales aggregates) that do
+ * not fuzzy-match the built-in Forecast labels. Keys are {@link normalizeMixLabel}
+ * forms; values are alternate labels/codes to score against.
+ */
+const SPORTSCONNECT_MIX_ALIASES: Readonly<Record<string, readonly string[]>> = {
+  // Gonzales DYB (Enrollment.divisionNameRaw / ageGroup on staging Spring 2026)
+  "9 dyb": ["9u kid pitch", "9u kp"],
+  "10 dyb": ["10u kid pitch", "10u kp"],
+  "11 12 dyb": ["11 12u", "11 12"],
+  "13 15 diamond boys baseball": ["13 14u", "13 14"],
+  "13 14 diamond boys baseball": ["13 14u", "13 14"],
+  "15 17 diamond boys pre majors": ["15 17u", "15 17"],
+  "14u dyb": ["13 14u", "13 14"],
+  "17u dyb": ["15 17u", "15 17"],
+  // Tee-ball style names when the Forecast row uses the short Gonzales label
+  "3 4u tee ball": ["3 4u tee ball", "3 4u tb"],
+  "5u tee ball": ["5u tee ball", "5u tb"],
+};
+
+function aliasKeysFor(registration: string): string[] {
+  const normalized = normalizeMixLabel(registration);
+  if (!normalized) return [];
+  const keys = new Set<string>([normalized, stripLeagueTag(normalized)]);
+  for (const base of [...keys]) {
+    for (const alias of SPORTSCONNECT_MIX_ALIASES[base] ?? []) {
+      const a = normalizeMixLabel(alias);
+      if (a) keys.add(a);
+      const stripped = stripLeagueTag(a);
+      if (stripped) keys.add(stripped);
+    }
+  }
+  return [...keys].filter(Boolean);
 }
 
 function playerCount(player: MixHistoryPlayer): number {
@@ -65,23 +118,46 @@ function registrationKeys(player: MixHistoryPlayer): string[] {
   return keys;
 }
 
-function matchScore(registration: string, division: DivisionAgeConfig): number {
-  const reg = normalizeMixLabel(registration);
-  if (!reg) return 0;
-  const code = normalizeMixLabel(division.code);
-  const label = normalizeMixLabel(division.label);
-  if (reg === code || reg === label) return 100;
-  const codeTail = code.replace(/^(gonzales|ascension)\s+/, "");
-  if (codeTail && reg === codeTail) return 95;
-  const strippedLabel = label.replace(/ (dyb|llb)$/, "");
-  if (strippedLabel && strippedLabel !== label && reg === strippedLabel) return 95;
-  if (codeTail && (reg.includes(codeTail) || codeTail.includes(reg)) && Math.min(reg.length, codeTail.length) >= 4) {
-    return 80;
+function scoreAgainst(reg: string, candidate: string): number {
+  if (!reg || !candidate) return 0;
+  if (reg === candidate) return 100;
+  const strippedReg = stripLeagueTag(reg);
+  const strippedCand = stripLeagueTag(candidate);
+  if (strippedReg && strippedCand && strippedReg === strippedCand) return 95;
+  if (strippedCand && reg === strippedCand) return 95;
+  if (strippedReg && candidate === strippedReg) return 95;
+  if (
+    (reg.includes(candidate) || candidate.includes(reg)) &&
+    Math.min(reg.length, candidate.length) >= 4
+  ) {
+    return 70;
   }
-  if (label && (reg.includes(label) || label.includes(reg)) && Math.min(reg.length, label.length) >= 4) {
+  if (
+    strippedReg &&
+    strippedCand &&
+    (strippedReg.includes(strippedCand) || strippedCand.includes(strippedReg)) &&
+    Math.min(strippedReg.length, strippedCand.length) >= 4
+  ) {
     return 70;
   }
   return 0;
+}
+
+function matchScore(registration: string, division: DivisionAgeConfig): number {
+  const regs = aliasKeysFor(registration);
+  if (regs.length === 0) return 0;
+  const code = normalizeMixLabel(division.code);
+  const label = normalizeMixLabel(division.label);
+  const codeTail = stripLeagueTag(code.replace(/^(gonzales|ascension)\s+/, ""));
+  const candidates = [code, label, codeTail, stripLeagueTag(label)].filter(Boolean);
+  let best = 0;
+  for (const reg of regs) {
+    for (const candidate of candidates) {
+      const score = scoreAgainst(reg, candidate);
+      if (score > best) best = score;
+    }
+  }
+  return best;
 }
 
 /** One division in `candidates`, or null when nothing matches or two tie. */
@@ -101,6 +177,14 @@ function matchDivision(player: MixHistoryPlayer, candidates: readonly DivisionAg
     if (bestScore > 0 && best.length === 1) return best[0] ?? null;
   }
   return null;
+}
+
+/** Test helper: which division code a registration string maps to. */
+export function matchMixRegistration(
+  registration: string,
+  candidates: readonly DivisionAgeConfig[],
+): string | null {
+  return matchDivision({ birthDate: "2015-06-01", divisionName: registration, ageGroup: "" }, candidates);
 }
 
 function eligibleCodes(birthDate: string, config: ForecastConfig, targetSeasonYear: number): string[] {
