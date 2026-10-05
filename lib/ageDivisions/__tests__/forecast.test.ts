@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
+import { combinedForecastConfig } from "@/lib/admin/springCombined/view";
+
 import { splitDivisionAt } from "../forecastView";
 import { forecastTimelineLayout } from "../springTimeline";
 import {
@@ -16,7 +18,9 @@ import {
   compareConfigs,
   effectiveCutoffDate,
   eligibilityContrasts,
+  leagueDivisionDefaults,
   projectDivision,
+  shiftIsoDateByYears,
   teamCountRange,
   type BirthBucket,
   type DivisionAssignment,
@@ -25,7 +29,7 @@ import {
   type RosterSize,
 } from "../index";
 
-import { divisionMixShares, matchMixRegistration } from "../forecastMix";
+import { divisionMixShares, matchMixRegistration, overlappingDivisionGroups } from "../forecastMix";
 
 const SEASON = 2027;
 
@@ -1128,12 +1132,19 @@ describe("spring overlap mix weights", () => {
     const proposedMinors = compared.rows.find((row) => row.code === "MINORS")?.proposed;
     assert.equal(currentMajors?.current.expected, 80);
     assert.equal(currentMajors?.currentMix?.note, "27% of window, avg of Spring 2025\u20132026");
-    assert.equal(proposedMajors?.expected, 80);
-    assert.equal(proposedMajors?.pool, 80);
-    assert.equal(currentMajors?.proposedMix?.sharePercent, 100);
-    assert.equal(currentMajors?.proposedMix?.note, "100% of window, avg of Spring 2025\u20132026");
-    assert.equal(proposedMinors?.expected, 0);
-    assert.equal(compared.rows.find((row) => row.code === "MINORS")?.proposedMix?.sharePercent, 0);
+    // The narrowed youngest date leaves every Minors registration outside the
+    // proposed window, so Minors is missing history and takes the even split.
+    assert.equal(proposedMajors?.expected, 40);
+    assert.equal(proposedMajors?.pool, 40);
+    assert.equal(currentMajors?.proposedMix?.sharePercent, 50);
+    assert.equal(currentMajors?.proposedMix?.evenSplit, false);
+    assert.equal(currentMajors?.proposedMix?.note, "50% of window, avg of Spring 2025\u20132026");
+    assert.equal(proposedMinors?.expected, 40);
+    assert.equal(proposedMinors?.pool, 40);
+    const proposedMinorsMix = compared.rows.find((row) => row.code === "MINORS")?.proposedMix;
+    assert.equal(proposedMinorsMix?.sharePercent, 50);
+    assert.equal(proposedMinorsMix?.evenSplit, true);
+    assert.equal(proposedMinorsMix?.note, EVEN_SPLIT_MIX_NOTE);
     assert.equal(compared.rows.find((row) => row.code === "12U")?.proposed.pool, 12);
   });
   it("maps SportsConnect Ascension and Gonzales history names onto Forecast divisions", () => {
@@ -1190,6 +1201,10 @@ describe("spring overlap mix weights", () => {
     assert.equal(matchMixRegistration("11/12 year-old DYB", gonzales), "11-12U");
     assert.equal(matchMixRegistration("13/15 year-old Diamond Boys Baseball", gonzales), "13-14U");
     assert.equal(matchMixRegistration("15/17 year-old Diamond Boys Pre-Majors", gonzales), "15-17U");
+
+    assert.equal(matchMixRegistration("Little League 10 year-old MAJOR", ascension), null);
+    assert.equal(matchMixRegistration("Little League 9 year-old MAJOR", ascension), null);
+    assert.equal(matchMixRegistration("coach pitch 7", ascension), null);
   });
 
   it("weights Ascension Coach Pitch overlaps from SportsConnect Spring mix (not even split)", () => {
@@ -1281,5 +1296,106 @@ describe("spring overlap mix weights", () => {
     assert.notEqual(minor.note, EVEN_SPLIT_MIX_NOTE);
   });
 
+  it("treats a division matched only outside the year window as missing", () => {
+    const config = pair();
+    config.divisions[0]!.label = "Majors";
+    config.divisions[1]!.label = "Minors";
+    const mix = divisionMixShares({
+      config,
+      targetSeasonYear: SEASON,
+      seasons: [
+        {
+          seasonYear: 2025,
+          players: [players("2001-01-01", "Majors", 40), players(youngerIn2025, "Minors", 60)],
+        },
+      ],
+    });
+    const majors = mix.get("MAJORS");
+    const minors = mix.get("MINORS");
+    assert.ok(majors && minors);
+    assert.equal(majors.evenSplit, true);
+    assert.equal(majors.share, 0.5);
+    assert.equal(majors.note, EVEN_SPLIT_MIX_NOTE);
+    assert.deepEqual(majors.seasons, []);
+    assert.equal(minors.evenSplit, false);
+    assert.equal(minors.share, 0.5);
+    assert.equal(minors.sharePercent, 50);
+    assert.equal(minors.note, "50% of window, Spring 2025");
+    assert.deepEqual(minors.seasons, [2025]);
+    assert.equal(mix.has("12U"), false);
+  });
 
+  it("keeps combined Spring mix groups inside each league", () => {
+    const gonzalesLeague = leagueDivisionDefaults("gonzales");
+    const ascensionLeague = leagueDivisionDefaults("ascension");
+    const gonzales: ForecastConfig = { cutoff: gonzalesLeague.rule, divisions: gonzalesLeague.divisions };
+    const ascension: ForecastConfig = { cutoff: ascensionLeague.rule, divisions: ascensionLeague.divisions };
+    const gonzalesGroups = [["6U MINOR", "6U MAJOR"]];
+    const ascensionGroups = [
+      ["6U MOD", "6U CP"],
+      ["7U MINOR", "8U MINOR", "7-8U MAJOR"],
+    ];
+    assert.deepEqual(overlappingDivisionGroups(gonzales, SEASON), gonzalesGroups);
+    assert.deepEqual(overlappingDivisionGroups(gonzales, SEASON, { sameLeague: true }), gonzalesGroups);
+    assert.deepEqual(overlappingDivisionGroups(ascension, SEASON), ascensionGroups);
+    assert.deepEqual(overlappingDivisionGroups(ascension, SEASON, { sameLeague: true }), ascensionGroups);
+
+    const combined = combinedForecastConfig(
+      [
+        { organizationId: "gonzales", cutoff: gonzalesLeague.rule, divisions: gonzalesLeague.divisions },
+        { organizationId: "ascension", cutoff: ascensionLeague.rule, divisions: ascensionLeague.divisions },
+      ],
+      SEASON,
+    );
+    assert.deepEqual(overlappingDivisionGroups(combined, SEASON, { sameLeague: true }), [
+      ["gonzales:6U MINOR", "gonzales:6U MAJOR"],
+      ["ascension:6U MOD", "ascension:6U CP"],
+      ["ascension:7U MINOR", "ascension:8U MINOR", "ascension:7-8U MAJOR"],
+    ]);
+    const crossLeague = overlappingDivisionGroups(combined, SEASON);
+    assert.equal(crossLeague.length, 1);
+    assert.equal(crossLeague[0]?.length, 18);
+    assert.equal(crossLeague[0]?.includes("gonzales:3-4U TB"), true);
+    assert.equal(crossLeague[0]?.includes("ascension:11-12U MAJOR"), true);
+
+    const byCode = new Map(combined.divisions.map((division) => [division.code, division]));
+    const minor = byCode.get("gonzales:6U MINOR");
+    const major = byCode.get("gonzales:6U MAJOR");
+    const tee = byCode.get("gonzales:3-4U TB");
+    assert.ok(minor?.oldestBirthdate && major?.label && tee?.oldestBirthdate);
+    const historyBirth = shiftIsoDateByYears(minor.oldestBirthdate, -1);
+    const seasons: MixSeason[] = [
+      {
+        seasonYear: SEASON - 1,
+        players: [
+          players(historyBirth, minor.label, 3),
+          players(historyBirth, major.label, 1),
+        ],
+      },
+    ];
+    const compared = compareConfigs(
+      [bucket(minor.oldestBirthdate, 100), bucket(tee.oldestBirthdate, 50)],
+      combined,
+      combined,
+      SEASON,
+      { retentionRate: 1, includeFeeder: false, rosterFor, mix: history(seasons) },
+    );
+    const row = (code: string) => compared.rows.find((item) => item.code === code);
+    assert.equal(row("gonzales:6U MINOR")?.current.pool, 75);
+    assert.equal(row("gonzales:6U MINOR")?.currentMix?.sharePercent, 75);
+    assert.equal(row("gonzales:6U MINOR")?.currentMix?.evenSplit, false);
+    assert.equal(row("gonzales:6U MAJOR")?.current.pool, 25);
+    assert.equal(row("gonzales:6U MAJOR")?.currentMix?.sharePercent, 25);
+    assert.equal(row("gonzales:3-4U TB")?.current.pool, 50);
+    assert.equal(row("gonzales:3-4U TB")?.currentMix, null);
+    assert.equal(row("ascension:6U MOD")?.currentMix?.evenSplit, true);
+    assert.equal(row("ascension:6U MOD")?.currentMix?.share, 0.5);
+    assert.equal(row("ascension:6U CP")?.currentMix?.share, 0.5);
+    assert.ok(Math.abs((row("ascension:7U MINOR")?.currentMix?.share ?? 0) - 1 / 3) < 1e-12);
+    const chain = compared.sharedPools.find((pool) => pool.codes.includes("gonzales:3-4U TB"));
+    assert.ok(chain);
+    assert.equal(chain.codes.length, 18);
+    assert.equal(chain.codes.includes("ascension:11-12U MAJOR"), true);
+    assert.equal(chain.codes.includes("gonzales:6U MINOR"), true);
+  });
 });
