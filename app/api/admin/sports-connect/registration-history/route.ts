@@ -12,9 +12,13 @@ import {
   undoRegistrationHistory,
   type HistoryDb,
 } from "@/lib/sportsConnect/registrationHistoryCommit";
+import { splitImportDenial } from "@/lib/sportsConnect/divisionLeagueSplit";
 import {
   classifyRegistrationHistory,
+  enrollmentReadTargets,
   inventoryRegistrationPrograms,
+  normalizeHistoryMapping,
+  programNamesInRows,
   readRegistrationHistoryExport,
   RegistrationHistoryError,
   sha256FileBytes,
@@ -70,8 +74,10 @@ export async function GET(request: NextRequest) {
         completedAt: row.completedAt?.toISOString() ?? null,
         wouldAdd: summaryNumber(row.summary, "wouldAdd"),
         alreadyPresent: summaryNumber(row.summary, "alreadyPresent"),
+        alreadyOtherLeague: summaryNumber(row.summary, "alreadyOtherLeague"),
         inserted: summaryNumber(row.summary, "inserted"),
         undoneEnrollmentCount: summaryNumber(row.summary, "undoneEnrollmentCount"),
+        splitBatch: summaryFlag(row.summary, "splitBatch"),
       })),
   });
 }
@@ -129,6 +135,7 @@ async function preview(form: FormData, adminId: string, isMaster: boolean) {
     fileSha256: uploaded.fileSha256,
     preview: classified.preview,
     normalizedMapping: classified.normalizedMapping,
+    classificationDigest: classified.classificationDigest,
     createdByAdminId: adminId,
   });
   return NextResponse.json({
@@ -152,6 +159,7 @@ async function commit(form: FormData, adminId: string, isMaster: boolean) {
     mapping,
     rows: uploaded.rows,
     createdByAdminId: adminId,
+    isMaster,
   });
   return NextResponse.json({ data: result });
 }
@@ -174,10 +182,14 @@ async function undoFromJson(request: NextRequest, adminId: string, isMaster: boo
   const runId = typeof body.runId === "string" ? body.runId.trim() : "";
   if (!runId) return NextResponse.json({ error: "runId is required." }, { status: 400 });
   if (body.confirm !== true) {
-    const counted = await countRegistrationHistoryUndo(db, { runId, organizationId: org });
+    const counted = await countRegistrationHistoryUndo(db, {
+      runId,
+      organizationId: org,
+      isMaster,
+    });
     return NextResponse.json({ data: { ...counted, undone: false } });
   }
-  const result = await undoRegistrationHistory(db, { runId, organizationId: org });
+  const result = await undoRegistrationHistory(db, { runId, organizationId: org, isMaster });
   return NextResponse.json({ data: result });
 }
 
@@ -219,28 +231,14 @@ function readMapping(form: FormData): HistoryMappingEntry[] {
 }
 
 function classifiedTargets(rows: Record<string, unknown>[], mapping: HistoryMappingEntry[]) {
-  return classifyRegistrationHistory({
-    rows,
-    mapping,
-    existingKeys: [],
-    fileName: "export",
-    fileSha256: "",
-  }).normalizedMapping;
+  return normalizeHistoryMapping(programNamesInRows(rows), mapping);
 }
 
 async function loadExistingKeys(mapping: NormalizedHistoryMappingEntry[]) {
-  const targets = mapping.filter((entry) => entry.action === "map");
+  const targets = enrollmentReadTargets(mapping);
   if (!targets.length) return [];
-  const unique = new Map<string, { organizationId: string; seasonYear: number }>();
-  for (const target of targets) {
-    if (target.action !== "map") continue;
-    unique.set(`${target.organizationId}\0${target.seasonYear}`, {
-      organizationId: target.organizationId,
-      seasonYear: target.seasonYear,
-    });
-  }
   return prisma.enrollment.findMany({
-    where: { OR: [...unique.values()] },
+    where: { OR: targets },
     select: { organizationId: true, seasonYear: true, sportsConnectRowKey: true },
   });
 }
@@ -250,9 +248,15 @@ async function assertCanWriteTargets(
   isMaster: boolean,
   mapping: NormalizedHistoryMappingEntry[],
 ) {
+  const denial = splitImportDenial(isMaster, mapping);
+  if (denial) throw new RegistrationHistoryError(denial, 403);
   const orgs = new Set<HistoryOrgId>();
   for (const entry of mapping) {
     if (entry.action === "map") orgs.add(entry.organizationId);
+    if (entry.action === "split") {
+      orgs.add("gonzales");
+      orgs.add("ascension");
+    }
   }
   for (const org of orgs) {
     const role = await getEffectiveAdminRoleForOrg(adminId, isMaster, org);
@@ -272,4 +276,9 @@ function summaryNumber(summary: unknown, key: string): number | null {
   if (!summary || typeof summary !== "object" || Array.isArray(summary)) return null;
   const value = (summary as Record<string, unknown>)[key];
   return typeof value === "number" ? value : null;
+}
+
+function summaryFlag(summary: unknown, key: string): boolean {
+  if (!summary || typeof summary !== "object" || Array.isArray(summary)) return false;
+  return (summary as Record<string, unknown>)[key] === true;
 }

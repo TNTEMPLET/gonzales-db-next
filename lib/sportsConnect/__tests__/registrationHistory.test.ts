@@ -264,6 +264,12 @@ class MemoryDb {
   team = this.forbidden("team");
   teamPlayer = this.forbidden("teamPlayer");
 
+  async $executeRaw(strings: TemplateStringsArray): Promise<number> {
+    const sql = strings.join("");
+    this.calls.push(sql.includes("pg_advisory_xact_lock") ? "lock" : "executeRaw");
+    return 0;
+  }
+
   async $transaction<T>(fn: (tx: MemoryDb) => Promise<T>): Promise<T> {
     const runs = structuredClone(this.runs);
     const enrollments = structuredClone(this.enrollments);
@@ -495,6 +501,7 @@ describe("registration history commit and undo", () => {
       fileSha256: FILE_SHA,
       preview: classified.preview,
       normalizedMapping: classified.normalizedMapping,
+      classificationDigest: classified.classificationDigest,
       createdByAdminId: null,
     });
     const result = await commitRegistrationHistory(asDb(db), {
@@ -543,6 +550,7 @@ describe("registration history commit and undo", () => {
       fileSha256: FILE_SHA,
       preview: classified.preview,
       normalizedMapping: classified.normalizedMapping,
+      classificationDigest: classified.classificationDigest,
       createdByAdminId: null,
     });
     const enrollmentCount = db.enrollments.length;
@@ -592,6 +600,7 @@ describe("registration history commit and undo", () => {
       fileSha256: FILE_SHA,
       preview: classified.preview,
       normalizedMapping: classified.normalizedMapping,
+      classificationDigest: classified.classificationDigest,
       createdByAdminId: null,
     });
     const result = await commitRegistrationHistory(asDb(db), {

@@ -5,6 +5,12 @@ import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 
 import { PLAYER_REG_HISTORY_REPORT_KIND } from "./registrationHistoryKind";
+import {
+  assertImportRunSummaryCreate,
+  assertImportRunSummaryPatch,
+  assertRegistrationHistoryRunImmutable,
+  ImportRunSummaryError,
+} from "./splitBatchSummary";
 import type {
   SportsConnectImportRunView,
   SportsConnectReportKind,
@@ -164,6 +170,8 @@ export async function createImportRun(input: {
   revisionToken?: string | null;
   leaseExpiresAt?: Date | null;
 }): Promise<SportsConnectImportRunView> {
+  assertRegistrationHistoryRunImmutable(input.reportKind);
+  assertImportRunSummaryCreate(input.summary);
   const row = await prisma.sportsConnectImportRun.create({
     data: {
       organizationId: input.organizationId,
@@ -213,9 +221,12 @@ export async function updateImportRun(input: {
 }): Promise<SportsConnectImportRunView | null> {
   const existing = await prisma.sportsConnectImportRun.findFirst({
     where: { id: input.id, organizationId: input.organizationId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, summary: true, reportKind: true },
   });
   if (!existing) return null;
+  assertRegistrationHistoryRunImmutable(existing.reportKind);
+  assertRegistrationHistoryRunImmutable(input.reportKind);
+  assertImportRunSummaryPatch(existing.summary, input.summary);
 
   const terminal =
     input.status === "DONE" ||
@@ -274,6 +285,23 @@ export async function recordImportRunSafe(
     );
     return null;
   }
+}
+
+/**
+ * There is no delete for import runs. Registration-history runs are refused
+ * before any other run, and this function never calls delete.
+ */
+export async function deleteImportRun(input: {
+  id: string;
+  organizationId: string;
+}): Promise<boolean> {
+  const existing = await prisma.sportsConnectImportRun.findFirst({
+    where: { id: input.id, organizationId: input.organizationId },
+    select: { id: true, reportKind: true },
+  });
+  if (!existing) return false;
+  assertRegistrationHistoryRunImmutable(existing.reportKind);
+  throw new ImportRunSummaryError("Import runs cannot be deleted from this screen.");
 }
 
 export async function completeImportRunSafe(input: {

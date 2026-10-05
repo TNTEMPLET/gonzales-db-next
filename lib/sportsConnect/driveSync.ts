@@ -16,6 +16,7 @@ import {
 } from "./parseExportBuffer";
 import { previewSportsConnectFile } from "./preview";
 import { createImportRun, updateImportRun } from "./importRuns";
+import { assertRegistrationHistoryRunImmutable } from "./splitBatchSummary";
 import { enrollmentKeysFromPlayerRegRows } from "./enrollmentRowKey";
 import { pruneStaleEnrollments } from "./pruneStaleEnrollments";
 import type { SportsConnectReportKind, SportsConnectRunStatus } from "./types";
@@ -158,6 +159,8 @@ export async function acquireDriveRunLease(input: {
       // fix (e.g. recognizing a real column name it didn't before) should
       // get a chance to reclassify the same file on the next sync rather
       // than leaving it stuck forever under the old verdict.
+      // Registration-history runs are not Drive leases. Do not touch them.
+      assertRegistrationHistoryRunImmutable(existingRun.reportKind);
       const updated = await prisma.sportsConnectImportRun.updateMany({
         where: {
           id: existingRun.id,

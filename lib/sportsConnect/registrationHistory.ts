@@ -2,6 +2,15 @@ import { createHash } from "node:crypto";
 
 import { shouldSkipDivisionImport } from "@/lib/admin/teamsImportHelpers";
 
+import {
+  canSplitSpringProgram,
+  isFallProgramName,
+  isSpringProgramName,
+  isSpringSplitOrg,
+  placeDivision,
+  type SpringSplitOrg,
+  type UnplaceableReason,
+} from "./divisionLeagueSplit";
 import { deriveSportsConnectRowKey, playerRegRowFullName } from "./enrollmentRowKey";
 import {
   isAllowedSportsConnectExportName,
@@ -9,6 +18,9 @@ import {
   SPORTS_CONNECT_INGEST_MAX_ROWS,
 } from "./parseExportBuffer";
 import { PLAYER_REG_HISTORY_REPORT_KIND } from "./registrationHistoryKind";
+import { springEnrollmentSeasonYears } from "./springEnrollmentLock";
+
+export { canSplitSpringProgram, isFallProgramName, isSpringProgramName };
 
 export { PLAYER_REG_HISTORY_REPORT_KIND };
 
@@ -100,11 +112,17 @@ export class RegistrationHistoryError extends Error {
   }
 }
 
+export type DivisionLeagueOverride = {
+  divisionName: string;
+  organizationId: SpringSplitOrg;
+};
+
 export type HistoryMappingEntry = {
   programName: string;
   action: string;
   organizationId?: string;
   seasonYear?: number;
+  divisionOverrides?: Array<{ divisionName?: string; organizationId?: string }>;
 };
 
 export type NormalizedHistoryMappingEntry =
@@ -114,6 +132,12 @@ export type NormalizedHistoryMappingEntry =
       action: "map";
       organizationId: HistoryOrgId;
       seasonYear: number;
+    }
+  | {
+      programName: string;
+      action: "split";
+      seasonYear: number;
+      divisionOverrides: DivisionLeagueOverride[];
     };
 
 export type HistorySkipCounts = Record<HistorySkipReason, number>;
@@ -123,20 +147,48 @@ export type HistoryDivisionCounts = {
   wouldAdd: number;
   alreadyPresent: number;
   skipped: HistorySkipCounts;
+  organizationId?: SpringSplitOrg | null;
+  alreadySameLeague?: number;
+  alreadyOtherLeague?: number;
+  unplaceable?: number;
+  placement?: "tag" | "fixed" | "override" | "unplaceable";
+  unplaceableReason?: UnplaceableReason | null;
+};
+
+export type HistoryLeagueTotals = {
+  organizationId: SpringSplitOrg;
+  seasonYear: number;
+  wouldAdd: number;
+  alreadySameLeague: number;
+  alreadyOtherLeague: number;
+  amountCents: number;
+  amountPaidCents: number;
+  balanceCents: number;
+};
+
+export type UnplaceableDivision = {
+  programName: string;
+  divisionName: string;
+  rowCount: number;
+  reason: UnplaceableReason;
 };
 
 export type HistoryProgramCounts = {
   programName: string;
   rowCount: number;
   fallLocked: boolean;
-  disposition: "skip" | "map";
+  disposition: "skip" | "map" | "split";
   organizationId: HistoryOrgId | null;
   seasonYear: number | null;
   divisions: HistoryDivisionCounts[];
+  leagues: HistoryLeagueTotals[];
   totals: {
     wouldAdd: number;
     alreadyPresent: number;
     skipped: HistorySkipCounts;
+    unplaceable: number;
+    alreadySameLeague: number;
+    alreadyOtherLeague: number;
   };
 };
 
@@ -149,8 +201,13 @@ export type HistoryPreview = {
     wouldAdd: number;
     alreadyPresent: number;
     skipped: HistorySkipCounts;
+    unplaceable: number;
+    alreadySameLeague: number;
+    alreadyOtherLeague: number;
   };
   programs: HistoryProgramCounts[];
+  leagues: HistoryLeagueTotals[];
+  unplaceable: UnplaceableDivision[];
   mapping: NormalizedHistoryMappingEntry[];
   keyNote: string;
 };
@@ -200,14 +257,17 @@ export type ProgramInventoryEntry = {
   programName: string;
   rowCount: number;
   suggestion: ReturnType<typeof suggestProgramMapping>;
+  springSplitEligible: boolean;
 };
 
 const KEY_NOTE =
   "Would-add counts a new organization, season, and order-line key. A repeated key in this file, or a key already stored, counts as already present and is left unchanged.";
 
-export function isFallProgramName(programName: string): boolean {
-  return programName.toLowerCase().includes("fall");
-}
+const SPRING_MAP_KEY_NOTE =
+  "Would-add counts a new organization, season, and order-line key. A repeated key in this file, or a key already stored for this season in Gonzales or Ascension, is left where it is. A Spring row aimed at the other league is counted as already in the other league and is not moved.";
+
+const SPLIT_KEY_NOTE =
+  "Would-add counts a new player for that league. A repeated row in this file, or a player already stored for this season in Gonzales or Ascension, is left where they are. If this file would place them in the other league, they are counted and not moved.";
 
 export function suggestProgramMapping(programName: string): {
   action: "skip" | "map";
@@ -226,6 +286,9 @@ export function suggestProgramMapping(programName: string): {
   }
   if (norm.includes("ascension") && norm.includes("spring")) {
     return { action: "map", organizationId: "ascension", seasonYear, fallLocked: false };
+  }
+  if (isSpringProgramName(programName)) {
+    return { action: "skip", organizationId: null, seasonYear, fallLocked: false };
   }
   return { action: "skip", organizationId: null, seasonYear: null, fallLocked: false };
 }
@@ -274,15 +337,56 @@ export function historyCountsSignature(preview: HistoryPreview): string {
     totalRows: preview.totalRows,
     birthDateCoveragePercent: preview.birthDateCoveragePercent,
     totals: preview.totals,
+    leagues: preview.leagues,
+    unplaceable: preview.unplaceable,
     programs: preview.programs.map((program) => ({
       programName: program.programName,
       disposition: program.disposition,
       organizationId: program.organizationId,
       seasonYear: program.seasonYear,
       divisions: program.divisions,
+      leagues: program.leagues,
       totals: program.totals,
     })),
   });
+}
+
+export function existingKeyTargets(
+  mapping: readonly NormalizedHistoryMappingEntry[],
+): Array<{ organizationId: string; seasonYear: number }> {
+  const targets: Array<{ organizationId: string; seasonYear: number }> = [];
+  const seen = new Set<string>();
+  const add = (organizationId: string, seasonYear: number) => {
+    const id = `${organizationId}\0${seasonYear}`;
+    if (seen.has(id)) return;
+    seen.add(id);
+    targets.push({ organizationId, seasonYear });
+  };
+  for (const entry of mapping) {
+    if (entry.action === "map") add(entry.organizationId, entry.seasonYear);
+    if (entry.action === "split") {
+      add("gonzales", entry.seasonYear);
+      add("ascension", entry.seasonYear);
+    }
+  }
+  return targets;
+}
+
+/** Key reads for a Spring Gonzales/Ascension write include both leagues. */
+export function enrollmentReadTargets(
+  mapping: readonly NormalizedHistoryMappingEntry[],
+): Array<{ organizationId: string; seasonYear: number }> {
+  const targets = existingKeyTargets(mapping);
+  const seen = new Set(targets.map((target) => `${target.organizationId}\0${target.seasonYear}`));
+  for (const seasonYear of springEnrollmentSeasonYears(mapping)) {
+    for (const organizationId of ["gonzales", "ascension"] as const) {
+      const id = `${organizationId}\0${seasonYear}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      targets.push({ organizationId, seasonYear });
+    }
+  }
+  return targets;
 }
 
 export function normalizeHistoryMapping(
@@ -319,7 +423,30 @@ export function normalizeHistoryMapping(
           `Fall program "${programName}" can't be mapped in registration history import.`,
         );
       }
+      if (entry?.action === "split") {
+        throw new RegistrationHistoryError(
+          `Fall program "${programName}" can't be split. Fall stays on the roster importer.`,
+        );
+      }
       normalized.push({ programName, action: "skip" });
+      continue;
+    }
+    if (entry?.action === "split") {
+      if (!isSpringProgramName(programName)) {
+        throw new RegistrationHistoryError(
+          `Split by division league is only for a Spring program. "${programName}" is not a Spring program.`,
+        );
+      }
+      const seasonYear = Number(entry.seasonYear);
+      if (!Number.isInteger(seasonYear) || seasonYear < 2000 || seasonYear > 2100) {
+        throw new RegistrationHistoryError(`Program "${programName}" needs a season year.`);
+      }
+      normalized.push({
+        programName,
+        action: "split",
+        seasonYear,
+        divisionOverrides: normalizeDivisionOverrides(programName, entry.divisionOverrides),
+      });
       continue;
     }
     if (!entry || entry.action === "skip") {
@@ -346,7 +473,46 @@ export function normalizeHistoryMapping(
       seasonYear,
     });
   }
+  const splitCount = normalized.filter((entry) => entry.action === "split").length;
+  const mapCount = normalized.filter((entry) => entry.action === "map").length;
+  if (splitCount > 1 || (splitCount === 1 && mapCount > 0)) {
+    throw new RegistrationHistoryError(
+      "A split import can only include one Spring program. Set every other program to Skip.",
+    );
+  }
   return normalized;
+}
+
+function normalizeDivisionOverrides(
+  programName: string,
+  raw: HistoryMappingEntry["divisionOverrides"],
+): DivisionLeagueOverride[] {
+  if (raw == null) return [];
+  if (!Array.isArray(raw)) {
+    throw new RegistrationHistoryError(`Program "${programName}" has invalid division leagues.`);
+  }
+  const overrides: DivisionLeagueOverride[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    if (!item || typeof item !== "object") {
+      throw new RegistrationHistoryError(`Program "${programName}" has invalid division leagues.`);
+    }
+    const divisionName = String(item.divisionName ?? "").trim();
+    const organizationId = String(item.organizationId ?? "").trim();
+    if (!divisionName || !organizationId) continue;
+    if (!isSpringSplitOrg(organizationId)) {
+      throw new RegistrationHistoryError(
+        `Pick Gonzales DYB or Ascension LL for "${divisionName}".`,
+      );
+    }
+    if (seen.has(divisionName)) {
+      throw new RegistrationHistoryError(`Division "${divisionName}" is assigned more than once.`);
+    }
+    seen.add(divisionName);
+    overrides.push({ divisionName, organizationId });
+  }
+  overrides.sort((a, b) => a.divisionName.localeCompare(b.divisionName));
+  return overrides;
 }
 
 export function readRegistrationHistoryExport(input: {
@@ -402,6 +568,7 @@ export function inventoryRegistrationPrograms(
     programName,
     rowCount,
     suggestion: suggestProgramMapping(programName),
+    springSplitEligible: canSplitSpringProgram(programName),
   }));
 }
 
@@ -415,6 +582,7 @@ export function classifyRegistrationHistory(input: {
   preview: HistoryPreview;
   inserts: HistoryEnrollmentInsert[];
   normalizedMapping: NormalizedHistoryMappingEntry[];
+  classificationDigest: string;
 } {
   const programNames = programNamesInRows(input.rows);
   const normalizedMapping = normalizeHistoryMapping(programNames, input.mapping);
@@ -426,12 +594,15 @@ export function classifyRegistrationHistory(input: {
       (key) => `${key.organizationId}\0${key.seasonYear}\0${key.sportsConnectRowKey}`,
     ),
   );
+  const crossOrg = buildCrossOrgIndex(input.existingKeys);
 
   const programs = new Map<string, ProgramAccumulator>();
   const inserts: HistoryEnrollmentInsert[] = [];
+  const classificationRows: HistoryClassificationRow[] = [];
   let birthDates = 0;
 
-  for (const row of input.rows) {
+  for (let index = 0; index < input.rows.length; index += 1) {
+    const row = input.rows[index]!;
     const programName = readCell(row, PROGRAM_KEYS) || NO_PROGRAM;
     const mapping = mappingByProgram.get(programName);
     const divisionRaw = readCell(row, DIVISION_KEYS);
@@ -446,7 +617,7 @@ export function classifyRegistrationHistory(input: {
       bumpSkip(program, division, reason);
       continue;
     }
-    if (!mapping || mapping.action !== "map") {
+    if (!mapping || (mapping.action !== "map" && mapping.action !== "split")) {
       bumpSkip(program, division, "unmapped_or_fall");
       continue;
     }
@@ -459,50 +630,89 @@ export function classifyRegistrationHistory(input: {
     }
     const orderNo = readCell(row, ORDER_NO_KEYS);
     const sportsConnectRowKey = deriveSportsConnectRowKey(orderNo, fullName, birthDate);
+
+    if (mapping.action === "split") {
+      classifySplitRow({
+        row,
+        mapping,
+        program,
+        division,
+        divisionName,
+        divisionRaw,
+        programName,
+        fullName,
+        birthDate,
+        orderNo,
+        sportsConnectRowKey,
+        taken,
+        crossOrg,
+        inserts,
+        index,
+        classificationRows,
+      });
+      continue;
+    }
+
+    if (usesSpringCrossOrgDedupe(mapping)) {
+      const hit = crossOrgHit(
+        crossOrg,
+        mapping.seasonYear,
+        sportsConnectRowKey,
+        mapping.organizationId,
+      );
+      if (hit === "same" || hit === "other") {
+        classificationRows.push({
+          index,
+          sportsConnectRowKey,
+          organizationId: mapping.organizationId,
+          disposition: hit === "same" ? "same_league" : "other_league",
+        });
+        program.totals.alreadyPresent += 1;
+        division.alreadyPresent += 1;
+        if (hit === "same") {
+          program.totals.alreadySameLeague += 1;
+          division.alreadySameLeague = (division.alreadySameLeague ?? 0) + 1;
+        } else {
+          program.totals.alreadyOtherLeague += 1;
+          division.alreadyOtherLeague = (division.alreadyOtherLeague ?? 0) + 1;
+        }
+        continue;
+      }
+      claimCrossOrg(crossOrg, mapping.seasonYear, sportsConnectRowKey, mapping.organizationId);
+    }
+
     const takenId = `${mapping.organizationId}\0${mapping.seasonYear}\0${sportsConnectRowKey}`;
     if (taken.has(takenId)) {
+      classificationRows.push({
+        index,
+        sportsConnectRowKey,
+        organizationId: mapping.organizationId,
+        disposition: "same_league",
+      });
       program.totals.alreadyPresent += 1;
       division.alreadyPresent += 1;
       continue;
     }
-    taken.add(takenId);
-    const explicitFirst = readCell(row, FIRST_NAME_KEYS);
-    const explicitLast = readCell(row, LAST_NAME_KEYS);
-    const split = splitName(fullName);
-    inserts.push({
-      organizationId: mapping.organizationId,
-      seasonYear: mapping.seasonYear,
+    classificationRows.push({
+      index,
       sportsConnectRowKey,
-      programName,
-      divisionNameRaw: divisionRaw || null,
-      ageGroup: divisionRaw || "Unassigned",
-      teamNameRaw: readCell(row, TEAM_KEYS) || null,
-      teamId: null,
-      firstName: explicitFirst || split.firstName,
-      lastName: explicitLast || split.lastName,
-      fullName,
-      gender: readCell(row, GENDER_KEYS) || null,
-      birthDate,
-      guardianFirstName: readCell(row, GUARDIAN_FIRST_KEYS) || null,
-      guardianLastName: readCell(row, GUARDIAN_LAST_KEYS) || null,
-      guardianEmail: readCell(row, EMAIL_KEYS) || null,
-      guardianPhone: readCell(row, GUARDIAN_PHONE_KEYS) || null,
-      contactPhone: readCell(row, CONTACT_PHONE_KEYS) || null,
-      streetAddress: readCell(row, STREET_KEYS) || null,
-      unit: readCell(row, UNIT_KEYS) || null,
-      city: readCell(row, CITY_KEYS) || null,
-      state: readCell(row, STATE_KEYS) || null,
-      postalCode: readCell(row, POSTAL_KEYS) || null,
-      sportsConnectOrderNo: orderNo || null,
-      orderDate: parseOrderDate(readCell(row, ORDER_DATE_KEYS)),
-      orderDetailDescription: readCell(row, ORDER_DETAIL_KEYS) || null,
-      orderPaymentStatus: readCell(row, PAYMENT_KEYS).trim(),
-      amountCents: parseMoneyToCents(readCell(row, AMOUNT_KEYS)),
-      amountPaidCents: parseMoneyToCents(readCell(row, AMOUNT_PAID_KEYS)),
-      balanceCents: parseMoneyToCents(readCell(row, BALANCE_KEYS)),
-      sportsConnectPlayerId: readCell(row, PLAYER_ID_KEYS) || null,
-      rawRow: minimizeRawRow(row),
+      organizationId: mapping.organizationId,
+      disposition: "add",
     });
+    taken.add(takenId);
+    inserts.push(
+      enrollmentInsertFromRow({
+        row,
+        organizationId: mapping.organizationId,
+        seasonYear: mapping.seasonYear,
+        sportsConnectRowKey,
+        programName,
+        divisionRaw,
+        fullName,
+        birthDate,
+        orderNo,
+      }),
+    );
     program.totals.wouldAdd += 1;
     division.wouldAdd += 1;
   }
@@ -515,12 +725,27 @@ export function classifyRegistrationHistory(input: {
       0,
     ),
     skipped: emptySkipCounts(),
+    unplaceable: previewPrograms.reduce((sum, program) => sum + program.totals.unplaceable, 0),
+    alreadySameLeague: previewPrograms.reduce(
+      (sum, program) => sum + program.totals.alreadySameLeague,
+      0,
+    ),
+    alreadyOtherLeague: previewPrograms.reduce(
+      (sum, program) => sum + program.totals.alreadyOtherLeague,
+      0,
+    ),
   };
   for (const program of previewPrograms) {
     for (const reason of SKIP_REASONS) {
       totals.skipped[reason] += program.totals.skipped[reason];
     }
   }
+  const leagues = mergeLeagueTotals(previewPrograms);
+  const unplaceable = unplaceableDivisions(previewPrograms);
+  const splitUsed = previewPrograms.some((program) => program.disposition === "split");
+  const springMapUsed = normalizedMapping.some(
+    (entry) => entry.action === "map" && usesSpringCrossOrgDedupe(entry),
+  );
 
   const preview: HistoryPreview = {
     fileName: input.fileName,
@@ -529,10 +754,71 @@ export function classifyRegistrationHistory(input: {
     birthDateCoveragePercent: coveragePercent(birthDates, input.rows.length),
     totals,
     programs: previewPrograms,
+    leagues,
+    unplaceable,
     mapping: normalizedMapping,
-    keyNote: KEY_NOTE,
+    keyNote: splitUsed ? SPLIT_KEY_NOTE : springMapUsed ? SPRING_MAP_KEY_NOTE : KEY_NOTE,
   };
-  return { preview, inserts, normalizedMapping };
+  return {
+    preview,
+    inserts,
+    normalizedMapping,
+    classificationDigest: registrationClassificationDigest({
+      normalizedMapping,
+      rows: classificationRows,
+    }),
+  };
+}
+
+export type HistoryRowDisposition = "add" | "same_league" | "other_league" | "unplaceable";
+
+export type HistoryClassificationRow = {
+  index: number;
+  sportsConnectRowKey: string;
+  organizationId: HistoryOrgId | null;
+  disposition: HistoryRowDisposition;
+};
+
+/** Hash of the exact per-row placement. Row keys stay out of the preview payload. */
+export function registrationClassificationDigest(input: {
+  normalizedMapping: readonly NormalizedHistoryMappingEntry[];
+  rows: readonly HistoryClassificationRow[];
+}): string {
+  const overrides = input.normalizedMapping
+    .filter((entry): entry is Extract<NormalizedHistoryMappingEntry, { action: "split" }> => entry.action === "split")
+    .map((entry) => ({
+      programName: entry.programName,
+      seasonYear: entry.seasonYear,
+      divisionOverrides: entry.divisionOverrides,
+    }));
+  const payload = {
+    overrides,
+    rows: input.rows.map((row) => ({
+      index: row.index,
+      sportsConnectRowKey: row.sportsConnectRowKey,
+      organizationId: row.organizationId,
+      disposition: row.disposition,
+    })),
+  };
+  return createHash("sha256").update(canonicalJson(payload)).digest("hex");
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(canonicalize(value));
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(source).sort()) {
+      if (source[key] === undefined) continue;
+      sorted[key] = canonicalize(source[key]);
+    }
+    return sorted;
+  }
+  return value;
 }
 
 const FORBIDDEN_PREVIEW_KEYS = new Set([
@@ -579,16 +865,30 @@ function findForbiddenKey(value: unknown): string | null {
 
 type DivisionAccumulator = HistoryDivisionCounts;
 
+type LeagueAccumulator = HistoryLeagueTotals;
+
 type ProgramAccumulator = {
   programName: string;
   rowCount: number;
   fallLocked: boolean;
-  disposition: "skip" | "map";
+  disposition: "skip" | "map" | "split";
   organizationId: HistoryOrgId | null;
   seasonYear: number | null;
   divisions: Map<string, DivisionAccumulator>;
+  leagues: Map<SpringSplitOrg, LeagueAccumulator>;
   totals: HistoryProgramCounts["totals"];
 };
+
+function emptyProgramTotals(): HistoryProgramCounts["totals"] {
+  return {
+    wouldAdd: 0,
+    alreadyPresent: 0,
+    skipped: emptySkipCounts(),
+    unplaceable: 0,
+    alreadySameLeague: 0,
+    alreadyOtherLeague: 0,
+  };
+}
 
 function ensureProgram(
   programs: Map<string, ProgramAccumulator>,
@@ -597,18 +897,40 @@ function ensureProgram(
 ): ProgramAccumulator {
   const existing = programs.get(programName);
   if (existing) return existing;
+  const split = mapping?.action === "split";
+  const seasonYear = mapping?.action === "map" || mapping?.action === "split" ? mapping.seasonYear : null;
+  const leagues = new Map<SpringSplitOrg, LeagueAccumulator>();
+  if (split && seasonYear != null) {
+    for (const organizationId of ["ascension", "gonzales"] as const) {
+      leagues.set(organizationId, emptyLeague(organizationId, seasonYear));
+    }
+  }
   const created: ProgramAccumulator = {
     programName,
     rowCount: 0,
     fallLocked: isFallProgramName(programName),
-    disposition: mapping?.action === "map" ? "map" : "skip",
+    disposition: mapping?.action === "map" || mapping?.action === "split" ? mapping.action : "skip",
     organizationId: mapping?.action === "map" ? mapping.organizationId : null,
-    seasonYear: mapping?.action === "map" ? mapping.seasonYear : null,
+    seasonYear,
     divisions: new Map(),
-    totals: { wouldAdd: 0, alreadyPresent: 0, skipped: emptySkipCounts() },
+    leagues,
+    totals: emptyProgramTotals(),
   };
   programs.set(programName, created);
   return created;
+}
+
+function emptyLeague(organizationId: SpringSplitOrg, seasonYear: number): LeagueAccumulator {
+  return {
+    organizationId,
+    seasonYear,
+    wouldAdd: 0,
+    alreadySameLeague: 0,
+    alreadyOtherLeague: 0,
+    amountCents: 0,
+    amountPaidCents: 0,
+    balanceCents: 0,
+  };
 }
 
 function ensureDivision(program: ProgramAccumulator, divisionName: string): DivisionAccumulator {
@@ -619,6 +941,16 @@ function ensureDivision(program: ProgramAccumulator, divisionName: string): Divi
     wouldAdd: 0,
     alreadyPresent: 0,
     skipped: emptySkipCounts(),
+    ...(program.disposition === "split"
+      ? {
+          organizationId: null,
+          alreadySameLeague: 0,
+          alreadyOtherLeague: 0,
+          unplaceable: 0,
+          placement: undefined,
+          unplaceableReason: null,
+        }
+      : {}),
   };
   program.divisions.set(divisionName, created);
   return created;
@@ -642,6 +974,9 @@ function finishProgram(program: ProgramAccumulator): HistoryProgramCounts {
     organizationId: program.organizationId,
     seasonYear: program.seasonYear,
     divisions: [...program.divisions.values()],
+    leagues: [...program.leagues.values()].sort((a, b) =>
+      a.organizationId.localeCompare(b.organizationId),
+    ),
     totals: program.totals,
   };
 }
@@ -653,12 +988,257 @@ function skipReason(
   const fullName = playerRegRowFullName(row);
   if (!fullName) return "unparseable";
   if (!isCompletedPaymentStatus(readCell(row, PAYMENT_KEYS))) return "not_completed";
-  if (!mapping || mapping.action !== "map" || isFallProgramName(mapping.programName)) {
+  if (
+    !mapping ||
+    (mapping.action !== "map" && mapping.action !== "split") ||
+    isFallProgramName(mapping.programName)
+  ) {
     return "unmapped_or_fall";
   }
   if (shouldSkipDivisionImport(readCell(row, DIVISION_KEYS))) return "umpire";
   if (!parseBirthDate(readCell(row, BIRTH_DATE_KEYS))) return "missing_birth_date";
   return null;
+}
+
+type CrossOrgIndex = Map<string, Set<string>>;
+
+function seasonRowId(seasonYear: number, sportsConnectRowKey: string): string {
+  return `${seasonYear}\0${sportsConnectRowKey}`;
+}
+
+function buildCrossOrgIndex(existingKeys: readonly ExistingHistoryKey[]): CrossOrgIndex {
+  const index: CrossOrgIndex = new Map();
+  for (const key of existingKeys) {
+    if (!isSpringSplitOrg(key.organizationId)) continue;
+    const id = seasonRowId(key.seasonYear, key.sportsConnectRowKey);
+    const orgs = index.get(id) ?? new Set<string>();
+    orgs.add(key.organizationId);
+    index.set(id, orgs);
+  }
+  return index;
+}
+
+function usesSpringCrossOrgDedupe(
+  mapping: Extract<NormalizedHistoryMappingEntry, { action: "map" }>,
+): mapping is Extract<NormalizedHistoryMappingEntry, { action: "map" }> & {
+  organizationId: SpringSplitOrg;
+} {
+  return isSpringSplitOrg(mapping.organizationId) && isSpringProgramName(mapping.programName);
+}
+
+function crossOrgHit(
+  index: CrossOrgIndex,
+  seasonYear: number,
+  sportsConnectRowKey: string,
+  targetOrg: SpringSplitOrg,
+): "same" | "other" | null {
+  const orgs = index.get(seasonRowId(seasonYear, sportsConnectRowKey));
+  if (!orgs || orgs.size === 0) return null;
+  if (orgs.has(targetOrg)) return "same";
+  return "other";
+}
+
+function claimCrossOrg(
+  index: CrossOrgIndex,
+  seasonYear: number,
+  sportsConnectRowKey: string,
+  targetOrg: SpringSplitOrg,
+) {
+  const id = seasonRowId(seasonYear, sportsConnectRowKey);
+  const orgs = index.get(id) ?? new Set<string>();
+  orgs.add(targetOrg);
+  index.set(id, orgs);
+}
+
+function classifySplitRow(input: {
+  row: Record<string, unknown>;
+  mapping: Extract<NormalizedHistoryMappingEntry, { action: "split" }>;
+  program: ProgramAccumulator;
+  division: DivisionAccumulator;
+  divisionName: string;
+  divisionRaw: string;
+  programName: string;
+  fullName: string;
+  birthDate: Date;
+  orderNo: string;
+  sportsConnectRowKey: string;
+  taken: Set<string>;
+  crossOrg: CrossOrgIndex;
+  inserts: HistoryEnrollmentInsert[];
+  index: number;
+  classificationRows: HistoryClassificationRow[];
+}) {
+  const override = input.mapping.divisionOverrides.find(
+    (entry) => entry.divisionName === input.divisionName,
+  );
+  const placement = placeDivision(input.divisionName, override?.organizationId ?? null);
+  if (placement.status === "unplaceable") {
+    input.classificationRows.push({
+      index: input.index,
+      sportsConnectRowKey: input.sportsConnectRowKey,
+      organizationId: null,
+      disposition: "unplaceable",
+    });
+    input.division.unplaceable = (input.division.unplaceable ?? 0) + 1;
+    input.division.placement = "unplaceable";
+    input.division.unplaceableReason = placement.reason;
+    input.division.organizationId = null;
+    input.program.totals.unplaceable += 1;
+    return;
+  }
+
+  input.division.organizationId = placement.organizationId;
+  input.division.placement = placement.via;
+  input.division.unplaceableReason = null;
+  const league = input.program.leagues.get(placement.organizationId);
+  const hit = crossOrgHit(
+    input.crossOrg,
+    input.mapping.seasonYear,
+    input.sportsConnectRowKey,
+    placement.organizationId,
+  );
+  if (hit === "same" || hit === "other") {
+    input.classificationRows.push({
+      index: input.index,
+      sportsConnectRowKey: input.sportsConnectRowKey,
+      organizationId: placement.organizationId,
+      disposition: hit === "same" ? "same_league" : "other_league",
+    });
+    input.program.totals.alreadyPresent += 1;
+    input.division.alreadyPresent += 1;
+    if (hit === "same") {
+      input.program.totals.alreadySameLeague += 1;
+      input.division.alreadySameLeague = (input.division.alreadySameLeague ?? 0) + 1;
+      if (league) league.alreadySameLeague += 1;
+    } else {
+      input.program.totals.alreadyOtherLeague += 1;
+      input.division.alreadyOtherLeague = (input.division.alreadyOtherLeague ?? 0) + 1;
+      if (league) league.alreadyOtherLeague += 1;
+    }
+    return;
+  }
+
+  claimCrossOrg(
+    input.crossOrg,
+    input.mapping.seasonYear,
+    input.sportsConnectRowKey,
+    placement.organizationId,
+  );
+  input.taken.add(
+    `${placement.organizationId}\0${input.mapping.seasonYear}\0${input.sportsConnectRowKey}`,
+  );
+  input.classificationRows.push({
+    index: input.index,
+    sportsConnectRowKey: input.sportsConnectRowKey,
+    organizationId: placement.organizationId,
+    disposition: "add",
+  });
+  const insert = enrollmentInsertFromRow({
+    row: input.row,
+    organizationId: placement.organizationId,
+    seasonYear: input.mapping.seasonYear,
+    sportsConnectRowKey: input.sportsConnectRowKey,
+    programName: input.programName,
+    divisionRaw: input.divisionRaw,
+    fullName: input.fullName,
+    birthDate: input.birthDate,
+    orderNo: input.orderNo,
+  });
+  input.inserts.push(insert);
+  input.program.totals.wouldAdd += 1;
+  input.division.wouldAdd += 1;
+  if (league) {
+    league.wouldAdd += 1;
+    league.amountCents += insert.amountCents ?? 0;
+    league.amountPaidCents += insert.amountPaidCents ?? 0;
+    league.balanceCents += insert.balanceCents ?? 0;
+  }
+}
+
+function enrollmentInsertFromRow(input: {
+  row: Record<string, unknown>;
+  organizationId: HistoryOrgId;
+  seasonYear: number;
+  sportsConnectRowKey: string;
+  programName: string;
+  divisionRaw: string;
+  fullName: string;
+  birthDate: Date;
+  orderNo: string;
+}): HistoryEnrollmentInsert {
+  const explicitFirst = readCell(input.row, FIRST_NAME_KEYS);
+  const explicitLast = readCell(input.row, LAST_NAME_KEYS);
+  const split = splitName(input.fullName);
+  return {
+    organizationId: input.organizationId,
+    seasonYear: input.seasonYear,
+    sportsConnectRowKey: input.sportsConnectRowKey,
+    programName: input.programName,
+    divisionNameRaw: input.divisionRaw || null,
+    ageGroup: input.divisionRaw || "Unassigned",
+    teamNameRaw: readCell(input.row, TEAM_KEYS) || null,
+    teamId: null,
+    firstName: explicitFirst || split.firstName,
+    lastName: explicitLast || split.lastName,
+    fullName: input.fullName,
+    gender: readCell(input.row, GENDER_KEYS) || null,
+    birthDate: input.birthDate,
+    guardianFirstName: readCell(input.row, GUARDIAN_FIRST_KEYS) || null,
+    guardianLastName: readCell(input.row, GUARDIAN_LAST_KEYS) || null,
+    guardianEmail: readCell(input.row, EMAIL_KEYS) || null,
+    guardianPhone: readCell(input.row, GUARDIAN_PHONE_KEYS) || null,
+    contactPhone: readCell(input.row, CONTACT_PHONE_KEYS) || null,
+    streetAddress: readCell(input.row, STREET_KEYS) || null,
+    unit: readCell(input.row, UNIT_KEYS) || null,
+    city: readCell(input.row, CITY_KEYS) || null,
+    state: readCell(input.row, STATE_KEYS) || null,
+    postalCode: readCell(input.row, POSTAL_KEYS) || null,
+    sportsConnectOrderNo: input.orderNo || null,
+    orderDate: parseOrderDate(readCell(input.row, ORDER_DATE_KEYS)),
+    orderDetailDescription: readCell(input.row, ORDER_DETAIL_KEYS) || null,
+    orderPaymentStatus: readCell(input.row, PAYMENT_KEYS).trim(),
+    amountCents: parseMoneyToCents(readCell(input.row, AMOUNT_KEYS)),
+    amountPaidCents: parseMoneyToCents(readCell(input.row, AMOUNT_PAID_KEYS)),
+    balanceCents: parseMoneyToCents(readCell(input.row, BALANCE_KEYS)),
+    sportsConnectPlayerId: readCell(input.row, PLAYER_ID_KEYS) || null,
+    rawRow: minimizeRawRow(input.row),
+  };
+}
+
+function mergeLeagueTotals(programs: readonly HistoryProgramCounts[]): HistoryLeagueTotals[] {
+  const merged = new Map<string, HistoryLeagueTotals>();
+  for (const program of programs) {
+    for (const league of program.leagues) {
+      const id = `${league.organizationId}\0${league.seasonYear}`;
+      const current = merged.get(id) ?? emptyLeague(league.organizationId, league.seasonYear);
+      current.wouldAdd += league.wouldAdd;
+      current.alreadySameLeague += league.alreadySameLeague;
+      current.alreadyOtherLeague += league.alreadyOtherLeague;
+      current.amountCents += league.amountCents;
+      current.amountPaidCents += league.amountPaidCents;
+      current.balanceCents += league.balanceCents;
+      merged.set(id, current);
+    }
+  }
+  return [...merged.values()].sort(
+    (a, b) => a.organizationId.localeCompare(b.organizationId) || a.seasonYear - b.seasonYear,
+  );
+}
+
+function unplaceableDivisions(programs: readonly HistoryProgramCounts[]): UnplaceableDivision[] {
+  const found: UnplaceableDivision[] = [];
+  for (const program of programs) {
+    for (const division of program.divisions) {
+      if (!division.unplaceable || !division.unplaceableReason) continue;
+      found.push({
+        programName: program.programName,
+        divisionName: division.divisionName,
+        rowCount: division.unplaceable,
+        reason: division.unplaceableReason,
+      });
+    }
+  }
+  return found;
 }
 
 function coveragePercent(covered: number, total: number): number {

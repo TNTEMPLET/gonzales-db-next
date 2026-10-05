@@ -62,7 +62,7 @@ export default async function SportsConnectPage({
         </div>
 
         <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
-          <CompetitionImportTab targetOrg={currentOrg} />
+          <CompetitionImportTab targetOrg={currentOrg} canSplitByDivision={adminUser.isMaster} />
         </div>
       </section>
     </main>

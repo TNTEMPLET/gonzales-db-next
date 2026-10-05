@@ -4,6 +4,7 @@ import { excludeRegistrationHistoryEnrollment } from "@/lib/enrollment/operation
 import prisma from "@/lib/prisma";
 
 import { planStaleEnrollmentPrune, type PruneEnrollmentCandidate } from "./prunePlan";
+import { lockSpringEnrollment } from "./springEnrollmentLock";
 
 export { pruneWouldBeUnsafe } from "./prunePolicy";
 
@@ -15,12 +16,31 @@ export type PruneStaleEnrollmentsResult = {
   skipped: string | null;
 };
 
+type PruneClient = Pick<typeof prisma, "enrollment" | "teamPlayer">;
+
 export async function pruneStaleEnrollments(input: {
   organizationId: string;
   seasonYear: number;
   keepKeys: Set<string>;
 }): Promise<PruneStaleEnrollmentsResult> {
-  const fetched = await prisma.enrollment.findMany({
+  if (input.organizationId === "gonzales" || input.organizationId === "ascension") {
+    return prisma.$transaction(async (tx) => {
+      await lockSpringEnrollment(tx, input.seasonYear);
+      return pruneStaleEnrollmentsWith(tx, input);
+    });
+  }
+  return pruneStaleEnrollmentsWith(prisma, input);
+}
+
+async function pruneStaleEnrollmentsWith(
+  db: PruneClient,
+  input: {
+    organizationId: string;
+    seasonYear: number;
+    keepKeys: Set<string>;
+  },
+): Promise<PruneStaleEnrollmentsResult> {
+  const fetched = await db.enrollment.findMany({
     where: excludeRegistrationHistoryEnrollment({
       organizationId: input.organizationId,
       seasonYear: input.seasonYear,
@@ -55,7 +75,7 @@ export async function pruneStaleEnrollments(input: {
 
   let deletedTeamPlayers = 0;
   if (plan.stalePlayerIds.length) {
-    const deleted = await prisma.teamPlayer.deleteMany({
+    const deleted = await db.teamPlayer.deleteMany({
       where: {
         sportsConnectPlayerId: { in: plan.stalePlayerIds },
         team: { organizationId: input.organizationId, seasonYear: input.seasonYear },
@@ -64,7 +84,7 @@ export async function pruneStaleEnrollments(input: {
     deletedTeamPlayers += deleted.count;
   }
   for (const row of plan.staleNameDobs) {
-    const deleted = await prisma.teamPlayer.deleteMany({
+    const deleted = await db.teamPlayer.deleteMany({
       where: {
         fullName: row.fullName,
         birthDate: row.birthDate,
@@ -74,7 +94,7 @@ export async function pruneStaleEnrollments(input: {
     deletedTeamPlayers += deleted.count;
   }
 
-  const deletedEnrollments = await prisma.enrollment.deleteMany({
+  const deletedEnrollments = await db.enrollment.deleteMany({
     where: { id: { in: plan.staleIds } },
   });
 

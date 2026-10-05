@@ -32,9 +32,11 @@ async function safeJson(response: Response) {
 export default function CompetitionImportTab({
   targetOrg,
   seasonYear: initialSeasonYear = new Date().getFullYear(),
+  canSplitByDivision = false,
 }: {
   targetOrg: ContentOrgId;
   seasonYear?: number;
+  canSplitByDivision?: boolean;
 }) {
   const orgQuery = `org=${targetOrg}`;
   const [seasonYear, setSeasonYear] = useState(initialSeasonYear);
@@ -240,7 +242,10 @@ export default function CompetitionImportTab({
         </p>
       </div>
 
-      <RegistrationHistoryImportPanel targetOrg={targetOrg} />
+      <RegistrationHistoryImportPanel
+        targetOrg={targetOrg}
+        canSplitByDivision={canSplitByDivision}
+      />
 
       {targetOrg === "fallball" && (
         <div>
