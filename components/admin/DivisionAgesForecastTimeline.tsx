@@ -27,7 +27,13 @@ import {
   type TimelineMember,
   type TimelineModel,
 } from "@/lib/ageDivisions/forecastTimeline";
-import { combineDivisions, formatTeamRange, splitDivisionAt, type ProposedConfig } from "@/lib/ageDivisions/forecastView";
+import {
+  combineDivisions,
+  formatTeamRange,
+  splitDivisionAt,
+  touchingBoundaryKey,
+  type ProposedConfig,
+} from "@/lib/ageDivisions/forecastView";
 import type { DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDivisions/types";
 
 function nextDragCommit(lastCommitMs: number, waitMs: number): number | null {
@@ -78,6 +84,7 @@ type DragState = {
   axisYoungest: string;
   base: DivisionAgeConfig[];
   linkEdges: boolean;
+  unlinked: ReadonlySet<string>;
   cutoffIso: string;
   preview: DivisionAgeConfig[];
 };
@@ -101,6 +108,21 @@ function presetButtonClass(active: boolean): string {
     : buttonClass;
 }
 
+function BoundaryLockIcon({ open }: { open: boolean }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden="true">
+      <rect x="3" y="6" width="8" height="6" rx="1" fill="currentColor" />
+      {open ? (
+        <path d="M5 6V4.5a2 2 0 0 1 4 0" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      ) : (
+        <path d="M5 6V4.5a2 2 0 0 1 4 0V6" fill="none" stroke="currentColor" strokeWidth="1.4" />
+      )}
+    </svg>
+  );
+}
+
+const NO_UNLINKED = new Set<string>();
+
 function samePools(origin: readonly { code: string; pool: number }[], counts: readonly TimelineCount[]): boolean {
   if (origin.length !== counts.length) return false;
   return origin.every((row) => counts.some((item) => item.code === row.code && item.pool === row.pool));
@@ -122,6 +144,9 @@ function TimelineTrack({
   onEdgeTip,
   onBandClick,
   onBandKeyDown,
+  linkEdges = false,
+  unlinkedBoundaries = NO_UNLINKED,
+  onToggleBoundary = () => {},
 }: {
   model: TimelineModel;
   interactive: boolean;
@@ -138,6 +163,9 @@ function TimelineTrack({
   onEdgeTip?: (edge: TimelineEdge, anchor: HTMLElement | null) => void;
   onBandClick: (member: TimelineMember, event: MouseEvent<HTMLButtonElement>) => void;
   onBandKeyDown: (member: TimelineMember, event: KeyboardEvent<HTMLButtonElement>) => void;
+  linkEdges?: boolean;
+  unlinkedBoundaries?: ReadonlySet<string>;
+  onToggleBoundary?: (edge: TimelineEdge) => void;
 }) {
   const stack = model.bands.reduce((max, band) => Math.max(max, band.members.length), 1);
   const row = interactive ? Math.max(56, stack * 36) : Math.max(32, stack * 22);
@@ -242,38 +270,67 @@ function TimelineTrack({
       {interactive
         ? model.edges.map((edge) => {
             const active = selected?.code === edge.code && selected.field === edge.field;
+            const joined =
+              edge.kind === "between" &&
+              linkEdges &&
+              edge.olderCodes.every((older) =>
+                edge.youngerCodes.every((younger) => !unlinkedBoundaries.has(touchingBoundaryKey(older, younger))),
+              );
             return (
-              <button
-                key={edge.id}
-                type="button"
-                role="slider"
-                aria-orientation="horizontal"
-                aria-valuemin={0}
-                aria-valuemax={span}
-                aria-valuenow={Math.max(0, daysBetween(model.axisOldest, edge.date))}
-                aria-valuetext={edge.hint}
-                aria-label={edge.ariaLabel}
-                data-testid={`timeline-edge-${edge.id}`}
-                className={`absolute inset-y-0 z-10 w-11 -translate-x-1/2 touch-none outline-none ${active ? "z-20" : ""}`}
-                style={{ left: `${edge.left}%` }}
-                onPointerDown={(event) => onEdgePointerDown(event, edge)}
-                onPointerMove={onEdgePointerMove}
-                onPointerUp={onEdgePointerUp}
-                onPointerCancel={onEdgePointerUp}
-                onKeyDown={(event) => onEdgeKeyDown(event, edge)}
-                onClick={() => onEdgeClick(edge)}
-                onFocus={(event) => {
-                  onEdgeFocus(edge);
-                  onEdgeTip?.(edge, event.currentTarget);
-                }}
-                onBlur={() => onEdgeTip?.(edge, null)}
-                onPointerEnter={(event) => onEdgeTip?.(edge, event.currentTarget)}
-                onPointerLeave={() => onEdgeTip?.(edge, null)}
-              >
-                <span
-                  className={`pointer-events-none absolute inset-y-1 left-1/2 w-1 -translate-x-1/2 rounded-full ${active ? "bg-white" : "bg-white/90"} shadow`}
-                />
-              </button>
+              <span key={edge.id}>
+                <button
+                  type="button"
+                  role="slider"
+                  aria-orientation="horizontal"
+                  aria-valuemin={0}
+                  aria-valuemax={span}
+                  aria-valuenow={Math.max(0, daysBetween(model.axisOldest, edge.date))}
+                  aria-valuetext={edge.hint}
+                  aria-label={edge.ariaLabel}
+                  data-testid={`timeline-edge-${edge.id}`}
+                  className={`absolute inset-y-0 z-10 w-11 -translate-x-1/2 touch-none outline-none ${active ? "z-20" : ""}`}
+                  style={{ left: `${edge.left}%` }}
+                  onPointerDown={(event) => onEdgePointerDown(event, edge)}
+                  onPointerMove={onEdgePointerMove}
+                  onPointerUp={onEdgePointerUp}
+                  onPointerCancel={onEdgePointerUp}
+                  onKeyDown={(event) => onEdgeKeyDown(event, edge)}
+                  onClick={() => onEdgeClick(edge)}
+                  onFocus={(event) => {
+                    onEdgeFocus(edge);
+                    onEdgeTip?.(edge, event.currentTarget);
+                  }}
+                  onBlur={() => onEdgeTip?.(edge, null)}
+                  onPointerEnter={(event) => onEdgeTip?.(edge, event.currentTarget)}
+                  onPointerLeave={() => onEdgeTip?.(edge, null)}
+                >
+                  <span
+                    className={`pointer-events-none absolute inset-y-1 left-1/2 w-1 -translate-x-1/2 rounded-full ${active ? "bg-white" : "bg-white/90"} shadow`}
+                  />
+                </button>
+                {linkEdges && edge.olderCodes.length > 0 && edge.youngerCodes.length > 0 ? (
+                  <button
+                    type="button"
+                    data-testid={`boundary-lock-${edge.id}`}
+                    aria-pressed={joined}
+                    aria-label={
+                      joined
+                        ? "Joined boundary. Click to allow a gap between these divisions."
+                        : "Open boundary. Click to join these divisions again."
+                    }
+                    title={joined ? "Joined. Click to allow a gap." : "Open. Click to join again."}
+                    className="absolute top-0 z-30 flex h-6 w-6 -translate-x-1/2 items-center justify-center rounded-full border border-zinc-200 bg-zinc-950 text-zinc-50 shadow focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
+                    style={{ left: `${edge.left}%` }}
+                    onPointerDown={(event) => event.stopPropagation()}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleBoundary(edge);
+                    }}
+                  >
+                    <BoundaryLockIcon open={!joined} />
+                  </button>
+                ) : null}
+              </span>
             );
           })
         : null}
@@ -295,6 +352,8 @@ export function DivisionAgesForecastTimeline({
   onReset,
   readOnly = false,
   impact = null,
+  unlinkedBoundaries = NO_UNLINKED,
+  onToggleBoundary = () => {},
 }: {
   proposed: ProposedConfig;
   baseline: ProposedConfig | null;
@@ -307,6 +366,9 @@ export function DivisionAgesForecastTimeline({
   onReplace: (next: ProposedConfig) => void;
   onLinkEdges: (value: boolean) => void;
   onReset: () => void;
+  /** Boundaries a click has opened. Holding Alt while dragging also leaves one line open. */
+  unlinkedBoundaries?: ReadonlySet<string>;
+  onToggleBoundary?: (edge: TimelineEdge) => void;
   /** Hide drag, presets, and age edits. The bars, gaps, and counts stay. */
   readOnly?: boolean;
   /** Session impact, shown under the cutoff fields while this editor is interactive. */
@@ -411,7 +473,10 @@ export function DivisionAgesForecastTimeline({
     const maxAge = field === "maxAge" ? value : division.maxAge;
     setPreview(null);
     setActionError(null);
-    commit(applyAgeSpan(displayDivisions, index, minAge, maxAge, cutoffIso, linkEdges), true);
+    commit(
+      applyAgeSpan(displayDivisions, index, minAge, maxAge, cutoffIso, linkEdges, { unlinked: unlinkedBoundaries }),
+      true,
+    );
   }
 
   function nudge(amount: number, unit: NudgeUnit) {
@@ -420,7 +485,12 @@ export function DivisionAgesForecastTimeline({
     if (index < 0) return;
     setPreview(null);
     setActionError(null);
-    commit(nudgeEdge(displayDivisions, index, activeSelection.field, amount, unit, cutoffIso, linkEdges), true);
+    commit(
+      nudgeEdge(displayDivisions, index, activeSelection.field, amount, unit, cutoffIso, linkEdges, {
+        unlinked: unlinkedBoundaries,
+      }),
+      true,
+    );
   }
 
   function combineEdge(edge: TimelineEdge) {
@@ -463,6 +533,7 @@ export function DivisionAgesForecastTimeline({
       axisYoungest: layoutAxis.youngest,
       base: proposed.divisions.map((division) => ({ ...division })),
       linkEdges,
+      unlinked: unlinkedBoundaries,
       cutoffIso,
       preview: proposed.divisions,
     };
@@ -476,7 +547,15 @@ export function DivisionAgesForecastTimeline({
     if (!rect || rect.width <= 0) return;
     const ratio = (event.clientX - rect.left) / rect.width;
     const date = dateAtRatio(drag.axisOldest, drag.axisYoungest, ratio);
-    const next = dragBoundaryUpdate(drag.base, drag.edge.divisionIndex, drag.edge.field, date, drag.cutoffIso, drag.linkEdges);
+    const next = dragBoundaryUpdate(
+      drag.base,
+      drag.edge.divisionIndex,
+      drag.edge.field,
+      date,
+      drag.cutoffIso,
+      drag.linkEdges,
+      { unlinkTouching: event.altKey, unlinked: drag.unlinked },
+    );
     drag.preview = next;
     setPreview(next);
     const committedAt = nextDragCommit(lastCommit.current, 320);
@@ -527,7 +606,9 @@ export function DivisionAgesForecastTimeline({
     setSelected({ code: edge.code, field: edge.field });
     setPreview(null);
     commit(
-      nudgeEdge(proposed.divisions, index, edge.field, direction, nudgeUnitForKey(event), cutoffIso, linkEdges),
+      nudgeEdge(proposed.divisions, index, edge.field, direction, nudgeUnitForKey(event), cutoffIso, linkEdges, {
+        unlinked: unlinkedBoundaries,
+      }),
       true,
     );
   }
@@ -754,11 +835,13 @@ export function DivisionAgesForecastTimeline({
             checked={linkEdges}
             onChange={(event) => onLinkEdges(event.target.checked)}
           />
-          Also move divisions with this same window
+          Keep joined boundaries together
         </label>
         <p className="text-sm text-zinc-400">
-          Dragging or typing a date stays on that division. It does not push the next division, so windows can overlap.
-          An overlap is a note. It does not block the forecast.
+          Divisions that meet, where one ends the day before the next starts, stay on one line. Moving that line does
+          not open a gap. Divisions with the same window move together. Overlapping windows, such as 7/8 Majors across
+          7U and 8U, stay separate. Click the lock on a line, or hold Alt (Option) while dragging, to let that one
+          boundary open a gap. An overlap is a note. It does not block the forecast.
         </p>
         {proposedModel && proposedModel.overlaps.length > 0 ? (
           <p
@@ -815,6 +898,9 @@ export function DivisionAgesForecastTimeline({
                   onEdgeTip={placeEdgeTip}
                   onBandClick={onBandClick}
                   onBandKeyDown={onBandKeyDown}
+                  linkEdges={linkEdges}
+                  unlinkedBoundaries={unlinkedBoundaries}
+                  onToggleBoundary={onToggleBoundary}
                 />
               ) : (
                 <p className="text-sm text-zinc-400">No birthdate windows to show.</p>
@@ -917,9 +1003,10 @@ export function DivisionAgesForecastTimeline({
           ))}
         </div>
         <p className="mt-3 text-sm text-zinc-400">
-          Drag a boundary, or tab to one and use the arrow keys. Shift moves a week and Alt moves a month. Click a
-          boundary to combine the divisions on either side. Click inside a division to split it at that birthdate, or
-          tab to the division, move the mark with the arrow keys, and press Enter.
+          Drag a boundary, or tab to one and use the arrow keys. Shift moves a week and Alt moves a month. Hold Alt
+          (Option) while dragging to leave a joined line where it is. Click a boundary to combine the divisions on
+          either side. Click inside a division to split it at that birthdate, or tab to the division, move the mark
+          with the arrow keys, and press Enter.
         </p>
         {splitCursor ? (
           <p className="mt-1 text-sm text-zinc-300">

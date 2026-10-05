@@ -66,7 +66,7 @@ describe("age and date derivation", () => {
       oldestOverridden: false,
       youngestOverridden: false,
     });
-    assert.equal(linkedByCode.get("5U TB")?.youngestBirthdate, undefined);
+    assert.equal(linkedByCode.get("5U TB")?.youngestBirthdate, "2023-04-30");
 
     const alone = applyAgeSpan(config.divisions, index, 3, 3, cutoff, false);
     assert.equal(byCode(alone).get("5U TB")?.youngestBirthdate, undefined);
@@ -134,34 +134,39 @@ describe("nudge math", () => {
     const codes = byCode(nudged);
     assert.equal(codes.get("6U MINOR")?.youngestBirthdate, "2021-05-01");
     assert.equal(codes.get("6U MAJOR")?.youngestBirthdate, "2021-05-01");
-    assert.equal(codes.get("5U TB")?.oldestBirthdate, undefined);
+    assert.equal(codes.get("5U TB")?.oldestBirthdate, "2021-05-02");
     assert.equal(codes.get("7U MINOR")?.youngestBirthdate, undefined);
 
     const week = nudgeEdge(config.divisions, minor, "youngestBirthdate", 1, "week", cutoff, true);
     assert.equal(byCode(week).get("6U MINOR")?.youngestBirthdate, "2021-05-07");
-    assert.equal(byCode(week).get("5U TB")?.oldestBirthdate, undefined);
+    assert.equal(byCode(week).get("5U TB")?.oldestBirthdate, "2021-05-08");
 
     const month = nudgeEdge(config.divisions, minor, "youngestBirthdate", -1, "month", cutoff, true);
     assert.equal(byCode(month).get("6U MAJOR")?.youngestBirthdate, "2021-03-30");
-    assert.equal(byCode(month).get("5U TB")?.oldestBirthdate, undefined);
+    assert.equal(byCode(month).get("5U TB")?.oldestBirthdate, "2021-03-31");
   });
 });
 
 describe("drag boundary updates", () => {
-  it("moves the edited division and leaves the neighbor in place", () => {
+  it("moves a touching neighbor with the dragged edge", () => {
     const config = gonzales();
     const cutoff = effectiveCutoffDate(config.cutoff, SEASON);
     const eight = config.divisions.findIndex((division) => division.code === "8U MINOR");
     const linked = dragBoundaryUpdate(config.divisions, eight, "oldestBirthdate", "2018-06-01", cutoff, true);
     assert.equal(byCode(linked).get("8U MINOR")?.oldestBirthdate, "2018-06-01");
-    assert.equal(byCode(linked).get("9U KP")?.youngestBirthdate, undefined);
+    assert.equal(byCode(linked).get("9U KP")?.youngestBirthdate, "2018-05-31");
 
     const alone = dragBoundaryUpdate(config.divisions, eight, "oldestBirthdate", "2018-06-01", cutoff, false);
     assert.equal(byCode(alone).get("8U MINOR")?.oldestBirthdate, "2018-06-01");
     assert.equal(byCode(alone).get("9U KP")?.youngestBirthdate, undefined);
+
+    const opened = dragBoundaryUpdate(config.divisions, eight, "oldestBirthdate", "2018-06-01", cutoff, true, {
+      unlinkTouching: true,
+    });
+    assert.equal(byCode(opened).get("9U KP")?.youngestBirthdate, undefined);
   });
 
-  it("keeps a division ordered and lets it overlap the neighbor", () => {
+  it("keeps a division ordered and keeps the touching neighbor joined", () => {
     const config = gonzales();
     const cutoff = effectiveCutoffDate(config.cutoff, SEASON);
     const eight = config.divisions.findIndex((division) => division.code === "8U MINOR");
@@ -171,17 +176,17 @@ describe("drag boundary updates", () => {
     const range = effectiveRange(byCode(updated).get("8U MINOR")!, cutoff);
     assert.equal(range.oldest <= range.youngest, true);
     assert.equal(range.oldest, "2019-04-30");
-    assert.equal(byCode(updated).get("9U KP")?.youngestBirthdate, undefined);
+    assert.equal(byCode(updated).get("9U KP")?.youngestBirthdate, "2019-04-29");
 
     const nineBefore = effectiveRange(byCode(config.divisions).get("9U KP")!, cutoff);
-    const overlapped = dragBoundaryUpdate(config.divisions, eight, "oldestBirthdate", "2017-01-01", cutoff, true);
-    const eightRange = effectiveRange(byCode(overlapped).get("8U MINOR")!, cutoff);
-    const nine = effectiveRange(byCode(overlapped).get("9U KP")!, cutoff);
+    const joined = dragBoundaryUpdate(config.divisions, eight, "oldestBirthdate", "2017-01-01", cutoff, true);
+    const eightRange = effectiveRange(byCode(joined).get("8U MINOR")!, cutoff);
+    const nine = effectiveRange(byCode(joined).get("9U KP")!, cutoff);
     assert.equal(eightRange.oldest <= eightRange.youngest, true);
-    assert.equal(eightRange.oldest, "2017-01-01");
+    assert.equal(eightRange.oldest, "2017-05-02");
     assert.equal(nine.oldest, nineBefore.oldest);
-    assert.equal(nine.youngest, nineBefore.youngest);
-    assert.equal(eightRange.oldest < nine.youngest, true);
+    assert.equal(nine.youngest, "2017-05-01");
+    assert.equal(eightRange.oldest > nine.youngest, true);
   });
 
   it("maps a pointer ratio to a birthdate inside a band", () => {

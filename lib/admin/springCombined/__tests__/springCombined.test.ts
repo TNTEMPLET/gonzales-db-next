@@ -14,6 +14,7 @@ import {
   serializeBuilderTable,
 } from "@/lib/ageDivisions/divisionBuilder";
 import { buildAdminSidebarNav } from "@/lib/admin/sidebarNav";
+import { leagueDivisionDefaults } from "@/lib/ageDivisions/defaults";
 import { CONTENT_ORGS, isContentOrgId, resolveOrg } from "@/lib/siteConfig";
 
 import {
@@ -24,6 +25,7 @@ import {
   leagueTaggedDivisionName,
   resolveDivisionAgesView,
   resolveSeasonSetupView,
+  springForecastComparison,
   springCombinedBuilderTable,
   springCombinedRequestBlock,
   springContentOrgsUnchanged,
@@ -101,6 +103,13 @@ describe("spring combined access", () => {
     );
     assert.equal(
       resolveDivisionAgesView({ ...master, requestedOrg: undefined, liveOrgs: [] }),
+      "combined",
+    );
+    assert.equal(resolveDivisionAgesView({ ...master, requestedOrg: "", liveOrgs: [] }), "combined");
+    assert.equal(resolveDivisionAgesView({ ...master, requestedOrg: "gonzales", liveOrgs: [] }), "default");
+    assert.equal(resolveDivisionAgesView({ ...master, requestedOrg: "ascension", liveOrgs: [] }), "default");
+    assert.equal(
+      resolveDivisionAgesView({ isMaster: false, masterDeployment: false, requestedOrg: undefined, liveOrgs: [] }),
       "default",
     );
     assert.equal(
@@ -270,6 +279,33 @@ describe("spring combined counts", () => {
     assert.equal(counts.rows[0]?.count, 2);
   });
 
+  it("keeps saved windows as current when the editor sends a proposed table", () => {
+    const gonzales = leagueDivisionDefaults("gonzales");
+    const ascension = leagueDivisionDefaults("ascension");
+    const leagues = [
+      { organizationId: "gonzales" as const, cutoff: gonzales.rule, divisions: gonzales.divisions },
+      { organizationId: "ascension" as const, cutoff: ascension.rule, divisions: ascension.divisions },
+    ];
+    const unchanged = springForecastComparison(leagues, 2027, null);
+    assert.equal(unchanged.current, unchanged.proposed);
+    assert.ok(unchanged.current.divisions.some((division) => division.label.endsWith("DYB")));
+    assert.ok(unchanged.current.divisions.some((division) => division.label.endsWith("LLB")));
+
+    const proposed = {
+      cutoff: unchanged.current.cutoff,
+      divisions: unchanged.current.divisions.map((division) =>
+        division.code === "gonzales:7U MINOR" ? { ...division, oldestBirthdate: "2019-06-01" } : division,
+      ),
+    };
+    const sides = springForecastComparison(leagues, 2027, proposed);
+    assert.notEqual(sides.current.divisions.find((division) => division.code === "gonzales:7U MINOR")?.oldestBirthdate, "2019-06-01");
+    assert.equal(sides.proposed.divisions.find((division) => division.code === "gonzales:7U MINOR")?.oldestBirthdate, "2019-06-01");
+    assert.equal(
+      sides.current.divisions.find((division) => division.code === "ascension:7-8U MAJOR")?.label.endsWith("LLB"),
+      true,
+    );
+  });
+
   it("tags saved names for display and leaves the saved label alone", () => {
     assert.equal(leagueTaggedDivisionName("12U", "gonzales"), "12U DYB");
     assert.equal(leagueTaggedDivisionName("12U", "ascension"), "12U LLB");
@@ -371,12 +407,13 @@ describe("spring combined stays read-only", () => {
     assert.doesNotMatch(divisions, /fallball/);
 
     const forecast = readFileSync(
-      new URL("../../../../components/admin/SpringCombinedForecast.tsx", import.meta.url),
+      new URL("../../../../components/admin/DivisionAgesForecast.tsx", import.meta.url),
       "utf8",
     );
     assert.match(forecast, /forecast\?org=spring/);
-    assert.match(forecast, /includeFeeder:\s*false/);
+    assert.match(forecast, /springCombined \? false/);
     assert.match(forecast, /SPRING_COMBINED_SAVE_HINT/);
+    assert.match(forecast, /data-testid="spring-what-if"/);
     assert.doesNotMatch(forecast, /method:\s*"PUT"|method:\s*"PATCH"/);
     assert.doesNotMatch(forecast, /fallball/);
 
@@ -430,6 +467,8 @@ describe("spring combined stays read-only", () => {
     assert.doesNotMatch(ages, /divisionAgesAllOrgs/);
     assert.doesNotMatch(ages, /redirect\("\/admin\/season-setup\/division-ages\?org=spring"\)/);
     assert.match(ages, /showSpringTemplate=\{combined\}/);
+    assert.match(ages, /springCombined/);
+    assert.doesNotMatch(ages, /SpringCombinedForecast/);
     assert.match(ages, /isContentOrgId/);
     assert.doesNotMatch(ages, /prisma|Enrollment|TeamPlayer/);
 
@@ -446,6 +485,9 @@ describe("spring combined stays read-only", () => {
     );
     assert.match(combinedForecast, /includeFeeder:\s*false/);
     assert.match(combinedForecast, /dedupeSpringPool/);
+    assert.match(combinedForecast, /springForecastComparison/);
+    assert.match(combinedForecast, /sides\.current,\s*sides\.proposed/);
+    assert.doesNotMatch(combinedForecast, /compareConfigs\(buckets,\s*config,\s*config/);
     assert.match(combinedForecast, /SPRING_LEAGUE_ORGS/);
     assert.doesNotMatch(combinedForecast, /"fallball"|loadFallLines/);
     assert.doesNotMatch(forecastData, /\.(create|update|delete|upsert|createMany|updateMany|deleteMany)\s*\(/);

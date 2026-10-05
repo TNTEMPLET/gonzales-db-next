@@ -2,13 +2,18 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import {
+  combinedForecastConfig,
+  SPRING_COMBINED_SAVE_HINT,
+  SPRING_LEAGUE_ORGS,
+} from "@/lib/admin/springCombined/view";
 import { effectiveRange } from "@/lib/ageDivisions/compute";
 import {
   divisionAgesSourceLabel,
   seasonCutoffIso,
 } from "@/lib/ageDivisions/draft";
 import type { ForecastSide } from "@/lib/ageDivisions/forecast";
-import { applyAgeSpan } from "@/lib/ageDivisions/forecastTimeline";
+import { applyAgeSpan, type TimelineEdge } from "@/lib/ageDivisions/forecastTimeline";
 import { DivisionAgesCutoffImpact } from "@/components/admin/DivisionAgesCutoffImpact";
 import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
 import {
@@ -45,6 +50,7 @@ import {
   retentionSourceLabel,
   splitDivisionAt,
   structuralScenario,
+  toggleTouchingBoundary,
   sameProposedConfig,
   shownRetentionPercent,
   storedDraftAction,
@@ -64,6 +70,7 @@ const fieldClass =
 const buttonClass =
   "inline-flex min-h-11 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 hover:border-zinc-500 disabled:opacity-60";
 const DRAFT_PREFIX = "gonzales-forecast-draft:v1:";
+const EMPTY_UNLINKED = new Set<string>();
 
 function dateFieldClass(overridden: boolean): string {
   return overridden
@@ -228,6 +235,9 @@ export function DivisionAgesForecastView({
   onLinkEdges,
   onResetProposed,
   onReplace = () => {},
+  springCombined = false,
+  unlinkedBoundaries = EMPTY_UNLINKED,
+  onToggleBoundary = () => {},
 }: {
   org: ContentOrgId;
   orgs: ContentOrgId[];
@@ -265,7 +275,12 @@ export function DivisionAgesForecastView({
   onLinkEdges: (value: boolean) => void;
   onResetProposed: () => void;
   onReplace?: (next: ProposedConfig) => void;
+  /** Master combined Spring. Edits stay in this browser and the read-only forecast. */
+  springCombined?: boolean;
+  unlinkedBoundaries?: ReadonlySet<string>;
+  onToggleBoundary?: (edge: TimelineEdge) => void;
 }) {
+  const linkOptions = { unlinked: unlinkedBoundaries };
   const retentionValue = shownRetentionPercent({
     dirty: retentionDirty,
     text: retentionText,
@@ -352,11 +367,17 @@ export function DivisionAgesForecastView({
           Proposed cutoffs stay in this browser. Save a real table from the Divisions tab. Team size comes from league
           defaults (11–12 unless Settings sets a roster size).
         </p>
+        {springCombined ? (
+          <p className="mt-3 text-sm text-amber-100" data-testid="spring-what-if">
+            {SPRING_COMBINED_SAVE_HINT}. Gonzales DYB and Ascension LL share one forecast. A player in both leagues
+            counts once.
+          </p>
+        ) : null}
       </div>
 
       <div className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {orgs.length > 1 ? (
+          {!springCombined && orgs.length > 1 ? (
             <label className="block text-sm text-zinc-300">
               <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Organization</span>
               <select className={fieldClass} value={org} onChange={(event) => onOrg(event.target.value as ContentOrgId)}>
@@ -409,7 +430,7 @@ export function DivisionAgesForecastView({
           </label>
         </div>
         <div className="mt-3 flex flex-wrap items-center gap-3">
-          {org === "gonzales" ? (
+          {!springCombined && org === "gonzales" ? (
             <label className="inline-flex min-h-11 items-center gap-2 text-sm text-zinc-100">
               <input
                 type="checkbox"
@@ -420,7 +441,7 @@ export function DivisionAgesForecastView({
               Include Ascension feeder pool
             </label>
           ) : null}
-          {org === "gonzales" && forecast ? (
+          {!springCombined && org === "gonzales" && forecast ? (
             <p className="text-sm text-zinc-400" data-testid="feeder-share">
               Feeder share {formatRetentionPercent(forecast.feederShare)}%
             </p>
@@ -472,6 +493,8 @@ export function DivisionAgesForecastView({
               onReplace={onReplace}
               onLinkEdges={onLinkEdges}
               onReset={onResetProposed}
+              unlinkedBoundaries={unlinkedBoundaries}
+              onToggleBoundary={onToggleBoundary}
               impact={
                 <DivisionAgesCutoffImpact
                   baseline={baseline}
@@ -523,7 +546,9 @@ export function DivisionAgesForecastView({
                         onChange={(event) => {
                           const minAge = Number(event.target.value);
                           if (!Number.isInteger(minAge)) return;
-                          onDivisions(applyAgeSpan(proposed.divisions, index, minAge, division.maxAge, cutoffIso, linkEdges));
+                          onDivisions(
+                            applyAgeSpan(proposed.divisions, index, minAge, division.maxAge, cutoffIso, linkEdges, linkOptions),
+                          );
                         }}
                       />
                     </label>
@@ -537,7 +562,17 @@ export function DivisionAgesForecastView({
                         onChange={(event) => {
                           const maxAge = Number(event.target.value);
                           if (!Number.isInteger(maxAge)) return;
-                          onDivisions(applyAgeSpan(proposed.divisions, index, division.minAge, maxAge, cutoffIso, linkEdges));
+                          onDivisions(
+                            applyAgeSpan(
+                              proposed.divisions,
+                              index,
+                              division.minAge,
+                              maxAge,
+                              cutoffIso,
+                              linkEdges,
+                              linkOptions,
+                            ),
+                          );
                         }}
                       />
                     </label>
@@ -563,6 +598,7 @@ export function DivisionAgesForecastView({
                               event.target.value,
                               cutoffIso,
                               linkEdges,
+                              linkOptions,
                             ),
                           )
                         }
@@ -590,6 +626,7 @@ export function DivisionAgesForecastView({
                               event.target.value,
                               cutoffIso,
                               linkEdges,
+                              linkOptions,
                             ),
                           )
                         }
@@ -983,9 +1020,12 @@ export function DivisionAgesForecastView({
 export default function DivisionAgesForecast({
   orgs,
   seasonYears,
+  springCombined = false,
 }: {
   orgs: ContentOrgId[];
   seasonYears: number[];
+  /** Load both Spring leagues into one editor. Writes stay off. */
+  springCombined?: boolean;
 }) {
   const initialOrg = orgs[0] ?? "gonzales";
   const [org, setOrg] = useState<ContentOrgId>(initialOrg);
@@ -999,6 +1039,7 @@ export default function DivisionAgesForecast({
   const [proposed, setProposed] = useState<ProposedConfig | null>(null);
   const [baseline, setBaseline] = useState<ProposedConfig | null>(null);
   const [linkEdges, setLinkEdges] = useState(true);
+  const [unlinkedBoundaries, setUnlinkedBoundaries] = useState<ReadonlySet<string>>(EMPTY_UNLINKED);
   const draftsRef = useRef(new Map<string, ProposedConfig>());
   const [loadedSource, setLoadedSource] = useState<DivisionAgesSource | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
@@ -1027,13 +1068,14 @@ export default function DivisionAgesForecast({
       buildForecastRequest({
         sourceSeason,
         targetSeason,
-        includeFeeder: org === "gonzales" && includeFeeder,
+        includeFeeder: springCombined ? false : org === "gonzales" && includeFeeder,
         retentionOverride,
         proposed,
       }),
-    [sourceSeason, targetSeason, org, includeFeeder, retentionOverride, proposed],
+    [sourceSeason, targetSeason, org, includeFeeder, retentionOverride, proposed, springCombined],
   );
-  const requestKey = forecastQueryKey(org, requestBody);
+  const draftOrg = springCombined ? "spring" : org;
+  const requestKey = forecastQueryKey(draftOrg, requestBody);
   const ready = proposed != null || configError != null;
   const editedCodes = useMemo(
     () => (proposed && baseline ? editedDivisionCodes(proposed, baseline) : []),
@@ -1043,47 +1085,83 @@ export default function DivisionAgesForecast({
 
   function commitProposed(next: ProposedConfig | null, base: ProposedConfig | null = baseline) {
     setProposed(next);
-    writeStoredDraft(org, targetSeason, next, base, draftsRef.current);
+    writeStoredDraft(draftOrg, targetSeason, next, base, draftsRef.current);
   }
 
   useEffect(() => {
     let cancelled = false;
-    const draft = readStoredDraft(org, targetSeason, draftsRef.current);
+    const draft = readStoredDraft(draftOrg, targetSeason, draftsRef.current);
     setProposed(draft);
     setBaseline(null);
     setConfigError(null);
     setLoadedSource(null);
+    async function loadOne(): Promise<{ config: ProposedConfig; source: DivisionAgesSource }> {
+      const response = await fetch(
+        `/api/admin/division-ages/season?org=${encodeURIComponent(org)}&seasonYear=${targetSeason}`,
+        { cache: "no-store" },
+      );
+      const payload = (await response.json().catch(() => null)) as {
+        error?: string;
+        cutoff?: LeagueAgeRule;
+        divisions?: DivisionAgeConfig[];
+        source?: DivisionAgesSource;
+      } | null;
+      if (!response.ok || !payload?.cutoff || !Array.isArray(payload.divisions) || !payload.source) {
+        throw new Error(readError(payload, "Could not load the current division ages."));
+      }
+      return { config: { cutoff: payload.cutoff, divisions: payload.divisions }, source: payload.source };
+    }
+    async function loadCombined(): Promise<{ config: ProposedConfig; source: DivisionAgesSource }> {
+      const loaded = await Promise.all(
+        SPRING_LEAGUE_ORGS.map(async (league) => {
+          const response = await fetch(
+            `/api/admin/division-ages/season?org=${encodeURIComponent(league)}&seasonYear=${targetSeason}`,
+            { cache: "no-store" },
+          );
+          const payload = (await response.json().catch(() => null)) as {
+            error?: string;
+            cutoff?: LeagueAgeRule;
+            divisions?: DivisionAgeConfig[];
+            source?: DivisionAgesSource;
+          } | null;
+          if (!response.ok || !payload?.cutoff || !Array.isArray(payload.divisions) || !payload.source) {
+            throw new Error(readError(payload, "Could not load the current division ages."));
+          }
+          return {
+            organizationId: league,
+            cutoff: payload.cutoff,
+            divisions: payload.divisions,
+            source: payload.source,
+          };
+        }),
+      );
+      const source = loaded.every((entry) => entry.source === "season")
+        ? "season"
+        : loaded.some((entry) => entry.source === "league")
+          ? "league"
+          : "builtin";
+      return { config: combinedForecastConfig(loaded, targetSeason), source };
+    }
     async function load() {
       try {
-        const response = await fetch(
-          `/api/admin/division-ages/season?org=${encodeURIComponent(org)}&seasonYear=${targetSeason}`,
-          { cache: "no-store" },
-        );
-        const payload = (await response.json().catch(() => null)) as {
-          error?: string;
-          cutoff?: LeagueAgeRule;
-          divisions?: DivisionAgeConfig[];
-          source?: DivisionAgesSource;
-        } | null;
+        const loaded = springCombined ? await loadCombined() : await loadOne();
         if (cancelled) return;
-        if (!response.ok || !payload?.cutoff || !Array.isArray(payload.divisions) || !payload.source) {
-          setConfigError(readError(payload, "Could not load the current division ages."));
-          return;
-        }
-        const copy = cloneProposed({ cutoff: payload.cutoff, divisions: payload.divisions });
-        setLoadedSource(payload.source);
+        const copy = cloneProposed(loaded.config);
+        setLoadedSource(loaded.source);
         setBaseline(copy);
-        const latest = readStoredDraft(org, targetSeason, draftsRef.current) ?? draft;
+        const latest = readStoredDraft(draftOrg, targetSeason, draftsRef.current) ?? draft;
         setProposed(latest ?? cloneProposed(copy));
-      } catch {
-        if (!cancelled) setConfigError("Could not load the current division ages.");
+      } catch (caught) {
+        if (!cancelled) {
+          setConfigError(caught instanceof Error ? caught.message : "Could not load the current division ages.");
+        }
       }
     }
     void load();
     return () => {
       cancelled = true;
     };
-  }, [org, targetSeason]);
+  }, [draftOrg, org, springCombined, targetSeason]);
 
   useEffect(() => {
     if (!ready) {
@@ -1102,7 +1180,10 @@ export default function DivisionAgesForecast({
         if (requestGen.current !== generation) return;
         setLoading(true);
         try {
-          const response = await fetch(`/api/admin/division-ages/forecast?org=${encodeURIComponent(org)}`, {
+          const forecastUrl = springCombined
+            ? "/api/admin/division-ages/forecast?org=spring"
+            : `/api/admin/division-ages/forecast?org=${encodeURIComponent(org)}`;
+          const response = await fetch(forecastUrl, {
             method: "POST",
             headers: { "content-type": "application/json" },
             body: JSON.stringify(requestBody),
@@ -1117,7 +1198,7 @@ export default function DivisionAgesForecast({
           setForecastError(null);
           setForecast(payload);
           setImpactHold({
-            scope: `${org}|${targetSeason}`,
+            scope: `${draftOrg}|${targetSeason}`,
             key: requestKey,
             proposed: requestBody.proposed ? cloneProposed(requestBody.proposed) : null,
           });
@@ -1144,13 +1225,13 @@ export default function DivisionAgesForecast({
       controller.abort();
       clearTimeout(handle);
     };
-  }, [ready, requestKey, org, targetSeason, requestBody]);
+  }, [ready, requestKey, draftOrg, org, springCombined, targetSeason, requestBody]);
 
-  const impactScope = `${org}|${targetSeason}`;
+  const impactScope = `${draftOrg}|${targetSeason}`;
   const impactForScope = impactHold?.scope === impactScope ? impactHold : null;
 
   function selectOrg(next: ContentOrgId) {
-    writeStoredDraft(org, targetSeason, proposed, baseline, draftsRef.current);
+    writeStoredDraft(draftOrg, targetSeason, proposed, baseline, draftsRef.current);
     setOrg(next);
     setIncludeFeeder(defaultIncludeFeeder(next));
     setRetentionDirty(false);
@@ -1190,14 +1271,17 @@ export default function DivisionAgesForecast({
       impactPending={ready && impactForScope?.key !== requestKey && (loading || !forecastError)}
       impactStale={ready && !loading && Boolean(forecastError) && impactForScope != null && impactForScope.key !== requestKey}
       onOrg={selectOrg}
+      springCombined={springCombined}
+      unlinkedBoundaries={unlinkedBoundaries}
+      onToggleBoundary={(edge) => setUnlinkedBoundaries((current) => toggleTouchingBoundary(current, edge.olderCodes, edge.youngerCodes))}
       onSourceSeason={(year) => {
-        writeStoredDraft(org, targetSeason, proposed, baseline, draftsRef.current);
+        writeStoredDraft(draftOrg, targetSeason, proposed, baseline, draftsRef.current);
         setSourceSeason(year);
         setTargetSeason(year + 1);
       }}
       onTargetSeason={(year) => {
         if (year === targetSeason) return;
-        writeStoredDraft(org, targetSeason, proposed, baseline, draftsRef.current);
+        writeStoredDraft(draftOrg, targetSeason, proposed, baseline, draftsRef.current);
         setTargetSeason(year);
       }}
       onLinkEdges={setLinkEdges}

@@ -14,8 +14,8 @@ import type { EnsureAdminResult } from "@/lib/auth/ensureAdminModule";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 import {
-  combinedForecastConfig,
   dedupeSpringPool,
+  springForecastComparison,
   isSpringLeagueOrg,
   SPRING_LEAGUE_ORGS,
   type SpringLeagueOrg,
@@ -841,27 +841,26 @@ export async function runSpringCombinedForecast(
       SPRING_LEAGUE_ORGS.map(async (org) => ({
         org,
         pool: await loadSpringOrgPlayers(org, seasonYear, deps),
-        view: proposedConfig ? null : await loadCurrent(org, targetSeasonYear, deps),
+        view: await loadCurrent(org, targetSeasonYear, deps),
       })),
     );
     const merged = dedupeSpringPool(loaded.flatMap((entry) => entry.pool.players));
-    const config =
-      proposedConfig ??
-      combinedForecastConfig(
-        loaded.flatMap((entry) =>
-          entry.view
-            ? [{ organizationId: entry.org, cutoff: entry.view.cutoff, divisions: entry.view.divisions }]
-            : [],
-        ),
-        targetSeasonYear,
-      );
+    const sides = springForecastComparison(
+      loaded.map((entry) => ({
+        organizationId: entry.org,
+        cutoff: entry.view.cutoff,
+        divisions: entry.view.divisions,
+      })),
+      targetSeasonYear,
+      proposedConfig,
+    );
     const buckets = bucketsFor(
       merged.players
         .filter((player) => player.birthDate)
         .map((player) => ({ matchKey: player.matchKey, birthDate: player.birthDate })),
       "own",
     );
-    const compared = compareConfigs(buckets, config, config, targetSeasonYear, {
+    const compared = compareConfigs(buckets, sides.current, sides.proposed, targetSeasonYear, {
       retentionRate: DEFAULT_RETURN_RATE,
       includeFeeder: false,
       feederShare: 0,
@@ -914,9 +913,9 @@ export async function runSpringCombinedForecast(
       flows: compared.flows,
       currentWarnings: compared.currentWarnings,
       proposedWarnings: compared.proposedWarnings,
-      eligibility: eligibilityForConfigs(buckets, config.divisions, config.divisions, targetSeasonYear, {
-        current: config.cutoff,
-        proposed: config.cutoff,
+      eligibility: eligibilityForConfigs(buckets, sides.current.divisions, sides.proposed.divisions, targetSeasonYear, {
+        current: sides.current.cutoff,
+        proposed: sides.proposed.cutoff,
       }),
       current: compared.current,
       proposed: compared.proposed,

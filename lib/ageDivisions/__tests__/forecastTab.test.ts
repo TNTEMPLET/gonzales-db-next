@@ -409,7 +409,7 @@ describe("forecast tab", () => {
     assert.match(html, /data-testid="precise-dates"/);
     assert.match(html, /data-testid="reset-proposed"/);
     assert.match(html, /born on or after May 1, 2017/);
-    assert.match(html, /Also move divisions with this same window/);
+    assert.match(html, /Keep joined boundaries together/);
     assert.equal(html.includes('data-testid="cutoff-impact"'), false);
   });
 
@@ -445,7 +445,7 @@ describe("forecast tab", () => {
     assert.match(inputTag(html, "proposed-youngest-1"), /value="2018-04-30"/);
     assert.match(html, />calc</);
     assert.match(inputTag(html, "link-edges"), /checked/);
-    assert.match(html, /Also move divisions with this same window/);
+    assert.match(html, /Keep joined boundaries together/);
     assert.match(html, /1 division edited/);
     assert.match(html, /Δ players/);
     assert.match(html, /data-testid="movers-in-out"/);
@@ -497,12 +497,12 @@ describe("what-if editor helpers", () => {
     { code: "7U MINOR", label: "7U", minAge: 7, maxAge: 7, sortOrder: 5 },
   ];
 
-  it("moves the edited oldest edge and leaves the next-older division in place", () => {
+  it("moves a touching older edge with the edited oldest date", () => {
     const nine = divisions.findIndex((division) => division.code === "9U KP");
     const linked = applyLinkedEdge(divisions, nine, "oldestBirthdate", "2017-09-01", cutoff, true);
     const byCode = new Map(linked.map((division) => [division.code, division]));
     assert.equal(byCode.get("9U KP")?.oldestBirthdate, "2017-09-01");
-    assert.equal(byCode.get("10U KP")?.youngestBirthdate, undefined);
+    assert.equal(byCode.get("10U KP")?.youngestBirthdate, "2017-08-31");
     assert.equal(byCode.get("8U MINOR")?.oldestBirthdate, undefined);
 
     const alone = applyLinkedEdge(divisions, nine, "oldestBirthdate", "2017-09-01", cutoff, false);
@@ -511,19 +511,19 @@ describe("what-if editor helpers", () => {
     assert.equal(aloneByCode.get("10U KP")?.youngestBirthdate, undefined);
   });
 
-  it("moves a shared 6U window together and leaves the neighbor in place", () => {
+  it("moves a shared 6U window together and the touching neighbor", () => {
     const nine = divisions.findIndex((division) => division.code === "9U KP");
     const younger = applyLinkedEdge(divisions, nine, "youngestBirthdate", "2018-08-31", cutoff, true);
     const byCode = new Map(younger.map((division) => [division.code, division]));
     assert.equal(byCode.get("9U KP")?.youngestBirthdate, "2018-08-31");
-    assert.equal(byCode.get("8U MINOR")?.oldestBirthdate, undefined);
+    assert.equal(byCode.get("8U MINOR")?.oldestBirthdate, "2018-09-01");
 
     const minor = divisions.findIndex((division) => division.code === "6U MINOR");
     const siblings = applyLinkedEdge(divisions, minor, "youngestBirthdate", "2021-01-31", cutoff, true);
     const siblingByCode = new Map(siblings.map((division) => [division.code, division]));
     assert.equal(siblingByCode.get("6U MINOR")?.youngestBirthdate, "2021-01-31");
     assert.equal(siblingByCode.get("6U MAJOR")?.youngestBirthdate, "2021-01-31");
-    assert.equal(siblingByCode.get("5U TB")?.oldestBirthdate, undefined);
+    assert.equal(siblingByCode.get("5U TB")?.oldestBirthdate, "2021-02-01");
     assert.equal(siblingByCode.get("7U MINOR")?.youngestBirthdate, undefined);
   });
 
@@ -533,7 +533,7 @@ describe("what-if editor helpers", () => {
     const inverted = applyLinkedEdge(divisions, majors, "oldestBirthdate", "2019-06-01", cutoff, true);
     const invertedByCode = new Map(inverted.map((division) => [division.code, division]));
     assert.equal(invertedByCode.get("8U MINOR")?.oldestBirthdate, "2019-04-30");
-    assert.equal(invertedByCode.get("9U KP")?.youngestBirthdate, undefined);
+    assert.equal(invertedByCode.get("9U KP")?.youngestBirthdate, "2019-04-29");
 
     const overlapping: ProposedConfig = {
       cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },

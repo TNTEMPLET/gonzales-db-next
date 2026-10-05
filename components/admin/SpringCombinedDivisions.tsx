@@ -75,10 +75,10 @@ export default function SpringCombinedDivisions({
         <p>{SPRING_COMBINED_SAVE_HINT}.</p>
         <p className="mt-2 flex flex-wrap gap-3">
           <Link className="font-semibold text-white underline" href="/admin/season-setup/division-ages?org=gonzales">
-            Gonzales
+            Gonzales DYB
           </Link>
           <Link className="font-semibold text-white underline" href="/admin/season-setup/division-ages?org=ascension">
-            Ascension
+            Ascension LL
           </Link>
         </p>
       </div>
