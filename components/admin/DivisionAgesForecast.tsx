@@ -13,7 +13,7 @@ import {
   divisionAgesSourceLabel,
   seasonCutoffIso,
 } from "@/lib/ageDivisions/draft";
-import type { DivisionMix, ForecastSide } from "@/lib/ageDivisions/forecast";
+import type { DivisionMix, ForecastSide, LeagueMix } from "@/lib/ageDivisions/forecast";
 import { applyAgeSpan, type TimelineEdge } from "@/lib/ageDivisions/forecastTimeline";
 import { DivisionAgesCutoffImpact } from "@/components/admin/DivisionAgesCutoffImpact";
 import { SpringCombinedSavePanel } from "@/components/admin/SpringCombinedSavePanel";
@@ -165,22 +165,47 @@ function EmptySideCells() {
   );
 }
 
+function MixNote({
+  note,
+  evenSplit,
+  testId,
+}: {
+  note: string;
+  evenSplit: boolean;
+  testId: string;
+}) {
+  if (evenSplit) {
+    return (
+      <p className="mt-1 max-w-[14rem] text-xs font-medium text-amber-200" role="status" data-testid={testId}>
+        {note}
+      </p>
+    );
+  }
+  return (
+    <p className="mt-1 max-w-[14rem] text-xs text-sky-200" data-testid={testId}>
+      {note}
+    </p>
+  );
+}
+
 function SideCells({
   side,
   shortRoster,
   includeFeeder,
   mix = null,
+  leagueMix = null,
 }: {
   side: ForecastSide;
   shortRoster: boolean;
   includeFeeder: boolean;
   mix?: DivisionMix | null;
+  leagueMix?: LeagueMix | null;
 }) {
   const feederNote = includeFeeder ? "" : " (not in the pool)";
-  const mixTitle = mix?.note ? ` ${mix.note}` : "";
+  const mixTitle = [leagueMix?.note, mix?.note].filter(Boolean).join(" ");
   return (
     <>
-      <td className="py-2 pr-3 align-top" title={`Own ${side.own}. Feeder ${side.feeder}.${mixTitle}`}>
+      <td className="py-2 pr-3 align-top" title={`Own ${side.own}. Feeder ${side.feeder}.${mixTitle ? ` ${mixTitle}` : ""}`}>
         <details>
           <summary className="cursor-pointer tabular-nums">{side.pool}</summary>
           <p className="mt-1 text-xs text-zinc-400">Own {side.own}</p>
@@ -189,14 +214,15 @@ function SideCells({
             {feederNote}
           </p>
         </details>
-        {mix?.evenSplit ? (
-          <p className="mt-1 max-w-[12rem] text-xs font-medium text-amber-200" role="status" data-testid="mix-even-split">
-            {mix.note}
-          </p>
-        ) : mix?.note ? (
-          <p className="mt-1 max-w-[14rem] text-xs text-sky-200" data-testid="mix-share">
-            {mix.note}
-          </p>
+        {leagueMix?.note ? (
+          <MixNote
+            note={leagueMix.note}
+            evenSplit={leagueMix.evenSplit}
+            testId={leagueMix.evenSplit ? "league-mix-even-split" : "league-mix-share"}
+          />
+        ) : null}
+        {mix?.note ? (
+          <MixNote note={mix.note} evenSplit={mix.evenSplit} testId={mix.evenSplit ? "mix-even-split" : "mix-share"} />
         ) : null}
       </td>
       <td className="py-2 pr-3 align-top tabular-nums">{side.expected}</td>
@@ -924,12 +950,14 @@ export function DivisionAgesForecastView({
                           shortRoster={row.currentShortRoster === true}
                           includeFeeder={forecast.includeFeeder}
                           mix={row.currentMix}
+                          leagueMix={row.currentLeagueMix}
                         />
                         <SideCells
                           side={row.proposed}
                           shortRoster={row.proposedShortRoster === true}
                           includeFeeder={forecast.includeFeeder}
                           mix={row.proposedMix}
+                          leagueMix={row.proposedLeagueMix}
                         />
                         <td className="py-2 pr-3 align-top tabular-nums" data-testid="delta-players">
                           {formatDelta(row.delta.pool)}

@@ -363,6 +363,53 @@ describe("forecast tab", () => {
     assert.match(html, /No prior Spring mix; using even split/);
   });
 
+  it("shows the combined Spring league share and its even-split note", () => {
+    const forecast = response({
+      rows: [
+        {
+          code: "gonzales:7U MINOR",
+          label: "7U Minor Coach Pitch DYB",
+          sortOrder: 1,
+          inCurrent: true,
+          inProposed: true,
+          current: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+          proposed: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+          delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+          movers: 0,
+          moversIn: split(),
+          moversOut: split(),
+          currentShortRoster: false,
+          proposedShortRoster: false,
+          currentOverlap: 40,
+          proposedOverlap: 40,
+          currentSharedPoolId: "dyb-7+llb-7",
+          proposedSharedPoolId: "dyb-7+llb-7",
+          currentLeagueMix: {
+            league: "gonzales",
+            share: 0,
+            sharePercent: 0,
+            seasons: [2026],
+            evenSplit: false,
+            note: "DYB share 0%, Spring 2026",
+          },
+          proposedLeagueMix: {
+            league: "gonzales",
+            share: 0.5,
+            sharePercent: 50,
+            seasons: [],
+            evenSplit: true,
+            note: "No prior Spring league mix; using even split",
+          },
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(view({ forecast }));
+    assert.match(html, /data-testid="league-mix-share"/);
+    assert.match(html, /DYB share 0%, Spring 2026/);
+    assert.match(html, /data-testid="league-mix-even-split"/);
+    assert.match(html, /No prior Spring league mix; using even split/);
+  });
+
   it("changes the forecast request when a proposed cutoff is edited", () => {
     assert.equal(FORECAST_DEBOUNCE_MS, 300);
     const before = buildForecastRequest({
