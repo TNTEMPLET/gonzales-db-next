@@ -6,7 +6,9 @@ import { leagueDivisionDefaults } from "../defaults";
 import {
   agesFromBirthdates,
   applyAgeSpan,
+  applyCombinedCutoffPreset,
   applyCutoffPreset,
+  combinedPresetApplied,
   birthdateInsideBand,
   birthdatesFromAges,
   buildTimelineModel,
@@ -109,7 +111,71 @@ describe("cutoff presets", () => {
     assert.equal(dyb.cutoff.cutoffDay, 30);
     assert.equal(detectCutoffPreset({ cutoffMonth: 8, cutoffDay: 15 }), "custom");
   });
+
+  it("moves only that league's normal rows and keeps a joined custom line", () => {
+    const season = 2027;
+    const config: ProposedConfig = {
+      cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+      divisions: [
+        { code: "gonzales:8U MINOR", label: "8U DYB", minAge: 8, maxAge: 8, sortOrder: 1, oldestBirthdate: "2018-05-01", youngestBirthdate: "2019-04-30" },
+        { code: "gonzales:7U MINOR", label: "7U DYB", minAge: 7, maxAge: 7, sortOrder: 2, oldestBirthdate: "2019-05-01", youngestBirthdate: "2020-04-30" },
+        { code: "ascension:12U", label: "12U LLB", minAge: 12, maxAge: 12, sortOrder: 3, oldestBirthdate: "2014-05-01", youngestBirthdate: "2015-04-30" },
+        { code: "ascension:11U", label: "11U LLB", minAge: 11, maxAge: 11, sortOrder: 4, oldestBirthdate: "2015-05-01", youngestBirthdate: "2016-04-30" },
+        { code: "ascension:9U", label: "9U LLB", minAge: 9, maxAge: 9, sortOrder: 5, oldestBirthdate: "2017-05-01", youngestBirthdate: "2018-04-30" },
+        { code: "ascension:8U MINOR", label: "8U Minors LLB", minAge: 8, maxAge: 8, sortOrder: 6, oldestBirthdate: "2018-05-01", youngestBirthdate: "2019-08-31" },
+        { code: "ascension:7U MINOR", label: "7U Minors LLB", minAge: 7, maxAge: 7, sortOrder: 7, oldestBirthdate: "2019-09-01", youngestBirthdate: "2020-04-30" },
+      ],
+    };
+    const ll = applyCombinedCutoffPreset(config, "little-league", season);
+    assert.equal(ll.cutoff.cutoffMonth, 4);
+    assert.equal(ll.cutoff.cutoffDay, 30);
+    const llCodes = byCode(ll.divisions);
+    assert.equal(llCodes.get("gonzales:8U MINOR")?.youngestBirthdate, "2019-04-30");
+    assert.equal(llCodes.get("gonzales:7U MINOR")?.oldestBirthdate, "2019-05-01");
+    assert.equal(effectiveRange(llCodes.get("ascension:12U")!, "2027-04-30").oldest, "2014-09-01");
+    assert.equal(effectiveRange(llCodes.get("ascension:12U")!, "2027-04-30").youngest, "2015-08-31");
+    assert.equal(effectiveRange(llCodes.get("ascension:11U")!, "2027-04-30").oldest, "2015-09-01");
+    assert.equal(effectiveRange(llCodes.get("ascension:11U")!, "2027-04-30").youngest, "2016-08-31");
+    assert.equal(llCodes.get("ascension:9U")?.youngestBirthdate, "2018-04-30");
+    assert.equal(llCodes.get("ascension:8U MINOR")?.youngestBirthdate, "2019-08-31");
+    assert.equal(llCodes.get("ascension:7U MINOR")?.oldestBirthdate, "2019-09-01");
+    assert.equal(
+      addOne(effectiveRange(llCodes.get("ascension:12U")!, "2027-04-30").youngest),
+      effectiveRange(llCodes.get("ascension:11U")!, "2027-04-30").oldest,
+    );
+    assert.equal(
+      addOne(effectiveRange(llCodes.get("ascension:8U MINOR")!, "2027-04-30").youngest),
+      effectiveRange(llCodes.get("ascension:7U MINOR")!, "2027-04-30").oldest,
+    );
+    assert.equal(
+      addOne(effectiveRange(llCodes.get("gonzales:8U MINOR")!, "2027-04-30").youngest),
+      effectiveRange(llCodes.get("gonzales:7U MINOR")!, "2027-04-30").oldest,
+    );
+
+    const held: ProposedConfig = {
+      cutoff: config.cutoff,
+      divisions: [
+        { code: "ascension:9U", label: "9U LLB", minAge: 9, maxAge: 9, sortOrder: 1, oldestBirthdate: "2017-05-01", youngestBirthdate: "2018-04-30" },
+        { code: "ascension:8U MINOR", label: "8U Minors LLB", minAge: 8, maxAge: 8, sortOrder: 2, oldestBirthdate: "2018-05-01", youngestBirthdate: "2019-08-31" },
+      ],
+    };
+    const kept = applyCombinedCutoffPreset(held, "little-league", season);
+    assert.equal(byCode(kept.divisions).get("ascension:9U")?.youngestBirthdate, "2018-04-30");
+    assert.equal(byCode(kept.divisions).get("ascension:8U MINOR")?.oldestBirthdate, "2018-05-01");
+
+    const dyb = applyCombinedCutoffPreset(ll, "dyb", season);
+    assert.equal(dyb.cutoff.cutoffDay, 30);
+    assert.equal(effectiveRange(byCode(dyb.divisions).get("ascension:9U")!, "2027-04-30").oldest, "2017-05-01");
+    assert.equal(effectiveRange(byCode(dyb.divisions).get("ascension:12U")!, "2027-04-30").oldest, "2014-09-01");
+    assert.equal(effectiveRange(byCode(dyb.divisions).get("gonzales:7U MINOR")!, "2027-04-30").oldest, "2019-05-01");
+    assert.equal(combinedPresetApplied(dyb, "dyb", season), true);
+    assert.equal(combinedPresetApplied(dyb, "little-league", season), false);
+  });
 });
+
+function addOne(iso: string): string {
+  return shiftIsoDate(iso, 1, "day");
+}
 
 describe("nudge math", () => {
   it("shifts by a day, a week, and a month, clamping short months", () => {

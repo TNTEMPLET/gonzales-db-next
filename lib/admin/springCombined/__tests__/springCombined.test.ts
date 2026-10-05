@@ -25,6 +25,7 @@ import {
   leagueTaggedDivisionName,
   resolveDivisionAgesView,
   resolveSeasonSetupView,
+  combinedForecastRetention,
   springForecastComparison,
   springCombinedBuilderTable,
   springCombinedRequestBlock,
@@ -287,6 +288,8 @@ describe("spring combined counts", () => {
       { organizationId: "ascension" as const, cutoff: ascension.rule, divisions: ascension.divisions },
     ];
     const unchanged = springForecastComparison(leagues, 2027, null);
+    assert.deepEqual(combinedForecastRetention(undefined, 1), { applied: 1, source: "default" });
+    assert.deepEqual(combinedForecastRetention(0.8, 1), { applied: 0.8, source: "override" });
     assert.equal(unchanged.current, unchanged.proposed);
     assert.ok(unchanged.current.divisions.some((division) => division.label.endsWith("DYB")));
     assert.ok(unchanged.current.divisions.some((division) => division.label.endsWith("LLB")));
@@ -486,6 +489,8 @@ describe("spring combined stays read-only", () => {
     assert.match(combinedForecast, /includeFeeder:\s*false/);
     assert.match(combinedForecast, /dedupeSpringPool/);
     assert.match(combinedForecast, /springForecastComparison/);
+    assert.match(combinedForecast, /combinedForecastRetention/);
+    assert.match(combinedForecast, /retentionRate: retention\.applied/);
     assert.match(combinedForecast, /sides\.current,\s*sides\.proposed/);
     assert.doesNotMatch(combinedForecast, /compareConfigs\(buckets,\s*config,\s*config/);
     assert.match(combinedForecast, /SPRING_LEAGUE_ORGS/);

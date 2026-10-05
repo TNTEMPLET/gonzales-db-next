@@ -197,6 +197,9 @@ describe("combined spring forecast editor", () => {
         onResetProposed: () => {},
       } satisfies ComponentProps<typeof DivisionAgesForecastView>),
     );
+    assert.match(html, /Apply LL Aug 31 to LLB divisions/);
+    assert.match(html, /Apply DYB Apr 30 to DYB divisions/);
+    assert.match(html, /data-testid="retention-percent"/);
     assert.match(html, /data-testid="spring-what-if"/);
     assert.match(html, /Combined changes are a what-if/);
     assert.match(html, /boundary-lock-between:/);

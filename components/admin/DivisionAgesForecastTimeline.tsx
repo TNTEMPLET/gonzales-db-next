@@ -5,7 +5,9 @@ import { useEffect, useMemo, useRef, useState, type KeyboardEvent, type MouseEve
 import { seasonCutoffIso } from "@/lib/ageDivisions/draft";
 import {
   applyAgeSpan,
+  applyCombinedCutoffPreset,
   applyCutoffPreset,
+  combinedPresetApplied,
   birthdateInsideBand,
   buildTimelineModel,
   dateAtRatio,
@@ -354,6 +356,7 @@ export function DivisionAgesForecastTimeline({
   impact = null,
   unlinkedBoundaries = NO_UNLINKED,
   onToggleBoundary = () => {},
+  combinedPresets = false,
 }: {
   proposed: ProposedConfig;
   baseline: ProposedConfig | null;
@@ -369,6 +372,8 @@ export function DivisionAgesForecastTimeline({
   /** Boundaries a click has opened. Holding Alt while dragging also leaves one line open. */
   unlinkedBoundaries?: ReadonlySet<string>;
   onToggleBoundary?: (edge: TimelineEdge) => void;
+  /** Presets move one league's normal rows and leave the other league in place. */
+  combinedPresets?: boolean;
   /** Hide drag, presets, and age edits. The bars, gaps, and counts stay. */
   readOnly?: boolean;
   /** Session impact, shown under the cutoff fields while this editor is interactive. */
@@ -460,7 +465,9 @@ export function DivisionAgesForecastTimeline({
     setPreview(null);
     setActionError(null);
     rememberCounts();
-    onReplace(applyCutoffPreset(proposed, preset));
+    onReplace(
+      combinedPresets ? applyCombinedCutoffPreset(proposed, preset, targetSeason) : applyCutoffPreset(proposed, preset),
+    );
   }
 
   function onAge(code: string, field: "minAge" | "maxAge", raw: string) {
@@ -644,6 +651,12 @@ export function DivisionAgesForecastTimeline({
   }
 
   const preset = detectCutoffPreset(proposed.cutoff);
+  const leaguePreset = combinedPresets
+    ? {
+        littleLeague: combinedPresetApplied(proposed, "little-league", targetSeason),
+        dyb: combinedPresetApplied(proposed, "dyb", targetSeason),
+      }
+    : null;
   const selectedEdge =
     proposedModel?.edges.find((edge) => edge.code === activeSelection?.code && edge.field === activeSelection.field) ??
     null;
@@ -740,26 +753,26 @@ export function DivisionAgesForecastTimeline({
           <div className="mt-2 flex flex-wrap gap-2" role="group" aria-label="Cutoff presets">
             <button
               type="button"
-              className={presetButtonClass(preset === "little-league")}
-              aria-pressed={preset === "little-league"}
+              className={presetButtonClass(leaguePreset ? leaguePreset.littleLeague : preset === "little-league")}
+              aria-pressed={leaguePreset ? leaguePreset.littleLeague : preset === "little-league"}
               data-testid="cutoff-preset-little-league"
               onClick={() => onPreset("little-league")}
             >
-              Little League (Aug 31)
+              {combinedPresets ? "Apply LL Aug 31 to LLB divisions" : "Little League (Aug 31)"}
             </button>
             <button
               type="button"
-              className={presetButtonClass(preset === "dyb")}
-              aria-pressed={preset === "dyb"}
+              className={presetButtonClass(leaguePreset ? leaguePreset.dyb : preset === "dyb")}
+              aria-pressed={leaguePreset ? leaguePreset.dyb : preset === "dyb"}
               data-testid="cutoff-preset-dyb"
               onClick={() => onPreset("dyb")}
             >
-              DYB (Apr 30)
+              {combinedPresets ? "Apply DYB Apr 30 to DYB divisions" : "DYB (Apr 30)"}
             </button>
             <button
               type="button"
-              className={presetButtonClass(preset === "custom")}
-              aria-pressed={preset === "custom"}
+              className={presetButtonClass(!combinedPresets && preset === "custom")}
+              aria-pressed={!combinedPresets && preset === "custom"}
               data-testid="cutoff-preset-custom"
               onClick={() => dayRef.current?.focus()}
             >
@@ -767,7 +780,9 @@ export function DivisionAgesForecastTimeline({
             </button>
           </div>
           <p className="mt-2 text-sm text-zinc-400">
-            Presets keep each division&apos;s ages and move every birthdate to {formatTimelineDate(cutoffIso) || "the cutoff"}.
+            {combinedPresets
+              ? "Each button moves that league only. The other league stays put, and a division with its own dates, such as 7U or 8U Minors, stays put. Joined lines stay joined."
+              : `Presets keep each division's ages and move every birthdate to ${formatTimelineDate(cutoffIso) || "the cutoff"}.`}
           </p>
         </div>
         <button

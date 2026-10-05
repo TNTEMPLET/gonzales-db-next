@@ -495,6 +495,7 @@ export function DivisionAgesForecastView({
               onReset={onResetProposed}
               unlinkedBoundaries={unlinkedBoundaries}
               onToggleBoundary={onToggleBoundary}
+              combinedPresets={springCombined}
               impact={
                 <DivisionAgesCutoffImpact
                   baseline={baseline}
