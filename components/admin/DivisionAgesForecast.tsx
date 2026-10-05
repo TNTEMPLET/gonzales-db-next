@@ -16,8 +16,10 @@ import {
 import type { DivisionMix, ForecastSide, LeagueMix } from "@/lib/ageDivisions/forecast";
 import { applyAgeSpan, type TimelineEdge } from "@/lib/ageDivisions/forecastTimeline";
 import { DivisionAgesCutoffImpact } from "@/components/admin/DivisionAgesCutoffImpact";
+import { DivisionAgesSpringForecastTable } from "@/components/admin/DivisionAgesSpringForecastTable";
 import { SpringCombinedSavePanel } from "@/components/admin/SpringCombinedSavePanel";
 import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
+import { springLeagueShareNote } from "@/lib/ageDivisions/springForecastTable";
 import { forecastTimelineLayout, springLeagueFallback } from "@/lib/ageDivisions/springTimeline";
 import {
   FORECAST_CAVEATS,
@@ -153,6 +155,13 @@ function readError(payload: unknown, fallback: string): string {
     return payload.error;
   }
   return fallback;
+}
+
+/** Combined Spring only. The stored share and the even-split flag stay put. */
+function presentLeagueMix(mix: LeagueMix | null | undefined, springCombined: boolean): LeagueMix | null {
+  if (!mix) return null;
+  if (!springCombined) return mix;
+  return { ...mix, note: springLeagueShareNote(mix) };
 }
 
 function EmptySideCells() {
@@ -757,6 +766,14 @@ export function DivisionAgesForecastView({
         ) : null}
       </section>
 
+      {forecast && forecastTimelineLayout({ org, springCombined }) === "spring-lanes" ? (
+        <DivisionAgesSpringForecastTable
+          forecast={forecast}
+          springCombined={springCombined}
+          leagueFallback={springLeagueFallback({ org, springCombined })}
+        />
+      ) : null}
+
       <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6" aria-busy={loading}>
         <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-xl font-semibold text-white">Current vs proposed</h2>
@@ -950,14 +967,14 @@ export function DivisionAgesForecastView({
                           shortRoster={row.currentShortRoster === true}
                           includeFeeder={forecast.includeFeeder}
                           mix={row.currentMix}
-                          leagueMix={row.currentLeagueMix}
+                          leagueMix={presentLeagueMix(row.currentLeagueMix, springCombined)}
                         />
                         <SideCells
                           side={row.proposed}
                           shortRoster={row.proposedShortRoster === true}
                           includeFeeder={forecast.includeFeeder}
                           mix={row.proposedMix}
-                          leagueMix={row.proposedLeagueMix}
+                          leagueMix={presentLeagueMix(row.proposedLeagueMix, springCombined)}
                         />
                         <td className="py-2 pr-3 align-top tabular-nums" data-testid="delta-players">
                           {formatDelta(row.delta.pool)}
