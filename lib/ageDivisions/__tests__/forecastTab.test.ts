@@ -357,10 +357,10 @@ describe("forecast tab", () => {
       ],
     });
     const html = renderToStaticMarkup(view({ forecast }));
-    assert.match(html, /data-testid="mix-share"/);
-    assert.match(html, /27% of window, avg of Spring 2025\u20132026/);
     assert.match(html, /data-testid="mix-even-split"/);
     assert.match(html, /No prior Spring mix; using even split/);
+    assert.doesNotMatch(html, /27% of window, avg of Spring 2025\u20132026/);
+    assert.doesNotMatch(html, /data-testid="mix-share"/);
   });
 
   it("shows the combined Spring league share and its even-split note", () => {
@@ -404,10 +404,52 @@ describe("forecast tab", () => {
       ],
     });
     const html = renderToStaticMarkup(view({ forecast }));
-    assert.match(html, /data-testid="league-mix-share"/);
-    assert.match(html, /DYB share 0%, Spring 2026/);
     assert.match(html, /data-testid="league-mix-even-split"/);
     assert.match(html, /No prior Spring league mix; using even split/);
+    assert.doesNotMatch(html, /DYB share 0%, Spring 2026/);
+    assert.doesNotMatch(html, /data-testid="league-mix-share"/);
+  });
+
+  it("keeps a current-only mix note under the division name", () => {
+    const note = "Current windows overlap; proposed windows do not";
+    const forecast = response({
+      rows: [
+        {
+          code: "MAJORS",
+          label: "Majors",
+          sortOrder: 1,
+          inCurrent: true,
+          inProposed: true,
+          current: side({ own: 80, feeder: 0, pool: 80, expected: 80, minTeams: 7, maxTeams: 7 }),
+          proposed: side({ own: 40, feeder: 0, pool: 40, expected: 40, minTeams: 4, maxTeams: 4 }),
+          delta: side({ own: -40, feeder: 0, pool: -40, expected: -40, minTeams: -3, maxTeams: -3 }),
+          movers: 0,
+          moversIn: split(),
+          moversOut: split(),
+          currentShortRoster: false,
+          proposedShortRoster: false,
+          currentOverlap: 80,
+          proposedOverlap: 0,
+          currentSharedPoolId: "MAJORS+MINORS",
+          proposedSharedPoolId: null,
+          currentMix: {
+            share: 0.27,
+            sharePercent: 27,
+            seasons: [2026],
+            evenSplit: false,
+            note,
+          },
+          proposedMix: null,
+        },
+      ],
+    });
+    const html = renderToStaticMarkup(view({ forecast }));
+    const row = html.slice(html.indexOf('data-testid="comparison-row"'));
+    assert.match(row, /data-testid="mix-share"/);
+    assert.match(row, new RegExp(note.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
+    assert.match(row, /max-w-\[18rem\] truncate text-xs leading-4 text-zinc-500/);
+    assert.doesNotMatch(row, /title="Own [^"]*Current windows overlap/);
+    assert.match(row, /data-testid="delta-players"[^>]*>\u221240</);
   });
 
   it("changes the forecast request when a proposed cutoff is edited", () => {

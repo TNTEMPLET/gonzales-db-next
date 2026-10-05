@@ -17,10 +17,26 @@ import type { DivisionMix, ForecastSide, LeagueMix } from "@/lib/ageDivisions/fo
 import { applyAgeSpan, type TimelineEdge } from "@/lib/ageDivisions/forecastTimeline";
 import { DivisionAgesCutoffImpact } from "@/components/admin/DivisionAgesCutoffImpact";
 import { DivisionAgesSpringForecastTable } from "@/components/admin/DivisionAgesSpringForecastTable";
+import {
+  SpringComparisonAlerts,
+  SpringComparisonDetail,
+  SpringComparisonHeader,
+  WithSpringComparisonState,
+} from "@/components/admin/DivisionAgesSpringComparison";
 import { SpringCombinedSavePanel } from "@/components/admin/SpringCombinedSavePanel";
 import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
-import { springLeagueShareNote } from "@/lib/ageDivisions/springForecastTable";
-import { forecastTimelineLayout, springLeagueFallback } from "@/lib/ageDivisions/springTimeline";
+import { springLeagueShareNote, SPRING_FORECAST_BAR_COLOR } from "@/lib/ageDivisions/springForecastTable";
+import {
+  buildSpringComparisonBars,
+  comparisonDeltaSign,
+  comparisonRowNotes,
+  comparisonTeamDeltaUnchanged,
+  formatComparisonDelta,
+  formatComparisonTeamDelta,
+  springComparisonSummaryFromLeague,
+  type SpringComparisonBarSlot,
+} from "@/lib/ageDivisions/springComparison";
+import { forecastTimelineLayout, springLeagueFallback, type SpringLeagueId } from "@/lib/ageDivisions/springTimeline";
 import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
@@ -164,12 +180,14 @@ function presentLeagueMix(mix: LeagueMix | null | undefined, springCombined: boo
   return { ...mix, note: springLeagueShareNote(mix) };
 }
 
-function EmptySideCells() {
+function EmptySideCells({ comparison = false, groupStart = false }: { comparison?: boolean; groupStart?: boolean } = {}) {
+  const align = comparison ? "align-middle" : "align-top";
+  const start = groupStart ? "border-l border-zinc-800 pl-4 " : "";
   return (
     <>
-      <td className="py-2 pr-3 align-top text-zinc-500">—</td>
-      <td className="py-2 pr-3 align-top text-zinc-500">—</td>
-      <td className="py-2 pr-3 align-top text-zinc-500">—</td>
+      <td className={`py-2 pr-3 ${start}${align} text-zinc-500`}>—</td>
+      <td className={`py-2 pr-3 ${align} text-zinc-500`}>—</td>
+      <td className={`py-2 pr-3 ${align} text-zinc-500`}>—</td>
     </>
   );
 }
@@ -197,46 +215,130 @@ function MixNote({
   );
 }
 
+function ComparisonExpectedBar({
+  league,
+  percent,
+  tone,
+  muted,
+}: {
+  league: SpringLeagueId;
+  percent: number;
+  tone: "current" | "proposed";
+  muted: boolean;
+}) {
+  const faint = tone === "current";
+  return (
+    <span
+      className="relative block h-1 w-full overflow-hidden rounded-full bg-zinc-700/40"
+      data-testid={faint ? "comparison-bar-current-track" : "comparison-bar-proposed-track"}
+      aria-hidden="true"
+    >
+      <span
+        data-testid={faint ? "comparison-bar-current" : "comparison-bar-proposed"}
+        data-bar-percent={String(percent)}
+        data-bar-tone={tone}
+        data-muted={muted ? "true" : "false"}
+        className="absolute inset-y-0 left-0 rounded-full"
+        style={{
+          width: `${percent}%`,
+          backgroundColor: muted ? "transparent" : SPRING_FORECAST_BAR_COLOR[league],
+          opacity: muted || !faint ? 1 : 0.4,
+        }}
+      />
+    </span>
+  );
+}
+
 function SideCells({
   side,
   shortRoster,
   includeFeeder,
   mix = null,
   leagueMix = null,
+  expectedBar = null,
+  suppressNotes = false,
+  groupStart = false,
 }: {
   side: ForecastSide;
   shortRoster: boolean;
   includeFeeder: boolean;
   mix?: DivisionMix | null;
   leagueMix?: LeagueMix | null;
+  expectedBar?: {
+    league: SpringLeagueId;
+    percent: number;
+    tone: "current" | "proposed";
+    muted: boolean;
+  } | null;
+  /** Spring comparison draws notes once, under the division name. */
+  suppressNotes?: boolean;
+  /** First cell of the Proposed group. Draws the divider. */
+  groupStart?: boolean;
 }) {
   const feederNote = includeFeeder ? "" : " (not in the pool)";
-  const mixTitle = [leagueMix?.note, mix?.note].filter(Boolean).join(" ");
+  const showNotes = !suppressNotes;
+  const mixTitle = showNotes ? [leagueMix?.note, mix?.note].filter(Boolean).join(" ") : "";
+  const align = expectedBar ? "align-middle" : "align-top";
+  const poolStart = groupStart ? "border-l border-zinc-800 pl-4 " : "";
+  const poolClass = expectedBar
+    ? `py-2 pr-3 ${poolStart}align-middle whitespace-nowrap`
+    : "py-2 pr-3 align-top";
   return (
     <>
-      <td className="py-2 pr-3 align-top" title={`Own ${side.own}. Feeder ${side.feeder}.${mixTitle ? ` ${mixTitle}` : ""}`}>
-        <details>
-          <summary className="cursor-pointer tabular-nums">{side.pool}</summary>
+      <td className={poolClass} title={`Own ${side.own}. Feeder ${side.feeder}.${mixTitle ? ` ${mixTitle}` : ""}`}>
+        <details className={expectedBar ? "group" : undefined}>
+          <summary
+            className={
+              expectedBar
+                ? "flex cursor-pointer list-none items-center justify-end gap-1 tabular-nums marker:content-none [&::-webkit-details-marker]:hidden"
+                : "cursor-pointer tabular-nums"
+            }
+          >
+            {expectedBar ? (
+              <span className="text-[8px] leading-none text-zinc-600 group-open:rotate-90" aria-hidden="true">
+                ▶
+              </span>
+            ) : null}
+            {side.pool}
+          </summary>
           <p className="mt-1 text-xs text-zinc-400">Own {side.own}</p>
           <p className="text-xs text-zinc-400">
             Feeder {side.feeder}
             {feederNote}
           </p>
         </details>
-        {leagueMix?.note ? (
+        {showNotes && leagueMix?.note ? (
           <MixNote
             note={leagueMix.note}
             evenSplit={leagueMix.evenSplit}
             testId={leagueMix.evenSplit ? "league-mix-even-split" : "league-mix-share"}
           />
         ) : null}
-        {mix?.note ? (
+        {showNotes && mix?.note ? (
           <MixNote note={mix.note} evenSplit={mix.evenSplit} testId={mix.evenSplit ? "mix-even-split" : "mix-share"} />
         ) : null}
       </td>
-      <td className="py-2 pr-3 align-top tabular-nums">{side.expected}</td>
-      <td className="py-2 pr-3 align-top">
-        <span className="tabular-nums" data-testid="team-range">
+      {expectedBar ? (
+        <td className="py-2 pr-3 align-middle whitespace-nowrap">
+          <div className="flex items-center justify-end gap-2">
+            <span className="w-[4.5rem] shrink-0">
+              <ComparisonExpectedBar
+                league={expectedBar.league}
+                percent={expectedBar.percent}
+                tone={expectedBar.tone}
+                muted={expectedBar.muted}
+              />
+            </span>
+            <span className="w-12 text-right text-sm leading-5 tabular-nums" data-testid="comparison-expected">
+              {side.expected}
+            </span>
+          </div>
+        </td>
+      ) : (
+        <td className="py-2 pr-3 align-top tabular-nums">{side.expected}</td>
+      )}
+      <td className={expectedBar ? `py-2 pr-3 ${align} whitespace-nowrap text-right` : "py-2 pr-3 align-top"}>
+        <span className={expectedBar ? "tabular-nums leading-5" : "tabular-nums"} data-testid="team-range">
           {formatTeamRange(side.minTeams, side.maxTeams)}
         </span>
         {shortRoster ? (
@@ -376,6 +478,77 @@ export function DivisionAgesForecastView({
     () => (forecast ? { rows: forecast.rows, flows: forecast.flows, sharedPools: forecast.sharedPools } : null),
     [forecast],
   );
+  const springLanes = forecastTimelineLayout({ org, springCombined }) === "spring-lanes";
+  const comparisonBars = useMemo(() => {
+    if (!forecast || !springLanes) return null;
+    return buildSpringComparisonBars({
+      leagueFallback: springLeagueFallback({ org, springCombined }),
+      entries: [
+        ...forecast.sharedPools.map((pool) => ({
+          key: `pool:${pool.poolKey}`,
+          code: pool.codes[0] ?? pool.poolKey,
+          label: pool.label,
+          current: pool.current,
+          proposed: pool.proposed,
+        })),
+        ...forecast.rows.map((row) => ({
+          key: row.code,
+          code: row.code,
+          label: row.label,
+          current: row.current,
+          proposed: row.proposed,
+        })),
+      ],
+    });
+  }, [forecast, org, springCombined, springLanes]);
+  const comparisonSummary = forecast && comparisonBars ? springComparisonSummaryFromLeague(forecast.league) : "";
+
+  function expectedBar(
+    key: string,
+    tone: "current" | "proposed",
+  ): { league: SpringLeagueId; percent: number; tone: "current" | "proposed"; muted: boolean } | null {
+    const slot: SpringComparisonBarSlot | undefined = comparisonBars?.[key];
+    if (!slot) return null;
+    return {
+      league: slot.league,
+      percent: tone === "current" ? slot.currentPercent : slot.proposedPercent,
+      tone,
+      muted: slot.muted,
+    };
+  }
+
+  function comparisonDeltaCell(value: number, muted: boolean) {
+    if (!comparisonBars) {
+      return <td className="py-2 pr-3 align-top tabular-nums">{formatDelta(value)}</td>;
+    }
+    const sign = comparisonDeltaSign(value);
+    const tone =
+      muted || sign === "zero"
+        ? "font-medium text-zinc-500"
+        : sign === "positive"
+          ? "font-medium text-emerald-300/80"
+          : "font-medium text-rose-300/80";
+    return (
+      <td className={`py-2 pr-3 text-right align-middle text-sm leading-5 tabular-nums whitespace-nowrap ${tone}`} data-testid="comparison-delta" data-delta-sign={sign}>
+        {formatComparisonDelta(value)}
+      </td>
+    );
+  }
+
+  function comparisonTeamDeltaCell(minDelta: number, maxDelta: number, muted: boolean) {
+    if (!comparisonBars) {
+      return <td className="py-2 pr-3 align-top tabular-nums">{formatDeltaTeams(minDelta, maxDelta)}</td>;
+    }
+    const unchanged = muted || comparisonTeamDeltaUnchanged(minDelta, maxDelta);
+    return (
+      <td
+        className={`py-2 pr-3 text-right align-middle text-sm leading-5 tabular-nums whitespace-nowrap ${unchanged ? "text-zinc-500" : ""}`}
+        data-testid="comparison-team-delta"
+      >
+        {formatComparisonTeamDelta(minDelta, maxDelta)}
+      </td>
+    );
+  }
 
   function toggleCombine(code: string, checked: boolean) {
     setScenarioError(null);
@@ -774,11 +947,21 @@ export function DivisionAgesForecastView({
         />
       ) : null}
 
-      <section className="rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6" aria-busy={loading}>
-        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
-          <h2 className="text-xl font-semibold text-white">Current vs proposed</h2>
-          {loading ? <p className="text-sm text-zinc-400">{forecast ? "Updating the forecast…" : "Loading the forecast…"}</p> : null}
-        </div>
+      <WithSpringComparisonState enabled={Boolean(comparisonBars)}>
+      <section
+        className={comparisonBars ? "rounded-2xl border border-zinc-800 bg-zinc-900/60" : "rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6"}
+        aria-busy={loading}
+        data-testid={comparisonBars ? "spring-comparison-section" : undefined}
+      >
+        {comparisonBars ? (
+          <SpringComparisonHeader summary={comparisonSummary} loading={loading && Boolean(forecast)} />
+        ) : (
+          <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+            <h2 className="text-xl font-semibold text-white">Current vs proposed</h2>
+            {loading ? <p className="text-sm text-zinc-400">{forecast ? "Updating the forecast…" : "Loading the forecast…"}</p> : null}
+          </div>
+        )}
+        <SpringComparisonAlerts spring={Boolean(comparisonBars)}>
         {error ? (
           <p className="mb-3 text-sm text-amber-200" role="alert">
             {error}
@@ -863,8 +1046,13 @@ export function DivisionAgesForecastView({
                 {message}
               </p>
             ))}
+          </>
+        ) : null}
+        </SpringComparisonAlerts>
+        {forecast ? (
+        <SpringComparisonDetail spring={Boolean(comparisonBars)} springCombined={springCombined}>
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[80rem] text-left text-sm" data-testid="forecast-table">
+              <table className={comparisonBars ? "w-full min-w-[88rem] text-left text-sm" : "w-full min-w-[80rem] text-left text-sm"} data-testid="forecast-table">
                 <caption className="sr-only">Current and proposed division headcount. Counts only.</caption>
                 <thead className="text-[10px] uppercase tracking-[0.16em] text-zinc-500">
                   <tr>
@@ -874,69 +1062,116 @@ export function DivisionAgesForecastView({
                     <th className="py-2 pr-3 text-center font-semibold" colSpan={3}>
                       Current
                     </th>
-                    <th className="py-2 pr-3 text-center font-semibold" colSpan={3}>
+                    <th className={comparisonBars ? "border-l border-zinc-800 py-2 pl-4 pr-3 text-center font-semibold" : "py-2 pr-3 text-center font-semibold"} colSpan={3}>
                       Proposed
                     </th>
-                    <th className="py-2 pr-3 font-semibold" rowSpan={2}>
+                    <th className={comparisonBars ? "py-2 pr-3 text-right font-semibold" : "py-2 pr-3 font-semibold"} rowSpan={2}>
                       Δ players
                     </th>
-                    <th className="py-2 pr-3 font-semibold" rowSpan={2}>
+                    <th className={comparisonBars ? "py-2 pr-3 text-right font-semibold" : "py-2 pr-3 font-semibold"} rowSpan={2}>
                       Δ expected
                     </th>
-                    <th className="py-2 pr-3 font-semibold" rowSpan={2}>
+                    <th className={comparisonBars ? "py-2 pr-3 text-right font-semibold" : "py-2 pr-3 font-semibold"} rowSpan={2}>
                       Δ teams
                     </th>
-                    <th className="py-2 font-semibold" rowSpan={2}>
+                    <th className={comparisonBars ? "py-2 text-right font-semibold" : "py-2 font-semibold"} rowSpan={2}>
                       In / out
                     </th>
                   </tr>
                   <tr>
-                    <th className="py-2 pr-3 font-semibold">Pool</th>
-                    <th className="py-2 pr-3 font-semibold">Expected</th>
-                    <th className="py-2 pr-3 font-semibold">Teams</th>
-                    <th className="py-2 pr-3 font-semibold">Pool</th>
-                    <th className="py-2 pr-3 font-semibold">Expected</th>
-                    <th className="py-2 pr-3 font-semibold">Teams</th>
+                    <th className={comparisonBars ? "py-2 pr-3 text-right font-semibold" : "py-2 pr-3 font-semibold"}>Pool</th>
+                    <th className={comparisonBars ? "py-2 pr-3 text-right font-semibold" : "py-2 pr-3 font-semibold"}>Expected</th>
+                    <th className={comparisonBars ? "py-2 pr-3 text-right font-semibold" : "py-2 pr-3 font-semibold"}>Teams</th>
+                    <th className={comparisonBars ? "border-l border-zinc-800 py-2 pl-4 pr-3 text-right font-semibold" : "py-2 pr-3 font-semibold"}>Pool</th>
+                    <th className={comparisonBars ? "py-2 pr-3 text-right font-semibold" : "py-2 pr-3 font-semibold"}>Expected</th>
+                    <th className={comparisonBars ? "py-2 pr-3 text-right font-semibold" : "py-2 pr-3 font-semibold"}>Teams</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {forecast.sharedPools.map((pool) => (
-                    <tr key={pool.poolKey} className="border-t border-amber-400/30 bg-amber-400/5 text-zinc-100" data-testid="shared-pool">
-                      <td className="py-2 pr-3 align-top">
-                        <p className="font-medium text-white">{pool.label}</p>
+                  {forecast.sharedPools.map((pool) => {
+                    const poolKey = `pool:${pool.poolKey}`;
+                    const poolMuted = comparisonBars?.[poolKey]?.muted === true;
+                    return (
+                    <tr
+                      key={pool.poolKey}
+                      className={poolMuted ? "border-t border-amber-400/30 bg-amber-400/5 text-zinc-500" : "border-t border-amber-400/30 bg-amber-400/5 text-zinc-100"}
+                      data-testid="shared-pool"
+                      data-muted={comparisonBars ? (poolMuted ? "true" : "false") : undefined}
+                    >
+                      <td className={comparisonBars ? "py-2 pr-4 align-middle" : "py-2 pr-3 align-top"}>
+                        <p className={poolMuted ? "font-medium text-zinc-500" : "font-medium text-white"}>{pool.label}</p>
                         <p className="mt-1 text-xs text-amber-100">Counted once. Do not add the divisions in this pool.</p>
                       </td>
                       {pool.current ? (
-                        <SideCells side={pool.current} shortRoster={pool.currentShortRoster} includeFeeder={forecast.includeFeeder} />
+                        <SideCells
+                          side={pool.current}
+                          shortRoster={pool.currentShortRoster}
+                          includeFeeder={forecast.includeFeeder}
+                          expectedBar={expectedBar(poolKey, "current")}
+                          suppressNotes={Boolean(comparisonBars)}
+                        />
                       ) : (
-                        <EmptySideCells />
+                        <EmptySideCells comparison={Boolean(comparisonBars)} />
                       )}
                       {pool.proposed ? (
-                        <SideCells side={pool.proposed} shortRoster={pool.proposedShortRoster} includeFeeder={forecast.includeFeeder} />
+                        <SideCells
+                          side={pool.proposed}
+                          shortRoster={pool.proposedShortRoster}
+                          includeFeeder={forecast.includeFeeder}
+                          expectedBar={expectedBar(poolKey, "proposed")}
+                          suppressNotes={Boolean(comparisonBars)}
+                          groupStart={Boolean(comparisonBars)}
+                        />
                       ) : (
-                        <EmptySideCells />
+                        <EmptySideCells comparison={Boolean(comparisonBars)} groupStart={Boolean(comparisonBars)} />
                       )}
-                      <td className="py-2 pr-3 align-top tabular-nums">
-                        {pool.current && pool.proposed ? formatDelta(pool.proposed.pool - pool.current.pool) : "—"}
-                      </td>
-                      <td className="py-2 pr-3 align-top tabular-nums">
-                        {pool.current && pool.proposed ? formatDelta(pool.proposed.expected - pool.current.expected) : "—"}
-                      </td>
-                      <td className="py-2 pr-3 align-top tabular-nums">
+                      <td className={comparisonBars ? "py-2 pr-3 text-right align-middle text-sm leading-5 tabular-nums whitespace-nowrap" : "py-2 pr-3 align-top tabular-nums"}>
                         {pool.current && pool.proposed
-                          ? formatDeltaTeams(pool.proposed.minTeams - pool.current.minTeams, pool.proposed.maxTeams - pool.current.maxTeams)
+                          ? comparisonBars
+                            ? formatComparisonDelta(pool.proposed.pool - pool.current.pool)
+                            : formatDelta(pool.proposed.pool - pool.current.pool)
                           : "—"}
                       </td>
-                      <td className="py-2 align-top text-zinc-500">—</td>
+                      {pool.current && pool.proposed ? (
+                        comparisonDeltaCell(pool.proposed.expected - pool.current.expected, poolMuted)
+                      ) : (
+                        <td className="py-2 pr-3 align-top tabular-nums">—</td>
+                      )}
+                      {pool.current && pool.proposed ? (
+                        comparisonTeamDeltaCell(
+                          pool.proposed.minTeams - pool.current.minTeams,
+                          pool.proposed.maxTeams - pool.current.maxTeams,
+                          poolMuted,
+                        )
+                      ) : (
+                        <td className="py-2 pr-3 align-top tabular-nums">—</td>
+                      )}
+                      <td className={comparisonBars ? "py-2 text-right align-middle text-sm leading-5 tabular-nums whitespace-nowrap text-zinc-500" : "py-2 align-top text-zinc-500"}>—</td>
                     </tr>
-                  ))}
+                    );
+                  })}
                   {forecast.rows.map((row) => {
                     const overlap = (row.currentOverlap ?? 0) > 0 || (row.proposedOverlap ?? 0) > 0;
                     const shared = Boolean(row.currentSharedPoolId || row.proposedSharedPoolId);
+                    const muted = comparisonBars?.[row.code]?.muted === true;
+                    const rowNotes = comparisonBars
+                      ? comparisonRowNotes(
+                          presentLeagueMix(row.currentLeagueMix, springCombined),
+                          presentLeagueMix(row.proposedLeagueMix, springCombined),
+                          row.currentMix,
+                          row.proposedMix,
+                        )
+                      : [];
                     return (
-                      <tr key={row.code} className="border-t border-zinc-800 text-zinc-200">
-                        <td className="py-2 pr-3 align-top">
-                          <p className="font-medium text-white">
+                      <tr
+                        key={row.code}
+                        className={muted ? "border-t border-zinc-800 text-zinc-500" : "border-t border-zinc-800 text-zinc-200"}
+                        data-testid={comparisonBars ? "comparison-row" : undefined}
+                        data-code={comparisonBars ? row.code : undefined}
+                        data-muted={comparisonBars ? (muted ? "true" : "false") : undefined}
+                      >
+                        <td className={comparisonBars ? "py-2 pr-4 align-middle" : "py-2 pr-3 align-top"}>
+                          <p className={comparisonBars ? `whitespace-nowrap ${muted ? "font-medium text-zinc-500" : "font-medium text-white"}` : "font-medium text-white"}>
                             {row.label}
                             {editedCodes.includes(row.code) ? (
                               <span className="ml-2 inline-flex rounded-full border border-violet-400/40 bg-violet-400/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-violet-100" data-testid="division-edited">
@@ -944,6 +1179,16 @@ export function DivisionAgesForecastView({
                               </span>
                             ) : null}
                           </p>
+                          {rowNotes.map((note) => (
+                            <p
+                              key={note.testId}
+                              className="mt-0.5 max-w-[18rem] truncate text-xs leading-4 text-zinc-500"
+                              data-testid={note.testId}
+                              title={note.note}
+                            >
+                              {note.note}
+                            </p>
+                          ))}
                           {shared ? (
                             <p
                               className="mt-1 inline-flex rounded-full border border-sky-400/40 bg-sky-400/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-sky-100"
@@ -968,6 +1213,8 @@ export function DivisionAgesForecastView({
                           includeFeeder={forecast.includeFeeder}
                           mix={row.currentMix}
                           leagueMix={presentLeagueMix(row.currentLeagueMix, springCombined)}
+                          expectedBar={expectedBar(row.code, "current")}
+                          suppressNotes={Boolean(comparisonBars)}
                         />
                         <SideCells
                           side={row.proposed}
@@ -975,16 +1222,17 @@ export function DivisionAgesForecastView({
                           includeFeeder={forecast.includeFeeder}
                           mix={row.proposedMix}
                           leagueMix={presentLeagueMix(row.proposedLeagueMix, springCombined)}
+                          expectedBar={expectedBar(row.code, "proposed")}
+                          suppressNotes={Boolean(comparisonBars)}
+                          groupStart={Boolean(comparisonBars)}
                         />
-                        <td className="py-2 pr-3 align-top tabular-nums" data-testid="delta-players">
-                          {formatDelta(row.delta.pool)}
+                        <td className={comparisonBars ? "py-2 pr-3 text-right align-middle text-sm leading-5 tabular-nums whitespace-nowrap" : "py-2 pr-3 align-top tabular-nums"} data-testid="delta-players">
+                          {comparisonBars ? formatComparisonDelta(row.delta.pool) : formatDelta(row.delta.pool)}
                         </td>
-                        <td className="py-2 pr-3 align-top tabular-nums">{formatDelta(row.delta.expected)}</td>
-                        <td className="py-2 pr-3 align-top tabular-nums">
-                          {formatDeltaTeams(row.delta.minTeams, row.delta.maxTeams)}
-                        </td>
+                        {comparisonDeltaCell(row.delta.expected, muted)}
+                        {comparisonTeamDeltaCell(row.delta.minTeams, row.delta.maxTeams, muted)}
                         <td
-                          className="py-2 align-top tabular-nums"
+                          className={comparisonBars ? "py-2 text-right align-middle text-sm leading-5 tabular-nums whitespace-nowrap" : "py-2 align-top tabular-nums"}
                           data-testid="movers-in-out"
                           title={moverTooltip(row.moversIn, row.moversOut)}
                         >
@@ -1098,11 +1346,12 @@ export function DivisionAgesForecastView({
                 </ul>
               ) : null}
             </div>
-          </>
+        </SpringComparisonDetail>
         ) : loading ? null : (
           <p className="text-sm text-zinc-400">The forecast will appear here.</p>
         )}
       </section>
+      </WithSpringComparisonState>
     </div>
   );
 }
