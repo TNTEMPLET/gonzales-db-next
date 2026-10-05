@@ -43,7 +43,11 @@ export async function POST(request: NextRequest) {
       readBaselineToken(body),
     );
     if (!copied.ok) {
-      return NextResponse.json({ error: copied.error, issues: copied.issues ?? [] }, { status: copied.status });
+      const issues = copied.issues ?? [];
+      return NextResponse.json(
+        issues.length > 0 ? { error: copied.error, issues } : { error: copied.error },
+        { status: copied.status },
+      );
     }
     return NextResponse.json({
       organizationId: guard.org,

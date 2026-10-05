@@ -104,11 +104,16 @@ function withSeasonBaseline(org: ContentOrgId, body: Record<string, unknown>, to
   return { ...body, baselineToken: token ?? "" };
 }
 
-function issueLines(payload: Record<string, unknown> | null, fallback: string): string[] {
-  if (payload && Array.isArray(payload.issues) && payload.issues.every((issue) => typeof issue === "string")) {
+export function issueLines(payload: Record<string, unknown> | null, fallback: string): string[] {
+  if (
+    payload &&
+    Array.isArray(payload.issues) &&
+    payload.issues.length > 0 &&
+    payload.issues.every((issue) => typeof issue === "string")
+  ) {
     return payload.issues as string[];
   }
-  if (payload && typeof payload.error === "string") return [payload.error];
+  if (payload && typeof payload.error === "string" && payload.error.length > 0) return [payload.error];
   return [fallback];
 }
 

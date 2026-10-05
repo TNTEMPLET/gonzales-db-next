@@ -4,7 +4,7 @@ import type { Root } from "react-dom/client";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "node:test";
 
-import { DivisionAgesEditorCard, DivisionAgesSettingsDialog } from "@/components/admin/DivisionAgesWorkspace";
+import { DivisionAgesEditorCard, DivisionAgesSettingsDialog, issueLines } from "@/components/admin/DivisionAgesWorkspace";
 
 const card = {
   source: "season" as const,
@@ -56,6 +56,37 @@ describe("division ages editor", () => {
     const saveButton = html.match(/<button type="button" data-testid="save-division-ages"[^>]*>/);
     assert.ok(saveButton, html);
     assert.doesNotMatch(saveButton[0], /\sdisabled(?:[\s=/>]|$)/);
+  });
+
+  it("renders a 409 with no issues as the stale-save message on the league card", () => {
+    const stale = "Someone else saved changes. Reload this page to see them.";
+    const payload = { error: stale, issues: [] as string[] };
+    const saveLines = issueLines(payload, "Could not save division ages.");
+    const resetLines = issueLines(payload, "Could not reset this season.");
+    const copyLines = issueLines(payload, "Could not start from last season.");
+    assert.deepEqual(saveLines, [stale]);
+    assert.deepEqual(resetLines, [stale]);
+    assert.deepEqual(copyLines, [stale]);
+    assert.deepEqual(issueLines({ issues: [] }, "Could not save division ages."), ["Could not save division ages."]);
+    assert.deepEqual(issueLines(null, "Could not save division ages."), ["Could not save division ages."]);
+    assert.deepEqual(
+      issueLines({ error: "Keep this", issues: ["Division code is required."] }, "Could not save division ages."),
+      ["Division code is required."],
+    );
+
+    const html = renderToStaticMarkup(
+      createElement(DivisionAgesEditorCard, {
+        org: "gonzales",
+        seasonYear: 2027,
+        card: { ...card, fieldErrors: saveLines },
+        onCard: () => {},
+        onSave: () => {},
+        onOpenSettings: () => {},
+        copyLabel: "Copy table",
+        onCopy: () => {},
+      }),
+    );
+    assert.match(html, /Someone else saved changes\. Reload this page to see them\./);
   });
 
   it("previews the Fall Ball cutoff inside the settings cog", () => {

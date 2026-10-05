@@ -70,8 +70,9 @@ export async function PUT(request: NextRequest) {
           baselineToken,
         );
     if (!saved.ok) {
+      const issues = saved.issues ?? [];
       return NextResponse.json(
-        { error: saved.error, issues: saved.issues ?? [] },
+        issues.length > 0 ? { error: saved.error, issues } : { error: saved.error },
         { status: saved.status },
       );
     }
