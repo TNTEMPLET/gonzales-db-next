@@ -11,8 +11,13 @@
  * until both leagues have a snapshot again.
  *
  * `spring` is never an organization id. Fall Ball is never written. Each
- * league keeps its own table cutoff. A row whose window is not that cutoff's
- * calculated window is stored with explicit oldest and youngest birthdates.
+ * league keeps its own table cutoff. A row whose dates are missing is filled
+ * from that league's cutoff, never the combined shell. A row whose window is
+ * not that cutoff's calculated window is stored with explicit oldest and
+ * youngest birthdates. A saved row belongs to exactly one league. Dropping a
+ * division requires that code in `removedCodes`, and a league table cannot be
+ * saved empty. Confirmation is kept only when that league's divisions did not
+ * change.
  */
 
 import { calculatedRange, effectiveCutoffDate, effectiveRange } from "@/lib/ageDivisions/compute";
@@ -49,6 +54,8 @@ export type SpringLeagueTable = {
   divisions: readonly DivisionAgeConfig[];
   /** True when this league's saved JSON still has the one-step snapshot. */
   undoAvailable?: boolean;
+  /** Token from the season read. The save route compares it inside the transaction. */
+  baselineToken?: string;
 };
 
 export type CombinedSaveChange = {
@@ -136,14 +143,14 @@ function persistLabel(display: string, org: SpringLeagueOrg, existingLabel: stri
 
 function divisionCode(raw: string): { org: SpringLeagueOrg; code: string } | { error: string } {
   const trimmed = raw.trim();
-  const splitAt = trimmed.indexOf(":");
-  if (splitAt <= 0) return { error: "Every division must belong to Gonzales DYB or Ascension LL." };
-  const org = trimmed.slice(0, splitAt);
-  const code = trimmed.slice(splitAt + 1).trim();
-  if (org === "fallball") return { error: "Fall Ball is not part of this save." };
-  if (org === "spring") return { error: "Spring is a view, not a league that can be saved." };
-  if (!isSpringLeagueOrg(org) || !code) {
-    return { error: "Every division must belong to Gonzales DYB or Ascension LL." };
+  if (trimmed.startsWith("fallball:")) return { error: "Fall Ball is not part of this save." };
+  if (trimmed.startsWith("spring:")) return { error: "Spring is a view, not a league that can be saved." };
+  const match = /^(gonzales|ascension):(.+)$/.exec(trimmed);
+  if (!match) return { error: "Every division must belong to Gonzales DYB or Ascension LL." };
+  const org = match[1];
+  const code = match[2]?.trim() ?? "";
+  if (!isSpringLeagueOrg(org) || !code || code.length > 40 || code.includes(":") || /(gonzales|ascension|fallball|spring):/.test(code)) {
+    return { error: "Each saved division must belong to exactly one league." };
   }
   return { org, code };
 }
@@ -152,33 +159,44 @@ function divisionCode(raw: string): { org: SpringLeagueOrg; code: string } | { e
  * Split the combined editor table into the two league records. The league
  * cutoff is the one already stored for that league, not the combined shell.
  */
+export function removedCodesForCombinedSave(
+  current: readonly SpringLeagueTable[],
+  proposed: { divisions: readonly DivisionAgeConfig[] },
+): Partial<Record<SpringLeagueOrg, string[]>> {
+  const kept: Record<SpringLeagueOrg, Set<string>> = { gonzales: new Set(), ascension: new Set() };
+  for (const division of proposed.divisions) {
+    const parsed = divisionCode(division.code);
+    if ("error" in parsed) continue;
+    kept[parsed.org].add(parsed.code);
+  }
+  const removed: Partial<Record<SpringLeagueOrg, string[]>> = {};
+  for (const league of current) {
+    if (!isSpringLeagueOrg(league.organizationId)) continue;
+    const dropped = league.divisions
+      .map((division) => division.code)
+      .filter((code) => !kept[league.organizationId].has(code));
+    if (dropped.length > 0) removed[league.organizationId] = dropped;
+  }
+  return removed;
+}
+
 export function splitCombinedTable(
   proposed: { cutoff: LeagueAgeRule; divisions: readonly DivisionAgeConfig[] },
   leagues: readonly SpringLeagueTable[],
   seasonYear: number,
+  removedCodes?: Partial<Record<SpringLeagueOrg, readonly string[]>>,
 ): { ok: true; leagues: Record<SpringLeagueOrg, SplitLeagueTable> } | { ok: false; error: string } {
   const byOrg = new Map(leagues.map((league) => [league.organizationId, league]));
   for (const org of SPRING_LEAGUE_ORGS) {
     if (!byOrg.has(org)) return { ok: false, error: "Both Spring leagues are required." };
-  }
-  let shellIso = "";
-  try {
-    shellIso = effectiveCutoffDate(proposed.cutoff, seasonYear);
-  } catch {
-    return { ok: false, error: "The combined cutoff is not a real date." };
   }
   const built: Record<SpringLeagueOrg, DivisionAgeConfig[]> = { gonzales: [], ascension: [] };
   for (const division of proposed.divisions) {
     const parsedCode = divisionCode(division.code);
     if ("error" in parsedCode) return { ok: false, error: parsedCode.error };
     const league = byOrg.get(parsedCode.org)!;
-    let leagueIso = "";
-    try {
-      leagueIso = effectiveCutoffDate(league.cutoff, seasonYear);
-    } catch {
-      return { ok: false, error: `The ${LEAGUE_TITLE[parsedCode.org]} cutoff is not a real date.` };
-    }
-    const range = effectiveRange(division, shellIso);
+    const leagueIso = effectiveCutoffDate(league.cutoff, seasonYear);
+    const range = effectiveRange(division, leagueIso);
     if (!range.oldest || !range.youngest || range.oldest > range.youngest) {
       return { ok: false, error: `${division.label || parsedCode.code} needs a real birthdate range.` };
     }
@@ -200,6 +218,19 @@ export function splitCombinedTable(
     built[parsedCode.org].push(next);
   }
   for (const org of SPRING_LEAGUE_ORGS) {
+    const league = byOrg.get(org)!;
+    const kept = new Set(built[org].map((division) => division.code));
+    const allowed = new Set(removedCodes?.[org] ?? []);
+    for (const division of league.divisions) {
+      if (kept.has(division.code) || allowed.has(division.code)) continue;
+      return {
+        ok: false,
+        error: `${LEAGUE_TITLE[org]} dropped ${division.code} without confirming that removal.`,
+      };
+    }
+    if (built[org].length === 0) {
+      return { ok: false, error: `${LEAGUE_TITLE[org]} must keep at least one division.` };
+    }
     if (built[org].length > 40) {
       return { ok: false, error: `${LEAGUE_TITLE[org]} can hold 40 divisions.` };
     }
@@ -231,7 +262,7 @@ export function combinedSavePreview(
   proposed: { cutoff: LeagueAgeRule; divisions: readonly DivisionAgeConfig[] },
   seasonYear: number,
 ): { ok: true; preview: CombinedSavePreview } | { ok: false; error: string } {
-  const split = splitCombinedTable(proposed, current, seasonYear);
+  const split = splitCombinedTable(proposed, current, seasonYear, removedCodesForCombinedSave(current, proposed));
   if (!split.ok) return split;
   const leagues = SPRING_LEAGUE_ORGS.map((org) => {
     const before = current.find((league) => league.organizationId === org)!;
@@ -287,6 +318,27 @@ function copyAudit(record: SeasonDivisionAgesRecord, target: SeasonDivisionAgesR
   if (record.confirmedByAdminId) target.confirmedByAdminId = record.confirmedByAdminId;
 }
 
+function divisionIdentity(division: DivisionAgeConfig) {
+  return {
+    code: division.code,
+    label: division.label,
+    minAge: division.minAge,
+    maxAge: division.maxAge,
+    oldestBirthdate: division.oldestBirthdate || undefined,
+    youngestBirthdate: division.youngestBirthdate || undefined,
+    sortOrder: division.sortOrder,
+    cutoffPreset: division.cutoffPreset,
+  };
+}
+
+function sameDivisions(left: readonly DivisionAgeConfig[], right: readonly DivisionAgeConfig[]): boolean {
+  if (left.length !== right.length) return false;
+  return left.every((division, index) => {
+    const other = right[index];
+    return other != null && JSON.stringify(divisionIdentity(division)) === JSON.stringify(divisionIdentity(other));
+  });
+}
+
 /** The visible table only. Nested undo data is left off so the snapshot stays one step. */
 export function snapshotWithoutPrevious(record: SeasonDivisionAgesRecord): SeasonPrevious {
   const snapshot: SeasonPrevious = {
@@ -334,7 +386,7 @@ export function buildCombinedSaveRecords(
       updatedByAdminId: adminId,
       previous: prior.previous,
     };
-    if (prior.current) copyAudit(prior.current, next);
+    if (prior.current && sameDivisions(prior.current.divisions, next.divisions)) copyAudit(prior.current, next);
     const checked = validateSeasonRecord(next, seasonYear);
     if (!checked.ok) return { ok: false, error: checked.error };
     records[org] = checked.data;

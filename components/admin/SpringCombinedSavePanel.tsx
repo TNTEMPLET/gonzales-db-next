@@ -4,6 +4,7 @@ import { useState } from "react";
 
 import {
   combinedSavePreview,
+  removedCodesForCombinedSave,
   type CombinedSavePreview,
   type SpringLeagueTable,
 } from "@/lib/admin/springCombined/save";
@@ -11,6 +12,13 @@ import type { DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDivisions/types"
 
 const buttonClass =
   "inline-flex min-h-11 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 hover:border-zinc-500 disabled:opacity-60";
+
+function baselinesFrom(leagues: readonly SpringLeagueTable[]) {
+  return {
+    gonzales: leagues.find((league) => league.organizationId === "gonzales")?.baselineToken ?? "",
+    ascension: leagues.find((league) => league.organizationId === "ascension")?.baselineToken ?? "",
+  };
+}
 
 export function SpringCombinedSaveConfirm({
   preview,
@@ -118,6 +126,8 @@ export function SpringCombinedSavePanel({
           seasonYear,
           cutoff: proposed.cutoff,
           divisions: proposed.divisions,
+          baselines: baselinesFrom(leagues),
+          removedCodes: removedCodesForCombinedSave(leagues, proposed),
         }),
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
@@ -141,7 +151,7 @@ export function SpringCombinedSavePanel({
       const response = await fetch("/api/admin/division-ages/spring", {
         method: "POST",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ seasonYear }),
+        body: JSON.stringify({ seasonYear, baselines: baselinesFrom(leagues) }),
       });
       const payload = (await response.json().catch(() => null)) as { error?: string } | null;
       if (!response.ok) {

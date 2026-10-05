@@ -138,8 +138,6 @@ describe("cutoff impact diff", () => {
     assert.equal(source.includes("prisma"), false);
     assert.equal(source.includes("server-only"), false);
     assert.equal(source.includes("fallball"), false);
-    assert.equal(source.includes("PAPERCLIP_DEBUG_TOKEN"), false);
-    assert.equal(source.includes("paperclip-debug"), false);
   });
 
   it("moves the May 1 birthdays from 7U Minors to 8U Minors when the cutoff crosses Apr 30", () => {

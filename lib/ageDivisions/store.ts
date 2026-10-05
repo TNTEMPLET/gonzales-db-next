@@ -17,6 +17,7 @@ import {
   saveSpringCombinedSeasons,
   undoSpringCombinedSeasons,
   type DivisionAgeDb,
+  type SpringCombinedWriteOptions,
   type LeagueDefaultsRow,
   type SpringCombinedDb,
 } from "./persistence";
@@ -136,10 +137,15 @@ export function saveSpringCombinedDivisionAges(
   proposed: { cutoff: LeagueAgeRule; divisions: DivisionAgeConfig[] },
   leagues: readonly SpringLeagueTable[],
   adminId: string,
+  options?: SpringCombinedWriteOptions,
 ) {
-  return saveSpringCombinedSeasons(springDb, seasonYear, proposed, leagues, adminId);
+  return saveSpringCombinedSeasons(springDb, seasonYear, proposed, leagues, adminId, options);
 }
 
-export function undoSpringCombinedDivisionAges(seasonYear: number, adminId: string) {
-  return undoSpringCombinedSeasons(springDb, seasonYear, adminId);
+export function undoSpringCombinedDivisionAges(
+  seasonYear: number,
+  adminId: string,
+  options?: SpringCombinedWriteOptions,
+) {
+  return undoSpringCombinedSeasons(springDb, seasonYear, adminId, options);
 }

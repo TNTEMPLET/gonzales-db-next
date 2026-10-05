@@ -1147,6 +1147,7 @@ export default function DivisionAgesForecast({
             divisions?: DivisionAgeConfig[];
             source?: DivisionAgesSource;
             undoAvailable?: boolean;
+            baselineToken?: string;
           } | null;
           if (!response.ok || !payload?.cutoff || !Array.isArray(payload.divisions) || !payload.source) {
             throw new Error(readError(payload, "Could not load the current division ages."));
@@ -1157,6 +1158,7 @@ export default function DivisionAgesForecast({
             divisions: payload.divisions,
             source: payload.source,
             undoAvailable: payload.undoAvailable === true,
+            baselineToken: typeof payload.baselineToken === "string" ? payload.baselineToken : undefined,
           };
         }),
       );
@@ -1173,6 +1175,7 @@ export default function DivisionAgesForecast({
           cutoff: entry.cutoff,
           divisions: entry.divisions,
           undoAvailable: entry.undoAvailable,
+          baselineToken: entry.baselineToken,
         })),
       };
     }

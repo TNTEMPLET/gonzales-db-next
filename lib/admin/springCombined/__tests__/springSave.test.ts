@@ -6,8 +6,11 @@ import { describe, it } from "node:test";
 
 import { SpringCombinedSaveConfirm } from "@/components/admin/SpringCombinedSavePanel";
 import { calculatedRange, effectiveCutoffDate, effectiveRange } from "@/lib/ageDivisions/compute";
+import { combineDivisions } from "@/lib/ageDivisions/forecastView";
 import {
+  divisionAgesBaselineToken,
   getSeasonDivisionAges,
+  STALE_SAVE_ERROR,
   type DivisionAgeDb,
   type LeagueDefaultsRow,
   saveSpringCombinedSeasons,
@@ -84,6 +87,12 @@ function leagues(): SpringLeagueTable[] {
 
 function proposedFrom(current: readonly SpringLeagueTable[]) {
   return combinedForecastConfig(current, SEASON);
+}
+
+function baselinesFor(seasons: Map<string, unknown | null>, year = SEASON) {
+  const token = (org: "gonzales" | "ascension") =>
+    divisionAgesBaselineToken(seasons.has(`${org}:${year}`) ? (seasons.get(`${org}:${year}`) ?? null) : null);
+  return { gonzales: token("gonzales"), ascension: token("ascension") };
 }
 
 function memorySpring(failOn: "gonzales" | "ascension" | null = null) {
@@ -190,7 +199,9 @@ describe("combined spring save", () => {
       maxAge: 9,
       sortOrder: 99,
     });
-    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1");
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
     assert.equal(saved.ok, false);
     if (!saved.ok) assert.match(saved.error, /Fall Ball/);
     assert.equal(memory.seasons.size, 0);
@@ -220,7 +231,11 @@ describe("combined spring save", () => {
     const eight = proposed.divisions.find((division) => division.code === "gonzales:8U");
     assert.ok(eight);
     eight.youngestBirthdate = "2019-05-15";
-    await assert.rejects(() => saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1"));
+    await assert.rejects(() =>
+      saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+        baselines: baselinesFor(memory.seasons),
+      }),
+    );
     assert.deepEqual(memory.seasons.get("gonzales:2027"), originalGonzales);
     assert.deepEqual(memory.seasons.get("ascension:2027"), originalAscension);
     assert.equal([...memory.seasons.keys()].every((key) => key.startsWith("gonzales:") || key.startsWith("ascension:")), true);
@@ -240,7 +255,10 @@ describe("combined spring save", () => {
     const eight = proposed.divisions.find((division) => division.code === "gonzales:8U");
     assert.ok(eight);
     eight.youngestBirthdate = "2019-05-15";
-    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", new Date("2026-10-05T00:00:00.000Z"));
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+      now: new Date("2026-10-05T00:00:00.000Z"),
+    });
     assert.equal(saved.ok, true);
     const gonzales = memory.seasons.get("gonzales:2027") as { previous?: { divisions?: unknown; previous?: unknown; absent?: true } };
     const ascension = memory.seasons.get("ascension:2027") as { previous?: { absent?: true; previous?: unknown } };
@@ -252,14 +270,18 @@ describe("combined spring save", () => {
     assert.equal(ascension.previous?.absent, true);
     assert.equal(ascension.previous && "previous" in ascension.previous, false);
 
-    const undone = await undoSpringCombinedSeasons(memory.db, SEASON, "admin-1");
+    const undone = await undoSpringCombinedSeasons(memory.db, SEASON, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
     assert.equal(undone.ok, true);
     const restored = memory.seasons.get("gonzales:2027") as { divisions: DivisionAgeConfig[]; previous?: unknown };
     assert.equal(restored.divisions[0]?.youngestBirthdate, undefined);
     assert.equal(restored.previous, undefined);
     assert.equal(memory.seasons.get("ascension:2027"), null);
 
-    const second = await undoSpringCombinedSeasons(memory.db, SEASON, "admin-1");
+    const second = await undoSpringCombinedSeasons(memory.db, SEASON, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
     assert.equal(second.ok, false);
     if (!second.ok) assert.match(second.error, /not available/);
     assert.equal(memory.seasons.get("ascension:2027"), null);
@@ -303,6 +325,7 @@ describe("combined spring save", () => {
     };
     const loaded = await getSeasonDivisionAges(db, "gonzales", SEASON);
     assert.equal(loaded.source, "season");
+    assert.equal(loaded.baselineToken, divisionAgesBaselineToken(seasons.get("gonzales:2027") ?? null));
     assert.equal(loaded.divisions[0]?.code, "9U");
     assert.equal(loaded.divisions[0]?.cutoffPreset, undefined);
     assert.notEqual(loaded.undoAvailable, true);
@@ -379,7 +402,9 @@ describe("combined spring save", () => {
   it("keeps the blanket 403 on every other spring write", () => {
     const route = readFileSync(new URL("../../../../app/api/admin/division-ages/spring/route.ts", import.meta.url), "utf8");
     assert.match(route, /springCombinedSaveDenial/);
-    assert.match(route, /isMasterAdminActor/);
+    assert.match(route, /isMaster: auth\.admin\.isMaster/);
+    assert.doesNotMatch(route, /isMasterAdminActor/);
+    assert.equal(route.match(/const guard = await authorize\(request\)/g)?.length, 2);
     assert.doesNotMatch(route, /springCombinedRequestBlock/);
     assert.doesNotMatch(route, /fallball/);
     assert.match(route, /organizationIds: \["gonzales", "ascension"\]/);
@@ -399,6 +424,258 @@ describe("combined spring save", () => {
     assert.match(guard, /springCombinedRequestBlock/);
     const season = readFileSync(new URL("../../../../app/api/admin/division-ages/season/route.ts", import.meta.url), "utf8");
     assert.match(season, /guardDivisionAges/);
+  });
+
+  it("rejects a row that combines two leagues and writes nothing", async () => {
+    const blocked = combineDivisions(
+      [
+        division({ code: "gonzales:8U", label: "8U DYB", minAge: 8, maxAge: 8, sortOrder: 1 }),
+        division({ code: "ascension:12U", label: "12U LLB", minAge: 12, maxAge: 12, sortOrder: 2 }),
+      ],
+      ["gonzales:8U", "ascension:12U"],
+      effectiveCutoffDate(DYB, SEASON),
+    );
+    assert.equal(blocked.ok, false);
+    if (!blocked.ok) assert.match(blocked.error, /one league/);
+
+    const sameLeague = combineDivisions(
+      [
+        division({ code: "gonzales:7U", label: "7U", minAge: 7, maxAge: 7, sortOrder: 1 }),
+        division({ code: "gonzales:8U", label: "8U", minAge: 8, maxAge: 8, sortOrder: 2 }),
+      ],
+      ["gonzales:7U", "gonzales:8U"],
+      effectiveCutoffDate(DYB, SEASON),
+    );
+    assert.equal(sameLeague.ok, true);
+    if (sameLeague.ok) assert.equal(sameLeague.divisions[0]?.code, "gonzales:7/8U");
+
+    const memory = memorySpring();
+    const current = leagues();
+    memory.seasons.set("gonzales:2027", { cutoff: DYB, divisions: current[0]!.divisions });
+    memory.seasons.set("ascension:2027", { cutoff: LL, divisions: current[1]!.divisions });
+    const beforeGonzales = structuredClone(memory.seasons.get("gonzales:2027"));
+    const beforeAscension = structuredClone(memory.seasons.get("ascension:2027"));
+    const proposed = proposedFrom(current);
+    proposed.divisions = [
+      {
+        code: "gonzales:8U/ascension:12U",
+        label: "8U / 12U",
+        minAge: 8,
+        maxAge: 12,
+        sortOrder: 1,
+        oldestBirthdate: "2014-05-01",
+        youngestBirthdate: "2019-04-30",
+      },
+      ...proposed.divisions.filter((row) => row.code !== "gonzales:8U" && row.code !== "ascension:12U"),
+    ];
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
+    assert.equal(saved.ok, false);
+    if (!saved.ok) {
+      assert.equal(saved.status, 400);
+      assert.match(saved.error, /exactly one league/);
+    }
+    assert.deepEqual(memory.seasons.get("gonzales:2027"), beforeGonzales);
+    assert.deepEqual(memory.seasons.get("ascension:2027"), beforeAscension);
+  });
+
+  it("accepts a same-league combine only when the replaced codes are listed", () => {
+    const current: SpringLeagueTable[] = [
+      {
+        organizationId: "gonzales",
+        cutoff: DYB,
+        divisions: [
+          division({ code: "7U", label: "7U", minAge: 7, maxAge: 7, sortOrder: 1 }),
+          division({ code: "8U", label: "8U", minAge: 8, maxAge: 8, sortOrder: 2 }),
+        ],
+      },
+      {
+        organizationId: "ascension",
+        cutoff: LL,
+        divisions: [division({ code: "12U", label: "12U", minAge: 12, maxAge: 12, sortOrder: 1 })],
+      },
+    ];
+    const proposed = proposedFrom(current);
+    const combined = combineDivisions(proposed.divisions, ["gonzales:7U", "gonzales:8U"], effectiveCutoffDate(DYB, SEASON));
+    assert.equal(combined.ok, true);
+    if (!combined.ok) return;
+    const next = { cutoff: proposed.cutoff, divisions: combined.divisions };
+    const denied = splitCombinedTable(next, current, SEASON);
+    assert.equal(denied.ok, false);
+    if (!denied.ok) assert.match(denied.error, /dropped 7U/);
+    const allowed = splitCombinedTable(next, current, SEASON, { gonzales: ["7U", "8U"] });
+    assert.equal(allowed.ok, true);
+    if (!allowed.ok) return;
+    assert.deepEqual(
+      allowed.leagues.gonzales.divisions.map((row) => row.code),
+      ["7/8U"],
+    );
+    assert.equal(allowed.leagues.ascension.divisions[0]?.code, "12U");
+  });
+
+  it("derives a missing Ascension window from the Little League cutoff", async () => {
+    const memory = memorySpring();
+    const current = leagues();
+    const proposed = proposedFrom(current);
+    const twelve = proposed.divisions.find((row) => row.code === "ascension:12U");
+    assert.ok(twelve);
+    delete twelve.oldestBirthdate;
+    delete twelve.youngestBirthdate;
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
+    assert.equal(saved.ok, true);
+    const ascension = memory.seasons.get("ascension:2027") as { divisions: DivisionAgeConfig[] };
+    const stored = ascension.divisions.find((row) => row.code === "12U");
+    assert.ok(stored);
+    assert.equal(stored.cutoffPreset, "little-league");
+    assert.equal(stored.oldestBirthdate, undefined);
+    assert.equal(stored.youngestBirthdate, undefined);
+    const range = effectiveRange(stored, effectiveCutoffDate(LL, SEASON));
+    assert.equal(range.oldest, "2014-09-01");
+    assert.equal(range.youngest, "2015-08-31");
+    const shell = calculatedRange({ minAge: 12, maxAge: 12 }, effectiveCutoffDate(DYB, SEASON));
+    assert.equal(shell.oldest, "2014-05-01");
+    assert.notEqual(range.oldest, shell.oldest);
+  });
+
+  it("rejects a partial payload and refuses to empty a league", async () => {
+    const memory = memorySpring();
+    const current = leagues();
+    const originalGonzales = { cutoff: DYB, divisions: current[0]!.divisions.map((row) => ({ ...row })) };
+    const originalAscension = { cutoff: LL, divisions: current[1]!.divisions.map((row) => ({ ...row })) };
+    memory.seasons.set("gonzales:2027", originalGonzales);
+    memory.seasons.set("ascension:2027", originalAscension);
+    const proposed = proposedFrom(current);
+    proposed.divisions = proposed.divisions.filter((row) => row.code.startsWith("gonzales:"));
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
+    assert.equal(saved.ok, false);
+    if (!saved.ok) assert.match(saved.error, /Ascension LL dropped 12U/);
+    assert.deepEqual(memory.seasons.get("gonzales:2027"), originalGonzales);
+    assert.deepEqual(memory.seasons.get("ascension:2027"), originalAscension);
+
+    const wiped = await saveSpringCombinedSeasons(
+      memory.db,
+      SEASON,
+      { cutoff: DYB, divisions: [] },
+      current,
+      "admin-1",
+      {
+        baselines: baselinesFor(memory.seasons),
+        removedCodes: {
+          gonzales: originalGonzales.divisions.map((row) => row.code),
+          ascension: originalAscension.divisions.map((row) => row.code),
+        },
+      },
+    );
+    assert.equal(wiped.ok, false);
+    if (!wiped.ok) assert.match(wiped.error, /must keep at least one division/);
+    assert.deepEqual(memory.seasons.get("gonzales:2027"), originalGonzales);
+    assert.deepEqual(memory.seasons.get("ascension:2027"), originalAscension);
+  });
+
+  it("returns 409 and writes nothing when the save baseline is stale", async () => {
+    const memory = memorySpring();
+    const current = leagues();
+    const gonzales = { cutoff: DYB, divisions: [division({ code: "8U", label: "8U", minAge: 8, maxAge: 8 })] };
+    const ascension = { cutoff: LL, divisions: [division({ code: "12U", label: "12U", minAge: 12, maxAge: 12 })] };
+    memory.seasons.set("gonzales:2027", gonzales);
+    memory.seasons.set("ascension:2027", ascension);
+    const baselines = baselinesFor(memory.seasons);
+    const changed = { ...gonzales, updatedAt: "2026-09-01T00:00:00.000Z" };
+    memory.seasons.set("gonzales:2027", changed);
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposedFrom(current), current, "admin-1", { baselines });
+    assert.equal(saved.ok, false);
+    if (!saved.ok) {
+      assert.equal(saved.status, 409);
+      assert.equal(saved.error, STALE_SAVE_ERROR);
+    }
+    assert.deepEqual(memory.seasons.get("gonzales:2027"), changed);
+    assert.deepEqual(memory.seasons.get("ascension:2027"), ascension);
+
+    const missing = await saveSpringCombinedSeasons(memory.db, SEASON, proposedFrom(current), current, "admin-1");
+    assert.equal(missing.ok, false);
+    if (!missing.ok) {
+      assert.equal(missing.status, 409);
+      assert.equal(missing.error, STALE_SAVE_ERROR);
+    }
+    assert.deepEqual(memory.seasons.get("ascension:2027"), ascension);
+  });
+
+  it("returns 409 and leaves both leagues in place when undo is stale", async () => {
+    const memory = memorySpring();
+    const current = leagues();
+    memory.seasons.set("gonzales:2027", {
+      cutoff: DYB,
+      divisions: [division({ code: "8U", label: "8U", minAge: 8, maxAge: 8 })],
+    });
+    const proposed = proposedFrom(current);
+    const eight = proposed.divisions.find((row) => row.code === "gonzales:8U");
+    assert.ok(eight);
+    eight.youngestBirthdate = "2019-05-15";
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
+    assert.equal(saved.ok, true);
+    const baselines = baselinesFor(memory.seasons);
+    const stored = memory.seasons.get("gonzales:2027") as { divisions: DivisionAgeConfig[] };
+    stored.divisions[0] = { ...stored.divisions[0]!, label: "Changed elsewhere" };
+    const ascension = structuredClone(memory.seasons.get("ascension:2027"));
+    const undone = await undoSpringCombinedSeasons(memory.db, SEASON, "admin-1", { baselines });
+    assert.equal(undone.ok, false);
+    if (!undone.ok) {
+      assert.equal(undone.status, 409);
+      assert.equal(undone.error, STALE_SAVE_ERROR);
+    }
+    const left = memory.seasons.get("gonzales:2027") as { divisions: DivisionAgeConfig[] };
+    assert.equal(left.divisions[0]?.label, "Changed elsewhere");
+    assert.deepEqual(memory.seasons.get("ascension:2027"), ascension);
+  });
+
+  it("rejects a per-org master admin who lacks the global master flag", () => {
+    const denial = springCombinedSaveDenial({ authenticated: true, isMaster: false, masterDeployment: true });
+    assert.equal(denial?.status, 403);
+    assert.match(denial?.error ?? "", /Master Admin/);
+    const route = readFileSync(new URL("../../../../app/api/admin/division-ages/spring/route.ts", import.meta.url), "utf8");
+    assert.match(route, /isMaster: auth\.admin\.isMaster/);
+    assert.doesNotMatch(route, /isMasterAdminActor/);
+  });
+
+  it("clears confirmation only on the league whose divisions changed", async () => {
+    const memory = memorySpring();
+    const current = leagues();
+    const preview = splitCombinedTable(proposedFrom(current), current, SEASON);
+    assert.equal(preview.ok, true);
+    if (!preview.ok) return;
+    memory.seasons.set("gonzales:2027", {
+      cutoff: DYB,
+      divisions: preview.leagues.gonzales.divisions,
+      confirmedAt: "2026-02-01T00:00:00.000Z",
+      confirmedByAdminId: "confirmer-dyb",
+    });
+    memory.seasons.set("ascension:2027", {
+      cutoff: LL,
+      divisions: preview.leagues.ascension.divisions,
+      confirmedAt: "2026-03-01T00:00:00.000Z",
+      confirmedByAdminId: "confirmer-ll",
+    });
+    const proposed = proposedFrom(current);
+    const eight = proposed.divisions.find((row) => row.code === "gonzales:8U");
+    assert.ok(eight);
+    eight.youngestBirthdate = "2019-05-15";
+    const saved = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
+    assert.equal(saved.ok, true);
+    const gonzales = memory.seasons.get("gonzales:2027") as { confirmedAt?: string; confirmedByAdminId?: string };
+    const ascension = memory.seasons.get("ascension:2027") as { confirmedAt?: string; confirmedByAdminId?: string };
+    assert.equal(gonzales.confirmedAt, undefined);
+    assert.equal(gonzales.confirmedByAdminId, undefined);
+    assert.equal(ascension.confirmedAt, "2026-03-01T00:00:00.000Z");
+    assert.equal(ascension.confirmedByAdminId, "confirmer-ll");
   });
 });
 

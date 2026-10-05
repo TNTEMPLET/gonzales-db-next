@@ -3,6 +3,8 @@
  * `store.ts` binds this to Prisma. Tests use a fake. No Prisma import here.
  */
 
+import { createHash } from "node:crypto";
+
 import {
   buildCombinedSaveRecords,
   buildUndoRecords,
@@ -33,6 +35,35 @@ export const DIVISION_AGES_STORAGE_NOTE =
 
 export const DIVISION_AGES_SAVE_NOT_READY =
   "Settings storage not ready. Apply the division ages migration, then save again.";
+
+export const STALE_SAVE_ERROR = "Someone else saved changes, reload";
+
+export function divisionAgesBaselineToken(raw: unknown | null): string {
+  if (raw == null) return "absent";
+  return createHash("sha256").update(canonicalJson(raw)).digest("hex");
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(canonicalize(value));
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(source).sort()) {
+      if (source[key] === undefined) continue;
+      sorted[key] = canonicalize(source[key]);
+    }
+    return sorted;
+  }
+  return value;
+}
+
+function withBaseline(view: SeasonDivisionAgesView, raw: unknown | null): SeasonDivisionAgesView {
+  return { ...view, baselineToken: divisionAgesBaselineToken(raw) };
+}
 
 const UNREADABLE_SEASON_NOTE =
   "The saved division ages for this season could not be read. Showing the next available defaults.";
@@ -293,12 +324,12 @@ export async function getSeasonDivisionAges(
         op: "read_season",
       }),
     );
-    return builtinSeason(org, DIVISION_AGES_STORAGE_NOTE, false);
+    return withBaseline(builtinSeason(org, DIVISION_AGES_STORAGE_NOTE, false), null);
   }
 
   if (raw != null) {
     const parsed = validateSeasonRecord(raw, seasonYear);
-    if (parsed.ok) return seasonViewFromRecord(parsed.data, "season");
+    if (parsed.ok) return withBaseline(seasonViewFromRecord(parsed.data, "season"), raw);
     console.warn(
       JSON.stringify({
         event: "division_ages.unreadable_season",
@@ -308,14 +339,14 @@ export async function getSeasonDivisionAges(
       }),
     );
     const league = await readLeague(db, org);
-    if (league.missing) return builtinSeason(org, DIVISION_AGES_STORAGE_NOTE, false);
+    if (league.missing) return withBaseline(builtinSeason(org, DIVISION_AGES_STORAGE_NOTE, false), raw);
     const note = league.view.storageNote ?? UNREADABLE_SEASON_NOTE;
-    return leagueSeasonView(league.view, note);
+    return withBaseline(leagueSeasonView(league.view, note), raw);
   }
 
   const league = await readLeague(db, org);
-  if (league.missing) return builtinSeason(org, DIVISION_AGES_STORAGE_NOTE, false);
-  return leagueSeasonView(league.view, league.view.storageNote);
+  if (league.missing) return withBaseline(builtinSeason(org, DIVISION_AGES_STORAGE_NOTE, false), null);
+  return withBaseline(leagueSeasonView(league.view, league.view.storageNote), null);
 }
 
 async function readSeasonRecord(
@@ -370,7 +401,7 @@ export async function saveSeasonDivisionAges(
     return { ok: false, status: 503, error: DIVISION_AGES_SAVE_NOT_READY };
   }
   logSave(confirmation === "set" ? "season_confirm" : "season", org, adminId, seasonYear);
-  return { ok: true, value: seasonViewFromRecord(checked.data, "season") };
+  return { ok: true, value: withBaseline(seasonViewFromRecord(checked.data, "season"), checked.data) };
 }
 
 export async function clearSeasonDivisionAges(
@@ -465,6 +496,24 @@ function leagueTitle(org: SpringLeagueOrg): string {
   return org === "gonzales" ? "Gonzales DYB" : "Ascension LL";
 }
 
+export type SpringCombinedWriteOptions = {
+  baselines?: Partial<Record<SpringLeagueOrg, string>>;
+  removedCodes?: Partial<Record<SpringLeagueOrg, readonly string[]>>;
+  now?: Date;
+};
+
+function assertFreshBaselines(
+  stored: Record<SpringLeagueOrg, unknown | null>,
+  baselines: Partial<Record<SpringLeagueOrg, string>> | undefined,
+) {
+  for (const org of SPRING_LEAGUE_ORGS) {
+    const sent = baselines?.[org];
+    if (!sent || sent !== divisionAgesBaselineToken(stored[org])) {
+      throw new SpringSaveRejected(STALE_SAVE_ERROR, 409);
+    }
+  }
+}
+
 function logCombined(kind: "spring_combined" | "spring_combined_undo", seasonYear: number, adminId: string, at: Date) {
   console.info(
     JSON.stringify({
@@ -510,19 +559,22 @@ export async function saveSpringCombinedSeasons(
   proposed: { cutoff: SpringLeagueTable["cutoff"]; divisions: SpringLeagueTable["divisions"] },
   leagues: readonly SpringLeagueTable[],
   adminId: string,
-  now = new Date(),
+  options?: SpringCombinedWriteOptions,
 ): Promise<SaveSuccess<{ undoAvailable: true }> | SaveFailure> {
+  const now = options?.now ?? new Date();
   try {
     await db.transaction(async (tx) => {
       const stored = {} as Record<SpringLeagueOrg, unknown | null>;
       for (const org of SPRING_LEAGUE_ORGS) {
         stored[org] = await tx.findSeasonDivisionAges(org, seasonYear);
       }
+      assertFreshBaselines(stored, options?.baselines);
       const tables = tablesForSave(leagues, stored, seasonYear);
       const split = splitCombinedTable(
         { cutoff: proposed.cutoff, divisions: [...proposed.divisions] },
         tables,
         seasonYear,
+        options?.removedCodes,
       );
       if (!split.ok) throw new SpringSaveRejected(split.error);
       const built = buildCombinedSaveRecords(split.leagues, stored, seasonYear, adminId, now);
@@ -545,14 +597,16 @@ export async function undoSpringCombinedSeasons(
   db: SpringCombinedDb,
   seasonYear: number,
   adminId: string,
-  now = new Date(),
+  options?: SpringCombinedWriteOptions,
 ): Promise<SaveSuccess<{ undoAvailable: false }> | SaveFailure> {
+  const now = options?.now ?? new Date();
   try {
     await db.transaction(async (tx) => {
       const stored = {} as Record<SpringLeagueOrg, unknown | null>;
       for (const org of SPRING_LEAGUE_ORGS) {
         stored[org] = await tx.findSeasonDivisionAges(org, seasonYear);
       }
+      assertFreshBaselines(stored, options?.baselines);
       const built = buildUndoRecords(stored, seasonYear);
       if (!built.ok) throw new SpringSaveRejected(built.error, 409);
       for (const org of SPRING_LEAGUE_ORGS) {

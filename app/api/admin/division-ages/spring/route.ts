@@ -9,25 +9,43 @@ import {
   saveSpringCombinedDivisionAges,
   undoSpringCombinedDivisionAges,
 } from "@/lib/ageDivisions/store";
-import { ensureAdminModule, isMasterAdminActor } from "@/lib/auth/ensureAdminModule";
+import { ensureAdminModule } from "@/lib/auth/ensureAdminModule";
 import { isMasterDeployment } from "@/lib/siteConfig";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
+const baselinesSchema = z
+  .object({
+    gonzales: z.string().max(128).optional(),
+    ascension: z.string().max(128).optional(),
+  })
+  .optional();
+
+const removedCodesSchema = z
+  .object({
+    gonzales: z.array(z.string().max(40)).max(MAX_DIVISION_COUNT).optional(),
+    ascension: z.array(z.string().max(40)).max(MAX_DIVISION_COUNT).optional(),
+  })
+  .optional();
+
 const saveBodySchema = z.object({
   seasonYear: z.number().int().min(1990).max(2200),
   cutoff: cutoffSchema,
   divisions: z.array(divisionAgeSchema).max(MAX_DIVISION_COUNT * 2),
+  baselines: baselinesSchema,
+  removedCodes: removedCodesSchema,
 });
 
 const undoBodySchema = z.object({
   seasonYear: z.number().int().min(1990).max(2200),
+  baselines: baselinesSchema,
 });
 
 /**
- * The one Spring write that is not the blanket 403. Master admins on the master
- * site only. Gonzales and Ascension are the only rows this route can change.
+ * The one Spring write that is not the blanket 403. The global master flag on
+ * the master site only. A per-org master membership is not enough. Gonzales and
+ * Ascension are the only rows this route can change. Save and undo both use this.
  */
 async function authorize(request: NextRequest) {
   const auth = await ensureAdminModule(request, "DIVISION_AGES");
@@ -36,7 +54,7 @@ async function authorize(request: NextRequest) {
   }
   const denial = springCombinedSaveDenial({
     authenticated: true,
-    isMaster: isMasterAdminActor(auth),
+    isMaster: auth.admin.isMaster,
     masterDeployment: isMasterDeployment(),
   });
   if (denial) {
@@ -65,6 +83,7 @@ export async function PUT(request: NextRequest) {
       { cutoff: parsed.data.cutoff, divisions: parsed.data.divisions },
       leagues,
       guard.adminId,
+      { baselines: parsed.data.baselines, removedCodes: parsed.data.removedCodes },
     );
     if (!saved.ok) {
       return NextResponse.json({ error: saved.error }, { status: saved.status });
@@ -90,7 +109,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Choose a season year." }, { status: 400 });
   }
   try {
-    const undone = await undoSpringCombinedDivisionAges(parsed.data.seasonYear, guard.adminId);
+    const undone = await undoSpringCombinedDivisionAges(parsed.data.seasonYear, guard.adminId, {
+      baselines: parsed.data.baselines,
+    });
     if (!undone.ok) {
       return NextResponse.json({ error: undone.error }, { status: undone.status });
     }

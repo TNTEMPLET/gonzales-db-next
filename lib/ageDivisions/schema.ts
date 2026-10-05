@@ -263,6 +263,8 @@ export type SeasonDivisionAgesView = {
   updatedByAdminId: string | null;
   /** True when this season row still has the combined-save snapshot. */
   undoAvailable?: boolean;
+  /** Hash of the stored season JSON, or "absent" when this season has no row. */
+  baselineToken?: string;
 };
 
 export type LeagueDefaultsView = {
