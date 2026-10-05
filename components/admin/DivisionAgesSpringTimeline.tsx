@@ -11,10 +11,14 @@ import {
 } from "@/lib/ageDivisions/forecastTimeline";
 import { touchingBoundaryKey } from "@/lib/ageDivisions/forecastView";
 import {
+  compactTimelineLabel,
   packSpringRows,
   shortTimelineLabel,
+  SPRING_LANE_MIN_WIDTH,
+  springCompactLabelFontSize,
   springDivisionSummary,
   springLabelFontSize,
+  springLaneScrollLeft,
   springLeagueLabel,
   springLeagueOf,
   visibleYearTicks,
@@ -174,10 +178,14 @@ export function DivisionAgesSpringStrips({
   onBandKeyDown: (member: TimelineMember, event: KeyboardEvent<HTMLButtonElement>) => void;
 }) {
   const coarse = useCoarsePointer();
-  const [plotWidth, setPlotWidth] = useState(assumedTrackWidth);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [plotWidth, setPlotWidth] = useState(() => Math.max(assumedTrackWidth, SPRING_LANE_MIN_WIDTH));
   const [bandTip, setBandTip] = useState<{ title: string; lines: string[]; left: number; top: number } | null>(null);
   const touchBand = useRef(false);
+  const didInitialScroll = useRef(false);
+  const scrolledSelection = useRef<string | null>(null);
   const lanes = useMemo(() => buildLanes(model, leagueFallback), [model, leagueFallback]);
+  const changedKey = [...changedCodes].sort().join("|");
   const ticks = useMemo(
     () => visibleYearTicks(withLeadingYear(model.ticks, model.axisOldest), plotWidth),
     [model.ticks, model.axisOldest, plotWidth],
@@ -187,12 +195,56 @@ export function DivisionAgesSpringStrips({
   useEffect(() => {
     const node = trackRef?.current;
     if (!node) return;
-    const update = () => setPlotWidth(node.clientWidth || 360);
+    const update = () => setPlotWidth(node.clientWidth || SPRING_LANE_MIN_WIDTH);
     update();
     const observer = new ResizeObserver(update);
     observer.observe(node);
     return () => observer.disconnect();
   }, [trackRef, lanes.length]);
+
+  useEffect(() => {
+    const scroller = scrollRef.current;
+    if (!scroller || scroller.clientWidth < 1) return;
+    const selectionChanged = selectedCode !== scrolledSelection.current;
+    if (didInitialScroll.current && !selectionChanged) return;
+    const inLane = (code: string) => lanes.some((lane) => lane.rowByCode.has(code));
+    const bandBox = (code: string) => {
+      const band = scroller.querySelector(`[data-testid="timeline-band-${CSS.escape(code)}"]`);
+      if (!(band instanceof HTMLElement)) return null;
+      const bandRect = band.getBoundingClientRect();
+      const scrollerRect = scroller.getBoundingClientRect();
+      return {
+        bandLeft: bandRect.left - scrollerRect.left + scroller.scrollLeft,
+        bandWidth: bandRect.width,
+      };
+    };
+    const preferred = selectedCode && inLane(selectedCode) ? selectedCode : null;
+    const changed = changedKey.split("|").filter((code) => code.length > 0 && inLane(code));
+    const target = preferred
+      ? preferred
+      : (changed.find((code) => {
+          const box = bandBox(code);
+          if (!box) return false;
+          const next = springLaneScrollLeft({
+            scrollLeft: scroller.scrollLeft,
+            clientWidth: scroller.clientWidth,
+            stickyWidth: 0,
+            ...box,
+          });
+          return next !== scroller.scrollLeft;
+        }) ?? null);
+    didInitialScroll.current = true;
+    scrolledSelection.current = selectedCode;
+    if (!target) return;
+    const box = bandBox(target);
+    if (!box) return;
+    scroller.scrollLeft = springLaneScrollLeft({
+      scrollLeft: scroller.scrollLeft,
+      clientWidth: scroller.clientWidth,
+      stickyWidth: 0,
+      ...box,
+    });
+  }, [selectedCode, changedKey, plotWidth, lanes]);
 
   function summaryFor(member: BandMember) {
     const league = springLeagueLabel(springLeagueOf(member, leagueFallback));
@@ -220,17 +272,33 @@ export function DivisionAgesSpringStrips({
 
   return (
     <div data-testid="timeline-layout-spring" className="space-y-2">
-      <div className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-2 gap-y-2">
+      <div className="grid grid-cols-[2.75rem_minmax(0,1fr)] gap-x-2">
+        <div className="sticky left-0 z-20 self-start space-y-2">
+          {lanes.map((lane) => (
+            <div
+              key={lane.id}
+              data-testid="timeline-lane-label"
+              className="flex items-center"
+              style={{ height: lane.height }}
+            >
+              <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">{lane.label}</span>
+            </div>
+          ))}
+          <div className="h-5" aria-hidden="true" />
+        </div>
+        <div
+          ref={scrollRef}
+          data-testid="timeline-lanes-scroll"
+          className="min-w-0 overflow-x-auto overscroll-x-contain"
+        >
+          <div className="space-y-2" style={{ minWidth: SPRING_LANE_MIN_WIDTH }}>
         {lanes.map((lane, laneIndex) => {
           const laneEdges = model.edges.filter(
             (edge) => edgeCodes(edge).some((code) => lane.rowByCode.has(code)) || lane.rowByCode.has(edge.code),
           );
           return (
-            <div key={lane.id} className="contents">
-              <div className="flex items-center" style={{ height: lane.height }}>
-                <span className="text-[11px] font-bold uppercase tracking-[0.16em] text-zinc-400">{lane.label}</span>
-              </div>
               <div
+                key={lane.id}
                 ref={laneIndex === 0 ? trackRef : undefined}
                 data-testid={laneIndex === 0 ? "timeline-proposed" : `timeline-lane-plot-${lane.id}`}
                 className="relative overflow-hidden rounded-lg border border-zinc-800 bg-zinc-900/80"
@@ -266,6 +334,7 @@ export function DivisionAgesSpringStrips({
                   const row = lane.rowByCode.get(member.code) ?? 0;
                   const changed = changedCodes.has(member.code);
                   const short = shortTimelineLabel(member.label, member.code);
+                  const compact = compactTimelineLabel(member.label, member.code);
                   const count = counts?.find((rowCount) => rowCount.code === member.code);
                   const selected = selectedCode === member.code;
                   const cursor = splitCursor?.code === member.code ? splitCursor.date : null;
@@ -312,27 +381,41 @@ export function DivisionAgesSpringStrips({
                       onFocus={(event) => showBandTip(member, event.currentTarget)}
                       onBlur={() => setBandTip(null)}
                     >
-                      <span className="pointer-events-none flex h-full items-center justify-center gap-1 px-1" aria-hidden="true">
-                        <span
-                          className="font-semibold"
-                          style={{
-                            fontSize: springLabelFontSize(short, 12, changed ? 12 : 0),
-                            lineHeight: 1.1,
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {short}
-                        </span>
-                        {changed ? (
+                      <span className="pointer-events-none grid h-full w-full place-items-center px-1" aria-hidden="true">
+                        <span className="col-start-1 row-start-1 inline-flex max-w-full items-center justify-center gap-1">
                           <span
-                            className="font-bold uppercase tracking-wide"
+                            className="font-semibold"
                             style={{
-                              fontSize: springLabelFontSize(`${short} changed`, 9, 8),
-                              lineHeight: 1,
+                              fontSize: springLabelFontSize(short),
+                              lineHeight: 1.1,
                               whiteSpace: "nowrap",
                             }}
                           >
-                            changed
+                            {short}
+                          </span>
+                          {changed ? (
+                            <span
+                              className="font-bold uppercase tracking-wide"
+                              style={{
+                                fontSize: springLabelFontSize(`${short} changed`, 9, 8),
+                                lineHeight: 1,
+                                whiteSpace: "nowrap",
+                              }}
+                            >
+                              changed
+                            </span>
+                          ) : null}
+                        </span>
+                        {compact !== short ? (
+                          <span
+                            className="col-start-1 row-start-1 font-semibold"
+                            style={{
+                              fontSize: springCompactLabelFontSize(compact, short),
+                              lineHeight: 1.1,
+                              whiteSpace: "nowrap",
+                            }}
+                          >
+                            {compact}
                           </span>
                         ) : null}
                       </span>
@@ -436,21 +519,22 @@ export function DivisionAgesSpringStrips({
                   );
                 })}
               </div>
-            </div>
           );
         })}
-        <div className="relative col-start-2 h-5">
-          {ticks.map((tick, index) => (
-            <span
-              key={`label-${tick.label}`}
-              className={`absolute top-0 text-[10px] tabular-nums text-zinc-500 ${
-                index === 0 ? "" : index === ticks.length - 1 ? "-translate-x-full" : "-translate-x-1/2"
-              }`}
-              style={{ left: `${tick.left}%` }}
-            >
-              {tick.label}
-            </span>
-          ))}
+            <div className="relative h-5">
+              {ticks.map((tick, index) => (
+                <span
+                  key={`label-${tick.label}`}
+                  className={`absolute top-0 text-[10px] tabular-nums text-zinc-500 ${
+                    index === 0 ? "" : index === ticks.length - 1 ? "-translate-x-full" : "-translate-x-1/2"
+                  }`}
+                  style={{ left: `${tick.left}%` }}
+                >
+                  {tick.label}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-400">

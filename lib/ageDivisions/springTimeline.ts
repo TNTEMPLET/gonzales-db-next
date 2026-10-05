@@ -13,6 +13,12 @@ import type { DivisionAgeConfig } from "./types";
 /** Days of air on each end of a Spring axis. The classic strip uses 180. */
 export const SPRING_AXIS_PAD_DAYS = 14;
 
+/**
+ * Scrollable plot width on a narrow screen. Short names fit here.
+ * Desktop is wider than this, so it does not scroll.
+ */
+export const SPRING_LANE_MIN_WIDTH = 680;
+
 export type ForecastTimelineLayout = "classic" | "spring-lanes";
 
 export type SpringLeagueId = "dyb" | "llb";
@@ -81,13 +87,65 @@ export function shortTimelineLabel(label: string, code: string): string {
 }
 
 /**
+ * Last readable text before the label disappears.
+ * "12U" becomes "12", "T-Ball" becomes "TB", and "7/8 Maj" becomes "7/8".
+ */
+export function compactTimelineLabel(label: string, code: string): string {
+  const short = shortTimelineLabel(label, code);
+  if (/^t-ball$/i.test(short)) return "TB";
+  const range = short.match(/^(\d+)\s*\/\s*(\d+)/);
+  if (range) return `${range[1]}/${range[2]}`;
+  const age = short.match(/^(\d+)/);
+  if (age) return age[1]!;
+  return short.length <= 3 ? short : short.slice(0, 2);
+}
+
+function labelMinPx(text: string, extraPx = 0): number {
+  return Math.ceil(text.length * 6.7 + 12 + extraPx);
+}
+
+/**
  * Hide the label when the bar is narrower than the text.
  * `100cqi` is the bar's inline size. A negative middle value clamps to 0,
  * so the words disappear instead of spilling out.
  */
 export function springLabelFontSize(text: string, maxPx = 12, extraPx = 0): string {
-  const minPx = Math.ceil(text.length * 6.7 + 12 + extraPx);
+  const minPx = labelMinPx(text, extraPx);
   return `clamp(0px, calc((100cqi - ${minPx}px) * 999), ${maxPx}px)`;
+}
+
+/**
+ * Show the compact label only while the bar fits it and is still too
+ * narrow for the longer label. Wider bars keep the longer text.
+ */
+export function springCompactLabelFontSize(compact: string, short: string, maxPx = 12, extraPx = 0): string {
+  const compactMin = labelMinPx(compact, extraPx);
+  const shortMin = labelMinPx(short, extraPx);
+  const fitsCompact = `clamp(0px, calc((100cqi - ${compactMin}px) * 999), ${maxPx}px)`;
+  const beforeShort = `clamp(0px, calc((${shortMin}px - 100cqi) * 999), ${maxPx}px)`;
+  return `min(${fitsCompact}, ${beforeShort})`;
+}
+
+/**
+ * Horizontal scroll that puts a bar in the visible plot.
+ * Returns the current scroll when the bar is already fully in view.
+ * `bandLeft` is the bar's x inside the scroll content.
+ */
+export function springLaneScrollLeft(input: {
+  scrollLeft: number;
+  clientWidth: number;
+  stickyWidth: number;
+  bandLeft: number;
+  bandWidth: number;
+}): number {
+  const sticky = Math.max(0, input.stickyWidth);
+  const viewLeft = input.scrollLeft + sticky;
+  const viewRight = input.scrollLeft + Math.max(0, input.clientWidth);
+  const bandRight = input.bandLeft + Math.max(0, input.bandWidth);
+  if (input.bandLeft >= viewLeft - 1 && bandRight <= viewRight + 1) return input.scrollLeft;
+  const viewWidth = Math.max(1, input.clientWidth - sticky);
+  const centered = input.bandLeft - sticky - Math.max(0, (viewWidth - input.bandWidth) / 2);
+  return Math.max(0, Math.round(centered));
 }
 
 export type SpringRowDivision = {

@@ -10,11 +10,15 @@ import type { ProposedConfig } from "../forecastView";
 import { defaultIncludeFeeder } from "../forecastView";
 import {
   changedDivisionCodes,
+  compactTimelineLabel,
   forecastTimelineLayout,
   packSpringRows,
   shortTimelineLabel,
+  springCompactLabelFontSize,
   springLabelFontSize,
+  springLaneScrollLeft,
   SPRING_AXIS_PAD_DAYS,
+  SPRING_LANE_MIN_WIDTH,
   visibleYearTicks,
   withLeadingYear,
 } from "../springTimeline";
@@ -117,6 +121,11 @@ describe("spring timeline layout gate", () => {
     const gonzales = renderToStaticMarkup(forecastView());
     assert.match(gonzales, /data-testid="timeline-layout-spring"/);
     assert.match(gonzales, /data-testid="timeline-lane-dyb"/);
+    assert.match(gonzales, /data-testid="timeline-lanes-scroll"/);
+    assert.match(gonzales, /data-testid="timeline-lane-label"/);
+    assert.match(gonzales, /sticky/);
+    assert.match(gonzales, new RegExp(`min-width:${SPRING_LANE_MIN_WIDTH}px`));
+    assert.doesNotMatch(fall, /data-testid="timeline-lanes-scroll"/);
     assert.doesNotMatch(gonzales, /data-testid="timeline-layout-classic"/);
     assert.doesNotMatch(gonzales, /repeating-linear-gradient/);
     assert.doesNotMatch(gonzales, /min-w-\[40rem\]/);
@@ -157,7 +166,9 @@ describe("spring timeline layout gate", () => {
     assert.doesNotMatch(html, /data-testid="timeline-layout-classic"/);
     assert.doesNotMatch(html, /repeating-linear-gradient/);
     assert.match(html, />T-Ball</);
+    assert.match(html, />TB</);
     assert.match(html, />7\/8 Maj</);
+    assert.match(bandContents(html, "ascension:7-8U MAJOR"), />7\/8</);
     assert.match(html, />15\/17U</);
     assert.doesNotMatch(bandContents(html, "ascension:7-8U MAJOR"), /players/);
     assert.doesNotMatch(html, /data-testid="timeline-changed-/);
@@ -232,6 +243,17 @@ describe("spring timeline labels and rows", () => {
     const narrow = springLabelFontSize("7/8 Maj");
     assert.match(narrow, /100cqi/);
     assert.match(narrow, /clamp\(0px/);
+    assert.equal(compactTimelineLabel("12U LLB", "ascension:12U"), "12");
+    assert.equal(compactTimelineLabel("Tee Ball 3-4", "3-4U TB"), "TB");
+    assert.equal(compactTimelineLabel("7/8 Majors LLB", "7-8U MAJOR"), "7/8");
+    assert.equal(compactTimelineLabel("11-12 Major", "11-12U MAJOR"), "11/12");
+    assert.equal(compactTimelineLabel("15/17U DYB", "15-17U"), "15/17");
+    assert.equal(compactTimelineLabel("6U Major Coach Pitch", "6U MAJOR"), "6");
+    assert.equal(compactTimelineLabel("5U Tee Ball", "5U TB"), "5");
+    assert.equal(compactTimelineLabel("Modified Tee Ball/CP", "6U MOD"), "Mod");
+    const compactSize = springCompactLabelFontSize("7/8", "7/8 Maj");
+    assert.match(compactSize, /^min\(clamp\(0px/);
+    assert.match(compactSize, /100cqi/);
   });
 
   it("stacks an overlapping majors bar and keeps a touching ladder on one row", () => {
@@ -264,5 +286,37 @@ describe("spring timeline labels and rows", () => {
     const leading = withLeadingYear([{ left: 40, label: "2019" }], "2018-05-01");
     assert.equal(leading[0]?.label, "2018");
     assert.equal(leading[0]?.left, 0);
+    assert.ok(SPRING_LANE_MIN_WIDTH >= 640 && SPRING_LANE_MIN_WIDTH <= 720);
+    const scrolling = visibleYearTicks(ticks, SPRING_LANE_MIN_WIDTH);
+    assert.ok(scrolling.length > phone.length);
+  });
+
+  it("scrolls a bar that sits past the phone width and leaves one that is already visible", () => {
+    const scrolled = springLaneScrollLeft({
+      scrollLeft: 0,
+      clientWidth: 390,
+      stickyWidth: 0,
+      bandLeft: 520,
+      bandWidth: 48,
+    });
+    assert.equal(scrolled, 349);
+    assert.ok(scrolled < 520);
+    assert.ok(scrolled + 390 > 520 + 48);
+    const stay = springLaneScrollLeft({
+      scrollLeft: 0,
+      clientWidth: 800,
+      stickyWidth: 0,
+      bandLeft: 40,
+      bandWidth: 80,
+    });
+    assert.equal(stay, 0);
+    const clearOfLabel = springLaneScrollLeft({
+      scrollLeft: 0,
+      clientWidth: 200,
+      stickyWidth: 44,
+      bandLeft: 400,
+      bandWidth: 40,
+    });
+    assert.equal(clearOfLabel, 298);
   });
 });
