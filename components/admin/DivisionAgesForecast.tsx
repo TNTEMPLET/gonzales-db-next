@@ -1305,7 +1305,7 @@ export default function DivisionAgesForecast({
         setRetentionText(defaultRetentionText(org));
       }}
       onCutoff={(patch) => {
-        if (!proposed) return;
+        if (springCombined || !proposed) return;
         commitProposed(withProposedCutoff(proposed, patch));
       }}
       onReplace={(next) => {

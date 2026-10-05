@@ -372,7 +372,10 @@ export function DivisionAgesForecastTimeline({
   /** Boundaries a click has opened. Holding Alt while dragging also leaves one line open. */
   unlinkedBoundaries?: ReadonlySet<string>;
   onToggleBoundary?: (edge: TimelineEdge) => void;
-  /** Presets move one league's normal rows and leave the other league in place. */
+  /**
+   * Presets move one league's normal rows and leave the other league in place.
+   * The shared month, day, and year fields stay off this view.
+   */
   combinedPresets?: boolean;
   /** Hide drag, presets, and age edits. The bars, gaps, and counts stay. */
   readOnly?: boolean;
@@ -769,15 +772,17 @@ export function DivisionAgesForecastTimeline({
             >
               {combinedPresets ? "Apply DYB Apr 30 to DYB divisions" : "DYB (Apr 30)"}
             </button>
-            <button
-              type="button"
-              className={presetButtonClass(!combinedPresets && preset === "custom")}
-              aria-pressed={!combinedPresets && preset === "custom"}
-              data-testid="cutoff-preset-custom"
-              onClick={() => dayRef.current?.focus()}
-            >
-              Custom
-            </button>
+            {combinedPresets ? null : (
+              <button
+                type="button"
+                className={presetButtonClass(preset === "custom")}
+                aria-pressed={preset === "custom"}
+                data-testid="cutoff-preset-custom"
+                onClick={() => dayRef.current?.focus()}
+              >
+                Custom
+              </button>
+            )}
           </div>
           <p className="mt-2 text-sm text-zinc-400">
             {combinedPresets
@@ -796,49 +801,51 @@ export function DivisionAgesForecastTimeline({
         </button>
       </div>
 
-      <div className="grid gap-3 sm:grid-cols-3">
-        <label className="text-sm text-zinc-300">
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Cutoff month</span>
-          <select
-            className={fieldClass}
-            aria-label="Proposed cutoff month"
-            value={proposed.cutoff.cutoffMonth}
-            onChange={(event) => onCutoff({ cutoffMonth: Number(event.target.value) })}
-          >
-            {MONTHS.map((month, index) => (
-              <option key={month} value={index + 1}>
-                {index + 1} — {month}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="text-sm text-zinc-300">
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Cutoff day</span>
-          <input
-            ref={dayRef}
-            className={fieldClass}
-            aria-label="Proposed cutoff day"
-            data-testid="proposed-cutoff-day"
-            inputMode="numeric"
-            value={proposed.cutoff.cutoffDay}
-            onChange={(event) => onCutoff({ cutoffDay: Number(event.target.value) })}
-          />
-        </label>
-        <label className="text-sm text-zinc-300">
-          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Year offset</span>
-          <select
-            className={fieldClass}
-            aria-label="Proposed year offset"
-            value={proposed.cutoff.yearOffset}
-            onChange={(event) => onCutoff({ yearOffset: Number(event.target.value) })}
-          >
-            <option value={-1}>-1</option>
-            <option value={0}>0</option>
-            <option value={1}>+1</option>
-            <option value={2}>+2</option>
-          </select>
-        </label>
-      </div>
+      {combinedPresets ? null : (
+        <div className="grid gap-3 sm:grid-cols-3">
+          <label className="text-sm text-zinc-300">
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Cutoff month</span>
+            <select
+              className={fieldClass}
+              aria-label="Proposed cutoff month"
+              value={proposed.cutoff.cutoffMonth}
+              onChange={(event) => onCutoff({ cutoffMonth: Number(event.target.value) })}
+            >
+              {MONTHS.map((month, index) => (
+                <option key={month} value={index + 1}>
+                  {index + 1} — {month}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="text-sm text-zinc-300">
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Cutoff day</span>
+            <input
+              ref={dayRef}
+              className={fieldClass}
+              aria-label="Proposed cutoff day"
+              data-testid="proposed-cutoff-day"
+              inputMode="numeric"
+              value={proposed.cutoff.cutoffDay}
+              onChange={(event) => onCutoff({ cutoffDay: Number(event.target.value) })}
+            />
+          </label>
+          <label className="text-sm text-zinc-300">
+            <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Year offset</span>
+            <select
+              className={fieldClass}
+              aria-label="Proposed year offset"
+              value={proposed.cutoff.yearOffset}
+              onChange={(event) => onCutoff({ yearOffset: Number(event.target.value) })}
+            >
+              <option value={-1}>-1</option>
+              <option value={0}>0</option>
+              <option value={1}>+1</option>
+              <option value={2}>+2</option>
+            </select>
+          </label>
+        </div>
+      )}
 
       {impact}
 

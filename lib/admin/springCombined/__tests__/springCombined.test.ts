@@ -417,6 +417,15 @@ describe("spring combined stays read-only", () => {
     assert.match(forecast, /springCombined \? false/);
     assert.match(forecast, /SPRING_COMBINED_SAVE_HINT/);
     assert.match(forecast, /data-testid="spring-what-if"/);
+    const combinedCutoff = forecast.slice(forecast.indexOf("onCutoff={(patch)"), forecast.indexOf("onReplace={(next)"));
+    assert.match(combinedCutoff, /if \(springCombined \|\| !proposed\) return;/);
+    assert.ok(combinedCutoff.indexOf("springCombined") < combinedCutoff.indexOf("withProposedCutoff"));
+    const timeline = readFileSync(
+      new URL("../../../../components/admin/DivisionAgesForecastTimeline.tsx", import.meta.url),
+      "utf8",
+    );
+    assert.match(timeline, /combinedPresets \? null : \([\s\S]*data-testid="cutoff-preset-custom"/);
+    assert.match(timeline, /combinedPresets \? null : \([\s\S]*data-testid="proposed-cutoff-day"/);
     assert.doesNotMatch(forecast, /method:\s*"PUT"|method:\s*"PATCH"/);
     assert.doesNotMatch(forecast, /fallball/);
 

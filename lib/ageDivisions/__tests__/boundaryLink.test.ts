@@ -202,6 +202,13 @@ describe("combined spring forecast editor", () => {
     assert.match(html, /data-testid="retention-percent"/);
     assert.match(html, /data-testid="spring-what-if"/);
     assert.match(html, /Combined changes are a what-if/);
+    assert.doesNotMatch(html, /data-testid="proposed-cutoff-day"/);
+    assert.doesNotMatch(html, /Cutoff month/);
+    assert.doesNotMatch(html, /Year offset/);
+    assert.doesNotMatch(html, /data-testid="cutoff-preset-custom"/);
+    assert.doesNotMatch(html, /Proposed cutoff month/);
+    assert.doesNotMatch(html, /Proposed cutoff day/);
+    assert.doesNotMatch(html, /Proposed year offset/);
     assert.match(html, /boundary-lock-between:/);
     assert.match(html, /Joined boundary/);
     assert.doesNotMatch(html, /data-testid="feeder-toggle"/);

@@ -171,6 +171,52 @@ describe("cutoff presets", () => {
     assert.equal(combinedPresetApplied(dyb, "dyb", season), true);
     assert.equal(combinedPresetApplied(dyb, "little-league", season), false);
   });
+
+  it("does not clear baked overrides when a combined preset runs", () => {
+    const season = 2027;
+    const config: ProposedConfig = {
+      cutoff: { cutoffMonth: 4, cutoffDay: 30, yearOffset: 0 },
+      divisions: [
+        {
+          code: "ascension:8U MINOR",
+          label: "8U Minors LLB",
+          minAge: 8,
+          maxAge: 8,
+          sortOrder: 1,
+          oldestBirthdate: "2018-05-01",
+          youngestBirthdate: "2019-08-31",
+        },
+        {
+          code: "ascension:7U MINOR",
+          label: "7U Minors LLB",
+          minAge: 7,
+          maxAge: 7,
+          sortOrder: 2,
+          oldestBirthdate: "2019-09-01",
+          youngestBirthdate: "2020-04-30",
+        },
+        {
+          code: "ascension:12U",
+          label: "12U LLB",
+          minAge: 12,
+          maxAge: 12,
+          sortOrder: 3,
+          oldestBirthdate: "2014-09-01",
+          youngestBirthdate: "2015-08-31",
+        },
+      ],
+    };
+    for (const preset of ["little-league", "dyb"] as const) {
+      const next = applyCombinedCutoffPreset(config, preset, season);
+      const codes = byCode(next.divisions);
+      assert.equal(next.cutoff.cutoffMonth, 4);
+      assert.equal(next.cutoff.cutoffDay, 30);
+      assert.equal(codes.get("ascension:8U MINOR")?.youngestBirthdate, "2019-08-31");
+      assert.equal(codes.get("ascension:7U MINOR")?.oldestBirthdate, "2019-09-01");
+      assert.equal(codes.get("ascension:12U")?.oldestBirthdate, "2014-09-01");
+      assert.equal(codes.get("ascension:12U")?.youngestBirthdate, "2015-08-31");
+    }
+  });
 });
 
 function addOne(iso: string): string {
