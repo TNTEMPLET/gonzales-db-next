@@ -318,6 +318,96 @@ describe("forecast tab", () => {
     assert.match(html, /League total, each player once: current 20 expected, teams 2–2/);
   });
 
+  it("hides the shared-pool row in combined Spring and keeps it for one league and Fall", () => {
+    const forecast = response({
+      sharedPools: [
+        {
+          poolKey: "chain",
+          codes: ["gonzales:TB", "ascension:TB"],
+          label: "Shared pool: 3-4U Tee Ball DYB, Tee Ball LLB",
+          current: side({ own: 1116, feeder: 0, pool: 1116, expected: 1116, minTeams: 93, maxTeams: 101 }),
+          proposed: side({ own: 1116, feeder: 0, pool: 1116, expected: 1116, minTeams: 93, maxTeams: 101 }),
+          currentShortRoster: false,
+          proposedShortRoster: false,
+        },
+      ],
+      league: {
+        current: side({ own: 1116, feeder: 0, pool: 1116, expected: 1116, minTeams: 93, maxTeams: 101 }),
+        proposed: side({ own: 1116, feeder: 0, pool: 1116, expected: 1116, minTeams: 93, maxTeams: 101 }),
+        delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+      },
+      rows: [
+        {
+          code: "gonzales:TB",
+          label: "3-4U Tee Ball DYB",
+          sortOrder: 1,
+          inCurrent: true,
+          inProposed: true,
+          current: side({ own: 40, feeder: 0, pool: 40, expected: 40, minTeams: 3, maxTeams: 4 }),
+          proposed: side({ own: 40, feeder: 0, pool: 40, expected: 40, minTeams: 3, maxTeams: 4 }),
+          delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+          movers: 0,
+          moversIn: split(),
+          moversOut: split(),
+          currentShortRoster: false,
+          proposedShortRoster: false,
+          currentOverlap: 0,
+          proposedOverlap: 0,
+          currentSharedPoolId: "chain",
+          proposedSharedPoolId: "chain",
+        },
+        {
+          code: "ascension:TB",
+          label: "Tee Ball LLB",
+          sortOrder: 2,
+          inCurrent: true,
+          inProposed: true,
+          current: side({ own: 22, feeder: 0, pool: 22, expected: 22, minTeams: 2, maxTeams: 2 }),
+          proposed: side({ own: 22, feeder: 0, pool: 22, expected: 22, minTeams: 2, maxTeams: 2 }),
+          delta: side({ own: 0, feeder: 0, pool: 0, expected: 0, minTeams: 0, maxTeams: 0 }),
+          movers: 0,
+          moversIn: split(),
+          moversOut: split(),
+          currentShortRoster: false,
+          proposedShortRoster: false,
+          currentOverlap: 0,
+          proposedOverlap: 0,
+          currentSharedPoolId: "chain",
+          proposedSharedPoolId: "chain",
+        },
+      ],
+    });
+
+    const combined = renderToStaticMarkup(
+      view({ forecast, springCombined: true, orgs: ["gonzales", "ascension"], includeFeeder: false }),
+    );
+    assert.doesNotMatch(combined, /data-testid="shared-pool"/);
+    assert.doesNotMatch(combined, /Shared pool: 3-4U Tee Ball DYB, Tee Ball LLB/);
+    assert.doesNotMatch(combined, /Counted once\. Do not add the divisions in this pool/);
+    assert.doesNotMatch(combined, /data-testid="shared-pool-member"/);
+    assert.match(combined, /data-testid="comparison-row" data-code="gonzales:TB"/);
+    assert.match(combined, /data-testid="comparison-row" data-code="ascension:TB"/);
+    assert.match(combined, /3-4U Tee Ball DYB/);
+    assert.match(combined, /Tee Ball LLB/);
+    assert.match(combined, /League total, each player once: current 1116 expected, teams 93–101/);
+    // The hidden pool must not set the bar scale. 40 of 40 is 100; 40 of 1116 is 3.6.
+    assert.match(combined, /data-bar-percent="100"/);
+    assert.doesNotMatch(combined, /data-bar-percent="3\.6"/);
+
+    const single = renderToStaticMarkup(view({ forecast, org: "ascension", orgs: ["ascension"], includeFeeder: false }));
+    assert.match(single, /data-testid="shared-pool"/);
+    assert.match(single, /Shared pool: 3-4U Tee Ball DYB, Tee Ball LLB/);
+    assert.match(single, /Counted once\. Do not add the divisions in this pool/);
+    assert.match(single, /data-testid="shared-pool-member"/);
+    assert.match(single, /Tee Ball LLB/);
+
+    const fall = renderToStaticMarkup(view({ forecast, org: "fallball", orgs: ["fallball"], includeFeeder: false }));
+    assert.match(fall, /data-testid="shared-pool"/);
+    assert.match(fall, /Shared pool: 3-4U Tee Ball DYB, Tee Ball LLB/);
+    assert.match(fall, /data-testid="shared-pool-member"/);
+    assert.doesNotMatch(fall, /data-testid="spring-comparison-section"/);
+  });
+
   it("shows the Spring mix percent and the even-split warning", () => {
     const forecast = response({
       rows: [
