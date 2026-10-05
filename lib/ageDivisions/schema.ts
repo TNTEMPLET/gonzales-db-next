@@ -79,6 +79,7 @@ export const divisionAgeSchema = z
     sortOrder: z.number().int().min(-1000).max(10000),
     oldestBirthdate: optionalIsoDate,
     youngestBirthdate: optionalIsoDate,
+    cutoffPreset: z.enum(["little-league", "dyb", "custom"]).optional(),
   })
   .superRefine((division, ctx) => {
     if (division.minAge > division.maxAge) {
@@ -221,6 +222,22 @@ export type LeagueDefaultsInput = {
   feederSharePercent: number;
 };
 
+/**
+ * One prior combined-save table, stored inside `divisionAgesJson`.
+ * `{ absent: true }` means that league had no season row. A snapshot never
+ * contains another `previous`, so undo keeps a single step.
+ */
+export type SeasonPrevious =
+  | { absent: true }
+  | {
+      cutoff: LeagueAgeRule;
+      divisions: DivisionAgeConfig[];
+      confirmedAt?: string;
+      confirmedByAdminId?: string;
+      updatedAt?: string;
+      updatedByAdminId?: string;
+    };
+
 export type SeasonDivisionAgesRecord = {
   cutoff: LeagueAgeRule;
   divisions: DivisionAgeConfig[];
@@ -228,6 +245,8 @@ export type SeasonDivisionAgesRecord = {
   confirmedByAdminId?: string;
   updatedAt?: string;
   updatedByAdminId?: string;
+  /** Set only by a combined Spring save. Per-league saves omit it. */
+  previous?: SeasonPrevious;
 };
 
 export type DivisionAgesSource = "season" | "league" | "builtin";
@@ -242,6 +261,10 @@ export type SeasonDivisionAgesView = {
   confirmedByAdminId: string | null;
   updatedAt: string | null;
   updatedByAdminId: string | null;
+  /** True when this season row still has the combined-save snapshot. */
+  undoAvailable?: boolean;
+  /** Hash of the stored season JSON, or "absent" when this season has no row. */
+  baselineToken?: string;
 };
 
 export type LeagueDefaultsView = {
@@ -347,6 +370,46 @@ function rangeIssues(divisions: DivisionAgeConfig[], cutoff: LeagueAgeRule, seas
   return issues;
 }
 
+const previousSnapshotSchema = z.union([
+  z.object({ absent: z.literal(true) }),
+  z
+    .object({
+      cutoff: cutoffSchema,
+      divisions: divisionListSchema,
+    })
+    .and(auditSchema),
+]);
+
+/**
+ * Read the one-step undo snapshot. A missing or unreadable snapshot is omitted
+ * so an older season row still loads. Nested `previous` is not part of the schema.
+ */
+export function readPreviousSnapshot(value: unknown): SeasonPrevious | undefined {
+  if (value == null) return undefined;
+  const parsed = previousSnapshotSchema.safeParse(value);
+  if (!parsed.success) return undefined;
+  if ("absent" in parsed.data && parsed.data.absent === true) return { absent: true };
+  if (!("cutoff" in parsed.data)) return undefined;
+  const record = parsed.data;
+  const divisions = numberDivisions(record.divisions);
+  const snapshot: SeasonPrevious = {
+    cutoff: record.cutoff,
+    divisions,
+  };
+  if (record.confirmedAt) snapshot.confirmedAt = record.confirmedAt;
+  if (record.confirmedByAdminId) snapshot.confirmedByAdminId = record.confirmedByAdminId;
+  if (record.updatedAt) snapshot.updatedAt = record.updatedAt;
+  if (record.updatedByAdminId) snapshot.updatedByAdminId = record.updatedByAdminId;
+  return snapshot;
+}
+
+function attachPrevious(data: SeasonDivisionAgesRecord, input: unknown): SeasonDivisionAgesRecord {
+  if (!input || typeof input !== "object" || !("previous" in input)) return data;
+  const previous = readPreviousSnapshot((input as { previous?: unknown }).previous);
+  if (!previous) return data;
+  return { ...data, previous };
+}
+
 function numberDivisions(divisions: DivisionAgeConfig[]): DivisionAgeConfig[] {
   return divisions.map((division, index) => {
     const next: DivisionAgeConfig = {
@@ -358,6 +421,7 @@ function numberDivisions(divisions: DivisionAgeConfig[]): DivisionAgeConfig[] {
     };
     if (division.oldestBirthdate) next.oldestBirthdate = division.oldestBirthdate;
     if (division.youngestBirthdate) next.youngestBirthdate = division.youngestBirthdate;
+    if (division.cutoffPreset) next.cutoffPreset = division.cutoffPreset;
     if (division.rosterMin != null) next.rosterMin = division.rosterMin;
     if (division.rosterMax != null) next.rosterMax = division.rosterMax;
     return next;
@@ -389,6 +453,7 @@ export function withoutRedundantOverrides(
     if (division.youngestBirthdate && division.youngestBirthdate !== calculated.youngest) {
       next.youngestBirthdate = division.youngestBirthdate;
     }
+    if (division.cutoffPreset) next.cutoffPreset = division.cutoffPreset;
     return next;
   });
 }
@@ -442,7 +507,7 @@ export function validateSeasonRecord(
   if (parsed.data.confirmedByAdminId) data.confirmedByAdminId = parsed.data.confirmedByAdminId;
   if (parsed.data.updatedAt) data.updatedAt = parsed.data.updatedAt;
   if (parsed.data.updatedByAdminId) data.updatedByAdminId = parsed.data.updatedByAdminId;
-  return { ok: true, data };
+  return { ok: true, data: attachPrevious(data, input) };
 }
 
 export type SeasonWrite =

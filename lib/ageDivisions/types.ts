@@ -15,6 +15,9 @@ export type LeagueAgeRule = {
  * One division. `oldestBirthdate` / `youngestBirthdate` are present only when
  * an admin has overridden the calculated range. Both are `YYYY-MM-DD`.
  */
+/** Which cutoff a saved division was using. Missing on rows saved before combined Spring. */
+export type CutoffPreset = "little-league" | "dyb" | "custom";
+
 export type DivisionAgeConfig = {
   code: string;
   label: string;
@@ -22,6 +25,11 @@ export type DivisionAgeConfig = {
   maxAge: number;
   oldestBirthdate?: string;
   youngestBirthdate?: string;
+  /**
+   * Optional badge for a season row. Absent on older saved JSON and on league defaults.
+   * `custom` is a window that is not exactly Apr 30 or Aug 31 for these ages.
+   */
+  cutoffPreset?: CutoffPreset;
   sortOrder: number;
   /**
    * Optional team size on a league-default division. Missing means the

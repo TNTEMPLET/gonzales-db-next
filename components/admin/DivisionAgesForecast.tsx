@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 
+import type { SpringLeagueTable } from "@/lib/admin/springCombined/save";
 import {
   combinedForecastConfig,
   SPRING_COMBINED_SAVE_HINT,
@@ -15,6 +16,7 @@ import {
 import type { ForecastSide } from "@/lib/ageDivisions/forecast";
 import { applyAgeSpan, type TimelineEdge } from "@/lib/ageDivisions/forecastTimeline";
 import { DivisionAgesCutoffImpact } from "@/components/admin/DivisionAgesCutoffImpact";
+import { SpringCombinedSavePanel } from "@/components/admin/SpringCombinedSavePanel";
 import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
 import {
   FORECAST_CAVEATS,
@@ -238,6 +240,9 @@ export function DivisionAgesForecastView({
   springCombined = false,
   unlinkedBoundaries = EMPTY_UNLINKED,
   onToggleBoundary = () => {},
+  springLeagues = [],
+  springSavedNote = null,
+  onSpringSaved = () => {},
 }: {
   org: ContentOrgId;
   orgs: ContentOrgId[];
@@ -275,10 +280,13 @@ export function DivisionAgesForecastView({
   onLinkEdges: (value: boolean) => void;
   onResetProposed: () => void;
   onReplace?: (next: ProposedConfig) => void;
-  /** Master combined Spring. Edits stay in this browser and the read-only forecast. */
+  /** Master combined Spring. One save writes both league tables. */
   springCombined?: boolean;
   unlinkedBoundaries?: ReadonlySet<string>;
   onToggleBoundary?: (edge: TimelineEdge) => void;
+  springLeagues?: readonly SpringLeagueTable[];
+  springSavedNote?: string | null;
+  onSpringSaved?: (message: string) => void;
 }) {
   const linkOptions = { unlinked: unlinkedBoundaries };
   const retentionValue = shownRetentionPercent({
@@ -364,14 +372,25 @@ export function DivisionAgesForecastView({
           ))}
         </ul>
         <p className="mt-3 text-sm text-zinc-500">
-          Proposed cutoffs stay in this browser. Save a real table from the Divisions tab. Team size comes from league
-          defaults (11–12 unless Settings sets a roster size).
+          {springCombined
+            ? "Review the changes for Gonzales DYB and Ascension LL, then save both leagues. Team size comes from league defaults (11–12 unless Settings sets a roster size)."
+            : "Proposed cutoffs stay in this browser. Save a real table from the Divisions tab. Team size comes from league defaults (11–12 unless Settings sets a roster size)."}
         </p>
         {springCombined ? (
           <p className="mt-3 text-sm text-amber-100" data-testid="spring-what-if">
-            {SPRING_COMBINED_SAVE_HINT}. Gonzales DYB and Ascension LL share one forecast. A player in both leagues
-            counts once.
+            {springSavedNote ??
+              `${SPRING_COMBINED_SAVE_HINT}. Gonzales DYB and Ascension LL share one forecast. A player in both leagues counts once.`}
           </p>
+        ) : null}
+        {springCombined && springLeagues.length > 0 ? (
+          <div className="mt-4">
+            <SpringCombinedSavePanel
+              seasonYear={targetSeason}
+              proposed={proposed}
+              leagues={springLeagues}
+              onSaved={onSpringSaved}
+            />
+          </div>
         ) : null}
       </div>
 
@@ -1025,7 +1044,7 @@ export default function DivisionAgesForecast({
 }: {
   orgs: ContentOrgId[];
   seasonYears: number[];
-  /** Load both Spring leagues into one editor. Writes stay off. */
+  /** Load both Spring leagues into one editor and save them together. */
   springCombined?: boolean;
 }) {
   const initialOrg = orgs[0] ?? "gonzales";
@@ -1052,6 +1071,9 @@ export default function DivisionAgesForecast({
     key: string;
     proposed: ProposedConfig | null;
   } | null>(null);
+  const [springLeagues, setSpringLeagues] = useState<SpringLeagueTable[]>([]);
+  const [springSavedNote, setSpringSavedNote] = useState<string | null>(null);
+  const [reloadToken, setReloadToken] = useState(0);
   const retentionDirtyRef = useRef(retentionDirty);
   useEffect(() => {
     retentionDirtyRef.current = retentionDirty;
@@ -1112,7 +1134,7 @@ export default function DivisionAgesForecast({
       }
       return { config: { cutoff: payload.cutoff, divisions: payload.divisions }, source: payload.source };
     }
-    async function loadCombined(): Promise<{ config: ProposedConfig; source: DivisionAgesSource }> {
+    async function loadCombined(): Promise<{ config: ProposedConfig; source: DivisionAgesSource; leagues: SpringLeagueTable[] }> {
       const loaded = await Promise.all(
         SPRING_LEAGUE_ORGS.map(async (league) => {
           const response = await fetch(
@@ -1124,6 +1146,8 @@ export default function DivisionAgesForecast({
             cutoff?: LeagueAgeRule;
             divisions?: DivisionAgeConfig[];
             source?: DivisionAgesSource;
+            undoAvailable?: boolean;
+            baselineToken?: string;
           } | null;
           if (!response.ok || !payload?.cutoff || !Array.isArray(payload.divisions) || !payload.source) {
             throw new Error(readError(payload, "Could not load the current division ages."));
@@ -1133,6 +1157,8 @@ export default function DivisionAgesForecast({
             cutoff: payload.cutoff,
             divisions: payload.divisions,
             source: payload.source,
+            undoAvailable: payload.undoAvailable === true,
+            baselineToken: typeof payload.baselineToken === "string" ? payload.baselineToken : undefined,
           };
         }),
       );
@@ -1141,7 +1167,17 @@ export default function DivisionAgesForecast({
         : loaded.some((entry) => entry.source === "league")
           ? "league"
           : "builtin";
-      return { config: combinedForecastConfig(loaded, targetSeason), source };
+      return {
+        config: combinedForecastConfig(loaded, targetSeason),
+        source,
+        leagues: loaded.map((entry) => ({
+          organizationId: entry.organizationId,
+          cutoff: entry.cutoff,
+          divisions: entry.divisions,
+          undoAvailable: entry.undoAvailable,
+          baselineToken: entry.baselineToken,
+        })),
+      };
     }
     async function load() {
       try {
@@ -1149,6 +1185,7 @@ export default function DivisionAgesForecast({
         if (cancelled) return;
         const copy = cloneProposed(loaded.config);
         setLoadedSource(loaded.source);
+        setSpringLeagues(springCombined ? (loaded as { leagues?: SpringLeagueTable[] }).leagues ?? [] : []);
         setBaseline(copy);
         const latest = readStoredDraft(draftOrg, targetSeason, draftsRef.current) ?? draft;
         setProposed(latest ?? cloneProposed(copy));
@@ -1162,7 +1199,7 @@ export default function DivisionAgesForecast({
     return () => {
       cancelled = true;
     };
-  }, [draftOrg, org, springCombined, targetSeason]);
+  }, [draftOrg, org, springCombined, targetSeason, reloadToken]);
 
   useEffect(() => {
     if (!ready) {
@@ -1273,16 +1310,31 @@ export default function DivisionAgesForecast({
       impactStale={ready && !loading && Boolean(forecastError) && impactForScope != null && impactForScope.key !== requestKey}
       onOrg={selectOrg}
       springCombined={springCombined}
+      springLeagues={springLeagues}
+      springSavedNote={springSavedNote}
+      onSpringSaved={(message) => {
+        const key = forecastDraftKey(draftOrg, targetSeason);
+        draftsRef.current.delete(key);
+        try {
+          sessionStorage.removeItem(DRAFT_PREFIX + key);
+        } catch {
+          /* private mode or a full quota */
+        }
+        setSpringSavedNote(message);
+        setReloadToken((token) => token + 1);
+      }}
       unlinkedBoundaries={unlinkedBoundaries}
       onToggleBoundary={(edge) => setUnlinkedBoundaries((current) => toggleTouchingBoundary(current, edge.olderCodes, edge.youngerCodes))}
       onSourceSeason={(year) => {
         writeStoredDraft(draftOrg, targetSeason, proposed, baseline, draftsRef.current);
+        setSpringSavedNote(null);
         setSourceSeason(year);
         setTargetSeason(year + 1);
       }}
       onTargetSeason={(year) => {
         if (year === targetSeason) return;
         writeStoredDraft(draftOrg, targetSeason, proposed, baseline, draftsRef.current);
+        setSpringSavedNote(null);
         setTargetSeason(year);
       }}
       onLinkEdges={setLinkEdges}

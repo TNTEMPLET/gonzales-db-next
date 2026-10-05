@@ -9,6 +9,7 @@ import {
   DIVISION_AGES_STORAGE_NOTE,
   clearSeasonDivisionAges,
   copyFromSeason,
+  divisionAgesBaselineToken,
   getLeagueDefaults,
   getSeasonDivisionAges,
   saveLeagueDefaults,
@@ -30,6 +31,11 @@ function division(overrides: Record<string, unknown> = {}) {
     sortOrder: 1,
     ...overrides,
   };
+}
+
+function seasonToken(seasons: Map<string, unknown | null>, org: string, year: number) {
+  const key = `${org}:${year}`;
+  return divisionAgesBaselineToken(seasons.has(key) ? (seasons.get(key) ?? null) : null);
 }
 
 function memoryDb() {
@@ -97,7 +103,7 @@ describe("division age resolve order", () => {
         confirm: false,
       },
       "admin-2",
-      { now: NOW },
+      { now: NOW, baselineToken: seasonToken(memory.seasons, ORG, 2027) },
     );
     assert.equal(season.ok, true);
     if (!season.ok) return;
@@ -144,7 +150,7 @@ describe("division age resolve order", () => {
       2027,
       { cutoff: CUTOFF, divisions: [division()], confirm: true },
       "admin-3",
-      { now: NOW },
+      { now: NOW, baselineToken: "absent" },
     );
     assert.equal(saved.ok, false);
     if (!saved.ok) {
@@ -180,11 +186,11 @@ describe("start from last season", () => {
         confirm: true,
       },
       "admin-4",
-      { now: NOW, confirmation: "set" },
+      { now: NOW, confirmation: "set", baselineToken: seasonToken(memory.seasons, ORG, 2026) },
     );
     assert.equal(saved.ok, true);
 
-    const copied = await copyFromSeason(memory.db, ORG, 2026, 2027, "admin-5", NOW);
+    const copied = await copyFromSeason(memory.db, ORG, 2026, 2027, "admin-5", NOW, seasonToken(memory.seasons, ORG, 2027));
     assert.equal(copied.ok, true);
     if (!copied.ok) return;
     assert.equal(copied.value.source, "season");
@@ -195,7 +201,15 @@ describe("start from last season", () => {
     assert.equal(copied.value.confirmedAt, null);
     assert.equal(copied.value.updatedByAdminId, "admin-5");
 
-    const missing = await copyFromSeason(memory.db, ORG, 2020, 2027, "admin-5", NOW);
+    const missing = await copyFromSeason(
+      memory.db,
+      ORG,
+      2020,
+      2027,
+      "admin-5",
+      NOW,
+      seasonToken(memory.seasons, ORG, 2027),
+    );
     assert.equal(missing.ok, false);
     if (!missing.ok) assert.match(missing.error, /No saved division ages for 2020/);
   });
@@ -214,9 +228,9 @@ describe("start from last season", () => {
       2027,
       { cutoff: CUTOFF, divisions: [division({ code: "SEASON", label: "Season" })], confirm: false },
       "admin-2",
-      { now: NOW },
+      { now: NOW, baselineToken: seasonToken(memory.seasons, ORG, 2027) },
     );
-    const cleared = await clearSeasonDivisionAges(memory.db, ORG, 2027, "admin-6");
+    const cleared = await clearSeasonDivisionAges(memory.db, ORG, 2027, "admin-6", seasonToken(memory.seasons, ORG, 2027));
     assert.equal(cleared.ok, true);
     if (!cleared.ok) return;
     assert.equal(cleared.value.source, "league");

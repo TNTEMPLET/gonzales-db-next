@@ -29,7 +29,7 @@ export type SpringLeagueOrg = (typeof SPRING_LEAGUE_ORGS)[number];
 export const SPRING_COMBINED_READONLY_ERROR = "Spring combined is a read-only view.";
 
 export const SPRING_COMBINED_SAVE_HINT =
-  "Combined changes are a what-if; saving comes with the combined registration setup";
+  "Save writes Gonzales DYB and Ascension LL together for this season. Review the before and after, then save. Undo last save restores both leagues";
 
 const LEAGUE_SUFFIX: Record<SpringLeagueOrg, "DYB" | "LLB"> = {
   gonzales: "DYB",

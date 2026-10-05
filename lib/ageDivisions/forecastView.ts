@@ -455,20 +455,35 @@ function orderedDivisions(divisions: readonly DivisionAgeConfig[]): DivisionAgeC
     .sort((a, b) => a.sortOrder - b.sortOrder || a.code.localeCompare(b.code));
 }
 
-function combinedCode(selected: readonly DivisionAgeConfig[]): string {
-  const parsed = selected.map((division) => /^(\d+(?:-\d+)?)U(?:\s+(.*))?$/.exec(division.code.trim()));
+function leaguePrefixOf(code: string): string | null {
+  const match = /^(gonzales|ascension|fallball|spring):/.exec(code.trim());
+  return match?.[1] ?? null;
+}
+
+function combinedCode(selected: readonly DivisionAgeConfig[]): string | null {
+  const prefixes = selected.map((division) => leaguePrefixOf(division.code));
+  const prefix = prefixes.every((item) => item != null && item === prefixes[0]) ? prefixes[0] : null;
+  const bare = prefix
+    ? selected.map((division) => ({ ...division, code: division.code.trim().slice(prefix.length + 1) }))
+    : selected;
+  const parsed = bare.map((division) => /^(\d+(?:-\d+)?)U(?:\s+(.*))?$/.exec(division.code.trim()));
+  let body = "";
   if (parsed.every((match) => match != null)) {
     const suffixes = parsed.map((match) => (match?.[2] ?? "").trim());
     if (suffixes.every((suffix) => suffix === suffixes[0])) {
       const ages = parsed.map((match) => match?.[1] ?? "");
       const suffix = suffixes[0] ? ` ${suffixes[0]}` : "";
       const code = `${ages.join("/")}U${suffix}`.trim();
-      if (code.length <= 40) return code;
+      if (code.length <= 40) body = code;
     }
   }
-  const joined = selected.map((division) => division.code).join("/");
-  if (joined.length <= 40) return joined;
-  return `Combined ${selected.length}`.slice(0, 40);
+  if (!body) {
+    const joined = bare.map((division) => division.code).join("/");
+    body = joined.length <= 40 ? joined : `Combined ${selected.length}`.slice(0, 40);
+  }
+  if (!prefix) return body;
+  const tagged = `${prefix}:${body}`;
+  return tagged.length <= 40 ? tagged : null;
 }
 
 function combinedLabel(selected: readonly DivisionAgeConfig[], code: string): string {
@@ -494,8 +509,14 @@ export function combineDivisions(
     return { ok: false, error: "Choose adjacent divisions with nothing between them." };
   }
   const selected = ordered.slice(first, last + 1);
+  const prefixes = selected.map((division) => leaguePrefixOf(division.code));
+  const tagged = prefixes.filter((prefix): prefix is string => prefix != null);
+  if (tagged.length > 0 && (tagged.length !== selected.length || new Set(tagged).size !== 1)) {
+    return { ok: false, error: "Combine divisions from one league at a time." };
+  }
   const remove = new Set(selected.map((division) => division.code));
   const code = combinedCode(selected);
+  if (!code) return { ok: false, error: "That combined code is too long." };
   if (ordered.some((division) => division.code === code && !remove.has(division.code))) {
     return { ok: false, error: "A division with that combined code already exists." };
   }

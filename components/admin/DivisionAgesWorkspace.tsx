@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { cutoffPresetLabel } from "@/lib/admin/springCombined/save";
 import { calculatedRange } from "@/lib/ageDivisions/compute";
 import {
   blankDivision,
@@ -98,11 +99,21 @@ function GearIcon() {
   );
 }
 
-function issueLines(payload: Record<string, unknown> | null, fallback: string): string[] {
-  if (payload && Array.isArray(payload.issues) && payload.issues.every((issue) => typeof issue === "string")) {
+function withSeasonBaseline(org: ContentOrgId, body: Record<string, unknown>, token: string | undefined) {
+  if (org === "fallball") return body;
+  return { ...body, baselineToken: token ?? "" };
+}
+
+export function issueLines(payload: Record<string, unknown> | null, fallback: string): string[] {
+  if (
+    payload &&
+    Array.isArray(payload.issues) &&
+    payload.issues.length > 0 &&
+    payload.issues.every((issue) => typeof issue === "string")
+  ) {
     return payload.issues as string[];
   }
-  if (payload && typeof payload.error === "string") return [payload.error];
+  if (payload && typeof payload.error === "string" && payload.error.length > 0) return [payload.error];
   return [fallback];
 }
 
@@ -531,6 +542,11 @@ export function DivisionAgesEditorCard({
                       value={division.label}
                       onChange={(event) => patchDivision(index, { ...division, label: event.target.value })}
                     />
+                    {division.cutoffPreset ? (
+                      <p className="mt-1 text-xs text-zinc-400" data-testid="cutoff-preset-badge">
+                        {cutoffPresetLabel(division.cutoffPreset)}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="py-2 pr-3">
                     <div className="flex gap-2">
@@ -789,11 +805,13 @@ export default function DivisionAgesWorkspace({
       {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cutoff: parsed.data.cutoff,
-          divisions: parsed.data.divisions,
-          confirm: parsed.data.confirm,
-        }),
+        body: JSON.stringify(
+          withSeasonBaseline(org, {
+            cutoff: parsed.data.cutoff,
+            divisions: parsed.data.divisions,
+            confirm: parsed.data.confirm,
+          }, card.baselineToken),
+        ),
       },
     );
     const payload = await readJson(response);
@@ -893,12 +911,18 @@ export default function DivisionAgesWorkspace({
         ? await fetch(`/api/admin/division-ages/copy?org=${encodeURIComponent(org)}`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ fromSeasonYear: seasonYear - 1, toSeasonYear: seasonYear }),
+            body: JSON.stringify(
+              withSeasonBaseline(
+                org,
+                { fromSeasonYear: seasonYear - 1, toSeasonYear: seasonYear },
+                card?.baselineToken,
+              ),
+            ),
           })
         : await fetch(`/api/admin/division-ages/season?org=${encodeURIComponent(org)}&seasonYear=${seasonYear}`, {
             method: "PUT",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ resetToLeagueDefaults: true }),
+            body: JSON.stringify(withSeasonBaseline(org, { resetToLeagueDefaults: true }, card?.baselineToken)),
           });
     const payload = await readJson(response);
     if (!response.ok || !isSeasonPayload(payload)) {

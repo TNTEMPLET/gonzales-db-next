@@ -201,7 +201,7 @@ describe("combined spring forecast editor", () => {
     assert.match(html, /Apply DYB Apr 30 to DYB divisions/);
     assert.match(html, /data-testid="retention-percent"/);
     assert.match(html, /data-testid="spring-what-if"/);
-    assert.match(html, /Combined changes are a what-if/);
+    assert.match(html, /Undo last save restores both leagues/);
     assert.doesNotMatch(html, /data-testid="proposed-cutoff-day"/);
     assert.doesNotMatch(html, /Cutoff month/);
     assert.doesNotMatch(html, /Year offset/);

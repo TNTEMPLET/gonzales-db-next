@@ -528,6 +528,7 @@ describe("forecast configs", () => {
         confirm: false,
       },
       "admin-2",
+      { baselineToken: "absent" },
     );
     const fromSeason = ok(
       await run({ includeFeeder: false, retentionRate: 1 }, reader, {
