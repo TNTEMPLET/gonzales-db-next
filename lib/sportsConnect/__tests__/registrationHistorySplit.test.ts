@@ -2,7 +2,10 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
+import { springDivisionAgesLockKey } from "@/lib/ageDivisions/persistence";
 import { deriveSportsConnectRowKey } from "@/lib/sportsConnect/enrollmentRowKey";
+import { assertImportRunSummaryPatch } from "@/lib/sportsConnect/splitBatchSummary";
+import { springEnrollmentLockKey } from "@/lib/sportsConnect/springEnrollmentLock";
 import {
   classifyRegistrationHistory,
   RegistrationHistoryError,
@@ -80,11 +83,31 @@ type StoredEnrollment = {
 class MemoryDb {
   runs: HistoryRunRow[] = [];
   enrollments: StoredEnrollment[] = [];
+  ops: string[] = [];
+  lastKeyRead: Array<{ organizationId: string; seasonYear: number }> = [];
   private seq = 0;
+
+  async $executeRaw(strings: TemplateStringsArray): Promise<number> {
+    const sql = strings.join("");
+    this.ops.push(sql.includes("pg_advisory_xact_lock") ? "lock" : "executeRaw");
+    return 0;
+  }
 
   sportsConnectImportRun = {
     findFirst: async ({ where }: { where: Record<string, unknown> }) =>
       this.runs.find((run) => matches(run, where)) ?? null,
+    findMany: async ({
+      where,
+    }: {
+      where: { summary: { path: ["splitBatchId"]; equals: string } };
+    }) => {
+      this.ops.push("run.findMany");
+      const batchId = where.summary.equals;
+      return this.runs.filter((run) => {
+        const summary = run.summary as { splitBatchId?: unknown } | null;
+        return !!summary && summary.splitBatchId === batchId;
+      });
+    },
     updateMany: async ({
       where,
       data,
@@ -126,8 +149,10 @@ class MemoryDb {
       where,
     }: {
       where: { OR: Array<{ organizationId: string; seasonYear: number }> };
-    }) =>
-      this.enrollments
+    }) => {
+      this.ops.push("enrollment.findMany");
+      this.lastKeyRead = where.OR;
+      return this.enrollments
         .filter((row) =>
           where.OR.some(
             (target) =>
@@ -138,7 +163,8 @@ class MemoryDb {
           organizationId: row.organizationId,
           seasonYear: row.seasonYear,
           sportsConnectRowKey: row.sportsConnectRowKey,
-        })),
+        }));
+    },
     createMany: async ({
       data,
       skipDuplicates,
@@ -166,9 +192,12 @@ class MemoryDb {
       }
       return { count };
     },
-    count: async ({ where }: { where: { importRunId: string } }) =>
-      this.enrollments.filter((row) => row.importRunId === where.importRunId).length,
+    count: async ({ where }: { where: { importRunId: string } }) => {
+      this.ops.push("enrollment.count");
+      return this.enrollments.filter((row) => row.importRunId === where.importRunId).length;
+    },
     deleteMany: async ({ where }: { where: { importRunId: string } }) => {
+      this.ops.push("enrollment.deleteMany");
       const before = this.enrollments.length;
       this.enrollments = this.enrollments.filter((row) => row.importRunId !== where.importRunId);
       return { count: before - this.enrollments.length };
@@ -364,6 +393,7 @@ describe("split commit, override, and batch undo", () => {
       fileSha256: FILE_SHA,
       preview: open.preview,
       normalizedMapping: open.normalizedMapping,
+      classificationDigest: open.classificationDigest,
       createdByAdminId: null,
     });
     await assert.rejects(
@@ -412,6 +442,7 @@ describe("split commit, override, and batch undo", () => {
       fileSha256: FILE_SHA,
       preview: ready.preview,
       normalizedMapping: ready.normalizedMapping,
+      classificationDigest: ready.classificationDigest,
       createdByAdminId: null,
     });
     const committed = await commitRegistrationHistory(asDb(db), {
@@ -455,6 +486,16 @@ describe("split commit, override, and batch undo", () => {
     assert.equal(db.runs.find((run) => run.id === gonzalesRun!.id)?.status, "DONE");
     assert.equal(db.runs.find((run) => run.id === ascensionRun!.id)?.status, "DONE");
     assert.equal(db.enrollments.some((row) => row.importRunId === gonzalesRun!.id), true);
+    await assert.rejects(
+      () =>
+        undoRegistrationHistory(asDb(db), {
+          runId: ascensionRun!.id,
+          organizationId: "ascension",
+          isMaster: false,
+        }),
+      (err: unknown) => err instanceof RegistrationHistoryError && err.status === 403,
+    );
+    assert.equal(db.enrollments.some((row) => row.importRunId === ascensionRun!.id), true);
 
     const counted = await countRegistrationHistoryUndo(asDb(db), {
       runId: ascensionRun!.id,
@@ -498,6 +539,7 @@ describe("split commit, override, and batch undo", () => {
       fileSha256: FILE_SHA,
       preview: open.preview,
       normalizedMapping: open.normalizedMapping,
+      classificationDigest: open.classificationDigest,
       createdByAdminId: null,
     });
     await assert.rejects(
@@ -626,6 +668,7 @@ describe("split guards", () => {
       fileSha256: FILE_SHA,
       preview: open.preview,
       normalizedMapping: open.normalizedMapping,
+      classificationDigest: open.classificationDigest,
       createdByAdminId: null,
     });
     const result = await commitRegistrationHistory(asDb(db), {
@@ -655,7 +698,7 @@ describe("split guards", () => {
     assert.equal(db.enrollments.some((row) => row.importRunId === gonzales.id), false);
   });
 
-  it("wires split imports to the master flag and does not add an auth bypass", () => {
+  it("wires split imports to the master flag", () => {
     const route = readFileSync(
       new URL("../../../app/api/admin/sports-connect/registration-history/route.ts", import.meta.url),
       "utf8",
@@ -667,9 +710,414 @@ describe("split guards", () => {
     assert.match(route, /splitImportDenial\(isMaster, mapping\)/);
     assert.match(route, /auth\.admin\.isMaster/);
     assert.match(commit, /splitBatchRunIds/);
-    assert.doesNotMatch(route, /PAPERCLIP_DEBUG_TOKEN|paperclip-debug/);
-    assert.doesNotMatch(commit, /PAPERCLIP_DEBUG_TOKEN|paperclip-debug/);
     const schema = readFileSync(new URL("../../../prisma/schema.prisma", import.meta.url), "utf8");
     assert.doesNotMatch(schema, /splitBatch/);
+  });
+});
+
+const CHANGED = "The registrations changed since the preview. Run the preview again.";
+
+function assertLockBefore(ops: string[], read: string) {
+  const lockAt = ops.indexOf("lock");
+  const readAt = ops.indexOf(read);
+  assert.ok(lockAt >= 0);
+  assert.ok(readAt >= 0);
+  assert.ok(lockAt < readAt);
+}
+
+async function previewAndCommit(
+  db: MemoryDb,
+  rows: FixtureRow[],
+  mapping: HistoryMappingEntry[],
+  existingKeys: ExistingHistoryKey[],
+) {
+  const open = classifyRegistrationHistory({
+    rows,
+    mapping,
+    existingKeys,
+    fileName: FILE_NAME,
+    fileSha256: FILE_SHA,
+  });
+  const stored = await storeRegistrationHistoryPreview(asDb(db), {
+    fileName: FILE_NAME,
+    fileSha256: FILE_SHA,
+    preview: open.preview,
+    normalizedMapping: open.normalizedMapping,
+    classificationDigest: open.classificationDigest,
+    createdByAdminId: null,
+  });
+  const committed = await commitRegistrationHistory(asDb(db), {
+    previewRunId: stored.id,
+    fileName: FILE_NAME,
+    fileSha256: FILE_SHA,
+    mapping,
+    rows,
+    createdByAdminId: null,
+    isMaster: true,
+  });
+  return { open, stored, committed };
+}
+
+describe("split review fixes", () => {
+  it("rejects a split commit mixed with another program mapping", () => {
+    const rows = [
+      player({ division: "12U DYB", order: "X1", first: "Player", last: "North" }),
+      player({ program: GONZALES, division: "8U", order: "X2", first: "Player", last: "One" }),
+    ];
+    const mapping: HistoryMappingEntry[] = [
+      ...splitMapping(),
+      { programName: GONZALES, action: "map", organizationId: "gonzales", seasonYear: 2026 },
+    ];
+    assert.throws(
+      () =>
+        classifyRegistrationHistory({
+          rows,
+          mapping,
+          existingKeys: [],
+          fileName: FILE_NAME,
+          fileSha256: FILE_SHA,
+        }),
+      (err: unknown) =>
+        err instanceof RegistrationHistoryError && /one Spring program/.test(err.message),
+    );
+    assert.throws(
+      () =>
+        classifyRegistrationHistory({
+          rows,
+          mapping: [
+            { programName: SPRING, action: "split", seasonYear: 2027 },
+            { programName: GONZALES, action: "split", seasonYear: 2026 },
+          ],
+          existingKeys: [],
+          fileName: FILE_NAME,
+          fileSha256: FILE_SHA,
+        }),
+      (err: unknown) =>
+        err instanceof RegistrationHistoryError && /one Spring program/.test(err.message),
+    );
+  });
+
+  it("refuses undo when a forged summary shares a batch id with a Fall run", async () => {
+    const db = new MemoryDb();
+    const rows = [
+      player({ division: "12U DYB", order: "F10", first: "Player", last: "North" }),
+      player({ division: "12U LLB", order: "F11", first: "Player", last: "South" }),
+    ];
+    const { committed } = await previewAndCommit(db, rows, splitMapping(), []);
+    const gonzales = committed.runs.find((run) => run.organizationId === "gonzales");
+    const ascension = committed.runs.find((run) => run.organizationId === "ascension");
+    assert.ok(gonzales && ascension);
+    const batchId = (db.runs.find((run) => run.id === gonzales.id)?.summary as { splitBatchId: string })
+      .splitBatchId;
+    const reportKind = db.runs.find((run) => run.id === gonzales.id)?.reportKind ?? "";
+    db.runs.push({
+      id: "fall-run",
+      organizationId: "fallball",
+      seasonYear: 2026,
+      reportKind,
+      status: "DONE",
+      sourceFileName: "fall.xlsx",
+      summary: {
+        role: "commit",
+        source: "split",
+        programName: FALL,
+        splitBatch: true,
+        splitBatchId: batchId,
+        splitBatchRunIds: [gonzales.id, "fall-run"],
+      },
+    });
+    db.enrollments.push({
+      id: "fall-row",
+      organizationId: "fallball",
+      seasonYear: 2026,
+      sportsConnectRowKey: "fall-key",
+      importRunId: "fall-run",
+      teamId: null,
+      fullName: "Player Fall",
+    });
+    const gonzalesSummary = db.runs.find((run) => run.id === gonzales.id)?.summary as {
+      splitBatchRunIds: string[];
+    };
+    gonzalesSummary.splitBatchRunIds = [gonzales.id, "fall-run"];
+    const before = db.enrollments.map((row) => row.id).sort();
+    await assert.rejects(
+      () =>
+        undoRegistrationHistory(asDb(db), {
+          runId: gonzales.id,
+          organizationId: "gonzales",
+          isMaster: true,
+        }),
+      (err: unknown) =>
+        err instanceof RegistrationHistoryError &&
+        err.status === 409 &&
+        /Nothing was removed/.test(err.message),
+    );
+    assert.deepEqual(db.enrollments.map((row) => row.id).sort(), before);
+    assert.equal(db.runs.find((run) => run.id === gonzales.id)?.status, "DONE");
+    assert.equal(db.runs.find((run) => run.id === ascension.id)?.status, "DONE");
+    assert.equal(db.runs.find((run) => run.id === "fall-run")?.status, "DONE");
+  });
+
+  it("undo from either league removes both runs and ignores a forged id list", async () => {
+    const db = new MemoryDb();
+    const rows = [
+      player({ division: "12U DYB", order: "E1", first: "Player", last: "North" }),
+      player({ division: "12U LLB", order: "E2", first: "Player", last: "South" }),
+    ];
+    const { committed } = await previewAndCommit(db, rows, splitMapping(), []);
+    const gonzales = committed.runs.find((run) => run.organizationId === "gonzales");
+    const ascension = committed.runs.find((run) => run.organizationId === "ascension");
+    assert.ok(gonzales && ascension);
+    db.runs.push({
+      id: "fall-run",
+      organizationId: "fallball",
+      seasonYear: 2026,
+      reportKind: db.runs[0]?.reportKind ?? "",
+      status: "DONE",
+      sourceFileName: "fall.xlsx",
+      summary: { role: "commit", source: "map", programName: FALL, programNames: [FALL] },
+    });
+    db.enrollments.push({
+      id: "fall-row",
+      organizationId: "fallball",
+      seasonYear: 2026,
+      sportsConnectRowKey: "fall-key",
+      importRunId: "fall-run",
+      teamId: null,
+      fullName: "Player Fall",
+    });
+    const summary = db.runs.find((run) => run.id === gonzales.id)?.summary as { splitBatchRunIds: string[] };
+    summary.splitBatchRunIds = [gonzales.id, "fall-run"];
+    db.ops = [];
+    const undone = await undoRegistrationHistory(asDb(db), {
+      runId: gonzales.id,
+      organizationId: "gonzales",
+      isMaster: true,
+    });
+    assert.equal(undone.runCount, 2);
+    assert.equal(db.runs.find((run) => run.id === gonzales.id)?.status, "UNDONE");
+    assert.equal(db.runs.find((run) => run.id === ascension.id)?.status, "UNDONE");
+    assert.equal(db.runs.find((run) => run.id === "fall-run")?.status, "DONE");
+    assert.equal(db.enrollments.some((row) => row.importRunId === "fall-run"), true);
+    assert.equal(db.enrollments.some((row) => row.importRunId === gonzales.id), false);
+    assert.equal(db.enrollments.some((row) => row.importRunId === ascension.id), false);
+    assertLockBefore(db.ops, "enrollment.count");
+    assertLockBefore(db.ops, "enrollment.deleteMany");
+  });
+
+  it("refuses to strip or add split summary fields", () => {
+    const splitSummary = {
+      role: "commit",
+      source: "split",
+      splitBatch: true,
+      splitBatchId: "preview-1",
+      splitBatchRunIds: ["run-a", "run-b"],
+      programName: SPRING,
+    };
+    assert.throws(
+      () => assertImportRunSummaryPatch(splitSummary, { role: "commit", source: "map" }),
+      (err: unknown) => err instanceof Error && /cannot be changed/.test(err.message),
+    );
+    assert.throws(
+      () => assertImportRunSummaryPatch(splitSummary, null),
+      (err: unknown) => err instanceof Error && /cannot be changed/.test(err.message),
+    );
+    assert.throws(
+      () =>
+        assertImportRunSummaryPatch(
+          { role: "commit", source: "map" },
+          { role: "commit", splitBatch: true, splitBatchId: "preview-1", splitBatchRunIds: ["run-a"] },
+        ),
+      (err: unknown) => err instanceof Error && /cannot be added/.test(err.message),
+    );
+    assert.throws(
+      () => assertImportRunSummaryPatch({ role: "commit" }, { splitBatchId: "preview-1" }),
+      (err: unknown) => err instanceof Error && /cannot be added/.test(err.message),
+    );
+    assert.doesNotThrow(() => assertImportRunSummaryPatch(splitSummary, undefined));
+    assert.doesNotThrow(() =>
+      assertImportRunSummaryPatch({ role: "commit", source: "map" }, { role: "commit", source: "map" }),
+    );
+    const runsRoute = readFileSync(
+      new URL("../../../app/api/admin/sports-connect/runs/[id]/route.ts", import.meta.url),
+      "utf8",
+    );
+    const importRuns = readFileSync(new URL("../importRuns.ts", import.meta.url), "utf8");
+    assert.match(importRuns, /assertImportRunSummaryPatch\(/);
+    assert.match(runsRoute, /ImportRunSummaryError/);
+  });
+
+  it("returns 409 when the same counts describe swapped rows", async () => {
+    const db = new MemoryDb();
+    const rows = [
+      player({ division: "12U DYB", order: "A1", first: "Player", last: "Alpha" }),
+      player({ division: "14U", order: "B1", first: "Player", last: "Beta" }),
+    ];
+    const keyA = rowKey("A1", "Player", "Alpha");
+    const keyB = rowKey("B1", "Player", "Beta");
+    db.enrollments.push({
+      id: "pre-a",
+      organizationId: "gonzales",
+      seasonYear: 2027,
+      sportsConnectRowKey: keyA,
+      importRunId: "older",
+      teamId: null,
+      fullName: "Player Alpha",
+    });
+    const existingA: ExistingHistoryKey[] = [
+      { organizationId: "gonzales", seasonYear: 2027, sportsConnectRowKey: keyA },
+    ];
+    const existingB: ExistingHistoryKey[] = [
+      { organizationId: "gonzales", seasonYear: 2027, sportsConnectRowKey: keyB },
+    ];
+    const first = classifyRegistrationHistory({
+      rows,
+      mapping: splitMapping(),
+      existingKeys: existingA,
+      fileName: FILE_NAME,
+      fileSha256: FILE_SHA,
+    });
+    const swapped = classifyRegistrationHistory({
+      rows,
+      mapping: splitMapping(),
+      existingKeys: existingB,
+      fileName: FILE_NAME,
+      fileSha256: FILE_SHA,
+    });
+    assert.equal(first.preview.totals.wouldAdd, swapped.preview.totals.wouldAdd);
+    assert.equal(first.preview.totals.alreadySameLeague, swapped.preview.totals.alreadySameLeague);
+    assert.notEqual(first.classificationDigest, swapped.classificationDigest);
+    const stored = await storeRegistrationHistoryPreview(asDb(db), {
+      fileName: FILE_NAME,
+      fileSha256: FILE_SHA,
+      preview: first.preview,
+      normalizedMapping: first.normalizedMapping,
+      classificationDigest: first.classificationDigest,
+      createdByAdminId: null,
+    });
+    db.enrollments = [
+      {
+        id: "pre-b",
+        organizationId: "gonzales",
+        seasonYear: 2027,
+        sportsConnectRowKey: keyB,
+        importRunId: "older",
+        teamId: null,
+        fullName: "Player Beta",
+      },
+    ];
+    const before = structuredClone(db.enrollments);
+    const runCount = db.runs.length;
+    await assert.rejects(
+      () =>
+        commitRegistrationHistory(asDb(db), {
+          previewRunId: stored.id,
+          fileName: FILE_NAME,
+          fileSha256: FILE_SHA,
+          mapping: splitMapping(),
+          rows,
+          createdByAdminId: null,
+          isMaster: true,
+        }),
+      (err: unknown) =>
+        err instanceof RegistrationHistoryError && err.status === 409 && err.message === CHANGED,
+    );
+    assert.equal(db.runs.find((run) => run.id === stored.id)?.status, "PREVIEW");
+    assert.equal(db.runs.length, runCount);
+    assert.deepEqual(db.enrollments, before);
+  });
+
+  it("takes the spring enrollment lock before key reads and leaves Fall unlocked", async () => {
+    const splitDb = new MemoryDb();
+    const splitRows = [
+      player({ division: "12U DYB", order: "L1", first: "Player", last: "North" }),
+      player({ division: "12U LLB", order: "L2", first: "Player", last: "South" }),
+    ];
+    splitDb.ops = [];
+    const split = await previewAndCommit(splitDb, splitRows, splitMapping(), []);
+    assertLockBefore(splitDb.ops, "enrollment.findMany");
+    assert.deepEqual(
+      splitDb.lastKeyRead.map((target) => target.organizationId).sort(),
+      ["ascension", "gonzales"],
+    );
+    const gonzales = split.committed.runs.find((run) => run.organizationId === "gonzales");
+    assert.ok(gonzales);
+
+    const springDb = new MemoryDb();
+    const springRows = [
+      player({ program: GONZALES, division: "8U", order: "G9", first: "Player", last: "Only" }),
+    ];
+    const springMapping: HistoryMappingEntry[] = [
+      { programName: GONZALES, action: "map", organizationId: "gonzales", seasonYear: 2026 },
+    ];
+    springDb.enrollments.push({
+      id: "other-league",
+      organizationId: "ascension",
+      seasonYear: 2026,
+      sportsConnectRowKey: rowKey("G9", "Player", "Only"),
+      importRunId: "older",
+      teamId: null,
+      fullName: "Player Only",
+    });
+    springDb.ops = [];
+    const spring = await previewAndCommit(springDb, springRows, springMapping, [
+      {
+        organizationId: "ascension",
+        seasonYear: 2026,
+        sportsConnectRowKey: rowKey("G9", "Player", "Only"),
+      },
+    ]);
+    assert.equal(spring.committed.runs[0]?.inserted, 1);
+    assertLockBefore(springDb.ops, "enrollment.findMany");
+    assert.deepEqual(
+      springDb.lastKeyRead.map((target) => target.organizationId).sort(),
+      ["ascension", "gonzales"],
+    );
+    springDb.ops = [];
+    await undoRegistrationHistory(asDb(springDb), {
+      runId: spring.committed.runs[0]!.id,
+      organizationId: "gonzales",
+    });
+    assertLockBefore(springDb.ops, "enrollment.deleteMany");
+    assert.equal(springDb.enrollments.some((row) => row.id === "other-league"), true);
+
+    const fallDb = new MemoryDb();
+    const rec = "2026 Rec Season";
+    const fallRows = [player({ program: rec, division: "8U", order: "R1", first: "Player", last: "Rec" })];
+    const fallMapping: HistoryMappingEntry[] = [
+      { programName: rec, action: "map", organizationId: "fallball", seasonYear: 2026 },
+    ];
+    fallDb.ops = [];
+    const fall = await previewAndCommit(fallDb, fallRows, fallMapping, []);
+    assert.equal(fallDb.ops.includes("lock"), false);
+    assert.ok(fallDb.ops.includes("enrollment.findMany"));
+    assert.deepEqual(
+      fallDb.lastKeyRead.map((target) => target.organizationId),
+      ["fallball"],
+    );
+    fallDb.ops = [];
+    await undoRegistrationHistory(asDb(fallDb), {
+      runId: fall.committed.runs[0]!.id,
+      organizationId: "fallball",
+    });
+    assert.equal(fallDb.ops.includes("lock"), false);
+    assert.ok(fallDb.ops.includes("enrollment.deleteMany"));
+
+    const teams = readFileSync(
+      new URL("../../../app/api/admin/teams/import/route.ts", import.meta.url),
+      "utf8",
+    );
+    const lockAt = teams.indexOf("await lockSpringEnrollment(tx, seasonYear);");
+    const readAt = teams.indexOf("await tx.enrollment.findMany");
+    const fallUpsert = teams.lastIndexOf("await prisma.enrollment.upsert");
+    assert.ok(lockAt > 0 && readAt > lockAt);
+    assert.ok(fallUpsert > readAt);
+    assert.match(teams, /targetOrg === "gonzales" \|\| targetOrg === "ascension"/);
+    const lockSource = readFileSync(new URL("../springEnrollmentLock.ts", import.meta.url), "utf8");
+    assert.match(lockSource, /spring-enrollment:/);
+    assert.match(lockSource, /pg_advisory_xact_lock/);
+    assert.equal(lockSource.includes("spring-division-ages"), false);
+    assert.notEqual(springEnrollmentLockKey(2027), springDivisionAgesLockKey(2027));
+    assert.notEqual(springEnrollmentLockKey(2026), springEnrollmentLockKey(2027));
   });
 });

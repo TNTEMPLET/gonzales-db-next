@@ -18,6 +18,7 @@ import {
   SPORTS_CONNECT_INGEST_MAX_ROWS,
 } from "./parseExportBuffer";
 import { PLAYER_REG_HISTORY_REPORT_KIND } from "./registrationHistoryKind";
+import { springEnrollmentSeasonYears } from "./springEnrollmentLock";
 
 export { canSplitSpringProgram, isFallProgramName, isSpringProgramName };
 
@@ -368,6 +369,23 @@ export function existingKeyTargets(
   return targets;
 }
 
+/** Key reads for a Spring Gonzales/Ascension write include both leagues. */
+export function enrollmentReadTargets(
+  mapping: readonly NormalizedHistoryMappingEntry[],
+): Array<{ organizationId: string; seasonYear: number }> {
+  const targets = existingKeyTargets(mapping);
+  const seen = new Set(targets.map((target) => `${target.organizationId}\0${target.seasonYear}`));
+  for (const seasonYear of springEnrollmentSeasonYears(mapping)) {
+    for (const organizationId of ["gonzales", "ascension"] as const) {
+      const id = `${organizationId}\0${seasonYear}`;
+      if (seen.has(id)) continue;
+      seen.add(id);
+      targets.push({ organizationId, seasonYear });
+    }
+  }
+  return targets;
+}
+
 export function normalizeHistoryMapping(
   programNames: readonly string[],
   mapping: readonly HistoryMappingEntry[],
@@ -451,6 +469,13 @@ export function normalizeHistoryMapping(
       organizationId: organizationId as HistoryOrgId,
       seasonYear,
     });
+  }
+  const splitCount = normalized.filter((entry) => entry.action === "split").length;
+  const mapCount = normalized.filter((entry) => entry.action === "map").length;
+  if (splitCount > 1 || (splitCount === 1 && mapCount > 0)) {
+    throw new RegistrationHistoryError(
+      "A split import can only include one Spring program. Set every other program to Skip.",
+    );
   }
   return normalized;
 }
@@ -554,6 +579,7 @@ export function classifyRegistrationHistory(input: {
   preview: HistoryPreview;
   inserts: HistoryEnrollmentInsert[];
   normalizedMapping: NormalizedHistoryMappingEntry[];
+  classificationDigest: string;
 } {
   const programNames = programNamesInRows(input.rows);
   const normalizedMapping = normalizeHistoryMapping(programNames, input.mapping);
@@ -569,9 +595,11 @@ export function classifyRegistrationHistory(input: {
 
   const programs = new Map<string, ProgramAccumulator>();
   const inserts: HistoryEnrollmentInsert[] = [];
+  const classificationRows: HistoryClassificationRow[] = [];
   let birthDates = 0;
 
-  for (const row of input.rows) {
+  for (let index = 0; index < input.rows.length; index += 1) {
+    const row = input.rows[index]!;
     const programName = readCell(row, PROGRAM_KEYS) || NO_PROGRAM;
     const mapping = mappingByProgram.get(programName);
     const divisionRaw = readCell(row, DIVISION_KEYS);
@@ -616,16 +644,30 @@ export function classifyRegistrationHistory(input: {
         taken,
         crossOrg,
         inserts,
+        index,
+        classificationRows,
       });
       continue;
     }
 
     const takenId = `${mapping.organizationId}\0${mapping.seasonYear}\0${sportsConnectRowKey}`;
     if (taken.has(takenId)) {
+      classificationRows.push({
+        index,
+        sportsConnectRowKey,
+        organizationId: mapping.organizationId,
+        disposition: "same_league",
+      });
       program.totals.alreadyPresent += 1;
       division.alreadyPresent += 1;
       continue;
     }
+    classificationRows.push({
+      index,
+      sportsConnectRowKey,
+      organizationId: mapping.organizationId,
+      disposition: "add",
+    });
     taken.add(takenId);
     inserts.push(
       enrollmentInsertFromRow({
@@ -683,7 +725,66 @@ export function classifyRegistrationHistory(input: {
     mapping: normalizedMapping,
     keyNote: splitUsed ? SPLIT_KEY_NOTE : KEY_NOTE,
   };
-  return { preview, inserts, normalizedMapping };
+  return {
+    preview,
+    inserts,
+    normalizedMapping,
+    classificationDigest: registrationClassificationDigest({
+      normalizedMapping,
+      rows: classificationRows,
+    }),
+  };
+}
+
+export type HistoryRowDisposition = "add" | "same_league" | "other_league" | "unplaceable";
+
+export type HistoryClassificationRow = {
+  index: number;
+  sportsConnectRowKey: string;
+  organizationId: HistoryOrgId | null;
+  disposition: HistoryRowDisposition;
+};
+
+/** Hash of the exact per-row placement. Row keys stay out of the preview payload. */
+export function registrationClassificationDigest(input: {
+  normalizedMapping: readonly NormalizedHistoryMappingEntry[];
+  rows: readonly HistoryClassificationRow[];
+}): string {
+  const overrides = input.normalizedMapping
+    .filter((entry): entry is Extract<NormalizedHistoryMappingEntry, { action: "split" }> => entry.action === "split")
+    .map((entry) => ({
+      programName: entry.programName,
+      seasonYear: entry.seasonYear,
+      divisionOverrides: entry.divisionOverrides,
+    }));
+  const payload = {
+    overrides,
+    rows: input.rows.map((row) => ({
+      index: row.index,
+      sportsConnectRowKey: row.sportsConnectRowKey,
+      organizationId: row.organizationId,
+      disposition: row.disposition,
+    })),
+  };
+  return createHash("sha256").update(canonicalJson(payload)).digest("hex");
+}
+
+function canonicalJson(value: unknown): string {
+  return JSON.stringify(canonicalize(value));
+}
+
+function canonicalize(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const source = value as Record<string, unknown>;
+    const sorted: Record<string, unknown> = {};
+    for (const key of Object.keys(source).sort()) {
+      if (source[key] === undefined) continue;
+      sorted[key] = canonicalize(source[key]);
+    }
+    return sorted;
+  }
+  return value;
 }
 
 const FORBIDDEN_PREVIEW_KEYS = new Set([
@@ -922,12 +1023,20 @@ function classifySplitRow(input: {
   taken: Set<string>;
   crossOrg: CrossOrgIndex;
   inserts: HistoryEnrollmentInsert[];
+  index: number;
+  classificationRows: HistoryClassificationRow[];
 }) {
   const override = input.mapping.divisionOverrides.find(
     (entry) => entry.divisionName === input.divisionName,
   );
   const placement = placeDivision(input.divisionName, override?.organizationId ?? null);
   if (placement.status === "unplaceable") {
+    input.classificationRows.push({
+      index: input.index,
+      sportsConnectRowKey: input.sportsConnectRowKey,
+      organizationId: null,
+      disposition: "unplaceable",
+    });
     input.division.unplaceable = (input.division.unplaceable ?? 0) + 1;
     input.division.placement = "unplaceable";
     input.division.unplaceableReason = placement.reason;
@@ -947,6 +1056,12 @@ function classifySplitRow(input: {
     placement.organizationId,
   );
   if (hit === "same" || hit === "other") {
+    input.classificationRows.push({
+      index: input.index,
+      sportsConnectRowKey: input.sportsConnectRowKey,
+      organizationId: placement.organizationId,
+      disposition: hit === "same" ? "same_league" : "other_league",
+    });
     input.program.totals.alreadyPresent += 1;
     input.division.alreadyPresent += 1;
     if (hit === "same") {
@@ -970,6 +1085,12 @@ function classifySplitRow(input: {
   input.taken.add(
     `${placement.organizationId}\0${input.mapping.seasonYear}\0${input.sportsConnectRowKey}`,
   );
+  input.classificationRows.push({
+    index: input.index,
+    sportsConnectRowKey: input.sportsConnectRowKey,
+    organizationId: placement.organizationId,
+    disposition: "add",
+  });
   const insert = enrollmentInsertFromRow({
     row: input.row,
     organizationId: placement.organizationId,

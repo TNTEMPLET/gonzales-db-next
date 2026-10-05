@@ -1,10 +1,10 @@
-import { splitImportDenial } from "./divisionLeagueSplit";
+import { isFallProgramName, isSpringProgramName, isSpringSplitOrg, splitImportDenial } from "./divisionLeagueSplit";
 import { REGISTRATION_HISTORY_PREVIEW_ORG } from "./registrationHistoryKind";
 import { PLAYER_REG_HISTORY_REPORT_KIND } from "./registrationHistoryKind";
 import {
   canonicalHistoryMapping,
   classifyRegistrationHistory,
-  existingKeyTargets,
+  enrollmentReadTargets,
   historyCountsSignature,
   normalizeHistoryMapping,
   programNamesInRows,
@@ -16,6 +16,14 @@ import {
   type HistoryPreview,
   type NormalizedHistoryMappingEntry,
 } from "./registrationHistory";
+import { lockSpringEnrollment, springEnrollmentSeasonYears } from "./springEnrollmentLock";
+import { summaryMarksSplitBatch } from "./splitBatchSummary";
+
+export const REGISTRATIONS_CHANGED_MESSAGE =
+  "The registrations changed since the preview. Run the preview again.";
+
+const SPLIT_BATCH_MISMATCH =
+  "This split import cannot be undone because the batch is not one Spring program shared by Gonzales DYB and Ascension LL. Nothing was removed.";
 
 export type HistoryRunRow = {
   id: string;
@@ -28,8 +36,12 @@ export type HistoryRunRow = {
 };
 
 export type HistoryTx = {
+  $executeRaw(query: TemplateStringsArray, ...values: unknown[]): Promise<unknown>;
   sportsConnectImportRun: {
     findFirst(args: { where: Record<string, unknown> }): Promise<HistoryRunRow | null>;
+    findMany(args: {
+      where: { summary: { path: ["splitBatchId"]; equals: string } };
+    }): Promise<HistoryRunRow[]>;
     updateMany(args: {
       where: { id: string; reportKind: string; status: string };
       data: Record<string, unknown>;
@@ -68,6 +80,7 @@ export async function storeRegistrationHistoryPreview(
     fileSha256: string;
     preview: HistoryPreview;
     normalizedMapping: NormalizedHistoryMappingEntry[];
+    classificationDigest: string;
     createdByAdminId: string | null;
   },
 ): Promise<{ id: string }> {
@@ -84,6 +97,7 @@ export async function storeRegistrationHistoryPreview(
         fileSha256: input.fileSha256,
         mappingCanonical: canonicalHistoryMapping(input.normalizedMapping),
         countsSignature: historyCountsSignature(input.preview),
+        classificationDigest: input.classificationDigest,
         preview: input.preview,
       },
     },
@@ -133,6 +147,10 @@ export async function commitRegistrationHistory(
   assertPreviewMatches(previewRun.summary, input);
 
   return db.$transaction(async (tx) => {
+    const normalizedEarly = normalizeHistoryMapping(programNamesInRows(input.rows), input.mapping);
+    for (const seasonYear of springEnrollmentSeasonYears(normalizedEarly)) {
+      await lockSpringEnrollment(tx, seasonYear);
+    }
     const claimed = await tx.sportsConnectImportRun.updateMany({
       where: {
         id: input.previewRunId,
@@ -159,8 +177,8 @@ export async function commitRegistrationHistory(
     assertPreviewMatches(current.summary, input);
     const stored = readSummary(current.summary);
 
-    const normalized = normalizeHistoryMapping(programNamesInRows(input.rows), input.mapping);
-    const keyTargets = existingKeyTargets(normalized);
+    const normalized = normalizedEarly;
+    const keyTargets = enrollmentReadTargets(normalized);
     const existingKeys = keyTargets.length
       ? await tx.enrollment.findMany({
           where: {
@@ -183,6 +201,9 @@ export async function commitRegistrationHistory(
       fileName: input.fileName,
       fileSha256: input.fileSha256,
     });
+    if (classified.classificationDigest !== stored.classificationDigest) {
+      throw new RegistrationHistoryError(REGISTRATIONS_CHANGED_MESSAGE, 409);
+    }
     if (historyCountsSignature(classified.preview) !== stored.countsSignature) {
       throw new RegistrationHistoryError(
         `Enrollment changed since the dry-run, or this file does not match it. ${DRY_RUN_AGAIN}`,
@@ -196,6 +217,9 @@ export async function commitRegistrationHistory(
       );
     }
 
+    const splitEntry = normalized.find(
+      (entry): entry is Extract<NormalizedHistoryMappingEntry, { action: "split" }> => entry.action === "split",
+    );
     const targets = commitRunTargets(normalized, classified.preview);
     const grouped = groupInserts(classified.inserts);
     const runs: Array<{
@@ -229,6 +253,11 @@ export async function commitRegistrationHistory(
           coachBatchId: null,
           summary: {
             role: "commit",
+            source: splitEntry ? "split" : "map",
+            programName: splitEntry?.programName ?? programNamesForTarget(normalized, target)[0] ?? null,
+            programNames: splitEntry
+              ? [splitEntry.programName]
+              : programNamesForTarget(normalized, target),
             fileSha256: input.fileSha256,
             previewRunId: input.previewRunId,
             wouldAdd: counts.wouldAdd,
@@ -257,11 +286,19 @@ export async function commitRegistrationHistory(
       });
     }
 
-    const splitCommit = normalized.some((entry) => entry.action === "split");
-    if (splitCommit && runs.length > 0) {
-      // Both league runs share this id list in summary JSON. No new column.
-      const splitBatchRunIds = runs.map((run) => run.id);
-      for (const run of runs) {
+    if (splitEntry && runs.length > 0) {
+      const batchRuns = runs.filter(
+        (run) =>
+          isSpringSplitOrg(run.organizationId) && run.seasonYear === splitEntry.seasonYear,
+      );
+      if (batchRuns.length !== runs.length) {
+        throw new RegistrationHistoryError(
+          "A split import can only include one Spring program. Set every other program to Skip.",
+          409,
+        );
+      }
+      const splitBatchRunIds = batchRuns.map((run) => run.id);
+      for (const run of batchRuns) {
         const storedRun = await tx.sportsConnectImportRun.findFirst({ where: { id: run.id } });
         await tx.sportsConnectImportRun.update({
           where: { id: run.id },
@@ -271,6 +308,8 @@ export async function commitRegistrationHistory(
               splitBatch: true,
               splitBatchId: input.previewRunId,
               splitBatchRunIds,
+              programName: splitEntry.programName,
+              source: "split",
             },
           },
         });
@@ -322,6 +361,9 @@ export async function undoRegistrationHistory(
 ): Promise<{ enrollmentCount: number; undone: true; runCount: number }> {
   return db.$transaction(async (tx) => {
     const run = await loadCommitRun(tx, input);
+    if (runNeedsSpringEnrollmentLock(run)) {
+      await lockSpringEnrollment(tx, run.seasonYear);
+    }
     const batch = await loadUndoBatch(tx, run, input.isMaster === true);
     const counts = new Map<string, number>();
     let enrollmentCount = 0;
@@ -411,6 +453,7 @@ function readSummary(summary: unknown): {
   fileSha256: string;
   mappingCanonical: string;
   countsSignature: string;
+  classificationDigest: string;
 } {
   const record = asRecord(summary);
   return {
@@ -418,6 +461,8 @@ function readSummary(summary: unknown): {
     fileSha256: typeof record.fileSha256 === "string" ? record.fileSha256 : "",
     mappingCanonical: typeof record.mappingCanonical === "string" ? record.mappingCanonical : "",
     countsSignature: typeof record.countsSignature === "string" ? record.countsSignature : "",
+    classificationDigest:
+      typeof record.classificationDigest === "string" ? record.classificationDigest : "",
   };
 }
 
@@ -522,60 +567,96 @@ function totalsForTarget(preview: HistoryPreview, organizationId: string, season
   return { wouldAdd, alreadyPresent, alreadySameLeague, alreadyOtherLeague };
 }
 
+function runNeedsSpringEnrollmentLock(run: HistoryRunRow): boolean {
+  if (summaryMarksSplitBatch(run.summary)) return true;
+  if (!isSpringSplitOrg(run.organizationId)) return false;
+  return programNamesFromSummary(run.summary).some((name) => isSpringProgramName(name));
+}
+
+function programNamesFromSummary(summary: unknown): string[] {
+  const record = asRecord(summary);
+  const names = stringArray(record.programNames);
+  if (typeof record.programName === "string" && record.programName.length > 0) {
+    names.push(record.programName);
+  }
+  return names;
+}
+
+function programNamesForTarget(
+  mapping: readonly NormalizedHistoryMappingEntry[],
+  target: { organizationId: string; seasonYear: number },
+): string[] {
+  return mapping
+    .filter(
+      (entry) =>
+        entry.action === "map" &&
+        entry.organizationId === target.organizationId &&
+        entry.seasonYear === target.seasonYear,
+    )
+    .map((entry) => entry.programName);
+}
+
 async function loadUndoBatch(
   db: HistoryTx,
   run: HistoryRunRow,
   isMaster: boolean,
 ): Promise<HistoryRunRow[]> {
-  const summary = asRecord(run.summary);
-  if (summary.splitBatch !== true) return [run];
+  if (!summaryMarksSplitBatch(run.summary)) return [run];
   if (!isMaster) {
     throw new RegistrationHistoryError(
       "Only a master admin can undo a split Spring import.",
       403,
     );
   }
-  const ids = stringArray(summary.splitBatchRunIds);
-  if (!ids.includes(run.id)) {
-    throw new RegistrationHistoryError(
-      "This split import is missing its batch link. Nothing was removed.",
-      409,
-    );
+  const batchId = splitBatchIdOf(run.summary);
+  if (!batchId) {
+    throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
   }
-  const runs: HistoryRunRow[] = [];
-  for (const id of ids) {
-    const item =
-      id === run.id
-        ? run
-        : await db.sportsConnectImportRun.findFirst({
-            where: { id, reportKind: PLAYER_REG_HISTORY_REPORT_KIND },
-          });
-    if (!item || item.reportKind !== PLAYER_REG_HISTORY_REPORT_KIND) {
-      throw new RegistrationHistoryError(
-        "This split import is missing a league batch. Nothing was removed.",
-        409,
-      );
-    }
-    if (item.status === "UNDONE") {
-      throw new RegistrationHistoryError("This import was already undone.", 409);
-    }
-    if (item.status !== "DONE" || summaryRole(item.summary) !== "commit") {
-      throw new RegistrationHistoryError(
-        "Only a finished registration-history import can be undone.",
-        409,
-      );
-    }
-    const itemSummary = asRecord(item.summary);
-    const itemIds = stringArray(itemSummary.splitBatchRunIds);
-    if (itemSummary.splitBatch !== true || itemIds.join("\0") !== ids.join("\0")) {
-      throw new RegistrationHistoryError(
-        "This split import is missing its batch link. Nothing was removed.",
-        409,
-      );
-    }
-    runs.push(item);
+  const found = await db.sportsConnectImportRun.findMany({
+    where: {
+      summary: { path: ["splitBatchId"], equals: batchId },
+    },
+  });
+  if (!found.some((item) => item.id === run.id)) {
+    throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
   }
-  return runs;
+  validateSplitUndoBatch(found, batchId);
+  return found;
+}
+
+function splitBatchIdOf(summary: unknown): string | null {
+  const id = asRecord(summary).splitBatchId;
+  return typeof id === "string" && id.length > 0 ? id : null;
+}
+
+function validateSplitUndoBatch(runs: readonly HistoryRunRow[], batchId: string): void {
+  if (runs.length < 1 || runs.length > 2) {
+    throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
+  }
+  const orgs = new Set<string>();
+  let seasonYear: number | null = null;
+  for (const item of runs) {
+    const summary = asRecord(item.summary);
+    const programName = typeof summary.programName === "string" ? summary.programName : "";
+    const orgOk = isSpringSplitOrg(item.organizationId) && !orgs.has(item.organizationId);
+    const seasonOk = seasonYear == null || item.seasonYear === seasonYear;
+    const springOk = isSpringProgramName(programName) && !isFallProgramName(programName);
+    if (
+      item.reportKind !== PLAYER_REG_HISTORY_REPORT_KIND ||
+      item.status !== "DONE" ||
+      summary.role !== "commit" ||
+      summary.source !== "split" ||
+      summary.splitBatch !== true ||
+      summary.splitBatchId !== batchId ||
+      !orgOk ||
+      !seasonOk ||
+      !springOk
+    ) {
+      throw new RegistrationHistoryError(SPLIT_BATCH_MISMATCH, 409);
+    }
+    orgs.add(item.organizationId);
+    seasonYear = item.seasonYear;
+  }
 }
 
 function stringArray(value: unknown): string[] {

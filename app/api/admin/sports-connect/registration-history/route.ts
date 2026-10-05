@@ -15,7 +15,7 @@ import {
 import { splitImportDenial } from "@/lib/sportsConnect/divisionLeagueSplit";
 import {
   classifyRegistrationHistory,
-  existingKeyTargets,
+  enrollmentReadTargets,
   inventoryRegistrationPrograms,
   normalizeHistoryMapping,
   programNamesInRows,
@@ -135,6 +135,7 @@ async function preview(form: FormData, adminId: string, isMaster: boolean) {
     fileSha256: uploaded.fileSha256,
     preview: classified.preview,
     normalizedMapping: classified.normalizedMapping,
+    classificationDigest: classified.classificationDigest,
     createdByAdminId: adminId,
   });
   return NextResponse.json({
@@ -234,7 +235,7 @@ function classifiedTargets(rows: Record<string, unknown>[], mapping: HistoryMapp
 }
 
 async function loadExistingKeys(mapping: NormalizedHistoryMappingEntry[]) {
-  const targets = existingKeyTargets(mapping);
+  const targets = enrollmentReadTargets(mapping);
   if (!targets.length) return [];
   return prisma.enrollment.findMany({
     where: { OR: targets },

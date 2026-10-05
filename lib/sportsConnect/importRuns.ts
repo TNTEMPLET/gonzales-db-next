@@ -5,6 +5,7 @@ import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 
 import { PLAYER_REG_HISTORY_REPORT_KIND } from "./registrationHistoryKind";
+import { assertImportRunSummaryPatch } from "./splitBatchSummary";
 import type {
   SportsConnectImportRunView,
   SportsConnectReportKind,
@@ -213,9 +214,10 @@ export async function updateImportRun(input: {
 }): Promise<SportsConnectImportRunView | null> {
   const existing = await prisma.sportsConnectImportRun.findFirst({
     where: { id: input.id, organizationId: input.organizationId },
-    select: { id: true, status: true },
+    select: { id: true, status: true, summary: true },
   });
   if (!existing) return null;
+  assertImportRunSummaryPatch(existing.summary, input.summary);
 
   const terminal =
     input.status === "DONE" ||

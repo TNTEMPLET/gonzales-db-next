@@ -5,6 +5,7 @@ import {
   getImportRun,
   updateImportRun,
 } from "@/lib/sportsConnect/importRuns";
+import { ImportRunSummaryError } from "@/lib/sportsConnect/splitBatchSummary";
 import type { SportsConnectRunStatus } from "@/lib/sportsConnect/types";
 import { isContentOrgId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
@@ -100,45 +101,53 @@ export async function PATCH(
   }
 
   const { id } = await context.params;
-  const data = await updateImportRun({
-    id: id?.trim() || "",
-    organizationId: targetOrg,
-    status,
-    summary:
-      body.summary === undefined ? undefined : parseSummary(body.summary),
-    errorMessage:
-      body.errorMessage === undefined
-        ? undefined
-        : typeof body.errorMessage === "string"
-          ? body.errorMessage
-          : null,
-    teamPlayerBatchId:
-      body.teamPlayerBatchId === undefined
-        ? undefined
-        : typeof body.teamPlayerBatchId === "string"
-          ? body.teamPlayerBatchId
-          : null,
-    coachBatchId:
-      body.coachBatchId === undefined
-        ? undefined
-        : typeof body.coachBatchId === "string"
-          ? body.coachBatchId
-          : null,
-    sourceFileName:
-      body.sourceFileName === undefined
-        ? undefined
-        : typeof body.sourceFileName === "string"
-          ? body.sourceFileName
-          : null,
-    presetId:
-      body.presetId === undefined
-        ? undefined
-        : typeof body.presetId === "string"
-          ? body.presetId
-          : null,
-    markComplete:
-      status === "DONE" || status === "FAILED" || status === "CANCELLED",
-  });
+  let data;
+  try {
+    data = await updateImportRun({
+      id: id?.trim() || "",
+      organizationId: targetOrg,
+      status,
+      summary:
+        body.summary === undefined ? undefined : parseSummary(body.summary),
+      errorMessage:
+        body.errorMessage === undefined
+          ? undefined
+          : typeof body.errorMessage === "string"
+            ? body.errorMessage
+            : null,
+      teamPlayerBatchId:
+        body.teamPlayerBatchId === undefined
+          ? undefined
+          : typeof body.teamPlayerBatchId === "string"
+            ? body.teamPlayerBatchId
+            : null,
+      coachBatchId:
+        body.coachBatchId === undefined
+          ? undefined
+          : typeof body.coachBatchId === "string"
+            ? body.coachBatchId
+            : null,
+      sourceFileName:
+        body.sourceFileName === undefined
+          ? undefined
+          : typeof body.sourceFileName === "string"
+            ? body.sourceFileName
+            : null,
+      presetId:
+        body.presetId === undefined
+          ? undefined
+          : typeof body.presetId === "string"
+            ? body.presetId
+            : null,
+      markComplete:
+        status === "DONE" || status === "FAILED" || status === "CANCELLED",
+    });
+  } catch (err) {
+    if (err instanceof ImportRunSummaryError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
+    throw err;
+  }
 
   if (!data) {
     return NextResponse.json({ error: "Import run not found" }, { status: 404 });
