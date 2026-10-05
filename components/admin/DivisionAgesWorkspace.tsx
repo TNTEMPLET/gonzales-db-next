@@ -99,6 +99,11 @@ function GearIcon() {
   );
 }
 
+function withSeasonBaseline(org: ContentOrgId, body: Record<string, unknown>, token: string | undefined) {
+  if (org === "fallball") return body;
+  return { ...body, baselineToken: token ?? "" };
+}
+
 function issueLines(payload: Record<string, unknown> | null, fallback: string): string[] {
   if (payload && Array.isArray(payload.issues) && payload.issues.every((issue) => typeof issue === "string")) {
     return payload.issues as string[];
@@ -795,11 +800,13 @@ export default function DivisionAgesWorkspace({
       {
         method: "PUT",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          cutoff: parsed.data.cutoff,
-          divisions: parsed.data.divisions,
-          confirm: parsed.data.confirm,
-        }),
+        body: JSON.stringify(
+          withSeasonBaseline(org, {
+            cutoff: parsed.data.cutoff,
+            divisions: parsed.data.divisions,
+            confirm: parsed.data.confirm,
+          }, card.baselineToken),
+        ),
       },
     );
     const payload = await readJson(response);
@@ -899,12 +906,18 @@ export default function DivisionAgesWorkspace({
         ? await fetch(`/api/admin/division-ages/copy?org=${encodeURIComponent(org)}`, {
             method: "POST",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ fromSeasonYear: seasonYear - 1, toSeasonYear: seasonYear }),
+            body: JSON.stringify(
+              withSeasonBaseline(
+                org,
+                { fromSeasonYear: seasonYear - 1, toSeasonYear: seasonYear },
+                card?.baselineToken,
+              ),
+            ),
           })
         : await fetch(`/api/admin/division-ages/season?org=${encodeURIComponent(org)}&seasonYear=${seasonYear}`, {
             method: "PUT",
             headers: { "content-type": "application/json" },
-            body: JSON.stringify({ resetToLeagueDefaults: true }),
+            body: JSON.stringify(withSeasonBaseline(org, { resetToLeagueDefaults: true }, card?.baselineToken)),
           });
     const payload = await readJson(response);
     if (!response.ok || !isSeasonPayload(payload)) {

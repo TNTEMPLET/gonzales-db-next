@@ -14,6 +14,9 @@ import {
   STALE_SAVE_ERROR,
   type DivisionAgeDb,
   type LeagueDefaultsRow,
+  clearSeasonDivisionAges,
+  copyFromSeason,
+  saveSeasonDivisionAges,
   saveSpringCombinedSeasons,
   undoSpringCombinedSeasons,
   type SpringCombinedDb,
@@ -820,6 +823,143 @@ describe("combined spring save", () => {
 
   it("tells the editor to reload when the baseline is stale", () => {
     assert.equal(STALE_SAVE_ERROR, "Someone else saved changes. Reload this page to see them.");
+  });
+
+  it("rejects a stale single-league write after a combined save and accepts a fresh token", async () => {
+    const memory = memorySpring();
+    const current = leagues();
+    const stateA = {
+      cutoff: DYB,
+      divisions: [division({ code: "8U", label: "8U", minAge: 8, maxAge: 8 })],
+    };
+    memory.seasons.set("gonzales:2027", stateA);
+    const tokenA = divisionAgesBaselineToken(stateA);
+    const proposed = proposedFrom(current);
+    const eight = proposed.divisions.find((row) => row.code === "gonzales:8U");
+    assert.ok(eight);
+    eight.youngestBirthdate = "2019-05-15";
+    const combined = await saveSpringCombinedSeasons(memory.db, SEASON, proposed, current, "admin-1", {
+      baselines: baselinesFor(memory.seasons),
+    });
+    assert.equal(combined.ok, true);
+    const stateB = structuredClone(memory.seasons.get("gonzales:2027"));
+    const ascensionB = structuredClone(memory.seasons.get("ascension:2027"));
+    const divisionDb: DivisionAgeDb = {
+      async findLeagueDefaults() {
+        return {
+          organizationId: "gonzales",
+          cutoffMonth: 4,
+          cutoffDay: 30,
+          yearOffset: 0,
+          divisionsJson: [],
+          updatedAt: new Date("2026-01-01T00:00:00.000Z"),
+          updatedByAdminId: "league",
+        };
+      },
+      async saveLeagueDefaults(input) {
+        return { ...input, updatedAt: new Date(), updatedByAdminId: input.updatedByAdminId };
+      },
+      async findSeasonDivisionAges(organizationId, seasonYear) {
+        const key = `${organizationId}:${seasonYear}`;
+        return memory.seasons.has(key) ? (memory.seasons.get(key) ?? null) : null;
+      },
+      async saveSeasonDivisionAges(organizationId, seasonYear, divisionAgesJson) {
+        memory.seasons.set(`${organizationId}:${seasonYear}`, divisionAgesJson);
+      },
+    };
+    const payloadC = {
+      cutoff: DYB,
+      divisions: [division({ code: "8U", label: "Stale", minAge: 8, maxAge: 8 })],
+      confirm: false,
+    };
+    const staleSave = await saveSeasonDivisionAges(divisionDb, "gonzales", SEASON, payloadC, "admin-2", {
+      baselineToken: tokenA,
+    });
+    assert.equal(staleSave.ok, false);
+    if (!staleSave.ok) {
+      assert.equal(staleSave.status, 409);
+      assert.equal(staleSave.error, STALE_SAVE_ERROR);
+    }
+    assert.deepEqual(memory.seasons.get("gonzales:2027"), stateB);
+    assert.deepEqual(memory.seasons.get("ascension:2027"), ascensionB);
+
+    const missing = await saveSeasonDivisionAges(divisionDb, "gonzales", SEASON, payloadC, "admin-2");
+    assert.equal(missing.ok, false);
+    if (!missing.ok) assert.equal(missing.status, 409);
+    assert.deepEqual(memory.seasons.get("gonzales:2027"), stateB);
+
+    const staleReset = await clearSeasonDivisionAges(divisionDb, "gonzales", SEASON, "admin-2", tokenA);
+    assert.equal(staleReset.ok, false);
+    if (!staleReset.ok) assert.equal(staleReset.error, STALE_SAVE_ERROR);
+    assert.deepEqual(memory.seasons.get("gonzales:2027"), stateB);
+
+    memory.seasons.set("gonzales:2026", {
+      cutoff: DYB,
+      divisions: [division({ code: "9U", label: "9U", minAge: 9, maxAge: 9 })],
+    });
+    const staleCopy = await copyFromSeason(divisionDb, "gonzales", 2026, SEASON, "admin-2", undefined, tokenA);
+    assert.equal(staleCopy.ok, false);
+    if (!staleCopy.ok) assert.equal(staleCopy.status, 409);
+    assert.deepEqual(memory.seasons.get("gonzales:2027"), stateB);
+
+    const freshToken = divisionAgesBaselineToken(memory.seasons.get("gonzales:2027") ?? null);
+    const fresh = await saveSeasonDivisionAges(divisionDb, "gonzales", SEASON, payloadC, "admin-2", {
+      baselineToken: freshToken,
+    });
+    assert.equal(fresh.ok, true);
+    if (!fresh.ok) return;
+    assert.equal(fresh.value.divisions[0]?.label, "Stale");
+    assert.equal(fresh.value.baselineToken, divisionAgesBaselineToken(memory.seasons.get("gonzales:2027") ?? null));
+    assert.notEqual(fresh.value.baselineToken, freshToken);
+
+    const again = await saveSeasonDivisionAges(
+      divisionDb,
+      "gonzales",
+      SEASON,
+      {
+        cutoff: DYB,
+        divisions: [division({ code: "8U", label: "Second", minAge: 8, maxAge: 8 })],
+        confirm: false,
+      },
+      "admin-2",
+      { baselineToken: fresh.value.baselineToken },
+    );
+    assert.equal(again.ok, true);
+    if (!again.ok) return;
+    assert.equal(again.value.divisions[0]?.label, "Second");
+    assert.notEqual(again.value.baselineToken, fresh.value.baselineToken);
+
+    const fall = await saveSeasonDivisionAges(
+      divisionDb,
+      "fallball",
+      SEASON,
+      { cutoff: DYB, divisions: [division({ code: "9U", label: "Fall", minAge: 9, maxAge: 9 })], confirm: false },
+      "admin-2",
+    );
+    assert.equal(fall.ok, true);
+    const gonzalesAfterFall = memory.seasons.get("gonzales:2027") as { divisions: DivisionAgeConfig[] };
+    assert.equal(gonzalesAfterFall.divisions[0]?.label, "Second");
+    assert.equal(memory.seasons.has("fallball:2027"), true);
+
+    const workspace = readFileSync(new URL("../../../../components/admin/DivisionAgesWorkspace.tsx", import.meta.url), "utf8");
+    assert.match(workspace, /function withSeasonBaseline/);
+    assert.match(workspace, /org === "fallball"/);
+    const forecast = readFileSync(new URL("../../../../components/admin/DivisionAgesForecast.tsx", import.meta.url), "utf8");
+    assert.match(forecast, /baselineToken/);
+    assert.match(forecast, /setReloadToken/);
+    const seasonRoute = readFileSync(new URL("../../../../app/api/admin/division-ages/season/route.ts", import.meta.url), "utf8");
+    assert.match(seasonRoute, /baselineToken/);
+    const copyRoute = readFileSync(new URL("../../../../app/api/admin/division-ages/copy/route.ts", import.meta.url), "utf8");
+    assert.match(copyRoute, /readBaselineToken/);
+    const persistence = readFileSync(new URL("../../../ageDivisions/persistence.ts", import.meta.url), "utf8");
+    const singleSave = persistence.slice(
+      persistence.indexOf("export async function saveSeasonDivisionAges"),
+      persistence.indexOf("export async function clearSeasonDivisionAges"),
+    );
+    assert.ok(singleSave.indexOf("rejectStaleSeasonBaseline") < singleSave.indexOf("db.saveSeasonDivisionAges"));
+    const store = readFileSync(new URL("../../../ageDivisions/store.ts", import.meta.url), "utf8");
+    const lockHelper = store.slice(store.indexOf("function withSpringSeasonLock"), store.indexOf("export function getLeagueDefaults"));
+    assert.match(lockHelper, /await lockSpringDivisionAges\(tx, seasonYear\);\s*return run\(/);
   });
 });
 

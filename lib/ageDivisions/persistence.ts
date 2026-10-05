@@ -355,6 +355,35 @@ export async function getSeasonDivisionAges(
   return withBaseline(leagueSeasonView(league.view, league.view.storageNote), null);
 }
 
+function seasonBaselineRequired(org: string): boolean {
+  return (SPRING_LEAGUE_ORGS as readonly string[]).includes(org);
+}
+
+/**
+ * Gonzales and Ascension season rows share the combined-save lock. The caller
+ * must already hold that lock. Fall Ball is not checked.
+ */
+async function rejectStaleSeasonBaseline(
+  db: DivisionAgeDb,
+  org: ContentOrgId,
+  seasonYear: number,
+  baselineToken: string | undefined,
+): Promise<SaveFailure | null> {
+  if (!seasonBaselineRequired(org)) return null;
+  if (!baselineToken) return { ok: false, status: 409, error: STALE_SAVE_ERROR };
+  let raw: unknown | null;
+  try {
+    raw = await db.findSeasonDivisionAges(org, seasonYear);
+  } catch (error) {
+    if (!isDivisionAgeStorageMissing(error)) throw error;
+    return { ok: false, status: 503, error: DIVISION_AGES_SAVE_NOT_READY };
+  }
+  if (baselineToken !== divisionAgesBaselineToken(raw)) {
+    return { ok: false, status: 409, error: STALE_SAVE_ERROR };
+  }
+  return null;
+}
+
 async function readSeasonRecord(
   db: DivisionAgeDb,
   org: ContentOrgId,
@@ -372,8 +401,10 @@ export async function saveSeasonDivisionAges(
   seasonYear: number,
   input: { cutoff: SeasonDivisionAgesRecord["cutoff"]; divisions: SeasonDivisionAgesRecord["divisions"]; confirm: boolean },
   adminId: string,
-  options?: { confirmation?: ConfirmationMode; now?: Date },
+  options?: { confirmation?: ConfirmationMode; now?: Date; baselineToken?: string },
 ): Promise<SaveSuccess<SeasonDivisionAgesView> | SaveFailure> {
+  const baseline = await rejectStaleSeasonBaseline(db, org, seasonYear, options?.baselineToken);
+  if (baseline) return baseline;
   const now = options?.now ?? new Date();
   const confirmation = options?.confirmation ?? (input.confirm ? "set" : "preserve");
   const divisions = withoutRedundantOverrides(input.divisions, input.cutoff, seasonYear);
@@ -415,7 +446,10 @@ export async function clearSeasonDivisionAges(
   org: ContentOrgId,
   seasonYear: number,
   adminId: string,
+  baselineToken?: string,
 ): Promise<SaveSuccess<SeasonDivisionAgesView> | SaveFailure> {
+  const baseline = await rejectStaleSeasonBaseline(db, org, seasonYear, baselineToken);
+  if (baseline) return baseline;
   try {
     await db.saveSeasonDivisionAges(org, seasonYear, null);
   } catch (error) {
@@ -434,6 +468,7 @@ export async function copyFromSeason(
   toYear: number,
   adminId: string,
   now?: Date,
+  baselineToken?: string,
 ): Promise<SaveSuccess<SeasonDivisionAgesView> | SaveFailure> {
   if (!Number.isInteger(fromYear) || !Number.isInteger(toYear)) {
     return { ok: false, status: 400, error: "Season year must be a whole number." };
@@ -455,6 +490,8 @@ export async function copyFromSeason(
   if (!parsed.ok) {
     return { ok: false, status: 404, error: `No saved division ages for ${fromYear}.` };
   }
+  const baseline = await rejectStaleSeasonBaseline(db, org, toYear, baselineToken);
+  if (baseline) return baseline;
   const delta = toYear - fromYear;
   const divisions = parsed.data.divisions.map((division) => {
     const next = { ...division };
@@ -468,7 +505,7 @@ export async function copyFromSeason(
     toYear,
     { cutoff: parsed.data.cutoff, divisions, confirm: false },
     adminId,
-    { confirmation: "clear", now },
+    { confirmation: "clear", now, baselineToken },
   );
 }
 

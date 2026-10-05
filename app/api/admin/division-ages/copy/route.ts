@@ -4,6 +4,15 @@ import { copyFromSeason } from "@/lib/ageDivisions/store";
 
 import { guardDivisionAges, readSeasonYear } from "../guard";
 
+function readBaselineToken(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const value = (body as { baselineToken?: unknown }).baselineToken;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 128) return undefined;
+  return trimmed;
+}
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -26,7 +35,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "fromSeasonYear and toSeasonYear must be four-digit years." }, { status: 400 });
   }
   try {
-    const copied = await copyFromSeason(guard.org, fromSeasonYear, toSeasonYear, guard.adminId);
+    const copied = await copyFromSeason(
+      guard.org,
+      fromSeasonYear,
+      toSeasonYear,
+      guard.adminId,
+      readBaselineToken(body),
+    );
     if (!copied.ok) {
       return NextResponse.json({ error: copied.error, issues: copied.issues ?? [] }, { status: copied.status });
     }

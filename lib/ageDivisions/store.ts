@@ -123,16 +123,27 @@ export function saveSeasonDivisionAges(
     confirm: boolean;
   },
   adminId: string,
+  baselineToken?: string,
 ) {
-  return withSpringSeasonLock(org, seasonYear, (locked) => writeSeasonDivisionAges(locked, org, seasonYear, input, adminId));
+  return withSpringSeasonLock(org, seasonYear, (locked) =>
+    writeSeasonDivisionAges(locked, org, seasonYear, input, adminId, { baselineToken }),
+  );
 }
 
-export function clearSeasonDivisionAges(org: ContentOrgId, seasonYear: number, adminId: string) {
-  return withSpringSeasonLock(org, seasonYear, (locked) => clearSeason(locked, org, seasonYear, adminId));
+export function clearSeasonDivisionAges(org: ContentOrgId, seasonYear: number, adminId: string, baselineToken?: string) {
+  return withSpringSeasonLock(org, seasonYear, (locked) => clearSeason(locked, org, seasonYear, adminId, baselineToken));
 }
 
-export function copyFromSeason(org: ContentOrgId, fromYear: number, toYear: number, adminId: string) {
-  return withSpringSeasonLock(org, toYear, (locked) => copySeason(locked, org, fromYear, toYear, adminId));
+export function copyFromSeason(
+  org: ContentOrgId,
+  fromYear: number,
+  toYear: number,
+  adminId: string,
+  baselineToken?: string,
+) {
+  return withSpringSeasonLock(org, toYear, (locked) =>
+    copySeason(locked, org, fromYear, toYear, adminId, undefined, baselineToken),
+  );
 }
 
 const springDb: SpringCombinedDb = {

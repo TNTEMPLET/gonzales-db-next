@@ -9,6 +9,15 @@ import {
 
 import { guardDivisionAges, readSeasonYear } from "../guard";
 
+function readBaselineToken(body: unknown): string | undefined {
+  if (!body || typeof body !== "object") return undefined;
+  const value = (body as { baselineToken?: unknown }).baselineToken;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed || trimmed.length > 128) return undefined;
+  return trimmed;
+}
+
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
@@ -41,13 +50,14 @@ export async function PUT(request: NextRequest) {
     return NextResponse.json({ error: "seasonYear must be a four-digit year." }, { status: 400 });
   }
   const body = await request.json().catch(() => null);
+  const baselineToken = readBaselineToken(body);
   const parsed = validateSeasonWrite(body, seasonYear);
   if (!parsed.ok) {
     return NextResponse.json({ error: parsed.error, issues: parsed.issues }, { status: 400 });
   }
   try {
     const saved = parsed.data.reset
-      ? await clearSeasonDivisionAges(guard.org, seasonYear, guard.adminId)
+      ? await clearSeasonDivisionAges(guard.org, seasonYear, guard.adminId, baselineToken)
       : await saveSeasonDivisionAges(
           guard.org,
           seasonYear,
@@ -57,6 +67,7 @@ export async function PUT(request: NextRequest) {
             confirm: parsed.data.confirm,
           },
           guard.adminId,
+          baselineToken,
         );
     if (!saved.ok) {
       return NextResponse.json(
