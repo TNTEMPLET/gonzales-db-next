@@ -25,6 +25,8 @@ import {
   type RosterSize,
 } from "../index";
 
+import { divisionMixShares, matchMixRegistration } from "../forecastMix";
+
 const SEASON = 2027;
 
 function division(
@@ -1127,4 +1129,116 @@ describe("spring overlap mix weights", () => {
     assert.equal(compared.rows.find((row) => row.code === "MINORS")?.proposedMix?.sharePercent, 0);
     assert.equal(compared.rows.find((row) => row.code === "12U")?.proposed.pool, 12);
   });
+  it("maps SportsConnect Ascension and Gonzales history names onto Forecast divisions", () => {
+    const ascension = [
+      division("3-4U TB", 3, 4, 1),
+      division("5U TB", 5, 5, 2),
+      division("6U MOD", 6, 6, 3),
+      division("6U CP", 6, 6, 4),
+      division("7U MINOR", 7, 7, 5),
+      division("8U MINOR", 8, 8, 6),
+      division("7-8U MAJOR", 7, 8, 7),
+      division("9-10U MAJOR", 9, 10, 8),
+      division("11-12U MAJOR", 11, 12, 9),
+    ];
+    ascension[0]!.label = "Tee Ball 3-4";
+    ascension[1]!.label = "Tee Ball 5";
+    ascension[2]!.label = "Modified Tee Ball/CP";
+    ascension[3]!.label = "Coach Pitch";
+    ascension[4]!.label = "Coach Pitch 7 Minor LLB";
+    ascension[5]!.label = "Coach Pitch 8 Minor LLB";
+    ascension[6]!.label = "Coach Pitch 7-8 Major LLB";
+    ascension[7]!.label = "9-10 Major LLB";
+    ascension[8]!.label = "11-12 Major LLB";
+
+    const cases: Array<[string, string]> = [
+      ["Little League Coaches Pitch 7 year-old MINOR", "7U MINOR"],
+      ["Little League Coaches Pitch 8 year-old MINOR", "8U MINOR"],
+      ["Little League Coaches Pitch 7-8 year-old MAJOR", "7-8U MAJOR"],
+      ["Little League 9-10 year-old MAJOR", "9-10U MAJOR"],
+      ["Little League 11-12 year-old MAJOR", "11-12U MAJOR"],
+      ["Little League Tee Ball, 3-4 year-olds", "3-4U TB"],
+      ["Little League Tee Ball, 5 year-olds", "5U TB"],
+      ["Little League Modified Tee Ball/CP, 6 year-olds", "6U MOD"],
+      ["Little League Coaches Pitch, 6 year-olds", "6U CP"],
+    ];
+    for (const [historyName, code] of cases) {
+      assert.equal(matchMixRegistration(historyName, ascension), code, historyName);
+    }
+
+    const gonzales = [
+      division("9U KP", 9, 9, 1),
+      division("10U KP", 10, 10, 2),
+      division("11-12U", 11, 12, 3),
+      division("13-14U", 13, 14, 4),
+      division("15-17U", 15, 17, 5),
+    ];
+    gonzales[0]!.label = "9U Kid Pitch";
+    gonzales[1]!.label = "10U Kid Pitch";
+    gonzales[2]!.label = "11/12U";
+    gonzales[3]!.label = "13/14U";
+    gonzales[4]!.label = "15/17U";
+    assert.equal(matchMixRegistration("9 year-old DYB", gonzales), "9U KP");
+    assert.equal(matchMixRegistration("10 year-old DYB", gonzales), "10U KP");
+    assert.equal(matchMixRegistration("11/12 year-old DYB", gonzales), "11-12U");
+    assert.equal(matchMixRegistration("13/15 year-old Diamond Boys Baseball", gonzales), "13-14U");
+    assert.equal(matchMixRegistration("15/17 year-old Diamond Boys Pre-Majors", gonzales), "15-17U");
+  });
+
+  it("weights Ascension Coach Pitch overlaps from SportsConnect Spring mix (not even split)", () => {
+    const config: ForecastConfig = {
+      cutoff: { cutoffMonth: 8, cutoffDay: 31, yearOffset: 0 },
+      divisions: [
+        { code: "7U MINOR", label: "Coach Pitch 7 Minor LLB", minAge: 7, maxAge: 7, sortOrder: 1 },
+        { code: "8U MINOR", label: "Coach Pitch 8 Minor LLB", minAge: 8, maxAge: 8, sortOrder: 2 },
+        { code: "7-8U MAJOR", label: "Coach Pitch 7-8 Major LLB", minAge: 7, maxAge: 8, sortOrder: 3 },
+        { code: "9-10U MAJOR", label: "9-10 Major LLB", minAge: 9, maxAge: 10, sortOrder: 4 },
+      ],
+    };
+    // Birthdates that sit in the 7–8 shared window under an Aug 31, 2027 cutoff.
+    const age7 = "2019-09-01";
+    const age8 = "2018-09-01";
+    const age910 = "2016-09-01";
+    const seasons: MixSeason[] = [
+      {
+        seasonYear: 2026,
+        players: [
+          players(age7, "Little League Coaches Pitch 7 year-old MINOR", 118),
+          players(age8, "Little League Coaches Pitch 8 year-old MINOR", 124),
+          players(age7, "Little League Coaches Pitch 7-8 year-old MAJOR", 24),
+          players(age8, "Little League Coaches Pitch 7-8 year-old MAJOR", 24),
+          players(age910, "Little League 9-10 year-old MAJOR", 48),
+        ],
+      },
+    ];
+    const mix = divisionMixShares({ config, targetSeasonYear: SEASON, seasons });
+    const seven = mix.get("7U MINOR");
+    const eight = mix.get("8U MINOR");
+    const major78 = mix.get("7-8U MAJOR");
+    assert.ok(seven && eight && major78);
+    assert.equal(seven.evenSplit, false);
+    assert.equal(eight.evenSplit, false);
+    assert.equal(major78.evenSplit, false);
+    assert.notEqual(seven.note, EVEN_SPLIT_MIX_NOTE);
+    // 118 + 124 + 48 = 290 in the 7/8 group; 9-10 is its own non-overlap (or different group).
+    const coachTotal = 118 + 124 + 48;
+    assert.ok(Math.abs(seven.share - 118 / coachTotal) < 1e-9);
+    assert.ok(Math.abs(eight.share - 124 / coachTotal) < 1e-9);
+    assert.ok(Math.abs(major78.share - 48 / coachTotal) < 1e-9);
+    assert.equal(seven.sharePercent, Math.round((100 * 118) / coachTotal));
+    assert.equal(eight.sharePercent, Math.round((100 * 124) / coachTotal));
+    assert.equal(major78.sharePercent, Math.round((100 * 48) / coachTotal));
+
+    const compared = compareConfigs(
+      [bucket(age7, 100), bucket(age8, 100), bucket(age910, 40)],
+      config,
+      config,
+      SEASON,
+      { retentionRate: 1, includeFeeder: false, rosterFor, mix: { seasons } },
+    );
+    assert.equal(compared.rows.find((row) => row.code === "7U MINOR")?.currentMix?.evenSplit, false);
+    assert.equal(compared.rows.find((row) => row.code === "9-10U MAJOR")?.currentMix, null);
+  });
+
+
 });
