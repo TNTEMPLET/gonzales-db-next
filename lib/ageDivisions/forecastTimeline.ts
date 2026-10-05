@@ -5,7 +5,7 @@
  */
 
 import { calculatedRange, coverageWarnings, effectiveRange, leagueAge } from "./compute";
-import { stripBirthdatesMatchingCutoff } from "./draft";
+import { seasonCutoffIso, stripBirthdatesMatchingCutoff } from "./draft";
 import { applyLinkedEdge, combineDivisions, type LinkEditOptions, type ProposedConfig } from "./forecastView";
 import type { DivisionAgeConfig } from "./types";
 
@@ -215,6 +215,115 @@ export function applyCutoffPreset(
       return next;
     }),
   };
+}
+
+/** Gonzales rows are DYB. Ascension rows are LLB. A label suffix is the fallback. */
+export function combinedDivisionLeague(division: { code: string; label: string }): "dyb" | "llb" | null {
+  if (division.code.startsWith("gonzales:")) return "dyb";
+  if (division.code.startsWith("ascension:")) return "llb";
+  if (/(?:^|\s)DYB$/i.test(division.label)) return "dyb";
+  if (/(?:^|\s)LLB$/i.test(division.label)) return "llb";
+  return null;
+}
+
+function presetCutoff(preset: Exclude<CutoffPresetId, "custom">): { cutoffMonth: number; cutoffDay: number } {
+  return preset === "little-league" ? { cutoffMonth: 8, cutoffDay: 31 } : { cutoffMonth: 4, cutoffDay: 30 };
+}
+
+function windowsTouch(
+  left: { oldest: string; youngest: string },
+  right: { oldest: string; youngest: string },
+): boolean {
+  if (!left.oldest || !left.youngest || !right.oldest || !right.youngest) return false;
+  if (left.oldest <= right.youngest && right.oldest <= left.youngest) return false;
+  return addDays(left.youngest, 1) === right.oldest || addDays(right.youngest, 1) === left.oldest;
+}
+
+/**
+ * Combined Spring keeps one shell cutoff and bakes each league's window as
+ * overrides. A preset rewrites only that league's normal rows (LL Aug 31 for
+ * LLB, DYB Apr 30 for DYB). The other league stays put. A row whose window is
+ * not exactly one of those two age windows, such as 7U or 8U Minors, stays
+ * put. A normal row that meets a row we are not moving stays put too, so a
+ * joined line does not open. The shell cutoff does not change.
+ */
+export function applyCombinedCutoffPreset(
+  config: ProposedConfig,
+  preset: Exclude<CutoffPresetId, "custom">,
+  seasonYear: number,
+): ProposedConfig {
+  const league = preset === "little-league" ? "llb" : "dyb";
+  const shellIso = seasonCutoffIso(config.cutoff, seasonYear);
+  const standardIsos = (["little-league", "dyb"] as const).map((id) =>
+    seasonCutoffIso({ ...presetCutoff(id), yearOffset: config.cutoff.yearOffset }, seasonYear),
+  );
+  const targetIso = seasonCutoffIso(
+    { ...presetCutoff(preset), yearOffset: config.cutoff.yearOffset },
+    seasonYear,
+  );
+  const ranges = config.divisions.map((division) => effectiveRange(division, shellIso));
+  const candidate = new Set<number>();
+  config.divisions.forEach((division, index) => {
+    if (combinedDivisionLeague(division) !== league) return;
+    const range = ranges[index]!;
+    const standard = standardIsos.some((iso) => sameWindow(range, calculatedRange(division, iso)));
+    if (standard) candidate.add(index);
+  });
+  let settled = false;
+  while (!settled) {
+    settled = true;
+    for (const index of [...candidate]) {
+      const range = ranges[index]!;
+      const held = ranges.some((other, otherIndex) => otherIndex !== index && !candidate.has(otherIndex) && windowsTouch(range, other));
+      if (!held) continue;
+      candidate.delete(index);
+      settled = false;
+      break;
+    }
+  }
+  if (candidate.size === 0) return { cutoff: { ...config.cutoff }, divisions: cloneDivisions(config.divisions) };
+  return {
+    cutoff: { ...config.cutoff },
+    divisions: config.divisions.map((division, index) => {
+      if (!candidate.has(index)) return { ...division };
+      const desired = calculatedRange(division, targetIso);
+      return stripBirthdatesMatchingCutoff(
+        { ...division, oldestBirthdate: desired.oldest, youngestBirthdate: desired.youngest },
+        shellIso,
+      );
+    }),
+  };
+}
+
+/** True when every normal row in that league already uses the preset window. */
+export function combinedPresetApplied(
+  config: ProposedConfig,
+  preset: Exclude<CutoffPresetId, "custom">,
+  seasonYear: number,
+): boolean {
+  const league = preset === "little-league" ? "llb" : "dyb";
+  const shellIso = seasonCutoffIso(config.cutoff, seasonYear);
+  const targetIso = seasonCutoffIso(
+    { ...presetCutoff(preset), yearOffset: config.cutoff.yearOffset },
+    seasonYear,
+  );
+  const rows = config.divisions.filter((division) => combinedDivisionLeague(division) === league);
+  if (rows.length === 0) return false;
+  return rows.every((division) => {
+    const range = effectiveRange(division, shellIso);
+    const onPreset = sameWindow(range, calculatedRange(division, targetIso));
+    if (onPreset) return true;
+    const standard = (["little-league", "dyb"] as const).some((id) =>
+      sameWindow(
+        range,
+        calculatedRange(
+          division,
+          seasonCutoffIso({ ...presetCutoff(id), yearOffset: config.cutoff.yearOffset }, seasonYear),
+        ),
+      ),
+    );
+    return !standard;
+  });
 }
 
 type OrderedDivision = {

@@ -340,6 +340,21 @@ export function combinedForecastConfig(
 }
 
 /**
+ * Return rate for the combined forecast. An edited percent wins. Otherwise
+ * the count uses the same 100% default the box shows. This does not read or
+ * change a per-league setting.
+ */
+export function combinedForecastRetention(
+  override: number | undefined,
+  fallback: number,
+): { applied: number; source: "default" | "override" } {
+  if (typeof override === "number" && Number.isFinite(override)) {
+    return { applied: override, source: "override" };
+  }
+  return { applied: fallback, source: "default" };
+}
+
+/**
  * Saved league windows are the current side. A proposed config from the
  * editor is the other side. Omitting it compares the saved table with itself.
  */

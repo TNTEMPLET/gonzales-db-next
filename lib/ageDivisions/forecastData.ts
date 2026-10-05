@@ -14,6 +14,7 @@ import type { EnsureAdminResult } from "@/lib/auth/ensureAdminModule";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 import {
+  combinedForecastRetention,
   dedupeSpringPool,
   springForecastComparison,
   isSpringLeagueOrg,
@@ -860,8 +861,9 @@ export async function runSpringCombinedForecast(
         .map((player) => ({ matchKey: player.matchKey, birthDate: player.birthDate })),
       "own",
     );
+    const retention = combinedForecastRetention(parsedBody.data.retentionRate, DEFAULT_RETURN_RATE);
     const compared = compareConfigs(buckets, sides.current, sides.proposed, targetSeasonYear, {
-      retentionRate: DEFAULT_RETURN_RATE,
+      retentionRate: retention.applied,
       includeFeeder: false,
       feederShare: 0,
       rosterFor: () => DEFAULT_ROSTER,
@@ -899,7 +901,7 @@ export async function runSpringCombinedForecast(
         rate: null,
         note: "Spring combined does not include Fall Ball.",
       },
-      retention: { applied: DEFAULT_RETURN_RATE, source: "default" },
+      retention: { applied: retention.applied, source: retention.source },
       currentSource: loaded.every((entry) => entry.view?.source === "season")
         ? "season"
         : loaded.some((entry) => entry.view?.source === "league")
