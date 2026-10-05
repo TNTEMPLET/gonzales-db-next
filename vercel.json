@@ -24,5 +24,12 @@
       "path": "/api/cron/fallball-daily-report",
       "schedule": "0 12 * * *"
     }
-  ]
+  ],
+  "git": {
+    "deploymentEnabled": {
+      "*": false,
+      "main": true,
+      "preview": true
+    }
+  }
 }
