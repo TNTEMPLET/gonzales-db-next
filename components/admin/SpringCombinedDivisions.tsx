@@ -72,7 +72,7 @@ export default function SpringCombinedDivisions({
   return (
     <section className="space-y-4" data-testid="spring-combined-divisions">
       <div className="rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4 text-sm text-amber-100">
-        <p>{SPRING_COMBINED_SAVE_HINT}.</p>
+        <p>{SPRING_COMBINED_SAVE_HINT}. Use the Forecast tab to review and save.</p>
         <p className="mt-2 flex flex-wrap gap-3">
           <Link className="font-semibold text-white underline" href="/admin/season-setup/division-ages?org=gonzales">
             Gonzales DYB

@@ -3,6 +3,13 @@
  * `store.ts` binds this to Prisma. Tests use a fake. No Prisma import here.
  */
 
+import {
+  buildCombinedSaveRecords,
+  buildUndoRecords,
+  splitCombinedTable,
+  type SpringLeagueTable,
+} from "@/lib/admin/springCombined/save";
+import { SPRING_LEAGUE_ORGS, type SpringLeagueOrg } from "@/lib/admin/springCombined/view";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 import { shiftIsoDateByYears } from "./compute";
@@ -131,6 +138,7 @@ function seasonViewFromRecord(
     confirmedByAdminId: record.confirmedByAdminId ?? null,
     updatedAt: record.updatedAt ?? null,
     updatedByAdminId: record.updatedByAdminId ?? null,
+    undoAvailable: record.previous != null,
   };
 }
 
@@ -425,4 +433,137 @@ export async function copyFromSeason(
     adminId,
     { confirmation: "clear", now },
   );
+}
+
+export class SpringSaveRejected extends Error {
+  status: number;
+  constructor(message: string, status = 400) {
+    super(message);
+    this.name = "SpringSaveRejected";
+    this.status = status;
+  }
+}
+
+export type SpringSeasonTx = {
+  findSeasonDivisionAges(organizationId: string, seasonYear: number): Promise<unknown | null>;
+  saveSeasonDivisionAges(
+    organizationId: string,
+    seasonYear: number,
+    divisionAgesJson: unknown | null,
+  ): Promise<void>;
+};
+
+/**
+ * Either every save inside `run` is kept, or a throw restores the season rows
+ * to the state at the start of `run`. The Prisma store uses `$transaction`.
+ */
+export type SpringCombinedDb = {
+  transaction<T>(run: (tx: SpringSeasonTx) => Promise<T>): Promise<T>;
+};
+
+function leagueTitle(org: SpringLeagueOrg): string {
+  return org === "gonzales" ? "Gonzales DYB" : "Ascension LL";
+}
+
+function logCombined(kind: "spring_combined" | "spring_combined_undo", seasonYear: number, adminId: string, at: Date) {
+  console.info(
+    JSON.stringify({
+      event: "division_ages.save",
+      kind,
+      organizationIds: ["gonzales", "ascension"],
+      seasonYear,
+      adminId,
+      at: at.toISOString(),
+    }),
+  );
+}
+
+function tablesForSave(
+  leagues: readonly SpringLeagueTable[],
+  stored: Record<SpringLeagueOrg, unknown | null>,
+  seasonYear: number,
+): SpringLeagueTable[] {
+  return SPRING_LEAGUE_ORGS.map((org) => {
+    const league = leagues.find((row) => row.organizationId === org);
+    if (!league) throw new SpringSaveRejected("Both Spring leagues are required.");
+    const raw = stored[org];
+    if (raw == null) return { organizationId: org, cutoff: { ...league.cutoff }, divisions: league.divisions.map((division) => ({ ...division })) };
+    const parsed = validateSeasonRecord(raw, seasonYear);
+    if (!parsed.ok) {
+      throw new SpringSaveRejected(`The saved table for ${leagueTitle(org)} could not be read. Nothing was written.`);
+    }
+    return {
+      organizationId: org,
+      cutoff: { ...parsed.data.cutoff },
+      divisions: parsed.data.divisions.map((division) => ({ ...division })),
+    };
+  });
+}
+
+/**
+ * Upsert Gonzales and Ascension season division ages in one transaction.
+ * The write list is only those two orgs.
+ */
+export async function saveSpringCombinedSeasons(
+  db: SpringCombinedDb,
+  seasonYear: number,
+  proposed: { cutoff: SpringLeagueTable["cutoff"]; divisions: SpringLeagueTable["divisions"] },
+  leagues: readonly SpringLeagueTable[],
+  adminId: string,
+  now = new Date(),
+): Promise<SaveSuccess<{ undoAvailable: true }> | SaveFailure> {
+  try {
+    await db.transaction(async (tx) => {
+      const stored = {} as Record<SpringLeagueOrg, unknown | null>;
+      for (const org of SPRING_LEAGUE_ORGS) {
+        stored[org] = await tx.findSeasonDivisionAges(org, seasonYear);
+      }
+      const tables = tablesForSave(leagues, stored, seasonYear);
+      const split = splitCombinedTable(
+        { cutoff: proposed.cutoff, divisions: [...proposed.divisions] },
+        tables,
+        seasonYear,
+      );
+      if (!split.ok) throw new SpringSaveRejected(split.error);
+      const built = buildCombinedSaveRecords(split.leagues, stored, seasonYear, adminId, now);
+      if (!built.ok) throw new SpringSaveRejected(built.error);
+      for (const org of SPRING_LEAGUE_ORGS) {
+        await tx.saveSeasonDivisionAges(org, seasonYear, built.records[org]);
+      }
+    });
+  } catch (error) {
+    if (error instanceof SpringSaveRejected) return { ok: false, status: error.status, error: error.message };
+    if (isDivisionAgeStorageMissing(error)) return { ok: false, status: 503, error: DIVISION_AGES_SAVE_NOT_READY };
+    throw error;
+  }
+  logCombined("spring_combined", seasonYear, adminId, now);
+  return { ok: true, value: { undoAvailable: true } };
+}
+
+/** Put both leagues back to the snapshot from the last combined save. */
+export async function undoSpringCombinedSeasons(
+  db: SpringCombinedDb,
+  seasonYear: number,
+  adminId: string,
+  now = new Date(),
+): Promise<SaveSuccess<{ undoAvailable: false }> | SaveFailure> {
+  try {
+    await db.transaction(async (tx) => {
+      const stored = {} as Record<SpringLeagueOrg, unknown | null>;
+      for (const org of SPRING_LEAGUE_ORGS) {
+        stored[org] = await tx.findSeasonDivisionAges(org, seasonYear);
+      }
+      const built = buildUndoRecords(stored, seasonYear);
+      if (!built.ok) throw new SpringSaveRejected(built.error, 409);
+      for (const org of SPRING_LEAGUE_ORGS) {
+        await tx.saveSeasonDivisionAges(org, seasonYear, built.records[org]);
+      }
+    });
+  } catch (error) {
+    if (error instanceof SpringSaveRejected) return { ok: false, status: error.status, error: error.message };
+    if (isDivisionAgeStorageMissing(error)) return { ok: false, status: 503, error: DIVISION_AGES_SAVE_NOT_READY };
+    throw error;
+  }
+  logCombined("spring_combined_undo", seasonYear, adminId, now);
+  return { ok: true, value: { undoAvailable: false } };
 }

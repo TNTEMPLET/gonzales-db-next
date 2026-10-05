@@ -5,6 +5,8 @@ import { Prisma } from "@prisma/client";
 import prisma from "@/lib/prisma";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
+import type { SpringLeagueTable } from "@/lib/admin/springCombined/save";
+
 import {
   clearSeasonDivisionAges as clearSeason,
   copyFromSeason as copySeason,
@@ -12,10 +14,13 @@ import {
   getSeasonDivisionAges as readSeasonDivisionAges,
   saveLeagueDefaults as writeLeagueDefaults,
   saveSeasonDivisionAges as writeSeasonDivisionAges,
+  saveSpringCombinedSeasons,
+  undoSpringCombinedSeasons,
   type DivisionAgeDb,
   type LeagueDefaultsRow,
+  type SpringCombinedDb,
 } from "./persistence";
-import type { DivisionAgeConfig } from "./types";
+import type { DivisionAgeConfig, LeagueAgeRule } from "./types";
 
 function toJson(value: unknown): Prisma.InputJsonValue {
   return value as Prisma.InputJsonValue;
@@ -100,4 +105,41 @@ export function clearSeasonDivisionAges(org: ContentOrgId, seasonYear: number, a
 
 export function copyFromSeason(org: ContentOrgId, fromYear: number, toYear: number, adminId: string) {
   return copySeason(db, org, fromYear, toYear, adminId);
+}
+
+const springDb: SpringCombinedDb = {
+  transaction(run) {
+    return prisma.$transaction((tx) =>
+      run({
+        async findSeasonDivisionAges(organizationId, seasonYear) {
+          const row = await tx.seasonOrgSettings.findUnique({
+            where: { organizationId_seasonYear: { organizationId, seasonYear } },
+            select: { divisionAgesJson: true },
+          });
+          return row?.divisionAgesJson ?? null;
+        },
+        async saveSeasonDivisionAges(organizationId, seasonYear, divisionAgesJson) {
+          const stored = divisionAgesJson == null ? Prisma.DbNull : toJson(divisionAgesJson);
+          await tx.seasonOrgSettings.upsert({
+            where: { organizationId_seasonYear: { organizationId, seasonYear } },
+            create: { organizationId, seasonYear, divisionAgesJson: stored },
+            update: { divisionAgesJson: stored },
+          });
+        },
+      }),
+    );
+  },
+};
+
+export function saveSpringCombinedDivisionAges(
+  seasonYear: number,
+  proposed: { cutoff: LeagueAgeRule; divisions: DivisionAgeConfig[] },
+  leagues: readonly SpringLeagueTable[],
+  adminId: string,
+) {
+  return saveSpringCombinedSeasons(springDb, seasonYear, proposed, leagues, adminId);
+}
+
+export function undoSpringCombinedDivisionAges(seasonYear: number, adminId: string) {
+  return undoSpringCombinedSeasons(springDb, seasonYear, adminId);
 }

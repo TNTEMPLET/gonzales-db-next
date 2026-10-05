@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 
+import { cutoffPresetLabel } from "@/lib/admin/springCombined/save";
 import { calculatedRange } from "@/lib/ageDivisions/compute";
 import {
   blankDivision,
@@ -531,6 +532,11 @@ export function DivisionAgesEditorCard({
                       value={division.label}
                       onChange={(event) => patchDivision(index, { ...division, label: event.target.value })}
                     />
+                    {division.cutoffPreset ? (
+                      <p className="mt-1 text-xs text-zinc-400" data-testid="cutoff-preset-badge">
+                        {cutoffPresetLabel(division.cutoffPreset)}
+                      </p>
+                    ) : null}
                   </td>
                   <td className="py-2 pr-3">
                     <div className="flex gap-2">
