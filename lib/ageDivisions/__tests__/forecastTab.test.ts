@@ -410,6 +410,28 @@ describe("forecast tab", () => {
     assert.match(html, /data-testid="reset-proposed"/);
     assert.match(html, /born on or after May 1, 2017/);
     assert.match(html, /Also move divisions with this same window/);
+    assert.equal(html.includes('data-testid="cutoff-impact"'), false);
+  });
+
+  it("places the cutoff impact under the cutoff fields once a baseline is loaded", () => {
+    const baseline = proposedConfig;
+    const proposed = withProposedCutoff(proposedConfig, { cutoffMonth: 8, cutoffDay: 31 });
+    const html = renderToStaticMarkup(
+      view({
+        baseline,
+        proposed,
+        impactCounted: proposed,
+        forecast: response(),
+      }),
+    );
+    const timeline = html.indexOf('data-testid="birthdate-timeline"');
+    const impact = html.indexOf('data-testid="cutoff-impact"');
+    const tracks = html.indexOf('data-testid="timeline-strips"');
+    assert.ok(timeline >= 0 && impact > timeline && tracks > impact);
+    assert.match(html, /What this change does/);
+    assert.match(html, /92 → 100 \(\+8\)/);
+    assert.match(html, /data-testid="cutoff-impact-reset"/);
+    assert.match(html, /Moving the 9U cutoff to Aug 31/);
   });
 
   it("shows the effective dates, edited badge, in/out movers, and where kids move", () => {

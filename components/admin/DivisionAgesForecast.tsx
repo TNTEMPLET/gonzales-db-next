@@ -9,6 +9,7 @@ import {
 } from "@/lib/ageDivisions/draft";
 import type { ForecastSide } from "@/lib/ageDivisions/forecast";
 import { applyAgeSpan } from "@/lib/ageDivisions/forecastTimeline";
+import { DivisionAgesCutoffImpact } from "@/components/admin/DivisionAgesCutoffImpact";
 import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
 import {
   FORECAST_CAVEATS,
@@ -213,6 +214,9 @@ export function DivisionAgesForecastView({
   linkEdges,
   editedCodes,
   editedSummary,
+  impactCounted = null,
+  impactPending = false,
+  impactStale = false,
   onOrg,
   onSourceSeason,
   onTargetSeason,
@@ -246,6 +250,10 @@ export function DivisionAgesForecastView({
   linkEdges: boolean;
   editedCodes: readonly string[];
   editedSummary: string;
+  /** Proposed table that the loaded forecast belongs to. Null while the first count is in flight. */
+  impactCounted?: ProposedConfig | null;
+  impactPending?: boolean;
+  impactStale?: boolean;
   onOrg: (org: ContentOrgId) => void;
   onSourceSeason: (year: number) => void;
   onTargetSeason: (year: number) => void;
@@ -291,6 +299,10 @@ export function DivisionAgesForecastView({
             maxTeams: row.proposed.maxTeams,
           }))
         : null,
+    [forecast],
+  );
+  const impactCounts = useMemo(
+    () => (forecast ? { rows: forecast.rows, flows: forecast.flows, sharedPools: forecast.sharedPools } : null),
     [forecast],
   );
 
@@ -460,6 +472,18 @@ export function DivisionAgesForecastView({
               onReplace={onReplace}
               onLinkEdges={onLinkEdges}
               onReset={onResetProposed}
+              impact={
+                <DivisionAgesCutoffImpact
+                  baseline={baseline}
+                  proposed={proposed}
+                  counted={impactCounted}
+                  targetSeason={targetSeason}
+                  counts={impactCounts}
+                  pending={impactPending}
+                  stale={impactStale}
+                  onReset={onResetProposed}
+                />
+              }
             />
             <details className="rounded-xl border border-zinc-800" data-testid="precise-dates">
               <summary className="cursor-pointer px-3 py-3 text-sm font-semibold text-white">Precise dates</summary>
@@ -981,6 +1005,11 @@ export default function DivisionAgesForecast({
   const [forecast, setForecast] = useState<ForecastResponse | null>(null);
   const [forecastError, setForecastError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [impactHold, setImpactHold] = useState<{
+    scope: string;
+    key: string;
+    proposed: ProposedConfig | null;
+  } | null>(null);
   const retentionDirtyRef = useRef(retentionDirty);
   useEffect(() => {
     retentionDirtyRef.current = retentionDirty;
@@ -1087,6 +1116,11 @@ export default function DivisionAgesForecast({
           }
           setForecastError(null);
           setForecast(payload);
+          setImpactHold({
+            scope: `${org}|${targetSeason}`,
+            key: requestKey,
+            proposed: requestBody.proposed ? cloneProposed(requestBody.proposed) : null,
+          });
           if (!retentionDirtyRef.current) {
             setRetentionText(
               shownRetentionPercent({
@@ -1110,7 +1144,10 @@ export default function DivisionAgesForecast({
       controller.abort();
       clearTimeout(handle);
     };
-  }, [ready, requestKey, org, requestBody]);
+  }, [ready, requestKey, org, targetSeason, requestBody]);
+
+  const impactScope = `${org}|${targetSeason}`;
+  const impactForScope = impactHold?.scope === impactScope ? impactHold : null;
 
   function selectOrg(next: ContentOrgId) {
     writeStoredDraft(org, targetSeason, proposed, baseline, draftsRef.current);
@@ -1149,6 +1186,9 @@ export default function DivisionAgesForecast({
       linkEdges={linkEdges}
       editedCodes={editedCodes}
       editedSummary={editedSummary}
+      impactCounted={impactForScope?.proposed ?? null}
+      impactPending={ready && impactForScope?.key !== requestKey && (loading || !forecastError)}
+      impactStale={ready && !loading && Boolean(forecastError) && impactForScope != null && impactForScope.key !== requestKey}
       onOrg={selectOrg}
       onSourceSeason={(year) => {
         writeStoredDraft(org, targetSeason, proposed, baseline, draftsRef.current);
