@@ -721,16 +721,16 @@ function cohort(prefix: string, count: number, divisionName: string, birthDate: 
 
 describe("spring mix from enrollment history", () => {
   const older = "2015-06-01";
-  const younger = "2016-08-01";
 
   it("weights Gonzales by the prior Spring mix and skips an empty later season", async () => {
     const reader = new FakeReader();
     reader.listEnrollmentSeasons = async () => [2025, 2026];
+    // Spring 2025 windows for ages 10–11 on Apr 30, not the 2027 forecast dates.
     reader.putEnrollment("gonzales", 2025, [
-      ...cohort("Older", 80, "Majors", older),
-      ...cohort("Younger", 220, "Minors", younger),
-      line({ fullName: "Pending Kid", birthDate: older, divisionName: "Majors", orderPaymentStatus: "Pending" }),
-      line({ fullName: "Umpire Kid", birthDate: older, divisionName: "Umpire Clinic", ageGroup: "Umpire" }),
+      ...cohort("Older", 80, "Majors", "2013-06-01"),
+      ...cohort("Younger", 220, "Minors", "2014-08-01"),
+      line({ fullName: "Pending Kid", birthDate: "2013-06-01", divisionName: "Majors", orderPaymentStatus: "Pending" }),
+      line({ fullName: "Umpire Kid", birthDate: "2013-06-01", divisionName: "Umpire Clinic", ageGroup: "Umpire" }),
     ]);
     reader.putEnrollment("gonzales", 2026, cohort("Window", 300, "Open", older));
     reader.putEnrollment("fallball", 2026, []);
@@ -785,7 +785,7 @@ describe("spring mix from enrollment history", () => {
     assert.equal(result.includeFeeder, false);
   });
 
-  it("averages both Spring leagues in the combined forecast and counts a shared player once", async () => {
+  it("keeps combined Spring mix inside each league and counts a shared player once", async () => {
     const reader = new FakeReader();
     reader.listEnrollmentSeasons = async () => [2025, 2026];
     const shared = line({
@@ -845,11 +845,17 @@ describe("spring mix from enrollment history", () => {
     const majors = result.body.rows.find((row) => row.code === "gonzales:MAJORS");
     const minors = result.body.rows.find((row) => row.code === "ascension:MINORS");
     assert.ok(majors && minors);
-    assert.equal(majors.current.expected, 80);
-    assert.equal(minors.current.expected, 220);
-    assert.equal(majors.currentMix?.sharePercent, 27);
-    assert.equal(minors.currentMix?.sharePercent, 73);
-    assert.equal(majors.currentMix?.note, "27% of window, Spring 2025");
+    // Aug 31 and Apr 30 windows overlap, but each league has one division, so
+    // there is no within-league mix. The shared pool still counts the players once.
+    assert.equal(majors.current.expected, 300);
+    assert.equal(minors.current.expected, 300);
+    assert.equal(majors.current.pool, 300);
+    assert.equal(minors.current.pool, 300);
+    assert.equal(majors.currentMix, null);
+    assert.equal(minors.currentMix, null);
+    assert.equal(result.body.sharedPools.length, 1);
+    assert.equal(result.body.sharedPools[0]?.current?.pool, 300);
+    assert.equal(result.body.league.current.pool, 300);
     assert.equal(JSON.stringify(result.body).includes("Shared Registrant"), false);
     assert.equal(reader.calls.includes("enrollment:fallball:2026"), false);
   });

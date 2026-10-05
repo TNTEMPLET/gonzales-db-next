@@ -754,13 +754,8 @@ export function compareConfigs(
   const mixSeasons = options.mix?.seasons;
   const currentMix = mixSeasons ? divisionMixShares({ config: current, targetSeasonYear, seasons: mixSeasons }) : null;
   const proposedMix = mixSeasons ? divisionMixShares({ config: proposed, targetSeasonYear, seasons: mixSeasons }) : null;
-  // Shared pools above stay cross-league. Mix weights use per-league groups.
-  const currentGroups = mixSeasons
-    ? overlappingDivisionGroups(current, targetSeasonYear, { sameLeague: true })
-    : [];
-  const proposedGroups = mixSeasons
-    ? overlappingDivisionGroups(proposed, targetSeasonYear, { sameLeague: true })
-    : [];
+  const currentGroups = mixSeasons ? overlappingDivisionGroups(current, targetSeasonYear) : [];
+  const proposedGroups = mixSeasons ? overlappingDivisionGroups(proposed, targetSeasonYear) : [];
   const weightedSide = (
     assignment: BucketAssignment,
     config: ForecastConfig,

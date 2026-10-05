@@ -118,31 +118,6 @@ function registrationKeys(player: MixHistoryPlayer): string[] {
   return keys;
 }
 
-/** Numeric ages in a normalized label. Null when the label has no number. */
-function ageTokenKey(value: string): string | null {
-  const tokens = value.match(/\d+/g);
-  if (!tokens || tokens.length === 0) return null;
-  const ages = [...new Set(tokens.map((token) => String(Number(token))))];
-  ages.sort((left, right) => Number(left) - Number(right));
-  return ages.join(",");
-}
-
-/**
- * Substring hit worth 70. When both sides name ages, those ages must be the
- * same set (`10` does not match `9 10`, and `7` does not match `7 8`).
- * A word-only label such as "Coach Pitch" still matches a longer name.
- * Minor/Major wording stays on the includes() check.
- */
-function substringScore(left: string, right: string): number {
-  if (!left || !right) return 0;
-  if (Math.min(left.length, right.length) < 4) return 0;
-  if (!(left.includes(right) || right.includes(left))) return 0;
-  const leftAges = ageTokenKey(left);
-  const rightAges = ageTokenKey(right);
-  if (leftAges != null && rightAges != null && leftAges !== rightAges) return 0;
-  return 70;
-}
-
 function scoreAgainst(reg: string, candidate: string): number {
   if (!reg || !candidate) return 0;
   if (reg === candidate) return 100;
@@ -151,7 +126,21 @@ function scoreAgainst(reg: string, candidate: string): number {
   if (strippedReg && strippedCand && strippedReg === strippedCand) return 95;
   if (strippedCand && reg === strippedCand) return 95;
   if (strippedReg && candidate === strippedReg) return 95;
-  return Math.max(substringScore(reg, candidate), substringScore(strippedReg, strippedCand));
+  if (
+    (reg.includes(candidate) || candidate.includes(reg)) &&
+    Math.min(reg.length, candidate.length) >= 4
+  ) {
+    return 70;
+  }
+  if (
+    strippedReg &&
+    strippedCand &&
+    (strippedReg.includes(strippedCand) || strippedCand.includes(strippedReg)) &&
+    Math.min(strippedReg.length, strippedCand.length) >= 4
+  ) {
+    return 70;
+  }
+  return 0;
 }
 
 function matchScore(registration: string, division: DivisionAgeConfig): number {
@@ -218,27 +207,8 @@ function rangesOverlap(
   return left.oldest <= right.youngest && right.oldest <= left.youngest;
 }
 
-/** `gonzales` or `ascension` when the code is prefixed. Unprefixed codes share one key. */
-function overlapLeagueKey(code: string): string {
-  const prefixed = /^(gonzales|ascension):/.exec(code);
-  return prefixed?.[1] ?? "";
-}
-
-export type OverlapGroupOptions = {
-  /**
-   * Union overlapping windows only inside one league. Combined Spring codes
-   * use a `gonzales:` or `ascension:` prefix. Single-org codes have no prefix
-   * and keep today's groups. Shared pools omit this and can still chain across leagues.
-   */
-  sameLeague?: boolean;
-};
-
 /** Connected divisions whose effective birthdate windows intersect. */
-export function overlappingDivisionGroups(
-  config: ForecastConfig,
-  targetSeasonYear: number,
-  options?: OverlapGroupOptions,
-): string[][] {
+export function overlappingDivisionGroups(config: ForecastConfig, targetSeasonYear: number): string[][] {
   const cutoff = effectiveCutoffDate(config.cutoff, targetSeasonYear);
   const ordered: DivisionAgeConfig[] = [];
   const seen = new Set<string>();
@@ -271,12 +241,6 @@ export function overlappingDivisionGroups(
   const ranges = new Map(ordered.map((division) => [division.code, effectiveRange(division, cutoff)]));
   for (let i = 0; i < ordered.length; i += 1) {
     for (let j = i + 1; j < ordered.length; j += 1) {
-      if (
-        options?.sameLeague &&
-        overlapLeagueKey(ordered[i]!.code) !== overlapLeagueKey(ordered[j]!.code)
-      ) {
-        continue;
-      }
       const left = ranges.get(ordered[i]!.code)!;
       const right = ranges.get(ordered[j]!.code)!;
       if (rangesOverlap(left, right)) union(ordered[i]!.code, ordered[j]!.code);
@@ -397,9 +361,8 @@ function inGroupWindow(
  * Each season with at least one in-window registration has equal weight.
  * Shares are normalized to 100% inside the group.
  * A group with no in-window season even-splits every sibling and each row
- * uses {@link EVEN_SPLIT_MIX_NOTE}. A sibling that never appears inside a
- * prior year's window takes an even 1/n share and is the only row with that
- * warning. A name match outside the window is not an appearance. Siblings
+ * uses {@link EVEN_SPLIT_MIX_NOTE}. A sibling that never appears in history
+ * takes an even 1/n share and is the only row with that warning. Siblings
  * that do appear keep their historical ratio, scaled to fill the rest.
  * Divisions that do not overlap are omitted (their share stays 100%).
  */
@@ -408,7 +371,7 @@ export function divisionMixShares(input: {
   targetSeasonYear: number;
   seasons: readonly MixSeason[];
 }): Map<string, DivisionMix> {
-  const groups = overlappingDivisionGroups(input.config, input.targetSeasonYear, { sameLeague: true });
+  const groups = overlappingDivisionGroups(input.config, input.targetSeasonYear);
   const result = new Map<string, DivisionMix>();
   if (groups.length === 0) return result;
 
@@ -432,11 +395,9 @@ export function divisionMixShares(input: {
         if (count === 0) continue;
         const code = matchDivision(player, members);
         if (!code) continue;
-        // Window for season Y, not the target year — keeps same-age cohorts aligned.
-        // Count the division only after that check. A match outside the window
-        // is missing history, not a 0% appearance.
-        if (!inGroupWindow(player.birthDate, historyConfig, season.seasonYear, codeSet)) continue;
         seen.add(code);
+        // Window for season Y, not the target year — keeps same-age cohorts aligned.
+        if (!inGroupWindow(player.birthDate, historyConfig, season.seasonYear, codeSet)) continue;
         counts.set(code, (counts.get(code) ?? 0) + count);
         total += count;
       }
