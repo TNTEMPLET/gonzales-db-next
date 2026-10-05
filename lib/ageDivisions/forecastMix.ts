@@ -244,8 +244,10 @@ function inGroupWindow(
  * Seasons are every prior Spring strictly before `targetSeasonYear`.
  * Each season with at least one in-window registration has equal weight.
  * Shares are normalized to 100% inside the group.
- * A group with no such season, or a division that never appears in the
- * history, uses an even split and {@link EVEN_SPLIT_MIX_NOTE}.
+ * A group with no in-window season even-splits every sibling and each row
+ * uses {@link EVEN_SPLIT_MIX_NOTE}. A sibling that never appears in history
+ * takes an even 1/n share and is the only row with that warning. Siblings
+ * that do appear keep their historical ratio, scaled to fill the rest.
  * Divisions that do not overlap are omitted (their share stays 100%).
  */
 export function divisionMixShares(input: {
@@ -287,14 +289,15 @@ export function divisionMixShares(input: {
       seasonShares.push({ year: season.seasonYear, shares });
     }
 
-    const missingMember = codes.some((code) => !seen.has(code));
-    if (seasonShares.length === 0 || missingMember) {
+    const appearing = codes.filter((code) => seen.has(code));
+    const missing = codes.filter((code) => !seen.has(code));
+    if (seasonShares.length === 0 || appearing.length === 0) {
       for (const [code, mix] of evenSplit(codes)) result.set(code, mix);
       continue;
     }
 
     const averaged = new Map<string, number>();
-    for (const code of codes) {
+    for (const code of appearing) {
       let sum = 0;
       for (const season of seasonShares) sum += season.shares.get(code) ?? 0;
       averaged.set(code, sum / seasonShares.length);
@@ -306,9 +309,13 @@ export function divisionMixShares(input: {
       for (const [code, mix] of evenSplit(codes)) result.set(code, mix);
       continue;
     }
-    for (const code of codes) {
-      result.set(code, mixFor(code, (averaged.get(code) ?? 0) / weight, years, false));
+    const historicalPortion = 1 - missing.length / codes.length;
+    for (const code of appearing) {
+      const share = historicalPortion * ((averaged.get(code) ?? 0) / weight);
+      result.set(code, mixFor(code, share, years, false));
     }
+    const missingShare = 1 / codes.length;
+    for (const code of missing) result.set(code, mixFor(code, missingShare, [], true));
   }
 
   return result;

@@ -1047,13 +1047,30 @@ describe("spring overlap mix weights", () => {
       rosterFor,
       mix: history(eightyThreeHundred),
     });
-    for (const code of ["MAJORS", "MINORS", "ROOKIE"]) {
-      const row = fresh.rows.find((item) => item.code === code);
-      assert.ok(row);
-      assert.equal(row.current.expected, 100);
-      assert.equal(row.currentMix?.evenSplit, true);
-      assert.equal(row.currentMix?.note, EVEN_SPLIT_MIX_NOTE);
-    }
+    const freshMajors = fresh.rows.find((row) => row.code === "MAJORS");
+    const freshMinors = fresh.rows.find((row) => row.code === "MINORS");
+    const rookie = fresh.rows.find((row) => row.code === "ROOKIE");
+    assert.ok(freshMajors && freshMinors && rookie);
+    const majorsShare = (2 / 3) * (80 / 300);
+    const minorsShare = (2 / 3) * (220 / 300);
+    assert.ok(Math.abs((freshMajors.currentMix?.share ?? 0) - majorsShare) < 1e-12);
+    assert.ok(Math.abs((freshMinors.currentMix?.share ?? 0) - minorsShare) < 1e-12);
+    assert.ok(Math.abs((rookie.currentMix?.share ?? 0) - 1 / 3) < 1e-12);
+    assert.equal(freshMajors.current.pool, 53);
+    assert.equal(freshMajors.current.expected, 53);
+    assert.equal(freshMajors.currentMix?.sharePercent, 18);
+    assert.equal(freshMajors.currentMix?.evenSplit, false);
+    assert.equal(freshMajors.currentMix?.note, "18% of window, Spring 2025");
+    assert.equal(freshMinors.current.pool, 147);
+    assert.equal(freshMinors.current.expected, 147);
+    assert.equal(freshMinors.currentMix?.sharePercent, 49);
+    assert.equal(freshMinors.currentMix?.evenSplit, false);
+    assert.equal(freshMinors.currentMix?.note, "49% of window, Spring 2025");
+    assert.equal(rookie.current.pool, 100);
+    assert.equal(rookie.current.expected, 100);
+    assert.equal(rookie.currentMix?.sharePercent, 33);
+    assert.equal(rookie.currentMix?.evenSplit, true);
+    assert.equal(rookie.currentMix?.note, EVEN_SPLIT_MIX_NOTE);
   });
 
   it("leaves a non-overlapping division and the Fall path on the full window", () => {
