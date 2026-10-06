@@ -76,10 +76,18 @@ export type BuilderWindow = {
 };
 
 export type BuilderIssue = {
-  kind: "gap" | "overlap" | "invalid" | "incomplete" | "covered";
+  kind: "gap" | "overlap" | "invalid" | "incomplete" | "covered" | "tier";
   message: string;
   rowIds: string[];
 };
+
+/** Notes. They stay on screen and do not stop the review step. */
+const REVIEW_NOTE_KINDS = new Set<BuilderIssue["kind"]>(["covered", "tier"]);
+
+/** True when review still has a gap, a partial overlap, or an unfinished row. */
+export function builderReviewBlocks(issues: readonly BuilderIssue[]): boolean {
+  return issues.some((issue) => !REVIEW_NOTE_KINDS.has(issue.kind));
+}
 
 export type BuilderCoverageOptions = {
   /**
@@ -482,6 +490,11 @@ export function builderLeagueTables(
  * When `crossLeague` is on, a hole in one league that Diamond or Little League
  * already covers is a note. Tee-ball on the Little League charter counts as
  * Little League coverage, and a Tee-ball row also covers a Diamond hole.
+ *
+ * Two divisions in the same league with the exact same birthdays are a skill
+ * tier (Minors and Majors, or any other pair placed by evaluation). That is a
+ * note. A partial overlap, where the windows share some days and not others,
+ * stays a blocking overlap.
  */
 export function builderCoverageIssues(table: BuilderTable, opts: BuilderCoverageOptions = {}): BuilderIssue[] {
   const crossLeague = opts.crossLeague ?? table.organizationId !== "fallball";
@@ -512,13 +525,25 @@ export function builderCoverageIssues(table: BuilderTable, opts: BuilderCoverage
     const warnings = coverageWarnings(divisions, "2000-06-15");
     const covers = crossLeague ? otherLeagueMembers(pool.id, views) : [];
     const coverRanges = covers.map((view) => ({ oldest: view.window.oldest, youngest: view.window.youngest }));
+    const tierGroups = new Map<string, BuilderRowView[]>();
     for (const warning of warnings) {
+      if (warning.kind === "overlap" && exactSharedWindow(warning, members)) {
+        const key = `${warning.from}\0${warning.to}`;
+        const group = tierGroups.get(key) ?? [];
+        for (const code of warning.divisionCodes) {
+          const view = members.find((item) => item.code === code);
+          if (view && !group.some((item) => item.row.id === view.row.id)) group.push(view);
+        }
+        tierGroups.set(key, group);
+        continue;
+      }
       if (warning.kind !== "gap" || covers.length === 0) {
         issues.push(issueFromWarning(warning, members, idByCode, pool.label));
         continue;
       }
       issues.push(...issuesForCrossLeagueGap(warning, members, idByCode, pool.label, covers, coverRanges));
     }
+    for (const group of tierGroups.values()) issues.push(tierIssue(pool.label, group));
   }
   return issues;
 }
@@ -817,6 +842,33 @@ function coveredIssue(
     kind: "covered",
     message: `${poolLabel}: kids born ${span} are covered by ${listed}.`,
     rowIds: covers.map((view) => view.row.id),
+  };
+}
+
+/** The overlap span is each division's whole window, so the pair is a tier. */
+function exactSharedWindow(warning: CoverageWarning, members: readonly BuilderRowView[]): boolean {
+  if (warning.divisionCodes.length < 2) return false;
+  const involved: BuilderRowView[] = [];
+  for (const code of warning.divisionCodes) {
+    const view = members.find((item) => item.code === code);
+    if (!view) return false;
+    involved.push(view);
+  }
+  return involved.every((view) => view.window.oldest === warning.from && view.window.youngest === warning.to);
+}
+
+function tierIssue(poolLabel: string, views: readonly BuilderRowView[]): BuilderIssue {
+  const ordered = [...views].sort((a, b) => a.index - b.index);
+  const titles = ordered.map((view) => view.title);
+  const names =
+    titles.length <= 1 ? titles[0] ?? "These divisions" : `${titles.slice(0, -1).join(", ")} and ${titles[titles.length - 1]}`;
+  const minor = ordered.some((view) => /\bminors?\b/i.test(view.row.name));
+  const major = ordered.some((view) => /\bmajors?\b/i.test(view.row.name));
+  const phrase = minor && major ? "Minors/Majors tiers" : "skill tiers";
+  return {
+    kind: "tier",
+    message: `${poolLabel}: ${names} share the same birthdays (${phrase}).`,
+    rowIds: ordered.map((view) => view.row.id),
   };
 }
 
