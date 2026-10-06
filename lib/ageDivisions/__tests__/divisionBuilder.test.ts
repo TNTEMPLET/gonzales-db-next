@@ -783,6 +783,7 @@ describe("division builder screen", () => {
     assert.match(html, /Review gaps, overlaps, and player counts/);
     assert.match(html, /born Sep 1, 2014 – Aug 31, 2018/);
     assert.match(html, /No gaps or overlaps/);
+    assert.match(html, /every birthday from the oldest player to the youngest player fits in one division/);
     assert.match(html, /Player and team counts/);
   });
 
@@ -821,6 +822,8 @@ describe("division builder screen", () => {
     );
     assert.match(html, /Gaps covered by the other league are shown as notes/);
     assert.match(html, /No gaps or overlaps/);
+    assert.match(html, /A birthday one league skips is covered by the other league/);
+    assert.doesNotMatch(html, /fits in one division/);
     assert.match(html, /data-testid="builder-covered"/);
     assert.match(html, /kids born Sep 1, 2020 – Apr 30, 2021 are covered by 6U DYB/);
     assert.match(html, /border-emerald-400/);

@@ -1128,7 +1128,9 @@ function Wizard({
           {views.length === 0 ? <p className="text-sm text-zinc-400">Add a division to review it.</p> : null}
           {views.length > 0 && issues.every((issue) => issue.kind === "covered") ? (
             <p className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-100" role="status">
-              No gaps or overlaps. Inside each league, every birthday from the oldest player to the youngest player fits in one division.
+              {issues.length === 0
+                ? "No gaps or overlaps. Inside each league, every birthday from the oldest player to the youngest player fits in one division."
+                : "No gaps or overlaps. A birthday one league skips is covered by the other league."}
             </p>
           ) : null}
           {views.length > 0 ? <IssueList issues={issues} /> : null}
