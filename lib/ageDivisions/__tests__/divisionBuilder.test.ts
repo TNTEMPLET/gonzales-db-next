@@ -4,6 +4,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, it } from "node:test";
 
 import { DivisionAgesBuilder } from "@/components/admin/DivisionAgesBuilder";
+import { trentBuilderTable } from "./trentBuilderTable";
 import { springCombinedBuilderTable } from "@/lib/admin/springCombined/view";
 import { DivisionAgesModeTabs } from "@/components/admin/DivisionAgesExplorer";
 import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
@@ -17,6 +18,7 @@ import {
   builderForecastProposed,
   builderLeagueTimelines,
   builderOverlapRowIds,
+  builderReviewBlocks,
   builderRowViews,
   builderRowWindow,
   builderStorageKey,
@@ -247,27 +249,62 @@ describe("gap and overlap detection", () => {
     assert.match(covered.message, /9U/);
   });
 
-  it("flags two Little League rows that cover the same birthdays and leaves Diamond out", () => {
-    const issues = builderCoverageIssues(
-      tableWith([
-        row("ll-a", { name: "8U LL", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
-        row("ll-b", { name: "8U LL again", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
-        row("dyb", { name: "8U DYB", minAge: 8, maxAge: 8, charter: "dyb", cutoff: "dyb" }),
-      ]),
-    );
-    const overlaps = issues.filter((issue) => issue.kind === "overlap");
-    assert.equal(overlaps.length, 1);
-    const overlap = overlaps[0]!;
-    assert.match(overlap.message, /Little League/);
-    assert.match(overlap.message, /8U LL/);
-    assert.match(overlap.message, /8U LL again/);
-    assert.doesNotMatch(overlap.message, /8U DYB/);
-    assert.deepEqual(overlap.rowIds.sort(), ["ll-a", "ll-b"]);
-    assert.deepEqual(builderOverlapRowIds(tableWith([
+  it("notes an identical birthday window as a skill tier and leaves Diamond out", () => {
+    const table = tableWith([
       row("ll-a", { name: "8U LL", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
       row("ll-b", { name: "8U LL again", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
       row("dyb", { name: "8U DYB", minAge: 8, maxAge: 8, charter: "dyb", cutoff: "dyb" }),
-    ])).sort(), ["ll-a", "ll-b"]);
+    ]);
+    const issues = builderCoverageIssues(table);
+    const tiers = issues.filter((issue) => issue.kind === "tier");
+    assert.equal(tiers.length, 1);
+    const tier = tiers[0]!;
+    assert.match(tier.message, /Little League/);
+    assert.match(tier.message, /8U LL/);
+    assert.match(tier.message, /8U LL again/);
+    assert.match(tier.message, /skill tiers/);
+    assert.doesNotMatch(tier.message, /8U DYB/);
+    assert.doesNotMatch(tier.message, /Minors\/Majors/);
+    assert.deepEqual(tier.rowIds.sort(), ["ll-a", "ll-b"]);
+    assert.equal(builderReviewBlocks(issues), false);
+    assert.deepEqual(builderOverlapRowIds(table), []);
+  });
+
+  it("lets an identical Minors and Majors window pass and still blocks a partial overlap", () => {
+    const tiers = builderCoverageIssues(
+      tableWith([
+        row("minors", { name: "6U Minors CP", minAge: 6, maxAge: 6, charter: "dyb", cutoff: "dyb" }),
+        row("majors", { name: "6U Majors CP", minAge: 6, maxAge: 6, charter: "dyb", cutoff: "dyb" }),
+      ]),
+    );
+    const tier = tiers.find((issue) => issue.kind === "tier");
+    assert.ok(tier);
+    assert.match(tier.message, /6U Minors CP/);
+    assert.match(tier.message, /6U Majors CP/);
+    assert.match(tier.message, /share the same birthdays \(Minors\/Majors tiers\)/);
+    assert.equal(tiers.some((issue) => issue.kind === "overlap"), false);
+    assert.equal(builderReviewBlocks(tiers), false);
+    assert.deepEqual(builderOverlapRowIds(tableWith([
+      row("minors", { name: "6U Minors CP", minAge: 6, maxAge: 6, charter: "dyb", cutoff: "dyb" }),
+      row("majors", { name: "6U Majors CP", minAge: 6, maxAge: 6, charter: "dyb", cutoff: "dyb" }),
+    ])), []);
+
+    const partial = builderCoverageIssues(
+      tableWith([
+        row("eight", { name: "8U Minors", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+        row("majors", { name: "7-8 Majors", minAge: 7, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+      ]),
+    );
+    const overlap = partial.find((issue) => issue.kind === "overlap");
+    assert.ok(overlap);
+    assert.match(overlap.message, /8U Minors/);
+    assert.match(overlap.message, /7-8 Majors/);
+    assert.equal(partial.some((issue) => issue.kind === "tier"), false);
+    assert.equal(builderReviewBlocks(partial), true);
+    assert.deepEqual(builderOverlapRowIds(tableWith([
+      row("eight", { name: "8U Minors", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+      row("majors", { name: "7-8 Majors", minAge: 7, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+    ])).sort(), ["eight", "majors"]);
   });
 
   it("checks a Both leagues row inside Little League and inside Diamond", () => {
@@ -278,8 +315,9 @@ describe("gap and overlap detection", () => {
         row("dyb", { name: "8U DYB", minAge: 8, maxAge: 8, charter: "dyb", cutoff: "dyb" }),
       ]),
     );
+    const tiers = issues.filter((issue) => issue.kind === "tier");
     const overlaps = issues.filter((issue) => issue.kind === "overlap");
-    const little = overlaps.find((issue) => issue.message.startsWith("Little League"));
+    const little = tiers.find((issue) => issue.message.startsWith("Little League"));
     const diamond = overlaps.find((issue) => issue.message.startsWith("Diamond / Dixie"));
     assert.ok(little);
     assert.ok(diamond);
@@ -830,6 +868,53 @@ describe("division builder screen", () => {
     assert.match(html, /border-zinc-700 bg-zinc-900\/70/);
     assert.doesNotMatch(html, /data-testid="builder-gap"/);
     assert.doesNotMatch(html, /bg-red-500/);
+  });
+
+  it("lets the Spring 2027 Minors and Majors review continue to save", () => {
+    const html = renderToStaticMarkup(
+      createElement(DivisionAgesBuilder, {
+        orgs: ["gonzales", "ascension"],
+        defaultSeasonYear: SEASON,
+        seasonYears: [2026, 2027],
+        persist: false,
+        showSpringTemplate: true,
+        initialMode: "wizard",
+        initialStep: 4,
+        initialTable: trentBuilderTable(),
+      }),
+    );
+    assert.match(html, /8U Minors LLB \(LL\) and 8U Majors LLB \(LL\) share the same birthdays \(Minors\/Majors tiers\)/);
+    assert.match(html, /6U Minors CP DYB \(DYB\/DBB\) and 6U Majors CP DYB \(DYB\/DBB\) share the same birthdays \(Minors\/Majors tiers\)/);
+    assert.match(html, /kids born May 1, 2020 – Apr 30, 2021 are covered by/);
+    assert.match(html, /kids born May 1, 2018 – Apr 30, 2020 are covered by/);
+    assert.match(html, /No gaps\. Shared birthday windows are skill tiers/);
+    assert.match(html, /data-testid="builder-tier"/);
+    assert.doesNotMatch(html, /data-testid="builder-overlap"/);
+    assert.doesNotMatch(html, /data-testid="builder-gap"/);
+    assert.match(html, /5\. Save/);
+    const next = html.match(/<button[^>]*data-testid="builder-wizard-next"[^>]*>/);
+    assert.ok(next);
+    assert.doesNotMatch(next[0]!, /\sdisabled(?:=|>|\s)/);
+
+    const blocked = renderToStaticMarkup(
+      createElement(DivisionAgesBuilder, {
+        orgs: ["gonzales", "ascension"],
+        defaultSeasonYear: SEASON,
+        seasonYears: [2027],
+        persist: false,
+        showSpringTemplate: true,
+        initialMode: "wizard",
+        initialStep: 4,
+        initialTable: tableWith([
+          row("eight", { name: "8U Minors", minAge: 8, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+          row("majors", { name: "7-8 Majors", minAge: 7, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+        ]),
+      }),
+    );
+    const blockedNext = blocked.match(/<button[^>]*data-testid="builder-wizard-next"[^>]*>/);
+    assert.ok(blockedNext);
+    assert.match(blockedNext[0]!, /\sdisabled(?:=|>|\s)/);
+    assert.match(blocked, /data-testid="builder-overlap"/);
   });
 
   it("adds a Division Builder tab without hiding the forecast until it is opened", () => {

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 
+import { BuilderSpringSave } from "@/components/admin/BuilderSpringSave";
 import { DivisionAgesForecastTimeline, type TimelineCount } from "@/components/admin/DivisionAgesForecastTimeline";
 import {
   BUILDER_CHARTERS,
@@ -15,6 +16,7 @@ import {
   builderForecastProposed,
   builderLeagueTimelines,
   builderOverlapRowIds,
+  builderReviewBlocks,
   builderRowViews,
   replaceWholeBuilderTable,
   restoreBuilderUndo,
@@ -103,13 +105,14 @@ function tableFromRaw(raw: string | null, organizationId: string, seasonYear: nu
 }
 
 type Mode = "table" | "wizard";
-type Step = 1 | 2 | 3 | 4;
+type Step = 1 | 2 | 3 | 4 | 5;
 
-const STEPS: { id: Step; label: string }[] = [
+const WIZARD_STEPS: { id: Step; label: string }[] = [
   { id: 1, label: "Season" },
   { id: 2, label: "Divisions" },
   { id: 3, label: "Cutoffs" },
   { id: 4, label: "Review" },
+  { id: 5, label: "Save" },
 ];
 
 function isContentOrg(value: string, orgs: readonly ContentOrgId[]): value is ContentOrgId {
@@ -349,10 +352,20 @@ export function DivisionAgesBuilder({
         <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Scratch pad</p>
         <h2 className="mt-1 text-2xl font-semibold text-white">Division Builder</h2>
         <p className="mt-2 max-w-3xl text-sm text-zinc-300">
-          Gonzales Diamond Youth and Ascension Little League share one registration portal. This table starts blank so
-          any admin can try division ages before changing the saved table. It stays in this browser for{" "}
-          {builderLeagueLabel(table.organizationId)} {table.seasonYear}. It does not change saved Division Ages
-          or registration.
+          {showSpringTemplate ? (
+            <>
+              Gonzales Diamond Youth and Ascension Little League share one registration portal. This scratch table stays
+              in this browser for {builderLeagueLabel(table.organizationId)} {table.seasonYear} until you save it from
+              the last step. Save writes both leagues. Fall Ball is not changed.
+            </>
+          ) : (
+            <>
+              Gonzales Diamond Youth and Ascension Little League share one registration portal. This table starts blank
+              so any admin can try division ages before changing the saved table. It stays in this browser for{" "}
+              {builderLeagueLabel(table.organizationId)} {table.seasonYear}. It does not change saved Division Ages or
+              registration.
+            </>
+          )}
         </p>
         <div className="mt-4 flex flex-wrap gap-2" role="radiogroup" aria-label="How do you want to work">
           <button
@@ -647,7 +660,7 @@ function IssueList({ issues }: { issues: readonly BuilderIssue[] }) {
           className={
             issue.kind === "gap"
               ? "rounded-xl border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm text-red-100"
-              : issue.kind === "covered"
+              : issue.kind === "covered" || issue.kind === "tier"
                 ? "rounded-xl border border-zinc-700 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-300"
                 : "rounded-xl border border-amber-400/50 bg-amber-400/10 px-3 py-2 text-sm text-amber-100"
           }
@@ -1005,22 +1018,35 @@ function Wizard({
   onMove: (id: string, direction: "up" | "down") => void;
   atMax: boolean;
 }) {
+  const steps = showSpringTemplate ? WIZARD_STEPS : WIZARD_STEPS.filter((item) => item.id !== 5);
+  const reviewReady = views.length > 0 && !builderReviewBlocks(issues);
+  const reviewMessage = reviewReady ? reviewReadyMessage(issues) : null;
+  const lastStep: Step = showSpringTemplate ? 5 : 4;
+  const nextDisabled = step >= lastStep || (step === 4 && !reviewReady);
+
   return (
     <div className="space-y-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-4 sm:p-6">
       <nav aria-label="Division builder steps">
         <ol className="flex flex-wrap gap-2">
-          {STEPS.map((item) => (
-            <li key={item.id}>
-              <button
-                type="button"
-                className={step === item.id ? primaryClass : buttonClass}
-                aria-current={step === item.id ? "step" : undefined}
-                onClick={() => onStep(item.id)}
-              >
-                {item.id}. {item.label}
-              </button>
-            </li>
-          ))}
+          {steps.map((item) => {
+            const locked = item.id === 5 && !reviewReady;
+            return (
+              <li key={item.id}>
+                <button
+                  type="button"
+                  className={step === item.id ? primaryClass : buttonClass}
+                  aria-current={step === item.id ? "step" : undefined}
+                  disabled={locked}
+                  onClick={() => {
+                    if (locked) return;
+                    onStep(item.id);
+                  }}
+                >
+                  {item.id}. {item.label}
+                </button>
+              </li>
+            );
+          })}
         </ol>
       </nav>
 
@@ -1126,11 +1152,9 @@ function Wizard({
             registrations.
           </p>
           {views.length === 0 ? <p className="text-sm text-zinc-400">Add a division to review it.</p> : null}
-          {views.length > 0 && issues.every((issue) => issue.kind === "covered") ? (
+          {reviewMessage ? (
             <p className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-100" role="status">
-              {issues.length === 0
-                ? "No gaps or overlaps. Inside each league, every birthday from the oldest player to the youngest player fits in one division."
-                : "No gaps or overlaps. A birthday one league skips is covered by the other league."}
+              {reviewMessage}
             </p>
           ) : null}
           {views.length > 0 ? <IssueList issues={issues} /> : null}
@@ -1164,16 +1188,52 @@ function Wizard({
         </section>
       ) : null}
 
+      {step === 5 && showSpringTemplate ? (
+        <section aria-labelledby="builder-step-save" className="space-y-4">
+          <h3 id="builder-step-save" className="text-xl font-semibold text-white">
+            5. Save both leagues
+          </h3>
+          {reviewReady ? (
+            <>
+              <p className="max-w-3xl text-sm text-zinc-300">
+                Review the before and after, then save. One save writes Gonzales DYB and Ascension LL. Fall Ball is not
+                changed.
+              </p>
+              <BuilderSpringSave table={table} />
+            </>
+          ) : (
+            <p className="text-sm text-zinc-300">Fix the review notes before saving.</p>
+          )}
+        </section>
+      ) : null}
+
       <div className="flex flex-wrap gap-2">
         <button type="button" className={buttonClass} disabled={step === 1} onClick={() => onStep((step - 1) as Step)}>
           Back
         </button>
-        <button type="button" className={primaryClass} disabled={step === 4} onClick={() => onStep((step + 1) as Step)}>
+        <button
+          type="button"
+          className={primaryClass}
+          data-testid="builder-wizard-next"
+          disabled={nextDisabled}
+          onClick={() => onStep((step + 1) as Step)}
+        >
           Next
         </button>
       </div>
     </div>
   );
+}
+
+function reviewReadyMessage(issues: readonly BuilderIssue[]): string {
+  const tier = issues.some((issue) => issue.kind === "tier");
+  const covered = issues.some((issue) => issue.kind === "covered");
+  if (tier && covered) {
+    return "No gaps. Shared birthday windows are skill tiers, and a birthday one league skips is covered by the other league.";
+  }
+  if (tier) return "No gaps. Divisions that share the same birthdays are skill tiers.";
+  if (covered) return "No gaps or overlaps. A birthday one league skips is covered by the other league.";
+  return "No gaps or overlaps. Inside each league, every birthday from the oldest player to the youngest player fits in one division.";
 }
 
 function BuilderCounts({

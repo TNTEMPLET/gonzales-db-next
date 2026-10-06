@@ -134,7 +134,7 @@ export default async function DivisionAgesPage({
           <h1 className="mb-3 text-4xl font-bold tracking-tight md:text-5xl">Division Ages</h1>
           <p className="max-w-3xl text-zinc-400">
             {combined
-              ? `Gonzales DYB and Ascension LL together. Every Spring division is in one table, with the league in the name. ${SPRING_COMBINED_SAVE_HINT}. Switch to Gonzales DYB or Ascension LL to work on one league. The Division Builder template stays in this browser.`
+              ? `Gonzales DYB and Ascension LL together. Every Spring division is in one table, with the league in the name. ${SPRING_COMBINED_SAVE_HINT}. The Division Builder review leads to that save. Switch to Gonzales DYB or Ascension LL to work on one league.`
               : "The Division Builder starts blank so any admin can try ages, cutoffs, and player counts. It stays in this browser and does not change registration or the saved table. The Divisions tab is the saved cutoff, birthdate ranges, and eligibility lookup. The Forecast tab compares this season's counts with a proposed cutoff."}
             {!combined && canEdit ? " Admins can edit birthdates, save this season, and change league defaults." : ""}
           </p>
