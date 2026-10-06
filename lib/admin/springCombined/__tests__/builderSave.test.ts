@@ -6,7 +6,7 @@ import { leagueDivisionDefaults } from "@/lib/ageDivisions/defaults";
 import type { DivisionAgeConfig } from "@/lib/ageDivisions/types";
 
 import { proposedFromBuilder } from "../builderSave";
-import { combinedSavePreview, type SpringLeagueTable } from "../save";
+import { combinedSavePreview, type CombinedSaveLeaguePreview, type SpringLeagueTable } from "../save";
 
 const SEASON = 2027;
 
@@ -43,7 +43,11 @@ function image2Leagues(): SpringLeagueTable[] {
   ];
 }
 
-function codes(leagues: SpringLeagueTable[], org: "gonzales" | "ascension", kind: "changed" | "added" | "removed") {
+function labels(
+  leagues: readonly CombinedSaveLeaguePreview[],
+  org: "gonzales" | "ascension",
+  kind: "changed" | "added" | "removed",
+) {
   const league = leagues.find((item) => item.organizationId === org);
   return league?.changes.filter((change) => change.kind === kind).map((change) => change.label) ?? [];
 }
@@ -75,7 +79,7 @@ describe("builder table to combined save", () => {
     const preview = combinedSavePreview(current, built.proposed, SEASON);
     assert.equal(preview.ok, true);
     if (!preview.ok) return;
-    assert.deepEqual(codes(preview.preview.leagues, "gonzales", "removed"), [
+    assert.deepEqual(labels(preview.preview.leagues, "gonzales", "removed"), [
       "3-4U Tee Ball",
       "5U Tee Ball",
       "7U Minor Coach Pitch",
@@ -83,20 +87,20 @@ describe("builder table to combined save", () => {
       "9U Kid Pitch",
       "10U Kid Pitch",
     ]);
-    assert.deepEqual(codes(preview.preview.leagues, "gonzales", "added"), ["10U"]);
-    assert.deepEqual(codes(preview.preview.leagues, "gonzales", "changed"), [
+    assert.deepEqual(labels(preview.preview.leagues, "gonzales", "added"), ["10U"]);
+    assert.deepEqual(labels(preview.preview.leagues, "gonzales", "changed"), [
       "6U Minors CP",
       "6U Majors CP",
       "12U",
       "15-17U",
     ]);
-    assert.deepEqual(codes(preview.preview.leagues, "ascension", "removed"), [
+    assert.deepEqual(labels(preview.preview.leagues, "ascension", "removed"), [
       "Modified Tee Ball/CP",
       "Coach Pitch",
       "Coach Pitch 8 Minor",
     ]);
-    assert.deepEqual(codes(preview.preview.leagues, "ascension", "added"), ["8U Minors"]);
-    assert.deepEqual(codes(preview.preview.leagues, "ascension", "changed"), [
+    assert.deepEqual(labels(preview.preview.leagues, "ascension", "added"), ["8U Minors"]);
+    assert.deepEqual(labels(preview.preview.leagues, "ascension", "changed"), [
       "3-4 Tee Ball",
       "5U Mod CP",
       "8U Majors",
