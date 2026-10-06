@@ -236,9 +236,15 @@ describe("gap and overlap detection", () => {
     assert.ok(gap);
     assert.match(gap.message, /Little League/);
     assert.match(gap.message, /Gap/);
-    assert.match(gap.message, /Sep 1, 2017/);
+    assert.match(gap.message, /May 1, 2018/);
     assert.match(gap.message, /Aug 31, 2018/);
+    assert.doesNotMatch(gap.message, /Sep 1, 2017/);
     assert.deepEqual(gap.rowIds.sort(), ["eight", "ten"]);
+    const covered = issues.find((issue) => issue.kind === "covered");
+    assert.ok(covered);
+    assert.match(covered.message, /Sep 1, 2017/);
+    assert.match(covered.message, /Apr 30, 2018/);
+    assert.match(covered.message, /9U/);
   });
 
   it("flags two Little League rows that cover the same birthdays and leaves Diamond out", () => {
@@ -795,6 +801,32 @@ describe("division builder screen", () => {
     assert.match(html, /Name this division/);
     assert.match(html, /data-testid="builder-incomplete"/);
     assert.doesNotMatch(html, /No gaps or overlaps/);
+  });
+
+  it("turns the review step green when a Little League gap is covered by Diamond", () => {
+    const html = renderToStaticMarkup(
+      createElement(DivisionAgesBuilder, {
+        orgs: ["gonzales", "ascension"],
+        defaultSeasonYear: 2027,
+        seasonYears: [2027],
+        persist: false,
+        initialMode: "wizard",
+        initialStep: 4,
+        initialTable: tableWith([
+          row("majors", { name: "7/8 Majors LLB", minAge: 7, maxAge: 8, charter: "ll", cutoff: "little-league" }),
+          row("tee", { name: "Tee-ball LLB", minAge: 4, maxAge: 5, charter: "ll", cutoff: "dyb" }),
+          row("six", { name: "6U DYB", minAge: 6, maxAge: 6, charter: "dyb", cutoff: "dyb" }),
+        ]),
+      }),
+    );
+    assert.match(html, /Gaps covered by the other league are shown as notes/);
+    assert.match(html, /No gaps or overlaps/);
+    assert.match(html, /data-testid="builder-covered"/);
+    assert.match(html, /kids born Sep 1, 2020 – Apr 30, 2021 are covered by 6U DYB/);
+    assert.match(html, /border-emerald-400/);
+    assert.match(html, /border-zinc-700 bg-zinc-900\/70/);
+    assert.doesNotMatch(html, /data-testid="builder-gap"/);
+    assert.doesNotMatch(html, /bg-red-500/);
   });
 
   it("adds a Division Builder tab without hiding the forecast until it is opened", () => {

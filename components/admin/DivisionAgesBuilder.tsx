@@ -11,6 +11,7 @@ import {
   backupUnreadableBuilderRaw,
   blankBuilderTable,
   builderCoverageIssues,
+  builderCoverRangesForPool,
   builderForecastProposed,
   builderLeagueTimelines,
   builderOverlapRowIds,
@@ -178,7 +179,10 @@ export function DivisionAgesBuilder({
   }, [table]);
 
   const views = useMemo(() => builderRowViews(table), [table]);
-  const issues = useMemo(() => builderCoverageIssues(table), [table]);
+  const issues = useMemo(
+    () => builderCoverageIssues(table, { crossLeague: table.organizationId !== "fallball" }),
+    [table],
+  );
   const structural = issues.filter((issue) => issue.kind !== "incomplete");
   const years = useMemo(() => {
     const values = new Set(seasonYears);
@@ -643,7 +647,9 @@ function IssueList({ issues }: { issues: readonly BuilderIssue[] }) {
           className={
             issue.kind === "gap"
               ? "rounded-xl border border-red-400/50 bg-red-500/10 px-3 py-2 text-sm text-red-100"
-              : "rounded-xl border border-amber-400/50 bg-amber-400/10 px-3 py-2 text-sm text-amber-100"
+              : issue.kind === "covered"
+                ? "rounded-xl border border-zinc-700 bg-zinc-900/70 px-3 py-2 text-sm text-zinc-300"
+                : "rounded-xl border border-amber-400/50 bg-amber-400/10 px-3 py-2 text-sm text-amber-100"
           }
         >
           {issue.message}
@@ -1115,18 +1121,17 @@ function Wizard({
           </h3>
           <p className="max-w-3xl text-sm text-zinc-300">
             A gap is a birthday that fits in no division in that league. An overlap is a birthday that fits in two
-            divisions in the same league. Little League and Diamond are checked separately. A Both leagues row is
+            divisions in the same league. Gaps covered by the other league are shown as notes. A Both leagues row is
             checked with each. Player counts below use registrations you already have. They do not change those
             registrations.
           </p>
           {views.length === 0 ? <p className="text-sm text-zinc-400">Add a division to review it.</p> : null}
-          {views.length > 0 && issues.length === 0 ? (
+          {views.length > 0 && issues.every((issue) => issue.kind === "covered") ? (
             <p className="rounded-xl border border-emerald-400/40 bg-emerald-400/10 px-3 py-2 text-sm text-emerald-100" role="status">
               No gaps or overlaps. Inside each league, every birthday from the oldest player to the youngest player fits in one division.
             </p>
-          ) : (
-            <IssueList issues={issues} />
-          )}
+          ) : null}
+          {views.length > 0 ? <IssueList issues={issues} /> : null}
           {views.length > 0 ? (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[36rem] text-left text-sm">
@@ -1393,6 +1398,9 @@ function BuilderCounts({
                   linkEdges={false}
                   counts={counts}
                   countsLoading={loading}
+                  coverRanges={
+                    table.organizationId === "fallball" ? undefined : builderCoverRangesForPool(views, league.id)
+                  }
                   onDivisions={() => {}}
                   onCutoff={() => {}}
                   onReplace={() => {}}
