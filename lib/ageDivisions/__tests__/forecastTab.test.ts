@@ -137,6 +137,12 @@ const proposedConfig: ProposedConfig = {
   divisions: [{ code: "9U", label: "9U", minAge: 9, maxAge: 9, sortOrder: 1 }],
 };
 
+function gapWarningTag(html: string): string {
+  const tag = html.match(/<p\b[^>]*data-testid="gap-warning"[^>]*>/)?.[0];
+  assert.ok(tag, html);
+  return tag;
+}
+
 function inputTag(html: string, testId: string): string {
   const tags = html.match(/<input\b[^>]*>/g) ?? [];
   const tag = tags.find((item) => item.includes(`data-testid="${testId}"`));
@@ -711,7 +717,16 @@ describe("forecast tab", () => {
     });
     const html = renderToStaticMarkup(view({ forecast, includeFeeder: false }));
     assert.match(html, /data-testid="gap-warning"/);
-    assert.match(html, /33 players fall between 9U KP and 10U KP \(2017-05-01\.\.2017-08-31\) and are not counted/);
+    assert.match(html, /33 players fall between 9U KP and 10U KP \(2017-05-01\.\.2017-08-31\) and are not counted \(this league only\)/);
+    assert.match(gapWarningTag(html), /border-amber-400/);
+    assert.doesNotMatch(gapWarningTag(html), /border-red-400/);
+    const fallHtml = renderToStaticMarkup(view({ forecast, includeFeeder: false, org: "fallball", orgs: ["fallball"] }));
+    assert.match(gapWarningTag(fallHtml), /border-red-400/);
+    assert.match(fallHtml, /and are not counted\./);
+    assert.doesNotMatch(fallHtml, /this league only/);
+    const combinedHtml = renderToStaticMarkup(view({ forecast, includeFeeder: false, springCombined: true }));
+    assert.match(gapWarningTag(combinedHtml), /border-red-400/);
+    assert.doesNotMatch(combinedHtml, /this league only/);
     assert.match(html, /New overlap: 8U MINOR and 9U KP/);
     assert.doesNotMatch(html, /New overlap: 6U/);
     assert.match(html, /Between divisions: current 0, proposed 33/);

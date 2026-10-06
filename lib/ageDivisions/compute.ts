@@ -246,6 +246,64 @@ export function coverageWarnings(divisions: DivisionAgeConfig[], cutoff: Calenda
   return warnings;
 }
 
+export type DateSpan = {
+  /** Inclusive start, `YYYY-MM-DD`. */
+  from: string;
+  /** Inclusive end, `YYYY-MM-DD`. */
+  to: string;
+};
+
+/**
+ * Sub-spans of `[from, to]` that none of `ranges` cover.
+ * A day is covered when `oldest <= day <= youngest`. Ranges that touch
+ * (`next.oldest` is the day after `previous.youngest`) leave no hole, the
+ * same rule `coverageWarnings` uses. Unparseable bounds or `from > to`
+ * return an empty list.
+ */
+export function uncoveredSpans(from: string, to: string, ranges: readonly BirthdateRange[]): DateSpan[] {
+  return partitionSpan(from, to, ranges).uncovered;
+}
+
+/** Sub-spans of `[from, to]` that at least one range covers. Same bounds as `uncoveredSpans`. */
+export function coveredSpans(from: string, to: string, ranges: readonly BirthdateRange[]): DateSpan[] {
+  return partitionSpan(from, to, ranges).covered;
+}
+
+function partitionSpan(
+  from: string,
+  to: string,
+  ranges: readonly BirthdateRange[],
+): { uncovered: DateSpan[]; covered: DateSpan[] } {
+  if (!parseYmd(from) || !parseYmd(to) || from > to) return { uncovered: [], covered: [] };
+  const clipped: CoveredDivision[] = [];
+  ranges.forEach((range, index) => {
+    if (!rangeIsUsable(range)) return;
+    const oldest = range.oldest < from ? from : range.oldest;
+    const youngest = range.youngest > to ? to : range.youngest;
+    if (oldest > youngest) return;
+    clipped.push({ code: String(index), sortOrder: index, oldest, youngest });
+  });
+  const merged = mergeCovered(clipped);
+  const uncovered: DateSpan[] = [];
+  const covered: DateSpan[] = [];
+  let cursor = from;
+  for (const range of merged) {
+    if (range.oldest > cursor) {
+      const holeTo = addDays(range.oldest, -1);
+      if (holeTo && cursor <= holeTo) uncovered.push({ from: cursor, to: holeTo });
+    }
+    const sliceFrom = range.oldest < cursor ? cursor : range.oldest;
+    const sliceTo = range.youngest > to ? to : range.youngest;
+    if (sliceFrom <= sliceTo) covered.push({ from: sliceFrom, to: sliceTo });
+    const next = addDays(range.youngest, 1);
+    if (!next) return { uncovered, covered };
+    cursor = next;
+    if (cursor > to) return { uncovered, covered };
+  }
+  if (cursor <= to) uncovered.push({ from: cursor, to });
+  return { uncovered, covered };
+}
+
 function mergeCovered(ranges: CoveredDivision[]): BirthdateRange[] {
   const sorted = [...ranges].sort((a, b) => (a.oldest < b.oldest ? -1 : a.oldest > b.oldest ? 1 : 0));
   const merged: BirthdateRange[] = [];

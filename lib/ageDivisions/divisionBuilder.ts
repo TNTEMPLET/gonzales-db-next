@@ -4,10 +4,10 @@
  * the database. Forecast math stays in `compute.ts` / `forecast.ts`.
  */
 
-import { calculatedRange, coverageWarnings, effectiveCutoffDate, effectiveRange } from "./compute";
+import { calculatedRange, coveredSpans, coverageWarnings, effectiveCutoffDate, effectiveRange, uncoveredSpans } from "./compute";
 import { formatCalendarDate } from "./present";
 import { MAX_DIVISION_COUNT, validateSeasonWrite } from "./schema";
-import type { CoverageWarning, DivisionAgeConfig, LeagueAgeRule } from "./types";
+import type { BirthdateRange, CoverageWarning, DivisionAgeConfig, LeagueAgeRule } from "./types";
 
 export const BUILDER_STORAGE_VERSION = 1;
 
@@ -76,9 +76,17 @@ export type BuilderWindow = {
 };
 
 export type BuilderIssue = {
-  kind: "gap" | "overlap" | "invalid" | "incomplete";
+  kind: "gap" | "overlap" | "invalid" | "incomplete" | "covered";
   message: string;
   rowIds: string[];
+};
+
+export type BuilderCoverageOptions = {
+  /**
+   * A gap inside one league that the other league already covers is a note,
+   * not an error. Defaults on, except Fall Ball, which stays league-by-league.
+   */
+  crossLeague?: boolean;
 };
 
 export type KeyValueStore = {
@@ -470,8 +478,13 @@ export function builderLeagueTables(
  * Gaps and overlaps are checked inside one league at a time. Little League 8U
  * and Diamond 8U can share birthdays without being an overlap. A "Both leagues"
  * row is checked with Little League and with Diamond / Dixie.
+ *
+ * When `crossLeague` is on, a hole in one league that Diamond or Little League
+ * already covers is a note. Tee-ball on the Little League charter counts as
+ * Little League coverage, and a Tee-ball row also covers a Diamond hole.
  */
-export function builderCoverageIssues(table: BuilderTable): BuilderIssue[] {
+export function builderCoverageIssues(table: BuilderTable, opts: BuilderCoverageOptions = {}): BuilderIssue[] {
+  const crossLeague = opts.crossLeague ?? table.organizationId !== "fallball";
   const views = builderRowViews(table);
   const issues: BuilderIssue[] = [];
   for (const view of views) {
@@ -497,11 +510,28 @@ export function builderCoverageIssues(table: BuilderTable): BuilderIssue[] {
       });
     }
     const warnings = coverageWarnings(divisions, "2000-06-15");
+    const covers = crossLeague ? otherLeagueMembers(pool.id, views) : [];
+    const coverRanges = covers.map((view) => ({ oldest: view.window.oldest, youngest: view.window.youngest }));
     for (const warning of warnings) {
-      issues.push(issueFromWarning(warning, members, idByCode, pool.label));
+      if (warning.kind !== "gap" || covers.length === 0) {
+        issues.push(issueFromWarning(warning, members, idByCode, pool.label));
+        continue;
+      }
+      issues.push(...issuesForCrossLeagueGap(warning, members, idByCode, pool.label, covers, coverRanges));
     }
   }
   return issues;
+}
+
+/** Birthdate windows from the other league, used to quiet a covered gap on the timeline. */
+export function builderCoverRangesForPool(
+  views: readonly BuilderRowView[],
+  poolId: BuilderCoveragePoolId,
+): BirthdateRange[] {
+  return otherLeagueMembers(poolId, views).map((view) => ({
+    oldest: view.window.oldest,
+    youngest: view.window.youngest,
+  }));
 }
 
 export function builderOverlapRowIds(table: BuilderTable): string[] {
@@ -736,6 +766,58 @@ export function saveBuilderTable(store: KeyValueStore, table: BuilderTable): voi
 export function clearBuilderTable(store: KeyValueStore, organizationId: string, seasonYear: number): void {
   backupUnreadableBuilderRaw(store, organizationId, seasonYear);
   store.removeItem(builderStorageKey(organizationId, seasonYear));
+}
+
+function otherLeagueMembers(poolId: BuilderCoveragePoolId, views: readonly BuilderRowView[]): BuilderRowView[] {
+  const charters: readonly BuilderCharter[] =
+    poolId === "ll" ? ["dyb", "teeball"] : poolId === "dyb" ? ["ll", "teeball"] : [];
+  if (charters.length === 0) return [];
+  return views.filter((view) => charters.includes(view.row.charter) && view.window.usable);
+}
+
+function issuesForCrossLeagueGap(
+  warning: CoverageWarning,
+  members: readonly BuilderRowView[],
+  idByCode: ReadonlyMap<string, string>,
+  poolLabel: string,
+  covers: readonly BuilderRowView[],
+  coverRanges: readonly BirthdateRange[],
+): BuilderIssue[] {
+  const uncovered = uncoveredSpans(warning.from, warning.to, coverRanges);
+  const untouched = uncovered.length === 1 && uncovered[0]?.from === warning.from && uncovered[0]?.to === warning.to;
+  if (untouched) return [issueFromWarning(warning, members, idByCode, poolLabel)];
+  const issues: BuilderIssue[] = [];
+  for (const hole of uncovered) {
+    issues.push(issueFromWarning({ ...warning, from: hole.from, to: hole.to }, members, idByCode, poolLabel));
+  }
+  for (const slice of coveredSpans(warning.from, warning.to, coverRanges)) {
+    const named = covers.filter((view) => view.window.oldest <= slice.to && view.window.youngest >= slice.from);
+    if (named.length === 0) continue;
+    issues.push(coveredIssue(poolLabel, slice.from, slice.to, named));
+  }
+  return issues;
+}
+
+function coveredIssue(
+  poolLabel: string,
+  from: string,
+  to: string,
+  covers: readonly BuilderRowView[],
+): BuilderIssue {
+  const span = `${formatCalendarDate(from)} – ${formatCalendarDate(to)}`;
+  const names = [...covers]
+    .sort((a, b) => a.index - b.index)
+    .map((view) => {
+      const name = view.row.name.trim() || view.title;
+      const window = `${formatCalendarDate(view.window.oldest)} – ${formatCalendarDate(view.window.youngest)}`;
+      return `${name} (${window})`;
+    });
+  const listed = names.length <= 1 ? names[0] ?? "another division" : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+  return {
+    kind: "covered",
+    message: `${poolLabel}: kids born ${span} are covered by ${listed}.`,
+    rowIds: covers.map((view) => view.row.id),
+  };
 }
 
 function issueFromWarning(

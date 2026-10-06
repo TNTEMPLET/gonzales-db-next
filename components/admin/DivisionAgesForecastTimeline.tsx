@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type KeyboardEvent, type MouseEvent, type PointerEvent, type ReactNode, type RefObject } from "react";
 
+import { uncoveredSpans } from "@/lib/ageDivisions/compute";
 import { seasonCutoffIso } from "@/lib/ageDivisions/draft";
 import {
   applyAgeSpan,
@@ -28,6 +29,7 @@ import {
   type TimelineEdge,
   type TimelineMember,
   type TimelineModel,
+  type TimelineSpan,
 } from "@/lib/ageDivisions/forecastTimeline";
 import { DivisionAgesSpringStrips } from "@/components/admin/DivisionAgesSpringTimeline";
 import {
@@ -46,7 +48,7 @@ import {
   touchingBoundaryKey,
   type ProposedConfig,
 } from "@/lib/ageDivisions/forecastView";
-import type { DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDivisions/types";
+import type { BirthdateRange, DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDivisions/types";
 
 function nextDragCommit(lastCommitMs: number, waitMs: number): number | null {
   const now = Date.now();
@@ -463,6 +465,25 @@ function TimelineTrack({
   );
 }
 
+function gapsNotCoveredElsewhere(model: TimelineModel, coverRanges: readonly BirthdateRange[]): TimelineSpan[] {
+  const span = Math.max(1, daysBetween(model.axisOldest, model.axisYoungest));
+  const next: TimelineSpan[] = [];
+  for (const gap of model.gaps) {
+    for (const hole of uncoveredSpans(gap.from, gap.to, coverRanges)) {
+      const start = daysBetween(model.axisOldest, hole.from);
+      const end = daysBetween(model.axisOldest, hole.to) + 1;
+      next.push({
+        from: hole.from,
+        to: hole.to,
+        codes: gap.codes,
+        left: (start / span) * 100,
+        width: Math.max(0, ((end - start) / span) * 100),
+      });
+    }
+  }
+  return next;
+}
+
 export function DivisionAgesForecastTimeline({
   proposed,
   baseline,
@@ -482,6 +503,7 @@ export function DivisionAgesForecastTimeline({
   combinedPresets = false,
   layout = "classic",
   leagueFallback = null,
+  coverRanges,
   assumedTrackWidth = 360,
 }: {
   proposed: ProposedConfig;
@@ -510,6 +532,11 @@ export function DivisionAgesForecastTimeline({
   layout?: ForecastTimelineLayout;
   /** Single-league Spring. Combined Spring reads the code prefix instead. */
   leagueFallback?: SpringLeagueId | null;
+  /**
+   * Other-league windows. On the read-only builder strip, a gap those windows
+   * already cover is not drawn in red. Forecast charts omit this.
+   */
+  coverRanges?: readonly BirthdateRange[];
   /** Year-label density until the plot width is measured. */
   assumedTrackWidth?: number;
   /** Hide drag, presets, and age edits. The bars, gaps, and counts stay. */
@@ -582,6 +609,10 @@ export function DivisionAgesForecastTimeline({
     () => buildTimelineModel(displayDivisions, cutoffIso, layoutAxis),
     [displayDivisions, cutoffIso, layoutAxis],
   );
+  const proposedTrack = useMemo(() => {
+    if (!proposedModel || !readOnly || !coverRanges || coverRanges.length === 0) return proposedModel;
+    return { ...proposedModel, gaps: gapsNotCoveredElsewhere(proposedModel, coverRanges) };
+  }, [proposedModel, readOnly, coverRanges]);
   const currentModel = useMemo(
     () => (baseline ? buildTimelineModel(baseline.divisions, baselineIso, layoutAxis) : null),
     [baseline, baselineIso, layoutAxis],
@@ -839,15 +870,19 @@ export function DivisionAgesForecastTimeline({
         <div>
           <h3 className="text-sm font-semibold text-white">Birthdate windows</h3>
           <p className="mt-1 text-sm text-zinc-400">
-            Each bar is who belongs in that division. Red is a gap. Stripes are an overlap. This view is read-only.
+            Each bar is who belongs in that division.{" "}
+            {coverRanges && coverRanges.length > 0
+              ? "Red is a gap the other league does not cover."
+              : "Red is a gap."}{" "}
+            Stripes are an overlap. This view is read-only.
           </p>
         </div>
         <div className="overflow-x-auto" data-testid="timeline-strips">
           <div className="min-w-[40rem] space-y-2" data-testid="timeline-layout-classic">
             <div data-testid="timeline-proposed">
-              {proposedModel ? (
+              {proposedTrack ? (
                 <TimelineTrack
-                  model={proposedModel}
+                  model={proposedTrack}
                   interactive={false}
                   counts={counts}
                   selected={null}
@@ -891,13 +926,13 @@ export function DivisionAgesForecastTimeline({
               </li>
             );
           })}
-          {proposedModel && proposedModel.gaps.length > 0 ? (
+          {proposedTrack && proposedTrack.gaps.length > 0 ? (
             <li className="inline-flex items-center gap-1.5">
               <span className="h-2.5 w-2.5 rounded-sm border border-red-400 bg-red-950" />
               Gap
             </li>
           ) : null}
-          {proposedModel && proposedModel.overlaps.length > 0 ? (
+          {proposedTrack && proposedTrack.overlaps.length > 0 ? (
             <li className="inline-flex items-center gap-1.5">
               <span
                 className="h-2.5 w-2.5 rounded-sm"
