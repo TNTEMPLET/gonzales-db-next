@@ -1,20 +1,23 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 
+import {
+  springDivisionSheetRows,
+  type SpringDivisionSheetRow,
+} from "@/lib/admin/springCombined/divisionSheet";
 import {
   SPRING_COMBINED_SAVE_HINT,
   SPRING_LEAGUE_ORGS,
-  taggedDivisionRows,
-  type SpringLeagueOrg,
-  type TaggedDivisionRow,
+  type SpringLeagueDivisions,
 } from "@/lib/admin/springCombined/view";
 import type { DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDivisions/types";
-import { getOrgDisplayName } from "@/lib/siteConfig";
 
 const fieldClass =
   "min-h-11 w-full rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-base text-white focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white";
+const buttonClass =
+  "inline-flex min-h-11 shrink-0 items-center justify-center rounded-xl border border-zinc-700 bg-zinc-950 px-3 text-sm font-semibold text-zinc-100 hover:border-zinc-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white disabled:opacity-60";
 
 type SeasonPayload = {
   cutoff?: LeagueAgeRule;
@@ -30,9 +33,12 @@ export default function SpringCombinedDivisions({
   seasonYears: number[];
 }) {
   const [seasonYear, setSeasonYear] = useState(defaultSeasonYear);
-  const [rows, setRows] = useState<TaggedDivisionRow[]>([]);
+  const [leagues, setLeagues] = useState<SpringLeagueDivisions[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [exporting, setExporting] = useState(false);
+  const [exportError, setExportError] = useState<string | null>(null);
+  const rows = useMemo(() => springDivisionSheetRows(leagues, seasonYear), [leagues, seasonYear]);
 
   useEffect(() => {
     let cancelled = false;
@@ -53,10 +59,10 @@ export default function SpringCombinedDivisions({
             return { organizationId: org, cutoff: payload.cutoff, divisions: payload.divisions };
           }),
         );
-        if (!cancelled) setRows(taggedDivisionRows(loaded, seasonYear));
+        if (!cancelled) setLeagues(loaded);
       } catch (caught) {
         if (!cancelled) {
-          setRows([]);
+          setLeagues([]);
           setError(caught instanceof Error ? caught.message : "Could not load saved division ages.");
         }
       } finally {
@@ -82,19 +88,40 @@ export default function SpringCombinedDivisions({
           </Link>
         </p>
       </div>
-      <label className="block w-full text-sm text-zinc-300 sm:w-40">
-        <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Season year</span>
-        <select className={fieldClass} value={seasonYear} onChange={(event) => setSeasonYear(Number(event.target.value))}>
-          {seasonYears.map((year) => (
-            <option key={year} value={year}>
-              {year}
-            </option>
-          ))}
-        </select>
-      </label>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+        <label className="block w-full text-sm text-zinc-300 sm:w-40">
+          <span className="mb-1 block text-[10px] font-bold uppercase tracking-[0.2em] text-zinc-500">Season year</span>
+          <select className={fieldClass} value={seasonYear} onChange={(event) => setSeasonYear(Number(event.target.value))}>
+            {seasonYears.map((year) => (
+              <option key={year} value={year}>
+                {year}
+              </option>
+            ))}
+          </select>
+        </label>
+        <button
+          type="button"
+          className={buttonClass}
+          data-testid="spring-divisions-export-pdf"
+          disabled={loading || exporting || rows.length === 0}
+          onClick={() => {
+            void exportPdf(rows, seasonYear, setExporting, setExportError);
+          }}
+        >
+          {exporting ? "Exporting…" : "Export PDF"}
+        </button>
+      </div>
+      <p className="text-xs text-zinc-500">
+        Export PDF downloads this saved table: page 1 combined, page 2 Gonzales DYB, page 3 Ascension LL.
+      </p>
       {error ? (
         <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100" role="alert">
           {error}
+        </p>
+      ) : null}
+      {exportError ? (
+        <p className="rounded-xl border border-amber-500/40 bg-amber-500/10 p-3 text-sm text-amber-100" role="alert">
+          {exportError}
         </p>
       ) : null}
       {loading ? <p className="text-sm text-zinc-300">Loading saved division ages…</p> : null}
@@ -114,10 +141,8 @@ export default function SpringCombinedDivisions({
             {rows.map((row) => (
               <tr key={row.code} className="border-t border-zinc-800 text-zinc-200">
                 <td className="px-3 py-2">{row.displayName}</td>
-                <td className="px-3 py-2">{leagueLabel(row.organizationId)}</td>
-                <td className="px-3 py-2 tabular-nums">
-                  {row.minAge === row.maxAge ? `${row.minAge}U` : `${row.minAge}–${row.maxAge}`}
-                </td>
+                <td className="px-3 py-2">{row.league}</td>
+                <td className="px-3 py-2 tabular-nums">{row.ages}</td>
                 <td className="px-3 py-2 tabular-nums">{row.oldest}</td>
                 <td className="px-3 py-2 tabular-nums">{row.youngest}</td>
               </tr>
@@ -129,6 +154,23 @@ export default function SpringCombinedDivisions({
   );
 }
 
-function leagueLabel(org: SpringLeagueOrg): string {
-  return getOrgDisplayName(org);
+async function exportPdf(
+  rows: readonly SpringDivisionSheetRow[],
+  seasonYear: number,
+  setExporting: (value: boolean) => void,
+  setExportError: (value: string | null) => void,
+) {
+  if (rows.length === 0) return;
+  setExporting(true);
+  setExportError(null);
+  try {
+    const { buildSpringDivisionsPdf, downloadSpringDivisionsPdf } = await import(
+      "@/lib/admin/springCombined/divisionSheetPdf"
+    );
+    downloadSpringDivisionsPdf(buildSpringDivisionsPdf({ seasonYear, rows }));
+  } catch {
+    setExportError("Could not build the PDF.");
+  } finally {
+    setExporting(false);
+  }
 }
