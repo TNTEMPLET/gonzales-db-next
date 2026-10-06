@@ -2526,11 +2526,27 @@ model SeasonOrgSettings {
   parishRegistrationFeeCents   Int?
   /// Fall Ball 7/30-style umpire pay sheet (bands + bumps). Other orgs unused for now.
   umpirePayJson                Json?
+  /// Saved division-age table for this org and season. Null uses league or built-in defaults.
+  divisionAgesJson             Json?
   createdAt                    DateTime @default(now())
   updatedAt                    DateTime @updatedAt
 
   @@unique([organizationId, seasonYear])
   @@index([organizationId, seasonYear])
+}
+
+/// Per-league division age defaults edited from the Division Ages settings cog.
+/// No row means the built-in defaults in lib/ageDivisions/defaults.ts.
+model LeagueAgeDivisionDefaults {
+  organizationId   String   @id
+  cutoffMonth      Int
+  cutoffDay        Int
+  yearOffset       Int      @default(0)
+  /// Default divisions: code, label, minAge, maxAge, sortOrder.
+  divisionsJson    Json
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  updatedByAdminId String?
 }
 
 /// Explicit mapping of content organization to Google Drive export folder ID

@@ -5,6 +5,7 @@ import Link from "next/link";
 import DugoutGate from "@/components/dugout/DugoutGate";
 import DugoutNav from "@/components/dugout/DugoutNav";
 import DugoutTimeline from "@/components/dugout/DugoutTimeline";
+import { OffSeasonNotice } from "@/components/publicSeason/OffSeasonNotice";
 import CoachAuthButton from "@/components/dugout/CoachAuthButton";
 import StandingsTabs from "@/components/standings/StandingsTabs";
 import {
@@ -27,6 +28,15 @@ import {
   isMasterDeployment,
 } from "@/lib/siteConfig";
 import { loadSeasonStandings } from "@/lib/standings/loadSeasonStandings";
+import { resolveCompletedPublicSeason } from "@/lib/publicSeason/completedSeason";
+import {
+  finalStandingsLabel,
+  isSpringContentOrg,
+  isSpringPublicOffSeason,
+  offSeasonSeasonInfoMessage,
+  springPublicPhase,
+} from "@/lib/publicSeason/offSeason";
+import { getRegistrationStatus } from "@/lib/registrationStatus";
 
 const site = getSiteConfig();
 const orgId = site.orgId === "ascension" ? "ascension" : site.orgId === "fallball" ? "fallball" : "gonzales";
@@ -232,6 +242,13 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     );
   }
 
+  const springOffSeasonOrg =
+    isSpringContentOrg(site.orgId) && isSpringPublicOffSeason(site.orgId)
+      ? site.orgId
+      : null;
+  const springPhase = springOffSeasonOrg ? springPublicPhase(springOffSeasonOrg) : null;
+  const springPreSeason = springPhase === "before" ? springOffSeasonOrg : null;
+
   const now = new Date();
   const todayStr = now.toISOString().split("T")[0]!;
   const startOfWeek = new Date(now);
@@ -253,24 +270,53 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
     scheduleGames,
     allNews,
     seasonStandings,
+    registrationStatus,
+    completedSeason,
   ] = await Promise.all([
     listDugoutPosts(coach?.id, isMaster ? "master" : undefined),
-    fetchGamesForOrgs(
-      { startDate: todayStr, endDate: todayStr },
-      scheduleOrgs,
-    ),
-    fetchGamesForOrgs(
-      { startDate: scheduleStartDate, endDate: scheduleEndDate },
-      scheduleOrgs,
-    ),
+    springOffSeasonOrg
+      ? Promise.resolve([] as Game[])
+      : fetchGamesForOrgs(
+          { startDate: todayStr, endDate: todayStr },
+          scheduleOrgs,
+        ),
+    springOffSeasonOrg
+      ? Promise.resolve([] as Game[])
+      : fetchGamesForOrgs(
+          { startDate: scheduleStartDate, endDate: scheduleEndDate },
+          scheduleOrgs,
+        ),
     getPublishedNewsPosts(),
-    isMaster
+    springPreSeason
       ? Promise.resolve({ standings: [], seasonName: "", seasonYear: 0 })
-      : loadSeasonStandings(orgId),
+      : isMaster
+        ? Promise.resolve({ standings: [], seasonName: "", seasonYear: 0 })
+        : loadSeasonStandings(orgId),
+    springOffSeasonOrg
+      ? getRegistrationStatus(springOffSeasonOrg)
+      : Promise.resolve(null),
+    springPreSeason ? resolveCompletedPublicSeason(springPreSeason) : Promise.resolve(null),
   ]);
 
   const recentNews = allNews.slice(0, 6);
-  const standings = seasonStandings.standings;
+  const preSeasonStandings =
+    springPreSeason && completedSeason?.year != null
+      ? await loadSeasonStandings(springPreSeason, {
+          seasonYear: completedSeason.year,
+          seasonName: completedSeason.label,
+        })
+      : null;
+  const preSeasonRowsMatch = Boolean(
+    completedSeason &&
+      preSeasonStandings &&
+      preSeasonStandings.seasonName.trim() === completedSeason.label.trim(),
+  );
+  const preSeasonFinalLabel =
+    preSeasonRowsMatch && completedSeason ? `${completedSeason.label} Final Standings` : null;
+  const standings =
+    preSeasonRowsMatch && preSeasonStandings
+      ? preSeasonStandings.standings
+      : seasonStandings.standings;
 
   const groupedTodayGames = Object.entries(
     todayGames.reduce<Record<string, Record<string, Game[]>>>(
@@ -384,6 +430,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
           currentUserName={currentUserName}
           isAdmin={!!admin}
           isMaster={isMaster}
+          hideSchedule={springOffSeasonOrg != null}
           brand={{
             name: site.name,
             logoPath: site.logoPath,
@@ -443,8 +490,11 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
               <div className="h-8 w-8" aria-hidden="true" />
             </div>
 
-            <div className="grid grid-cols-3 border-t border-zinc-800">
-              {MOBILE_FEED_TABS.map((item) => {
+            <div className={`grid border-t border-zinc-800 ${springOffSeasonOrg ? "grid-cols-2" : "grid-cols-3"}`}>
+              {(springOffSeasonOrg
+                ? MOBILE_FEED_TABS.filter((item) => item.key !== "schedule")
+                : MOBILE_FEED_TABS
+              ).map((item) => {
                 const isActive =
                   (item.key === "timeline" && activeView === "timeline") ||
                   (item.key === "notifications" &&
@@ -475,6 +525,9 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
             initialPosts={initialPosts}
             initialScheduleGames={scheduleGames}
             initialStandings={standings}
+            offSeasonOrg={springOffSeasonOrg}
+            registrationStatus={registrationStatus}
+            standingsLabel={springPreSeason ? preSeasonFinalLabel : undefined}
             isAdmin={!!admin}
             orgId={isMaster ? "master" : undefined}
             currentUserId={currentUserId}
@@ -488,7 +541,15 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
 
         {/* ── Right sidebar ────────────────────────────────────── */}
         <aside className="hidden xl:flex w-110 shrink-0 flex-col gap-6 overflow-y-auto scrollbar-hide px-5 py-6 pb-6">
-          {/* Today's Games */}
+          {springOffSeasonOrg ? (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70">
+              <OffSeasonNotice
+                org={springOffSeasonOrg}
+                registrationStatus={registrationStatus}
+                standingsLabel={springPreSeason ? preSeasonFinalLabel : undefined}
+              />
+            </div>
+          ) : (
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
             <h3 className="mb-4 text-lg font-bold">Today&apos;s Games</h3>
             {todayGames.length === 0 ? (
@@ -547,14 +608,41 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
               Full schedule →
             </Link>
           </div>
+          )}
 
           {/* Standings — hidden on Master Admin */}
-          {!isMaster && (
+          {!isMaster && springPreSeason ? (
             <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
               <div className="mb-4 flex items-center justify-between gap-3">
-                <h3 className="text-lg font-bold">Standings</h3>
+                <h3 className="text-lg font-bold">
+                  {preSeasonFinalLabel ?? "Upcoming Season"}
+                </h3>
                 <span className="text-[11px] text-zinc-500">
-                  {seasonStandings.seasonName || "Active season"}
+                  {preSeasonFinalLabel
+                    ? "Final results"
+                    : offSeasonSeasonInfoMessage(springPreSeason)}
+                </span>
+              </div>
+              {preSeasonFinalLabel ? <StandingsTabs standings={standings} /> : null}
+              {preSeasonFinalLabel ? (
+                <Link
+                  href="/standings"
+                  className="mt-3 block text-sm font-semibold text-brand-gold hover:text-brand-gold/80 transition"
+                >
+                  Full standings →
+                </Link>
+              ) : null}
+            </div>
+          ) : !isMaster ? (
+            <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">
+              <div className="mb-4 flex items-center justify-between gap-3">
+                <h3 className="text-lg font-bold">
+                  {springOffSeasonOrg ? finalStandingsLabel(springOffSeasonOrg) : "Standings"}
+                </h3>
+                <span className="text-[11px] text-zinc-500">
+                  {springOffSeasonOrg
+                    ? "Final results"
+                    : seasonStandings.seasonName || "Active season"}
                 </span>
               </div>
               <StandingsTabs standings={standings} />
@@ -565,7 +653,7 @@ export default async function DugoutPage({ searchParams }: DugoutPageProps) {
                 Full standings →
               </Link>
             </div>
-          )}
+          ) : null}
 
           {/* News */}
           <div className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5">

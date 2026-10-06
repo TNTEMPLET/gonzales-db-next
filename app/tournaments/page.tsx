@@ -10,10 +10,12 @@ import { resolveBracketThemeColors, type BracketThemeColors } from "@/lib/tourna
 import { buildBracketLayout, type BracketLayout } from "@/lib/tournament-brackets/bracketLayout";
 import { sortPublishedBrackets } from "@/lib/tournament-brackets/publishedBracketSort";
 import { bracketWatermarkSrc } from "@/lib/tournament-brackets/bracketWatermark";
+import { isSpringPublicOffSeason } from "@/lib/publicSeason/offSeason";
 import {
   getBracketOrgDisplayName,
   getBracketOrgForDeployment,
   getContentOrgBrandColors,
+  getOrgId,
   getSiteConfig,
   getTournamentBracketBrandingForOrg,
   isMasterDeployment,
@@ -179,6 +181,7 @@ export default async function TournamentsPage({
 
   const sortedBrackets = sortPublishedBrackets(brackets);
   const showDistrict2ParkAndRules = org === "ladistrict2";
+  const hideLiveScores = isSpringPublicOffSeason(getOrgId());
   const tabBrackets: PublishedTournamentTabBracket[] = sortedBrackets.map((bracket) => ({
     id: bracket.id,
     name: bracket.name,
@@ -190,7 +193,7 @@ export default async function TournamentsPage({
     visualTuning: bracket.visualTuning,
     themeColors: bracket.themeColors,
     logoWatermarkUrl: bracket.logoWatermarkUrl,
-    gameChanger: bracket.gameChanger ?? null,
+    gameChanger: hideLiveScores ? null : (bracket.gameChanger ?? null),
   }));
 
   return (

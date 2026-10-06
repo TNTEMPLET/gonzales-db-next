@@ -1,7 +1,11 @@
 import ScheduleTable from "@/components/ScheduleTable";
+import { OffSeasonPage } from "@/components/publicSeason/OffSeasonNotice";
 import { getActiveOrgAlert } from "@/lib/orgAlerts";
 import prisma from "@/lib/prisma";
 import { getOrgCapabilities } from "@/lib/org/capabilities";
+import { resolvePublicStandingsLabel } from "@/lib/publicSeason/completedSeason";
+import { isSpringContentOrg, isSpringPublicOffSeason } from "@/lib/publicSeason/offSeason";
+import { getRegistrationStatus } from "@/lib/registrationStatus";
 import {
   loadPublicPracticeSlots,
   loadPublicScheduleGames,
@@ -43,9 +47,24 @@ export default async function SchedulePage({
   searchParams: Promise<{ view?: string }>;
 }) {
   const { view } = await searchParams;
+  const siteOrg = getOrgId();
+  if (isSpringContentOrg(siteOrg) && isSpringPublicOffSeason(siteOrg)) {
+    const [registrationStatus, standingsLabel] = await Promise.all([
+      getRegistrationStatus(siteOrg),
+      resolvePublicStandingsLabel(siteOrg),
+    ]);
+    return (
+      <OffSeasonPage
+        org={siteOrg}
+        registrationStatus={registrationStatus}
+        standingsLabel={standingsLabel}
+      />
+    );
+  }
+
   const viewMode = (view as ViewMode) || "thisWeek";
   const site = getSiteConfig();
-  const orgId = getOrgId() as ContentOrgId;
+  const orgId = siteOrg as ContentOrgId;
   const window = await loadPublicScheduleWindow(orgId);
   const { startDate, endDate } = weekRange(viewMode, window.startDate, window.endDate);
 

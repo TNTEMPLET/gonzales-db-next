@@ -3,13 +3,14 @@ import { describe, it } from "node:test";
 
 import {
   canAccessAdminModule,
+  getAdminModuleLabel,
   getMinimumRoleForModule,
   suggestLeastPrivilegeRole,
   type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
 
-const JOB_KEYS = ["SURVEYS", "SCHEDULER", "SPORTS_CONNECT", "ORDERS", "GAME_DAY"] as const;
+const JOB_KEYS = ["SURVEYS", "SCHEDULER", "SPORTS_CONNECT", "ORDERS", "GAME_DAY", "DIVISION_AGES"] as const;
 
 const ROLES: AdminRole[] = ["PARK_DIRECTOR", "BOARD_MEMBER", "ADMIN", "MASTER_ADMIN"];
 
@@ -29,6 +30,33 @@ describe("admin job module keys", () => {
     assert.equal(getMinimumRoleForModule("SPORTS_CONNECT"), "ADMIN");
     assert.equal(getMinimumRoleForModule("ORDERS"), "MASTER_ADMIN");
     assert.equal(getMinimumRoleForModule("GAME_DAY"), "PARK_DIRECTOR");
+    assert.equal(getMinimumRoleForModule("DIVISION_AGES"), "ADMIN");
+    assert.equal(getAdminModuleLabel("DIVISION_AGES"), "Division ages");
+  });
+
+  it("keeps division ages at admin and above on org sites and the master site", () => {
+    for (const masterDeployment of [false, true]) {
+      assert.equal(
+        canAccessAdminModule("PARK_DIRECTOR", "DIVISION_AGES", { masterDeployment }),
+        false,
+        `park director masterDeployment=${masterDeployment}`,
+      );
+      assert.equal(
+        canAccessAdminModule("BOARD_MEMBER", "DIVISION_AGES", { masterDeployment }),
+        false,
+        `board member masterDeployment=${masterDeployment}`,
+      );
+      assert.equal(
+        canAccessAdminModule("ADMIN", "DIVISION_AGES", { masterDeployment }),
+        true,
+        `admin masterDeployment=${masterDeployment}`,
+      );
+      assert.equal(
+        canAccessAdminModule("MASTER_ADMIN", "DIVISION_AGES", { masterDeployment }),
+        true,
+        `master admin masterDeployment=${masterDeployment}`,
+      );
+    }
   });
 
   it("denies non-masters on the orders API gate and allows a master admin when orders are on", () => {

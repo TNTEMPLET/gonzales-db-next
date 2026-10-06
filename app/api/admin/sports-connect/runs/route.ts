@@ -6,6 +6,7 @@ import {
   createImportRun,
   listImportRuns,
 } from "@/lib/sportsConnect/importRuns";
+import { ImportRunSummaryError } from "@/lib/sportsConnect/splitBatchSummary";
 import {
   isSportsConnectReportKind,
   type SportsConnectReportKind,
@@ -154,6 +155,9 @@ export async function POST(request: NextRequest) {
       { headers: { "Cache-Control": "no-store, max-age=0" } },
     );
   } catch (err) {
+    if (err instanceof ImportRunSummaryError) {
+      return NextResponse.json({ error: err.message }, { status: err.status });
+    }
     const message =
       err instanceof Error ? err.message : "Failed to create import run";
     console.error("[sports-connect/runs POST]", message);

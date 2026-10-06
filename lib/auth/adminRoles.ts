@@ -42,6 +42,7 @@ export const ADMIN_MODULES = [
   "SPORTS_CONNECT",
   "ORDERS",
   "GAME_DAY",
+  "DIVISION_AGES",
 ] as const;
 
 export type AdminModule = (typeof ADMIN_MODULES)[number];
@@ -83,6 +84,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   SPORTS_CONNECT: "ADMIN",
   ORDERS: "MASTER_ADMIN",
   GAME_DAY: "PARK_DIRECTOR",
+  DIVISION_AGES: "ADMIN",
 };
 
 const ADMIN_MODULE_LABELS: Record<AdminModule, string> = {
@@ -115,6 +117,7 @@ const ADMIN_MODULE_LABELS: Record<AdminModule, string> = {
   SPORTS_CONNECT: "Sports Connect import",
   ORDERS: "Cap and shirt orders",
   GAME_DAY: "Game day and field desk",
+  DIVISION_AGES: "Division ages",
 };
 
 const MASTER_ONLY_MODULES = new Set<AdminModule>([
@@ -228,9 +231,9 @@ const ROLE_SUGGESTION_NOTES: Record<AdminRole, string> = {
   PARK_DIRECTOR:
     "Game day, scores, umpire pay, and season setup. Park directors do not see cap or shirt orders.",
   BOARD_MEMBER:
-    "Board access for moderation and payments oversight. Surveys, the scheduler, Sports Connect, and orders stay with higher roles.",
+    "Board access for moderation and payments oversight. Surveys, the scheduler, Sports Connect, division ages, and orders stay with higher roles.",
   ADMIN:
-    "Site operator. Includes surveys, the scheduler, Sports Connect, teams, and everything a board member can open. Cap and shirt orders stay with master admins.",
+    "Site operator. Includes surveys, the scheduler, Sports Connect, division ages, teams, and everything a board member can open. Cap and shirt orders stay with master admins.",
   MASTER_ADMIN:
     "Requires platform-level privileges. Only for trusted cross-org operators. Includes cap and shirt orders.",
 };

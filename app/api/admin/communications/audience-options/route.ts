@@ -6,6 +6,7 @@ import {
   type TeamsOrgId,
 } from "@/lib/admin/teamsImportHelpers";
 import { resolveCommunicationActor } from "@/lib/communications/authz";
+import { excludeRegistrationHistoryEnrollment } from "@/lib/enrollment/operationalEnrollment";
 import prisma from "@/lib/prisma";
 import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
 import type { ContentOrgId } from "@/lib/siteConfig";
@@ -28,7 +29,7 @@ export async function GET(request: NextRequest) {
       },
     }),
     prisma.enrollment.findMany({
-      where: { organizationId: org, seasonYear },
+      where: excludeRegistrationHistoryEnrollment({ organizationId: org, seasonYear }),
       select: { ageGroup: true, guardianEmail: true },
     }),
   ]);

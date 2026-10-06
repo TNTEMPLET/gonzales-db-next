@@ -62,6 +62,8 @@ const moduleCatalog: Record<
   { category: AdminDashboardCategory; sortOrder: number } | null
 > = {
   DASHBOARD: null,
+  // Opened from Season Setup and the sidebar. No dashboard card in this slice.
+  DIVISION_AGES: null,
   USERS: { category: "people", sortOrder: 10 },
   VOLUNTEERS: { category: "people", sortOrder: 11 },
   ROLE_ASSIGNMENT: { category: "people", sortOrder: 12 },

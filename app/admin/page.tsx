@@ -24,6 +24,7 @@ import {
   getSiteConfigForOrg,
   isMasterDeployment,
   isAdminModuleEnabledForOrg,
+  resolveOrg,
   type ContentOrgId,
 } from "@/lib/siteConfig";
 import {
@@ -93,8 +94,16 @@ export default async function AdminDashboardPage({
 
   if (!adminUser) {
     const nextOrg =
-      requestedOrg ?? (allSitesRequested ? "all" : getPrimaryLiveContentOrg());
+      org === "spring"
+        ? resolveOrg("spring")
+        : (requestedOrg ?? (allSitesRequested ? "all" : getPrimaryLiveContentOrg()));
     redirect(`/admin/login?next=/admin?org=${nextOrg}`);
+  }
+
+  // `?org=spring` is the Season Setup view, not this dashboard. Send it to
+  // Gonzales instead of the live-org fallback (Fall Ball while that season is live).
+  if (masterMode && org === "spring") {
+    redirect(`/admin?org=${resolveOrg("spring")}`);
   }
 
   // Bare /admin on master used to land on All Sites, which forced a click

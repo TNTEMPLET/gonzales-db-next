@@ -1,9 +1,13 @@
 import Link from "next/link";
 import { connection } from "next/server";
 
+import { OffSeasonPage } from "@/components/publicSeason/OffSeasonNotice";
 import TodayScheduleView from "@/components/tournaments/TodayScheduleView";
+import { resolvePublicStandingsLabel } from "@/lib/publicSeason/completedSeason";
+import { isSpringContentOrg, isSpringPublicOffSeason } from "@/lib/publicSeason/offSeason";
+import { getRegistrationStatus } from "@/lib/registrationStatus";
 import { buildTodayScheduleForOrg } from "@/lib/tournament-brackets/todaySchedule";
-import { getBracketOrgForDeployment, getSiteConfig, isTournamentOnlyDeployment } from "@/lib/siteConfig";
+import { getBracketOrgForDeployment, getOrgId, getSiteConfig, isTournamentOnlyDeployment } from "@/lib/siteConfig";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +20,21 @@ export function generateMetadata() {
 }
 
 export default async function TodaySchedulePage() {
+  const siteOrg = getOrgId();
+  if (isSpringContentOrg(siteOrg) && isSpringPublicOffSeason(siteOrg)) {
+    const [registrationStatus, standingsLabel] = await Promise.all([
+      getRegistrationStatus(siteOrg),
+      resolvePublicStandingsLabel(siteOrg),
+    ]);
+    return (
+      <OffSeasonPage
+        org={siteOrg}
+        registrationStatus={registrationStatus}
+        standingsLabel={standingsLabel}
+      />
+    );
+  }
+
   await connection();
   const site = getSiteConfig();
   const org = getBracketOrgForDeployment();

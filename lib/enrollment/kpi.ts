@@ -1,5 +1,6 @@
 import "server-only";
 
+import { excludeRegistrationHistoryEnrollment } from "@/lib/enrollment/operationalEnrollment";
 import prisma from "@/lib/prisma";
 
 import {
@@ -67,20 +68,22 @@ export async function getEnrollmentKpiSummary(input: {
   const [totals, unassignedCount, byDivision, byFeeTier, teamsForSeason, priorSeasonTotals] =
     await Promise.all([
       prisma.enrollment.aggregate({
-        where: { organizationId, seasonYear },
+        where: excludeRegistrationHistoryEnrollment({ organizationId, seasonYear }),
         _count: { _all: true },
         _sum: { amountCents: true, amountPaidCents: true, balanceCents: true },
       }),
-      prisma.enrollment.count({ where: { organizationId, seasonYear, teamId: null } }),
+      prisma.enrollment.count({
+        where: excludeRegistrationHistoryEnrollment({ organizationId, seasonYear, teamId: null }),
+      }),
       prisma.enrollment.groupBy({
         by: ["ageGroup"],
-        where: { organizationId, seasonYear },
+        where: excludeRegistrationHistoryEnrollment({ organizationId, seasonYear }),
         _count: { _all: true },
         _sum: { amountCents: true, amountPaidCents: true },
       }),
       prisma.enrollment.groupBy({
         by: ["orderDetailDescription"],
-        where: { organizationId, seasonYear },
+        where: excludeRegistrationHistoryEnrollment({ organizationId, seasonYear }),
         _count: { _all: true },
         _sum: { amountCents: true, amountPaidCents: true },
       }),
@@ -93,7 +96,10 @@ export async function getEnrollmentKpiSummary(input: {
         select: { ageGroup: true, _count: { select: { players: true } } },
       }),
       prisma.enrollment.aggregate({
-        where: { organizationId, seasonYear: seasonYear - 1 },
+        where: excludeRegistrationHistoryEnrollment({
+          organizationId,
+          seasonYear: seasonYear - 1,
+        }),
         _count: { _all: true },
         _sum: { amountCents: true },
       }),

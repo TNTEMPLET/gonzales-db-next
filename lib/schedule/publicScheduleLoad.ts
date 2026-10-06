@@ -28,7 +28,11 @@ export type PublicScheduleWindow = {
   seasonYear: number;
 };
 
-async function resolveSeason(organizationId: string, seasonYear: number) {
+async function resolveSeason(
+  organizationId: string,
+  seasonYear: number,
+  seasonName?: string,
+) {
   const seasons = await prisma.scheduleSeason.findMany({
     where: { organizationId, seasonYear },
     orderBy: { updatedAt: "desc" },
@@ -42,6 +46,10 @@ async function resolveSeason(organizationId: string, seasonYear: number) {
     },
   });
   if (seasons.length === 0) return null;
+  if (seasonName != null) {
+    const wanted = seasonName.trim();
+    return seasons.find((season) => season.name.trim() === wanted) ?? null;
+  }
   return (
     seasons.find((season) => season.status === "ACTIVE") ||
     seasons.find((season) => season.status === "LOCKED") ||
@@ -52,8 +60,37 @@ async function resolveSeason(organizationId: string, seasonYear: number) {
 
 export async function loadPublicScheduleWindow(
   org: ContentOrgId,
+  seasonRequest?: { seasonYear: number; seasonName: string },
 ): Promise<PublicScheduleWindow> {
   const config = getSeasonConfigForOrg(org);
+  if (seasonRequest) {
+    const season = await resolveSeason(
+      org,
+      seasonRequest.seasonYear,
+      seasonRequest.seasonName,
+    );
+    if (!season) {
+      return {
+        startDate: config.startDate,
+        endDate: config.endDate,
+        practiceStartDate: config.startDate,
+        practiceEndDate: config.endDate,
+        seasonName: "",
+        seasonYear: seasonRequest.seasonYear,
+      };
+    }
+    const startsOn = season.startsOn ? utcDateKey(season.startsOn) : config.startDate;
+    const endsOn = season.endsOn ? utcDateKey(season.endsOn) : config.endDate;
+    const windows = parseSeasonDateWindows(season.settings, startsOn, endsOn);
+    return {
+      startDate: startsOn,
+      endDate: endsOn,
+      practiceStartDate: windows.practiceStartsOn || startsOn,
+      practiceEndDate: windows.practiceEndsOn || endsOn,
+      seasonName: season.name,
+      seasonYear: seasonRequest.seasonYear,
+    };
+  }
   const season = await resolveSeason(org, config.year);
   const startsOn = season?.startsOn ? utcDateKey(season.startsOn) : config.startDate;
   const endsOn = season?.endsOn ? utcDateKey(season.endsOn) : config.endDate;
@@ -80,9 +117,16 @@ export async function loadPublicScheduleGames(options: {
   org: ContentOrgId;
   startDate?: string;
   endDate?: string;
+  /** Set together to read one named season. Omit both to keep the configured year. */
+  seasonYear?: number;
+  seasonName?: string;
 }): Promise<PublicScheduleGame[]> {
   const config = getSeasonConfigForOrg(options.org);
-  const season = await resolveSeason(options.org, config.year);
+  const season = await resolveSeason(
+    options.org,
+    options.seasonYear ?? config.year,
+    options.seasonName,
+  );
   if (!season) return [];
 
   const rows = await prisma.scheduleDraftGame.findMany({

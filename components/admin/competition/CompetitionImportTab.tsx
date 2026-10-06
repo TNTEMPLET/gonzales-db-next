@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 
+import RegistrationHistoryImportPanel from "@/components/admin/competition/RegistrationHistoryImportPanel";
 import { SportsConnectQualityPanel } from "@/components/admin/teams/SportsConnectAssistPanels";
 import PlayerNameCollisionsPanel from "@/components/admin/teams/PlayerNameCollisionsPanel";
 import SmartAutoBuildWizard from "@/components/admin/teams/SmartAutoBuildWizard";
@@ -31,9 +32,11 @@ async function safeJson(response: Response) {
 export default function CompetitionImportTab({
   targetOrg,
   seasonYear: initialSeasonYear = new Date().getFullYear(),
+  canSplitByDivision = false,
 }: {
   targetOrg: ContentOrgId;
   seasonYear?: number;
+  canSplitByDivision?: boolean;
 }) {
   const orgQuery = `org=${targetOrg}`;
   const [seasonYear, setSeasonYear] = useState(initialSeasonYear);
@@ -238,6 +241,11 @@ export default function CompetitionImportTab({
           section on the Teams &amp; Rosters tab.
         </p>
       </div>
+
+      <RegistrationHistoryImportPanel
+        targetOrg={targetOrg}
+        canSplitByDivision={canSplitByDivision}
+      />
 
       {targetOrg === "fallball" && (
         <div>

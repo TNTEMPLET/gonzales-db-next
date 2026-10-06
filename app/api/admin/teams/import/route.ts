@@ -11,6 +11,7 @@ import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
 import { isContentOrgId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { completeImportRunSafe, recordImportRunSafe } from "@/lib/sportsConnect/importRuns";
 import { deriveSportsConnectRowKey } from "@/lib/sportsConnect/enrollmentRowKey";
+import { lockSpringEnrollment } from "@/lib/sportsConnect/springEnrollmentLock";
 import {
   pruneStaleEnrollments,
   type PruneStaleEnrollmentsResult,
@@ -848,17 +849,45 @@ export async function applyImportRows(params: {
         rawRow: toInputJson(row),
         importRunId,
       };
-      await prisma.enrollment.upsert({
-        where: {
-          organizationId_seasonYear_sportsConnectRowKey: {
-            organizationId: targetOrg,
-            seasonYear,
-            sportsConnectRowKey,
+      if (targetOrg === "gonzales" || targetOrg === "ascension") {
+        await prisma.$transaction(async (tx) => {
+          await lockSpringEnrollment(tx, seasonYear);
+          const existingKeys = await tx.enrollment.findMany({
+            where: {
+              seasonYear,
+              sportsConnectRowKey,
+              organizationId: { in: ["gonzales", "ascension"] },
+            },
+            select: { organizationId: true },
+          });
+          const inThisOrg = existingKeys.some((row) => row.organizationId === targetOrg);
+          const inOtherOrg = existingKeys.some((row) => row.organizationId !== targetOrg);
+          if (!inThisOrg && inOtherOrg) return;
+          await tx.enrollment.upsert({
+            where: {
+              organizationId_seasonYear_sportsConnectRowKey: {
+                organizationId: targetOrg,
+                seasonYear,
+                sportsConnectRowKey,
+              },
+            },
+            create: { organizationId: targetOrg, seasonYear, sportsConnectRowKey, ...enrollmentFields },
+            update: enrollmentFields,
+          });
+        });
+      } else {
+        await prisma.enrollment.upsert({
+          where: {
+            organizationId_seasonYear_sportsConnectRowKey: {
+              organizationId: targetOrg,
+              seasonYear,
+              sportsConnectRowKey,
+            },
           },
-        },
-        create: { organizationId: targetOrg, seasonYear, sportsConnectRowKey, ...enrollmentFields },
-        update: enrollmentFields,
-      });
+          create: { organizationId: targetOrg, seasonYear, sportsConnectRowKey, ...enrollmentFields },
+          update: enrollmentFields,
+        });
+      }
     } catch (err) {
       console.error(
         "[teams/import] Enrollment upsert failed for row",

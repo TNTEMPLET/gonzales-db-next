@@ -82,6 +82,8 @@ type Props = {
   currentUserName: string | null;
   isAdmin: boolean;
   isMaster?: boolean;
+  /** Hide the schedule link. Omitted on in-season and non-Spring sites. */
+  hideSchedule?: boolean;
   brand: {
     name: string;
     logoPath: string;
@@ -113,6 +115,7 @@ export default function DugoutNav({
   currentUserName,
   isAdmin,
   isMaster,
+  hideSchedule = false,
   brand,
 }: Props) {
   const [collapsed, setCollapsed] = useState(false);
@@ -176,7 +179,7 @@ export default function DugoutNav({
 
       {/* Nav links */}
       <div className="flex flex-col gap-0.5">
-        {NAV_ITEMS.map((item) => {
+        {(hideSchedule ? NAV_ITEMS.filter((item) => item.key !== "schedule") : NAV_ITEMS).map((item) => {
           const isActive =
             (item.key === "notifications" && activeView === "notifications") ||
             (item.key === "schedule" && activeView === "schedule");

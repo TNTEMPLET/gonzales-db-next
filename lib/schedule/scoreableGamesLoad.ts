@@ -38,16 +38,21 @@ export async function loadScoreableGamesForOrgs(
   return batches.flat();
 }
 
-export async function loadPostedSeasonGames(org: ContentOrgId): Promise<{
+export async function loadPostedSeasonGames(
+  org: ContentOrgId,
+  seasonRequest?: { seasonYear: number; seasonName: string },
+): Promise<{
   games: PublicScheduleGame[];
   seasonName: string;
   seasonYear: number;
 }> {
-  const window = await loadPublicScheduleWindow(org);
+  const window = await loadPublicScheduleWindow(org, seasonRequest);
   const games = await loadPublicScheduleGames({
     org,
     startDate: window.startDate,
     endDate: window.endDate,
+    seasonYear: seasonRequest?.seasonYear,
+    seasonName: seasonRequest?.seasonName,
   });
   return { games, seasonName: window.seasonName, seasonYear: window.seasonYear };
 }

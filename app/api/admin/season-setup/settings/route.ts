@@ -6,8 +6,15 @@ import {
   defaultParishRegistrationFeeCents,
   resolveParishRegistrationFeeCents,
 } from "@/lib/admin/parishEnrollmentMoney";
+import { springCombinedRequestBlock } from "@/lib/admin/springCombined/view";
 import { isContentOrgId, resolveAdminTargetOrg } from "@/lib/siteConfig";
 import { getSeasonConfigForOrg } from "@/lib/seasonConfig";
+
+function blockSpringView(request: NextRequest) {
+  const blocked = springCombinedRequestBlock(request.nextUrl.searchParams.get("org"));
+  if (!blocked) return null;
+  return NextResponse.json({ error: blocked.error }, { status: blocked.status });
+}
 
 function parseSeasonYear(value: unknown, fallback: number): number | null {
   const year = typeof value === "number" ? value : typeof value === "string" ? parseInt(value, 10) : fallback;
@@ -32,6 +39,9 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
+
+  const springBlock = blockSpringView(request);
+  if (springBlock) return springBlock;
 
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   if (!isContentOrgId(targetOrg)) {
@@ -68,6 +78,9 @@ export async function PATCH(request: NextRequest) {
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message }, { status: auth.status });
   }
+
+  const springBlock = blockSpringView(request);
+  if (springBlock) return springBlock;
 
   const targetOrg = resolveAdminTargetOrg(request.nextUrl.searchParams.get("org"));
   if (!isContentOrgId(targetOrg)) {
