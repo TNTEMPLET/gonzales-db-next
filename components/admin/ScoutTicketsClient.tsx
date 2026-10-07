@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 import {
   GMAIL_ACCESS_NOT_GRANTED_MESSAGE,
@@ -13,29 +13,27 @@ import {
   type ScoutOrgTag,
   type ScoutTicketStatus,
 } from "@/lib/scout/config";
+import { formatScoutWhen } from "@/lib/scout/formatWhen";
+import { scoutFilterPublishAction, scoutTicketsHref } from "@/lib/scout/links";
+import { scoutFiltersActive, scoutTicketListSummary } from "@/lib/scout/listQuery";
 import {
   applyScoutSyncReport,
   applyScoutTicketsPayload,
   notifyScoutDataChanged,
   scoutPagePropKey,
+  scoutSyncRunNotice,
   type ScoutSyncClientReport,
   type ScoutTicketsPayload,
 } from "@/lib/scout/pageRefresh";
+import {
+  readScoutSaveFeedback,
+  rememberScoutSaveFeedback,
+  type ScoutSaveFeedback,
+} from "@/lib/scout/saveFeedback";
 import { SCOUT_STORAGE_NOT_READY, scoutUiText } from "@/lib/scout/storageError";
 import type { ScoutPageModel, ScoutTicketDetail } from "@/lib/scout/view";
 
-function formatWhen(iso: string | null): string {
-  if (!iso) return "never";
-  const date = new Date(iso);
-  if (Number.isNaN(date.getTime())) return "never";
-  return new Intl.DateTimeFormat("en-US", {
-    timeZone: "America/Chicago",
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(date);
-}
+const SENDER_FILTER_DEBOUNCE_MS = 400;
 
 function senderLine(name: string | null, email: string): string {
   return name ? `${name} · ${email}` : email;
@@ -48,13 +46,13 @@ function statusClass(status: ScoutTicketStatus): string {
 }
 
 function ticketHref(org: string, model: ScoutPageModel, id: string): string {
-  const params = new URLSearchParams();
-  params.set("org", org);
-  if (model.filters.status !== "all") params.set("status", model.filters.status);
-  if (model.filters.orgTag !== "all") params.set("orgTag", model.filters.orgTag);
-  if (model.filters.sender) params.set("sender", model.filters.sender);
-  params.set("ticket", id);
-  return `/admin/tickets?${params.toString()}`;
+  return scoutTicketsHref({
+    shellOrg: org,
+    status: model.filters.status,
+    orgTag: model.filters.orgTag,
+    sender: model.filters.sender,
+    ticketId: id,
+  });
 }
 
 function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved: () => void }) {
@@ -67,11 +65,16 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
   const [orgTag, setOrgTag] = useState<string>(ticket.orgTag ?? "");
   const [notes, setNotes] = useState(ticket.notes);
   const [saving, setSaving] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
+  const [feedback, setFeedback] = useState<ScoutSaveFeedback | null>(() => readScoutSaveFeedback(ticket.id));
+
+  function showFeedback(next: ScoutSaveFeedback | null) {
+    rememberScoutSaveFeedback(ticket.id, next);
+    setFeedback(next);
+  }
 
   async function save() {
     setSaving(true);
-    setMessage(null);
+    showFeedback(null);
     try {
       const res = await fetch(`/api/admin/scout/tickets/${ticket.id}`, {
         method: "PATCH",
@@ -82,15 +85,15 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
           notes,
         }),
       });
-      const json = (await res.json()) as { error?: string };
+      const json = (await res.json().catch(() => null)) as { error?: string } | null;
       if (!res.ok) {
-        setMessage(json.error || "Could not save.");
+        showFeedback({ tone: "error", text: scoutUiText(json?.error) || "Could not save." });
         return;
       }
-      setMessage("Saved.");
+      showFeedback({ tone: "ok", text: "Saved" });
       onSaved();
     } catch {
-      setMessage("Could not save.");
+      showFeedback({ tone: "error", text: "Could not save." });
     } finally {
       setSaving(false);
     }
@@ -117,7 +120,7 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
         {ticket.messages.map((message) => (
           <li key={message.id} className="py-3">
             <p className="text-xs text-zinc-500">
-              {senderLine(message.senderName, message.senderEmail)} · {formatWhen(message.receivedAt)}
+              {senderLine(message.senderName, message.senderEmail)} · {formatScoutWhen(message.receivedAt)}
             </p>
             <p className="mt-1 text-sm text-zinc-200">{message.snippet || "No snippet."}</p>
           </li>
@@ -129,7 +132,10 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
           Status
           <select
             value={status}
-            onChange={(event) => setStatus(event.target.value as ScoutTicketStatus)}
+            onChange={(event) => {
+              setStatus(event.target.value as ScoutTicketStatus);
+              showFeedback(null);
+            }}
             className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           >
             {SCOUT_TICKET_STATUSES.map((value) => (
@@ -143,7 +149,10 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
           Org
           <select
             value={orgTag}
-            onChange={(event) => setOrgTag(event.target.value)}
+            onChange={(event) => {
+              setOrgTag(event.target.value);
+              showFeedback(null);
+            }}
             className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           >
             <option value="">None</option>
@@ -160,7 +169,10 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
         Notes
         <textarea
           value={notes}
-          onChange={(event) => setNotes(event.target.value)}
+          onChange={(event) => {
+            setNotes(event.target.value);
+            showFeedback(null);
+          }}
           rows={3}
           className="mt-1 w-full rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
         />
@@ -175,7 +187,14 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
         >
           {saving ? "Saving…" : "Save"}
         </button>
-        {message ? <p className="text-sm text-zinc-400">{message}</p> : null}
+        {feedback ? (
+          <p
+            role={feedback.tone === "error" ? "alert" : "status"}
+            className={`text-sm ${feedback.tone === "error" ? "text-red-300" : "text-emerald-300"}`}
+          >
+            {feedback.text}
+          </p>
+        ) : null}
       </div>
     </div>
   );
@@ -188,7 +207,6 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
   const [live, setLive] = useState(model);
   const pullGen = useRef(0);
   const propKeyRef = useRef(propKey);
-  propKeyRef.current = propKey;
   if (propKey !== seenPropKey) {
     setSeenPropKey(propKey);
     setLive(model);
@@ -197,6 +215,121 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
   const [running, setRunning] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState(model.filters.status);
+  const [orgTagFilter, setOrgTagFilter] = useState(model.filters.orgTag);
+  const [senderFilter, setSenderFilter] = useState(model.filters.sender);
+  const [seenFilterKey, setSeenFilterKey] = useState(
+    `${model.filters.status}|${model.filters.orgTag}|${model.filters.sender}`,
+  );
+  const [expectedFilterHref, setExpectedFilterHref] = useState<string | null>(null);
+  const expectedFilterHrefRef = useRef<string | null>(null);
+  const senderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const viewRef = useRef(view);
+  const statusFilterRef = useRef(statusFilter);
+  const orgTagFilterRef = useRef(orgTagFilter);
+
+  useEffect(() => {
+    propKeyRef.current = propKey;
+  }, [propKey]);
+
+  useEffect(() => {
+    viewRef.current = view;
+    statusFilterRef.current = statusFilter;
+    orgTagFilterRef.current = orgTagFilter;
+  }, [view, statusFilter, orgTagFilter]);
+
+  useEffect(() => {
+    return () => {
+      if (senderTimer.current) clearTimeout(senderTimer.current);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (expectedFilterHref === null) return;
+    const arrived = scoutTicketsHref({
+      shellOrg: org,
+      status: view.filters.status,
+      orgTag: view.filters.orgTag,
+      sender: view.filters.sender,
+    });
+    if (arrived !== expectedFilterHref) return;
+    expectedFilterHrefRef.current = null;
+    setExpectedFilterHref(null);
+  }, [expectedFilterHref, org, view.filters.orgTag, view.filters.sender, view.filters.status]);
+
+  const filterKey = `${view.filters.status}|${view.filters.orgTag}|${view.filters.sender}`;
+  if (filterKey !== seenFilterKey) {
+    const arrived = scoutTicketsHref({
+      shellOrg: org,
+      status: view.filters.status,
+      orgTag: view.filters.orgTag,
+      sender: view.filters.sender,
+    });
+    setSeenFilterKey(filterKey);
+    if (expectedFilterHref === null || expectedFilterHref === arrived) {
+      setStatusFilter(view.filters.status);
+      setOrgTagFilter(view.filters.orgTag);
+      setSenderFilter(view.filters.sender);
+      if (expectedFilterHref !== null) {
+        expectedFilterHrefRef.current = null;
+        setExpectedFilterHref(null);
+      }
+    }
+  }
+
+  function publishFilters(next: { status: string; orgTag: string; sender: string }) {
+    const current = viewRef.current;
+    const desired = scoutTicketsHref({
+      shellOrg: org,
+      status: next.status,
+      orgTag: next.orgTag,
+      sender: next.sender,
+    });
+    const applied = scoutTicketsHref({
+      shellOrg: org,
+      status: current.filters.status,
+      orgTag: current.filters.orgTag,
+      sender: current.filters.sender,
+    });
+    if (
+      scoutFilterPublishAction({
+        desired,
+        applied,
+        inFlight: expectedFilterHrefRef.current,
+      }) === "none"
+    ) {
+      return;
+    }
+    expectedFilterHrefRef.current = desired;
+    setExpectedFilterHref(desired);
+    router.replace(
+      scoutTicketsHref({
+        shellOrg: org,
+        status: next.status,
+        orgTag: next.orgTag,
+        sender: next.sender,
+        ticketId: current.selected?.id ?? null,
+      }),
+      { scroll: false },
+    );
+  }
+
+  function applyFilters(next: { status: string; orgTag: string; sender: string }) {
+    if (senderTimer.current) clearTimeout(senderTimer.current);
+    publishFilters(next);
+  }
+
+  function onSenderChange(value: string) {
+    setSenderFilter(value);
+    if (senderTimer.current) clearTimeout(senderTimer.current);
+    senderTimer.current = setTimeout(() => {
+      publishFilters({
+        status: statusFilterRef.current,
+        orgTag: orgTagFilterRef.current,
+        sender: value.trim(),
+      });
+    }, SENDER_FILTER_DEBOUNCE_MS);
+  }
 
   async function pullScoutView() {
     const gen = ++pullGen.current;
@@ -235,29 +368,33 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
   async function runNow() {
     setRunning(true);
     setNotice(null);
+    const nowIso = new Date().toISOString();
     try {
       const res = await fetch("/api/admin/scout/sync", { method: "POST" });
       const json = (await res.json()) as ScoutSyncClientReport;
-      const errorText = json.error ? scoutUiText(json.error) || "Sync failed." : null;
-      if (!res.ok) {
-        setNotice(errorText || "Sync failed.");
-      } else if (errorText) {
-        setNotice(errorText);
-      } else if (json.backfillPending) {
-        setNotice("Synced one batch. Scout will keep importing the rest of the inbox.");
+      const errorText = json.error ? scoutUiText(json.error) || "Sync failed." : !res.ok ? "Sync failed." : null;
+      if (errorText === SCOUT_STORAGE_NOT_READY) {
+        setLive((current) => ({ ...current, storageMessage: SCOUT_STORAGE_NOT_READY }));
       } else {
-        setNotice("Sync finished.");
+        setNotice(
+          scoutSyncRunNotice({
+            httpOk: res.ok,
+            error: errorText,
+            backfillPending: Boolean(json.backfillPending),
+          }),
+        );
+        setLive((current) =>
+          applyScoutSyncReport(
+            current,
+            { ok: res.ok && !errorText, error: errorText, backfillPending: json.backfillPending },
+            nowIso,
+          ),
+        );
       }
-      setLive((current) =>
-        applyScoutSyncReport(
-          current,
-          { ok: res.ok && !errorText, error: errorText, backfillPending: json.backfillPending },
-          new Date().toISOString(),
-        ),
-      );
       await pullScoutView();
     } catch {
-      setNotice("Sync failed.");
+      setNotice(null);
+      setLive((current) => applyScoutSyncReport(current, { ok: false, error: "Sync failed." }, nowIso));
     } finally {
       setRunning(false);
     }
@@ -305,8 +442,8 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
           </button>
         ) : null}
         <p className="text-xs text-zinc-500">
-          Last run {formatWhen(view.sync.lastRunAt)}
-          {view.sync.lastSuccessAt ? ` · Last success ${formatWhen(view.sync.lastSuccessAt)}` : ""}
+          Last run {formatScoutWhen(view.sync.lastRunAt)}
+          {view.sync.lastSuccessAt ? ` · Last success ${formatScoutWhen(view.sync.lastSuccessAt)}` : ""}
         </p>
       </div>
 
@@ -337,16 +474,25 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
       {notice ? <p className="text-sm text-zinc-400">{notice}</p> : null}
 
       <form
-        key={`${view.filters.status}|${view.filters.orgTag}|${view.filters.sender}`}
         action="/admin/tickets"
+        method="get"
         className="flex flex-wrap items-end gap-2"
+        onSubmit={(event) => {
+          event.preventDefault();
+          applyFilters({ status: statusFilter, orgTag: orgTagFilter, sender: senderFilter.trim() });
+        }}
       >
         <input type="hidden" name="org" value={org} />
         <label className="text-xs text-zinc-500">
           Status
           <select
             name="status"
-            defaultValue={view.filters.status}
+            value={statusFilter}
+            onChange={(event) => {
+              const status = event.target.value;
+              setStatusFilter(status);
+              applyFilters({ status, orgTag: orgTagFilter, sender: senderFilter.trim() });
+            }}
             className="mt-1 block rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           >
             <option value="all">All</option>
@@ -361,7 +507,12 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
           Org
           <select
             name="orgTag"
-            defaultValue={view.filters.orgTag}
+            value={orgTagFilter}
+            onChange={(event) => {
+              const orgTag = event.target.value;
+              setOrgTagFilter(orgTag);
+              applyFilters({ status: statusFilter, orgTag, sender: senderFilter.trim() });
+            }}
             className="mt-1 block rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           >
             <option value="all">All</option>
@@ -377,7 +528,8 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
           Sender
           <input
             name="sender"
-            defaultValue={view.filters.sender}
+            value={senderFilter}
+            onChange={(event) => onSenderChange(event.target.value)}
             placeholder="Email contains"
             className="mt-1 block rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           />
@@ -393,8 +545,11 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
           <p className="mb-2 text-xs text-zinc-500">
-            {view.tickets.length} {view.tickets.length === 1 ? "ticket" : "tickets"}
-            {view.attentionCount > 0 ? ` · ${view.attentionCount} new or open` : ""}
+            {scoutTicketListSummary({
+              ticketCount: view.tickets.length,
+              attentionCount: view.attentionCount,
+              filtersActive: scoutFiltersActive(view.filters),
+            })}
           </p>
           {view.tickets.length === 0 ? (
             <p className="rounded-xl border border-zinc-800 px-4 py-6 text-sm text-zinc-400">
@@ -417,7 +572,7 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
                         </span>
                       </span>
                       <span className="mt-1 block text-xs text-zinc-500">
-                        {senderLine(ticket.senderName, ticket.senderEmail)} · {formatWhen(ticket.lastMessageAt)}
+                        {senderLine(ticket.senderName, ticket.senderEmail)} · {formatScoutWhen(ticket.lastMessageAt)}
                         {ticket.orgTag ? ` · ${SCOUT_ORG_LABELS[ticket.orgTag]}` : ""}
                       </span>
                       {ticket.snippet ? (

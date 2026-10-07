@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { applyScoutSyncReport, applyScoutTicketsPayload } from "@/lib/scout/pageRefresh";
+import { applyScoutSyncReport, applyScoutTicketsPayload, scoutSyncRunNotice } from "@/lib/scout/pageRefresh";
 import { SCOUT_STORAGE_NOT_READY, scoutUiText } from "@/lib/scout/storageError";
 import type { ScoutPageModel } from "@/lib/scout/view";
 
@@ -80,5 +80,22 @@ describe("scout page refresh", () => {
     assert.equal(next.sync.lastRunAt, "2026-10-07T16:05:00.000Z");
     assert.equal(next.sync.lastError, SCOUT_STORAGE_NOT_READY);
     assert.equal(next.sync.lastError?.includes("Cannot read"), false);
+  });
+
+  it("keeps a sync failure out of the extra notice line", () => {
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: "Gmail service account is not configured.",
+        backfillPending: false,
+      }),
+      null,
+    );
+    assert.equal(scoutSyncRunNotice({ httpOk: false, error: null, backfillPending: false }), null);
+    assert.equal(
+      scoutSyncRunNotice({ httpOk: true, error: null, backfillPending: true }),
+      "Synced one batch. Scout will keep importing the rest of the inbox.",
+    );
+    assert.equal(scoutSyncRunNotice({ httpOk: true, error: null, backfillPending: false }), "Sync finished.");
   });
 });

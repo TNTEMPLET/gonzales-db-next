@@ -23,6 +23,22 @@ export type ScoutTicketsPayload = {
 };
 
 /**
+ * Line under the sync panel after Run Scout now.
+ * Failures are omitted here because the panel already shows them.
+ */
+export function scoutSyncRunNotice(input: {
+  httpOk: boolean;
+  error: string | null;
+  backfillPending: boolean;
+}): string | null {
+  if (!input.httpOk || input.error) return null;
+  if (input.backfillPending) {
+    return "Synced one batch. Scout will keep importing the rest of the inbox.";
+  }
+  return "Sync finished.";
+}
+
+/**
  * Optimistic sync line after Run Scout now. A storage failure is not written,
  * so the previous last-run time stays put and the caller shows the message.
  */
