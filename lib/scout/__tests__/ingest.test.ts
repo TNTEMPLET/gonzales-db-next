@@ -242,4 +242,50 @@ describe("parseGmailMetadata", () => {
     assert.equal(JSON.stringify(parsed).includes("full-body-should-not-be-kept"), false);
     assert.equal(JSON.stringify(parsed).includes("notes.pdf"), false);
   });
+
+  it("uses a plain-text excerpt when the snippet is empty and ignores attachments", () => {
+    const excerpt = "Synthetic chart was attached. This preview is the plain part.";
+    const parsed = parseGmailMetadata({
+      id: "synthetic-msg-chart",
+      threadId: "synthetic-thread-chart",
+      labelIds: ["INBOX"],
+      snippet: "  ",
+      internalDate: "1760000000000",
+      payload: {
+        mimeType: "multipart/mixed",
+        headers: [
+          { name: "From", value: "Synthetic Sender Alpha <synthetic.sender.alpha@apbaseball.com>" },
+          { name: "Subject", value: "Synthetic chart" },
+        ],
+        parts: [
+          { mimeType: "text/plain", body: { data: Buffer.from(excerpt, "utf8").toString("base64url") } },
+          {
+            mimeType: "image/png",
+            filename: "chart.png",
+            body: { data: Buffer.from("not-the-preview", "utf8").toString("base64url") },
+          },
+        ],
+      },
+    });
+    assert.equal(parsed?.snippet, excerpt);
+    assert.equal(JSON.stringify(parsed).includes("chart.png"), false);
+    assert.equal(JSON.stringify(parsed).includes("not-the-preview"), false);
+  });
+
+  it("leaves an attachment-only message without a snippet", () => {
+    const parsed = parseGmailMetadata({
+      id: "synthetic-msg-attachment",
+      threadId: "synthetic-thread-attachment",
+      labelIds: ["INBOX"],
+      snippet: "",
+      internalDate: "1760000000000",
+      payload: {
+        mimeType: "multipart/mixed",
+        headers: [{ name: "From", value: "Synthetic Sender Alpha <synthetic.sender.alpha@apbaseball.com>" }],
+        parts: [{ mimeType: "image/png", filename: "chart.png", body: { size: 1200 } }],
+      },
+    });
+    assert.equal(parsed?.snippet, "");
+    assert.equal(JSON.stringify(parsed).includes("chart.png"), false);
+  });
 });

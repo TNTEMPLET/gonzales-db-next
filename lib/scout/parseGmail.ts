@@ -18,12 +18,15 @@ export type GmailMetadataResource = {
   labelIds?: string[];
   snippet?: string;
   internalDate?: string;
-  payload?: {
-    mimeType?: string;
-    headers?: { name?: string; value?: string }[];
-    body?: { data?: string; size?: number };
-    parts?: unknown[];
-  };
+  payload?: GmailMetadataPart;
+};
+
+type GmailMetadataPart = {
+  mimeType?: string;
+  filename?: string;
+  headers?: { name?: string; value?: string }[];
+  body?: { data?: string; size?: number };
+  parts?: GmailMetadataPart[];
 };
 
 export function parseMailboxAddress(raw: string): { email: string; name: string | null } {
@@ -53,8 +56,30 @@ function parseReceivedAt(internalDate: string | undefined, dateHeader: string | 
   return null;
 }
 
+function decodeBase64Url(data: string): string {
+  const padded = data.replace(/-/g, "+").replace(/_/g, "/");
+  return Buffer.from(padded, "base64").toString("utf8");
+}
+
+/** Short plain-text part, only when the metadata payload actually includes bytes. */
+function plainTextExcerpt(part: GmailMetadataPart | undefined, depth: number): string {
+  if (!part || depth > 8) return "";
+  const filename = part.filename?.trim() ?? "";
+  if (!filename && part.mimeType?.toLowerCase() === "text/plain" && part.body?.data) {
+    const text = decodeBase64Url(part.body.data);
+    if (text.trim()) return text.slice(0, 1000);
+  }
+  for (const child of part.parts ?? []) {
+    const found = plainTextExcerpt(child, depth + 1);
+    if (found.trim()) return found;
+  }
+  return "";
+}
+
 /**
- * Reads Gmail metadata (headers + snippet). Drops body parts and attachments.
+ * Reads Gmail metadata (headers + snippet). A metadata fetch normally has no
+ * body bytes. When the snippet is empty and a text/plain part is present, that
+ * part is kept only as a short excerpt. Attachments are dropped.
  * Returns null when the message has no id, thread, or date.
  */
 export function parseGmailMetadata(raw: GmailMetadataResource): ParsedScoutMessage | null {
@@ -72,6 +97,9 @@ export function parseGmailMetadata(raw: GmailMetadataResource): ParsedScoutMessa
   const receivedAt = parseReceivedAt(raw.internalDate, headerValue(headers, "Date"));
   if (!receivedAt) return null;
 
+  const gmailSnippet = raw.snippet ?? "";
+  const snippet = gmailSnippet.trim() ? gmailSnippet : plainTextExcerpt(raw.payload, 0);
+
   return {
     gmailMessageId,
     gmailThreadId,
@@ -79,7 +107,7 @@ export function parseGmailMetadata(raw: GmailMetadataResource): ParsedScoutMessa
     fromName: from.name,
     subject: headerValue(headers, "Subject") ?? "",
     receivedAt,
-    snippet: raw.snippet ?? "",
+    snippet,
     labelIds: raw.labelIds ?? [],
     headers,
   };

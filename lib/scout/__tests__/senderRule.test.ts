@@ -76,6 +76,18 @@ describe("evaluateScoutSender", () => {
     );
   });
 
+  it("drops a forwarded invite when List-Unsubscribe is still on the message", () => {
+    const result = decision("info@impact-sports.net", {
+      headers: [
+        { name: "Subject", value: "Fwd: Synthetic event invite" },
+        { name: "List-Unsubscribe", value: "<mailto:synthetic-unsubscribe@example.com>" },
+        { name: "Precedence", value: "bulk" },
+        { name: "Auto-Submitted", value: "auto-generated" },
+      ],
+    });
+    assert.deepEqual(result, { include: false, reason: "list mail" });
+  });
+
   it("excludes a missing sender", () => {
     assert.equal(decision("not-an-email").include, false);
     assert.equal(decision("").include, false);

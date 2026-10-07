@@ -30,6 +30,7 @@ import {
   rememberScoutSaveFeedback,
   type ScoutSaveFeedback,
 } from "@/lib/scout/saveFeedback";
+import { SCOUT_NO_PREVIEW_LABEL } from "@/lib/scout/snippet";
 import { SCOUT_STORAGE_NOT_READY, scoutUiText } from "@/lib/scout/storageError";
 import { ScoutEmailOff, scoutMessageMeta, scoutSenderLine, scoutTicketListMeta } from "@/lib/scout/visibleHtml";
 import type { ScoutPageModel, ScoutTicketDetail } from "@/lib/scout/view";
@@ -123,7 +124,11 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
                 when: formatScoutWhen(message.receivedAt),
               })}
             </p>
-            <p className="mt-1 text-sm text-zinc-200">{message.snippet || "No snippet."}</p>
+            <p
+              className={`mt-1 text-sm ${message.snippet.trim() ? "text-zinc-200" : "italic text-zinc-500"}`}
+            >
+              {message.snippet.trim() ? message.snippet : SCOUT_NO_PREVIEW_LABEL}
+            </p>
           </li>
         ))}
       </ol>
@@ -623,9 +628,13 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
                           orgLabel: ticket.orgTag ? SCOUT_ORG_LABELS[ticket.orgTag] : null,
                         })}
                       </span>
-                      {ticket.snippet ? (
-                        <span className="mt-1 block line-clamp-2 text-sm text-zinc-400">{ticket.snippet}</span>
-                      ) : null}
+                      <span
+                        className={`mt-1 block line-clamp-2 text-sm ${
+                          ticket.snippet.trim() ? "text-zinc-400" : "italic text-zinc-500"
+                        }`}
+                      >
+                        {ticket.snippet.trim() ? ticket.snippet : SCOUT_NO_PREVIEW_LABEL}
+                      </span>
                     </Link>
                   </li>
                 );
