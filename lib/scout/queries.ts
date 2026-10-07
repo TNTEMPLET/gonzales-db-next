@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { isScoutOperator } from "@/lib/scout/access";
 import { scoutFilteredAttentionWhere, scoutTicketListWhere } from "@/lib/scout/listQuery";
 import { scoutSyntheticSeedBlockReason } from "@/lib/scout/seedGuard";
+import { scoutDisplaySnippet } from "@/lib/scout/snippet";
 import { SCOUT_STORAGE_NOT_READY } from "@/lib/scout/storageError";
 import { parseScoutListFilters, type ScoutListFilters } from "@/lib/scout/ticketPatch";
 import type { ScoutPageModel, ScoutTicketDetail, ScoutTicketListItem } from "@/lib/scout/view";
@@ -41,7 +42,7 @@ function toListItem(row: {
     lastMessageAt: row.lastMessageAt.toISOString(),
     status: row.status,
     orgTag: row.orgTag,
-    snippet: row.snippet,
+    snippet: scoutDisplaySnippet(row.snippet),
   };
 }
 
@@ -85,7 +86,7 @@ export async function loadScoutPage(input: {
             senderEmail: message.senderEmail,
             senderName: message.senderName,
             receivedAt: message.receivedAt.toISOString(),
-            snippet: message.snippet,
+            snippet: scoutDisplaySnippet(message.snippet),
           })),
         }
       : null;

@@ -14,7 +14,7 @@ import {
   type ScoutTicketStatus,
 } from "@/lib/scout/config";
 import { formatScoutWhen } from "@/lib/scout/formatWhen";
-import { scoutFilterPublishAction, scoutTicketsHref } from "@/lib/scout/links";
+import { scoutFilterPublishAction, scoutSenderAfterLanding, scoutTicketsHref } from "@/lib/scout/links";
 import { scoutFiltersActive, scoutTicketListSummary } from "@/lib/scout/listQuery";
 import {
   applyScoutSyncReport,
@@ -30,14 +30,12 @@ import {
   rememberScoutSaveFeedback,
   type ScoutSaveFeedback,
 } from "@/lib/scout/saveFeedback";
+import { SCOUT_NO_PREVIEW_LABEL } from "@/lib/scout/snippet";
 import { SCOUT_STORAGE_NOT_READY, scoutUiText } from "@/lib/scout/storageError";
+import { ScoutEmailOff, scoutMessageMeta, scoutSenderLine, scoutTicketListMeta } from "@/lib/scout/visibleHtml";
 import type { ScoutPageModel, ScoutTicketDetail } from "@/lib/scout/view";
 
 const SENDER_FILTER_DEBOUNCE_MS = 400;
-
-function senderLine(name: string | null, email: string): string {
-  return name ? `${name} · ${email}` : email;
-}
 
 function statusClass(status: ScoutTicketStatus): string {
   if (status === "NEW") return "bg-red-950/60 text-red-100";
@@ -104,7 +102,7 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h2 className="text-lg font-semibold text-zinc-100">{ticket.subject}</h2>
-          <p className="mt-1 text-sm text-zinc-400">{senderLine(ticket.senderName, ticket.senderEmail)}</p>
+          <p className="mt-1 text-sm text-zinc-400">{scoutSenderLine(ticket.senderName, ticket.senderEmail)}</p>
         </div>
         <a
           href={ticket.gmailUrl}
@@ -120,9 +118,17 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
         {ticket.messages.map((message) => (
           <li key={message.id} className="py-3">
             <p className="text-xs text-zinc-500">
-              {senderLine(message.senderName, message.senderEmail)} · {formatScoutWhen(message.receivedAt)}
+              {scoutMessageMeta({
+                senderName: message.senderName,
+                senderEmail: message.senderEmail,
+                when: formatScoutWhen(message.receivedAt),
+              })}
             </p>
-            <p className="mt-1 text-sm text-zinc-200">{message.snippet || "No snippet."}</p>
+            <p
+              className={`mt-1 text-sm ${message.snippet.trim() ? "text-zinc-200" : "italic text-zinc-500"}`}
+            >
+              {message.snippet.trim() ? message.snippet : SCOUT_NO_PREVIEW_LABEL}
+            </p>
           </li>
         ))}
       </ol>
@@ -224,9 +230,13 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
   const [expectedFilterHref, setExpectedFilterHref] = useState<string | null>(null);
   const expectedFilterHrefRef = useRef<string | null>(null);
   const senderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const landedFilterKey = useRef(`${model.filters.status}|${model.filters.orgTag}|${model.filters.sender}`);
   const viewRef = useRef(view);
   const statusFilterRef = useRef(statusFilter);
   const orgTagFilterRef = useRef(orgTagFilter);
+  const publishFiltersRef = useRef<(next: { status: string; orgTag: string; sender: string }) => void>(
+    () => {},
+  );
 
   useEffect(() => {
     propKeyRef.current = propKey;
@@ -314,8 +324,15 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
     );
   }
 
+  useEffect(() => {
+    publishFiltersRef.current = publishFilters;
+    // Ticket data is read from refs. `org` and `router` are the closed-over values.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [org, router]);
+
   function applyFilters(next: { status: string; orgTag: string; sender: string }) {
     if (senderTimer.current) clearTimeout(senderTimer.current);
+    senderTimer.current = null;
     publishFilters(next);
   }
 
@@ -323,13 +340,44 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
     setSenderFilter(value);
     if (senderTimer.current) clearTimeout(senderTimer.current);
     senderTimer.current = setTimeout(() => {
+      senderTimer.current = null;
+      const sender = value.trim();
+      // A previous replace for this same text can still be marked in flight
+      // after Next finished an older navigation instead. Clearing the lock
+      // lets this publish run so that older result is discarded.
+      if (sender !== viewRef.current.filters.sender) expectedFilterHrefRef.current = null;
       publishFilters({
         status: statusFilterRef.current,
         orgTag: orgTagFilterRef.current,
-        sender: value.trim(),
+        sender,
       });
     }, SENDER_FILTER_DEBOUNCE_MS);
   }
+
+  useEffect(() => {
+    const landingKey = `${view.filters.status}|${view.filters.orgTag}|${view.filters.sender}`;
+    if (landedFilterKey.current === landingKey) return;
+    // Don't treat this landing as handled while the user is still typing.
+    // The debounce publishes the latest text when it fires.
+    if (senderTimer.current) return;
+    landedFilterKey.current = landingKey;
+    const typed = senderFilter.trim();
+    if (
+      scoutSenderAfterLanding({
+        typedSender: typed,
+        appliedSender: view.filters.sender,
+        debouncePending: false,
+      }) === "none"
+    ) {
+      return;
+    }
+    expectedFilterHrefRef.current = null;
+    publishFiltersRef.current({
+      status: statusFilter,
+      orgTag: orgTagFilter,
+      sender: typed,
+    });
+  }, [orgTagFilter, senderFilter, statusFilter, view.filters.orgTag, view.filters.sender, view.filters.status]);
 
   async function pullScoutView() {
     const gen = ++pullGen.current;
@@ -421,6 +469,7 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
   const accessPending = lastError === GMAIL_ACCESS_NOT_GRANTED_MESSAGE;
 
   return (
+    <ScoutEmailOff>
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -572,12 +621,20 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
                         </span>
                       </span>
                       <span className="mt-1 block text-xs text-zinc-500">
-                        {senderLine(ticket.senderName, ticket.senderEmail)} · {formatScoutWhen(ticket.lastMessageAt)}
-                        {ticket.orgTag ? ` · ${SCOUT_ORG_LABELS[ticket.orgTag]}` : ""}
+                        {scoutTicketListMeta({
+                          senderName: ticket.senderName,
+                          senderEmail: ticket.senderEmail,
+                          when: formatScoutWhen(ticket.lastMessageAt),
+                          orgLabel: ticket.orgTag ? SCOUT_ORG_LABELS[ticket.orgTag] : null,
+                        })}
                       </span>
-                      {ticket.snippet ? (
-                        <span className="mt-1 block line-clamp-2 text-sm text-zinc-400">{ticket.snippet}</span>
-                      ) : null}
+                      <span
+                        className={`mt-1 block line-clamp-2 text-sm ${
+                          ticket.snippet.trim() ? "text-zinc-400" : "italic text-zinc-500"
+                        }`}
+                      >
+                        {ticket.snippet.trim() ? ticket.snippet : SCOUT_NO_PREVIEW_LABEL}
+                      </span>
                     </Link>
                   </li>
                 );
@@ -597,5 +654,6 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
         </div>
       </div>
     </div>
+    </ScoutEmailOff>
   );
 }
