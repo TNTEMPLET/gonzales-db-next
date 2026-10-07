@@ -1,0 +1,222 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+
+import { applyScoutSyncReport, applyScoutTicketsPayload, scoutSyncRunNotice } from "@/lib/scout/pageRefresh";
+import { SCOUT_STORAGE_NOT_READY, scoutUiText } from "@/lib/scout/storageError";
+import type { ScoutPageModel } from "@/lib/scout/view";
+
+function model(): ScoutPageModel {
+  return {
+    tickets: [],
+    selected: null,
+    sync: { lastRunAt: null, lastSuccessAt: null, lastError: null, backfillPending: false },
+    attentionCount: 0,
+    seedAllowed: false,
+    storageMessage: null,
+    filters: { status: "all", orgTag: "all", sender: "" },
+  };
+}
+
+describe("scout page refresh", () => {
+  it("updates last run and the error after a sync report", () => {
+    const now = "2026-10-07T16:05:00.000Z";
+    const failed = applyScoutSyncReport(
+      model(),
+      { ok: false, error: "Gmail access not granted yet" },
+      now,
+    );
+    assert.equal(failed.sync.lastRunAt, now);
+    assert.equal(failed.sync.lastSuccessAt, null);
+    assert.equal(failed.sync.lastError, "Gmail access not granted yet");
+
+    const succeeded = applyScoutSyncReport(failed, { ok: true, error: null, backfillPending: true }, now);
+    assert.equal(succeeded.sync.lastRunAt, now);
+    assert.equal(succeeded.sync.lastSuccessAt, now);
+    assert.equal(succeeded.sync.lastError, null);
+    assert.equal(succeeded.sync.backfillPending, true);
+  });
+
+  it("leaves last run unchanged when storage is not ready", () => {
+    const before = model();
+    const after = applyScoutSyncReport(
+      before,
+      { ok: false, error: "Cannot read properties of undefined (reading 'upsert')" },
+      "2026-10-07T16:05:00.000Z",
+    );
+    assert.equal(after.sync.lastRunAt, null);
+    assert.equal(after, before);
+    assert.equal(scoutUiText("Cannot read properties of undefined (reading 'upsert')"), SCOUT_STORAGE_NOT_READY);
+    assert.equal(scoutUiText("Cannot read properties of undefined (reading 'slice')"), "Scout sync failed");
+    assert.equal(scoutUiText("Illegal invocation"), "Scout sync failed");
+    assert.equal(scoutUiText("null is not an object (evaluating 'x.y')"), "Scout sync failed");
+    assert.equal(scoutUiText("Gmail access not granted yet"), "Gmail access not granted yet");
+    const leaked = scoutUiText("provider said Bearer sk-testsecretvalue123456");
+    assert.equal(leaked?.includes("sk-testsecretvalue123456"), false);
+    assert.match(leaked ?? "", /Bearer \[redacted\]/);
+  });
+
+  it("replaces the ticket list and hides a stored raw error", () => {
+    const next = applyScoutTicketsPayload(model(), {
+      tickets: [
+        {
+          id: "ticket-1",
+          subject: "Synthetic request",
+          senderEmail: "synthetic.sender.alpha@apbaseball.com",
+          senderName: null,
+          lastMessageAt: "2026-10-07T16:00:00.000Z",
+          status: "NEW",
+          orgTag: null,
+          snippet: "Synthetic snippet",
+        },
+      ],
+      selected: null,
+      sync: {
+        lastRunAt: "2026-10-07T16:05:00.000Z",
+        lastSuccessAt: null,
+        lastError: "Cannot read properties of undefined (reading 'upsert')",
+        backfillPending: false,
+      },
+      attentionCount: 1,
+    });
+    assert.equal(next.tickets.length, 1);
+    assert.equal(next.attentionCount, 1);
+    assert.equal(next.sync.lastRunAt, "2026-10-07T16:05:00.000Z");
+    assert.equal(next.sync.lastError, SCOUT_STORAGE_NOT_READY);
+    assert.equal(next.sync.lastError?.includes("Cannot read"), false);
+  });
+
+  it("keeps a sync failure out of the extra notice line", () => {
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: "Gmail service account is not configured.",
+        backfillPending: false,
+      }),
+      null,
+    );
+    assert.equal(scoutSyncRunNotice({ httpOk: false, error: null, backfillPending: false }), null);
+  });
+
+  it("summarizes a quiet run and names non-zero skips and fallback keeps", () => {
+    const quiet = {
+      ok: true,
+      error: null,
+      created: 0,
+      appended: 0,
+      reopened: 0,
+      skipped: 0,
+      skipCounts: {},
+      fallbackKeeps: 0,
+      duplicates: 0,
+      backfillPending: false,
+    };
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: quiet.error,
+        backfillPending: quiet.backfillPending,
+        created: quiet.created,
+        appended: quiet.appended,
+        skipped: quiet.skipped,
+        duplicates: quiet.duplicates,
+        skipCounts: quiet.skipCounts,
+        fallbackKeeps: quiet.fallbackKeeps,
+      }),
+      "Checked 0 messages. 0 tickets created, 0 updated.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({ httpOk: true, error: null, backfillPending: false }),
+      "Checked 0 messages. 0 tickets created, 0 updated.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: true,
+        created: 0,
+        appended: 0,
+        skipped: 0,
+        duplicates: 0,
+        skipCounts: {},
+        fallbackKeeps: 0,
+      }),
+      "Synced one batch. Scout will keep importing the rest of the inbox. Checked 0 messages. 0 tickets created, 0 updated.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: false,
+        created: 1,
+        appended: 2,
+        skipped: 8,
+        duplicates: 0,
+        skipCounts: {
+          calendar: 3,
+          "not a request": 1,
+          "list mail": 4,
+          "automated sender": 0,
+        },
+        fallbackKeeps: 1,
+      }),
+      "Checked 11 messages. 1 ticket created, 2 updated. Skipped list mail 4, calendar 3, not a request 1. 1 kept by keyword fallback.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: false,
+        created: 0,
+        appended: 0,
+        skipCounts: { ai_unavailable_fallback: 2, ai_cap_fallback: 1, "automated sender": 1 },
+        fallbackKeeps: 0,
+      }),
+      "Checked 4 messages. 0 tickets created, 0 updated. Skipped AI unavailable 2, AI limit 1, automated sender 1.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: false,
+        created: 1,
+        appended: 0,
+        skipped: 0,
+        duplicates: 2,
+        fallbackKeeps: 1,
+      }),
+      "Checked 3 messages. 1 ticket created, 0 updated. 2 messages already stored. 1 kept by keyword fallback.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: false,
+        created: 1,
+        appended: 0,
+        skipped: 0,
+        duplicates: 0,
+        skipCounts: {},
+        fallbackKeeps: 0,
+      }),
+      "Checked 1 message. 1 ticket created, 0 updated.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: false,
+        created: 1,
+        appended: 2,
+        skipped: 8,
+        duplicates: 2,
+        skipCounts: {
+          calendar: 3,
+          "not a request": 1,
+          "list mail": 4,
+        },
+        fallbackKeeps: 1,
+      }),
+      "Checked 13 messages. 1 ticket created, 2 updated. Skipped list mail 4, calendar 3, not a request 1. 2 messages already stored. 1 kept by keyword fallback.",
+    );
+  });
+});
