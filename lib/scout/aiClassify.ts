@@ -1,5 +1,6 @@
 import { SCOUT_SNIPPET_MAX, SCOUT_SUBJECT_MAX } from "@/lib/scout/config";
 import type { ScoutRequestKind } from "@/lib/scout/requestRules";
+import { redactScoutSecrets } from "@/lib/scout/storageError";
 import { decodeGmailEntities, toScoutSnippet } from "@/lib/scout/snippet";
 
 /** Required on staging and production to classify with the model. Without it, keyword rules decide. */
@@ -23,6 +24,11 @@ export const SCOUT_AI_TIMEOUT_MS = 6_000;
 export const SCOUT_AI_CALL_CAP = 50;
 
 export const SCOUT_AI_CACHE_MAX = 500;
+
+/** Gmail ids are short. A huge key must not sit in a long-running process. */
+export const SCOUT_AI_CACHE_ID_MAX = 200;
+
+const SCOUT_AI_OUTPUT_ERRORS = new Set(["invalid ai json", "invalid ai kind", "invalid ai keep"]);
 
 export const SCOUT_AI_REASON_MAX = 160;
 
@@ -74,12 +80,27 @@ export function scoutAiVerdictCache(): Map<string, ScoutAiVerdict> {
   return processCache;
 }
 
+function scoutAiCacheId(gmailMessageId: string): string | null {
+  const id = gmailMessageId.trim();
+  if (!id || id.length > SCOUT_AI_CACHE_ID_MAX) return null;
+  return id;
+}
+
+export function readScoutAiVerdict(
+  cache: Map<string, ScoutAiVerdict>,
+  gmailMessageId: string,
+): ScoutAiVerdict | undefined {
+  const id = scoutAiCacheId(gmailMessageId);
+  if (!id) return undefined;
+  return cache.get(id);
+}
+
 export function rememberScoutAiVerdict(
   cache: Map<string, ScoutAiVerdict>,
   gmailMessageId: string,
   verdict: ScoutAiVerdict,
 ): void {
-  const id = gmailMessageId.trim();
+  const id = scoutAiCacheId(gmailMessageId);
   if (!id) return;
   if (cache.has(id)) cache.delete(id);
   cache.set(id, verdict);
@@ -88,6 +109,15 @@ export function rememberScoutAiVerdict(
     if (oldest === undefined) break;
     cache.delete(oldest);
   }
+}
+
+/**
+ * A bad JSON object is one message. A timeout, HTTP error, or network
+ * failure means the model is down, so the rest of the sync should not wait
+ * on it again.
+ */
+export function scoutAiFailureStopsCalls(err: unknown): boolean {
+  return !(err instanceof Error && SCOUT_AI_OUTPUT_ERRORS.has(err.message));
 }
 
 export function scoutAiSettingsFromEnv(env: Record<string, string | undefined> = process.env): {
@@ -107,10 +137,18 @@ function clipPlain(value: string, max: number): string {
   return collapsed.slice(0, max).trimEnd();
 }
 
+const HOSTNAME = /^[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?)+$/;
+
+/** Hostname only. Display names, local parts, and comments stay out of the prompt. */
 function senderDomain(email: string): string {
-  const at = email.lastIndexOf("@");
-  if (at < 1 || at === email.length - 1) return "";
-  return email.slice(at + 1).trim().toLowerCase();
+  const trimmed = email.trim().toLowerCase();
+  const angle = trimmed.match(/<([^<>\s]+)>/);
+  const source = (angle?.[1] ?? trimmed).replace(/^mailto:/, "");
+  const at = source.lastIndexOf("@");
+  if (at < 1 || at === source.length - 1) return "";
+  const domain = source.slice(at + 1).replace(/\.+$/, "");
+  if (!HOSTNAME.test(domain)) return "";
+  return domain;
 }
 
 /** Subject, decoded snippet (max 200), and sender domain. No address, body, or attachments. */
@@ -127,7 +165,7 @@ export function scoutAiRequestFromMessage(input: {
 }
 
 export function clipScoutAiReason(reason: string): string {
-  const collapsed = reason.replace(/[\u0000-\u001f\u007f]+/g, " ").replace(/\s+/g, " ").trim();
+  const collapsed = redactScoutSecrets(reason.replace(/[\u0000-\u001f\u007f]+/g, " ")).replace(/\s+/g, " ").trim();
   if (collapsed.length <= SCOUT_AI_REASON_MAX) return collapsed;
   return collapsed.slice(0, SCOUT_AI_REASON_MAX).trimEnd();
 }
@@ -179,29 +217,37 @@ export function createScoutOpenAiClassifier(options: {
   const maxTokens = options.maxTokens ?? SCOUT_AI_MAX_TOKENS;
   return {
     async classify(input, init) {
-      const res = await fetchImpl(options.apiUrl, {
-        method: "POST",
-        signal: init.signal,
-        headers: {
-          Authorization: `Bearer ${options.apiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          model: options.model,
-          temperature: 0,
-          max_tokens: maxTokens,
-          response_format: { type: "json_object" },
-          messages: [
-            { role: "system", content: SCOUT_AI_SYSTEM_PROMPT },
-            { role: "user", content: JSON.stringify(input) },
-          ],
-        }),
-        cache: "no-store",
-      });
+      let res: Response;
+      try {
+        res = await fetchImpl(options.apiUrl, {
+          method: "POST",
+          signal: init.signal,
+          headers: {
+            Authorization: `Bearer ${options.apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: options.model,
+            temperature: 0,
+            max_tokens: maxTokens,
+            response_format: { type: "json_object" },
+            messages: [
+              { role: "system", content: SCOUT_AI_SYSTEM_PROMPT },
+              { role: "user", content: JSON.stringify(input) },
+            ],
+          }),
+          cache: "no-store",
+        });
+      } catch {
+        throw new Error("scout ai http");
+      }
       if (!res.ok) throw new Error("scout ai http");
-      const json = (await res.json()) as {
-        choices?: Array<{ message?: { content?: unknown } }>;
-      };
+      let json: { choices?: Array<{ message?: { content?: unknown } }> };
+      try {
+        json = (await res.json()) as { choices?: Array<{ message?: { content?: unknown } }> };
+      } catch {
+        throw new Error("invalid ai json");
+      }
       return verdictFromContent(json.choices?.[0]?.message?.content);
     },
   };

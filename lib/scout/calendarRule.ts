@@ -44,13 +44,21 @@ export function subjectLooksLikeCalendar(subject: string): boolean {
   });
 }
 
+function mediaType(value: string): string {
+  return value.split(";")[0]?.trim().toLowerCase() ?? "";
+}
+
 function headerLooksLikeCalendar(headers: readonly ScoutHeader[] | undefined): string | null {
   if (!headers) return null;
   for (const header of headers) {
     const name = header.name.toLowerCase();
     const value = header.value.toLowerCase();
-    if (name === "content-type" && /text\/calendar|application\/ics|text\/x-vcalendar/.test(value)) {
-      return "content-type";
+    if (name === "content-type") {
+      const mime = mediaType(value);
+      if (mime === "text/calendar" || mime === "application/ics" || mime === "text/x-vcalendar") {
+        return "content-type";
+      }
+      continue;
     }
     if (name === "content-class" && value.includes("calendar")) return "content-class";
     if (name.includes("calendar")) return "calendar header";

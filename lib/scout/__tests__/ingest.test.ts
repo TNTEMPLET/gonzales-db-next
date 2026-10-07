@@ -357,4 +357,25 @@ describe("parseGmailMetadata", () => {
     assert.equal(parsed?.hasCalendarPart, true);
     assert.equal(JSON.stringify(parsed).includes("invite.ics"), false);
   });
+
+  it("does not treat a normal attachment named invitation as a calendar part", () => {
+    const parsed = parseGmailMetadata({
+      id: "synthetic-msg-pdf",
+      threadId: "synthetic-thread-pdf",
+      labelIds: ["INBOX"],
+      snippet: "Please update the synthetic roster. See the invitation.",
+      internalDate: "1760000000000",
+      payload: {
+        mimeType: "multipart/mixed",
+        headers: [
+          { name: "From", value: "Synthetic Sender Alpha <synthetic.sender.alpha@apbaseball.com>" },
+          { name: "Subject", value: "Synthetic roster" },
+          { name: "Content-Type", value: 'multipart/mixed; boundary="invitation"' },
+        ],
+        parts: [{ mimeType: "application/pdf", filename: "invitation.pdf", body: { size: 1200 } }],
+      },
+    });
+    assert.equal(parsed?.hasCalendarPart, false);
+    assert.equal(JSON.stringify(parsed).includes("invitation.pdf"), false);
+  });
 });

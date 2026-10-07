@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { describe, it } from "node:test";
 
 import {
+  SCOUT_AI_CACHE_MAX,
   SCOUT_AI_DEFAULT_MODEL,
   SCOUT_AI_MAX_TOKENS,
   SCOUT_AI_SYSTEM_PROMPT,
@@ -9,6 +12,8 @@ import {
   createScoutAiClassifierFromEnv,
   createScoutOpenAiClassifier,
   parseScoutAiVerdict,
+  rememberScoutAiVerdict,
+  scoutAiFailureStopsCalls,
   scoutAiRequestFromMessage,
   type ScoutAiClassifier,
   type ScoutAiVerdict,
@@ -110,6 +115,7 @@ describe("classifyScoutMessage", () => {
     assert.equal(user.senderDomain, "apbaseball.com");
     assert.equal(user.snippet.length <= 200, true);
     assert.equal(seen.body.includes("synthetic.sender"), false);
+    assert.equal(seen.body.includes("synthetic-key"), false);
     assert.equal(seen.body.includes(longSnippet), false);
     assert.equal(user.subject.includes("Ignore previous instructions"), true);
     assert.equal(seen.authorization, "Bearer synthetic-key");
@@ -305,6 +311,192 @@ describe("classifyScoutMessage", () => {
     assert.equal(request.subject, "How many synthetic teams?");
     assert.equal(request.snippet.length <= 200, true);
     assert.equal(JSON.stringify(request).includes("Synthetic.Sender"), false);
+
+    const named = scoutAiRequestFromMessage({
+      fromEmail: "Synthetic Sender <synthetic.sender.beta@impact-sports.net>",
+      subject: "How many synthetic teams?",
+      snippet: "count",
+    });
+    assert.equal(named.senderDomain, "impact-sports.net");
+    assert.equal(JSON.stringify(named).includes("Synthetic"), false);
+    assert.equal(JSON.stringify(named).includes("synthetic.sender"), false);
+    assert.equal(
+      scoutAiRequestFromMessage({
+        fromEmail: "synthetic.sender.beta@impact-sports.net (Synthetic Sender)",
+        subject: "How many synthetic teams?",
+        snippet: "count",
+      }).senderDomain,
+      "",
+    );
+  });
+
+  it("does not skip human mail that only mentions an invitation", async () => {
+    const runtime = runtimeWith(null);
+    const mention = await classifyScoutMessage(
+      message({
+        gmailMessageId: "synthetic-msg-invite-word",
+        subject: "The synthetic invitation is attached",
+        snippet: "Please see the invitation for Saturday.",
+      }),
+      runtime,
+    );
+    assert.notEqual(mention.reason, "calendar");
+    assert.equal(mention.action, "skip");
+
+    const ask = await classifyScoutMessage(
+      message({
+        gmailMessageId: "synthetic-msg-invite-ask",
+        subject: "Can you update the synthetic roster",
+        snippet: "The invitation is attached.",
+      }),
+      runtime,
+    );
+    assert.equal(ask.action, "keep");
+    assert.notEqual(ask.reason, "calendar");
+  });
+
+  it("stops further model calls after a timeout, and still tries after one bad JSON object", async () => {
+    let calls = 0;
+    const hanging: ScoutAiClassifier = {
+      async classify(_input, init) {
+        calls += 1;
+        await new Promise((resolve, reject) => {
+          const timer = setTimeout(resolve, 10_000);
+          init.signal.addEventListener("abort", () => {
+            clearTimeout(timer);
+            reject(new Error("aborted"));
+          });
+        });
+        return verdict("other", "too late");
+      },
+    };
+    const runtime = runtimeWith(hanging, { timeoutMs: 30 });
+    await classifyScoutMessage(
+      message({ gmailMessageId: "synthetic-msg-outage-1", subject: "Hello", snippet: "See you there" }),
+      runtime,
+    );
+    const started = Date.now();
+    const second = await classifyScoutMessage(
+      message({ gmailMessageId: "synthetic-msg-outage-2", subject: "Hello again", snippet: "See you there" }),
+      runtime,
+    );
+    assert.equal(calls, 1);
+    assert.equal(Date.now() - started < 500, true);
+    assert.equal(second.reason, SCOUT_AI_UNAVAILABLE_FALLBACK);
+    assert.equal(runtime.notedAiFailure, true);
+    assert.equal(scoutAiFailureStopsCalls(new Error("invalid ai json")), false);
+    assert.equal(scoutAiFailureStopsCalls(new Error("scout ai timeout")), true);
+
+    let jsonCalls = 0;
+    const fetchImpl: typeof fetch = async () => {
+      jsonCalls += 1;
+      if (jsonCalls === 1) return Response.json({ choices: [{ message: { content: "not-json" } }] });
+      return Response.json({
+        choices: [
+          { message: { content: JSON.stringify({ keep: false, kind: "other", reason: "thanks only" }) } },
+        ],
+      });
+    };
+    const retryJson = createScoutOpenAiClassifier({
+      apiKey: "synthetic-key",
+      model: "gpt-4o-mini",
+      apiUrl: "https://example.test/v1/chat/completions",
+      fetchImpl,
+    });
+    const jsonRuntime = runtimeWith(retryJson);
+    const firstBad = await classifyScoutMessage(message({ gmailMessageId: "synthetic-msg-bad-json-1" }), jsonRuntime);
+    const secondOk = await classifyScoutMessage(
+      message({
+        gmailMessageId: "synthetic-msg-bad-json-2",
+        subject: "Thanks",
+        snippet: "See you Saturday",
+      }),
+      jsonRuntime,
+    );
+    assert.equal(jsonCalls, 2);
+    assert.equal(firstBad.reason, SCOUT_AI_UNAVAILABLE_FALLBACK);
+    assert.equal(secondOk.action, "skip");
+    assert.equal(secondOk.viaFallback, false);
+    assert.equal(jsonRuntime.notedAiFailure, false);
+  });
+
+  it("keeps the verdict cache bounded and drops an echoed API key from the reason", () => {
+    const cache = new Map<string, ScoutAiVerdict>();
+    for (let i = 0; i < SCOUT_AI_CACHE_MAX + 25; i += 1) {
+      rememberScoutAiVerdict(cache, `synthetic-msg-${i}`, verdict("other", "fyi"));
+    }
+    assert.equal(cache.size, SCOUT_AI_CACHE_MAX);
+    assert.equal(cache.has("synthetic-msg-0"), false);
+    assert.equal(cache.has(`synthetic-msg-${SCOUT_AI_CACHE_MAX + 24}`), true);
+    rememberScoutAiVerdict(cache, ` ${"x".repeat(300)} `, verdict("other", "fyi"));
+    assert.equal(cache.size, SCOUT_AI_CACHE_MAX);
+
+    const parsed = parseScoutAiVerdict({
+      keep: true,
+      kind: "change_request",
+      reason: "asks sk-testsecretvalue123456",
+      dropTable: true,
+    });
+    assert.deepEqual(parsed, { keep: true, kind: "change_request", reason: "asks [redacted]" });
+    assert.equal("dropTable" in parsed, false);
+  });
+
+  it("does not return or log the API key when the model call fails", async () => {
+    const secret = "sk-testsecretvalue123456";
+    const logs: string[] = [];
+    const original = console.error;
+    console.error = (...args: unknown[]) => {
+      logs.push(args.map((part) => String(part)).join(" "));
+    };
+    try {
+      const fetchImpl: typeof fetch = async () => new Response(`Incorrect API key ${secret}`, { status: 401 });
+      const ai = createScoutOpenAiClassifier({
+        apiKey: secret,
+        model: "gpt-4o-mini",
+        apiUrl: "https://example.test/v1/chat/completions",
+        fetchImpl,
+      });
+      await assert.rejects(
+        () =>
+          ai.classify(
+            { senderDomain: "apbaseball.com", subject: "Synthetic", snippet: "Synthetic" },
+            { signal: AbortSignal.timeout(1_000) },
+          ),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          assert.equal(err.message, "scout ai http");
+          assert.equal(err.message.includes(secret), false);
+          return true;
+        },
+      );
+      const plain: typeof fetch = async () =>
+        new Response(secret, { status: 200, headers: { "content-type": "text/plain" } });
+      const plainAi = createScoutOpenAiClassifier({
+        apiKey: secret,
+        model: "gpt-4o-mini",
+        apiUrl: "https://example.test/v1/chat/completions",
+        fetchImpl: plain,
+      });
+      await assert.rejects(
+        () =>
+          plainAi.classify(
+            { senderDomain: "apbaseball.com", subject: "Synthetic", snippet: "Synthetic" },
+            { signal: AbortSignal.timeout(1_000) },
+          ),
+        (err: unknown) => {
+          assert.ok(err instanceof Error);
+          assert.equal(err.message, "invalid ai json");
+          assert.equal(err.message.includes(secret), false);
+          return true;
+        },
+      );
+      const decision = await classifyScoutMessage(message({ gmailMessageId: "synthetic-msg-key" }), runtimeWith(ai));
+      assert.equal(decision.reason, SCOUT_AI_UNAVAILABLE_FALLBACK);
+      assert.equal(JSON.stringify(decision).includes(secret), false);
+      assert.equal(logs.join("\n").includes(secret), false);
+    } finally {
+      console.error = original;
+    }
   });
 });
 
@@ -365,6 +557,18 @@ describe("scout classify cli and ticket review", () => {
 
     const broken = await classifyScoutCliLine("{", runtime);
     assert.equal(broken.reason, "invalid input");
+
+    const classifySource = readFileSync(path.join(process.cwd(), "scripts/scout-classify.ts"), "utf8");
+    assert.equal(classifySource.toLowerCase().includes("prisma"), false);
+    assert.equal(classifySource.includes("DATABASE_URL"), false);
+    const reviewSource = readFileSync(path.join(process.cwd(), "scripts/scout-review-tickets.ts"), "utf8");
+    assert.match(reviewSource, /scoutReviewDatabaseBlockReason/);
+    assert.match(reviewSource, /findMany/);
+    assert.equal(reviewSource.includes(".update("), false);
+    assert.equal(reviewSource.includes(".delete"), false);
+    assert.equal(reviewSource.includes(".create("), false);
+    assert.equal(reviewSource.includes("$executeRaw"), false);
+    assert.equal(reviewSource.includes("$queryRaw"), false);
   });
 
   it("dry-runs stored tickets and does not require a mailbox", async () => {

@@ -5,7 +5,7 @@ import { SCOUT_GMAIL_READONLY_SCOPE, SCOUT_MAILBOX, SCOUT_SNIPPET_MAX } from "@/
 import { scoutApiAccess, scoutPageAccess } from "@/lib/scout/access";
 import { scoutCronAccess } from "@/lib/scout/cronAuth";
 import { gmailDelegatedJwtOptions, messageForGmailAuthFailure } from "@/lib/google/gmailServiceAccount";
-import { scoutSyntheticSeedBlockReason } from "@/lib/scout/seedGuard";
+import { scoutReviewDatabaseBlockReason, scoutSyntheticSeedBlockReason } from "@/lib/scout/seedGuard";
 import { SYNTHETIC_SCOUT_TICKETS } from "@/lib/scout/syntheticFixtures";
 import { parseScoutListFilters, parseScoutTicketPatch } from "@/lib/scout/ticketPatch";
 
@@ -76,6 +76,53 @@ describe("gmail delegation", () => {
       "Gmail access not granted yet",
     );
     assert.equal(messageForGmailAuthFailure(new Error("socket hang up")), "Scout could not reach Gmail.");
+  });
+});
+
+describe("scout review database guard", () => {
+  it("refuses production and allows local and staging databases", () => {
+    assert.match(
+      scoutReviewDatabaseBlockReason({
+        VERCEL_ENV: "production",
+        DATABASE_URL: "postgresql://127.0.0.1:5432/apbaseball_dev",
+      }) ?? "",
+      /production/,
+    );
+    assert.match(
+      scoutReviewDatabaseBlockReason({
+        DATABASE_URL: "postgresql://user:secret@db.example:5432/app",
+        PROD_DATABASE_URL: "postgresql://user:other@db.example/app?sslmode=require",
+      }) ?? "",
+      /production database/,
+    );
+    assert.match(
+      scoutReviewDatabaseBlockReason({ DATABASE_URL: "postgresql://example.db.prisma.io/apbaseball_production" }) ??
+        "",
+      /production database/,
+    );
+    assert.match(
+      scoutReviewDatabaseBlockReason({ DATABASE_URL: "not a url" }) ?? "",
+      /not a valid URL/,
+    );
+    assert.match(scoutReviewDatabaseBlockReason({}) ?? "", /DATABASE_URL is not set/);
+    assert.equal(
+      scoutReviewDatabaseBlockReason({ DATABASE_URL: "postgresql://127.0.0.1:5432/apbaseball_dev" }),
+      null,
+    );
+    assert.equal(
+      scoutReviewDatabaseBlockReason({
+        VERCEL_ENV: "preview",
+        DATABASE_URL: "postgresql://example.db.prisma.io/staging",
+        SCOUT_ALLOW_SAMPLE_TICKETS: "1",
+      }),
+      null,
+    );
+    const refused =
+      scoutReviewDatabaseBlockReason({
+        DATABASE_URL: "postgresql://user:secret@db.example/apbaseball_production",
+      }) ?? "";
+    assert.equal(refused.includes("secret"), false);
+    assert.equal(refused.includes("postgresql://"), false);
   });
 });
 

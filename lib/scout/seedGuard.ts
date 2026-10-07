@@ -46,6 +46,36 @@ function looksLikeProductionName(value: string): boolean {
   return /(^|[._-])prod(uction)?([._-]|$)/i.test(value);
 }
 
+type ProductionDatabaseIssue = "vercel" | "missing" | "same" | "invalid" | "name";
+
+/**
+ * Production signals shared by the sample-ticket seed and `pnpm scout:review`.
+ * VERCEL_ENV=production, the same host and database as PROD_DATABASE_URL,
+ * and hosts or database names that contain prod. Credentials are not returned.
+ */
+function productionDatabaseIssue(env: ScoutSeedEnv): ProductionDatabaseIssue | null {
+  const vercelEnv = env.VERCEL_ENV?.trim() ?? "";
+  if (vercelEnv.toLowerCase() === "production") return "vercel";
+
+  const url = env.DATABASE_URL?.trim() ?? "";
+  if (!url) return "missing";
+
+  const prodUrl = env.PROD_DATABASE_URL?.trim();
+  if (prodUrl && sameDatabase(url, prodUrl)) return "same";
+
+  let parsed: URL;
+  try {
+    parsed = new URL(url);
+  } catch {
+    return "invalid";
+  }
+
+  const host = parsed.hostname.toLowerCase();
+  const database = decodeURIComponent(parsed.pathname.replace(/^\/+|\/+$/g, "").split("/")[0] ?? "").toLowerCase();
+  if (looksLikeProductionName(host) || looksLikeProductionName(database)) return "name";
+  return null;
+}
+
 /**
  * Synthetic Scout tickets are for local dev and staging only.
  * Production (VERCEL_ENV=production), the same host and database as
@@ -61,36 +91,47 @@ export function scoutSyntheticSeedBlockReason(
   env: ScoutSeedEnv,
   surface: "script" | "admin" = "admin",
 ): string | null {
-  const vercelEnv = env.VERCEL_ENV?.trim() ?? "";
-  if (vercelEnv.toLowerCase() === "production") {
-    return "Refusing to seed Scout tickets in production.";
-  }
+  const production = productionDatabaseIssue(env);
+  if (production === "vercel") return "Refusing to seed Scout tickets in production.";
+  if (production === "missing") return "DATABASE_URL is not set.";
+  if (production === "same") return "Refusing to seed Scout tickets against the production database.";
+  if (production === "invalid") return "DATABASE_URL is not a valid URL.";
+  if (production === "name") return "Refusing to seed Scout tickets against a production database.";
 
   const url = env.DATABASE_URL?.trim() ?? "";
-  if (!url) return "DATABASE_URL is not set.";
-
-  const prodUrl = env.PROD_DATABASE_URL?.trim();
-  if (prodUrl && sameDatabase(url, prodUrl)) {
-    return "Refusing to seed Scout tickets against the production database.";
-  }
-
   let parsed: URL;
   try {
     parsed = new URL(url);
   } catch {
     return "DATABASE_URL is not a valid URL.";
   }
-
   const host = parsed.hostname.toLowerCase();
-  const database = decodeURIComponent(parsed.pathname.replace(/^\/+|\/+$/g, "").split("/")[0] ?? "").toLowerCase();
-  if (looksLikeProductionName(host) || looksLikeProductionName(database)) {
-    return "Refusing to seed Scout tickets against a production database.";
-  }
-
+  const vercelEnv = env.VERCEL_ENV?.trim() ?? "";
   const localOnly = surface === "script" || (surface === "admin" && !vercelEnv && !scoutSampleTicketsOptIn(env));
   if (localOnly && !isLocalHost(host)) {
     return "Refusing to seed Scout tickets against a hosted database. Use the local dev database.";
   }
 
   return null;
+}
+
+/**
+ * `pnpm scout:review` may read a local or staging database.
+ * It must not open a production database. Hosted staging is allowed.
+ * The message never includes the URL.
+ */
+export function scoutReviewDatabaseBlockReason(env: ScoutSeedEnv): string | null {
+  switch (productionDatabaseIssue(env)) {
+    case "vercel":
+      return "Refusing to review Scout tickets in production.";
+    case "missing":
+      return "DATABASE_URL is not set. This dry-run only reads Scout tickets.";
+    case "same":
+    case "name":
+      return "Refusing to review Scout tickets against the production database.";
+    case "invalid":
+      return "DATABASE_URL is not a valid URL.";
+    default:
+      return null;
+  }
 }

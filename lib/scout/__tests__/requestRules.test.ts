@@ -69,6 +69,30 @@ describe("evaluateScoutRequestText", () => {
     assert.equal(decision.keep, true);
     assert.equal(decision.kind, "change_request");
   });
+
+  it("does not match add inside address, added, or other words", () => {
+    const skipped = [
+      ["The synthetic address is on the form", ""],
+      ["", "I added the synthetic coach"],
+      ["Additional synthetic notes", ""],
+      ["The schedule changed", ""],
+      ["Thanks for the update about the address", ""],
+    ];
+    for (const [subject, snippet] of skipped) {
+      const decision = evaluateScoutRequestText(subject, snippet);
+      assert.equal(decision.keep, false, `${subject} ${snippet}`);
+      assert.equal(decision.detail.includes("add"), false, decision.detail);
+    }
+
+    const added = evaluateScoutRequestText("The synthetic coach needs to be added", "");
+    assert.equal(added.keep, true);
+    assert.equal(added.kind, "change_request");
+    assert.match(added.detail, /added/);
+
+    const add = evaluateScoutRequestText("Please add a synthetic coach", "");
+    assert.equal(add.keep, true);
+    assert.equal(add.detail, "change:add");
+  });
 });
 
 describe("evaluateScoutCalendar", () => {
@@ -90,6 +114,9 @@ describe("evaluateScoutCalendar", () => {
       "Fw: Tentatively accepted: Synthetic practice",
       "Re: Cancelled event: Synthetic practice",
       "Re: Invitation from Google Calendar: Synthetic meetup",
+      "Fwd: Re: Invitation: Synthetic meetup",
+      "Re: Fwd: Updated invitation: Synthetic meetup",
+      "Fw:Re: Invitation: Synthetic meetup",
     ]) {
       const decision = evaluateScoutCalendar({ subject, headers: [] });
       assert.equal(decision.skip, true, subject);
@@ -102,6 +129,21 @@ describe("evaluateScoutCalendar", () => {
     assert.equal(evaluateScoutCalendar({ subject: "Accepted the synthetic offer", headers: [] }).skip, false);
     assert.equal(
       evaluateScoutCalendar({ subject: "Fwd: Can you update the synthetic roster", headers: [] }).skip,
+      false,
+    );
+    assert.equal(
+      evaluateScoutCalendar({ subject: "Invitation to the synthetic picnic", headers: [] }).skip,
+      false,
+    );
+    assert.equal(
+      evaluateScoutCalendar({ subject: "Fwd: The synthetic invitation is attached", headers: [] }).skip,
+      false,
+    );
+    assert.equal(
+      evaluateScoutCalendar({
+        subject: "Please update the synthetic roster",
+        headers: [{ name: "Content-Type", value: 'multipart/mixed; boundary="text/calendar"' }],
+      }).skip,
       false,
     );
   });

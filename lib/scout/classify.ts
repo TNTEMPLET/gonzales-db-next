@@ -2,7 +2,9 @@ import {
   callScoutAi,
   createScoutAiBudget,
   createScoutAiClassifierFromEnv,
+  readScoutAiVerdict,
   rememberScoutAiVerdict,
+  scoutAiFailureStopsCalls,
   scoutAiRequestFromMessage,
   scoutAiVerdictCache,
   SCOUT_AI_TIMEOUT_MS,
@@ -45,7 +47,9 @@ export type ScoutClassifyRuntime = {
   cache: Map<string, ScoutAiVerdict>;
   budget: ScoutAiBudget;
   timeoutMs: number;
+  /** Set after a timeout or HTTP failure so the rest of this sync does not wait on the model. */
   notedAiFailure: boolean;
+  loggedAiFailure: boolean;
 };
 
 export function createScoutClassifyRuntime(options?: {
@@ -66,6 +70,7 @@ export function createScoutClassifyRuntime(options?: {
     budget: options?.budget ?? createScoutAiBudget(),
     timeoutMs: options?.timeoutMs ?? SCOUT_AI_TIMEOUT_MS,
     notedAiFailure: false,
+    loggedAiFailure: false,
   };
 }
 
@@ -127,10 +132,10 @@ async function classifyInner(
     };
   }
 
-  const cached = message.gmailMessageId ? runtime.cache.get(message.gmailMessageId) : undefined;
+  const cached = message.gmailMessageId ? readScoutAiVerdict(runtime.cache, message.gmailMessageId) : undefined;
   if (cached) return fromVerdict(cached);
 
-  if (!runtime.ai) return keywordFallback(message, SCOUT_AI_UNAVAILABLE_FALLBACK);
+  if (!runtime.ai || runtime.notedAiFailure) return keywordFallback(message, SCOUT_AI_UNAVAILABLE_FALLBACK);
 
   if (runtime.budget.used >= runtime.budget.cap) {
     return keywordFallback(message, SCOUT_AI_CAP_FALLBACK);
@@ -142,13 +147,17 @@ async function classifyInner(
     const verdict = await callScoutAi(runtime.ai, request, runtime.timeoutMs);
     if (message.gmailMessageId) rememberScoutAiVerdict(runtime.cache, message.gmailMessageId, verdict);
     return fromVerdict(verdict);
-  } catch {
-    if (!runtime.notedAiFailure) {
-      runtime.notedAiFailure = true;
-      console.error("[scout] ai unavailable; using keyword fallback");
-    }
+  } catch (err) {
+    noteAiFailure(runtime, err);
     return keywordFallback(message, SCOUT_AI_UNAVAILABLE_FALLBACK);
   }
+}
+
+function noteAiFailure(runtime: ScoutClassifyRuntime, err: unknown): void {
+  if (scoutAiFailureStopsCalls(err)) runtime.notedAiFailure = true;
+  if (runtime.loggedAiFailure) return;
+  runtime.loggedAiFailure = true;
+  console.error("[scout] ai unavailable; using keyword fallback");
 }
 
 /**
@@ -165,6 +174,7 @@ export async function classifyScoutMessage(
     return await classifyInner(message, active);
   } catch (err) {
     console.error("[scout] classify failed", err instanceof Error ? err.name : "unknown");
+    active.notedAiFailure = true;
     return keywordFallback(message, SCOUT_AI_UNAVAILABLE_FALLBACK);
   }
 }

@@ -6,6 +6,8 @@
  * Prints one JSON line per ticket: id, action, kind, reason, detail, subject.
  * Does not update or delete anything. New mail uses the same rules at ingest;
  * this only lists what the current rules would have done.
+ * Refuses a production DATABASE_URL (VERCEL_ENV=production, PROD_DATABASE_URL,
+ * or a host or database name that looks like prod). Staging and local dev are allowed.
  *
  * SCOUT_AI_API_KEY enables the model (up to 500 calls per run). Without it, keyword rules decide.
  */
@@ -15,14 +17,17 @@ import { createDatabaseAdapter } from "../lib/databaseAdapter";
 import { createScoutAiBudget } from "../lib/scout/aiClassify";
 import { createScoutClassifyRuntime } from "../lib/scout/classify";
 import { reviewStoredScoutTicket } from "../lib/scout/reviewTickets";
+import { scoutReviewDatabaseBlockReason } from "../lib/scout/seedGuard";
+import { redactScoutSecrets } from "../lib/scout/storageError";
 
 async function main() {
-  const databaseUrl = process.env.DATABASE_URL?.trim();
-  if (!databaseUrl) {
-    console.error("DATABASE_URL is not set. This dry-run only reads Scout tickets.");
+  const blocked = scoutReviewDatabaseBlockReason(process.env);
+  if (blocked) {
+    console.error(blocked);
     process.exit(1);
   }
 
+  const databaseUrl = process.env.DATABASE_URL?.trim() ?? "";
   console.error("Scout ticket review is read-only. No tickets will be changed.");
   const prisma = new PrismaClient({ adapter: createDatabaseAdapter(databaseUrl) });
   const runtime = createScoutClassifyRuntime({
@@ -60,6 +65,6 @@ async function main() {
 
 main().catch((err: unknown) => {
   const message = err instanceof Error ? err.message : "Review failed";
-  console.error(message.replace(/postgres(?:ql)?:\/\/\S+/gi, "postgresql://[redacted]"));
+  console.error(redactScoutSecrets(message));
   process.exit(1);
 });
