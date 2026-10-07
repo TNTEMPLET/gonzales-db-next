@@ -1,27 +1,32 @@
-const EMAIL_IN_TEXT = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/;
-
-/** Escape text that will be inserted with `dangerouslySetInnerHTML`. */
-export function escapeScoutHtml(text: string): string {
-  return text
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#39;");
-}
+import { createElement, Fragment, type ReactNode } from "react";
 
 /**
- * HTML for a Scout string that may contain an email address.
- *
  * Cloudflare Email Address Obfuscation rewrites addresses in `text/html` and
- * skips `<script>` payloads. The tickets page then hydrates with the real
- * address from props while the DOM text node stops at the space before the
- * address (`Name · `). `<!--email_off-->` is Cloudflare's per-address opt-out.
+ * skips the RSC payload, so a ticket row hydrates as `Name · ` while the
+ * client still has the address. `<!--email_off-->` … `<!--/email_off-->` is
+ * Cloudflare's documented opt-out for a section of HTML.
+ *
+ * Subjects, sender names, and snippets are inbound mail. They stay React text
+ * children. Only these two constant comments are inserted as HTML, so a
+ * subject cannot terminate the opt-out or open a tag.
  */
-export function scoutVisibleHtml(text: string): string {
-  const escaped = escapeScoutHtml(text);
-  if (!EMAIL_IN_TEXT.test(text)) return escaped;
-  return `<!--email_off-->${escaped}<!--/email_off-->`;
+const EMAIL_OFF_OPEN_HTML = "<!--email_off-->";
+const EMAIL_OFF_CLOSE_HTML = "<!--/email_off-->";
+
+function emailOffMarker(which: "open" | "close"): ReactNode {
+  return createElement("span", {
+    hidden: true,
+    "aria-hidden": "true",
+    "data-scout-email": which,
+    dangerouslySetInnerHTML: {
+      __html: which === "open" ? EMAIL_OFF_OPEN_HTML : EMAIL_OFF_CLOSE_HTML,
+    },
+  });
+}
+
+/** Opts a Scout subtree out of Email Address Obfuscation without parsing its text as HTML. */
+export function ScoutEmailOff({ children }: { children: ReactNode }): ReactNode {
+  return createElement(Fragment, null, emailOffMarker("open"), children, emailOffMarker("close"));
 }
 
 export function scoutSenderLine(name: string | null, email: string): string {

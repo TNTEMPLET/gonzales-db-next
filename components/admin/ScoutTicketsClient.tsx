@@ -31,14 +31,10 @@ import {
   type ScoutSaveFeedback,
 } from "@/lib/scout/saveFeedback";
 import { SCOUT_STORAGE_NOT_READY, scoutUiText } from "@/lib/scout/storageError";
-import { scoutMessageMeta, scoutSenderLine, scoutTicketListMeta, scoutVisibleHtml } from "@/lib/scout/visibleHtml";
+import { ScoutEmailOff, scoutMessageMeta, scoutSenderLine, scoutTicketListMeta } from "@/lib/scout/visibleHtml";
 import type { ScoutPageModel, ScoutTicketDetail } from "@/lib/scout/view";
 
 const SENDER_FILTER_DEBOUNCE_MS = 400;
-
-function scoutHtml(text: string): { dangerouslySetInnerHTML: { __html: string } } {
-  return { dangerouslySetInnerHTML: { __html: scoutVisibleHtml(text) } };
-}
 
 function statusClass(status: ScoutTicketStatus): string {
   if (status === "NEW") return "bg-red-950/60 text-red-100";
@@ -104,8 +100,8 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
     <div className="rounded-xl border border-zinc-800 bg-zinc-900/40 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-lg font-semibold text-zinc-100" {...scoutHtml(ticket.subject)} />
-          <p className="mt-1 text-sm text-zinc-400" {...scoutHtml(scoutSenderLine(ticket.senderName, ticket.senderEmail))} />
+          <h2 className="text-lg font-semibold text-zinc-100">{ticket.subject}</h2>
+          <p className="mt-1 text-sm text-zinc-400">{scoutSenderLine(ticket.senderName, ticket.senderEmail)}</p>
         </div>
         <a
           href={ticket.gmailUrl}
@@ -120,17 +116,14 @@ function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved:
       <ol className="mt-4 divide-y divide-zinc-800">
         {ticket.messages.map((message) => (
           <li key={message.id} className="py-3">
-            <p
-              className="text-xs text-zinc-500"
-              {...scoutHtml(
-                scoutMessageMeta({
-                  senderName: message.senderName,
-                  senderEmail: message.senderEmail,
-                  when: formatScoutWhen(message.receivedAt),
-                }),
-              )}
-            />
-            <p className="mt-1 text-sm text-zinc-200" {...scoutHtml(message.snippet || "No snippet.")} />
+            <p className="text-xs text-zinc-500">
+              {scoutMessageMeta({
+                senderName: message.senderName,
+                senderEmail: message.senderEmail,
+                when: formatScoutWhen(message.receivedAt),
+              })}
+            </p>
+            <p className="mt-1 text-sm text-zinc-200">{message.snippet || "No snippet."}</p>
           </li>
         ))}
       </ol>
@@ -471,6 +464,7 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
   const accessPending = lastError === GMAIL_ACCESS_NOT_GRANTED_MESSAGE;
 
   return (
+    <ScoutEmailOff>
     <div className="space-y-6">
       <div className="flex flex-wrap items-center gap-3">
         <button
@@ -492,17 +486,15 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
           </button>
         ) : null}
         <p className="text-xs text-zinc-500">
-          {view.sync.lastSuccessAt
-            ? `Last run ${formatScoutWhen(view.sync.lastRunAt)} · Last success ${formatScoutWhen(view.sync.lastSuccessAt)}`
-            : `Last run ${formatScoutWhen(view.sync.lastRunAt)}`}
+          Last run {formatScoutWhen(view.sync.lastRunAt)}
+          {view.sync.lastSuccessAt ? ` · Last success ${formatScoutWhen(view.sync.lastSuccessAt)}` : ""}
         </p>
       </div>
 
       {view.storageMessage ? (
-        <p
-          className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300"
-          {...scoutHtml(view.storageMessage)}
-        />
+        <p className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
+          {view.storageMessage}
+        </p>
       ) : null}
 
       {view.sync.backfillPending ? (
@@ -518,11 +510,12 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
               ? "border-zinc-700 bg-zinc-900 text-zinc-300"
               : "border-red-900/40 bg-red-950/20 text-red-100"
           }`}
-          {...scoutHtml(lastError)}
-        />
+        >
+          {lastError}
+        </p>
       ) : null}
 
-      {notice ? <p className="text-sm text-zinc-400" {...scoutHtml(notice)} /> : null}
+      {notice ? <p className="text-sm text-zinc-400">{notice}</p> : null}
 
       <form
         action="/admin/tickets"
@@ -617,27 +610,21 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
                       className={`block px-4 py-3 ${active ? "bg-zinc-900" : "hover:bg-zinc-900/50"}`}
                     >
                       <span className="flex items-start justify-between gap-3">
-                        <span className="font-medium text-zinc-100" {...scoutHtml(ticket.subject)} />
+                        <span className="font-medium text-zinc-100">{ticket.subject}</span>
                         <span className={`shrink-0 rounded-full px-2 py-0.5 text-[10px] ${statusClass(ticket.status)}`}>
                           {SCOUT_STATUS_LABELS[ticket.status]}
                         </span>
                       </span>
-                      <span
-                        className="mt-1 block text-xs text-zinc-500"
-                        {...scoutHtml(
-                          scoutTicketListMeta({
-                            senderName: ticket.senderName,
-                            senderEmail: ticket.senderEmail,
-                            when: formatScoutWhen(ticket.lastMessageAt),
-                            orgLabel: ticket.orgTag ? SCOUT_ORG_LABELS[ticket.orgTag] : null,
-                          }),
-                        )}
-                      />
+                      <span className="mt-1 block text-xs text-zinc-500">
+                        {scoutTicketListMeta({
+                          senderName: ticket.senderName,
+                          senderEmail: ticket.senderEmail,
+                          when: formatScoutWhen(ticket.lastMessageAt),
+                          orgLabel: ticket.orgTag ? SCOUT_ORG_LABELS[ticket.orgTag] : null,
+                        })}
+                      </span>
                       {ticket.snippet ? (
-                        <span
-                          className="mt-1 block line-clamp-2 text-sm text-zinc-400"
-                          {...scoutHtml(ticket.snippet)}
-                        />
+                        <span className="mt-1 block line-clamp-2 text-sm text-zinc-400">{ticket.snippet}</span>
                       ) : null}
                     </Link>
                   </li>
@@ -658,5 +645,6 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
         </div>
       </div>
     </div>
+    </ScoutEmailOff>
   );
 }

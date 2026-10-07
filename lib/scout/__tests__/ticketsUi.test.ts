@@ -14,7 +14,7 @@ import {
 } from "@/lib/scout/listQuery";
 import { readScoutSaveFeedback, rememberScoutSaveFeedback } from "@/lib/scout/saveFeedback";
 import { parseScoutListFilters } from "@/lib/scout/ticketPatch";
-import { scoutMessageMeta, scoutTicketListMeta, scoutVisibleHtml } from "@/lib/scout/visibleHtml";
+import { ScoutEmailOff, scoutMessageMeta, scoutTicketListMeta } from "@/lib/scout/visibleHtml";
 
 describe("scout timestamps", () => {
   it("formats Central time with a normal space before AM/PM", () => {
@@ -101,8 +101,32 @@ describe("scout ticket links", () => {
   });
 });
 
+function renderEmailOff(text: string): string {
+  return renderToStaticMarkup(
+    createElement(
+      ScoutEmailOff,
+      null,
+      createElement("h2", null, text),
+      createElement("p", null, "synthetic.sender.beta@impact-sports.net"),
+    ),
+  );
+}
+
+/** HTML between the two Cloudflare markers, excluding those marker comments. */
+function betweenEmailOff(html: string): string {
+  const open = "<!--email_off-->";
+  const close = "<!--/email_off-->";
+  const openAt = html.indexOf(open);
+  const closeAt = html.indexOf(close);
+  assert.equal(openAt >= 0, true);
+  assert.equal(html.indexOf(open, openAt + open.length), -1);
+  assert.ok(closeAt > openAt);
+  assert.equal(html.indexOf(close, closeAt + close.length), -1);
+  return html.slice(openAt + open.length, closeAt);
+}
+
 describe("scout visible text", () => {
-  it("keeps an email in one string and opts out of Cloudflare obfuscation", () => {
+  it("keeps an email in one string inside the Cloudflare opt-out", () => {
     const when = formatScoutWhen("2026-10-07T21:05:00.000Z");
     const meta = scoutTicketListMeta({
       senderName: "Synthetic Sender Beta",
@@ -132,23 +156,52 @@ describe("scout visible text", () => {
       `synthetic.sender.alpha@apbaseball.com · ${when}`,
     );
 
-    const html = scoutVisibleHtml(meta);
-    assert.match(html, /^<!--email_off-->/);
-    assert.match(html, /<!--\/email_off-->$/);
-    assert.match(html, /synthetic\.sender\.beta@impact-sports\.net/);
-    const outside = html.replace(/<!--email_off-->[\s\S]*?<!--\/email_off-->/g, "");
+    const markup = renderToStaticMarkup(createElement(ScoutEmailOff, null, createElement("span", null, meta)));
+    const inside = betweenEmailOff(markup);
+    assert.match(inside, /synthetic\.sender\.beta@impact-sports\.net/);
+    const outside = markup.replace(/<!--email_off-->[\s\S]*<!--\/email_off-->/, "");
     assert.equal(outside.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g), null);
+  });
 
-    const escaped = scoutVisibleHtml(`Synthetic <script>alert("x")</script> · synthetic.sender.beta@impact-sports.net`);
-    assert.equal(escaped.includes("<script>"), false);
-    assert.match(escaped, /&lt;script&gt;/);
+  it("renders hostile ticket text as text, not markup", () => {
+    const hostile = [
+      "-->",
+      "<!--/email_off-->",
+      "<!--email_off-->",
+      '<script>alert("x")</script>',
+      "<img src=x onerror=alert(1)>",
+      '" onmouseover="alert(1)',
+      "'><svg/onload=alert(1)>",
+      "&lt;script&gt;",
+      "</span><script>alert(1)</script>",
+      "a&b<c>d\"e'f",
+      "café@exämple.com",
+      "\u003cscript\u003ealert(1)\u003c/script\u003e",
+      "＜script＞alert(1)＜/script＞",
+      "\u202Esynthetic.sender.gamma@apbaseball.com",
+      "\u0000",
+    ].join("\n");
 
-    assert.equal(scoutVisibleHtml(`Last run ${when}`), `Last run ${when}`);
-
-    const markup = renderToStaticMarkup(
-      createElement("span", { dangerouslySetInnerHTML: { __html: scoutVisibleHtml(meta) } }),
-    );
-    assert.match(markup, /<!--email_off-->Synthetic Sender Beta · synthetic\.sender\.beta@impact-sports\.net/);
+    const html = renderEmailOff(hostile);
+    const inside = betweenEmailOff(html);
+    assert.equal(inside.includes("<script"), false);
+    assert.equal(inside.includes("<img"), false);
+    assert.equal(inside.includes("<svg"), false);
+    assert.equal(/<\w+[^>]*\son\w+\s*=/i.test(inside), false);
+    assert.match(inside, /&lt;script&gt;/);
+    assert.match(inside, /&lt;img/);
+    assert.match(inside, /&amp;lt;script&amp;gt;/);
+    assert.match(inside, /&amp;/);
+    assert.match(inside, /&lt;/);
+    assert.match(inside, /&gt;/);
+    assert.match(inside, /&quot;/);
+    assert.match(inside, /&#x27;/);
+    assert.match(inside, /café@exämple\.com/);
+    assert.match(inside, /＜script＞alert\(1\)＜\/script＞/);
+    assert.match(inside, /synthetic\.sender\.beta@impact-sports\.net/);
+    assert.match(inside, /synthetic\.sender\.gamma@apbaseball\.com/);
+    assert.ok(html.indexOf("synthetic.sender.beta@impact-sports.net") < html.indexOf("<!--/email_off-->"));
+    assert.equal(html.split("<!--").length, 3);
   });
 });
 
