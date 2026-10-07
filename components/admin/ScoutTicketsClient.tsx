@@ -14,7 +14,7 @@ import {
   type ScoutTicketStatus,
 } from "@/lib/scout/config";
 import { formatScoutWhen } from "@/lib/scout/formatWhen";
-import { scoutTicketsHref } from "@/lib/scout/links";
+import { scoutFilterPublishAction, scoutTicketsHref } from "@/lib/scout/links";
 import { scoutFiltersActive, scoutTicketListSummary } from "@/lib/scout/listQuery";
 import {
   applyScoutSyncReport,
@@ -222,6 +222,7 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
     `${model.filters.status}|${model.filters.orgTag}|${model.filters.sender}`,
   );
   const [expectedFilterHref, setExpectedFilterHref] = useState<string | null>(null);
+  const expectedFilterHrefRef = useRef<string | null>(null);
   const senderTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const viewRef = useRef(view);
   const statusFilterRef = useRef(statusFilter);
@@ -243,6 +244,19 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
     };
   }, []);
 
+  useEffect(() => {
+    if (expectedFilterHref === null) return;
+    const arrived = scoutTicketsHref({
+      shellOrg: org,
+      status: view.filters.status,
+      orgTag: view.filters.orgTag,
+      sender: view.filters.sender,
+    });
+    if (arrived !== expectedFilterHref) return;
+    expectedFilterHrefRef.current = null;
+    setExpectedFilterHref(null);
+  }, [expectedFilterHref, org, view.filters.orgTag, view.filters.sender, view.filters.status]);
+
   const filterKey = `${view.filters.status}|${view.filters.orgTag}|${view.filters.sender}`;
   if (filterKey !== seenFilterKey) {
     const arrived = scoutTicketsHref({
@@ -256,13 +270,16 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
       setStatusFilter(view.filters.status);
       setOrgTagFilter(view.filters.orgTag);
       setSenderFilter(view.filters.sender);
-      setExpectedFilterHref(null);
+      if (expectedFilterHref !== null) {
+        expectedFilterHrefRef.current = null;
+        setExpectedFilterHref(null);
+      }
     }
   }
 
   function publishFilters(next: { status: string; orgTag: string; sender: string }) {
     const current = viewRef.current;
-    const filterOnly = scoutTicketsHref({
+    const desired = scoutTicketsHref({
       shellOrg: org,
       status: next.status,
       orgTag: next.orgTag,
@@ -274,11 +291,17 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
       orgTag: current.filters.orgTag,
       sender: current.filters.sender,
     });
-    if (filterOnly === applied) {
-      setExpectedFilterHref(null);
+    if (
+      scoutFilterPublishAction({
+        desired,
+        applied,
+        inFlight: expectedFilterHrefRef.current,
+      }) === "none"
+    ) {
       return;
     }
-    setExpectedFilterHref(filterOnly);
+    expectedFilterHrefRef.current = desired;
+    setExpectedFilterHref(desired);
     router.replace(
       scoutTicketsHref({
         shellOrg: org,

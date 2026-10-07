@@ -3,7 +3,7 @@ import { describe, it } from "node:test";
 
 import { SCOUT_MAILBOX } from "@/lib/scout/config";
 import { formatScoutWhen } from "@/lib/scout/formatWhen";
-import { scoutTicketsHref } from "@/lib/scout/links";
+import { scoutFilterPublishAction, scoutTicketsHref } from "@/lib/scout/links";
 import {
   scoutFilteredAttentionWhere,
   scoutFiltersActive,
@@ -19,6 +19,11 @@ describe("scout timestamps", () => {
     assert.equal(afternoon, "Oct 7, 4:05 PM");
     assert.equal(formatScoutWhen("2026-01-15T06:00:00.000Z"), "Jan 15, 12:00 AM");
     assert.equal(formatScoutWhen("2026-07-04T17:30:00.000Z"), "Jul 4, 12:30 PM");
+    assert.equal(formatScoutWhen("2026-03-08T07:59:00.000Z"), "Mar 8, 1:59 AM");
+    assert.equal(formatScoutWhen("2026-03-08T08:00:00.000Z"), "Mar 8, 3:00 AM");
+    assert.equal(formatScoutWhen("2026-11-01T06:30:00.000Z"), "Nov 1, 1:30 AM");
+    assert.equal(formatScoutWhen("2026-11-01T07:30:00.000Z"), "Nov 1, 1:30 AM");
+    assert.equal(formatScoutWhen("2026-11-01T08:30:00.000Z"), "Nov 1, 2:30 AM");
     assert.equal(formatScoutWhen(null), "never");
     assert.equal(formatScoutWhen("not-a-date"), "never");
     assert.equal(
@@ -51,6 +56,26 @@ describe("scout ticket links", () => {
       }).orgTag,
       "gonzales",
     );
+  });
+
+  it("replaces a filter that was reverted while the previous navigation is in flight", () => {
+    const applied = scoutTicketsHref({
+      shellOrg: "fallball",
+      status: "all",
+      orgTag: "all",
+      sender: "",
+    });
+    const inFlight = scoutTicketsHref({
+      shellOrg: "fallball",
+      status: "NEW",
+      orgTag: "all",
+      sender: "",
+    });
+    assert.equal(scoutFilterPublishAction({ desired: inFlight, applied, inFlight: null }), "replace");
+    assert.equal(scoutFilterPublishAction({ desired: inFlight, applied, inFlight }), "none");
+    assert.equal(scoutFilterPublishAction({ desired: applied, applied, inFlight }), "replace");
+    assert.equal(scoutFilterPublishAction({ desired: applied, applied, inFlight: null }), "none");
+    assert.equal(scoutFilterPublishAction({ desired: applied, applied, inFlight: applied }), "none");
   });
 });
 

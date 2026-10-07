@@ -19,3 +19,19 @@ export function scoutTicketsHref(input: {
   const query = params.toString();
   return query ? `/admin/tickets?${query}` : "/admin/tickets";
 }
+
+/**
+ * Whether a filter change should call `router.replace`.
+ * A second replace is required when the latest choice matches the page still
+ * on screen while an older choice is in flight — Next discards that pending
+ * navigation only when the newer replace actually runs.
+ */
+export function scoutFilterPublishAction(input: {
+  desired: string;
+  applied: string;
+  inFlight: string | null;
+}): "none" | "replace" {
+  if (input.inFlight === input.desired) return "none";
+  if (input.desired === input.applied && input.inFlight === null) return "none";
+  return "replace";
+}
