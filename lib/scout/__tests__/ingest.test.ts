@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+import { createScoutClassifyRuntime } from "@/lib/scout/classify";
 import { SCOUT_MAILBOX, SCOUT_SNIPPET_MAX } from "@/lib/scout/config";
 import { ingestParsedMessage } from "@/lib/scout/ingest";
 import { parseGmailMetadata, type ParsedScoutMessage } from "@/lib/scout/parseGmail";
@@ -13,9 +14,9 @@ function message(overrides: Partial<ParsedScoutMessage> = {}): ParsedScoutMessag
     gmailThreadId: "synthetic-thread-1",
     fromEmail: "synthetic.sender.alpha@apbaseball.com",
     fromName: "Synthetic Sender Alpha",
-    subject: "Synthetic request",
+    subject: "Please update the synthetic roster",
     receivedAt: new Date("2026-10-01T15:00:00.000Z"),
-    snippet: "Synthetic snippet for the ticket list.",
+    snippet: "Can you change the synthetic field assignment.",
     labelIds: ["INBOX"],
     headers: [{ name: "From", value: "Synthetic Sender Alpha <synthetic.sender.alpha@apbaseball.com>" }],
     ...overrides,
@@ -92,7 +93,7 @@ describe("planScoutMessage", () => {
     const existing: TicketSnapshot = {
       id: "ticket-1",
       status: "DONE",
-      subject: "Synthetic request",
+      subject: "Please update the synthetic roster",
       senderEmail: "synthetic.sender.alpha@apbaseball.com",
       senderName: "Synthetic Sender Alpha",
       firstMessageAt: new Date("2026-10-01T15:00:00.000Z"),
@@ -172,11 +173,16 @@ describe("planScoutMessage", () => {
   });
 });
 
+function offlineClassify() {
+  return createScoutClassifyRuntime({ ai: null, cache: new Map() });
+}
+
 describe("ingestParsedMessage", () => {
   it("is idempotent and skips mail that fails the sender rule", async () => {
     const store = memoryStore();
-    const first = await ingestParsedMessage(store, SCOUT_MAILBOX, message());
-    const second = await ingestParsedMessage(store, SCOUT_MAILBOX, message());
+    const runtime = offlineClassify();
+    const first = await ingestParsedMessage(store, SCOUT_MAILBOX, message(), runtime);
+    const second = await ingestParsedMessage(store, SCOUT_MAILBOX, message(), runtime);
     assert.equal(first.type, "created");
     assert.equal(second.type, "duplicate");
     assert.equal(store.tickets.size, 1);
@@ -189,6 +195,7 @@ describe("ingestParsedMessage", () => {
         gmailThreadId: "synthetic-thread-skip",
         fromEmail: "noreply@apbaseball.com",
       }),
+      runtime,
     );
     assert.equal(skipped.type, "skipped");
     assert.equal(store.tickets.size, 1);
@@ -196,7 +203,8 @@ describe("ingestParsedMessage", () => {
 
   it("appends a later message and reopens a done ticket", async () => {
     const store = memoryStore();
-    await ingestParsedMessage(store, SCOUT_MAILBOX, message());
+    const runtime = offlineClassify();
+    await ingestParsedMessage(store, SCOUT_MAILBOX, message(), runtime);
     const ticket = store.tickets.get("synthetic-thread-1");
     assert.ok(ticket);
     ticket.status = "DONE";
@@ -209,10 +217,47 @@ describe("ingestParsedMessage", () => {
         receivedAt: new Date("2026-10-03T15:00:00.000Z"),
         snippet: "Synthetic follow-up",
       }),
+      runtime,
     );
-    assert.deepEqual(appended, { type: "appended", reopened: true });
+    assert.equal(appended.type, "appended");
+    if (appended.type !== "appended") return;
+    assert.equal(appended.reopened, true);
     assert.equal(store.tickets.get("synthetic-thread-1")?.status, "OPEN");
     assert.equal(store.tickets.get("synthetic-thread-1")?.snippet, "Synthetic follow-up");
+  });
+
+  it("does not create or append a calendar reply", async () => {
+    const store = memoryStore();
+    const runtime = offlineClassify();
+    await ingestParsedMessage(store, SCOUT_MAILBOX, message(), runtime);
+    const invite = await ingestParsedMessage(
+      store,
+      SCOUT_MAILBOX,
+      message({
+        gmailMessageId: "synthetic-msg-invite",
+        gmailThreadId: "synthetic-thread-invite",
+        subject: "Re: Updated invitation: Synthetic meetup",
+        snippet: "Please update the synthetic roster",
+      }),
+      runtime,
+    );
+    assert.deepEqual(invite, { type: "skipped", reason: "calendar" });
+    assert.equal(store.tickets.size, 1);
+
+    const existing = store.tickets.get("synthetic-thread-1");
+    assert.ok(existing);
+    existing.status = "DONE";
+    const reply = await ingestParsedMessage(
+      store,
+      SCOUT_MAILBOX,
+      message({
+        gmailMessageId: "synthetic-msg-rsvp",
+        subject: "Re: Accepted: Synthetic meetup",
+      }),
+      runtime,
+    );
+    assert.equal(reply.type, "skipped");
+    assert.equal(store.tickets.get("synthetic-thread-1")?.status, "DONE");
   });
 });
 
@@ -287,5 +332,29 @@ describe("parseGmailMetadata", () => {
     });
     assert.equal(parsed?.snippet, "");
     assert.equal(JSON.stringify(parsed).includes("chart.png"), false);
+  });
+
+  it("flags a calendar part without keeping the ics filename", () => {
+    const parsed = parseGmailMetadata({
+      id: "synthetic-msg-ics",
+      threadId: "synthetic-thread-ics",
+      labelIds: ["INBOX"],
+      snippet: "Synthetic invite",
+      internalDate: "1760000000000",
+      payload: {
+        mimeType: "multipart/mixed",
+        headers: [
+          { name: "From", value: "Synthetic Sender Alpha <synthetic.sender.alpha@apbaseball.com>" },
+          { name: "Subject", value: "Synthetic meetup" },
+          { name: "Content-Type", value: "multipart/mixed" },
+        ],
+        parts: [
+          { mimeType: "text/plain", body: { size: 20 } },
+          { mimeType: "text/calendar", filename: "invite.ics", body: { size: 400 } },
+        ],
+      },
+    });
+    assert.equal(parsed?.hasCalendarPart, true);
+    assert.equal(JSON.stringify(parsed).includes("invite.ics"), false);
   });
 });

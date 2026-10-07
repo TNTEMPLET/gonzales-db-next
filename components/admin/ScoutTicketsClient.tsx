@@ -429,6 +429,10 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
             httpOk: res.ok,
             error: errorText,
             backfillPending: Boolean(json.backfillPending),
+            created: json.created,
+            appended: json.appended,
+            skipCounts: json.skipCounts,
+            fallbackKeeps: json.fallbackKeeps,
           }),
         );
         setLive((current) =>

@@ -1,6 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
+// This file must not call the model, even when a developer has a key set.
+delete process.env.SCOUT_AI_API_KEY;
+
 import {
   SCOUT_HISTORY_CURSOR_PREFIX,
   SCOUT_LIST_CURSOR_PREFIX,
@@ -11,21 +14,27 @@ import {
 import { ScoutGmailAccessError, createGmailGateway, type GmailGateway } from "@/lib/scout/gmailGateway";
 import type { ParsedScoutMessage } from "@/lib/scout/parseGmail";
 import type { ScoutStore, ScoutSyncStateRow } from "@/lib/scout/store";
+import { createScoutClassifyRuntime } from "@/lib/scout/classify";
 import { SCOUT_STORAGE_NOT_READY } from "@/lib/scout/storageError";
 import { SCOUT_ALREADY_RUNNING, executeScoutSync, publicSyncError } from "@/lib/scout/sync";
 import type { TicketSnapshot } from "@/lib/scout/plan";
 
-function parsed(id: string, threadId = "synthetic-thread-1"): ParsedScoutMessage {
+function parsed(
+  id: string,
+  threadId = "synthetic-thread-1",
+  overrides: Partial<ParsedScoutMessage> = {},
+): ParsedScoutMessage {
   return {
     gmailMessageId: id,
     gmailThreadId: threadId,
     fromEmail: "synthetic.sender.alpha@apbaseball.com",
     fromName: "Synthetic Sender Alpha",
-    subject: "Synthetic request",
+    subject: "Please update the synthetic roster",
     receivedAt: new Date("2026-10-01T15:00:00.000Z"),
-    snippet: "Synthetic snippet",
+    snippet: "Can you update the synthetic field list",
     labelIds: ["INBOX"],
     headers: [],
+    ...overrides,
   };
 }
 
@@ -424,6 +433,67 @@ describe("executeScoutSync", () => {
     assert.equal(store.state, null);
     await store.releaseLease(SCOUT_MAILBOX, held.token);
   });
+
+  it("counts calendar, list mail, and non-requests without creating tickets for them", async () => {
+    const store = memoryStore();
+    const gateway: GmailGateway = {
+      async listInboxPage() {
+        return {
+          messages: [
+            { id: "synthetic-msg-keep", threadId: "synthetic-thread-keep" },
+            { id: "synthetic-msg-invite", threadId: "synthetic-thread-invite" },
+            { id: "synthetic-msg-fyi", threadId: "synthetic-thread-fyi" },
+            { id: "synthetic-msg-list", threadId: "synthetic-thread-list" },
+            { id: "synthetic-msg-missing", threadId: "synthetic-thread-missing" },
+          ],
+          nextPageToken: null,
+        };
+      },
+      async listHistory() {
+        throw new Error("history should not run on the first pass");
+      },
+      async getMetadata(id) {
+        if (id === "synthetic-msg-missing") return null;
+        if (id === "synthetic-msg-invite") {
+          return parsed(id, "synthetic-thread-invite", {
+            subject: "Re: Updated invitation: Synthetic meetup",
+            snippet: "Please update the synthetic roster",
+          });
+        }
+        if (id === "synthetic-msg-fyi") {
+          return parsed(id, "synthetic-thread-fyi", {
+            subject: "FYI synthetic notes",
+            snippet: "The snack schedule is posted.",
+          });
+        }
+        if (id === "synthetic-msg-list") {
+          return parsed(id, "synthetic-thread-list", {
+            subject: "Please update the synthetic roster",
+            headers: [{ name: "List-Unsubscribe", value: "<mailto:synthetic-unsubscribe@example.com>" }],
+          });
+        }
+        return parsed(id, "synthetic-thread-keep");
+      },
+      async currentHistoryId() {
+        return "history-1";
+      },
+    };
+    const report = await executeScoutSync({
+      mailbox: SCOUT_MAILBOX,
+      now: new Date("2026-10-07T16:00:00.000Z"),
+      gateway,
+      store,
+      classify: createScoutClassifyRuntime({ ai: null, cache: new Map() }),
+    });
+    assert.equal(report.ok, true);
+    assert.equal(report.created, 1);
+    assert.equal(report.fallbackKeeps, 1);
+    assert.equal(report.skipped, 4);
+    assert.equal(report.skipCounts.calendar, 1);
+    assert.equal(report.skipCounts["list mail"], 1);
+    assert.equal(report.skipCounts.ai_unavailable_fallback, 1);
+    assert.equal(report.skipCounts["missing metadata"], 1);
+  });
 });
 
 describe("createGmailGateway", () => {
@@ -525,6 +595,8 @@ describe("createGmailGateway", () => {
     assert.ok(metadataCall);
     assert.match(metadataCall.url, /format=metadata/);
     assert.equal(metadataCall.url.includes("format=full"), false);
+    assert.match(metadataCall.url, /metadataHeaders=Content-Type/);
+    assert.match(metadataCall.url, /metadataHeaders=Content-Class/);
 
     const denied: typeof fetch = async () => new Response("no", { status: 401 });
     const deniedGateway = createGmailGateway({

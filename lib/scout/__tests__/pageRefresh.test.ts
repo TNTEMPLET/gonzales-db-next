@@ -97,5 +97,17 @@ describe("scout page refresh", () => {
       "Synced one batch. Scout will keep importing the rest of the inbox.",
     );
     assert.equal(scoutSyncRunNotice({ httpOk: true, error: null, backfillPending: false }), "Sync finished.");
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: false,
+        created: 1,
+        appended: 2,
+        skipCounts: { calendar: 3, "not a request": 1, "list mail": 4 },
+        fallbackKeeps: 1,
+      }),
+      "Sync finished. 1 new, 2 updated, skipped list mail 4, calendar 3, not a request 1, 1 kept by keyword fallback.",
+    );
   });
 });

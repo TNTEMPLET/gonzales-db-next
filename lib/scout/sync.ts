@@ -1,3 +1,4 @@
+import { createScoutClassifyRuntime, type ScoutClassifyRuntime } from "@/lib/scout/classify";
 import {
   SCOUT_HISTORY_CURSOR_PREFIX,
   SCOUT_LIST_CURSOR_PREFIX,
@@ -22,6 +23,10 @@ export type ScoutSyncReport = {
   appended: number;
   reopened: number;
   skipped: number;
+  /** Skip bucket counts for this run. Keys are stable reasons such as calendar or list mail. */
+  skipCounts: Record<string, number>;
+  /** Messages kept by keyword rules because the model was missing, capped, or failed. */
+  fallbackKeeps: number;
   duplicates: number;
   backfillPending: boolean;
 };
@@ -34,6 +39,8 @@ export function emptyScoutSyncReport(error: string | null = null): ScoutSyncRepo
     appended: 0,
     reopened: 0,
     skipped: 0,
+    skipCounts: {},
+    fallbackKeeps: 0,
     duplicates: 0,
     backfillPending: false,
   };
@@ -44,12 +51,21 @@ export function publicSyncError(err: unknown, accessMessage: string): string {
   return scoutPublicErrorMessage(err, "Scout sync failed");
 }
 
+function countSkip(report: ScoutSyncReport, reason: string) {
+  report.skipped += 1;
+  const bucket = reason || "skipped";
+  report.skipCounts[bucket] = (report.skipCounts[bucket] ?? 0) + 1;
+}
+
 function countResult(report: ScoutSyncReport, result: IngestResult) {
-  if (result.type === "created") report.created += 1;
-  else if (result.type === "appended") {
+  if (result.type === "created") {
+    report.created += 1;
+    if (result.viaFallback) report.fallbackKeeps += 1;
+  } else if (result.type === "appended") {
     report.appended += 1;
     if (result.reopened) report.reopened += 1;
-  } else if (result.type === "skipped") report.skipped += 1;
+    if (result.viaFallback) report.fallbackKeeps += 1;
+  } else if (result.type === "skipped") countSkip(report, result.reason);
   else report.duplicates += 1;
 }
 
@@ -76,14 +92,15 @@ async function ingestIds(
   mailbox: string,
   ids: { id: string }[],
   report: ScoutSyncReport,
+  runtime: ScoutClassifyRuntime,
 ) {
   for (const item of ids) {
     const parsed = await gateway.getMetadata(item.id);
     if (!parsed) {
-      report.skipped += 1;
+      countSkip(report, "missing metadata");
       continue;
     }
-    countResult(report, await ingestParsedMessage(store, mailbox, parsed));
+    countResult(report, await ingestParsedMessage(store, mailbox, parsed, runtime));
   }
 }
 
@@ -99,9 +116,11 @@ async function runScoutSyncLocked(deps: {
   gateway: GmailGateway;
   store: ScoutStore;
   lookbackDays?: number;
+  classify?: ScoutClassifyRuntime;
 }): Promise<ScoutSyncReport> {
   const { mailbox, now, gateway, store } = deps;
   const report = emptyScoutSyncReport();
+  const runtime = deps.classify ?? createScoutClassifyRuntime();
   const query = scoutInboxLookbackQuery(deps.lookbackDays ?? SCOUT_LOOKBACK_DAYS);
 
   const finishFailure = async (error: string) => {
@@ -140,7 +159,7 @@ async function runScoutSyncLocked(deps: {
       const historyPageToken = cursor.kind === "history" ? cursor.pageToken : null;
       const history = await gateway.listHistory(state.lastHistoryId, historyPageToken);
       if (history.ok) {
-        await ingestIds(store, gateway, mailbox, history.messages, report);
+        await ingestIds(store, gateway, mailbox, history.messages, report, runtime);
         if (history.nextPageToken) {
           return succeed(
             {
@@ -169,7 +188,7 @@ async function runScoutSyncLocked(deps: {
       if (!(err instanceof ScoutListCursorError) || !pageToken) throw err;
       page = await gateway.listInboxPage({ query, pageToken: null });
     }
-    await ingestIds(store, gateway, mailbox, page.messages, report);
+    await ingestIds(store, gateway, mailbox, page.messages, report, runtime);
 
     if (page.nextPageToken) {
       return succeed(
@@ -200,6 +219,7 @@ export async function executeScoutSync(deps: {
   gateway: GmailGateway;
   store: ScoutStore;
   lookbackDays?: number;
+  classify?: ScoutClassifyRuntime;
 }): Promise<ScoutSyncReport> {
   const lease = await deps.store.tryAcquireLease(deps.mailbox, deps.now);
   if (!lease) return emptyScoutSyncReport(SCOUT_ALREADY_RUNNING);

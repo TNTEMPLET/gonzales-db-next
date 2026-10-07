@@ -1,3 +1,4 @@
+import { formatScoutSyncActivity } from "@/lib/scout/skipSummary";
 import { SCOUT_STORAGE_NOT_READY, scoutUiText } from "@/lib/scout/storageError";
 import type { ScoutPageModel, ScoutSyncView, ScoutTicketDetail, ScoutTicketListItem } from "@/lib/scout/view";
 
@@ -13,6 +14,10 @@ export type ScoutSyncClientReport = {
   ok?: boolean;
   error?: string | null;
   backfillPending?: boolean;
+  created?: number;
+  appended?: number;
+  skipCounts?: Record<string, number>;
+  fallbackKeeps?: number;
 };
 
 export type ScoutTicketsPayload = {
@@ -30,12 +35,18 @@ export function scoutSyncRunNotice(input: {
   httpOk: boolean;
   error: string | null;
   backfillPending: boolean;
+  created?: number;
+  appended?: number;
+  skipCounts?: Record<string, number>;
+  fallbackKeeps?: number;
 }): string | null {
   if (!input.httpOk || input.error) return null;
+  const activity = formatScoutSyncActivity(input);
   if (input.backfillPending) {
-    return "Synced one batch. Scout will keep importing the rest of the inbox.";
+    const base = "Synced one batch. Scout will keep importing the rest of the inbox.";
+    return activity ? `${base} ${activity}.` : base;
   }
-  return "Sync finished.";
+  return activity ? `Sync finished. ${activity}.` : "Sync finished.";
 }
 
 /**

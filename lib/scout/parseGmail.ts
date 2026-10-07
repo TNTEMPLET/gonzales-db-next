@@ -10,6 +10,8 @@ export type ParsedScoutMessage = {
   snippet: string;
   labelIds: string[];
   headers: ScoutHeader[];
+  /** True when metadata includes a text/calendar part or an .ics filename. */
+  hasCalendarPart?: boolean;
 };
 
 export type GmailMetadataResource = {
@@ -61,6 +63,17 @@ function decodeBase64Url(data: string): string {
   return Buffer.from(padded, "base64").toString("utf8");
 }
 
+function partLooksCalendar(part: GmailMetadataPart | undefined, depth: number): boolean {
+  if (!part || depth > 8) return false;
+  const mime = part.mimeType?.toLowerCase() ?? "";
+  const filename = part.filename?.toLowerCase() ?? "";
+  if (mime.includes("text/calendar") || mime.includes("application/ics") || mime.includes("text/x-vcalendar")) {
+    return true;
+  }
+  if (filename.endsWith(".ics")) return true;
+  return (part.parts ?? []).some((child) => partLooksCalendar(child, depth + 1));
+}
+
 /** Short plain-text part, only when the metadata payload actually includes bytes. */
 function plainTextExcerpt(part: GmailMetadataPart | undefined, depth: number): string {
   if (!part || depth > 8) return "";
@@ -110,5 +123,6 @@ export function parseGmailMetadata(raw: GmailMetadataResource): ParsedScoutMessa
     snippet,
     labelIds: raw.labelIds ?? [],
     headers,
+    hasCalendarPart: partLooksCalendar(raw.payload, 0),
   };
 }

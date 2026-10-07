@@ -12,6 +12,8 @@ const METADATA_HEADERS = [
   "List-Id",
   "Auto-Submitted",
   "Precedence",
+  "Content-Type",
+  "Content-Class",
 ] as const;
 
 const HISTORY_PAGE_SIZE = 25;
