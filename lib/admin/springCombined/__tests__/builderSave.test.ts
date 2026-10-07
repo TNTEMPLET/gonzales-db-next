@@ -6,7 +6,13 @@ import { leagueDivisionDefaults } from "@/lib/ageDivisions/defaults";
 import type { DivisionAgeConfig } from "@/lib/ageDivisions/types";
 
 import { proposedFromBuilder } from "../builderSave";
-import { combinedSavePreview, type CombinedSaveLeaguePreview, type SpringLeagueTable } from "../save";
+import {
+  combinedSavePreview,
+  removedCodesForCombinedSave,
+  splitCombinedTable,
+  type CombinedSaveLeaguePreview,
+  type SpringLeagueTable,
+} from "../save";
 import { asSpringScratchTable } from "../view";
 
 const SEASON = 2027;
@@ -88,25 +94,25 @@ describe("builder table to combined save", () => {
       "9U Kid Pitch",
       "10U Kid Pitch",
     ]);
-    assert.deepEqual(labels(preview.preview.leagues, "gonzales", "added"), ["10U"]);
+    assert.deepEqual(labels(preview.preview.leagues, "gonzales", "added"), ["10U DYB"]);
     assert.deepEqual(labels(preview.preview.leagues, "gonzales", "changed"), [
-      "6U Minors CP",
-      "6U Majors CP",
-      "12U",
-      "15-17U",
+      "6U Minors CP DYB",
+      "6U Majors CP DYB",
+      "12U DYB",
+      "15-17U DYB",
     ]);
     assert.deepEqual(labels(preview.preview.leagues, "ascension", "removed"), [
       "Modified Tee Ball/CP",
       "Coach Pitch",
       "Coach Pitch 8 Minor",
     ]);
-    assert.deepEqual(labels(preview.preview.leagues, "ascension", "added"), ["8U Minors"]);
+    assert.deepEqual(labels(preview.preview.leagues, "ascension", "added"), ["8U Minors LLB"]);
     assert.deepEqual(labels(preview.preview.leagues, "ascension", "changed"), [
       "3-4 Tee Ball",
-      "5U Mod CP",
-      "8U Majors",
-      "10U",
-      "12U",
+      "5U Mod CP LLB",
+      "8U Majors LLB",
+      "10U LLB",
+      "12U LLB",
     ]);
 
     const ascension = preview.preview.leagues.find((league) => league.organizationId === "ascension")!;
@@ -114,7 +120,7 @@ describe("builder table to combined save", () => {
     assert.equal(tee?.kind, "changed");
     assert.match(tee?.before ?? "", /Sep 1, 2022/);
     assert.match(tee?.after ?? "", /May 1, 2022/);
-    const majors = ascension.changes.find((change) => change.label === "8U Majors");
+    const majors = ascension.changes.find((change) => change.label === "8U Majors LLB");
     assert.match(majors?.before ?? "", /Aug 31, 2020/);
     assert.match(majors?.after ?? "", /Apr 30, 2020/);
   });
@@ -139,6 +145,53 @@ describe("builder table to combined save", () => {
     assert.ok(changes.length > 2);
     assert.ok(changes.some((change) => change.kind === "removed"));
     assert.ok(changes.some((change) => change.kind === "added" || change.kind === "changed"));
+  });
+
+  it("saves an LL-tagged row with a DYB cutoff to Ascension with its name unchanged", () => {
+    const current: SpringLeagueTable[] = (["gonzales", "ascension"] as const).map((organizationId) => {
+      const defaults = leagueDivisionDefaults(organizationId);
+      return { organizationId, cutoff: defaults.rule, divisions: defaults.divisions };
+    });
+    const gonzalesFive = current[0]!.divisions.find((division) => division.minAge === 5 && division.maxAge === 5);
+    assert.ok(gonzalesFive, "Gonzales already has a 5U row whose April 30 window matches this builder row");
+
+    const built = proposedFromBuilder(trentBuilderTable(), current);
+    assert.equal(built.ok, true);
+    if (!built.ok) return;
+    const payload = built.proposed.divisions.filter((division) => division.label === "5U Mod CP LLB");
+    assert.equal(payload.length, 1);
+    assert.equal(payload[0]!.code.startsWith("ascension:"), true);
+    assert.equal(
+      built.proposed.divisions.some(
+        (division) => division.code.startsWith("gonzales:") && division.label.includes("5U Mod CP"),
+      ),
+      false,
+    );
+
+    const split = splitCombinedTable(
+      built.proposed,
+      current,
+      SEASON,
+      removedCodesForCombinedSave(current, built.proposed),
+    );
+    assert.equal(split.ok, true);
+    if (!split.ok) return;
+    const stored = split.leagues.ascension.divisions.filter((division) => division.label === "5U Mod CP LLB");
+    assert.equal(stored.length, 1);
+    assert.equal(
+      split.leagues.gonzales.divisions.some((division) => division.label.includes("5U Mod CP")),
+      false,
+    );
+
+    const preview = combinedSavePreview(current, built.proposed, SEASON);
+    assert.equal(preview.ok, true);
+    if (!preview.ok) return;
+    const previewLabels = preview.preview.leagues.flatMap((league) =>
+      league.changes.filter((change) => change.label.includes("5U Mod CP")).map((change) => change.label),
+    );
+    assert.deepEqual(previewLabels, ["5U Mod CP LLB"]);
+    assert.equal(previewLabels[0], payload[0]!.label);
+    assert.equal(stored[0]!.label, payload[0]!.label);
   });
 
   it("loads a single-league file into the spring scratch table", () => {
