@@ -16,6 +16,8 @@ export type ScoutSyncClientReport = {
   backfillPending?: boolean;
   created?: number;
   appended?: number;
+  skipped?: number;
+  duplicates?: number;
   skipCounts?: Record<string, number>;
   fallbackKeeps?: number;
 };
@@ -30,6 +32,11 @@ export type ScoutTicketsPayload = {
 /**
  * Line under the sync panel after Run Scout now.
  * Failures are omitted here because the panel already shows them.
+ * A finished run always states how many messages were evaluated in this batch
+ * and how many tickets were created or updated. That count includes skips and
+ * messages already stored. It is not the rest of the inbox, and it does not
+ * call older or already-stored mail new. Skip reasons, already-stored
+ * messages, and fallback keeps appear only when those counts are non-zero.
  */
 export function scoutSyncRunNotice(input: {
   httpOk: boolean;
@@ -37,16 +44,17 @@ export function scoutSyncRunNotice(input: {
   backfillPending: boolean;
   created?: number;
   appended?: number;
+  skipped?: number;
+  duplicates?: number;
   skipCounts?: Record<string, number>;
   fallbackKeeps?: number;
 }): string | null {
   if (!input.httpOk || input.error) return null;
   const activity = formatScoutSyncActivity(input);
   if (input.backfillPending) {
-    const base = "Synced one batch. Scout will keep importing the rest of the inbox.";
-    return activity ? `${base} ${activity}.` : base;
+    return `Synced one batch. Scout will keep importing the rest of the inbox. ${activity}`;
   }
-  return activity ? `Sync finished. ${activity}.` : "Sync finished.";
+  return activity;
 }
 
 /**

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-import { createElement } from "react";
+import { createElement, isValidElement, type ReactElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { SCOUT_MAILBOX } from "@/lib/scout/config";
@@ -126,6 +126,40 @@ function betweenEmailOff(html: string): string {
 }
 
 describe("scout visible text", () => {
+  it("opts email text out of Cloudflare obfuscation without hydrating the comments", () => {
+    const address = "synthetic.sender.alpha@apbaseball.com";
+    const node = ScoutEmailOff({ children: address });
+    assert.equal(isValidElement(node), true);
+    const children = (node as ReactElement<{ children: unknown[] }>).props.children;
+    assert.ok(Array.isArray(children));
+    assert.equal(children.length, 3);
+    assert.equal(children[1], address);
+
+    for (const [index, which, comment] of [
+      [0, "open", "<!--email_off-->"],
+      [2, "close", "<!--/email_off-->"],
+    ] as const) {
+      const marker = children[index] as ReactElement<{
+        suppressHydrationWarning?: boolean;
+        dangerouslySetInnerHTML?: { __html?: string };
+        "data-scout-email"?: string;
+      }>;
+      assert.equal(isValidElement(marker), true);
+      assert.equal(marker.props["data-scout-email"], which);
+      assert.equal(marker.props.suppressHydrationWarning, true);
+      assert.equal(marker.props.dangerouslySetInnerHTML?.__html, comment);
+      assert.equal(String(marker.props.dangerouslySetInnerHTML?.__html).includes(address), false);
+    }
+
+    const markup = renderToStaticMarkup(createElement(ScoutEmailOff, null, address));
+    assert.equal(markup.includes("<!--email_off-->"), true);
+    assert.equal(markup.includes("<!--/email_off-->"), true);
+    assert.equal(markup.includes("suppressHydrationWarning"), false);
+    const stripped = markup.replaceAll("<!--email_off-->", "").replaceAll("<!--/email_off-->", "");
+    assert.equal(stripped.includes(address), true);
+    assert.equal(stripped.includes("<!--"), false);
+  });
+
   it("keeps an email in one string inside the Cloudflare opt-out", () => {
     const when = formatScoutWhen("2026-10-07T21:05:00.000Z");
     const meta = scoutTicketListMeta({

@@ -431,6 +431,8 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
             backfillPending: Boolean(json.backfillPending),
             created: json.created,
             appended: json.appended,
+            skipped: json.skipped,
+            duplicates: json.duplicates,
             skipCounts: json.skipCounts,
             fallbackKeeps: json.fallbackKeeps,
           }),
