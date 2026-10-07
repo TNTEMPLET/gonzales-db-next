@@ -6,9 +6,11 @@ import { createElement, Fragment, type ReactNode } from "react";
  * client still has the address. `<!--email_off-->` … `<!--/email_off-->` is
  * Cloudflare's documented opt-out for a section of HTML.
  *
- * Subjects, sender names, and snippets are inbound mail. They stay React text
- * children. Only these two constant comments are inserted as HTML, so a
- * subject cannot terminate the opt-out or open a tag.
+ * Cloudflare removes those comments after honoring them, so the HTML the
+ * browser hydrates is empty while the client still has the comment.
+ * `suppressHydrationWarning` accepts either form. Ticket text stays a React
+ * child. Only these two constant comments are inserted as HTML, so a subject
+ * cannot terminate the opt-out or open a tag.
  */
 const EMAIL_OFF_OPEN_HTML = "<!--email_off-->";
 const EMAIL_OFF_CLOSE_HTML = "<!--/email_off-->";
@@ -18,6 +20,7 @@ function emailOffMarker(which: "open" | "close"): ReactNode {
     hidden: true,
     "aria-hidden": "true",
     "data-scout-email": which,
+    suppressHydrationWarning: true,
     dangerouslySetInnerHTML: {
       __html: which === "open" ? EMAIL_OFF_OPEN_HTML : EMAIL_OFF_CLOSE_HTML,
     },

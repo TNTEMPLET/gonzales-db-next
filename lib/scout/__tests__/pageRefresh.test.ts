@@ -95,11 +95,53 @@ describe("scout page refresh", () => {
       null,
     );
     assert.equal(scoutSyncRunNotice({ httpOk: false, error: null, backfillPending: false }), null);
+  });
+
+  it("summarizes a quiet run and names non-zero skips and fallback keeps", () => {
+    const quiet = {
+      ok: true,
+      error: null,
+      created: 0,
+      appended: 0,
+      reopened: 0,
+      skipped: 0,
+      skipCounts: {},
+      fallbackKeeps: 0,
+      duplicates: 0,
+      backfillPending: false,
+    };
     assert.equal(
-      scoutSyncRunNotice({ httpOk: true, error: null, backfillPending: true }),
-      "Synced one batch. Scout will keep importing the rest of the inbox.",
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: quiet.error,
+        backfillPending: quiet.backfillPending,
+        created: quiet.created,
+        appended: quiet.appended,
+        skipped: quiet.skipped,
+        duplicates: quiet.duplicates,
+        skipCounts: quiet.skipCounts,
+        fallbackKeeps: quiet.fallbackKeeps,
+      }),
+      "Checked 0 new messages. 0 tickets created, 0 updated.",
     );
-    assert.equal(scoutSyncRunNotice({ httpOk: true, error: null, backfillPending: false }), "Sync finished.");
+    assert.equal(
+      scoutSyncRunNotice({ httpOk: true, error: null, backfillPending: false }),
+      "Checked 0 new messages. 0 tickets created, 0 updated.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: true,
+        created: 0,
+        appended: 0,
+        skipped: 0,
+        duplicates: 0,
+        skipCounts: {},
+        fallbackKeeps: 0,
+      }),
+      "Synced one batch. Scout will keep importing the rest of the inbox. Checked 0 new messages. 0 tickets created, 0 updated.",
+    );
     assert.equal(
       scoutSyncRunNotice({
         httpOk: true,
@@ -107,10 +149,42 @@ describe("scout page refresh", () => {
         backfillPending: false,
         created: 1,
         appended: 2,
-        skipCounts: { calendar: 3, "not a request": 1, "list mail": 4 },
+        skipped: 8,
+        duplicates: 0,
+        skipCounts: {
+          calendar: 3,
+          "not a request": 1,
+          "list mail": 4,
+          "automated sender": 0,
+        },
         fallbackKeeps: 1,
       }),
-      "Sync finished. 1 new, 2 updated, skipped list mail 4, calendar 3, not a request 1, 1 kept by keyword fallback.",
+      "Checked 11 new messages. 1 ticket created, 2 updated. Skipped list mail 4, calendar 3, not a request 1. 1 kept by keyword fallback.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: false,
+        created: 0,
+        appended: 0,
+        skipCounts: { ai_unavailable_fallback: 2, ai_cap_fallback: 1, "automated sender": 1 },
+        fallbackKeeps: 0,
+      }),
+      "Checked 4 new messages. 0 tickets created, 0 updated. Skipped AI unavailable fallback 2, AI cap fallback 1, automated sender 1.",
+    );
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: false,
+        created: 1,
+        appended: 0,
+        skipped: 0,
+        duplicates: 2,
+        fallbackKeeps: 1,
+      }),
+      "Checked 3 new messages. 1 ticket created, 0 updated. 1 kept by keyword fallback.",
     );
   });
 });
