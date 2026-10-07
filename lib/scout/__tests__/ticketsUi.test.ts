@@ -1,9 +1,11 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import { SCOUT_MAILBOX } from "@/lib/scout/config";
 import { formatScoutWhen } from "@/lib/scout/formatWhen";
-import { scoutFilterPublishAction, scoutTicketsHref } from "@/lib/scout/links";
+import { scoutFilterPublishAction, scoutSenderAfterLanding, scoutTicketsHref } from "@/lib/scout/links";
 import {
   scoutFilteredAttentionWhere,
   scoutFiltersActive,
@@ -12,6 +14,7 @@ import {
 } from "@/lib/scout/listQuery";
 import { readScoutSaveFeedback, rememberScoutSaveFeedback } from "@/lib/scout/saveFeedback";
 import { parseScoutListFilters } from "@/lib/scout/ticketPatch";
+import { scoutMessageMeta, scoutTicketListMeta, scoutVisibleHtml } from "@/lib/scout/visibleHtml";
 
 describe("scout timestamps", () => {
   it("formats Central time with a normal space before AM/PM", () => {
@@ -76,6 +79,76 @@ describe("scout ticket links", () => {
     assert.equal(scoutFilterPublishAction({ desired: applied, applied, inFlight }), "replace");
     assert.equal(scoutFilterPublishAction({ desired: applied, applied, inFlight: null }), "none");
     assert.equal(scoutFilterPublishAction({ desired: applied, applied, inFlight: applied }), "none");
+  });
+
+  it("publishes again when a landing is not the sender in the box", () => {
+    assert.equal(
+      scoutSenderAfterLanding({ typedSender: "beta", appliedSender: "", debouncePending: false }),
+      "replace",
+    );
+    assert.equal(
+      scoutSenderAfterLanding({ typedSender: "beta", appliedSender: "", debouncePending: true }),
+      "none",
+    );
+    assert.equal(
+      scoutSenderAfterLanding({ typedSender: "beta", appliedSender: "beta", debouncePending: false }),
+      "none",
+    );
+    assert.equal(
+      scoutSenderAfterLanding({ typedSender: "", appliedSender: "", debouncePending: false }),
+      "none",
+    );
+  });
+});
+
+describe("scout visible text", () => {
+  it("keeps an email in one string and opts out of Cloudflare obfuscation", () => {
+    const when = formatScoutWhen("2026-10-07T21:05:00.000Z");
+    const meta = scoutTicketListMeta({
+      senderName: "Synthetic Sender Beta",
+      senderEmail: "synthetic.sender.beta@impact-sports.net",
+      when,
+      orgLabel: "Gonzales",
+    });
+    assert.equal(
+      meta,
+      `Synthetic Sender Beta · synthetic.sender.beta@impact-sports.net · ${when} · Gonzales`,
+    );
+    assert.equal(
+      scoutMessageMeta({
+        senderName: "Synthetic Sender Beta",
+        senderEmail: "synthetic.sender.beta@impact-sports.net",
+        when,
+      }),
+      `Synthetic Sender Beta · synthetic.sender.beta@impact-sports.net · ${when}`,
+    );
+    assert.equal(
+      scoutTicketListMeta({
+        senderName: null,
+        senderEmail: "synthetic.sender.alpha@apbaseball.com",
+        when,
+        orgLabel: null,
+      }),
+      `synthetic.sender.alpha@apbaseball.com · ${when}`,
+    );
+
+    const html = scoutVisibleHtml(meta);
+    assert.match(html, /^<!--email_off-->/);
+    assert.match(html, /<!--\/email_off-->$/);
+    assert.match(html, /synthetic\.sender\.beta@impact-sports\.net/);
+    const outside = html.replace(/<!--email_off-->[\s\S]*?<!--\/email_off-->/g, "");
+    assert.equal(outside.match(/[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g), null);
+
+    const escaped = scoutVisibleHtml(`Synthetic <script>alert("x")</script> · synthetic.sender.beta@impact-sports.net`);
+    assert.equal(escaped.includes("<script>"), false);
+    assert.match(escaped, /&lt;script&gt;/);
+
+    assert.equal(scoutVisibleHtml(`Last run ${when}`), `Last run ${when}`);
+
+    const markup = renderToStaticMarkup(
+      createElement("span", { dangerouslySetInnerHTML: { __html: scoutVisibleHtml(meta) } }),
+    );
+    assert.match(markup, /<!--email_off-->Synthetic Sender Beta · synthetic\.sender\.beta@impact-sports\.net/);
   });
 });
 

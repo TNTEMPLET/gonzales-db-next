@@ -35,3 +35,19 @@ export function scoutFilterPublishAction(input: {
   if (input.desired === input.applied && input.inFlight === null) return "none";
   return "replace";
 }
+
+/**
+ * After a navigation lands, whether the sender box should publish again.
+ * Keystrokes still inside the debounce window wait. A landing that is not the
+ * text in the box publishes immediately — an older navigation can finish
+ * after the debounced replace and Next only drops it when replace runs again.
+ */
+export function scoutSenderAfterLanding(input: {
+  typedSender: string;
+  appliedSender: string;
+  debouncePending: boolean;
+}): "none" | "replace" {
+  if (input.debouncePending) return "none";
+  if (input.typedSender === input.appliedSender) return "none";
+  return "replace";
+}
