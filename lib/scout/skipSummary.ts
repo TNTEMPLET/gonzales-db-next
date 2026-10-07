@@ -1,6 +1,6 @@
 const SKIP_REASON_LABELS: Record<string, string> = {
-  ai_unavailable_fallback: "AI unavailable fallback",
-  ai_cap_fallback: "AI cap fallback",
+  ai_unavailable_fallback: "AI unavailable",
+  ai_cap_fallback: "AI limit",
 };
 
 /** Plain-language bucket name. Unknown reasons stay as stored. */
@@ -29,7 +29,14 @@ export function formatScoutSkipCounts(counts: Record<string, number> | undefined
 
 /**
  * Always describes the run, including a quiet inbox.
- * Skip reasons and keyword-fallback keeps are included only when non-zero.
+ *
+ * "Checked N messages" is every message evaluated in this batch: tickets
+ * created, messages appended to a ticket, skips, and messages already stored.
+ * N is not the rest of the inbox, and it is not only mail that just arrived.
+ * A lookback page and a history page both use this total. Skip reasons,
+ * already-stored messages, and keyword-fallback keeps are included only when
+ * those counts are non-zero. A fallback keep is already inside created or
+ * updated, so it is not added to N again.
  */
 export function formatScoutSyncActivity(input: {
   created?: number;
@@ -46,11 +53,14 @@ export function formatScoutSyncActivity(input: {
   const skipped = input.skipped == null ? skippedFromCounts : countOf(input.skipped);
   const checked = created + appended + skipped + duplicates;
   const sentences = [
-    `Checked ${countedNoun(checked, "new message", "new messages")}.`,
+    `Checked ${countedNoun(checked, "message", "messages")}.`,
     `${countedNoun(created, "ticket", "tickets")} created, ${appended} updated.`,
   ];
   const skips = formatScoutSkipCounts(input.skipCounts);
   if (skips) sentences.push(`Skipped ${skips}.`);
+  if (duplicates) {
+    sentences.push(`${countedNoun(duplicates, "message already stored", "messages already stored")}.`);
+  }
   const fallbackKeeps = countOf(input.fallbackKeeps);
   if (fallbackKeeps) sentences.push(`${fallbackKeeps} kept by keyword fallback.`);
   return sentences.join(" ");

@@ -32,9 +32,11 @@ export type ScoutTicketsPayload = {
 /**
  * Line under the sync panel after Run Scout now.
  * Failures are omitted here because the panel already shows them.
- * A finished run always states how many messages were checked and how many
- * tickets were created or updated. Skip reasons and fallback keeps appear
- * only when those counts are non-zero.
+ * A finished run always states how many messages were evaluated in this batch
+ * and how many tickets were created or updated. That count includes skips and
+ * messages already stored. It is not the rest of the inbox, and it does not
+ * call older or already-stored mail new. Skip reasons, already-stored
+ * messages, and fallback keeps appear only when those counts are non-zero.
  */
 export function scoutSyncRunNotice(input: {
   httpOk: boolean;
