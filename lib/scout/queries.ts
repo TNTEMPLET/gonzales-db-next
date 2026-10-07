@@ -10,7 +10,7 @@ function emptyModel(filters: ScoutListFilters, storageMessage: string | null): S
   return {
     tickets: [],
     selected: null,
-    sync: { lastRunAt: null, lastSuccessAt: null, lastError: null },
+    sync: { lastRunAt: null, lastSuccessAt: null, lastError: null, backfillPending: false },
     attentionCount: 0,
     seedAllowed: scoutSyntheticSeedBlockReason(process.env) === null,
     storageMessage,
@@ -102,6 +102,7 @@ export async function loadScoutPage(input: {
         lastRunAt: state?.lastRunAt?.toISOString() ?? null,
         lastSuccessAt: state?.lastSuccessAt?.toISOString() ?? null,
         lastError: state?.lastError ?? null,
+        backfillPending: Boolean(state?.cursor),
       },
       attentionCount,
       seedAllowed: scoutSyntheticSeedBlockReason(process.env) === null,

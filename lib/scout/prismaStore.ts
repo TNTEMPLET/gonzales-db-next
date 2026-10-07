@@ -1,7 +1,10 @@
+import { randomBytes } from "crypto";
+
 import { Prisma } from "@prisma/client";
 
 import prisma from "@/lib/prisma";
-import type { ScoutPlan } from "@/lib/scout/plan";
+import { SCOUT_SYNC_LEASE_MS } from "@/lib/scout/config";
+import { scoutTicketAppendData, type ScoutPlan } from "@/lib/scout/plan";
 import type { ScoutStore, ScoutSyncPatch } from "@/lib/scout/store";
 
 function isUniqueConstraint(err: unknown): boolean {
@@ -89,16 +92,14 @@ export const prismaScoutStore: ScoutStore = {
         });
         await tx.scoutTicket.update({
           where: { id: input.ticketId },
-          data: {
-            status: input.status,
-            subject: input.subject,
-            senderEmail: input.senderEmail,
-            senderName: input.senderName,
-            firstMessageAt: input.firstMessageAt,
-            lastMessageAt: input.lastMessageAt,
-            snippet: input.snippet,
-          },
+          data: scoutTicketAppendData(input),
         });
+        if (input.latestMessage) {
+          await tx.scoutTicket.updateMany({
+            where: { id: input.ticketId, status: { in: ["DONE", "DISMISSED"] } },
+            data: { status: "OPEN" },
+          });
+        }
       });
       return "appended";
     } catch (err) {
@@ -131,6 +132,42 @@ export const prismaScoutStore: ScoutStore = {
         cursor: patch.cursor ?? null,
       },
       update: syncUpdate(patch),
+    });
+  },
+
+  async tryAcquireLease(mailbox, now) {
+    const token = randomBytes(16).toString("hex");
+    const syncLeaseUntil = new Date(now.getTime() + SCOUT_SYNC_LEASE_MS);
+    const claimed = await prisma.scoutSyncState.updateMany({
+      where: {
+        mailbox,
+        OR: [{ syncLeaseUntil: null }, { syncLeaseUntil: { lt: now } }],
+      },
+      data: { syncLeaseToken: token, syncLeaseUntil },
+    });
+    if (claimed.count === 1) return { token };
+
+    const existing = await prisma.scoutSyncState.findUnique({
+      where: { mailbox },
+      select: { id: true },
+    });
+    if (existing) return null;
+
+    try {
+      await prisma.scoutSyncState.create({
+        data: { mailbox, syncLeaseToken: token, syncLeaseUntil },
+      });
+      return { token };
+    } catch (err) {
+      if (isUniqueConstraint(err)) return null;
+      throw err;
+    }
+  },
+
+  async releaseLease(mailbox, token) {
+    await prisma.scoutSyncState.updateMany({
+      where: { mailbox, syncLeaseToken: token },
+      data: { syncLeaseToken: null, syncLeaseUntil: null },
     });
   },
 };

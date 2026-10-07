@@ -51,6 +51,11 @@ function ticketHref(org: string, model: ScoutPageModel, id: string): string {
 function TicketEditor({ ticket }: { ticket: ScoutTicketDetail }) {
   const router = useRouter();
   const [status, setStatus] = useState<ScoutTicketStatus>(ticket.status);
+  const [seenStatus, setSeenStatus] = useState(ticket.status);
+  if (ticket.status !== seenStatus) {
+    setSeenStatus(ticket.status);
+    setStatus(ticket.status);
+  }
   const [orgTag, setOrgTag] = useState<string>(ticket.orgTag ?? "");
   const [notes, setNotes] = useState(ticket.notes);
   const [saving, setSaving] = useState(false);
@@ -179,11 +184,13 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
     setNotice(null);
     try {
       const res = await fetch("/api/admin/scout/sync", { method: "POST" });
-      const json = (await res.json()) as { error?: string | null; ok?: boolean };
+      const json = (await res.json()) as { error?: string | null; ok?: boolean; backfillPending?: boolean };
       if (!res.ok) {
         setNotice(json.error || "Sync failed.");
       } else if (json.error) {
         setNotice(json.error);
+      } else if (json.backfillPending) {
+        setNotice("Synced one batch. Scout will keep importing the rest of the inbox.");
       } else {
         setNotice("Sync finished.");
       }
@@ -242,6 +249,12 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
       {model.storageMessage ? (
         <p className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
           {model.storageMessage}
+        </p>
+      ) : null}
+
+      {model.sync.backfillPending ? (
+        <p className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
+          Scout is still catching up on this inbox. It continues about every 15 minutes.
         </p>
       ) : null}
 

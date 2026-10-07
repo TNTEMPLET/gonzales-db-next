@@ -15,6 +15,12 @@ export const SCOUT_SYNC_PAGE_SIZE = 25;
 
 export const SCOUT_LIST_CURSOR_PREFIX = "list:";
 
+/** Resumes a Gmail history.list page. The stored history id stays the start id until the last page. */
+export const SCOUT_HISTORY_CURSOR_PREFIX = "hist:";
+
+/** Overlapping cron and manual syncs wait this long before taking over a stale lease. */
+export const SCOUT_SYNC_LEASE_MS = 120_000;
+
 export const SCOUT_SNIPPET_MAX = 200;
 
 export const SCOUT_SUBJECT_MAX = 300;

@@ -26,6 +26,9 @@ describe("evaluateScoutSender", () => {
   it("excludes the mailbox owner, sent mail, lists, and automated senders", () => {
     assert.equal(decision(SCOUT_MAILBOX).include, false);
     assert.equal(decision(SCOUT_MAILBOX.toUpperCase()).include, false);
+    const [local, domain] = SCOUT_MAILBOX.split("@");
+    assert.equal(decision(`${local}+alias@${domain}`).include, false);
+    assert.equal(decision(`not${local}@${domain}`).include, true);
     assert.deepEqual(decision("synthetic.sender.alpha@apbaseball.com", { labelIds: ["SENT", "INBOX"] }), {
       include: false,
       reason: "sent mail",
@@ -63,6 +66,14 @@ describe("evaluateScoutSender", () => {
       false,
     );
     assert.equal(decision(from, { headers: [{ name: "Auto-Submitted", value: "no" }] }).include, true);
+    assert.equal(
+      decision(from, { headers: [{ name: "Sender", value: "apboard@apbaseball.com" }] }).include,
+      false,
+    );
+    assert.equal(
+      decision(from, { headers: [{ name: "Sender", value: "noreply@apbaseball.com" }] }).include,
+      false,
+    );
   });
 
   it("excludes a missing sender", () => {

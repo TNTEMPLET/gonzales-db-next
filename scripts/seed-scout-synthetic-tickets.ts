@@ -30,6 +30,7 @@ async function main() {
 }
 
 main().catch((err) => {
-  console.error(err instanceof Error ? err.message : "Seed failed");
+  const message = err instanceof Error ? err.message : "Seed failed";
+  console.error(message.replace(/postgres(?:ql)?:\/\/\S+/gi, "postgresql://[redacted]"));
   process.exit(1);
 });

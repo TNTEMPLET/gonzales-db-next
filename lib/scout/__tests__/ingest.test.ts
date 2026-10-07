@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import { SCOUT_MAILBOX, SCOUT_SNIPPET_MAX } from "@/lib/scout/config";
 import { ingestParsedMessage } from "@/lib/scout/ingest";
 import { parseGmailMetadata, type ParsedScoutMessage } from "@/lib/scout/parseGmail";
-import { planScoutMessage, type TicketSnapshot } from "@/lib/scout/plan";
+import { planScoutMessage, scoutTicketAppendData, type TicketSnapshot } from "@/lib/scout/plan";
 import type { ScoutIngestStore } from "@/lib/scout/store";
 
 function message(overrides: Partial<ParsedScoutMessage> = {}): ParsedScoutMessage {
@@ -111,8 +111,10 @@ describe("planScoutMessage", () => {
     assert.equal(newer.type, "append");
     if (newer.type !== "append") return;
     assert.equal(newer.reopened, true);
+    assert.equal(newer.latestMessage, true);
     assert.equal(newer.status, "OPEN");
     assert.equal(newer.snippet, "Newer synthetic snippet");
+    assert.equal("status" in scoutTicketAppendData(newer), false);
 
     const waiting = planScoutMessage(
       { ...existing, status: "WAITING" },
@@ -164,6 +166,7 @@ describe("planScoutMessage", () => {
     if (plan.type !== "append") return;
     assert.equal(plan.status, "DONE");
     assert.equal(plan.reopened, false);
+    assert.equal(plan.latestMessage, false);
     assert.equal(plan.subject, "Earlier subject");
     assert.equal(plan.snippet, "Latest");
   });

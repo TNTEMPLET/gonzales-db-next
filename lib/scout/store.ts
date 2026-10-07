@@ -16,6 +16,10 @@ export type ScoutSyncPatch = {
   cursor?: string | null;
 };
 
+export type ScoutLease = {
+  token: string;
+};
+
 export type ScoutIngestStore = {
   hasMessage(gmailMessageId: string): Promise<boolean>;
   findTicket(mailbox: string, gmailThreadId: string): Promise<TicketSnapshot | null>;
@@ -26,4 +30,6 @@ export type ScoutIngestStore = {
 export type ScoutStore = ScoutIngestStore & {
   getSyncState(mailbox: string): Promise<ScoutSyncStateRow | null>;
   saveSyncState(mailbox: string, patch: ScoutSyncPatch): Promise<void>;
+  tryAcquireLease(mailbox: string, now: Date): Promise<ScoutLease | null>;
+  releaseLease(mailbox: string, token: string): Promise<void>;
 };

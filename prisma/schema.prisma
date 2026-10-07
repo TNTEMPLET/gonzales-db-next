@@ -3004,7 +3004,11 @@ model ScoutSyncState {
   cursor        String?
   lastRunAt     DateTime?
   lastSuccessAt DateTime?
-  lastError     String?
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  lastError      String?
+  /// Overlapping cron and manual syncs. Null means the lease is free.
+  /// A timestamp in the past can be taken over. Nullable so this stays additive.
+  syncLeaseUntil DateTime?
+  syncLeaseToken String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }

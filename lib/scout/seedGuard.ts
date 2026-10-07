@@ -5,12 +5,31 @@ export type ScoutSeedEnv = {
   PROD_DATABASE_URL?: string;
 };
 
-function urlsEqual(left: string, right: string): boolean {
+const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+function isLocalHost(host: string): boolean {
+  const normalized = host.toLowerCase().replace(/^\[|\]$/g, "");
+  return LOCAL_HOSTS.has(normalized) || normalized.endsWith(".localhost");
+}
+
+function databaseIdentity(value: string): string | null {
   try {
-    return new URL(left).href === new URL(right).href;
+    const url = new URL(value);
+    const port =
+      url.port || (url.protocol === "postgresql:" || url.protocol === "postgres:" ? "5432" : "");
+    const database = decodeURIComponent(url.pathname.replace(/\/+$/, "")).toLowerCase();
+    return `${url.hostname.toLowerCase()}|${port}|${database}`;
   } catch {
-    return left === right;
+    return null;
   }
+}
+
+/** Same host, port, and database name. Credentials and query strings are ignored. */
+function sameDatabase(left: string, right: string): boolean {
+  const a = databaseIdentity(left);
+  const b = databaseIdentity(right);
+  if (a && b) return a === b;
+  return left === right;
 }
 
 function looksLikeProductionName(value: string): boolean {
@@ -19,9 +38,11 @@ function looksLikeProductionName(value: string): boolean {
 
 /**
  * Synthetic Scout tickets are for local dev and staging only.
- * Production (VERCEL_ENV=production), a URL equal to PROD_DATABASE_URL, and
- * hosts or database names that contain prod are refused.
- * The laptop script also refuses hosted Prisma URLs.
+ * Production (VERCEL_ENV=production), the same host and database as
+ * PROD_DATABASE_URL, and hosts or database names that contain prod are refused.
+ * The laptop script only allows a local database. The admin button also
+ * refuses a hosted database when VERCEL_ENV is unset, so a local server
+ * cannot load samples into a remote production URL.
  */
 export function scoutSyntheticSeedBlockReason(
   env: ScoutSeedEnv,
@@ -35,7 +56,7 @@ export function scoutSyntheticSeedBlockReason(
   if (!url) return "DATABASE_URL is not set.";
 
   const prodUrl = env.PROD_DATABASE_URL?.trim();
-  if (prodUrl && urlsEqual(url, prodUrl)) {
+  if (prodUrl && sameDatabase(url, prodUrl)) {
     return "Refusing to seed Scout tickets against the production database.";
   }
 
@@ -52,7 +73,9 @@ export function scoutSyntheticSeedBlockReason(
     return "Refusing to seed Scout tickets against a production database.";
   }
 
-  if (surface === "script" && /db\.prisma\.io|prisma-data\.net/i.test(host)) {
+  const vercelEnv = env.VERCEL_ENV?.trim() ?? "";
+  const localOnly = surface === "script" || (surface === "admin" && !vercelEnv);
+  if (localOnly && !isLocalHost(host)) {
     return "Refusing to seed Scout tickets against a hosted database. Use the local dev database.";
   }
 

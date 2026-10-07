@@ -1,11 +1,18 @@
 import {
+  SCOUT_HISTORY_CURSOR_PREFIX,
   SCOUT_LIST_CURSOR_PREFIX,
   SCOUT_LOOKBACK_DAYS,
   scoutInboxLookbackQuery,
 } from "@/lib/scout/config";
-import { ScoutGmailAccessError, type GmailGateway } from "@/lib/scout/gmailGateway";
+import {
+  ScoutGmailAccessError,
+  ScoutListCursorError,
+  type GmailGateway,
+} from "@/lib/scout/gmailGateway";
 import { ingestParsedMessage, type IngestResult } from "@/lib/scout/ingest";
 import type { ScoutStore } from "@/lib/scout/store";
+
+export const SCOUT_ALREADY_RUNNING = "Scout is already running.";
 
 export type ScoutSyncReport = {
   ok: boolean;
@@ -15,6 +22,7 @@ export type ScoutSyncReport = {
   reopened: number;
   skipped: number;
   duplicates: number;
+  backfillPending: boolean;
 };
 
 export function emptyScoutSyncReport(error: string | null = null): ScoutSyncReport {
@@ -26,6 +34,7 @@ export function emptyScoutSyncReport(error: string | null = null): ScoutSyncRepo
     reopened: 0,
     skipped: 0,
     duplicates: 0,
+    backfillPending: false,
   };
 }
 
@@ -47,10 +56,21 @@ function countResult(report: ScoutSyncReport, result: IngestResult) {
   else report.duplicates += 1;
 }
 
-function listPageToken(cursor: string | null): string | null | undefined {
-  if (cursor === null || !cursor.startsWith(SCOUT_LIST_CURSOR_PREFIX)) return undefined;
-  const token = cursor.slice(SCOUT_LIST_CURSOR_PREFIX.length);
-  return token || null;
+type ParsedCursor =
+  | { kind: "list"; pageToken: string | null }
+  | { kind: "history"; pageToken: string | null }
+  | { kind: "none" };
+
+function parseCursor(cursor: string | null): ParsedCursor {
+  if (cursor?.startsWith(SCOUT_LIST_CURSOR_PREFIX)) {
+    const token = cursor.slice(SCOUT_LIST_CURSOR_PREFIX.length);
+    return { kind: "list", pageToken: token || null };
+  }
+  if (cursor?.startsWith(SCOUT_HISTORY_CURSOR_PREFIX)) {
+    const token = cursor.slice(SCOUT_HISTORY_CURSOR_PREFIX.length);
+    return { kind: "history", pageToken: token || null };
+  }
+  return { kind: "none" };
 }
 
 async function ingestIds(
@@ -71,10 +91,12 @@ async function ingestIds(
 }
 
 /**
- * First run (no history id) lists the inbox for the lookback window, a page at a time.
- * Later runs follow Gmail history. Re-running is safe: message ids are unique.
+ * First run (no history id) records the mailbox history id, then lists the
+ * inbox for the lookback window one page at a time. Later runs follow Gmail
+ * history one page at a time. Re-running is safe: message ids are unique.
+ * A stale or rejected history id lists the inbox again from a new snapshot.
  */
-export async function executeScoutSync(deps: {
+async function runScoutSyncLocked(deps: {
   mailbox: string;
   now: Date;
   gateway: GmailGateway;
@@ -85,70 +107,84 @@ export async function executeScoutSync(deps: {
   const report = emptyScoutSyncReport();
   const query = scoutInboxLookbackQuery(deps.lookbackDays ?? SCOUT_LOOKBACK_DAYS);
 
-  const finishFailure = async (error: string, patch?: { lastHistoryId?: string | null; cursor?: string | null }) => {
+  const finishFailure = async (error: string) => {
     report.ok = false;
     report.error = error;
+    report.backfillPending = false;
     await store.saveSyncState(mailbox, {
       lastRunAt: now,
       lastError: error,
+    });
+    return report;
+  };
+
+  const succeed = async (
+    patch: { lastHistoryId?: string | null; cursor?: string | null },
+    backfillPending: boolean,
+  ) => {
+    await store.saveSyncState(mailbox, {
+      lastRunAt: now,
+      lastSuccessAt: now,
+      lastError: null,
       ...patch,
     });
+    report.ok = true;
+    report.error = null;
+    report.backfillPending = backfillPending;
     return report;
   };
 
   try {
     const state = await store.getSyncState(mailbox);
-    const resumeList = listPageToken(state?.cursor ?? null);
-    let mode: "history" | "list" = resumeList === undefined && state?.lastHistoryId ? "history" : "list";
-    let pageToken = resumeList === undefined ? null : resumeList;
+    const cursor = parseCursor(state?.cursor ?? null);
+    const mode: "history" | "list" = cursor.kind !== "list" && state?.lastHistoryId ? "history" : "list";
 
     if (mode === "history" && state?.lastHistoryId) {
-      const history = await gateway.listHistory(state.lastHistoryId);
+      const historyPageToken = cursor.kind === "history" ? cursor.pageToken : null;
+      const history = await gateway.listHistory(state.lastHistoryId, historyPageToken);
       if (history.ok) {
         await ingestIds(store, gateway, mailbox, history.messages, report);
-        await store.saveSyncState(mailbox, {
-          lastRunAt: now,
-          lastSuccessAt: now,
-          lastError: null,
-          lastHistoryId: history.historyId,
-          cursor: null,
-        });
-        report.ok = true;
-        report.error = null;
-        return report;
+        if (history.nextPageToken) {
+          return succeed(
+            {
+              lastHistoryId: state.lastHistoryId,
+              cursor: `${SCOUT_HISTORY_CURSOR_PREFIX}${history.nextPageToken}`,
+            },
+            true,
+          );
+        }
+        return succeed({ lastHistoryId: history.historyId, cursor: null }, false);
       }
       if (!history.expired) return finishFailure(history.message);
-      mode = "list";
-      pageToken = null;
     }
 
-    const page = await gateway.listInboxPage({ query, pageToken });
+    const resumingList = cursor.kind === "list" && Boolean(state?.lastHistoryId);
+    const pageToken = resumingList && cursor.kind === "list" ? cursor.pageToken : null;
+    const backfillHistoryId = resumingList
+      ? (state?.lastHistoryId ?? null)
+      : await gateway.currentHistoryId();
+    if (!backfillHistoryId) throw new Error("Gmail request failed (profile)");
+
+    let page;
+    try {
+      page = await gateway.listInboxPage({ query, pageToken });
+    } catch (err) {
+      if (!(err instanceof ScoutListCursorError) || !pageToken) throw err;
+      page = await gateway.listInboxPage({ query, pageToken: null });
+    }
     await ingestIds(store, gateway, mailbox, page.messages, report);
 
     if (page.nextPageToken) {
-      await store.saveSyncState(mailbox, {
-        lastRunAt: now,
-        lastSuccessAt: now,
-        lastError: null,
-        cursor: `${SCOUT_LIST_CURSOR_PREFIX}${page.nextPageToken}`,
-        ...(mode === "list" && state?.lastHistoryId ? { lastHistoryId: null } : {}),
-      });
-      report.ok = true;
-      report.error = null;
-      return report;
+      return succeed(
+        {
+          lastHistoryId: backfillHistoryId,
+          cursor: `${SCOUT_LIST_CURSOR_PREFIX}${page.nextPageToken}`,
+        },
+        true,
+      );
     }
 
-    const historyId = await gateway.currentHistoryId();
-    await store.saveSyncState(mailbox, {
-      lastRunAt: now,
-      lastSuccessAt: now,
-      lastError: null,
-      lastHistoryId: historyId,
-      cursor: null,
-    });
-    report.ok = true;
-    report.error = null;
-    return report;
+    return succeed({ lastHistoryId: backfillHistoryId, cursor: null }, false);
   } catch (err) {
     const message = publicSyncError(err, err instanceof ScoutGmailAccessError ? err.message : "Scout sync failed");
     try {
@@ -157,6 +193,26 @@ export async function executeScoutSync(deps: {
       report.ok = false;
       report.error = message;
       return report;
+    }
+  }
+}
+
+export async function executeScoutSync(deps: {
+  mailbox: string;
+  now: Date;
+  gateway: GmailGateway;
+  store: ScoutStore;
+  lookbackDays?: number;
+}): Promise<ScoutSyncReport> {
+  const lease = await deps.store.tryAcquireLease(deps.mailbox, deps.now);
+  if (!lease) return emptyScoutSyncReport(SCOUT_ALREADY_RUNNING);
+  try {
+    return await runScoutSyncLocked(deps);
+  } finally {
+    try {
+      await deps.store.releaseLease(deps.mailbox, lease.token);
+    } catch {
+      // A crashed release expires on its own. The next run can take the lease.
     }
   }
 }

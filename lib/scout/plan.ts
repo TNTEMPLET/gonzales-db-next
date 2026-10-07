@@ -41,6 +41,8 @@ export type ScoutPlan =
       ticketId: string;
       status: ScoutTicketStatus;
       reopened: boolean;
+      /** True when this message is newer than the ticket's stored last message. */
+      latestMessage: boolean;
       subject: string;
       senderEmail: string;
       senderName: string | null;
@@ -49,6 +51,18 @@ export type ScoutPlan =
       snippet: string;
       message: PlannedMessage;
     };
+
+/** Fields a sync may write. Status is applied separately so a save is not overwritten. */
+export function scoutTicketAppendData(input: Extract<ScoutPlan, { type: "append" }>) {
+  return {
+    subject: input.subject,
+    senderEmail: input.senderEmail,
+    senderName: input.senderName,
+    firstMessageAt: input.firstMessageAt,
+    lastMessageAt: input.lastMessageAt,
+    snippet: input.snippet,
+  };
+}
 
 function plannedMessage(message: ParsedScoutMessage): PlannedMessage {
   return {
@@ -96,6 +110,7 @@ export function planScoutMessage(
     ticketId: existing.id,
     status: reopened ? "OPEN" : existing.status,
     reopened,
+    latestMessage: newer,
     subject: earlier ? subject : existing.subject,
     senderEmail: earlier ? message.fromEmail : existing.senderEmail,
     senderName: earlier ? message.fromName : existing.senderName,

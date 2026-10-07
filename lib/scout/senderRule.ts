@@ -54,11 +54,24 @@ function isAutomatedAddress(email: string): boolean {
   return /no[-_.]?reply/i.test(local);
 }
 
+function isMailboxOwner(email: string): boolean {
+  if (email === SCOUT_MAILBOX) return true;
+  const at = SCOUT_MAILBOX.lastIndexOf("@");
+  if (at < 1) return false;
+  return localPart(email) === localPart(SCOUT_MAILBOX) && domainOf(email) === SCOUT_MAILBOX.slice(at + 1);
+}
+
+function addressFromHeader(value: string): string {
+  const angle = value.match(/<([^<>\s]+)>/);
+  return (angle?.[1] ?? value).trim().replace(/^mailto:/i, "").toLowerCase();
+}
+
 /**
  * Pure sender rule for Scout.
  * Includes exact @apbaseball.com and @impact-sports.net senders.
- * Drops the mailbox owner, sent mail, noreply-style addresses, list mail, and
- * messages carrying List-Unsubscribe, List-Id, or Auto-Submitted.
+ * Drops the mailbox owner (including plus-addresses), sent mail, noreply-style
+ * addresses, list mail, and messages carrying List-Unsubscribe, List-Id,
+ * Auto-Submitted, or a list/automated Sender header.
  */
 export function evaluateScoutSender(input: ScoutSenderInput): ScoutSenderDecision {
   const email = input.fromEmail.trim().toLowerCase();
@@ -86,7 +99,15 @@ export function evaluateScoutSender(input: ScoutSenderInput): ScoutSenderDecisio
     return { include: false, reason: "automated sender" };
   }
 
-  if (email === SCOUT_MAILBOX) {
+  const senderHeader = headerValue(headers, "Sender");
+  if (senderHeader) {
+    const senderEmail = addressFromHeader(senderHeader);
+    if (isMailboxOwner(senderEmail)) return { include: false, reason: "mailbox owner" };
+    if (LIST_LOCAL_PARTS.has(localPart(senderEmail))) return { include: false, reason: "list mail" };
+    if (isAutomatedAddress(senderEmail)) return { include: false, reason: "automated sender" };
+  }
+
+  if (isMailboxOwner(email)) {
     return { include: false, reason: "mailbox owner" };
   }
 

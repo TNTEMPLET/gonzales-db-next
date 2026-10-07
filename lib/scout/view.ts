@@ -30,6 +30,7 @@ export type ScoutSyncView = {
   lastRunAt: string | null;
   lastSuccessAt: string | null;
   lastError: string | null;
+  backfillPending: boolean;
 };
 
 export type ScoutPageModel = {

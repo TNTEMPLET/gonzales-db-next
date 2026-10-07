@@ -117,6 +117,24 @@ describe("synthetic seed guard", () => {
       ),
       null,
     );
+    assert.match(
+      scoutSyntheticSeedBlockReason(
+        { DATABASE_URL: "postgresql://example.db.prisma.io/postgres" },
+        "admin",
+      ) ?? "",
+      /hosted database/,
+    );
+    assert.equal(
+      scoutSyntheticSeedBlockReason({ DATABASE_URL: "postgresql://127.0.0.1:5432/apbaseball_dev" }, "admin"),
+      null,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({
+        DATABASE_URL: "postgresql://user:secret@db.example:5432/app",
+        PROD_DATABASE_URL: "postgresql://user:other@db.example/app?sslmode=require",
+      }) ?? "",
+      /production database/,
+    );
   });
 
   it("uses synthetic fixtures only", () => {
