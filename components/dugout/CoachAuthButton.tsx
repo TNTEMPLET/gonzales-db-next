@@ -137,9 +137,12 @@ export default function CoachAuthButton({
   const [password, setPassword] = useState("");
   const [notice, setNotice] = useState("");
 
-  const displayLabel = user
-    ? (user.firstName ?? user.name.split(" ")[0])
-    : "Login";
+  const sessionPending = user === undefined;
+  const displayLabel = sessionPending
+    ? ""
+    : user
+      ? (user.firstName ?? user.name.split(" ")[0])
+      : "Login";
 
   const triggerClassName = mobile
     ? "w-full text-left text-lg hover:text-brand-gold"
@@ -384,11 +387,19 @@ export default function CoachAuthButton({
     <>
       <button
         type="button"
-        disabled={user === undefined}
+        disabled={sessionPending}
+        aria-busy={sessionPending}
+        aria-label={sessionPending ? "Checking session" : undefined}
         onClick={openModal}
         className={`${avatarOnly ? "" : triggerClassName} disabled:opacity-60 inline-flex items-center gap-2`}
       >
-        {user ? (
+        {sessionPending ? (
+          <span
+            aria-hidden
+            className={avatarOnly ? "inline-block shrink-0" : mobile ? "inline-block h-7 w-24" : "inline-block h-5 w-16"}
+            style={avatarOnly ? { width: avatarSize, height: avatarSize } : undefined}
+          />
+        ) : user ? (
           avatarOnly ? (
             user.avatarUrl ? (
               <img

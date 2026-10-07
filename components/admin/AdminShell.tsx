@@ -8,6 +8,7 @@ import { useAdminSidebar } from "@/components/admin/AdminSidebarProvider";
 type AdminShellProps = {
   isMasterHeader: boolean;
   ordersModuleEnabled: boolean;
+  scoutNav: { operator: boolean; attentionCount: number };
   children: React.ReactNode;
 };
 
@@ -27,6 +28,7 @@ type AdminShellProps = {
 export default function AdminShell({
   isMasterHeader,
   ordersModuleEnabled,
+  scoutNav,
   children,
 }: AdminShellProps) {
   const pathname = usePathname();
@@ -39,7 +41,7 @@ export default function AdminShell({
   return (
     <>
       <Suspense fallback={null}>
-        <AdminSidebar ordersModuleEnabled={ordersModuleEnabled} />
+        <AdminSidebar ordersModuleEnabled={ordersModuleEnabled} scoutNav={scoutNav} />
       </Suspense>
       <div className={`transition-[margin-left] duration-200 ${collapsed ? "" : "md:ml-64"}`}>
         {children}

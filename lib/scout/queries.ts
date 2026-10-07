@@ -1,5 +1,7 @@
 import { SCOUT_ATTENTION_STATUSES, SCOUT_MAILBOX } from "@/lib/scout/config";
 import prisma from "@/lib/prisma";
+import { isScoutOperator } from "@/lib/scout/access";
+import { scoutFilteredAttentionWhere, scoutTicketListWhere } from "@/lib/scout/listQuery";
 import { scoutSyntheticSeedBlockReason } from "@/lib/scout/seedGuard";
 import { SCOUT_STORAGE_NOT_READY } from "@/lib/scout/storageError";
 import { parseScoutListFilters, type ScoutListFilters } from "@/lib/scout/ticketPatch";
@@ -51,14 +53,8 @@ export async function loadScoutPage(input: {
 }): Promise<ScoutPageModel> {
   const filters = parseScoutListFilters(input);
   try {
-    const where = {
-      mailbox: SCOUT_MAILBOX,
-      ...(filters.status === "all" ? {} : { status: filters.status }),
-      ...(filters.orgTag === "all" ? {} : filters.orgTag === "none" ? { orgTag: null } : { orgTag: filters.orgTag }),
-      ...(filters.sender
-        ? { senderEmail: { contains: filters.sender, mode: "insensitive" as const } }
-        : {}),
-    };
+    const where = scoutTicketListWhere(filters);
+    const attentionWhere = scoutFilteredAttentionWhere(filters);
 
     const [rows, state, attentionCount, selectedRow] = await Promise.all([
       prisma.scoutTicket.findMany({
@@ -67,9 +63,9 @@ export async function loadScoutPage(input: {
         take: 200,
       }),
       prisma.scoutSyncState.findUnique({ where: { mailbox: SCOUT_MAILBOX } }),
-      prisma.scoutTicket.count({
-        where: { mailbox: SCOUT_MAILBOX, status: { in: [...SCOUT_ATTENTION_STATUSES] } },
-      }),
+      attentionWhere
+        ? prisma.scoutTicket.count({ where: attentionWhere })
+        : Promise.resolve(0),
       input.ticketId
         ? prisma.scoutTicket.findFirst({
             where: { id: input.ticketId, mailbox: SCOUT_MAILBOX },
@@ -118,8 +114,23 @@ export async function loadScoutPage(input: {
   }
 }
 
+/** Inbox-wide new/open count for the sidebar badge. Ignores list filters. */
 export async function loadScoutAttentionCount(): Promise<number> {
   return prisma.scoutTicket.count({
     where: { mailbox: SCOUT_MAILBOX, status: { in: [...SCOUT_ATTENTION_STATUSES] } },
   });
+}
+
+/** First paint for the Tickets nav item. Other admins get no link and no badge. */
+export async function loadScoutNavSeed(email: string | null | undefined): Promise<{
+  operator: boolean;
+  attentionCount: number;
+}> {
+  if (!isScoutOperator(email)) return { operator: false, attentionCount: 0 };
+  try {
+    return { operator: true, attentionCount: await loadScoutAttentionCount() };
+  } catch (err) {
+    console.error("[scout] nav count failed", err instanceof Error ? err.name : "unknown");
+    return { operator: true, attentionCount: 0 };
+  }
 }

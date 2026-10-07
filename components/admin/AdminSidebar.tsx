@@ -32,16 +32,19 @@ function pathKeyOf(href: string): string {
 
 export default function AdminSidebar({
   ordersModuleEnabled,
+  scoutNav,
 }: {
   /** Server value of `isOrdersModuleEnabled()`. Do not read `ORDERS_ENABLED` here. */
   ordersModuleEnabled: boolean;
+  /** Server-rendered so the Tickets link and badge are in the first HTML. */
+  scoutNav: { operator: boolean; attentionCount: number };
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const { collapsed, toggleCollapsed, isSubcategoryOpen, toggleSubcategory } = useAdminSidebar();
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
-  const [scoutOperator, setScoutOperator] = useState(false);
-  const [scoutAttentionCount, setScoutAttentionCount] = useState(0);
+  const [scoutOperator, setScoutOperator] = useState(scoutNav.operator);
+  const [scoutAttentionCount, setScoutAttentionCount] = useState(scoutNav.attentionCount);
 
   const currentOrgParam = searchParams.get("org");
   const springView = currentOrgParam === "spring";
@@ -77,11 +80,12 @@ export default function AdminSidebar({
       const id = ++request;
       try {
         const response = await fetch("/api/admin/scout/summary", { cache: "no-store" });
-        const json = response.ok ? ((await response.json()) as { attentionCount?: number }) : null;
+        if (!response.ok) return;
+        const json = (await response.json()) as { attentionCount?: number };
         if (!active || id !== request) return;
-        setScoutAttentionCount(typeof json?.attentionCount === "number" ? json.attentionCount : 0);
+        if (typeof json?.attentionCount === "number") setScoutAttentionCount(json.attentionCount);
       } catch {
-        if (active && id === request) setScoutAttentionCount(0);
+        // Keep the server-rendered count when the refresh fails.
       }
     }
 
