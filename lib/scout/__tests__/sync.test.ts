@@ -579,6 +579,8 @@ describe("scout sync error text", () => {
     const raw = publicSyncError(new TypeError("Cannot read properties of undefined (reading 'slice')"), "Scout sync failed");
     assert.equal(raw, "Scout sync failed");
     assert.equal(raw.includes("Cannot read"), false);
+    assert.equal(publicSyncError(new TypeError("Illegal invocation"), "Scout sync failed"), "Scout sync failed");
+    assert.equal(publicSyncError(new ReferenceError("missingBinding is not defined"), "Scout sync failed"), "Scout sync failed");
   });
 
   it("does not return a raw delegate or missing-table error from a sync", async () => {

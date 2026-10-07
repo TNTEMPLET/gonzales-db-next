@@ -143,11 +143,14 @@ describe("synthetic seed guard", () => {
       scoutSyntheticSeedBlockReason({ ...staging, SCOUT_ALLOW_SAMPLE_TICKETS: "1" }, "admin"),
       null,
     );
-    assert.equal(
-      scoutSyntheticSeedBlockReason({ ...staging, SCOUT_ALLOW_SAMPLE_TICKETS: " 1 " }, "admin"),
-      null,
-    );
     assert.match(scoutSyntheticSeedBlockReason(staging, "admin") ?? "", /hosted database/);
+    for (const value of ["true", "TRUE", "yes", " 1", "1 ", " 1 ", "1\n", "01"]) {
+      assert.match(
+        scoutSyntheticSeedBlockReason({ ...staging, SCOUT_ALLOW_SAMPLE_TICKETS: value }, "admin") ?? "",
+        /hosted database/,
+        value,
+      );
+    }
     assert.match(
       scoutSyntheticSeedBlockReason({ ...staging, SCOUT_ALLOW_SAMPLE_TICKETS: "" }, "admin") ?? "",
       /hosted database/,
@@ -170,8 +173,32 @@ describe("synthetic seed guard", () => {
     );
     assert.match(
       scoutSyntheticSeedBlockReason({
+        ...staging,
+        VERCEL_ENV: " production ",
+        SCOUT_ALLOW_SAMPLE_TICKETS: "1",
+      }) ?? "",
+      /production/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({
+        ...staging,
+        VERCEL_ENV: "Production",
+        SCOUT_ALLOW_SAMPLE_TICKETS: "1",
+      }) ?? "",
+      /production/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({
         DATABASE_URL: "postgresql://user:secret@db.example:5432/app",
         PROD_DATABASE_URL: "postgresql://user:other@db.example/app?sslmode=require",
+        SCOUT_ALLOW_SAMPLE_TICKETS: "1",
+      }) ?? "",
+      /production database/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({
+        DATABASE_URL: "postgresql://user:secret@db.example:5432//App/",
+        PROD_DATABASE_URL: "postgres://user:other@DB.example/app",
         SCOUT_ALLOW_SAMPLE_TICKETS: "1",
       }) ?? "",
       /production database/,
@@ -186,6 +213,13 @@ describe("synthetic seed guard", () => {
     assert.match(
       scoutSyntheticSeedBlockReason({
         DATABASE_URL: "postgresql://example.db.prisma.io/apbaseball_production",
+        SCOUT_ALLOW_SAMPLE_TICKETS: "1",
+      }) ?? "",
+      /production database/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({
+        DATABASE_URL: "postgresql://example.db.prisma.io//apbaseball_production/",
         SCOUT_ALLOW_SAMPLE_TICKETS: "1",
       }) ?? "",
       /production database/,

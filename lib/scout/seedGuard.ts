@@ -7,9 +7,12 @@ export type ScoutSeedEnv = {
   SCOUT_ALLOW_SAMPLE_TICKETS?: string;
 };
 
-/** Explicit opt-in. Only `1` enables it. Unset, blank, and `0` leave the gate unchanged. */
+/**
+ * Explicit opt-in. Only the exact string `1` enables it.
+ * `true`, `yes`, blank, `0`, and surrounding spaces leave the gate unchanged.
+ */
 export function scoutSampleTicketsOptIn(env: ScoutSeedEnv): boolean {
-  return env.SCOUT_ALLOW_SAMPLE_TICKETS?.trim() === "1";
+  return env.SCOUT_ALLOW_SAMPLE_TICKETS === "1";
 }
 
 const LOCAL_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
@@ -24,7 +27,7 @@ function databaseIdentity(value: string): string | null {
     const url = new URL(value);
     const port =
       url.port || (url.protocol === "postgresql:" || url.protocol === "postgres:" ? "5432" : "");
-    const database = decodeURIComponent(url.pathname.replace(/\/+$/, "")).toLowerCase();
+    const database = decodeURIComponent(url.pathname.replace(/^\/+|\/+$/g, "")).toLowerCase();
     return `${url.hostname.toLowerCase()}|${port}|${database}`;
   } catch {
     return null;
@@ -58,7 +61,8 @@ export function scoutSyntheticSeedBlockReason(
   env: ScoutSeedEnv,
   surface: "script" | "admin" = "admin",
 ): string | null {
-  if (env.VERCEL_ENV === "production") {
+  const vercelEnv = env.VERCEL_ENV?.trim() ?? "";
+  if (vercelEnv.toLowerCase() === "production") {
     return "Refusing to seed Scout tickets in production.";
   }
 
@@ -78,12 +82,11 @@ export function scoutSyntheticSeedBlockReason(
   }
 
   const host = parsed.hostname.toLowerCase();
-  const database = decodeURIComponent(parsed.pathname.replace(/^\//, "").split("/")[0] ?? "").toLowerCase();
+  const database = decodeURIComponent(parsed.pathname.replace(/^\/+|\/+$/g, "").split("/")[0] ?? "").toLowerCase();
   if (looksLikeProductionName(host) || looksLikeProductionName(database)) {
     return "Refusing to seed Scout tickets against a production database.";
   }
 
-  const vercelEnv = env.VERCEL_ENV?.trim() ?? "";
   const localOnly = surface === "script" || (surface === "admin" && !vercelEnv && !scoutSampleTicketsOptIn(env));
   if (localOnly && !isLocalHost(host)) {
     return "Refusing to seed Scout tickets against a hosted database. Use the local dev database.";

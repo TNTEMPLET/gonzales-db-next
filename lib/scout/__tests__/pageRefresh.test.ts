@@ -47,6 +47,8 @@ describe("scout page refresh", () => {
     assert.equal(after, before);
     assert.equal(scoutUiText("Cannot read properties of undefined (reading 'upsert')"), SCOUT_STORAGE_NOT_READY);
     assert.equal(scoutUiText("Cannot read properties of undefined (reading 'slice')"), "Scout sync failed");
+    assert.equal(scoutUiText("Illegal invocation"), "Scout sync failed");
+    assert.equal(scoutUiText("null is not an object (evaluating 'x.y')"), "Scout sync failed");
     assert.equal(scoutUiText("Gmail access not granted yet"), "Gmail access not granted yet");
   });
 
