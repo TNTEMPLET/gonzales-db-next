@@ -11,7 +11,8 @@ import {
 import { ScoutGmailAccessError, createGmailGateway, type GmailGateway } from "@/lib/scout/gmailGateway";
 import type { ParsedScoutMessage } from "@/lib/scout/parseGmail";
 import type { ScoutStore, ScoutSyncStateRow } from "@/lib/scout/store";
-import { SCOUT_ALREADY_RUNNING, executeScoutSync } from "@/lib/scout/sync";
+import { SCOUT_STORAGE_NOT_READY } from "@/lib/scout/storageError";
+import { SCOUT_ALREADY_RUNNING, executeScoutSync, publicSyncError } from "@/lib/scout/sync";
 import type { TicketSnapshot } from "@/lib/scout/plan";
 
 function parsed(id: string, threadId = "synthetic-thread-1"): ParsedScoutMessage {
@@ -535,5 +536,83 @@ describe("createGmailGateway", () => {
       () => deniedGateway.currentHistoryId(),
       (err: unknown) => err instanceof ScoutGmailAccessError && err.message === "Gmail access not granted yet",
     );
+  });
+});
+
+function idleGateway(): GmailGateway {
+  return {
+    async listInboxPage() {
+      return { messages: [], nextPageToken: null };
+    },
+    async listHistory() {
+      return { ok: false, expired: true };
+    },
+    async getMetadata() {
+      return null;
+    },
+    async currentHistoryId() {
+      return "history-1";
+    },
+  };
+}
+
+describe("scout sync error text", () => {
+  it("keeps Gmail failures and hides raw JavaScript errors", () => {
+    assert.equal(publicSyncError(new Error("Gmail request failed (503)"), "Scout sync failed"), "Gmail request failed (503)");
+    assert.equal(
+      publicSyncError(new Error("failed for synthetic.sender.alpha@apbaseball.com"), "Scout sync failed"),
+      "failed for [email]",
+    );
+    assert.equal(
+      publicSyncError(new ScoutGmailAccessError("Gmail access not granted yet"), "Gmail access not granted yet"),
+      "Gmail access not granted yet",
+    );
+    assert.equal(
+      publicSyncError(new TypeError("Cannot read properties of undefined (reading 'upsert')"), "Scout sync failed"),
+      SCOUT_STORAGE_NOT_READY,
+    );
+    const missingTable = Object.assign(
+      new Error("The table `public.ScoutSyncState` does not exist in the current database."),
+      { code: "P2021" },
+    );
+    assert.equal(publicSyncError(missingTable, "Scout sync failed"), SCOUT_STORAGE_NOT_READY);
+    const raw = publicSyncError(new TypeError("Cannot read properties of undefined (reading 'slice')"), "Scout sync failed");
+    assert.equal(raw, "Scout sync failed");
+    assert.equal(raw.includes("Cannot read"), false);
+  });
+
+  it("does not return a raw delegate or missing-table error from a sync", async () => {
+    const now = new Date("2026-10-07T16:00:00.000Z");
+    const missingDelegate = memoryStore();
+    missingDelegate.getSyncState = async () => {
+      throw new TypeError("Cannot read properties of undefined (reading 'upsert')");
+    };
+    missingDelegate.saveSyncState = async () => {
+      throw new TypeError("Cannot read properties of undefined (reading 'upsert')");
+    };
+    const delegateReport = await executeScoutSync({
+      mailbox: SCOUT_MAILBOX,
+      now,
+      gateway: idleGateway(),
+      store: missingDelegate,
+    });
+    assert.equal(delegateReport.ok, false);
+    assert.equal(delegateReport.error, SCOUT_STORAGE_NOT_READY);
+
+    const missingTable = memoryStore();
+    missingTable.getSyncState = async () => {
+      throw Object.assign(new Error('relation "ScoutTicket" does not exist'), { code: "42P01" });
+    };
+    missingTable.saveSyncState = async () => {
+      throw Object.assign(new Error('relation "ScoutSyncState" does not exist'), { code: "42P01" });
+    };
+    const tableReport = await executeScoutSync({
+      mailbox: SCOUT_MAILBOX,
+      now,
+      gateway: idleGateway(),
+      store: missingTable,
+    });
+    assert.equal(tableReport.error, SCOUT_STORAGE_NOT_READY);
+    assert.equal(tableReport.error?.includes("relation"), false);
   });
 });

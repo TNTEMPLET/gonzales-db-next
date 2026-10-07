@@ -137,6 +137,72 @@ describe("synthetic seed guard", () => {
     );
   });
 
+  it("allows hosted staging only when SCOUT_ALLOW_SAMPLE_TICKETS=1, and production still wins", () => {
+    const staging = { DATABASE_URL: "postgresql://example.db.prisma.io:5432/staging" };
+    assert.equal(
+      scoutSyntheticSeedBlockReason({ ...staging, SCOUT_ALLOW_SAMPLE_TICKETS: "1" }, "admin"),
+      null,
+    );
+    assert.equal(
+      scoutSyntheticSeedBlockReason({ ...staging, SCOUT_ALLOW_SAMPLE_TICKETS: " 1 " }, "admin"),
+      null,
+    );
+    assert.match(scoutSyntheticSeedBlockReason(staging, "admin") ?? "", /hosted database/);
+    assert.match(
+      scoutSyntheticSeedBlockReason({ ...staging, SCOUT_ALLOW_SAMPLE_TICKETS: "" }, "admin") ?? "",
+      /hosted database/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({ ...staging, SCOUT_ALLOW_SAMPLE_TICKETS: "0" }, "admin") ?? "",
+      /hosted database/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({ ...staging, SCOUT_ALLOW_SAMPLE_TICKETS: "1" }, "script") ?? "",
+      /hosted database/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({
+        ...staging,
+        VERCEL_ENV: "production",
+        SCOUT_ALLOW_SAMPLE_TICKETS: "1",
+      }) ?? "",
+      /production/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({
+        DATABASE_URL: "postgresql://user:secret@db.example:5432/app",
+        PROD_DATABASE_URL: "postgresql://user:other@db.example/app?sslmode=require",
+        SCOUT_ALLOW_SAMPLE_TICKETS: "1",
+      }) ?? "",
+      /production database/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({
+        DATABASE_URL: "postgresql://db.prod.example/staging",
+        SCOUT_ALLOW_SAMPLE_TICKETS: "1",
+      }) ?? "",
+      /production database/,
+    );
+    assert.match(
+      scoutSyntheticSeedBlockReason({
+        DATABASE_URL: "postgresql://example.db.prisma.io/apbaseball_production",
+        SCOUT_ALLOW_SAMPLE_TICKETS: "1",
+      }) ?? "",
+      /production database/,
+    );
+    assert.equal(
+      scoutSyntheticSeedBlockReason({
+        VERCEL_ENV: "preview",
+        DATABASE_URL: "postgresql://example.db.prisma.io/staging",
+      }),
+      null,
+    );
+    assert.equal(
+      scoutSyntheticSeedBlockReason({ DATABASE_URL: "postgresql://127.0.0.1:5432/apbaseball_dev" }, "admin"),
+      null,
+    );
+  });
+
   it("uses synthetic fixtures only", () => {
     const blob = JSON.stringify(SYNTHETIC_SCOUT_TICKETS).toLowerCase();
     assert.equal(blob.includes(SCOUT_MAILBOX), false);

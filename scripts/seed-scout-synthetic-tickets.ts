@@ -4,6 +4,8 @@
  *   pnpm seed:scout-synthetic
  *
  * Refuses production and hosted database URLs. Does not read a mailbox.
+ * SCOUT_ALLOW_SAMPLE_TICKETS is only for the admin button; this script still
+ * requires a local database.
  */
 import { PrismaClient } from "@prisma/client";
 

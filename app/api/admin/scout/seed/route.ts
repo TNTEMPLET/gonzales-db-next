@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import prisma from "@/lib/prisma";
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await seedSyntheticScoutTickets(prisma);
+    revalidatePath("/admin/tickets");
     return NextResponse.json({ ok: true, upserted: result.upserted });
   } catch (err) {
     console.error("[scout] synthetic seed failed", err instanceof Error ? err.name : "unknown");

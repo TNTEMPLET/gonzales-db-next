@@ -10,6 +10,7 @@ import {
   type AdminRole,
 } from "@/lib/auth/adminRoles";
 import { isScoutOperator } from "@/lib/scout/access";
+import { SCOUT_DATA_CHANGED_EVENT } from "@/lib/scout/pageRefresh";
 import { isContentOrgId } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import { getPrimaryLiveContentOrg } from "@/lib/seasonConfig";
@@ -70,17 +71,28 @@ export default function AdminSidebar({
   useEffect(() => {
     if (!scoutOperator) return;
     let active = true;
-    fetch("/api/admin/scout/summary", { cache: "no-store" })
-      .then((response) => (response.ok ? response.json() : null))
-      .then((json: { attentionCount?: number } | null) => {
-        if (!active) return;
+    let request = 0;
+
+    async function loadAttention() {
+      const id = ++request;
+      try {
+        const response = await fetch("/api/admin/scout/summary", { cache: "no-store" });
+        const json = response.ok ? ((await response.json()) as { attentionCount?: number }) : null;
+        if (!active || id !== request) return;
         setScoutAttentionCount(typeof json?.attentionCount === "number" ? json.attentionCount : 0);
-      })
-      .catch(() => {
-        if (active) setScoutAttentionCount(0);
-      });
+      } catch {
+        if (active && id === request) setScoutAttentionCount(0);
+      }
+    }
+
+    void loadAttention();
+    function onScoutDataChanged() {
+      void loadAttention();
+    }
+    window.addEventListener(SCOUT_DATA_CHANGED_EVENT, onScoutDataChanged);
     return () => {
       active = false;
+      window.removeEventListener(SCOUT_DATA_CHANGED_EVENT, onScoutDataChanged);
     };
   }, [scoutOperator]);
 

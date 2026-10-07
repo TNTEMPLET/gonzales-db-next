@@ -44,6 +44,8 @@ pnpm dev:all         # all orgs on separate ports / .next-* dirs
 
 Prisma CLI and dev servers use the **DEV** database (`.env.development.local` overrides `.env.local` via `prisma.config.ts`). See `docs/local-dev-database.md` and `CLAUDE.md`.
 
+On a self-hosted admin dev site that runs `next dev` with `VERCEL_ENV` unset against hosted staging (apdev), set `SCOUT_ALLOW_SAMPLE_TICKETS=1` to enable **Load sample tickets**. Production signals still refuse that seed. The laptop seed script does not use the flag.
+
 ```bash
 pnpm test
 pnpm lint

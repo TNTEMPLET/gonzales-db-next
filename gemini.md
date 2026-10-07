@@ -112,3 +112,4 @@ Required in `.env.local` for local dev:
 - `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` — Dugout OAuth
 - `RESEND_API_KEY`, `COMMUNICATIONS_EMAIL_FROM`, `COMMUNICATIONS_UNSUBSCRIBE_SECRET`
 - `INITIAL_MASTER_ADMIN_EMAIL`, `INITIAL_MASTER_ADMIN_PASSWORD` — bootstrap only
+- `SCOUT_ALLOW_SAMPLE_TICKETS` — set to `1` on a non-production admin dev server where `VERCEL_ENV` is unset and `DATABASE_URL` is hosted staging (apdev) so `/admin/tickets` can show and run **Load sample tickets**. Production still refuses the seed when `VERCEL_ENV=production`, when `DATABASE_URL` matches `PROD_DATABASE_URL` by host, port, and database name, or when the host or database name looks like production. Any other value, including unset, keeps the previous refusal of hosted databases when `VERCEL_ENV` is unset. `pnpm seed:scout-synthetic` ignores this flag and still requires a local database.
