@@ -7,7 +7,9 @@
  * onto the payload so the stored window matches the builder.
  *
  * Little League and Tee-ball rows are Ascension. Diamond / Dixie rows are
- * Gonzales. A Both-leagues row is written once to each. Other is refused.
+ * Gonzales. The row's cutoff does not choose the league: a Little League row
+ * can use the April 30 cutoff and still saves to Ascension under the name on
+ * the row. A Both-leagues row is written once to each. Other is refused.
  * Fall Ball is never a target.
  */
 
@@ -74,6 +76,7 @@ export function proposedFromBuilder(
   return { ok: true, proposed: { cutoff: SHELL_CUTOFF, divisions } };
 }
 
+/** League tag only. A DYB cutoff on a Little League row stays Ascension. */
 function orgsForCharter(charter: BuilderCharter): SpringLeagueOrg[] {
   if (charter === "dyb") return ["gonzales"];
   if (charter === "ll" || charter === "teeball") return ["ascension"];

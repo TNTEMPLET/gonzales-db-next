@@ -33,7 +33,6 @@ import type { CutoffPreset, DivisionAgeConfig, LeagueAgeRule } from "@/lib/ageDi
 import {
   isSpringLeagueOrg,
   leagueTaggedDivisionName,
-  springLeagueSuffix,
   SPRING_LEAGUE_ORGS,
   type SpringLeagueOrg,
 } from "./view";
@@ -131,13 +130,16 @@ function presetForWindow(
   return "custom";
 }
 
+/**
+ * Keep a saved name when this label is only the display tag added for that
+ * league (`12U` shown as `12U LLB`). A builder name that already ends in LLB
+ * or DYB is a different name and is stored as written. Cutoff does not decide
+ * the league, and it does not get appended here.
+ */
 function persistLabel(display: string, org: SpringLeagueOrg, existingLabel: string | undefined): string {
   const trimmed = display.trim();
   if (existingLabel && trimmed === leagueTaggedDivisionName(existingLabel, org)) return existingLabel;
   if (existingLabel && trimmed === existingLabel) return existingLabel;
-  const suffix = springLeagueSuffix(org);
-  const stripped = trimmed.replace(new RegExp(`\\s+${suffix}$`, "i"), "").trim();
-  if (stripped && stripped !== trimmed) return stripped;
   return trimmed;
 }
 
