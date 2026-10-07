@@ -10,6 +10,7 @@ import {
   type GmailGateway,
 } from "@/lib/scout/gmailGateway";
 import { ingestParsedMessage, type IngestResult } from "@/lib/scout/ingest";
+import { scoutPublicErrorMessage } from "@/lib/scout/storageError";
 import type { ScoutStore } from "@/lib/scout/store";
 
 export const SCOUT_ALREADY_RUNNING = "Scout is already running.";
@@ -40,11 +41,7 @@ export function emptyScoutSyncReport(error: string | null = null): ScoutSyncRepo
 
 export function publicSyncError(err: unknown, accessMessage: string): string {
   if (err instanceof ScoutGmailAccessError) return accessMessage;
-  const raw = err instanceof Error ? err.message : "Scout sync failed";
-  const cleaned = raw.replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, "[email]");
-  const oneLine = cleaned.replace(/\s+/g, " ").trim();
-  if (!oneLine) return "Scout sync failed";
-  return oneLine.slice(0, 300);
+  return scoutPublicErrorMessage(err, "Scout sync failed");
 }
 
 function countResult(report: ScoutSyncReport, result: IngestResult) {

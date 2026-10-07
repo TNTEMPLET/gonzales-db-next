@@ -1,3 +1,4 @@
+import { revalidatePath } from "next/cache";
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireScoutApi } from "@/lib/scout/requireScout";
@@ -12,5 +13,6 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response;
 
   const result = await runScoutMailboxSync();
+  revalidatePath("/admin/tickets");
   return NextResponse.json(result);
 }

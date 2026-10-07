@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 
 import {
   GMAIL_ACCESS_NOT_GRANTED_MESSAGE,
@@ -13,6 +13,15 @@ import {
   type ScoutOrgTag,
   type ScoutTicketStatus,
 } from "@/lib/scout/config";
+import {
+  applyScoutSyncReport,
+  applyScoutTicketsPayload,
+  notifyScoutDataChanged,
+  scoutPagePropKey,
+  type ScoutSyncClientReport,
+  type ScoutTicketsPayload,
+} from "@/lib/scout/pageRefresh";
+import { SCOUT_STORAGE_NOT_READY, scoutUiText } from "@/lib/scout/storageError";
 import type { ScoutPageModel, ScoutTicketDetail } from "@/lib/scout/view";
 
 function formatWhen(iso: string | null): string {
@@ -48,8 +57,7 @@ function ticketHref(org: string, model: ScoutPageModel, id: string): string {
   return `/admin/tickets?${params.toString()}`;
 }
 
-function TicketEditor({ ticket }: { ticket: ScoutTicketDetail }) {
-  const router = useRouter();
+function TicketEditor({ ticket, onSaved }: { ticket: ScoutTicketDetail; onSaved: () => void }) {
   const [status, setStatus] = useState<ScoutTicketStatus>(ticket.status);
   const [seenStatus, setSeenStatus] = useState(ticket.status);
   if (ticket.status !== seenStatus) {
@@ -80,7 +88,7 @@ function TicketEditor({ ticket }: { ticket: ScoutTicketDetail }) {
         return;
       }
       setMessage("Saved.");
-      router.refresh();
+      onSaved();
     } catch {
       setMessage("Could not save.");
     } finally {
@@ -175,26 +183,79 @@ function TicketEditor({ ticket }: { ticket: ScoutTicketDetail }) {
 
 export default function ScoutTicketsClient({ model, org }: { model: ScoutPageModel; org: string }) {
   const router = useRouter();
+  const propKey = scoutPagePropKey(model);
+  const [seenPropKey, setSeenPropKey] = useState(propKey);
+  const [live, setLive] = useState(model);
+  const pullGen = useRef(0);
+  const propKeyRef = useRef(propKey);
+  propKeyRef.current = propKey;
+  if (propKey !== seenPropKey) {
+    setSeenPropKey(propKey);
+    setLive(model);
+  }
+  const view = live;
   const [running, setRunning] = useState(false);
   const [seeding, setSeeding] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
+
+  async function pullScoutView() {
+    const gen = ++pullGen.current;
+    const startedPropKey = propKeyRef.current;
+    notifyScoutDataChanged();
+    try {
+      const params = new URLSearchParams(window.location.search);
+      const res = await fetch(`/api/admin/scout/tickets?${params.toString()}`, { cache: "no-store" });
+      const json = (await res.json().catch(() => null)) as (Partial<ScoutTicketsPayload> & { error?: string }) | null;
+      if (gen !== pullGen.current || propKeyRef.current !== startedPropKey) return;
+      const sync = json?.sync;
+      const tickets = json?.tickets;
+      if (!res.ok || !sync || !Array.isArray(tickets)) {
+        if (res.status === 503 || scoutUiText(json?.error) === SCOUT_STORAGE_NOT_READY) {
+          setLive((current) => ({ ...current, storageMessage: SCOUT_STORAGE_NOT_READY }));
+        }
+        return;
+      }
+      const selected = json?.selected ?? null;
+      const attentionCount = json?.attentionCount ?? 0;
+      setLive((current) =>
+        applyScoutTicketsPayload(current, {
+          tickets,
+          selected,
+          sync,
+          attentionCount,
+        }),
+      );
+    } catch {
+      // Keep the optimistic sync line if the follow-up read fails.
+    } finally {
+      if (gen === pullGen.current) router.refresh();
+    }
+  }
 
   async function runNow() {
     setRunning(true);
     setNotice(null);
     try {
       const res = await fetch("/api/admin/scout/sync", { method: "POST" });
-      const json = (await res.json()) as { error?: string | null; ok?: boolean; backfillPending?: boolean };
+      const json = (await res.json()) as ScoutSyncClientReport;
+      const errorText = json.error ? scoutUiText(json.error) || "Sync failed." : null;
       if (!res.ok) {
-        setNotice(json.error || "Sync failed.");
-      } else if (json.error) {
-        setNotice(json.error);
+        setNotice(errorText || "Sync failed.");
+      } else if (errorText) {
+        setNotice(errorText);
       } else if (json.backfillPending) {
         setNotice("Synced one batch. Scout will keep importing the rest of the inbox.");
       } else {
         setNotice("Sync finished.");
       }
-      router.refresh();
+      setLive((current) =>
+        applyScoutSyncReport(
+          current,
+          { ok: res.ok && !errorText, error: errorText, backfillPending: json.backfillPending },
+          new Date().toISOString(),
+        ),
+      );
+      await pullScoutView();
     } catch {
       setNotice("Sync failed.");
     } finally {
@@ -208,8 +269,10 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
     try {
       const res = await fetch("/api/admin/scout/seed", { method: "POST" });
       const json = (await res.json()) as { error?: string };
-      setNotice(res.ok ? "Sample tickets loaded." : json.error || "Could not load sample tickets.");
-      router.refresh();
+      setNotice(
+        res.ok ? "Sample tickets loaded." : scoutUiText(json.error) || "Could not load sample tickets.",
+      );
+      if (res.ok) await pullScoutView();
     } catch {
       setNotice("Could not load sample tickets.");
     } finally {
@@ -217,7 +280,8 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
     }
   }
 
-  const accessPending = model.sync.lastError === GMAIL_ACCESS_NOT_GRANTED_MESSAGE;
+  const lastError = scoutUiText(view.sync.lastError);
+  const accessPending = lastError === GMAIL_ACCESS_NOT_GRANTED_MESSAGE;
 
   return (
     <div className="space-y-6">
@@ -230,7 +294,7 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
         >
           {running ? "Running…" : "Run Scout now"}
         </button>
-        {model.seedAllowed ? (
+        {view.seedAllowed ? (
           <button
             type="button"
             onClick={() => void loadSamples()}
@@ -241,24 +305,24 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
           </button>
         ) : null}
         <p className="text-xs text-zinc-500">
-          Last run {formatWhen(model.sync.lastRunAt)}
-          {model.sync.lastSuccessAt ? ` · Last success ${formatWhen(model.sync.lastSuccessAt)}` : ""}
+          Last run {formatWhen(view.sync.lastRunAt)}
+          {view.sync.lastSuccessAt ? ` · Last success ${formatWhen(view.sync.lastSuccessAt)}` : ""}
         </p>
       </div>
 
-      {model.storageMessage ? (
+      {view.storageMessage ? (
         <p className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
-          {model.storageMessage}
+          {view.storageMessage}
         </p>
       ) : null}
 
-      {model.sync.backfillPending ? (
+      {view.sync.backfillPending ? (
         <p className="rounded-lg border border-zinc-800 bg-zinc-900 px-3 py-2 text-sm text-zinc-300">
           Scout is still catching up on this inbox. It continues about every 15 minutes.
         </p>
       ) : null}
 
-      {model.sync.lastError ? (
+      {lastError ? (
         <p
           className={`rounded-lg border px-3 py-2 text-sm ${
             accessPending
@@ -266,14 +330,14 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
               : "border-red-900/40 bg-red-950/20 text-red-100"
           }`}
         >
-          {model.sync.lastError}
+          {lastError}
         </p>
       ) : null}
 
       {notice ? <p className="text-sm text-zinc-400">{notice}</p> : null}
 
       <form
-        key={`${model.filters.status}|${model.filters.orgTag}|${model.filters.sender}`}
+        key={`${view.filters.status}|${view.filters.orgTag}|${view.filters.sender}`}
         action="/admin/tickets"
         className="flex flex-wrap items-end gap-2"
       >
@@ -282,7 +346,7 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
           Status
           <select
             name="status"
-            defaultValue={model.filters.status}
+            defaultValue={view.filters.status}
             className="mt-1 block rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           >
             <option value="all">All</option>
@@ -297,7 +361,7 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
           Org
           <select
             name="orgTag"
-            defaultValue={model.filters.orgTag}
+            defaultValue={view.filters.orgTag}
             className="mt-1 block rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           >
             <option value="all">All</option>
@@ -313,7 +377,7 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
           Sender
           <input
             name="sender"
-            defaultValue={model.filters.sender}
+            defaultValue={view.filters.sender}
             placeholder="Email contains"
             className="mt-1 block rounded-md border border-zinc-800 bg-zinc-950 px-2 py-1.5 text-sm text-zinc-100"
           />
@@ -329,21 +393,21 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
       <div className="grid gap-6 lg:grid-cols-2">
         <div>
           <p className="mb-2 text-xs text-zinc-500">
-            {model.tickets.length} {model.tickets.length === 1 ? "ticket" : "tickets"}
-            {model.attentionCount > 0 ? ` · ${model.attentionCount} new or open` : ""}
+            {view.tickets.length} {view.tickets.length === 1 ? "ticket" : "tickets"}
+            {view.attentionCount > 0 ? ` · ${view.attentionCount} new or open` : ""}
           </p>
-          {model.tickets.length === 0 ? (
+          {view.tickets.length === 0 ? (
             <p className="rounded-xl border border-zinc-800 px-4 py-6 text-sm text-zinc-400">
               No tickets yet.
             </p>
           ) : (
             <ul className="divide-y divide-zinc-800 overflow-hidden rounded-xl border border-zinc-800">
-              {model.tickets.map((ticket) => {
-                const active = model.selected?.id === ticket.id;
+              {view.tickets.map((ticket) => {
+                const active = view.selected?.id === ticket.id;
                 return (
                   <li key={ticket.id}>
                     <Link
-                      href={ticketHref(org, model, ticket.id)}
+                      href={ticketHref(org, view, ticket.id)}
                       className={`block px-4 py-3 ${active ? "bg-zinc-900" : "hover:bg-zinc-900/50"}`}
                     >
                       <span className="flex items-start justify-between gap-3">
@@ -368,8 +432,8 @@ export default function ScoutTicketsClient({ model, org }: { model: ScoutPageMod
         </div>
 
         <div>
-          {model.selected ? (
-            <TicketEditor key={model.selected.id} ticket={model.selected} />
+          {view.selected ? (
+            <TicketEditor key={view.selected.id} ticket={view.selected} onSaved={() => void pullScoutView()} />
           ) : (
             <p className="rounded-xl border border-dashed border-zinc-800 px-4 py-6 text-sm text-zinc-500">
               Select a ticket.

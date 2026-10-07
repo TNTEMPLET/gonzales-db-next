@@ -1,10 +1,9 @@
 import { SCOUT_ATTENTION_STATUSES, SCOUT_MAILBOX } from "@/lib/scout/config";
 import prisma from "@/lib/prisma";
 import { scoutSyntheticSeedBlockReason } from "@/lib/scout/seedGuard";
+import { SCOUT_STORAGE_NOT_READY } from "@/lib/scout/storageError";
 import { parseScoutListFilters, type ScoutListFilters } from "@/lib/scout/ticketPatch";
 import type { ScoutPageModel, ScoutTicketDetail, ScoutTicketListItem } from "@/lib/scout/view";
-
-const STORAGE_MESSAGE = "Scout storage is not ready yet.";
 
 function emptyModel(filters: ScoutListFilters, storageMessage: string | null): ScoutPageModel {
   return {
@@ -115,7 +114,7 @@ export async function loadScoutPage(input: {
     };
   } catch (err) {
     console.error("[scout] page load failed", err instanceof Error ? err.name : "unknown");
-    return emptyModel(filters, STORAGE_MESSAGE);
+    return emptyModel(filters, SCOUT_STORAGE_NOT_READY);
   }
 }
 
