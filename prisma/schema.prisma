@@ -2939,3 +2939,72 @@ model DraftPick {
   @@unique([draftSessionId, overallPick])
   @@index([draftSessionId])
 }
+
+enum ScoutTicketStatus {
+  NEW
+  OPEN
+  WAITING
+  DONE
+  DISMISSED
+}
+
+enum ScoutOrgTag {
+  gonzales
+  ascension
+  fallball
+  master
+}
+
+/// One Gmail thread from the Scout mailbox. Additive table; no existing models change.
+model ScoutTicket {
+  id              String            @id @default(cuid())
+  mailbox         String
+  gmailThreadId   String
+  subject         String
+  senderEmail     String
+  senderName      String?
+  firstMessageAt  DateTime
+  lastMessageAt   DateTime
+  snippet         String
+  gmailUrl        String
+  status          ScoutTicketStatus @default(NEW)
+  orgTag          ScoutOrgTag?
+  notes           String?
+  /// Reserved for a later assignment workflow. Scout v1 does not set this.
+  assignedAdminId String?
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+  messages        ScoutTicketMessage[]
+
+  @@unique([mailbox, gmailThreadId])
+  @@index([mailbox, status, lastMessageAt])
+  @@index([senderEmail])
+}
+
+model ScoutTicketMessage {
+  id             String      @id @default(cuid())
+  gmailMessageId String      @unique
+  ticketId       String
+  senderEmail    String
+  senderName     String?
+  receivedAt     DateTime
+  snippet        String
+  createdAt      DateTime    @default(now())
+  ticket         ScoutTicket @relation(fields: [ticketId], references: [id], onDelete: Cascade)
+
+  @@index([ticketId, receivedAt])
+}
+
+/// One row per Scout mailbox. lastHistoryId is the Gmail history cursor.
+/// cursor resumes a 14-day inbox backfill before history sync starts.
+model ScoutSyncState {
+  id            String    @id @default(cuid())
+  mailbox       String    @unique
+  lastHistoryId String?
+  cursor        String?
+  lastRunAt     DateTime?
+  lastSuccessAt DateTime?
+  lastError     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}

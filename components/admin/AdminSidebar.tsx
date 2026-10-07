@@ -9,6 +9,7 @@ import {
   type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
+import { isScoutOperator } from "@/lib/scout/access";
 import { isContentOrgId } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
 import { getPrimaryLiveContentOrg } from "@/lib/seasonConfig";
@@ -21,7 +22,7 @@ import { useAdminSidebar } from "@/components/admin/AdminSidebarProvider";
 
 type AdminMeResponse = {
   authenticated: boolean;
-  user?: { role?: string; isMaster?: boolean };
+  user?: { role?: string; isMaster?: boolean; email?: string };
 };
 
 function pathKeyOf(href: string): string {
@@ -38,6 +39,8 @@ export default function AdminSidebar({
   const searchParams = useSearchParams();
   const { collapsed, toggleCollapsed, isSubcategoryOpen, toggleSubcategory } = useAdminSidebar();
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
+  const [scoutOperator, setScoutOperator] = useState(false);
+  const [scoutAttentionCount, setScoutAttentionCount] = useState(0);
 
   const currentOrgParam = searchParams.get("org");
   const springView = currentOrgParam === "spring";
@@ -51,14 +54,35 @@ export default function AdminSidebar({
         const roleValue = json?.user?.role;
         const isMaster = Boolean(json?.user?.isMaster);
         setAdminRole(isMaster ? "MASTER_ADMIN" : isAdminRole(roleValue) ? roleValue : null);
+        setScoutOperator(isScoutOperator(json?.user?.email));
       })
       .catch(() => {
-        if (active) setAdminRole(null);
+        if (active) {
+          setAdminRole(null);
+          setScoutOperator(false);
+        }
       });
     return () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    if (!scoutOperator) return;
+    let active = true;
+    fetch("/api/admin/scout/summary", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json: { attentionCount?: number } | null) => {
+        if (!active) return;
+        setScoutAttentionCount(typeof json?.attentionCount === "number" ? json.attentionCount : 0);
+      })
+      .catch(() => {
+        if (active) setScoutAttentionCount(0);
+      });
+    return () => {
+      active = false;
+    };
+  }, [scoutOperator]);
 
   if (collapsed) {
     return (
@@ -130,6 +154,24 @@ export default function AdminSidebar({
         >
           Dashboard
         </Link>
+
+        {scoutOperator ? (
+          <Link
+            href={`/admin/tickets${orgSuffix}`}
+            className={`mb-3 flex items-center justify-between rounded-md px-3 py-2 font-semibold transition-colors ${
+              pathname === "/admin/tickets"
+                ? "bg-red-950/40 text-red-200"
+                : "text-zinc-200 hover:bg-red-950/25 hover:text-red-100"
+            }`}
+          >
+            <span>Tickets</span>
+            {scoutAttentionCount > 0 ? (
+              <span className="rounded-full bg-red-950 px-2 py-0.5 text-[10px] font-semibold text-red-100">
+                {scoutAttentionCount}
+              </span>
+            ) : null}
+          </Link>
+        ) : null}
 
         {nav.groups.map((group) => (
           <div key={group.id} className="mb-4">
