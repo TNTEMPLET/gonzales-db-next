@@ -23,6 +23,20 @@ export const SPRING_COMBINED_PARAM = "spring";
 /** Browser-storage key only. Not a content org and not written to the database. */
 export const SPRING_BUILDER_ORG = "spring";
 
+/**
+ * The combined page keeps one scratch table, under the `spring` browser key.
+ * A file saved while the league control was Gonzales or Ascension still loads
+ * into that key, so Step 5 reviews the file instead of the other league's table.
+ */
+export function asSpringScratchTable(table: BuilderTable): BuilderTable {
+  return {
+    version: table.version,
+    organizationId: SPRING_BUILDER_ORG,
+    seasonYear: table.seasonYear,
+    rows: table.rows.map((row) => ({ ...row })),
+  };
+}
+
 export const SPRING_LEAGUE_ORGS = ["gonzales", "ascension"] as const;
 export type SpringLeagueOrg = (typeof SPRING_LEAGUE_ORGS)[number];
 

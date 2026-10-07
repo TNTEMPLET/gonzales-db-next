@@ -83,11 +83,16 @@ export function BuilderSpringSave({ table }: { table: BuilderTable }) {
       </p>
     );
   }
+  const savedCount = loaded.leagues.reduce((sum, league) => sum + league.divisions.length, 0);
+
   if (!proposed?.ok) {
     return (
-      <p className="text-sm text-amber-200" role="alert">
-        {proposed?.error ?? "This table cannot be saved yet."}
-      </p>
+      <div className="space-y-3">
+        <SaveCounts scratchCount={table.rows.length} savedCount={savedCount} seasonYear={table.seasonYear} />
+        <p className="text-sm text-amber-200" role="alert">
+          {proposed?.error ?? "This table cannot be saved yet."}
+        </p>
+      </div>
     );
   }
 
@@ -98,6 +103,7 @@ export function BuilderSpringSave({ table }: { table: BuilderTable }) {
           {note}
         </p>
       ) : null}
+      <SaveCounts scratchCount={table.rows.length} savedCount={savedCount} seasonYear={table.seasonYear} />
       <SpringCombinedSavePanel
         seasonYear={table.seasonYear}
         proposed={proposed.proposed}
@@ -105,5 +111,22 @@ export function BuilderSpringSave({ table }: { table: BuilderTable }) {
         onSaved={setNote}
       />
     </div>
+  );
+}
+
+function SaveCounts({
+  scratchCount,
+  savedCount,
+  seasonYear,
+}: {
+  scratchCount: number;
+  savedCount: number;
+  seasonYear: number;
+}) {
+  return (
+    <p className="text-sm text-zinc-300" data-testid="spring-save-counts">
+      This scratch table has {scratchCount} {scratchCount === 1 ? "division" : "divisions"}. Saved Gonzales DYB and
+      Ascension LL have {savedCount} for {seasonYear}.
+    </p>
   );
 }

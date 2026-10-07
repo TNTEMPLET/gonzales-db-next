@@ -7,6 +7,7 @@ import type { DivisionAgeConfig } from "@/lib/ageDivisions/types";
 
 import { proposedFromBuilder } from "../builderSave";
 import { combinedSavePreview, type CombinedSaveLeaguePreview, type SpringLeagueTable } from "../save";
+import { asSpringScratchTable } from "../view";
 
 const SEASON = 2027;
 
@@ -116,6 +117,40 @@ describe("builder table to combined save", () => {
     const majors = ascension.changes.find((change) => change.label === "8U Majors");
     assert.match(majors?.before ?? "", /Aug 31, 2020/);
     assert.match(majors?.after ?? "", /Apr 30, 2020/);
+  });
+
+  it("lists more than a one-row move when Trent's 12 divisions replace the built-in 20", () => {
+    const current: SpringLeagueTable[] = (["gonzales", "ascension"] as const).map((organizationId) => {
+      const defaults = leagueDivisionDefaults(organizationId);
+      return { organizationId, cutoff: defaults.rule, divisions: defaults.divisions };
+    });
+    assert.equal(
+      current.reduce((sum, league) => sum + league.divisions.length, 0),
+      20,
+    );
+    const built = proposedFromBuilder(trentBuilderTable(), current);
+    assert.equal(built.ok, true);
+    if (!built.ok) return;
+    assert.equal(built.proposed.divisions.length, 12);
+    const preview = combinedSavePreview(current, built.proposed, SEASON);
+    assert.equal(preview.ok, true);
+    if (!preview.ok) return;
+    const changes = preview.preview.leagues.flatMap((league) => league.changes);
+    assert.ok(changes.length > 2);
+    assert.ok(changes.some((change) => change.kind === "removed"));
+    assert.ok(changes.some((change) => change.kind === "added" || change.kind === "changed"));
+  });
+
+  it("loads a single-league file into the spring scratch table", () => {
+    const table = trentBuilderTable();
+    table.organizationId = "gonzales";
+    const adopted = asSpringScratchTable(table);
+    assert.equal(adopted.organizationId, "spring");
+    assert.equal(adopted.seasonYear, SEASON);
+    assert.equal(adopted.rows.length, 12);
+    assert.equal(adopted.rows[1]?.name, "5U Mod CP LLB");
+    assert.equal(table.organizationId, "gonzales");
+    assert.notEqual(adopted.rows[0], table.rows[0]);
   });
 
   it("refuses an Other row and does not invent a Fall Ball league", () => {
