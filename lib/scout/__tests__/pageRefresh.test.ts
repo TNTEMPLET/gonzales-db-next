@@ -50,6 +50,9 @@ describe("scout page refresh", () => {
     assert.equal(scoutUiText("Illegal invocation"), "Scout sync failed");
     assert.equal(scoutUiText("null is not an object (evaluating 'x.y')"), "Scout sync failed");
     assert.equal(scoutUiText("Gmail access not granted yet"), "Gmail access not granted yet");
+    const leaked = scoutUiText("provider said Bearer sk-testsecretvalue123456");
+    assert.equal(leaked?.includes("sk-testsecretvalue123456"), false);
+    assert.match(leaked ?? "", /Bearer \[redacted\]/);
   });
 
   it("replaces the ticket list and hides a stored raw error", () => {
@@ -97,5 +100,17 @@ describe("scout page refresh", () => {
       "Synced one batch. Scout will keep importing the rest of the inbox.",
     );
     assert.equal(scoutSyncRunNotice({ httpOk: true, error: null, backfillPending: false }), "Sync finished.");
+    assert.equal(
+      scoutSyncRunNotice({
+        httpOk: true,
+        error: null,
+        backfillPending: false,
+        created: 1,
+        appended: 2,
+        skipCounts: { calendar: 3, "not a request": 1, "list mail": 4 },
+        fallbackKeeps: 1,
+      }),
+      "Sync finished. 1 new, 2 updated, skipped list mail 4, calendar 3, not a request 1, 1 kept by keyword fallback.",
+    );
   });
 });

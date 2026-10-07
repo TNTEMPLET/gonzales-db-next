@@ -21,12 +21,25 @@ export async function runScoutMailboxSync(now = new Date()): Promise<ScoutSyncRe
       token: token.token,
       accessErrorMessage: GMAIL_ACCESS_NOT_GRANTED_MESSAGE,
     });
-    return await executeScoutSync({
+    const report = await executeScoutSync({
       mailbox: SCOUT_MAILBOX,
       now,
       gateway,
       store: prismaScoutStore,
     });
+    if (report.ok) {
+      console.info("[scout] sync", {
+        created: report.created,
+        appended: report.appended,
+        reopened: report.reopened,
+        skipped: report.skipped,
+        skipCounts: report.skipCounts,
+        fallbackKeeps: report.fallbackKeeps,
+        duplicates: report.duplicates,
+        backfillPending: report.backfillPending,
+      });
+    }
+    return report;
   } catch (err) {
     const safe = scoutPublicErrorMessage(err, "Scout sync failed");
     try {

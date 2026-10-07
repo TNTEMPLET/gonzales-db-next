@@ -3,6 +3,14 @@ export const SCOUT_STORAGE_NOT_READY = "Scout storage is not ready yet.";
 
 const EMAIL = /[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi;
 
+/** Connection strings, bearer tokens, and model API keys. Safe to show after this. */
+export function redactScoutSecrets(value: string): string {
+  return value
+    .replace(/postgres(?:ql)?:\/\/\S+/gi, "postgresql://[redacted]")
+    .replace(/\bBearer\s+\S+/gi, "Bearer [redacted]")
+    .replace(/\bsk-[A-Za-z0-9_-]{8,}/g, "[redacted]");
+}
+
 /** Runtime exceptions that must not be copied into the tickets UI. */
 const RAW_JS =
   /cannot read propert|is not a function|is not iterable|is not a constructor|is not an object|is not defined|undefined is not|null is not|unexpected token|illegal invocation|maximum call stack|before initialization|circular structure|cannot convert undefined|^typeerror\b|^referenceerror\b|^syntaxerror\b|^rangeerror\b|^urierror\b|^evalerror\b/i;
@@ -46,7 +54,7 @@ function isBuiltinJavaScriptError(err: unknown): boolean {
 /** Safe text for a thrown sync error. Never returns a raw JavaScript exception. */
 export function scoutPublicErrorMessage(err: unknown, fallback = "Scout sync failed"): string {
   if (isScoutStorageNotReadyError(err)) return SCOUT_STORAGE_NOT_READY;
-  const cleaned = errorText(err).replace(EMAIL, "[email]").replace(/\s+/g, " ").trim();
+  const cleaned = redactScoutSecrets(errorText(err)).replace(EMAIL, "[email]").replace(/\s+/g, " ").trim();
   if (!cleaned || isBuiltinJavaScriptError(err) || RAW_JS.test(cleaned)) return fallback;
   return cleaned.slice(0, 300);
 }
