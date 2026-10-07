@@ -72,8 +72,8 @@ export function SpringCombinedSaveConfirm({
                     </tr>
                   </thead>
                   <tbody>
-                    {league.changes.map((change) => (
-                      <tr key={`${change.kind}-${change.label}`} className="border-t border-zinc-800 text-zinc-100">
+                    {league.changes.map((change, index) => (
+                      <tr key={`${change.kind}-${change.label}-${index}`} className="border-t border-zinc-800 text-zinc-100">
                         <td className="py-2 pr-3">
                           {change.label}
                           {change.preset ? (

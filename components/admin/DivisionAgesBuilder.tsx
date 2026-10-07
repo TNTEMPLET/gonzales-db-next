@@ -43,7 +43,7 @@ import {
 } from "@/lib/ageDivisions/divisionBuilder";
 import { formatCalendarDate } from "@/lib/ageDivisions/present";
 import { MAX_DIVISION_COUNT } from "@/lib/ageDivisions/schema";
-import { SPRING_BUILDER_ORG, springCombinedBuilderTable } from "@/lib/admin/springCombined/view";
+import { asSpringScratchTable, SPRING_BUILDER_ORG, springCombinedBuilderTable } from "@/lib/admin/springCombined/view";
 import {
   FORECAST_CAVEATS,
   FORECAST_DEBOUNCE_MS,
@@ -137,10 +137,10 @@ export function DivisionAgesBuilder({
   initialStep?: Step;
   /** When false, the table stays in memory. The page uses browser storage. */
   persist?: boolean;
-  /** Master Spring combined view. Scratch template only; nothing is saved to a league. */
+  /** Master Spring combined view. The scratch table uses the `spring` browser key. Step 5 can save both leagues. */
   showSpringTemplate?: boolean;
 }) {
-  const firstOrg = orgs[0] ?? "gonzales";
+  const firstOrg = showSpringTemplate ? SPRING_BUILDER_ORG : (orgs[0] ?? "gonzales");
   const seed = initialTable ?? blankBuilderTable(firstOrg, defaultSeasonYear);
   const [context, setContext] = useState({ organizationId: seed.organizationId, seasonYear: seed.seasonYear });
   const [memoryTable, setMemoryTable] = useState<BuilderTable>(seed);
@@ -263,16 +263,23 @@ export function DivisionAgesBuilder({
       setImportError(parsed.error);
       return;
     }
-    if (parsed.table.organizationId === SPRING_BUILDER_ORG) {
-      if (!showSpringTemplate) {
-        setImportError("This file is the Spring combined scratch table. Open Spring (combined) to load it.");
+    let incoming = parsed.table;
+    if (showSpringTemplate) {
+      const springFile = incoming.organizationId === SPRING_BUILDER_ORG;
+      const leagueFile = isContentOrg(incoming.organizationId, orgs);
+      if (!springFile && !leagueFile) {
+        setImportError("This file is for a different league. Open that league, then import it there.");
         return;
       }
-    } else if (!isContentOrg(parsed.table.organizationId, orgs)) {
+      incoming = asSpringScratchTable(incoming);
+    } else if (incoming.organizationId === SPRING_BUILDER_ORG) {
+      setImportError("This file is the Spring combined scratch table. Open Spring (combined) to load it.");
+      return;
+    } else if (!isContentOrg(incoming.organizationId, orgs)) {
       setImportError("This file is for a different league. Open that league, then import it there.");
       return;
     }
-    const replaced = replaceWholeBuilderTable(parsed.table);
+    const replaced = replaceWholeBuilderTable(incoming);
     setContext({ organizationId: replaced.table.organizationId, seasonYear: replaced.table.seasonYear });
     setSourceSeason(previousSeason(replaced.table.seasonYear, seasonYears));
     setIncludeFeeder(replaced.table.organizationId === "gonzales");
@@ -1196,9 +1203,18 @@ function Wizard({
           {reviewReady ? (
             <>
               <p className="max-w-3xl text-sm text-zinc-300">
-                Review the before and after, then save. One save writes Gonzales DYB and Ascension LL. Fall Ball is not
-                changed.
+                Review the before and after for the {builderLeagueLabel(table.organizationId)} scratch table (
+                {table.rows.length} {table.rows.length === 1 ? "division" : "divisions"}) in this browser, then save. One
+                save writes Gonzales DYB and Ascension LL from this table. Fall Ball is not changed. Divisions that
+                already match are left off the list.
               </p>
+              {table.organizationId !== SPRING_BUILDER_ORG ? (
+                <p className="text-sm text-amber-200" role="alert" data-testid="builder-save-scratch-league">
+                  League is {builderLeagueLabel(table.organizationId)}. Choose Spring (combined) on step 1 to review the
+                  combined scratch table. This list is only the {builderLeagueLabel(table.organizationId)} table stored
+                  in this browser.
+                </p>
+              ) : null}
               <BuilderSpringSave table={table} />
             </>
           ) : (

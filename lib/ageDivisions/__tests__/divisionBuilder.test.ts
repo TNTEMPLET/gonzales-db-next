@@ -755,6 +755,40 @@ describe("7U and 8U Minors default cutoffs", () => {
 });
 
 describe("division builder screen", () => {
+  it("opens the Spring combined scratch table when that view is on", () => {
+    const html = renderToStaticMarkup(
+      createElement(DivisionAgesBuilder, {
+        orgs: ["gonzales", "ascension"],
+        defaultSeasonYear: 2027,
+        seasonYears: [2026, 2027, 2028],
+        persist: false,
+        showSpringTemplate: true,
+      }),
+    );
+    assert.match(html, /Division Builder/);
+    assert.match(html, /<option value="spring" selected="">Spring \(combined\)<\/option>/);
+    assert.match(html, /<option value="gonzales">Gonzales DYB<\/option>/);
+    assert.doesNotMatch(html, /<option value="gonzales" selected/);
+  });
+
+  it("names the spring scratch table on the save step", () => {
+    const html = renderToStaticMarkup(
+      createElement(DivisionAgesBuilder, {
+        orgs: ["gonzales", "ascension"],
+        defaultSeasonYear: 2027,
+        seasonYears: [2026, 2027],
+        persist: false,
+        showSpringTemplate: true,
+        initialMode: "wizard",
+        initialStep: 5,
+        initialTable: trentBuilderTable(),
+      }),
+    );
+    assert.match(html, /Spring \(combined\) scratch table/);
+    assert.match(html, /\(12 divisions\)/);
+    assert.doesNotMatch(html, /data-testid="builder-save-scratch-league"/);
+  });
+
   it("opens a blank builder on the step-by-step view", () => {
     const html = renderToStaticMarkup(
       createElement(DivisionAgesBuilder, {
