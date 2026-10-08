@@ -6,10 +6,11 @@ import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 import {
   allowedScheduleGameIds,
   decideParkDirectorGameWrite,
+  PARK_DIRECTOR_WRITE_DENIED,
   postedLeagueScoreTarget,
 } from "@/lib/admin/parkDirector/writeAccess";
 
-export const PARK_DIRECTOR_WRITE_DENIED = "That game is not at one of your parks.";
+export { PARK_DIRECTOR_WRITE_DENIED };
 
 const MAX_GAME_IDS = 2000;
 

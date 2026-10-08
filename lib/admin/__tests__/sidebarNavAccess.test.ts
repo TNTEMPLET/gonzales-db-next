@@ -40,6 +40,7 @@ describe("sidebar job leaves", () => {
       "/admin/reports/umpire-pay",
       "/admin/reports",
       "/admin/game-day",
+      "/admin/game-day/remotes",
     ]) {
       assert.equal(hrefs.includes(path), true, path);
     }
@@ -57,9 +58,16 @@ describe("sidebar job leaves", () => {
     const admin = leafHrefs("ADMIN", true);
     assert.equal(admin.includes("/admin/cap-orders"), false);
     assert.equal(admin.includes("/admin/shirt-orders"), false);
-    for (const path of ["/admin/surveys", "/admin/scheduler", "/admin/sports-connect", "/admin/game-day"]) {
+    for (const path of [
+      "/admin/surveys",
+      "/admin/scheduler",
+      "/admin/sports-connect",
+      "/admin/game-day",
+      "/admin/game-day/remotes",
+    ]) {
       assert.equal(admin.includes(path), true, path);
     }
+    assert.equal(board.includes("/admin/game-day/remotes"), true);
   });
 
   it("hides cap and shirt leaves from a master admin when the switch is off", () => {

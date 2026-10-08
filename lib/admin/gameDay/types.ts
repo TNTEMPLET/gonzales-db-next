@@ -1,5 +1,6 @@
-import type { FieldDeskGame } from "@/lib/admin/fieldDeskTypes";
 import type { ContentOrgId } from "@/lib/siteConfig";
+
+import type { GameDayRemoteGame } from "@/lib/admin/scoreboardRemotes/present";
 
 import type { GameDayParkChoice } from "@/lib/admin/gameDay/parks";
 import type { GameDayTab } from "@/lib/admin/gameDay/tabs";
@@ -64,7 +65,9 @@ export type GameDayPageData = {
   scoreGames: GameDayScoreGame[];
   /** True when every game past first pitch is at a park that does not take scores. */
   scoresClosedForPark: boolean;
-  controllerGames: FieldDeskGame[];
+  remoteGames: GameDayRemoteGame[];
+  /** Shown when the chosen park has no games and no remotes yet. */
+  remoteEmptyMessage: string | null;
   payRows: GameDayPayRow[];
   payTotal: number;
   payError: string | null;
