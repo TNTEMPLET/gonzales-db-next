@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { parkDirectorScheduleGameWriteError } from "@/lib/admin/parkDirector/enforceWrite";
+import { resolvePostedLeagueScoreWrite } from "@/lib/admin/parkDirector/enforceWrite";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
-import { CONTENT_ORGS, isContentOrgId } from "@/lib/siteConfig";
+import { CONTENT_ORGS } from "@/lib/siteConfig";
 
 type SaveScorePayload = {
   gameExternalId?: string;
@@ -96,31 +96,15 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const scope = resolveAdminAssignrScope(
-      request.nextUrl.searchParams.get("org"),
-    );
-    const requestedOrg = body.organizationId?.trim();
-    const orgId =
-      scope === "all"
-        ? isContentOrgId(requestedOrg)
-          ? requestedOrg
-          : null
-        : scope;
-    if (!orgId) {
-      return NextResponse.json(
-        { error: "organizationId is required when saving scores in All Sites mode" },
-        { status: 400 },
-      );
-    }
-    const writeError = await parkDirectorScheduleGameWriteError({
+    const target = await resolvePostedLeagueScoreWrite({
       adminUserId: auth.admin.id,
       isMaster: auth.admin.isMaster,
-      role: auth.role,
-      scheduleDraftGameId: gameExternalId,
+      matchId: gameExternalId,
     });
-    if (writeError) {
-      return NextResponse.json({ error: writeError }, { status: 403 });
+    if (!target.ok) {
+      return NextResponse.json({ error: target.error }, { status: target.status });
     }
+    const orgId = target.organizationId;
     const score = await prisma.gameScore.upsert({
       where: {
         organizationId_gameExternalId: {

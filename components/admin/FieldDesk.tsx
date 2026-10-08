@@ -8,12 +8,16 @@ export default function FieldDesk({
   orgLabel,
   games,
   parkName,
+  sections,
 }: {
   org: ContentOrgId;
   orgLabel: string;
   games: FieldDeskGame[];
   parkName: string | null;
+  /** Omit to keep the full field desk. Game Day passes the section it is showing. */
+  sections?: Array<"controllers" | "where" | "cards">;
 }) {
+  const show = (section: "controllers" | "where" | "cards") => !sections || sections.includes(section);
   const stillOut = games.filter((game) => game.checkoutStatus === "out").length;
   const umpireGames = games.filter((game) => gameUsesUmpires(game.ageGroup));
   const today = umpireGames.filter((game) => game.isToday);
@@ -21,7 +25,7 @@ export default function FieldDesk({
 
   return (
     <div className="space-y-10">
-      <section id="controllers" className="scroll-mt-24 space-y-4">
+      {show("controllers") ? <section id="controllers" className="scroll-mt-24 space-y-4">
         <h2 className="text-2xl font-bold text-white">Scoreboard controllers</h2>
         <p className="max-w-3xl text-sm text-zinc-400">
           Each field has one controller. Enter the volunteer’s full name and check it out to their team. The next game on that field waits until it is checked back in.
@@ -64,9 +68,9 @@ export default function FieldDesk({
             </table>
           </div>
         )}
-      </section>
+      </section> : null}
 
-      <section id="where" className="scroll-mt-24 space-y-3">
+      {show("where") ? <section id="where" className="scroll-mt-24 space-y-3">
         <h2 className="text-2xl font-bold text-white">Where the umpires are calling</h2>
         <p className="max-w-3xl text-sm text-zinc-400">
           Read this to the crew. The umpire’s name is not stored here. It stays in Assignr.
@@ -80,9 +84,9 @@ export default function FieldDesk({
             </div>
           </details>
         ) : null}
-      </section>
+      </section> : null}
 
-      <section id="cards" className="scroll-mt-24 space-y-4">
+      {show("cards") ? <section id="cards" className="scroll-mt-24 space-y-4">
         <div>
           <h2 className="text-2xl font-bold text-white">Umpire score cards</h2>
           <p className="mt-1 max-w-3xl text-sm text-zinc-400">
@@ -122,12 +126,17 @@ export default function FieldDesk({
         ) : (
           <p className="text-sm text-zinc-500">{emptyUmpireWeek(parkName)}</p>
         )}
-      </section>
+      </section> : null}
     </div>
   );
 }
 
+function gameOrg(org: ContentOrgId, game: FieldDeskGame): ContentOrgId {
+  return game.organizationId ?? org;
+}
+
 function ControllerCheckout({ org, game }: { org: ContentOrgId; game: FieldDeskGame }) {
+  const formOrg = gameOrg(org, game);
   if (game.checkoutStatus === "out" && game.checkoutSide) {
     const other = game.checkoutSide === "home" ? "away" : "home";
     const otherTeam = other === "home" ? game.homeTeam : game.awayTeam;
@@ -140,9 +149,9 @@ function ControllerCheckout({ org, game }: { org: ContentOrgId; game: FieldDeskG
           </span>
         </p>
         <div className="flex flex-wrap gap-2">
-          <CheckoutForm org={org} gameId={game.id} action={checkInScoreboard} label="Check in" />
+          <CheckoutForm org={formOrg} gameId={game.id} action={checkInScoreboard} label="Check in" />
           <CheckoutForm
-            org={org}
+            org={formOrg}
             gameId={game.id}
             action={checkOutScoreboard}
             side={other}
@@ -165,7 +174,7 @@ function ControllerCheckout({ org, game }: { org: ContentOrgId; game: FieldDeskG
             {game.checkoutNote}
           </span>
         </p>
-        <CheckoutForm org={org} gameId={game.id} action={undoScoreboardReturn} label="Undo return" quiet />
+        <CheckoutForm org={formOrg} gameId={game.id} action={undoScoreboardReturn} label="Undo return" quiet />
       </div>
     );
   }
@@ -180,7 +189,7 @@ function ControllerCheckout({ org, game }: { org: ContentOrgId; game: FieldDeskG
 
   return (
     <form action={checkOutScoreboard} className="flex min-w-56 flex-col items-start gap-2">
-      <input type="hidden" name="org" value={org} />
+      <input type="hidden" name="org" value={formOrg} />
       <input type="hidden" name="gameId" value={game.id} />
       <input
         name="volunteerName"
@@ -190,13 +199,13 @@ function ControllerCheckout({ org, game }: { org: ContentOrgId; game: FieldDeskG
         title="Enter a first and last name."
         placeholder="Full name"
         autoComplete="name"
-        className="w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-1.5 text-sm text-white"
+        className="min-h-12 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-base text-white"
       />
       <button
         type="submit"
         name="side"
         value="home"
-        className="rounded-lg border border-zinc-600 px-3 py-1.5 text-left text-xs font-semibold text-white hover:border-zinc-400"
+        className="min-h-12 w-full rounded-lg border border-zinc-600 px-3 py-2 text-left text-sm font-semibold text-white hover:border-zinc-400"
       >
         Check out · {game.homeTeam}
       </button>
@@ -204,7 +213,7 @@ function ControllerCheckout({ org, game }: { org: ContentOrgId; game: FieldDeskG
         type="submit"
         name="side"
         value="away"
-        className="rounded-lg border border-zinc-600 px-3 py-1.5 text-left text-xs font-semibold text-white hover:border-zinc-400"
+        className="min-h-12 w-full rounded-lg border border-zinc-600 px-3 py-2 text-left text-sm font-semibold text-white hover:border-zinc-400"
       >
         Check out · {game.awayTeam}
       </button>
@@ -237,7 +246,7 @@ function CheckoutForm({
         className={
           quiet
             ? "text-xs font-semibold text-zinc-400 underline-offset-2 hover:text-white hover:underline"
-            : "rounded-lg border border-zinc-600 px-3 py-1.5 text-left text-xs font-semibold text-white hover:border-zinc-400"
+            : "min-h-12 rounded-lg border border-zinc-600 px-4 py-2 text-left text-sm font-semibold text-white hover:border-zinc-400"
         }
       >
         {label}

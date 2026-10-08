@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { viewerLandsOnGameDay } from "@/lib/admin/gameDay/session";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 
 export async function GET(request: NextRequest) {
@@ -12,6 +13,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({
       authenticated: true,
       user: adminUser,
+      gameDayOnly: await viewerLandsOnGameDay(adminUser),
     });
   } catch (err) {
     console.error("[api/admin/me] auth check failed:", err);

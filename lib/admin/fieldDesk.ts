@@ -18,7 +18,7 @@ function centralClock(value: Date): string {
   });
 }
 
-function checkoutView(
+export function fieldDeskCheckoutFields(
   game: { homeTeam: string; awayTeam: string },
   row:
     | {
@@ -96,7 +96,9 @@ export async function loadFieldDeskGames(
     const fieldKey = row?.fieldId || `${row?.parkId || game.parkName}:${game.fieldName}`;
     return {
       id: game.id,
+      organizationId: org,
       dateKey: game.dateKey,
+      startTime: game.startTime,
       when: `${formatPublicDateLabel(game.dateKey)} · ${formatPublicClock(game.startTime)}`,
       ageGroup: game.ageGroup,
       homeTeam: game.homeTeam,
@@ -104,7 +106,7 @@ export async function loadFieldDeskGames(
       parkName: game.parkName,
       fieldName: game.fieldName,
       fieldKey,
-      ...checkoutView(game, row),
+      ...fieldDeskCheckoutFields(game, row),
       isToday: game.dateKey === today,
     };
   });
