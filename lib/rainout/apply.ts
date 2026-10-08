@@ -8,10 +8,20 @@ import { planRainout } from "./plan";
 import { rainoutEmailsEnabled } from "./policy";
 import { revalidateRainoutPaths } from "./revalidate";
 import type { RainoutNotifySummary } from "./types";
+import { decideRainoutWrite, type RainoutActor, type RainoutWritePath } from "./writeAccess";
 
 export type RainoutWriteResult =
   | { ok: true; alert: OrgAlertRecord; summary: RainoutNotifySummary }
-  | { ok: false; error: string };
+  | { ok: false; error: string; status?: 403 };
+
+function refuseRainoutActor(
+  actor: RainoutActor,
+  path: RainoutWritePath,
+): { ok: false; error: string; status: 403 } | null {
+  const decision = decideRainoutWrite({ ...actor, path });
+  if (decision.allowed) return null;
+  return { ok: false, error: decision.message, status: decision.status };
+}
 
 function emptySummary(input: {
   allParksOut: boolean;
@@ -43,7 +53,11 @@ export async function setOrgRainout(input: {
   parks: string[];
   expiresAt: Date;
   actorAdminId: string | null;
+  actor: RainoutActor;
+  path: RainoutWritePath;
 }): Promise<RainoutWriteResult> {
+  const refused = refuseRainoutActor(input.actor, input.path);
+  if (refused) return refused;
   if (!isContentOrgId(input.organizationId)) return { ok: false, error: "Unknown league." };
   if (!(input.expiresAt instanceof Date) || Number.isNaN(input.expiresAt.getTime())) {
     return { ok: false, error: "Invalid expiry date." };
@@ -108,10 +122,16 @@ export async function setOrgRainout(input: {
   }
 }
 
-export async function clearOrgRainout(organizationId: string): Promise<{ ok: true } | { ok: false; error: string }> {
-  if (!isContentOrgId(organizationId)) return { ok: false, error: "Unknown league." };
+export async function clearOrgRainout(input: {
+  organizationId: string;
+  actor: RainoutActor;
+  path: RainoutWritePath;
+}): Promise<{ ok: true } | { ok: false; error: string; status?: 403 }> {
+  const refused = refuseRainoutActor(input.actor, input.path);
+  if (refused) return refused;
+  if (!isContentOrgId(input.organizationId)) return { ok: false, error: "Unknown league." };
   await prisma.orgAlert.deleteMany({
-    where: { organizationId, expiresAt: { gt: new Date() } },
+    where: { organizationId: input.organizationId, expiresAt: { gt: new Date() } },
   });
   revalidateRainoutPaths();
   return { ok: true };
