@@ -10,10 +10,9 @@ import { badgeTextColor } from "@/lib/admin/gameDay/display";
 import { DEFAULT_FALL_BALL_PAY_SCHEDULE, isFallBallOrg } from "@/lib/admin/fallBallUmpirePay";
 import { loadFallBallPaySchedule } from "@/lib/admin/fallBallUmpirePayStore";
 import { gamesAtMyParks } from "@/lib/admin/parkDirector/gamesAtMyParks";
-import { gameDayDataMode, chooseGameDayPark, type GameDayParkChoice } from "@/lib/admin/gameDay/parks";
+import { gameDayDataMode, chooseGameDayPark, mayLoadLeagueGameDay, type GameDayParkChoice } from "@/lib/admin/gameDay/parks";
 import { mergeOwed, owedAtParks, payTotal } from "@/lib/admin/gameDay/pay";
 import { rainoutBannerLines, type RainoutBannerInput } from "@/lib/admin/gameDay/rainout";
-import { viewerLandsOnGameDay } from "@/lib/admin/gameDay/session";
 import type { GameDayCardGame, GameDayListGame, GameDayPageData, GameDayScoreGame } from "@/lib/admin/gameDay/types";
 import { leagueSourceKey } from "@/lib/admin/unifiedScoreKeys";
 import type { Game } from "@/lib/fetchGames";
@@ -30,7 +29,6 @@ import {
   hasAssignrLeagueId,
   getAssignrLeagueId,
   isContentOrgId,
-  isMasterDeployment,
   type ContentOrgId,
 } from "@/lib/siteConfig";
 
@@ -154,10 +152,8 @@ export async function loadGameDayPage(input: {
   tab: GameDayPageData["tab"];
 }): Promise<GameDayPageData> {
   const role = await getEffectiveAdminRoleForOrg(input.adminUserId, input.isMaster, input.org);
-  let siteDirector = !input.isMaster && role === "PARK_DIRECTOR";
-  if (!siteDirector && !input.isMaster && isMasterDeployment()) {
-    siteDirector = await viewerLandsOnGameDay({ id: input.adminUserId, isMaster: false });
-  }
+  const mayLeague = mayLoadLeagueGameDay(role);
+  const siteDirector = !input.isMaster && role === "PARK_DIRECTOR";
 
   const assignmentRows = siteDirector
     ? await prisma.parkDirectorAssignment.findMany({
@@ -220,7 +216,7 @@ export async function loadGameDayPage(input: {
         ),
       };
     });
-  } else {
+  } else if (mayLeague) {
     const desk = await loadFieldDeskGames(input.org);
     parkChoices = desk.parks.map((name) => ({ id: name, label: name }));
     leagueControllerGames = desk.games;

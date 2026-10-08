@@ -2,11 +2,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import GameDayView from "@/components/admin/gameDay/GameDayView";
+import { deniedGameDayRedirect, directorGameDayOrg } from "@/lib/admin/gameDay/landing";
 import { loadGameDayPage } from "@/lib/admin/gameDay/loadGameDayPage";
+import { mayLoadLeagueGameDay } from "@/lib/admin/gameDay/parks";
+import { gameDayMembershipOrgs, viewerLandsOnGameDay } from "@/lib/admin/gameDay/session";
 import { parseGameDayDate, parseGameDayTab } from "@/lib/admin/gameDay/tabs";
-import { viewerLandsOnGameDay } from "@/lib/admin/gameDay/session";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
-import { canAccessAdminModule } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import { leagueCalendarDate } from "@/lib/seasonConfig";
 import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
@@ -33,10 +34,27 @@ export default async function GameDayPage({
   }
 
   const role = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, currentOrg);
-  const allowed =
-    Boolean(role && canAccessAdminModule(role, "GAME_DAY")) ||
-    (await viewerLandsOnGameDay(adminUser));
-  if (!allowed) redirect("/admin?denied=game-day");
+  if (!mayLoadLeagueGameDay(role)) {
+    const soleDirector = await viewerLandsOnGameDay(adminUser);
+    const membershipOrg = soleDirector
+      ? directorGameDayOrg({
+          requestedOrg: null,
+          membershipOrgs: await gameDayMembershipOrgs(adminUser.id),
+        })
+      : null;
+    const next = deniedGameDayRedirect({
+      soleDirector,
+      membershipOrg,
+      currentOrg,
+    });
+    if (next) redirect(next);
+    return (
+      <main className="min-h-screen bg-neutral-100 px-4 py-8 text-neutral-950">
+        <h1 className="text-2xl font-bold">Game Day</h1>
+        <p className="mt-3 text-base text-neutral-800">You do not have Game Day access for this league.</p>
+      </main>
+    );
+  }
 
   const data = await loadGameDayPage({
     adminUserId: adminUser.id,

@@ -33,12 +33,50 @@ export function gameDayHomePath(org?: string | null): string {
   return "/admin/game-day";
 }
 
+/**
+ * Org a park-director-only user may open.
+ * A requested org counts only when it is one of their memberships.
+ * Otherwise the first membership. Never an arbitrary live org.
+ */
+export function directorGameDayOrg(input: {
+  requestedOrg: string | null | undefined;
+  membershipOrgs: readonly string[];
+}): string | null {
+  const membership = input.membershipOrgs.filter((org) => isContentOrgId(org));
+  const requested = input.requestedOrg?.trim() ?? "";
+  if (requested && isContentOrgId(requested) && membership.includes(requested)) return requested;
+  return membership[0] ?? null;
+}
+
+/**
+ * Where to send someone who cannot open this org's Game Day.
+ * A sole park director must not go to /admin: that page sends them back here.
+ * Null means stay on this page and show the refusal.
+ */
+export function deniedGameDayRedirect(input: {
+  soleDirector: boolean;
+  membershipOrg: string | null;
+  currentOrg: string;
+}): string | null {
+  if (!input.soleDirector) return "/admin?denied=game-day";
+  if (
+    input.membershipOrg &&
+    isContentOrgId(input.membershipOrg) &&
+    input.membershipOrg !== input.currentOrg
+  ) {
+    return gameDayHomePath(input.membershipOrg);
+  }
+  return null;
+}
+
 /** Where a successful sign-in goes when the caller already knows the landing decision. */
 export function pathAfterAdminLogin(input: {
   nextPath: string;
   landsOnGameDay: boolean;
+  /** Pass null when the director has no membership org. Omitted uses the next-path org. */
   org?: string | null;
 }): string {
   if (!input.landsOnGameDay || !isDefaultAdminHome(input.nextPath)) return input.nextPath;
-  return gameDayHomePath(input.org ?? orgFromAdminNext(input.nextPath));
+  const org = input.org === undefined ? orgFromAdminNext(input.nextPath) : input.org;
+  return gameDayHomePath(org);
 }

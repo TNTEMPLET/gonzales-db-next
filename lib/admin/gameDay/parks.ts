@@ -1,7 +1,14 @@
+import { canAccessAdminModule, type AdminRole } from "@/lib/auth/adminRoles";
+
 export type GameDayParkChoice = {
   id: string;
   label: string;
 };
+
+/** League field desk loads only when this user has Game Day on that org. */
+export function mayLoadLeagueGameDay(roleOnOrg: AdminRole | null): boolean {
+  return Boolean(roleOnOrg && canAccessAdminModule(roleOnOrg, "GAME_DAY"));
+}
 
 /**
  * One assigned park opens on its own. Several parks wait for a tap.

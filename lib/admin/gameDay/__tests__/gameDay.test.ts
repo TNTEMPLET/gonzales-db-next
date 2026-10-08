@@ -6,12 +6,14 @@ import { withControllerHolds } from "@/lib/admin/gameDay/controllers";
 import { assignrDateKey, clockKey, crewForGame } from "@/lib/admin/gameDay/crew";
 import { badgeTextColor, umpireCardText } from "@/lib/admin/gameDay/display";
 import {
+  deniedGameDayRedirect,
+  directorGameDayOrg,
   gameDayHomePath,
   isDefaultAdminHome,
   landsOnGameDay,
   pathAfterAdminLogin,
 } from "@/lib/admin/gameDay/landing";
-import { chooseGameDayPark, gameDayDataMode } from "@/lib/admin/gameDay/parks";
+import { chooseGameDayPark, gameDayDataMode, mayLoadLeagueGameDay } from "@/lib/admin/gameDay/parks";
 import { mergeOwed, owedAtParks, payTotal } from "@/lib/admin/gameDay/pay";
 import { rainoutBannerLines } from "@/lib/admin/gameDay/rainout";
 import { gamesReadyForScores } from "@/lib/admin/gameDay/scores";
@@ -52,6 +54,41 @@ describe("game day landing", () => {
       "/admin",
     );
     assert.equal(gameDayHomePath(null), "/admin/game-day");
+    assert.equal(
+      pathAfterAdminLogin({ nextPath: "/admin?org=gonzales", landsOnGameDay: true, org: null }),
+      "/admin/game-day",
+    );
+  });
+
+  it("does not open another league for a director with no assignment there", () => {
+    assert.equal(mayLoadLeagueGameDay(null), false);
+    assert.equal(mayLoadLeagueGameDay("PARK_DIRECTOR"), true);
+    assert.equal(mayLoadLeagueGameDay("ADMIN"), true);
+    assert.equal(
+      directorGameDayOrg({ requestedOrg: "gonzales", membershipOrgs: ["fallball"] }),
+      "fallball",
+    );
+    assert.equal(
+      directorGameDayOrg({ requestedOrg: "fallball", membershipOrgs: ["fallball"] }),
+      "fallball",
+    );
+    assert.equal(
+      directorGameDayOrg({ requestedOrg: null, membershipOrgs: ["fallball", "gonzales"] }),
+      "fallball",
+    );
+    assert.equal(directorGameDayOrg({ requestedOrg: "gonzales", membershipOrgs: [] }), null);
+    assert.equal(
+      deniedGameDayRedirect({ soleDirector: true, membershipOrg: "fallball", currentOrg: "gonzales" }),
+      "/admin/game-day?org=fallball",
+    );
+    assert.equal(
+      deniedGameDayRedirect({ soleDirector: true, membershipOrg: "gonzales", currentOrg: "gonzales" }),
+      null,
+    );
+    assert.equal(
+      deniedGameDayRedirect({ soleDirector: false, membershipOrg: null, currentOrg: "gonzales" }),
+      "/admin?denied=game-day",
+    );
   });
 });
 

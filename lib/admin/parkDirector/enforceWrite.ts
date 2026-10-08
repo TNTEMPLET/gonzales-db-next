@@ -1,7 +1,13 @@
 import type { AdminRole } from "@/lib/auth/adminRoles";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import prisma from "@/lib/prisma";
+import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
-import { allowedScheduleGameIds } from "@/lib/admin/parkDirector/writeAccess";
+import {
+  allowedScheduleGameIds,
+  decideParkDirectorGameWrite,
+  postedLeagueScoreTarget,
+} from "@/lib/admin/parkDirector/writeAccess";
 
 export const PARK_DIRECTOR_WRITE_DENIED = "That game is not at one of your parks.";
 
@@ -27,7 +33,7 @@ export async function parkDirectorActiveVenueIds(input: {
  * "unrestricted" means the venue check does not apply: the caller is not a
  * park director, or the director has no active park assignments yet.
  * Games missing from the returned set are not at an assigned venue.
- * A park with a null venueId is included (unlinked-park fallback).
+ * A park with a null venueId is included when the role is on the game's own league.
  */
 export async function parkDirectorAllowedScheduleGameIds(input: {
   adminUserId: string;
@@ -62,7 +68,35 @@ export async function parkDirectorScheduleGameWriteError(input: {
   isMaster: boolean;
   role: AdminRole | null;
   scheduleDraftGameId: string;
+  /**
+   * False when the caller has no Game Day role on the game's own league.
+   * That path allows a write only when the park venue is an active assignment.
+   */
+  roleOnGameLeague?: boolean;
 }): Promise<string | null> {
+  if (input.roleOnGameLeague === false) {
+    const id = input.scheduleDraftGameId.trim();
+    const [game, assignments] = await Promise.all([
+      id
+        ? prisma.scheduleDraftGame.findUnique({
+            where: { id },
+            select: { park: { select: { venueId: true } } },
+          })
+        : Promise.resolve(null),
+      prisma.parkDirectorAssignment.findMany({
+        where: { adminUserId: input.adminUserId, active: true },
+        select: { venueId: true },
+      }),
+    ]);
+    const decision = decideParkDirectorGameWrite({
+      isMaster: false,
+      role: "PARK_DIRECTOR",
+      activeVenueIds: assignments.map((row) => row.venueId),
+      park: game ? { venueId: game.park?.venueId ?? null } : null,
+      roleOnGameLeague: false,
+    });
+    return decision.allowed ? null : PARK_DIRECTOR_WRITE_DENIED;
+  }
   const allowed = await parkDirectorAllowedScheduleGameIds({
     adminUserId: input.adminUserId,
     isMaster: input.isMaster,
@@ -71,4 +105,54 @@ export async function parkDirectorScheduleGameWriteError(input: {
   });
   if (allowed === "unrestricted" || allowed.has(input.scheduleDraftGameId)) return null;
   return PARK_DIRECTOR_WRITE_DENIED;
+}
+
+const SCORE_WRITE_ERROR = {
+  not_found: { status: 404, error: "Posted game not found." },
+  not_posted: { status: 403, error: "Only posted games can be scored." },
+  denied: { status: 403, error: PARK_DIRECTOR_WRITE_DENIED },
+} as const;
+
+/**
+ * Load one posted schedule game and decide whether this caller may score it.
+ * GameScore.organizationId comes from the row, never from the client body.
+ */
+export async function resolvePostedLeagueScoreWrite(input: {
+  adminUserId: string;
+  isMaster: boolean;
+  matchId: string;
+}): Promise<{ ok: true; organizationId: ContentOrgId } | { ok: false; status: number; error: string }> {
+  const id = input.matchId.trim();
+  const game = id
+    ? await prisma.scheduleDraftGame.findUnique({
+        where: { id },
+        select: {
+          organizationId: true,
+          status: true,
+          park: { select: { venueId: true } },
+        },
+      })
+    : null;
+  const gameOrg = game && isContentOrgId(game.organizationId) ? game.organizationId : null;
+  const roleOnGameOrg = gameOrg
+    ? await getEffectiveAdminRoleForOrg(input.adminUserId, input.isMaster, gameOrg)
+    : null;
+  const assignments = await prisma.parkDirectorAssignment.findMany({
+    where: { adminUserId: input.adminUserId, active: true },
+    select: { venueId: true },
+  });
+  const target = postedLeagueScoreTarget({
+    isMaster: input.isMaster,
+    roleOnGameOrg,
+    activeVenueIds: assignments.map((row) => row.venueId),
+    game: game
+      ? {
+          organizationId: game.organizationId,
+          status: game.status,
+          venueId: game.park?.venueId ?? null,
+        }
+      : null,
+  });
+  if (!target.ok) return { ok: false, ...SCORE_WRITE_ERROR[target.error] };
+  return target;
 }

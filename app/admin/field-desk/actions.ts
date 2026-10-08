@@ -14,7 +14,7 @@ import prisma from "@/lib/prisma";
 import { getDefaultContentOrg, isContentOrgId, isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
 
 type FieldDeskAuth =
-  | { ok: true; adminId: string; isMaster: boolean; role: AdminRole }
+  | { ok: true; adminId: string; isMaster: boolean; role: AdminRole; roleOnGameLeague: boolean }
   | { ok: false };
 
 async function requireFieldDesk(organizationId: ContentOrgId): Promise<FieldDeskAuth> {
@@ -28,7 +28,13 @@ async function requireFieldDesk(organizationId: ContentOrgId): Promise<FieldDesk
     organizationId,
   );
   if (roleOnGameOrg && canAccessAdminModule(roleOnGameOrg, "GAME_DAY")) {
-    return { ok: true, adminId: adminUser.id, isMaster: adminUser.isMaster, role: roleOnGameOrg };
+    return {
+      ok: true,
+      adminId: adminUser.id,
+      isMaster: adminUser.isMaster,
+      role: roleOnGameOrg,
+      roleOnGameLeague: true,
+    };
   }
   let siteRole: AdminRole | null = null;
   let hasActiveAssignments = false;
@@ -50,7 +56,13 @@ async function requireFieldDesk(organizationId: ContentOrgId): Promise<FieldDesk
   }
   const role = fieldDeskAuthRole({ roleOnGameOrg, siteRole, hasActiveAssignments });
   if (!role) return { ok: false };
-  return { ok: true, adminId: adminUser.id, isMaster: adminUser.isMaster, role };
+  return {
+    ok: true,
+    adminId: adminUser.id,
+    isMaster: adminUser.isMaster,
+    role,
+    roleOnGameLeague: false,
+  };
 }
 
 async function directorMayWriteGame(auth: FieldDeskAuth, gameId: string): Promise<boolean> {
@@ -60,6 +72,7 @@ async function directorMayWriteGame(auth: FieldDeskAuth, gameId: string): Promis
     isMaster: auth.isMaster,
     role: auth.role,
     scheduleDraftGameId: gameId,
+    roleOnGameLeague: auth.roleOnGameLeague,
   });
   return error == null;
 }
