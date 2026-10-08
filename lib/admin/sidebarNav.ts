@@ -11,7 +11,7 @@ import {
   type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
-import { isAdminModuleEnabledForOrg, type ContentOrgId } from "@/lib/siteConfig";
+import { isAdminModuleEnabledForOrg, isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
 
 export type AdminSidebarLeaf = {
   id: string;
@@ -81,6 +81,7 @@ export function buildAdminSidebarNav(
   allowModule: AllowModuleFn,
   canCoachingInterest: boolean,
   orgSuffix: string,
+  masterDeployment = isMasterDeployment(),
 ): AdminSidebarNav {
   const people: AdminSidebarSubcategory = {
     id: "people",
@@ -169,6 +170,9 @@ export function buildAdminSidebarNav(
         : []),
       ...(allowModule("PARK_ALERTS") || allowModule("TOURNAMENT_ALERTS")
         ? [{ id: "alerts", label: "Park & Tournament Alerts", href: leafHref("/admin/alerts", orgSuffix) }]
+        : []),
+      ...(masterDeployment && allowModule("VENUES")
+        ? [{ id: "parks", label: "Parks", href: leafHref("/admin/parks", orgSuffix) }]
         : []),
       ...(allowModule("PARK_INFO")
         ? [{ id: "facilities", label: "Park Info", href: leafHref("/admin/park-info", orgSuffix) }]

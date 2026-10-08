@@ -4,7 +4,7 @@ import { describe, it } from "node:test";
 import { buildAdminSidebarNav, sidebarAllowsModule } from "@/lib/admin/sidebarNav";
 import type { AdminRole } from "@/lib/auth/adminRoles";
 
-function leafHrefs(role: AdminRole, ordersModuleEnabled: boolean) {
+function leafHrefs(role: AdminRole, ordersModuleEnabled: boolean, masterDeployment?: boolean) {
   const nav = buildAdminSidebarNav(
     (module) =>
       sidebarAllowsModule({
@@ -15,6 +15,7 @@ function leafHrefs(role: AdminRole, ordersModuleEnabled: boolean) {
       }),
     false,
     "?org=gonzales",
+    masterDeployment,
   );
   return nav.groups.flatMap((group) =>
     group.subcategories.flatMap((sub) => sub.leaves.map((leaf) => leaf.href.split("?")[0])),
@@ -91,6 +92,43 @@ describe("sidebar job leaves", () => {
       .find((sub) => sub.id === "competition");
     const ids = competition?.leaves.map((leaf) => leaf.id) ?? [];
     assert.equal(ids.indexOf("division-ages"), ids.indexOf("season-setup") + 1);
+  });
+
+  it("shows Parks to a master admin only on the master deployment", () => {
+    const previous = process.env.SITE_ORG;
+    try {
+      process.env.SITE_ORG = "gonzales";
+      assert.equal(leafHrefs("MASTER_ADMIN", true).includes("/admin/parks"), false);
+      process.env.SITE_ORG = "ascension";
+      assert.equal(leafHrefs("MASTER_ADMIN", true).includes("/admin/parks"), false);
+      process.env.SITE_ORG = "master";
+      assert.equal(leafHrefs("MASTER_ADMIN", true).includes("/admin/parks"), true);
+    } finally {
+      if (previous === undefined) delete process.env.SITE_ORG;
+      else process.env.SITE_ORG = previous;
+    }
+
+    for (const role of ["ADMIN", "BOARD_MEMBER", "PARK_DIRECTOR"] as const) {
+      assert.equal(leafHrefs(role, true, true).includes("/admin/parks"), false, role);
+    }
+    assert.equal(leafHrefs("MASTER_ADMIN", true, false).includes("/admin/parks"), false);
+
+    const nav = buildAdminSidebarNav(
+      (module) =>
+        sidebarAllowsModule({
+          module,
+          orgId: "gonzales",
+          role: "MASTER_ADMIN",
+          ordersModuleEnabled: true,
+        }),
+      false,
+      "?org=gonzales",
+      true,
+    );
+    const park = nav.groups
+      .flatMap((group) => group.subcategories)
+      .find((sub) => sub.id === "park");
+    assert.equal(park?.leaves.some((leaf) => leaf.id === "parks" && leaf.label === "Parks"), true);
   });
 
   it("shows cap and shirt leaves to a master admin only when the switch is on", () => {

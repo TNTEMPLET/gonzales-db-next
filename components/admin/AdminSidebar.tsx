@@ -33,11 +33,17 @@ function pathKeyOf(href: string): string {
 export default function AdminSidebar({
   ordersModuleEnabled,
   scoutNav,
+  masterDeployment,
 }: {
   /** Server value of `isOrdersModuleEnabled()`. Do not read `ORDERS_ENABLED` here. */
   ordersModuleEnabled: boolean;
   /** Server-rendered so the Tickets link and badge are in the first HTML. */
   scoutNav: { operator: boolean; attentionCount: number };
+  /**
+   * Server value of `isMasterDeployment()`. This component runs in the browser,
+   * which does not receive SITE_ORG.
+   */
+  masterDeployment: boolean;
 }) {
   const pathname = usePathname();
   const searchParams = useSearchParams();
@@ -131,7 +137,7 @@ export default function AdminSidebar({
   const canCoachingInterest =
     allowModule("TEAMS") && isCoachingInterestEnabled(currentMasterOrg ?? "gonzales");
 
-  const nav = buildAdminSidebarNav(allowModule, canCoachingInterest, orgSuffix);
+  const nav = buildAdminSidebarNav(allowModule, canCoachingInterest, orgSuffix, masterDeployment);
 
   function isLeafActive(href: string) {
     return pathname === pathKeyOf(href);

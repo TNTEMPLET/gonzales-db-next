@@ -171,6 +171,8 @@ export default async function AdminDashboardPage({
 
   const currentSite = currentOrg ? getSiteConfigForOrg(currentOrg) : null;
   const hasModuleAccess = (orgId: ContentOrgId, module: AdminModule) => {
+    // Shared parks live only on the master site. Hide the card on league sites.
+    if (module === "VENUES" && !masterMode) return false;
     if (!isAdminModuleEnabledForOrg(orgId, module)) return false;
     if (module === "ALL_STAR_VAULT") {
       return adminUser.isMaster || allStarVaultViewByOrg[orgId];

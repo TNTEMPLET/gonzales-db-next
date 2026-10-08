@@ -34,7 +34,7 @@ export const ADMIN_DASHBOARD_CATEGORY_META: Record<
   },
   park: {
     label: "Park & Tournaments",
-    description: "Bracket creator, tournament monitors, rainout alerts, and field rules.",
+    description: "Bracket creator, shared parks, tournament monitors, rainout alerts, and field rules.",
   },
   publishing: {
     label: "Publishing & Comms",
@@ -79,6 +79,7 @@ const moduleCatalog: Record<
   TOURNAMENT_BRACKETS: { category: "park", sortOrder: 10 },
   TOURNAMENT_ALERTS: { category: "park", sortOrder: 20 },
   PARK_ALERTS: { category: "park", sortOrder: 30 },
+  VENUES: { category: "park", sortOrder: 35 },
   PARK_INFO: { category: "park", sortOrder: 40 },
   GAME_DAY: { category: "park", sortOrder: 50 },
   COMMUNICATIONS: { category: "publishing", sortOrder: 10 },
@@ -280,6 +281,13 @@ export const ADMIN_DASHBOARD_CARD_SPECS: readonly AdminDashboardCardSpec[] = [
     title: "Park & Tournament Alerts",
     description: "Rainout alerts and tournament monitor messages.",
     action: "Open Alerts",
+  },
+  {
+    module: "VENUES",
+    path: "/admin/parks",
+    title: "Parks",
+    description: "Link each league's parks to one shared physical park.",
+    action: "Open Parks",
   },
   {
     module: "PARK_INFO",
