@@ -1,4 +1,5 @@
 import { canAccessAdminModule, type AdminRole } from "@/lib/auth/adminRoles";
+import { isScoreEntryPark } from "@/lib/schedule/scoreableGames";
 import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
 export const PARK_DIRECTOR_WRITE_DENIED = "That game is not at one of your parks.";
@@ -102,16 +103,33 @@ export type PostedLeagueScoreGame = {
   organizationId: string;
   status: string;
   venueId: string | null;
+  /** Schedule park name. Null when the game has no park row. */
+  parkName: string | null;
 };
 
 export type PostedLeagueScoreWrite =
   | { ok: true; organizationId: ContentOrgId }
-  | { ok: false; error: "not_found" | "not_posted" | "denied" };
+  | { ok: false; error: "not_found" | "not_posted" | "denied" | "not_score_park" };
+
+const LEAGUE_SCORE_WRITE_HTTP = {
+  not_found: { status: 404, error: "Posted game not found." },
+  not_posted: { status: 403, error: "Only posted games can be scored." },
+  denied: { status: 403, error: PARK_DIRECTOR_WRITE_DENIED },
+  not_score_park: { status: 403, error: "Scores aren't entered for this park." },
+} as const;
+
+/** Status and message for a refused league score write. */
+export function leagueScoreWriteHttpError(
+  error: Exclude<PostedLeagueScoreWrite, { ok: true }>["error"],
+): { status: number; error: string } {
+  return LEAGUE_SCORE_WRITE_HTTP[error];
+}
 
 /**
  * League score writes use the schedule row's organization.
  * Same-league Game Day roles keep the unlinked-park and no-assignment rules.
  * Anyone without Game Day on the game's league must match an assigned venue.
+ * A park that does not take scores is refused for every caller, including a master admin.
  */
 export function postedLeagueScoreTarget(input: {
   isMaster: boolean;
@@ -124,6 +142,9 @@ export function postedLeagueScoreTarget(input: {
   }
   if (input.game.status !== "LOCKED" && input.game.status !== "EXPORTED") {
     return { ok: false, error: "not_posted" };
+  }
+  if (!isScoreEntryPark(input.game.parkName)) {
+    return { ok: false, error: "not_score_park" };
   }
   const onLeague =
     input.isMaster ||

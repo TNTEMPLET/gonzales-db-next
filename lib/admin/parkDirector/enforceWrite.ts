@@ -7,6 +7,7 @@ import {
   allowedScheduleGameIds,
   decideParkDirectorGameWrite,
   PARK_DIRECTOR_WRITE_DENIED,
+  leagueScoreWriteHttpError,
   postedLeagueScoreTarget,
 } from "@/lib/admin/parkDirector/writeAccess";
 
@@ -108,15 +109,10 @@ export async function parkDirectorScheduleGameWriteError(input: {
   return PARK_DIRECTOR_WRITE_DENIED;
 }
 
-const SCORE_WRITE_ERROR = {
-  not_found: { status: 404, error: "Posted game not found." },
-  not_posted: { status: 403, error: "Only posted games can be scored." },
-  denied: { status: 403, error: PARK_DIRECTOR_WRITE_DENIED },
-} as const;
-
 /**
  * Load one posted schedule game and decide whether this caller may score it.
  * GameScore.organizationId comes from the row, never from the client body.
+ * A park that does not take scores is refused for every caller, including a master admin.
  */
 export async function resolvePostedLeagueScoreWrite(input: {
   adminUserId: string;
@@ -130,7 +126,7 @@ export async function resolvePostedLeagueScoreWrite(input: {
         select: {
           organizationId: true,
           status: true,
-          park: { select: { venueId: true } },
+          park: { select: { venueId: true, name: true } },
         },
       })
     : null;
@@ -151,9 +147,10 @@ export async function resolvePostedLeagueScoreWrite(input: {
           organizationId: game.organizationId,
           status: game.status,
           venueId: game.park?.venueId ?? null,
+          parkName: game.park?.name ?? null,
         }
       : null,
   });
-  if (!target.ok) return { ok: false, ...SCORE_WRITE_ERROR[target.error] };
+  if (!target.ok) return { ok: false, ...leagueScoreWriteHttpError(target.error) };
   return target;
 }
