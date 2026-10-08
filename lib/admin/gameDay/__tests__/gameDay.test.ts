@@ -17,7 +17,13 @@ import { chooseGameDayPark, gameDayDataMode, mayLoadLeagueGameDay } from "@/lib/
 import { mergeOwed, owedAtParks, payTotal } from "@/lib/admin/gameDay/pay";
 import { rainoutBannerLines } from "@/lib/admin/gameDay/rainout";
 import { gamesReadyForScores } from "@/lib/admin/gameDay/scores";
-import { fieldDeskHashToTab, gameDayHref, parseGameDayTab } from "@/lib/admin/gameDay/tabs";
+import {
+  fieldDeskHashToTab,
+  fieldDeskRedirectHref,
+  gameDayHref,
+  gameDayHrefForLegacyHash,
+  parseGameDayTab,
+} from "@/lib/admin/gameDay/tabs";
 import type { FieldDeskGame } from "@/lib/admin/fieldDeskTypes";
 import type { Game } from "@/lib/fetchGames";
 
@@ -136,6 +142,32 @@ describe("game day parks and tabs", () => {
     assert.equal(fieldDeskHashToTab("cards"), "cards");
     assert.equal(fieldDeskHashToTab("#where"), "cards");
     assert.equal(fieldDeskHashToTab(""), null);
+    assert.equal(
+      fieldDeskRedirectHref({ org: "fallball", park: "riverside", day: "2026-10-08" }),
+      "/admin/game-day?org=fallball&park=riverside&day=2026-10-08",
+    );
+    assert.equal(fieldDeskRedirectHref({}), "/admin/game-day");
+    assert.equal(
+      fieldDeskRedirectHref({ org: "fallball", park: "riverside", "not a key": "drop" }),
+      "/admin/game-day?org=fallball&park=riverside",
+    );
+    assert.equal(
+      gameDayHrefForLegacyHash({ search: "org=fallball&park=riverside", hash: "#controllers" }),
+      "/admin/game-day?org=fallball&park=riverside&tab=controllers",
+    );
+    assert.equal(
+      gameDayHrefForLegacyHash({ search: "?org=fallball", hash: "#cards" }),
+      "/admin/game-day?org=fallball&tab=cards",
+    );
+    assert.equal(
+      gameDayHrefForLegacyHash({ search: "org=fallball", hash: "#where" }),
+      "/admin/game-day?org=fallball&tab=cards",
+    );
+    assert.equal(
+      gameDayHrefForLegacyHash({ search: "org=fallball&tab=scores", hash: "#controllers" }),
+      null,
+    );
+    assert.equal(gameDayHrefForLegacyHash({ search: "org=fallball", hash: "#later" }), null);
     assert.equal(parseGameDayTab("pay"), "pay");
     assert.equal(parseGameDayTab("nope"), "today");
     assert.equal(gameDayHref({ org: "fallball", tab: "scores", parkId: "v1", day: "2026-10-08" }),
