@@ -2,6 +2,7 @@ import "server-only";
 
 import { addCalendarDays, mondayOnOrBefore } from "@/lib/admin/dashboard/seasonPulse";
 import type { FieldDeskGame } from "@/lib/admin/fieldDeskTypes";
+import { scoreboardFieldHoldKey } from "@/lib/admin/scoreboardRemotes/fieldKey";
 import prisma from "@/lib/prisma";
 import { loadPostedSeasonGames } from "@/lib/schedule/scoreableGamesLoad";
 import { formatPublicClock, formatPublicDateLabel } from "@/lib/schedule/publicSchedule";
@@ -83,6 +84,7 @@ export async function loadFieldDeskGames(
       id: true,
       fieldId: true,
       parkId: true,
+      park: { select: { venueId: true } },
       scoreboardCheckedOutAt: true,
       scoreboardCheckedInAt: true,
       scoreboardCheckoutSide: true,
@@ -94,6 +96,7 @@ export async function loadFieldDeskGames(
   const deskGames = weekGames.map((game) => {
     const row = checkoutById.get(game.id);
     const fieldKey = row?.fieldId || `${row?.parkId || game.parkName}:${game.fieldName}`;
+    const holdKey = scoreboardFieldHoldKey(row?.park?.venueId, game.fieldName) ?? fieldKey;
     return {
       id: game.id,
       organizationId: org,
@@ -105,20 +108,23 @@ export async function loadFieldDeskGames(
       awayTeam: game.awayTeam,
       parkName: game.parkName,
       fieldName: game.fieldName,
+      venueId: row?.park?.venueId ?? null,
       fieldKey,
+      holdKey,
       ...fieldDeskCheckoutFields(game, row),
       isToday: game.dateKey === today,
     };
   });
   const heldByField = new Map<string, (typeof deskGames)[number]>();
   for (const game of deskGames) {
-    if (game.checkoutStatus === "out") heldByField.set(game.fieldKey, game);
+    if (game.checkoutStatus === "out") heldByField.set(game.holdKey, game);
   }
 
   return {
     parks,
-    games: deskGames.map(({ fieldKey, ...game }) => {
-      const holder = heldByField.get(fieldKey);
+    games: deskGames.map(({ fieldKey, holdKey, ...game }) => {
+      void fieldKey;
+      const holder = heldByField.get(holdKey);
       return {
         ...game,
         controllerHold:

@@ -1,16 +1,12 @@
-import { checkInScoreboard, checkOutScoreboard, undoScoreboardReturn } from "@/app/admin/field-desk/actions";
 import type { FieldDeskGame } from "@/lib/admin/fieldDeskTypes";
 import { gameUsesUmpires } from "@/lib/admin/umpirePayRows";
-import type { ContentOrgId } from "@/lib/siteConfig";
 
 export default function FieldDesk({
-  org,
   orgLabel,
   games,
   parkName,
   sections,
 }: {
-  org: ContentOrgId;
   orgLabel: string;
   games: FieldDeskGame[];
   parkName: string | null;
@@ -28,7 +24,7 @@ export default function FieldDesk({
       {show("controllers") ? <section id="controllers" className="scroll-mt-24 space-y-4">
         <h2 className="text-2xl font-bold text-white">Scoreboard controllers</h2>
         <p className="max-w-3xl text-sm text-zinc-400">
-          Each field has one controller. Enter the volunteer’s full name and check it out to their team. The next game on that field waits until it is checked back in.
+          Each field has one controller. Check-out and check-in happen on Game Day. This list only shows who still has the remote.
           {stillOut > 0 ? ` ${stillOut} still out.` : ""}
         </p>
         {games.length === 0 ? (
@@ -60,7 +56,7 @@ export default function FieldDesk({
                       <div className="text-xs">{game.fieldName}</div>
                     </td>
                     <td className="px-3 py-3">
-                      <ControllerCheckout org={org} game={game} />
+                      <ControllerStatus game={game} />
                     </td>
                   </tr>
                 ))}
@@ -131,51 +127,28 @@ export default function FieldDesk({
   );
 }
 
-function gameOrg(org: ContentOrgId, game: FieldDeskGame): ContentOrgId {
-  return game.organizationId ?? org;
-}
-
-function ControllerCheckout({ org, game }: { org: ContentOrgId; game: FieldDeskGame }) {
-  const formOrg = gameOrg(org, game);
-  if (game.checkoutStatus === "out" && game.checkoutSide) {
-    const other = game.checkoutSide === "home" ? "away" : "home";
-    const otherTeam = other === "home" ? game.homeTeam : game.awayTeam;
+function ControllerStatus({ game }: { game: FieldDeskGame }) {
+  if (game.checkoutStatus === "out") {
     return (
-      <div className="space-y-2">
-        <p className="text-amber-100">
-          Out with {game.checkoutName || "a volunteer"}
-          <span className="mt-0.5 block text-xs text-zinc-400">
-            {game.checkoutTeam} · {game.checkoutNote}
-          </span>
-        </p>
-        <div className="flex flex-wrap gap-2">
-          <CheckoutForm org={formOrg} gameId={game.id} action={checkInScoreboard} label="Check in" />
-          <CheckoutForm
-            org={formOrg}
-            gameId={game.id}
-            action={checkOutScoreboard}
-            side={other}
-            label={`It was ${otherTeam}`}
-            quiet
-          />
-        </div>
-      </div>
+      <p className="text-amber-100">
+        Out with {game.checkoutName || "a volunteer"}
+        <span className="mt-0.5 block text-xs text-zinc-400">
+          {game.checkoutTeam} · {game.checkoutNote}
+        </span>
+      </p>
     );
   }
 
   if (game.checkoutStatus === "returned") {
     return (
-      <div className="space-y-2">
-        <p className="text-emerald-200">
-          Returned
-          <span className="mt-0.5 block text-xs text-zinc-400">
-            {game.checkoutName ? `${game.checkoutName} · ` : ""}
-            {game.checkoutTeam ? `${game.checkoutTeam} · ` : ""}
-            {game.checkoutNote}
-          </span>
-        </p>
-        <CheckoutForm org={formOrg} gameId={game.id} action={undoScoreboardReturn} label="Undo return" quiet />
-      </div>
+      <p className="text-emerald-200">
+        Returned
+        <span className="mt-0.5 block text-xs text-zinc-400">
+          {game.checkoutName ? `${game.checkoutName} · ` : ""}
+          {game.checkoutTeam ? `${game.checkoutTeam} · ` : ""}
+          {game.checkoutNote}
+        </span>
+      </p>
     );
   }
 
@@ -187,72 +160,7 @@ function ControllerCheckout({ org, game }: { org: ContentOrgId; game: FieldDeskG
     );
   }
 
-  return (
-    <form action={checkOutScoreboard} className="flex min-w-56 flex-col items-start gap-2">
-      <input type="hidden" name="org" value={formOrg} />
-      <input type="hidden" name="gameId" value={game.id} />
-      <input
-        name="volunteerName"
-        required
-        maxLength={80}
-        pattern=".*\S\s+\S.*"
-        title="Enter a first and last name."
-        placeholder="Full name"
-        autoComplete="name"
-        className="min-h-12 w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2 text-base text-white"
-      />
-      <button
-        type="submit"
-        name="side"
-        value="home"
-        className="min-h-12 w-full rounded-lg border border-zinc-600 px-3 py-2 text-left text-sm font-semibold text-white hover:border-zinc-400"
-      >
-        Check out · {game.homeTeam}
-      </button>
-      <button
-        type="submit"
-        name="side"
-        value="away"
-        className="min-h-12 w-full rounded-lg border border-zinc-600 px-3 py-2 text-left text-sm font-semibold text-white hover:border-zinc-400"
-      >
-        Check out · {game.awayTeam}
-      </button>
-    </form>
-  );
-}
-
-function CheckoutForm({
-  org,
-  gameId,
-  action,
-  side,
-  label,
-  quiet = false,
-}: {
-  org: ContentOrgId;
-  gameId: string;
-  action: (formData: FormData) => Promise<void>;
-  side?: "home" | "away";
-  label: string;
-  quiet?: boolean;
-}) {
-  return (
-    <form action={action}>
-      <input type="hidden" name="org" value={org} />
-      <input type="hidden" name="gameId" value={gameId} />
-      {side ? <input type="hidden" name="side" value={side} /> : null}
-      <button
-        type="submit"
-        className={
-          quiet
-            ? "text-xs font-semibold text-zinc-400 underline-offset-2 hover:text-white hover:underline"
-            : "min-h-12 rounded-lg border border-zinc-600 px-4 py-2 text-left text-sm font-semibold text-white hover:border-zinc-400"
-        }
-      >
-        {label}
-      </button>
-    </form>
-  );
+  return <p className="text-sm text-zinc-400">In</p>;
 }
 
 function emptyWeek(parkName: string | null) {

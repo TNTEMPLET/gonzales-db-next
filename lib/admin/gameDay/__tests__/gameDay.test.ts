@@ -259,6 +259,23 @@ describe("game day rainout and remote checkout", () => {
     assert.equal(held[0]?.controllerHold, null);
   });
 
+  it("holds the same field across leagues when the venue and field name match", () => {
+    const held = withControllerHolds([
+      controller({
+        id: "gonzales",
+        organizationId: "gonzales",
+        fieldKey: "field-g",
+        holdKey: "stevens:field 3",
+        checkoutStatus: "out",
+        checkoutName: "Ada Blue",
+      }),
+      controller({ id: "fall", organizationId: "fallball", fieldKey: "field-f", holdKey: "stevens:field 3" }),
+      controller({ id: "other", fieldKey: "field-x", holdKey: "stevens:field 1" }),
+    ]);
+    assert.equal(held[1]?.controllerHold?.volunteer, "Ada Blue");
+    assert.equal(held[2]?.controllerHold, null);
+  });
+
   it("lets an assigned director write another league's game and refuses everyone else", () => {
     assert.equal(
       fieldDeskAuthRole({
@@ -311,7 +328,9 @@ function assignrGame(
   } as Game;
 }
 
-function controller(overrides: Partial<FieldDeskGame> & { id: string }): FieldDeskGame & { fieldKey: string } {
+function controller(
+  overrides: Partial<FieldDeskGame> & { id: string; fieldKey?: string; holdKey?: string | null },
+): FieldDeskGame & { fieldKey: string; holdKey?: string | null } {
   return {
     organizationId: "fallball",
     dateKey: "2026-10-08",
@@ -329,6 +348,7 @@ function controller(overrides: Partial<FieldDeskGame> & { id: string }): FieldDe
     checkoutNote: null,
     controllerHold: null,
     isToday: true,
+    venueId: "stevens",
     fieldKey: "field-1",
     ...overrides,
   };

@@ -1,13 +1,12 @@
 import Link from "next/link";
 
-import FieldDesk from "@/components/admin/FieldDesk";
 import CopyCardsButton from "@/components/admin/gameDay/CopyCardsButton";
+import GameDayRemotes from "@/components/admin/gameDay/GameDayRemotes";
 import GameDayScorePads from "@/components/admin/gameDay/GameDayScorePads";
 import PrintCardsButton from "@/components/admin/gameDay/PrintCardsButton";
 import { umpireCardText } from "@/lib/admin/gameDay/display";
 import { gameDayHref, type GameDayTab } from "@/lib/admin/gameDay/tabs";
 import type { GameDayListGame, GameDayPageData } from "@/lib/admin/gameDay/types";
-import { getOrgDisplayName } from "@/lib/siteConfig";
 
 const TABS: { id: GameDayTab; label: string }[] = [
   { id: "today", label: "Today" },
@@ -177,16 +176,15 @@ function Cards({ data }: { data: GameDayPageData }) {
 }
 
 function Controllers({ data }: { data: GameDayPageData }) {
+  const manage = new URLSearchParams({ org: data.org });
+  if (data.selectedParkId) manage.set("park", data.selectedParkId);
   return (
-    <div className="rounded-2xl bg-neutral-950 p-3 text-white">
-      <FieldDesk
-        org={data.org}
-        orgLabel={getOrgDisplayName(data.org)}
-        games={data.controllerGames}
-        parkName={data.selectedParkLabel}
-        sections={["controllers"]}
-      />
-    </div>
+    <GameDayRemotes
+      games={data.remoteGames}
+      parkLabel={data.selectedParkLabel}
+      emptyMessage={data.remoteEmptyMessage}
+      manageHref={`/admin/game-day/remotes?${manage.toString()}`}
+    />
   );
 }
 
