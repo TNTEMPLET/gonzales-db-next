@@ -41,7 +41,11 @@ export default function AdminShell({
   return (
     <>
       <Suspense fallback={null}>
-        <AdminSidebar ordersModuleEnabled={ordersModuleEnabled} scoutNav={scoutNav} />
+        <AdminSidebar
+          ordersModuleEnabled={ordersModuleEnabled}
+          scoutNav={scoutNav}
+          masterDeployment={isMasterHeader}
+        />
       </Suspense>
       <div className={`transition-[margin-left] duration-200 ${collapsed ? "" : "md:ml-64"}`}>
         {children}
