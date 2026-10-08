@@ -3,12 +3,15 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
-import { parkDirectorScheduleGameWriteError } from "@/lib/admin/parkDirector/enforceWrite";
+import { fieldDeskAuthRole } from "@/lib/admin/gameDay/authRole";
+import { rolesOnThisSite } from "@/lib/admin/gameDay/session";
+import { landsOnGameDay } from "@/lib/admin/gameDay/landing";
+import { parkDirectorActiveVenueIds, parkDirectorScheduleGameWriteError } from "@/lib/admin/parkDirector/enforceWrite";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { canAccessAdminModule, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import prisma from "@/lib/prisma";
-import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
+import { getDefaultContentOrg, isContentOrgId, isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
 
 type FieldDeskAuth =
   | { ok: true; adminId: string; isMaster: boolean; role: AdminRole }
@@ -19,8 +22,34 @@ async function requireFieldDesk(organizationId: ContentOrgId): Promise<FieldDesk
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
   if (!adminUser) return { ok: false };
-  const role = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, organizationId);
-  if (!role || !canAccessAdminModule(role, "GAME_DAY")) return { ok: false };
+  const roleOnGameOrg = await getEffectiveAdminRoleForOrg(
+    adminUser.id,
+    adminUser.isMaster,
+    organizationId,
+  );
+  if (roleOnGameOrg && canAccessAdminModule(roleOnGameOrg, "GAME_DAY")) {
+    return { ok: true, adminId: adminUser.id, isMaster: adminUser.isMaster, role: roleOnGameOrg };
+  }
+  let siteRole: AdminRole | null = null;
+  let hasActiveAssignments = false;
+  if (!adminUser.isMaster) {
+    if (isMasterDeployment()) {
+      const roles = await rolesOnThisSite(adminUser.id, false);
+      siteRole = landsOnGameDay({ isMaster: false, rolesOnSite: roles }) ? "PARK_DIRECTOR" : null;
+    } else {
+      siteRole = await getEffectiveAdminRoleForOrg(adminUser.id, false, getDefaultContentOrg());
+    }
+    if (siteRole === "PARK_DIRECTOR") {
+      const venues = await parkDirectorActiveVenueIds({
+        adminUserId: adminUser.id,
+        isMaster: false,
+        role: "PARK_DIRECTOR",
+      });
+      hasActiveAssignments = venues !== "unrestricted";
+    }
+  }
+  const role = fieldDeskAuthRole({ roleOnGameOrg, siteRole, hasActiveAssignments });
+  if (!role) return { ok: false };
   return { ok: true, adminId: adminUser.id, isMaster: adminUser.isMaster, role };
 }
 
@@ -91,6 +120,7 @@ export async function checkOutScoreboard(formData: FormData): Promise<void> {
     },
   });
   revalidatePath("/admin/field-desk");
+  revalidatePath("/admin/game-day");
 }
 
 export async function checkInScoreboard(formData: FormData): Promise<void> {
@@ -108,6 +138,7 @@ export async function checkInScoreboard(formData: FormData): Promise<void> {
     data: { scoreboardCheckedInAt: new Date() },
   });
   revalidatePath("/admin/field-desk");
+  revalidatePath("/admin/game-day");
 }
 
 export async function undoScoreboardReturn(formData: FormData): Promise<void> {
@@ -139,4 +170,5 @@ export async function undoScoreboardReturn(formData: FormData): Promise<void> {
     data: { scoreboardCheckedInAt: null },
   });
   revalidatePath("/admin/field-desk");
+  revalidatePath("/admin/game-day");
 }

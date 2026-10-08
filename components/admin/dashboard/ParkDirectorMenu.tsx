@@ -1,38 +1,38 @@
 import Link from "next/link";
 
+import { gameDayHref } from "@/lib/admin/gameDay/tabs";
 import type { ContentOrgId } from "@/lib/siteConfig";
 
 export default function ParkDirectorMenu({ org }: { org: ContentOrgId }) {
-  const query = `?org=${org}`;
   const steps = [
     {
       title: "Scoreboard controllers",
       detail: "Enter the volunteer’s full name, check a controller out to their team, and check it back in.",
-      href: `/admin/field-desk${query}#controllers`,
+      href: gameDayHref({ org, tab: "controllers" }),
       action: "Check in / out",
     },
     {
       title: "Where the umpires are calling",
       detail: "Park, field, and time for the crew. Umpire names stay in Assignr.",
-      href: `/admin/field-desk${query}#where`,
+      href: gameDayHref({ org, tab: "cards" }),
       action: "Open the list",
     },
     {
       title: "Umpire score cards",
-      detail: "This week’s games, in the order of the boxes on the printed card.",
-      href: `/admin/field-desk${query}#cards`,
+      detail: "Today’s games, with the crew when Assignr has it.",
+      href: gameDayHref({ org, tab: "cards" }),
       action: "Open the list",
     },
     {
       title: "Enter scores",
       detail: "After the game, put the final score in the book.",
-      href: `/admin/scores${query}`,
+      href: gameDayHref({ org, tab: "scores" }),
       action: "Enter scores",
     },
     {
       title: "Umpire pay",
-      detail: "Umpires working the selected park on the selected day, with games and pay.",
-      href: "#umpire-pay",
+      detail: "Umpires working the selected park today, with games and pay owed.",
+      href: gameDayHref({ org, tab: "pay" }),
       action: "Open pay",
     },
   ];
@@ -65,7 +65,7 @@ export default function ParkDirectorMenu({ org }: { org: ContentOrgId }) {
         ))}
       </ol>
       <p className="text-sm text-zinc-500">
-        <Link href={`/admin/season-setup${query}`} className="font-semibold text-zinc-300 underline-offset-2 hover:underline">
+        <Link href={`/admin/season-setup?org=${org}`} className="font-semibold text-zinc-300 underline-offset-2 hover:underline">
           Season setup
         </Link>
         <span> is registration, coaches, jerseys, and the schedule. It is not part of game day.</span>

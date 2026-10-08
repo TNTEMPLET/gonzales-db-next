@@ -147,6 +147,14 @@ describe("admin dashboard card specs", () => {
     assert.deepEqual(titles, ["Park & Tournament Alerts"]);
   });
 
+  it("opens Game Day from the dashboard", () => {
+    const card = ADMIN_DASHBOARD_CARD_SPECS.find((spec) => spec.path === "/admin/game-day");
+    assert.ok(card);
+    assert.equal(card.module, "GAME_DAY");
+    assert.equal(card.title, "Game Day");
+    assert.equal(isAdminHubHref(card.path), false);
+  });
+
   it("keeps division ages off the dashboard card list", () => {
     assert.equal(getAdminDashboardCategory("DIVISION_AGES"), null);
     assert.equal(

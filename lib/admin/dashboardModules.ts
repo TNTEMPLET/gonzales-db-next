@@ -275,6 +275,14 @@ export const ADMIN_DASHBOARD_CARD_SPECS: readonly AdminDashboardCardSpec[] = [
     action: "Open Brackets",
   },
   {
+    module: "GAME_DAY",
+    path: "/admin/game-day",
+    title: "Game Day",
+    description: "Today’s games, umpire cards, scores, and pay owed at the park.",
+    action: "Open Game Day",
+    sortOrder: 8,
+  },
+  {
     module: "PARK_ALERTS",
     accessModules: ["PARK_ALERTS", "TOURNAMENT_ALERTS"],
     path: "/admin/alerts",

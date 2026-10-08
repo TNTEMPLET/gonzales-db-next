@@ -54,6 +54,7 @@ import ParkDirectorMenu from "@/components/admin/dashboard/ParkDirectorMenu";
 import ParkDirectorScope from "@/components/admin/ParkDirectorScope";
 import { loadDirectorParks, loadParkDirectorUmpirePay } from "@/lib/admin/dashboard/parkDirectorPay";
 import type { DayParkUmpirePay } from "@/lib/admin/umpirePayRows";
+import { gameDayHomePath, viewerLandsOnGameDay } from "@/lib/admin/gameDay/session";
 import { leagueCalendarDate } from "@/lib/seasonConfig";
 import InSeasonBoard, { type SeasonFinanceSlice } from "@/components/admin/dashboard/InSeasonBoard";
 import type { GameDayStatus } from "@/lib/admin/dashboard/gameDay";
@@ -98,6 +99,10 @@ export default async function AdminDashboardPage({
         ? resolveOrg("spring")
         : (requestedOrg ?? (allSitesRequested ? "all" : getPrimaryLiveContentOrg()));
     redirect(`/admin/login?next=/admin?org=${nextOrg}`);
+  }
+
+  if (await viewerLandsOnGameDay(adminUser)) {
+    redirect(gameDayHomePath(masterMode ? requestedOrg : getDefaultContentOrg()));
   }
 
   // `?org=spring` is the Season Setup view, not this dashboard. Send it to
