@@ -1,5 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import {
+  PARK_DIRECTOR_WRITE_DENIED,
+  parkDirectorAllowedScheduleGameIds,
+} from "@/lib/admin/parkDirector/enforceWrite";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
@@ -37,7 +41,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Save at most 200 scores at a time." }, { status: 400 });
   }
 
-  const saved = [];
+  const ready = [];
   for (const item of items) {
     const organizationId = item.organizationId?.trim() || "";
     const matchId = item.matchId?.trim() || "";
@@ -53,26 +57,50 @@ export async function POST(request: NextRequest) {
       item.gameDate && !Number.isNaN(new Date(item.gameDate).valueOf())
         ? new Date(item.gameDate)
         : null;
+    ready.push({
+      organizationId,
+      matchId,
+      homeScore,
+      awayScore,
+      gameDate,
+      ageGroup: item.ageGroup,
+      homeTeam: item.homeTeam,
+      awayTeam: item.awayTeam,
+    });
+  }
+
+  const allowed = await parkDirectorAllowedScheduleGameIds({
+    adminUserId: auth.admin.id,
+    isMaster: auth.admin.isMaster,
+    role: auth.role,
+    scheduleDraftGameIds: ready.map((item) => item.matchId),
+  });
+  if (allowed !== "unrestricted" && ready.some((item) => !allowed.has(item.matchId))) {
+    return NextResponse.json({ error: PARK_DIRECTOR_WRITE_DENIED }, { status: 403 });
+  }
+
+  const saved = [];
+  for (const item of ready) {
     const score = await prisma.gameScore.upsert({
-      where: { organizationId_gameExternalId: { organizationId, gameExternalId: matchId } },
+      where: { organizationId_gameExternalId: { organizationId: item.organizationId, gameExternalId: item.matchId } },
       create: {
-        organizationId,
-        gameExternalId: matchId,
+        organizationId: item.organizationId,
+        gameExternalId: item.matchId,
         ageGroup: item.ageGroup?.trim() || null,
         homeTeam: item.homeTeam?.trim() || "Home Team",
         awayTeam: item.awayTeam?.trim() || "Away Team",
-        gameDate,
-        homeScore,
-        awayScore,
+        gameDate: item.gameDate,
+        homeScore: item.homeScore,
+        awayScore: item.awayScore,
         enteredByAdminId: admin?.id || null,
       },
       update: {
         ageGroup: item.ageGroup?.trim() || null,
         homeTeam: item.homeTeam?.trim() || "Home Team",
         awayTeam: item.awayTeam?.trim() || "Away Team",
-        gameDate,
-        homeScore,
-        awayScore,
+        gameDate: item.gameDate,
+        homeScore: item.homeScore,
+        awayScore: item.awayScore,
         enteredByAdminId: admin?.id || null,
       },
     });

@@ -10,7 +10,7 @@ declare global {
 }
 
 /** Bump when Prisma schema/models change so dev HMR does not reuse a stale PrismaClient. */
-const PRISMA_SCHEMA_VERSION = "2026-10-08-shared-venues";
+const PRISMA_SCHEMA_VERSION = "2026-10-08-park-director-assignment";
 
 function createClient() {
   const connectionString = process.env.DATABASE_URL!;

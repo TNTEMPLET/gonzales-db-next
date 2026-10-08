@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { parkDirectorScheduleGameWriteError } from "@/lib/admin/parkDirector/enforceWrite";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
 import { ensureAdminModule } from "@/lib/news/auth";
@@ -110,6 +111,15 @@ export async function POST(request: NextRequest) {
         { error: "organizationId is required when saving scores in All Sites mode" },
         { status: 400 },
       );
+    }
+    const writeError = await parkDirectorScheduleGameWriteError({
+      adminUserId: auth.admin.id,
+      isMaster: auth.admin.isMaster,
+      role: auth.role,
+      scheduleDraftGameId: gameExternalId,
+    });
+    if (writeError) {
+      return NextResponse.json({ error: writeError }, { status: 403 });
     }
     const score = await prisma.gameScore.upsert({
       where: {

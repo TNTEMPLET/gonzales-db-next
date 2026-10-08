@@ -3,22 +3,36 @@
 import { revalidatePath } from "next/cache";
 import { cookies } from "next/headers";
 
+import { parkDirectorScheduleGameWriteError } from "@/lib/admin/parkDirector/enforceWrite";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
-import { canAccessAdminModule } from "@/lib/auth/adminRoles";
+import { canAccessAdminModule, type AdminRole } from "@/lib/auth/adminRoles";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
 import prisma from "@/lib/prisma";
 import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
-async function requireFieldDesk(organizationId: ContentOrgId) {
+type FieldDeskAuth =
+  | { ok: true; adminId: string; isMaster: boolean; role: AdminRole }
+  | { ok: false };
+
+async function requireFieldDesk(organizationId: ContentOrgId): Promise<FieldDeskAuth> {
   const cookieStore = await cookies();
   const token = cookieStore.get(ADMIN_SESSION_COOKIE)?.value;
   const adminUser = await getAdminUserFromCookieToken(token);
-  if (!adminUser) return "Sign in again to save controllers.";
+  if (!adminUser) return { ok: false };
   const role = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, organizationId);
-  if (!role || !canAccessAdminModule(role, "GAME_DAY")) {
-    return "You cannot change scoreboard controllers for this league.";
-  }
-  return null;
+  if (!role || !canAccessAdminModule(role, "GAME_DAY")) return { ok: false };
+  return { ok: true, adminId: adminUser.id, isMaster: adminUser.isMaster, role };
+}
+
+async function directorMayWriteGame(auth: FieldDeskAuth, gameId: string): Promise<boolean> {
+  if (!auth.ok) return false;
+  const error = await parkDirectorScheduleGameWriteError({
+    adminUserId: auth.adminId,
+    isMaster: auth.isMaster,
+    role: auth.role,
+    scheduleDraftGameId: gameId,
+  });
+  return error == null;
 }
 
 async function postedGame(organizationId: ContentOrgId, gameId: string) {
@@ -43,9 +57,11 @@ export async function checkOutScoreboard(formData: FormData): Promise<void> {
   const gameId = String(formData.get("gameId") || "");
   const side = String(formData.get("side") || "");
   if (!isContentOrgId(organizationId) || (side !== "home" && side !== "away")) return;
-  if (await requireFieldDesk(organizationId)) return;
+  const auth = await requireFieldDesk(organizationId);
+  if (!auth.ok) return;
   const game = await postedGame(organizationId, gameId);
   if (!game) return;
+  if (!(await directorMayWriteGame(auth, game.id))) return;
 
   const stillOut = game.scoreboardCheckedOutAt && !game.scoreboardCheckedInAt;
   if (!stillOut && game.fieldId) {
@@ -81,9 +97,11 @@ export async function checkInScoreboard(formData: FormData): Promise<void> {
   const organizationId = String(formData.get("org") || "");
   const gameId = String(formData.get("gameId") || "");
   if (!isContentOrgId(organizationId)) return;
-  if (await requireFieldDesk(organizationId)) return;
+  const auth = await requireFieldDesk(organizationId);
+  if (!auth.ok) return;
   const game = await postedGame(organizationId, gameId);
   if (!game?.scoreboardCheckedOutAt || game.scoreboardCheckedInAt) return;
+  if (!(await directorMayWriteGame(auth, game.id))) return;
 
   await prisma.scheduleDraftGame.update({
     where: { id: game.id },
@@ -96,9 +114,11 @@ export async function undoScoreboardReturn(formData: FormData): Promise<void> {
   const organizationId = String(formData.get("org") || "");
   const gameId = String(formData.get("gameId") || "");
   if (!isContentOrgId(organizationId)) return;
-  if (await requireFieldDesk(organizationId)) return;
+  const auth = await requireFieldDesk(organizationId);
+  if (!auth.ok) return;
   const game = await postedGame(organizationId, gameId);
   if (!game?.scoreboardCheckedOutAt || !game.scoreboardCheckedInAt) return;
+  if (!(await directorMayWriteGame(auth, game.id))) return;
   if (game.fieldId) {
     const otherOut = await prisma.scheduleDraftGame.findFirst({
       where: {
