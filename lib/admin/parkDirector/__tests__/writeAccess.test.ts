@@ -4,6 +4,7 @@ import { describe, it } from "node:test";
 import {
   allowedScheduleGameIds,
   decideParkDirectorGameWrite,
+  leagueScoreWriteHttpError,
   postedLeagueScoreTarget,
 } from "@/lib/admin/parkDirector/writeAccess";
 
@@ -184,6 +185,7 @@ describe("park director game write checks", () => {
       organizationId: "fallball",
       status: "LOCKED",
       venueId: null as string | null,
+      parkName: "Riverside Diamond",
     };
     assert.deepEqual(
       postedLeagueScoreTarget({
@@ -226,7 +228,7 @@ describe("park director game write checks", () => {
         isMaster: false,
         roleOnGameOrg: "PARK_DIRECTOR",
         activeVenueIds: ["venue-north"],
-        game: { organizationId: "gonzales", status: "LOCKED", venueId: null },
+        game: { organizationId: "gonzales", status: "LOCKED", venueId: null, parkName: "Riverside Diamond" },
       }),
       { ok: true, organizationId: "gonzales" },
     );
@@ -244,9 +246,61 @@ describe("park director game write checks", () => {
         isMaster: false,
         roleOnGameOrg: "ADMIN",
         activeVenueIds: [],
-        game: { organizationId: "ascension", status: "EXPORTED", venueId: "venue-east" },
+        game: {
+          organizationId: "ascension",
+          status: "EXPORTED",
+          venueId: "venue-east",
+          parkName: "Riverside Diamond",
+        },
       }).ok,
       true,
+    );
+  });
+
+  it("refuses a score at a park that does not take scores, including for a master admin", () => {
+    const paula = {
+      organizationId: "fallball" as const,
+      status: "LOCKED",
+      venueId: "venue-north",
+      parkName: "Paula Park",
+    };
+    const refused = postedLeagueScoreTarget({
+      isMaster: true,
+      roleOnGameOrg: "MASTER_ADMIN",
+      activeVenueIds: [],
+      game: paula,
+    });
+    assert.deepEqual(refused, { ok: false, error: "not_score_park" });
+    assert.deepEqual(leagueScoreWriteHttpError("not_score_park"), {
+      status: 403,
+      error: "Scores aren't entered for this park.",
+    });
+    assert.deepEqual(
+      postedLeagueScoreTarget({
+        isMaster: false,
+        roleOnGameOrg: "PARK_DIRECTOR",
+        activeVenueIds: ["venue-north"],
+        game: { ...paula, parkName: "Paula Park Field 2" },
+      }),
+      { ok: false, error: "not_score_park" },
+    );
+    assert.deepEqual(
+      postedLeagueScoreTarget({
+        isMaster: true,
+        roleOnGameOrg: "MASTER_ADMIN",
+        activeVenueIds: [],
+        game: { ...paula, parkName: "Riverside Diamond" },
+      }),
+      { ok: true, organizationId: "fallball" },
+    );
+    assert.deepEqual(
+      postedLeagueScoreTarget({
+        isMaster: false,
+        roleOnGameOrg: "ADMIN",
+        activeVenueIds: [],
+        game: { ...paula, parkName: null },
+      }),
+      { ok: true, organizationId: "fallball" },
     );
   });
 });

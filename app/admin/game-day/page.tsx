@@ -1,7 +1,9 @@
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
+import { Suspense } from "react";
 
 import GameDayView from "@/components/admin/gameDay/GameDayView";
+import LegacyFieldDeskHash from "@/components/admin/gameDay/LegacyFieldDeskHash";
 import { deniedGameDayRedirect, directorGameDayOrg } from "@/lib/admin/gameDay/landing";
 import { loadGameDayPage } from "@/lib/admin/gameDay/loadGameDayPage";
 import { mayLoadLeagueGameDay } from "@/lib/admin/gameDay/parks";
@@ -65,5 +67,12 @@ export default async function GameDayPage({
     tab: parseGameDayTab(tab),
   });
 
-  return <GameDayView data={data} />;
+  return (
+    <>
+      <Suspense fallback={null}>
+        <LegacyFieldDeskHash />
+      </Suspense>
+      <GameDayView data={data} />
+    </>
+  );
 }
