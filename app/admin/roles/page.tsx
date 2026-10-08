@@ -2,11 +2,12 @@ import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 
 import AdminRoleAssignmentConsole from "@/components/admin/AdminRoleAssignmentConsole";
+import ParkDirectorAssignmentPanel from "@/components/admin/ParkDirectorAssignmentPanel";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { isOrdersModuleEnabled } from "@/lib/auth/ordersModule";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
-import { getSiteConfig, resolveAdminTargetOrg } from "@/lib/siteConfig";
+import { getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -67,6 +68,17 @@ export default async function RolesPage({
             ordersModuleEnabled={isOrdersModuleEnabled()}
           />
         </div>
+
+        {isMasterDeployment() ? (
+          <div className="mt-6 rounded-2xl border border-zinc-800 bg-zinc-900/60 p-4 sm:p-6">
+            <ParkDirectorAssignmentPanel />
+          </div>
+        ) : (
+          <p className="mt-6 max-w-3xl text-sm text-zinc-500">
+            Park assignments are managed on the master site. A director belongs to a physical park,
+            shared by every league that plays there.
+          </p>
+        )}
       </section>
     </main>
   );

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { parkDirectorAllowedScheduleGameIds } from "@/lib/admin/parkDirector/enforceWrite";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
 import {
@@ -62,7 +63,17 @@ export async function POST(request: NextRequest) {
         .trim()
         .toLowerCase() === "true";
 
-    const games = await loadScoreableImportGames(scope);
+    const loadedGames = await loadScoreableImportGames(scope);
+    const allowedGameIds = await parkDirectorAllowedScheduleGameIds({
+      adminUserId: auth.admin.id,
+      isMaster: auth.admin.isMaster,
+      role: auth.role,
+      scheduleDraftGameIds: loadedGames.map((game) => String(game.id || "")),
+    });
+    const games =
+      allowedGameIds === "unrestricted"
+        ? loadedGames
+        : loadedGames.filter((game) => allowedGameIds.has(String(game.id || "")));
     const parsedRows = rows.map((row, index) =>
       parseScoresImportRow(row, index + 2),
     );

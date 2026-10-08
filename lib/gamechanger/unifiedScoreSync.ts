@@ -52,7 +52,15 @@ export async function previewGameChangerScores(params: { sourceType: UnifiedScor
   const rows = previewRows(refs, fetched.events, pins);
   return { rows, importedCount: 0, skippedCount: rows.filter((row) => row.outcome !== "completed").length, organizationName: fetched.response.data.organization.name };
 }
-export async function importCompletedGameChangerScores(params: { sourceType: UnifiedScoreSourceType; organizationId: BracketOrgId; seasonYear: number; sourceKey: string; enteredByAdminId?: string | null }): Promise<GameChangerScoreSyncResult> {
+export async function importCompletedGameChangerScores(params: {
+  sourceType: UnifiedScoreSourceType;
+  organizationId: BracketOrgId;
+  seasonYear: number;
+  sourceKey: string;
+  enteredByAdminId?: string | null;
+  /** League writes only. Omit to import every matched game, as before. */
+  allowedScheduleGameIds?: ReadonlySet<string>;
+}): Promise<GameChangerScoreSyncResult> {
   const connection = await getScoreboardConnection(params); if (!connection) throw new Error("Connect a GameChanger scoreboard before importing scores.");
   const importedIds = new Set(parseJsonStringArray(connection.importedFinalEventIds)); const pins = parseMatchEventPins(connection.matchEventPins);
   const fetched = await fetchGameChangerScoreboardSyncWindow(connection.widgetId);
@@ -69,6 +77,7 @@ export async function importCompletedGameChangerScores(params: { sourceType: Uni
     } satisfies GcBracketMatchRef));
     const rows = previewRows(refs, fetched.events, pins); let importedCount = 0;
     for (const ref of refs) {
+      if (params.allowedScheduleGameIds && !params.allowedScheduleGameIds.has(ref.id)) continue;
       const event = resolveGcEventForBracketMatch(ref, fetched.events, pins); if (!event || event.game_status !== "completed" || importedIds.has(event.id)) continue;
       const scores = gcEventToBracketMatchScores(ref, event); if (!scores || scores.homeScore == null || scores.awayScore == null) continue;
       const local = localById.get(ref.id);

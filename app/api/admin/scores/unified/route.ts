@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { parkDirectorScheduleGameWriteError } from "@/lib/admin/parkDirector/enforceWrite";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
 import { listUnifiedScoreGames } from "@/lib/admin/unifiedScoreSources";
@@ -52,6 +53,13 @@ export async function POST(request: NextRequest) {
   if (sourceType === "LEAGUE") {
     if (!isContentOrgId(organizationId)) return NextResponse.json({ error: "Invalid league organization." }, { status: 400 });
     if ((body.gameStatus || "A").trim().toUpperCase() !== "A") return NextResponse.json({ error: "Only active league games can be scored." }, { status: 400 });
+    const writeError = await parkDirectorScheduleGameWriteError({
+      adminUserId: auth.admin.id,
+      isMaster: auth.admin.isMaster,
+      role: auth.role,
+      scheduleDraftGameId: matchId,
+    });
+    if (writeError) return NextResponse.json({ error: writeError }, { status: 403 });
     const gameDate = body.gameDate && !Number.isNaN(new Date(body.gameDate).valueOf()) ? new Date(body.gameDate) : null;
     const score = await prisma.gameScore.upsert({
       where: { organizationId_gameExternalId: { organizationId, gameExternalId: matchId } },

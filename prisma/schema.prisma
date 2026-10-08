@@ -331,6 +331,8 @@ model AdminUser {
   volunteerRoleDefsCreated          VolunteerRoleDef[]                @relation("VolunteerRoleDefCreatedBy")
   sportsConnectMappingPresets       SportsConnectMappingPreset[]      @relation("SportsConnectMappingPresetCreatedBy")
   sportsConnectImportRuns           SportsConnectImportRun[]          @relation("SportsConnectImportRunCreatedBy")
+  parkDirectorAssignments           ParkDirectorAssignment[]          @relation("ParkDirectorAssignments")
+  parkDirectorAssignmentsMade       ParkDirectorAssignment[]          @relation("ParkDirectorAssignedBy")
 }
 
 enum BracketProjectStatus {
@@ -1523,7 +1525,7 @@ model ScheduleSeason {
 }
 
 /// One physical park shared by every league. SchedulePark rows point here.
-/// Later slices attach park directors and scoreboard controllers to this id.
+/// Park directors are assigned to this id. Scoreboard controllers come later.
 model Venue {
   id             String   @id @default(cuid())
   name           String
@@ -1536,9 +1538,40 @@ model Venue {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  scheduleParks SchedulePark[]
+  scheduleParks            SchedulePark[]
+  parkDirectorAssignments  ParkDirectorAssignment[]
 
   @@index([isActive, name])
+}
+
+/// A park director covers a physical park, whichever league plays there.
+/// One row per admin user and venue. `active` turns the link off without deleting it.
+/// Game lists and write checks use active rows only.
+///
+/// Foreign keys:
+/// - adminUserId cascades, matching AdminOrgMembership. Deleting the user removes their parks.
+/// - venueId cascades. The link requires a venue, so SetNull is not available. League parks
+///   keep SetNull on SchedulePark.venueId and survive a venue delete; these rows would be wrong
+///   if the venue were gone.
+/// - assignedByAdminId sets null. Attribution must not delete the director's park.
+model ParkDirectorAssignment {
+  id                String   @id @default(cuid())
+  adminUserId       String
+  venueId           String
+  active            Boolean  @default(true)
+  /// Master admin who last turned this assignment on.
+  assignedByAdminId String?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  adminUser  AdminUser  @relation("ParkDirectorAssignments", fields: [adminUserId], references: [id], onDelete: Cascade)
+  venue      Venue      @relation(fields: [venueId], references: [id], onDelete: Cascade)
+  assignedBy AdminUser? @relation("ParkDirectorAssignedBy", fields: [assignedByAdminId], references: [id], onDelete: SetNull)
+
+  @@unique([adminUserId, venueId])
+  @@index([adminUserId, active])
+  @@index([venueId, active])
+  @@index([assignedByAdminId])
 }
 
 model SchedulePark {
