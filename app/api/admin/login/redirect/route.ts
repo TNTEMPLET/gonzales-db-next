@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
+import { redirectPathAfterAdminLogin } from "@/lib/admin/gameDay/session";
 import { applyAdminLoginCookies } from "@/lib/auth/applyAdminLoginCookies";
 import { verifyAdminCredentials } from "@/lib/auth/adminSession";
 import { withTransientDbRetry } from "@/lib/prismaRetry";
@@ -45,7 +46,12 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const response = NextResponse.redirect(requestPublicUrl(request, nextPath), 303);
+    const destination = await redirectPathAfterAdminLogin({
+      adminUserId: adminUser.id,
+      isMaster: adminUser.isMaster,
+      nextPath,
+    });
+    const response = NextResponse.redirect(requestPublicUrl(request, destination), 303);
     await applyAdminLoginCookies(response, {
       id: adminUser.id,
       email: adminUser.email,

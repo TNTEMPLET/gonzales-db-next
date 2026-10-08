@@ -1,9 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import {
-  PARK_DIRECTOR_WRITE_DENIED,
-  parkDirectorAllowedScheduleGameIds,
-} from "@/lib/admin/parkDirector/enforceWrite";
+import { resolvePostedLeagueScoreWrite } from "@/lib/admin/parkDirector/enforceWrite";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { ensureAdminModule } from "@/lib/news/auth";
 import prisma from "@/lib/prisma";
@@ -69,22 +66,19 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const allowed = await parkDirectorAllowedScheduleGameIds({
-    adminUserId: auth.admin.id,
-    isMaster: auth.admin.isMaster,
-    role: auth.role,
-    scheduleDraftGameIds: ready.map((item) => item.matchId),
-  });
-  if (allowed !== "unrestricted" && ready.some((item) => !allowed.has(item.matchId))) {
-    return NextResponse.json({ error: PARK_DIRECTOR_WRITE_DENIED }, { status: 403 });
-  }
-
   const saved = [];
   for (const item of ready) {
+    const target = await resolvePostedLeagueScoreWrite({
+      adminUserId: auth.admin.id,
+      isMaster: auth.admin.isMaster,
+      matchId: item.matchId,
+    });
+    if (!target.ok) return NextResponse.json({ error: target.error }, { status: target.status });
+    const leagueOrgId = target.organizationId;
     const score = await prisma.gameScore.upsert({
-      where: { organizationId_gameExternalId: { organizationId: item.organizationId, gameExternalId: item.matchId } },
+      where: { organizationId_gameExternalId: { organizationId: leagueOrgId, gameExternalId: item.matchId } },
       create: {
-        organizationId: item.organizationId,
+        organizationId: leagueOrgId,
         gameExternalId: item.matchId,
         ageGroup: item.ageGroup?.trim() || null,
         homeTeam: item.homeTeam?.trim() || "Home Team",

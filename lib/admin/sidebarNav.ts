@@ -165,6 +165,9 @@ export function buildAdminSidebarNav(
     id: "park",
     label: ADMIN_DASHBOARD_CATEGORY_META.park.label,
     leaves: [
+      ...(allowModule("GAME_DAY")
+        ? [{ id: "game-day", label: "Game Day", href: leafHref("/admin/game-day", orgSuffix) }]
+        : []),
       ...(allowModule("TOURNAMENT_BRACKETS")
         ? [{ id: "brackets", label: "Tournament Brackets", href: leafHref("/admin/tournament-brackets", orgSuffix) }]
         : []),

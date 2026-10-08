@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 
 import AdminLoginForm from "@/components/auth/AdminLoginForm";
 import DesignedByBrand from "@/components/ui/DesignedByBrand";
+import { redirectPathAfterAdminLogin } from "@/lib/admin/gameDay/session";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
@@ -46,7 +47,13 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
     cookieStore.get(ADMIN_SESSION_COOKIE)?.value,
   );
   if (existingSession) {
-    redirect(nextPath);
+    redirect(
+      await redirectPathAfterAdminLogin({
+        adminUserId: existingSession.id,
+        isMaster: existingSession.isMaster,
+        nextPath,
+      }),
+    );
   }
 
   const masterMode = isMasterDeployment();

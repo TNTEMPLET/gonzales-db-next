@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 
-import { parkDirectorScheduleGameWriteError } from "@/lib/admin/parkDirector/enforceWrite";
+import { resolvePostedLeagueScoreWrite } from "@/lib/admin/parkDirector/enforceWrite";
 import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
 import { resolveAdminAssignrScope } from "@/lib/admin/assignrOrgScope";
 import { listUnifiedScoreGames } from "@/lib/admin/unifiedScoreSources";
@@ -9,7 +9,7 @@ import prisma from "@/lib/prisma";
 import { SEASON_END_DATE, SEASON_START_DATE } from "@/lib/seasonConfig";
 import { mergeMatchScoresIntoSpec } from "@/lib/tournament-brackets/bracketScoring";
 import { safeParseBracketSpec } from "@/lib/tournament-brackets/bracketSpec";
-import { isBracketOrgId, isContentOrgId } from "@/lib/siteConfig";
+import { isBracketOrgId } from "@/lib/siteConfig";
 
 type SaveUnifiedScorePayload = {
   sourceType?: "LEAGUE" | "TOURNAMENT";
@@ -51,19 +51,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "sourceType, organizationId, sourceKey, matchId, homeScore, and awayScore are required." }, { status: 400 });
   }
   if (sourceType === "LEAGUE") {
-    if (!isContentOrgId(organizationId)) return NextResponse.json({ error: "Invalid league organization." }, { status: 400 });
     if ((body.gameStatus || "A").trim().toUpperCase() !== "A") return NextResponse.json({ error: "Only active league games can be scored." }, { status: 400 });
-    const writeError = await parkDirectorScheduleGameWriteError({
+    const target = await resolvePostedLeagueScoreWrite({
       adminUserId: auth.admin.id,
       isMaster: auth.admin.isMaster,
-      role: auth.role,
-      scheduleDraftGameId: matchId,
+      matchId,
     });
-    if (writeError) return NextResponse.json({ error: writeError }, { status: 403 });
+    if (!target.ok) return NextResponse.json({ error: target.error }, { status: target.status });
+    const leagueOrgId = target.organizationId;
     const gameDate = body.gameDate && !Number.isNaN(new Date(body.gameDate).valueOf()) ? new Date(body.gameDate) : null;
     const score = await prisma.gameScore.upsert({
-      where: { organizationId_gameExternalId: { organizationId, gameExternalId: matchId } },
-      create: { organizationId, gameExternalId: matchId, ageGroup: body.ageGroup?.trim() || null, homeTeam: body.homeTeam?.trim() || "Home Team", awayTeam: body.awayTeam?.trim() || "Away Team", gameDate, homeScore, awayScore, enteredByAdminId: admin?.id || null },
+      where: { organizationId_gameExternalId: { organizationId: leagueOrgId, gameExternalId: matchId } },
+      create: { organizationId: leagueOrgId, gameExternalId: matchId, ageGroup: body.ageGroup?.trim() || null, homeTeam: body.homeTeam?.trim() || "Home Team", awayTeam: body.awayTeam?.trim() || "Away Team", gameDate, homeScore, awayScore, enteredByAdminId: admin?.id || null },
       update: { ageGroup: body.ageGroup?.trim() || null, homeTeam: body.homeTeam?.trim() || "Home Team", awayTeam: body.awayTeam?.trim() || "Away Team", gameDate, homeScore, awayScore, enteredByAdminId: admin?.id || null },
     });
     return NextResponse.json({ success: true, data: score });

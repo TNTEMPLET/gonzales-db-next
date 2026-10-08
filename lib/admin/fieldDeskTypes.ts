@@ -1,6 +1,10 @@
+import type { ContentOrgId } from "@/lib/siteConfig";
+
 export type FieldDeskGame = {
   id: string;
+  organizationId: ContentOrgId;
   dateKey: string;
+  startTime: string;
   when: string;
   ageGroup: string;
   homeTeam: string;

@@ -53,6 +53,7 @@ export default function Header({ brand }: HeaderProps) {
   const [isCoachCornerOpen, setIsCoachCornerOpen] = useState(false);
   const coachCornerMenuRef = useRef<HTMLDivElement | null>(null);
   const [canSeeDugout, setCanSeeDugout] = useState(false);
+  const [gameDayOnly, setGameDayOnly] = useState(false);
   const [showAllStarLink, setShowAllStarLink] = useState(false);
   const [showParkInfoLink, setShowParkInfoLink] = useState(false);
   const [logoSrc, setLogoSrc] = useState(brand.logoPath);
@@ -139,6 +140,22 @@ export default function Header({ brand }: HeaderProps) {
       ? "rounded-md border border-red-800/70 bg-red-950/40 px-3 py-2 text-red-200"
       : "rounded-md px-3 py-2 text-zinc-200 hover:bg-red-950/30 hover:text-red-200";
   }
+
+  useEffect(() => {
+    if (!isMasterHeader) return;
+    let active = true;
+    fetch("/api/admin/me", { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json: { gameDayOnly?: boolean } | null) => {
+        if (active) setGameDayOnly(Boolean(json?.gameDayOnly));
+      })
+      .catch(() => {
+        if (active) setGameDayOnly(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isMasterHeader]);
 
   useEffect(() => {
     let active = true;
@@ -340,6 +357,7 @@ export default function Header({ brand }: HeaderProps) {
         {/* Desktop Navigation */}
         {isMasterHeader ? (
           <div className="hidden min-w-0 items-center justify-end gap-2 md:col-start-2 md:row-start-1 md:flex lg:gap-3">
+            {gameDayOnly ? null : (
             <button
               type="button"
               onClick={toggleSidebar}
@@ -352,6 +370,7 @@ export default function Header({ brand }: HeaderProps) {
               </svg>
               Menu
             </button>
+            )}
             <nav className={desktopNavClassName}>
               {canSeeDugout ? (
                 <Link
@@ -484,6 +503,7 @@ export default function Header({ brand }: HeaderProps) {
           >
             {isMasterHeader ? (
               <>
+                {gameDayOnly ? null : (
                 <button
                   type="button"
                   onClick={() => {
@@ -497,6 +517,7 @@ export default function Header({ brand }: HeaderProps) {
                   </svg>
                   Admin Menu (Dashboard, Operations, Program &amp; Commerce)
                 </button>
+                )}
                 {canSeeDugout ? (
                   <Link
                     href={`/coach-corner${masterOrgSuffix}`}

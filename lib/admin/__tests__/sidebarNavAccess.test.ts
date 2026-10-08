@@ -34,7 +34,13 @@ describe("sidebar job leaves", () => {
     ]) {
       assert.equal(hrefs.includes(path), false, path);
     }
-    for (const path of ["/admin/scores", "/admin/season-setup", "/admin/reports/umpire-pay", "/admin/reports"]) {
+    for (const path of [
+      "/admin/scores",
+      "/admin/season-setup",
+      "/admin/reports/umpire-pay",
+      "/admin/reports",
+      "/admin/game-day",
+    ]) {
       assert.equal(hrefs.includes(path), true, path);
     }
   });
@@ -51,7 +57,7 @@ describe("sidebar job leaves", () => {
     const admin = leafHrefs("ADMIN", true);
     assert.equal(admin.includes("/admin/cap-orders"), false);
     assert.equal(admin.includes("/admin/shirt-orders"), false);
-    for (const path of ["/admin/surveys", "/admin/scheduler", "/admin/sports-connect"]) {
+    for (const path of ["/admin/surveys", "/admin/scheduler", "/admin/sports-connect", "/admin/game-day"]) {
       assert.equal(admin.includes(path), true, path);
     }
   });
