@@ -127,7 +127,6 @@ async function loadAssignr(orgs: readonly ContentOrgId[], day: string): Promise<
           startDate: day,
           endDate: day,
           leagueId: getAssignrLeagueId(org),
-          limit: 100,
           cache: "no-store",
         });
       } catch (error: unknown) {

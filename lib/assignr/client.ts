@@ -3,6 +3,7 @@ import {
   getAssignrOAuthScope,
   getAssignrTokenBaseUrl,
 } from "@/lib/assignr/config";
+import { assignrPageLimit } from "@/lib/assignr/pageLimit";
 
 const HAL_ACCEPT = "application/vnd.assignr.v2.hal+json";
 
@@ -181,7 +182,7 @@ export async function assignrFetchAllPages<TItem>(params: {
   cache?: RequestCache;
   next?: { revalidate?: number | false; tags?: string[] };
 }) {
-  const limit = params.limit ?? 50;
+  const limit = assignrPageLimit(params.limit);
   const maxPages = params.maxPages ?? 20;
   const items: TItem[] = [];
 
