@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider        = "prisma-client-js"
+  previewFeatures = ["partialIndexes"]
 }
 
 datasource db {
@@ -333,6 +334,8 @@ model AdminUser {
   sportsConnectImportRuns           SportsConnectImportRun[]          @relation("SportsConnectImportRunCreatedBy")
   parkDirectorAssignments           ParkDirectorAssignment[]          @relation("ParkDirectorAssignments")
   parkDirectorAssignmentsMade       ParkDirectorAssignment[]          @relation("ParkDirectorAssignedBy")
+  scoreboardCheckoutsMade           ScoreboardCheckout[]              @relation("ScoreboardCheckoutCheckedOutBy")
+  scoreboardCheckinsMade            ScoreboardCheckout[]              @relation("ScoreboardCheckoutCheckedInBy")
 }
 
 enum BracketProjectStatus {
@@ -1525,7 +1528,7 @@ model ScheduleSeason {
 }
 
 /// One physical park shared by every league. SchedulePark rows point here.
-/// Park directors are assigned to this id. Scoreboard controllers come later.
+/// Park directors are assigned to this id. Scoreboard remotes live here too.
 model Venue {
   id             String   @id @default(cuid())
   name           String
@@ -1540,6 +1543,7 @@ model Venue {
 
   scheduleParks            SchedulePark[]
   parkDirectorAssignments  ParkDirectorAssignment[]
+  scoreboardControllers    ScoreboardController[]
 
   @@index([isActive, name])
 }
@@ -1572,6 +1576,77 @@ model ParkDirectorAssignment {
   @@index([adminUserId, active])
   @@index([venueId, active])
   @@index([assignedByAdminId])
+}
+
+enum ScoreboardControllerStatus {
+  ACTIVE
+  MISSING
+  REPAIR
+  RETIRED
+}
+
+enum ScoreboardCheckoutSide {
+  HOME
+  AWAY
+}
+
+/// One physical scoreboard remote at a park. The label matches the sticker
+/// ("Stevens #3"). Home field is a name, not a ScheduleField id: fields belong
+/// to one league's park, and the same remote is used by every league.
+///
+/// venueId restricts on delete. A venue delete must not erase inventory or the
+/// checkout history that hangs off these rows. Retire the remote, or remove it
+/// after its checkouts are gone.
+model ScoreboardController {
+  id            String                     @id @default(cuid())
+  venueId       String
+  label         String
+  homeFieldName String?
+  status        ScoreboardControllerStatus @default(ACTIVE)
+  notes         String?
+  createdAt     DateTime                   @default(now())
+  updatedAt     DateTime                   @updatedAt
+
+  venue     Venue                @relation(fields: [venueId], references: [id], onDelete: Restrict)
+  checkouts ScoreboardCheckout[]
+
+  @@unique([venueId, label])
+  @@index([venueId, status])
+}
+
+/// One check-out of a remote to a volunteer for a posted game.
+/// Only one row per remote may have checkedInAt null. That partial unique
+/// index is ScoreboardCheckout_one_open_controller_idx.
+///
+/// scheduleDraftGameId sets null on delete. The remote can still be out after
+/// the game row is gone, and that open row must keep blocking a second checkout.
+/// controllerId restricts. Admin attribution sets null.
+model ScoreboardCheckout {
+  id                  String                 @id @default(cuid())
+  controllerId        String
+  scheduleDraftGameId String?
+  organizationId      String
+  side                ScoreboardCheckoutSide
+  volunteerName       String
+  checkedOutAt        DateTime               @default(now())
+  checkedOutByAdminId String?
+  checkedInAt         DateTime?
+  checkedInByAdminId  String?
+  notes               String?
+  createdAt           DateTime               @default(now())
+  updatedAt           DateTime               @updatedAt
+
+  controller        ScoreboardController @relation(fields: [controllerId], references: [id], onDelete: Restrict)
+  scheduleDraftGame ScheduleDraftGame?   @relation(fields: [scheduleDraftGameId], references: [id], onDelete: SetNull)
+  checkedOutBy      AdminUser?           @relation("ScoreboardCheckoutCheckedOutBy", fields: [checkedOutByAdminId], references: [id], onDelete: SetNull)
+  checkedInBy       AdminUser?           @relation("ScoreboardCheckoutCheckedInBy", fields: [checkedInByAdminId], references: [id], onDelete: SetNull)
+
+  @@index([controllerId])
+  @@index([scheduleDraftGameId])
+  @@index([organizationId])
+  @@index([checkedOutByAdminId])
+  @@index([checkedInByAdminId])
+  @@unique([controllerId], map: "ScoreboardCheckout_one_open_controller_idx", where: { checkedInAt: null })
 }
 
 model SchedulePark {
@@ -1731,7 +1806,7 @@ model ScheduleDraftGame {
   fairnessScore    Float?
   fairnessMetadata Json                    @default("{}")
   schedulerNotes           String?
-  /// Scoreboard remote checked out to a team volunteer for this game, then returned.
+  /// History only. New check-outs are ScoreboardCheckout rows. These columns are not written.
   scoreboardCheckedOutAt   DateTime?
   scoreboardCheckedInAt    DateTime?
   scoreboardCheckoutSide   String?
@@ -1742,8 +1817,9 @@ model ScheduleDraftGame {
   season   ScheduleSeason @relation(fields: [seasonId], references: [id], onDelete: Cascade)
   park     SchedulePark?  @relation(fields: [parkId], references: [id], onDelete: SetNull)
   field    ScheduleField? @relation(fields: [fieldId], references: [id], onDelete: SetNull)
-  homeTeam Team?          @relation("ScheduleDraftGameHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
-  awayTeam Team?          @relation("ScheduleDraftGameAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  homeTeam            Team?                @relation("ScheduleDraftGameHomeTeam", fields: [homeTeamId], references: [id], onDelete: SetNull)
+  awayTeam            Team?                @relation("ScheduleDraftGameAwayTeam", fields: [awayTeamId], references: [id], onDelete: SetNull)
+  scoreboardCheckouts ScoreboardCheckout[]
 
   @@index([organizationId, seasonId, status, gameDate], map: "SchedDraftGame_org_season_status_date_idx")
   @@index([seasonId, division, gameDate])

@@ -1,6 +1,8 @@
 import { canAccessAdminModule, type AdminRole } from "@/lib/auth/adminRoles";
 import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
+export const PARK_DIRECTOR_WRITE_DENIED = "That game is not at one of your parks.";
+
 /**
  * Why a game-day write was allowed or refused.
  *

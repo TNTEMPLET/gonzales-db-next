@@ -4,7 +4,8 @@ import { addCalendarDays, mondayOnOrBefore } from "@/lib/admin/dashboard/seasonP
 import { gameIsRainedOut, type GameDayRainout } from "@/lib/admin/dashboard/gameDay";
 import { loadFieldDeskGames, fieldDeskCheckoutFields } from "@/lib/admin/fieldDesk";
 import type { FieldDeskGame } from "@/lib/admin/fieldDeskTypes";
-import { withControllerHolds } from "@/lib/admin/gameDay/controllers";
+import { ADD_REMOTES_MESSAGE, type RemoteTabGameInput } from "@/lib/admin/scoreboardRemotes/present";
+import { loadRemoteTabGames, venueHasRemotes } from "@/lib/admin/scoreboardRemotes/load";
 import { crewForGame } from "@/lib/admin/gameDay/crew";
 import { badgeTextColor } from "@/lib/admin/gameDay/display";
 import { DEFAULT_FALL_BALL_PAY_SCHEDULE, isFallBallOrg } from "@/lib/admin/fallBallUmpirePay";
@@ -88,25 +89,6 @@ function listGame(game: PostedGame, rainedOut: boolean): GameDayListGame {
   };
 }
 
-function toControllerGame(game: PostedGame): FieldDeskGame & { fieldKey: string } {
-  return {
-    id: game.id,
-    organizationId: game.organizationId,
-    dateKey: game.dateKey,
-    startTime: game.startTime,
-    when: `${formatPublicDateLabel(game.dateKey)} · ${formatPublicClock(game.startTime)}`,
-    ageGroup: game.division,
-    homeTeam: game.homeTeam,
-    awayTeam: game.awayTeam,
-    parkName: game.parkName,
-    fieldName: game.fieldName,
-    ...game.checkout,
-    controllerHold: null,
-    isToday: false,
-    fieldKey: game.fieldKey,
-  };
-}
-
 async function loadAssignr(orgs: readonly ContentOrgId[], day: string): Promise<{
   byOrg: Partial<Record<ContentOrgId, Game[]>>;
   failed: number;
@@ -170,7 +152,6 @@ export async function loadGameDayPage(input: {
   const weekEnd = addCalendarDays(weekStart, 6);
   let posted: PostedGame[] = [];
   let parkChoices: GameDayParkChoice[] = [];
-  let leagueControllerGames: FieldDeskGame[] | null = null;
 
   if (mode === "assigned") {
     parkChoices = assignmentRows.map((row) => ({
@@ -218,7 +199,6 @@ export async function loadGameDayPage(input: {
   } else if (mayLeague) {
     const desk = await loadFieldDeskGames(input.org);
     parkChoices = desk.parks.map((name) => ({ id: name, label: name }));
-    leagueControllerGames = desk.games;
     posted = desk.games
       .filter((game) => game.dateKey >= weekStart && game.dateKey <= weekEnd)
       .map((game) => ({
@@ -229,7 +209,7 @@ export async function loadGameDayPage(input: {
         division: game.ageGroup,
         homeTeam: game.homeTeam,
         awayTeam: game.awayTeam,
-        venueId: null,
+        venueId: game.venueId,
         venueName: game.parkName,
         parkName: game.parkName,
         fieldName: game.fieldName,
@@ -383,14 +363,45 @@ export async function loadGameDayPage(input: {
   });
 
   const todayKey = leagueCalendarDate();
-  const controllerGames = (
-    leagueControllerGames
-      ? leagueControllerGames.filter((game) => (selected ? game.parkName === selected.id : false))
-      : withControllerHolds(weekAtPark.map(toControllerGame))
-  ).map((game) => ({
-    ...game,
-    isToday: game.dateKey === todayKey,
-  }));
+  const remoteInputs: RemoteTabGameInput[] = weekAtPark.map((game) => {
+    const row = listGame(game, false);
+    return {
+      id: game.id,
+      organizationId: game.organizationId,
+      when: row.when,
+      division: game.division,
+      homeTeam: game.homeTeam,
+      awayTeam: game.awayTeam,
+      parkName: game.parkName,
+      fieldName: game.fieldName,
+      venueId: game.venueId,
+      leagueLabel: row.leagueLabel,
+      leaguePrimaryHex: row.leaguePrimaryHex,
+      badgeText: row.badgeText,
+      isToday: game.dateKey === todayKey,
+      legacyCheckout: {
+        status: game.checkout.checkoutStatus,
+        side: game.checkout.checkoutSide,
+        team: game.checkout.checkoutTeam,
+        name: game.checkout.checkoutName,
+        note: game.checkout.checkoutNote,
+      },
+    };
+  });
+  const remoteGames = await loadRemoteTabGames(remoteInputs);
+  let remoteEmptyMessage: string | null = null;
+  if (selected && weekAtPark.length === 0) {
+    const venueId =
+      mode === "assigned"
+        ? selected.id
+        : (
+            await prisma.schedulePark.findFirst({
+              where: { organizationId: input.org, name: selected.id },
+              select: { venueId: true },
+            })
+          )?.venueId ?? null;
+    if (!venueId || !(await venueHasRemotes(venueId))) remoteEmptyMessage = ADD_REMOTES_MESSAGE;
+  }
 
   return {
     org: input.org,
@@ -407,7 +418,8 @@ export async function loadGameDayPage(input: {
     cardGames,
     scoreGames,
     scoresClosedForPark: scoreSplit.closedForPark,
-    controllerGames,
+    remoteGames,
+    remoteEmptyMessage,
     payRows,
     payTotal: payTotal(payRows),
     payError,

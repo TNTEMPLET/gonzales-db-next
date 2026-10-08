@@ -166,7 +166,10 @@ export function buildAdminSidebarNav(
     label: ADMIN_DASHBOARD_CATEGORY_META.park.label,
     leaves: [
       ...(allowModule("GAME_DAY")
-        ? [{ id: "game-day", label: "Game Day", href: leafHref("/admin/game-day", orgSuffix) }]
+        ? [
+            { id: "game-day", label: "Game Day", href: leafHref("/admin/game-day", orgSuffix) },
+            { id: "game-day-remotes", label: "Remotes", href: leafHref("/admin/game-day/remotes", orgSuffix) },
+          ]
         : []),
       ...(allowModule("TOURNAMENT_BRACKETS")
         ? [{ id: "brackets", label: "Tournament Brackets", href: leafHref("/admin/tournament-brackets", orgSuffix) }]

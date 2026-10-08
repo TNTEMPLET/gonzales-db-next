@@ -11,6 +11,8 @@ export type FieldDeskGame = {
   awayTeam: string;
   parkName: string;
   fieldName: string;
+  /** Shared park, when this league's park is linked. */
+  venueId: string | null;
   checkoutStatus: "in" | "out" | "returned";
   checkoutSide: "home" | "away" | null;
   checkoutTeam: string | null;
