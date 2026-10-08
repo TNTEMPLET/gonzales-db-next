@@ -170,6 +170,9 @@ export function buildAdminSidebarNav(
       ...(allowModule("PARK_ALERTS") || allowModule("TOURNAMENT_ALERTS")
         ? [{ id: "alerts", label: "Park & Tournament Alerts", href: leafHref("/admin/alerts", orgSuffix) }]
         : []),
+      ...(allowModule("VENUES")
+        ? [{ id: "parks", label: "Parks", href: leafHref("/admin/parks", orgSuffix) }]
+        : []),
       ...(allowModule("PARK_INFO")
         ? [{ id: "facilities", label: "Park Info", href: leafHref("/admin/park-info", orgSuffix) }]
         : []),

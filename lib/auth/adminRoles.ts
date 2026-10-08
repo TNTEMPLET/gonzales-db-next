@@ -32,6 +32,7 @@ export const ADMIN_MODULES = [
   "TOURNAMENT_ALERTS",
   "PARK_ALERTS",
   "PARK_INFO",
+  "VENUES",
   "ROLE_ASSIGNMENT",
   "REGISTRATION_WINDOWS",
   "DRAFT",
@@ -74,6 +75,7 @@ const moduleMinimumRole: Record<AdminModule, AdminRole> = {
   TOURNAMENT_ALERTS: "MASTER_ADMIN",
   PARK_ALERTS: "ADMIN",
   PARK_INFO: "ADMIN",
+  VENUES: "MASTER_ADMIN",
   ROLE_ASSIGNMENT: "MASTER_ADMIN",
   REGISTRATION_WINDOWS: "MASTER_ADMIN",
   DRAFT: "ADMIN",
@@ -107,6 +109,7 @@ const ADMIN_MODULE_LABELS: Record<AdminModule, string> = {
   TOURNAMENT_ALERTS: "Tournament alerts",
   PARK_ALERTS: "Park alerts",
   PARK_INFO: "Park info",
+  VENUES: "Shared parks",
   ROLE_ASSIGNMENT: "Role assignment",
   REGISTRATION_WINDOWS: "Registration windows",
   DRAFT: "Online draft",
@@ -128,6 +131,7 @@ const MASTER_ONLY_MODULES = new Set<AdminModule>([
   "TOURNAMENT_BRACKETS",
   "TOURNAMENT_ALERTS",
   "PARK_INFO",
+  "VENUES",
   "ROLE_ASSIGNMENT",
   "REGISTRATION_WINDOWS",
   "ORDERS",
@@ -235,7 +239,7 @@ const ROLE_SUGGESTION_NOTES: Record<AdminRole, string> = {
   ADMIN:
     "Site operator. Includes surveys, the scheduler, Sports Connect, division ages, teams, and everything a board member can open. Cap and shirt orders stay with master admins.",
   MASTER_ADMIN:
-    "Requires platform-level privileges. Only for trusted cross-org operators. Includes cap and shirt orders.",
+    "Requires platform-level privileges. Only for trusted cross-org operators. Includes cap and shirt orders and shared parks.",
 };
 
 /**

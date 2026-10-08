@@ -1522,6 +1522,25 @@ model ScheduleSeason {
   @@index([createdByAdminId])
 }
 
+/// One physical park shared by every league. SchedulePark rows point here.
+/// Later slices attach park directors and scoreboard controllers to this id.
+model Venue {
+  id             String   @id @default(cuid())
+  name           String
+  shortName      String?
+  address        String?
+  notes          String?
+  isActive       Boolean  @default(true)
+  /// Exact auto-link key: lowercased, punctuation collapsed to spaces.
+  normalizedName String   @unique
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  scheduleParks SchedulePark[]
+
+  @@index([isActive, name])
+}
+
 model SchedulePark {
   id             String   @id @default(cuid())
   organizationId String
@@ -1532,7 +1551,9 @@ model SchedulePark {
   isActive       Boolean  @default(true)
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+  venueId        String?
 
+  venue          Venue?                      @relation(fields: [venueId], references: [id], onDelete: SetNull)
   fields         ScheduleField[]
   availabilities ScheduleFieldAvailability[]
   divisionRules  ScheduleDivisionRule[]
@@ -1541,6 +1562,7 @@ model SchedulePark {
 
   @@unique([organizationId, name])
   @@index([organizationId, isActive, name])
+  @@index([venueId])
 }
 
 model ScheduleField {

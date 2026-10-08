@@ -93,6 +93,28 @@ describe("sidebar job leaves", () => {
     assert.equal(ids.indexOf("division-ages"), ids.indexOf("season-setup") + 1);
   });
 
+  it("shows Parks to a master admin only", () => {
+    assert.equal(leafHrefs("MASTER_ADMIN", true).includes("/admin/parks"), true);
+    for (const role of ["ADMIN", "BOARD_MEMBER", "PARK_DIRECTOR"] as const) {
+      assert.equal(leafHrefs(role, true).includes("/admin/parks"), false, role);
+    }
+    const nav = buildAdminSidebarNav(
+      (module) =>
+        sidebarAllowsModule({
+          module,
+          orgId: "gonzales",
+          role: "MASTER_ADMIN",
+          ordersModuleEnabled: true,
+        }),
+      false,
+      "?org=gonzales",
+    );
+    const park = nav.groups
+      .flatMap((group) => group.subcategories)
+      .find((sub) => sub.id === "park");
+    assert.equal(park?.leaves.some((leaf) => leaf.id === "parks" && leaf.label === "Parks"), true);
+  });
+
   it("shows cap and shirt leaves to a master admin only when the switch is on", () => {
     const master = leafHrefs("MASTER_ADMIN", true);
     assert.equal(master.includes("/admin/cap-orders"), true);
