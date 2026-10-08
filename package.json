@@ -34,6 +34,7 @@
     "seed:scout-synthetic": "tsx --env-file=.env.development.local scripts/seed-scout-synthetic-tickets.ts",
     "scout:classify": "tsx scripts/scout-classify.ts",
     "scout:review": "tsx --env-file=.env.development.local scripts/scout-review-tickets.ts",
+    "venues:prefill": "tsx --env-file=.env.local --env-file=.env.development.local scripts/venues/prefill-venues.ts",
     "seed:ladistrict2-tournament": "tsx --env-file=.env.local --env-file=.env.development.local scripts/seed-ladistrict2-tournament-2026.ts",
     "sync:dev-box": "bash scripts/sync-dev-box.sh",
     "sync:dev-box:restart": "bash scripts/sync-dev-box.sh --restart",

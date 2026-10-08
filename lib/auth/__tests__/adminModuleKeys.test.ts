@@ -32,6 +32,8 @@ describe("admin job module keys", () => {
     assert.equal(getMinimumRoleForModule("GAME_DAY"), "PARK_DIRECTOR");
     assert.equal(getMinimumRoleForModule("DIVISION_AGES"), "ADMIN");
     assert.equal(getAdminModuleLabel("DIVISION_AGES"), "Division ages");
+    assert.equal(getMinimumRoleForModule("VENUES"), "MASTER_ADMIN");
+    assert.equal(getAdminModuleLabel("VENUES"), "Shared parks");
   });
 
   it("keeps division ages at admin and above on org sites and the master site", () => {
@@ -93,12 +95,26 @@ describe("admin job module keys", () => {
     }
   });
 
+  it("denies shared parks to everyone except a master admin", () => {
+    for (const masterDeployment of [false, true]) {
+      for (const role of ["PARK_DIRECTOR", "BOARD_MEMBER", "ADMIN"] as const) {
+        assert.equal(
+          canAccessAdminModule(role, "VENUES", { masterDeployment }),
+          false,
+          `${role} masterDeployment=${masterDeployment}`,
+        );
+      }
+    }
+    assert.equal(canAccessAdminModule("MASTER_ADMIN", "VENUES", { masterDeployment: true }), true);
+  });
+
   it("suggests the least role that covers the requested jobs", () => {
     assert.equal(suggestLeastPrivilegeRole(["GAME_DAY", "SCORES", "REPORTS"]).role, "PARK_DIRECTOR");
     assert.equal(suggestLeastPrivilegeRole(["ORDERS"]).role, "MASTER_ADMIN");
     assert.equal(suggestLeastPrivilegeRole(["SURVEYS", "SCHEDULER", "SPORTS_CONNECT"]).role, "ADMIN");
     assert.equal(suggestLeastPrivilegeRole(["ORDERS", "SURVEYS"]).role, "MASTER_ADMIN");
     assert.equal(suggestLeastPrivilegeRole(["ROLE_ASSIGNMENT"]).role, "MASTER_ADMIN");
+    assert.equal(suggestLeastPrivilegeRole(["VENUES"]).role, "MASTER_ADMIN");
     assert.equal(suggestLeastPrivilegeRole([]).role, "PARK_DIRECTOR");
     for (const module of JOB_KEYS) {
       const suggestion = suggestLeastPrivilegeRole([module]);

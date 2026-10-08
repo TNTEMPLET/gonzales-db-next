@@ -155,6 +155,29 @@ describe("admin dashboard card specs", () => {
     );
   });
 
+  it("lists shared parks for a master admin and hides them from lower roles", () => {
+    const card = ADMIN_DASHBOARD_CARD_SPECS.find((spec) => spec.path === "/admin/parks");
+    assert.ok(card);
+    assert.equal(card.module, "VENUES");
+    assert.equal(card.title, "Parks");
+    assert.equal(isAdminHubHref("/admin/parks"), false);
+    assert.equal(isAdminHubHref("/admin/park"), true);
+
+    const master = buildAdminDashboardCardDescriptors({
+      allowModule: (module) => canAccessAdminModule("MASTER_ADMIN", module, { masterDeployment: true }),
+      orgFor: () => "gonzales",
+    }).some((item) => item.href.startsWith("/admin/parks?"));
+    assert.equal(master, true);
+
+    for (const role of ["ADMIN", "BOARD_MEMBER", "PARK_DIRECTOR"] as const satisfies readonly AdminRole[]) {
+      const titles = buildAdminDashboardCardDescriptors({
+        allowModule: (module) => canAccessAdminModule(role, module, { masterDeployment: true }),
+        orgFor: () => "gonzales",
+      }).map((item) => item.title);
+      assert.equal(titles.includes("Parks"), false, role);
+    }
+  });
+
   it("hides a card when none of its modules are allowed", () => {
     const cards = buildAdminDashboardCardDescriptors({
       allowModule: () => false,
