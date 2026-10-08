@@ -10,6 +10,7 @@ import {
   remoteInventoryScope,
   type RemoteInventoryScope,
 } from "@/lib/admin/scoreboardRemotes/access";
+import { isPostedRemoteGame } from "@/lib/admin/scoreboardRemotes/checkoutRules";
 import {
   ADMIN_SESSION_COOKIE,
   getAdminUserFromCookieToken,
@@ -82,11 +83,16 @@ export async function loadRemoteActor(
 /**
  * Same write gate as scores and the old field desk.
  * Same-league Game Day role, or a park director whose assigned venue matches.
+ *
+ * Check-out passes the default and requires a posted game. Check-in passes
+ * `requirePosted: false` so a draft or canceled game can still come back.
  */
 export async function authorizeRemoteGameWrite(
   admin: AdminSessionUser,
   gameId: string,
+  options?: { requirePosted?: boolean },
 ): Promise<{ ok: true } | { ok: false; status: number; error: string }> {
+  const requirePosted = options?.requirePosted !== false;
   const id = gameId.trim();
   const game = id
     ? await prisma.scheduleDraftGame.findUnique({
@@ -97,7 +103,7 @@ export async function authorizeRemoteGameWrite(
   if (!game || !isContentOrgId(game.organizationId)) {
     return { ok: false, status: 404, error: "Posted game not found." };
   }
-  if (game.status !== "LOCKED" && game.status !== "EXPORTED") {
+  if (requirePosted && !isPostedRemoteGame(game.status)) {
     return { ok: false, status: 403, error: "Only posted games can take a remote." };
   }
 

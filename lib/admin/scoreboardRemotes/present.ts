@@ -1,6 +1,10 @@
 import type { ContentOrgId } from "@/lib/siteConfig";
 
-import { normalizeScoreboardFieldName, scoreboardFieldHoldKey } from "@/lib/admin/scoreboardRemotes/fieldKey";
+import {
+  legacyRemoteHoldKey,
+  normalizeScoreboardFieldName,
+  scoreboardFieldHoldKey,
+} from "@/lib/admin/scoreboardRemotes/fieldKey";
 
 export const ADD_REMOTES_MESSAGE = "Add remotes for this park in Manage remotes.";
 
@@ -149,11 +153,12 @@ export function buildRemoteTabGames(input: {
     const inventory = Boolean(game.venueId) && remoteCount > 0;
     const holdKey = scoreboardFieldHoldKey(game.venueId, game.fieldName);
     if (!inventory) {
+      const legacyKey = legacyRemoteHoldKey(game.venueId, game.parkName, game.fieldName);
       const legacyHolds = input.games
         .filter((other) => {
           if (other.id === game.id || other.legacyCheckout.status !== "out") return false;
-          const otherKey = scoreboardFieldHoldKey(other.venueId, other.fieldName);
-          return Boolean(holdKey) && otherKey === holdKey;
+          const otherKey = legacyRemoteHoldKey(other.venueId, other.parkName, other.fieldName);
+          return Boolean(legacyKey) && otherKey === legacyKey;
         })
         .map((other) => ({
           label: "Remote",
@@ -251,7 +256,7 @@ export type RemoteInventoryRemote = {
   homeFieldName: string | null;
   status: ScoreboardControllerStatus;
   notes: string | null;
-  openCheckout: { volunteerName: string; sinceLabel: string; side: "HOME" | "AWAY" } | null;
+  openCheckout: { id: string; volunteerName: string; sinceLabel: string; side: "HOME" | "AWAY" } | null;
 };
 
 export type RemoteInventoryScreen = {

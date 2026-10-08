@@ -6,9 +6,13 @@ import { decideRemoteInventoryWrite } from "@/lib/admin/scoreboardRemotes/access
 import {
   REMOTE_ALREADY_OUT,
   REMOTE_NOT_AVAILABLE,
+  checkoutAfterControllerStatus,
+  decideCheckInAccess,
+  decideScoreboardCheckIn,
   decideScoreboardCheckout,
+  statusClosesOpenCheckout,
 } from "@/lib/admin/scoreboardRemotes/checkoutRules";
-import { scoreboardFieldHoldKey } from "@/lib/admin/scoreboardRemotes/fieldKey";
+import { legacyRemoteHoldKey, scoreboardFieldHoldKey } from "@/lib/admin/scoreboardRemotes/fieldKey";
 import {
   ADD_REMOTES_MESSAGE,
   buildRemoteTabGames,
@@ -86,6 +90,76 @@ describe("scoreboard remote checkout rules", () => {
     });
     assert.equal(retired.ok, false);
     if (!retired.ok) assert.equal(retired.error, REMOTE_NOT_AVAILABLE);
+  });
+
+  it("checks a draft or canceled game back in for an authorized user and refuses an unauthorized one", () => {
+    for (const gameStatus of ["DRAFT", "CANCELED"] as const) {
+      assert.equal(
+        decideCheckInAccess({
+          gameStatus,
+          gameWriteAllowed: true,
+          inventoryWriteAllowed: false,
+        }).allowed,
+        true,
+      );
+      assert.equal(
+        decideCheckInAccess({
+          gameStatus,
+          gameWriteAllowed: false,
+          inventoryWriteAllowed: false,
+        }).allowed,
+        false,
+      );
+      const denied = decideScoreboardCheckIn({
+        writeAllowed: false,
+        checkout: { checkedInAt: null },
+      });
+      assert.equal(denied.ok, false);
+    }
+
+    const posted = decideCheckInAccess({
+      gameStatus: "LOCKED",
+      gameWriteAllowed: false,
+      inventoryWriteAllowed: true,
+    });
+    assert.equal(posted.allowed, false);
+
+    const unpostedAtVenue = decideCheckInAccess({
+      gameStatus: "CANCELED",
+      gameWriteAllowed: false,
+      inventoryWriteAllowed: true,
+    });
+    assert.equal(unpostedAtVenue.allowed, true);
+
+    const missingGame = decideCheckInAccess({
+      gameStatus: null,
+      gameWriteAllowed: false,
+      inventoryWriteAllowed: true,
+    });
+    assert.equal(missingGame.allowed, true);
+  });
+
+  it("closes the open checkout when a remote is marked missing so it is no longer held", () => {
+    assert.equal(statusClosesOpenCheckout("MISSING"), true);
+    assert.equal(statusClosesOpenCheckout("REPAIR"), true);
+    assert.equal(statusClosesOpenCheckout("RETIRED"), true);
+    assert.equal(statusClosesOpenCheckout("ACTIVE"), false);
+
+    const checkedInAt = new Date("2026-10-08T23:00:00.000Z");
+    const closed = checkoutAfterControllerStatus(
+      "MISSING",
+      { controllerId: "3", checkedInAt: null as Date | null },
+      checkedInAt,
+    );
+    assert.equal(closed.checkedInAt, checkedInAt);
+    const stillOut = checkoutAfterControllerStatus("ACTIVE", { controllerId: "3", checkedInAt: null }, checkedInAt);
+    assert.equal(stillOut.checkedInAt, null);
+
+    const openControllerIds = new Set(closed.checkedInAt ? [] : [closed.controllerId]);
+    assert.deepEqual(
+      remotesAvailableForCheckout([active("3")], openControllerIds).map((remote) => remote.id),
+      ["3"],
+    );
   });
 });
 
@@ -213,6 +287,8 @@ describe("scoreboard remote field holds", () => {
     assert.equal(scoreboardFieldHoldKey("stevens", "Field #3"), scoreboardFieldHoldKey("stevens", "field 3"));
     assert.notEqual(scoreboardFieldHoldKey("stevens", "Field 3"), scoreboardFieldHoldKey("paula", "Field 3"));
     assert.equal(scoreboardFieldHoldKey(null, "Field 3"), null);
+    assert.equal(legacyRemoteHoldKey(null, "Stevens Park", "Field #3"), legacyRemoteHoldKey(null, "stevens park", "field 3"));
+    assert.notEqual(legacyRemoteHoldKey(null, "Stevens", "Field 3"), legacyRemoteHoldKey(null, "Paula", "Field 3"));
   });
 
   it("shows a remote still out on the same field in another league", () => {
@@ -261,6 +337,37 @@ describe("scoreboard remote field holds", () => {
     });
     assert.equal(emptyVenue[0]?.mode, "legacy");
     assert.equal(emptyVenue[0]?.legacyMessage, ADD_REMOTES_MESSAGE);
+  });
+
+  it("keeps a legacy hold when the park is not linked to a venue", () => {
+    const out = game({
+      id: "a",
+      venueId: null,
+      parkName: "Stevens",
+      fieldName: "Field #3",
+      legacyCheckout: { status: "out", side: "home", team: "Home", name: "Ada Blue", note: "Out since 6:00 PM" },
+    });
+    const waiting = game({
+      id: "b",
+      venueId: null,
+      parkName: "Stevens",
+      fieldName: "Field 3",
+      organizationId: "gonzales",
+    });
+    const otherPark = game({
+      id: "c",
+      venueId: null,
+      parkName: "Paula",
+      fieldName: "Field 3",
+    });
+    const rows = buildRemoteTabGames({
+      games: [out, waiting, otherPark],
+      controllers: [],
+      openCheckouts: [],
+    });
+    assert.equal(rows[1]?.holds[0]?.volunteer, "Ada Blue");
+    assert.equal(rows[0]?.holds.length, 0);
+    assert.equal(rows[2]?.holds.length, 0);
   });
 });
 

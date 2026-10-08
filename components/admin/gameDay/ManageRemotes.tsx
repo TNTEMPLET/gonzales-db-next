@@ -3,7 +3,12 @@
 import { useActionState } from "react";
 import Link from "next/link";
 
-import { createRemoteAction, updateRemoteAction, type RemoteActionState } from "@/app/admin/game-day/remoteActions";
+import {
+  checkInRemoteAction,
+  createRemoteAction,
+  updateRemoteAction,
+  type RemoteActionState,
+} from "@/app/admin/game-day/remoteActions";
 import { SCOREBOARD_CONTROLLER_STATUSES, type RemoteInventoryScreen } from "@/lib/admin/scoreboardRemotes/present";
 
 const initial: RemoteActionState = { error: null };
@@ -79,14 +84,19 @@ function RemoteEditor({
 }) {
   const [state, action, pending] = useActionState(updateRemoteAction, initial);
   return (
-    <form action={canWrite ? action : undefined} className="space-y-3 rounded-2xl border border-neutral-300 bg-white p-4">
+    <div className="space-y-3 rounded-2xl border border-neutral-300 bg-white p-4">
+      {remote.openCheckout ? (
+        <div className="space-y-3 rounded-xl bg-amber-50 px-3 py-3 text-sm text-amber-950">
+          <p>
+            Out with {remote.openCheckout.volunteerName} since {remote.openCheckout.sinceLabel}. You can mark it
+            missing.
+          </p>
+          <CheckInForm checkoutId={remote.openCheckout.id} />
+        </div>
+      ) : null}
+      <form action={canWrite ? action : undefined} className="space-y-3">
       <input type="hidden" name="org" value={orgId} />
       <input type="hidden" name="controllerId" value={remote.id} />
-      {remote.openCheckout ? (
-        <p className="rounded-xl bg-amber-50 px-3 py-3 text-sm text-amber-950">
-          Out with {remote.openCheckout.volunteerName} since {remote.openCheckout.sinceLabel}. You can mark it missing.
-        </p>
-      ) : null}
       <label className="block text-sm font-semibold">
         Label
         {canWrite ? (
@@ -149,6 +159,24 @@ function RemoteEditor({
           </button>
         </>
       ) : null}
+      </form>
+    </div>
+  );
+}
+
+function CheckInForm({ checkoutId }: { checkoutId: string }) {
+  const [state, action, pending] = useActionState(checkInRemoteAction, initial);
+  return (
+    <form action={action}>
+      <input type="hidden" name="checkoutId" value={checkoutId} />
+      {state.error ? <p className="mb-2 text-sm font-medium text-red-800">{state.error}</p> : null}
+      <button
+        type="submit"
+        disabled={pending}
+        className="min-h-12 w-full rounded-xl bg-neutral-950 px-4 text-base font-semibold text-white disabled:opacity-60"
+      >
+        Check in
+      </button>
     </form>
   );
 }

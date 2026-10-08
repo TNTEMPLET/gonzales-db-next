@@ -107,7 +107,7 @@ export async function loadRemoteInventoryScreen(actor: RemoteActor): Promise<Rem
           checkouts: {
             where: { checkedInAt: null },
             take: 1,
-            select: { volunteerName: true, checkedOutAt: true, side: true },
+            select: { id: true, volunteerName: true, checkedOutAt: true, side: true },
           },
         },
       },
@@ -129,6 +129,7 @@ export async function loadRemoteInventoryScreen(actor: RemoteActor): Promise<Rem
           notes: remote.notes,
           openCheckout: open
             ? {
+                id: open.id,
                 volunteerName: open.volunteerName,
                 sinceLabel: centralClock(open.checkedOutAt),
                 side: open.side,

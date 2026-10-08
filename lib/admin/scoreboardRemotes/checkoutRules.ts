@@ -12,6 +12,31 @@ export const PICK_CHECKOUT_SIDE = "Pick the home or away team.";
 export const CHECKOUT_NOT_FOUND = "That checkout was not found.";
 export const ALREADY_CHECKED_IN = "That remote is already checked in.";
 
+const POSTED_GAME_STATUSES = new Set(["LOCKED", "EXPORTED"]);
+const CLOSES_OPEN_CHECKOUT = new Set(["MISSING", "REPAIR", "RETIRED"]);
+
+/** Check-out only. A draft or canceled game can still be checked in. */
+export function isPostedRemoteGame(status: string | null | undefined): boolean {
+  return Boolean(status && POSTED_GAME_STATUSES.has(status));
+}
+
+/**
+ * Missing, repair, and retired take the remote out of service.
+ * The open checkout must close so the partial unique index releases it.
+ */
+export function statusClosesOpenCheckout(status: string | null | undefined): boolean {
+  return Boolean(status && CLOSES_OPEN_CHECKOUT.has(status));
+}
+
+export function checkoutAfterControllerStatus<T extends { checkedInAt: Date | null }>(
+  status: string,
+  checkout: T,
+  checkedInAt: Date,
+): T {
+  if (!statusClosesOpenCheckout(status) || checkout.checkedInAt) return checkout;
+  return { ...checkout, checkedInAt };
+}
+
 export type CheckoutSide = "HOME" | "AWAY";
 
 export function parseCheckoutSide(value: string | null | undefined): CheckoutSide | null {
@@ -63,4 +88,24 @@ export function decideScoreboardCheckIn(input: {
   if (!input.writeAllowed) return { ok: false, error: PARK_DIRECTOR_WRITE_DENIED };
   if (input.checkout.checkedInAt) return { ok: false, error: ALREADY_CHECKED_IN };
   return { ok: true };
+}
+
+/**
+ * Check-in uses the same same-league and assigned-venue decision as check-out,
+ * without requiring LOCKED or EXPORTED.
+ *
+ * A posted game keeps that denial. A game that is no longer posted, or a
+ * checkout whose game link is gone, may also be closed by someone who can
+ * write the remote's venue.
+ */
+export function decideCheckInAccess(input: {
+  /** Null when the checkout has no game, or the game row is gone. */
+  gameStatus: string | null;
+  gameWriteAllowed: boolean;
+  inventoryWriteAllowed: boolean;
+}): { allowed: boolean } {
+  if (input.gameStatus && isPostedRemoteGame(input.gameStatus)) {
+    return { allowed: input.gameWriteAllowed };
+  }
+  return { allowed: input.gameWriteAllowed || input.inventoryWriteAllowed };
 }

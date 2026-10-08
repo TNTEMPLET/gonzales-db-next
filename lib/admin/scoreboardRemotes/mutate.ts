@@ -9,8 +9,11 @@ import { isContentOrgId } from "@/lib/siteConfig";
 import { authorizeRemoteGameWrite, loadRemoteActor } from "@/lib/admin/scoreboardRemotes/auth";
 import { decideRemoteInventoryWrite } from "@/lib/admin/scoreboardRemotes/access";
 import {
+  decideCheckInAccess,
   decideScoreboardCheckIn,
   decideScoreboardCheckout,
+  isPostedRemoteGame,
+  statusClosesOpenCheckout,
 } from "@/lib/admin/scoreboardRemotes/checkoutRules";
 import { parseRemoteControllerWrite } from "@/lib/admin/scoreboardRemotes/validate";
 
@@ -98,15 +101,25 @@ export async function updateScoreboardController(
   if (!controller) return { ok: false, status: 404, error: "That remote was not found." };
   const denied = await inventoryWrite(admin, controller.venueId, input.orgId);
   if (denied) return denied;
+  const status = parsed.value.status;
+  if (!status) return { ok: false, status: 400, error: "Choose active, missing, repair, or retired." };
   try {
-    await prisma.scoreboardController.update({
-      where: { id: controller.id },
-      data: {
-        label: parsed.value.label,
-        homeFieldName: parsed.value.homeFieldName,
-        notes: parsed.value.notes,
-        status: parsed.value.status,
-      },
+    await prisma.$transaction(async (tx) => {
+      await tx.scoreboardController.update({
+        where: { id: controller.id },
+        data: {
+          label: parsed.value.label,
+          homeFieldName: parsed.value.homeFieldName,
+          notes: parsed.value.notes,
+          status,
+        },
+      });
+      if (statusClosesOpenCheckout(status)) {
+        await tx.scoreboardCheckout.updateMany({
+          where: { controllerId: controller.id, checkedInAt: null },
+          data: { checkedInAt: new Date(), checkedInByAdminId: admin.id },
+        });
+      }
     });
   } catch (error: unknown) {
     if (uniqueConflict(error)) return { ok: false, status: 409, error: LABEL_TAKEN };
@@ -213,6 +226,22 @@ export async function checkoutScoreboardRemote(
   return { ok: true };
 }
 
+async function controllerInventoryWriteAllowed(
+  admin: AdminSessionUser,
+  checkout: { organizationId: string; controller: { venueId: string } },
+): Promise<boolean> {
+  if (!isContentOrgId(checkout.organizationId)) return false;
+  const actor = await loadRemoteActor(admin, checkout.organizationId);
+  if (!actor) return false;
+  return decideRemoteInventoryWrite({
+    isMaster: admin.isMaster,
+    role: actor.role,
+    venueId: checkout.controller.venueId,
+    leagueVenueIds: actor.leagueVenueIds,
+    assignedVenueIds: actor.assignedVenueIds,
+  }).allowed;
+}
+
 export async function checkInScoreboardRemote(
   admin: AdminSessionUser,
   checkoutId: string,
@@ -229,24 +258,33 @@ export async function checkInScoreboardRemote(
   });
   if (!checkout) return { ok: false, status: 404, error: "That checkout was not found." };
 
-  let writeAllowed = false;
+  let gameStatus: string | null = null;
+  let gameWriteAllowed = false;
   if (checkout.scheduleDraftGameId) {
-    const auth = await authorizeRemoteGameWrite(admin, checkout.scheduleDraftGameId);
-    if (!auth.ok) return auth;
-    writeAllowed = true;
-  } else if (isContentOrgId(checkout.organizationId)) {
-    const actor = await loadRemoteActor(admin, checkout.organizationId);
-    const decision = actor
-      ? decideRemoteInventoryWrite({
-          isMaster: admin.isMaster,
-          role: actor.role,
-          venueId: checkout.controller.venueId,
-          leagueVenueIds: actor.leagueVenueIds,
-          assignedVenueIds: actor.assignedVenueIds,
-        })
-      : { allowed: false };
-    writeAllowed = decision.allowed;
+    const game = await prisma.scheduleDraftGame.findUnique({
+      where: { id: checkout.scheduleDraftGameId },
+      select: { status: true },
+    });
+    gameStatus = game?.status ?? null;
+    const auth = await authorizeRemoteGameWrite(admin, checkout.scheduleDraftGameId, {
+      requirePosted: false,
+    });
+    if (auth.ok) {
+      gameWriteAllowed = true;
+    } else if (isPostedRemoteGame(gameStatus)) {
+      return auth;
+    }
   }
+
+  const inventoryWriteAllowed = gameWriteAllowed
+    ? false
+    : await controllerInventoryWriteAllowed(admin, checkout);
+  const access = decideCheckInAccess({
+    gameStatus: checkout.scheduleDraftGameId ? gameStatus : null,
+    gameWriteAllowed,
+    inventoryWriteAllowed,
+  });
+  const writeAllowed = access.allowed;
 
   const decision = decideScoreboardCheckIn({
     writeAllowed,
