@@ -67,7 +67,7 @@ import {
   type OperationsView,
 } from "@/lib/admin/dashboard/loadInSeasonBoard";
 import { seasonDashboardLinks, type SeasonDashboardLinks } from "@/lib/admin/dashboard/seasonLinks";
-import { decideRainoutWrite } from "@/lib/rainout/writeAccess";
+import { canWriteRainoutByOrgFromRoles } from "@/lib/rainout/dashboardPreview";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -145,16 +145,13 @@ export default async function AdminDashboardPage({
   const adminRole: AdminRole = currentOrg
     ? (roleByOrg[currentOrg] ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR"))
     : (adminUser.isMaster ? "MASTER_ADMIN" : (Object.values(roleByOrg).find((r): r is AdminRole => !!r) ?? "PARK_DIRECTOR"));
-  const canWriteRainoutByOrg = Object.fromEntries(
-    CONTENT_ORGS.map((orgId) => [
-      orgId,
-      decideRainoutWrite({
-        isMaster: adminUser.isMaster,
-        role: roleByOrg[orgId] ?? null,
-        path: "game-day",
-      }).allowed,
-    ]),
-  ) as Partial<Record<ContentOrgId, boolean>>;
+  // Signed-in roles only. View by role is session storage, so the Game Day
+  // panel replaces this map in the UI. Rainout actions keep using this role.
+  const canWriteRainoutByOrg = canWriteRainoutByOrgFromRoles({
+    orgs: CONTENT_ORGS,
+    isMaster: adminUser.isMaster,
+    roleByOrg,
+  });
 
   const allowRolePreview = hasAdminRoleAtLeast(adminRole, "ADMIN");
   const communicationsEnabled = isCommunicationsModuleEnabled();
@@ -572,6 +569,7 @@ export default async function AdminDashboardPage({
             linksByOrg={seasonLinks}
             financeByOrg={seasonFinance}
             canWriteRainoutByOrg={canWriteRainoutByOrg}
+            allowRolePreview={allowRolePreview}
             district={inSeason.district}
             districtHref={
               allSitesRequested && adminUser.isMaster ? "/admin/reports/tournament-income" : null
@@ -584,6 +582,7 @@ export default async function AdminDashboardPage({
                 key={status.organizationId}
                 status={status}
                 canWrite={canWriteRainoutByOrg[status.organizationId] === true}
+                allowRolePreview={allowRolePreview}
               />
             ))}
           </div>

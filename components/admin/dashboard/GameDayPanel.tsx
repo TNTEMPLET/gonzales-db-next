@@ -4,18 +4,30 @@ import { useState, useTransition } from "react";
 
 import { clearGameDayRainout, previewGameDayRainout, setGameDayRainout } from "@/app/admin/game-day/actions";
 import RainoutEmailPreview from "@/components/admin/RainoutEmailPreview";
+import { usePreviewedRainoutWrite } from "@/components/admin/dashboard/usePreviewedRainoutWrite";
 import { rethrowNavigationError } from "@/lib/rainout/actionError";
 import type { GameDayStatus } from "@/lib/admin/dashboard/gameDay";
 import type { RainoutNotifySummary } from "@/lib/rainout/types";
 
 export default function GameDayPanel({
   status,
-  canWrite,
+  canWrite: liveCanWrite,
+  allowRolePreview = false,
 }: {
   status: GameDayStatus;
   /** False for park directors. They see the rainout state and cannot set or clear it. */
   canWrite: boolean;
+  /**
+   * When View by role is available, show the previewed role's game-day
+   * controls. The rainout actions still authorize the signed-in role.
+   */
+  allowRolePreview?: boolean;
 }) {
+  const canWrite = usePreviewedRainoutWrite({
+    organizationId: status.organizationId,
+    liveAllowed: liveCanWrite,
+    allowRolePreview,
+  });
   const [allParksOut, setAllParksOut] = useState(status.allParksOut);
   const [parks, setParks] = useState<string[]>(status.rainedOutParks);
   const [error, setError] = useState<string | null>(null);
