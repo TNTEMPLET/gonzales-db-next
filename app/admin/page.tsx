@@ -67,6 +67,7 @@ import {
   type OperationsView,
 } from "@/lib/admin/dashboard/loadInSeasonBoard";
 import { seasonDashboardLinks, type SeasonDashboardLinks } from "@/lib/admin/dashboard/seasonLinks";
+import { decideRainoutWrite } from "@/lib/rainout/writeAccess";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -144,6 +145,16 @@ export default async function AdminDashboardPage({
   const adminRole: AdminRole = currentOrg
     ? (roleByOrg[currentOrg] ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR"))
     : (adminUser.isMaster ? "MASTER_ADMIN" : (Object.values(roleByOrg).find((r): r is AdminRole => !!r) ?? "PARK_DIRECTOR"));
+  const canWriteRainoutByOrg = Object.fromEntries(
+    CONTENT_ORGS.map((orgId) => [
+      orgId,
+      decideRainoutWrite({
+        isMaster: adminUser.isMaster,
+        role: roleByOrg[orgId] ?? null,
+        path: "game-day",
+      }).allowed,
+    ]),
+  ) as Partial<Record<ContentOrgId, boolean>>;
 
   const allowRolePreview = hasAdminRoleAtLeast(adminRole, "ADMIN");
   const communicationsEnabled = isCommunicationsModuleEnabled();
@@ -560,6 +571,7 @@ export default async function AdminDashboardPage({
             operationsByOrg={operationsByOrg}
             linksByOrg={seasonLinks}
             financeByOrg={seasonFinance}
+            canWriteRainoutByOrg={canWriteRainoutByOrg}
             district={inSeason.district}
             districtHref={
               allSitesRequested && adminUser.isMaster ? "/admin/reports/tournament-income" : null
@@ -568,7 +580,11 @@ export default async function AdminDashboardPage({
         ) : parkDirectorGameDay.length > 0 ? (
           <div className="mb-8 space-y-4">
             {parkDirectorGameDay.map((status) => (
-              <GameDayPanel key={status.organizationId} status={status} />
+              <GameDayPanel
+                key={status.organizationId}
+                status={status}
+                canWrite={canWriteRainoutByOrg[status.organizationId] === true}
+              />
             ))}
           </div>
         ) : null}

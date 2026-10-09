@@ -79,7 +79,8 @@ export default function AdminAlertsManager({ activeAlerts, availableOrgs, defaul
     setIntent("delete");
     startTransition(async () => {
       try {
-        await deleteOrgAlert(id);
+        const result = await deleteOrgAlert(id);
+        if (result && !result.ok) setDeleteError(result.error);
       } catch {
         setDeleteError("Failed to delete alert. Please try again.");
       }

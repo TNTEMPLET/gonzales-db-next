@@ -8,7 +8,14 @@ import { rethrowNavigationError } from "@/lib/rainout/actionError";
 import type { GameDayStatus } from "@/lib/admin/dashboard/gameDay";
 import type { RainoutNotifySummary } from "@/lib/rainout/types";
 
-export default function GameDayPanel({ status }: { status: GameDayStatus }) {
+export default function GameDayPanel({
+  status,
+  canWrite,
+}: {
+  status: GameDayStatus;
+  /** False for park directors. They see the rainout state and cannot set or clear it. */
+  canWrite: boolean;
+}) {
   const [allParksOut, setAllParksOut] = useState(status.allParksOut);
   const [parks, setParks] = useState<string[]>(status.rainedOutParks);
   const [error, setError] = useState<string | null>(null);
@@ -88,23 +95,28 @@ export default function GameDayPanel({ status }: { status: GameDayStatus }) {
     });
   }
 
+  const rainoutStatus = active
+    ? status.allParksOut
+      ? `All parks are rained out. ${status.throughLabel ?? ""}`.trim()
+      : `${status.rainedOutParks.join(", ")} rained out. ${status.throughLabel ?? ""}`.trim()
+    : "No rainout is up.";
+
   return (
-    <section className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5" data-game-day={status.organizationId}>
+    <section
+      className="rounded-2xl border border-zinc-800 bg-zinc-900/70 p-5"
+      data-game-day={status.organizationId}
+      data-game-day-rainout={canWrite ? "editor" : "readonly"}
+    >
       <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between">
         <h3 className="text-base font-bold text-white">Game day</h3>
-        <p className="text-sm text-zinc-400">
-          {active
-            ? status.allParksOut
-              ? `All parks are rained out. ${status.throughLabel ?? ""}`.trim()
-              : `${status.rainedOutParks.join(", ")} rained out. ${status.throughLabel ?? ""}`.trim()
-            : "No rainout is up."}
-        </p>
+        <p className="text-sm text-zinc-400">{rainoutStatus}</p>
       </div>
       <p className="mt-2 text-sm text-zinc-500">
         Families see this on the schedule until the end of today. Games stay on the card.
         {status.organizationLabel ? ` ${status.organizationLabel}.` : ""}
       </p>
-
+      {canWrite ? (
+      <>
       <div className="mt-4 space-y-2">
         <label className="flex items-center gap-2 text-sm text-white">
           <input
@@ -175,6 +187,8 @@ export default function GameDayPanel({ status }: { status: GameDayStatus }) {
         ) : null}
       </div>
       {summary ? <RainoutEmailPreview summary={summary} /> : null}
+      </>
+      ) : null}
     </section>
   );
 }

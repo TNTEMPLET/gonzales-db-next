@@ -51,6 +51,7 @@ export default function InSeasonBoard({
   operationsByOrg,
   linksByOrg,
   financeByOrg,
+  canWriteRainoutByOrg,
   district,
   districtHref,
 }: {
@@ -60,6 +61,7 @@ export default function InSeasonBoard({
   operationsByOrg: Partial<Record<ContentOrgId, OperationsView>>;
   linksByOrg: Partial<Record<ContentOrgId, SeasonDashboardLinks>>;
   financeByOrg: Partial<Record<ContentOrgId, SeasonFinanceSlice>>;
+  canWriteRainoutByOrg: Partial<Record<ContentOrgId, boolean>>;
   district: DistrictIncomeView | null;
   districtHref: string | null;
 }) {
@@ -70,6 +72,7 @@ export default function InSeasonBoard({
           key={picture.organizationId}
           picture={picture}
           gameDay={gameDayByOrg[picture.organizationId] ?? null}
+          canWriteRainout={canWriteRainoutByOrg[picture.organizationId] === true}
           sync={syncByOrg[picture.organizationId] ?? null}
           operations={operationsByOrg[picture.organizationId] ?? null}
           links={linksByOrg[picture.organizationId] ?? null}
@@ -84,6 +87,7 @@ export default function InSeasonBoard({
 function OrgSeasonSection({
   picture,
   gameDay,
+  canWriteRainout,
   sync,
   operations,
   links,
@@ -91,6 +95,7 @@ function OrgSeasonSection({
 }: {
   picture: OrgSeasonPicture;
   gameDay: GameDayStatus | null;
+  canWriteRainout: boolean;
   sync: AssignrSyncView | null;
   operations: OperationsView | null;
   links: SeasonDashboardLinks | null;
@@ -117,7 +122,7 @@ function OrgSeasonSection({
         ))}
       </div>
 
-      {gameDay ? <GameDayPanel status={gameDay} /> : null}
+      {gameDay ? <GameDayPanel status={gameDay} canWrite={canWriteRainout} /> : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {picture.kpis.map((kpi) => (
