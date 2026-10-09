@@ -28,7 +28,13 @@ function utcNoonOn(isoDate: string): Date {
 
 function modeOn(
   isoDate: string,
-  extra?: Partial<typeof SPRING & { override: string | null }>,
+  extra?: {
+    seasonStart?: string;
+    seasonEnd?: string;
+    registrationStart?: string | null;
+    registrationEnd?: string | null;
+    override?: string | null;
+  },
 ) {
   return resolveSeasonMode({
     ...SPRING,
