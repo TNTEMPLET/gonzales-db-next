@@ -159,6 +159,10 @@ describe("spring combined access", () => {
       assert.doesNotMatch(href, /fallball/);
       const path = href.split("?")[0] ?? href;
       if (path === "/admin/season-setup" || path.startsWith("/admin/season-setup/")) continue;
+      if (path === "/admin") {
+        assert.equal(href, "/admin?org=gonzales&view=dashboard");
+        continue;
+      }
       assert.equal(href.endsWith("?org=gonzales"), true, href);
       assert.doesNotMatch(href, /org=spring/);
     }

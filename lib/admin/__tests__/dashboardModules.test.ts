@@ -8,7 +8,9 @@ import {
   ADMIN_HUB_PATHS,
   buildAdminDashboardCardDescriptors,
   getAdminDashboardCategory,
+  groupAdminDashboardCards,
   isAdminHubHref,
+  orderDashboardCardsForSeason,
 } from "@/lib/admin/dashboardModules";
 
 const HUB_COPY = /\bhubs?\b|one place/i;
@@ -184,6 +186,44 @@ describe("admin dashboard card specs", () => {
       }).map((item) => item.title);
       assert.equal(titles.includes("Parks"), false, role);
     }
+  });
+
+  it("lists season setup first in the off season and preseason only", () => {
+    const cards = buildAdminDashboardCardDescriptors({
+      allowModule: (module) => canAccessAdminModule("ADMIN", module),
+      orgFor: () => "gonzales",
+    });
+    const titles = cards.map((card) => card.title);
+    assert.notEqual(titles[0], "Season Setup");
+    assert.equal(titles.includes("Season Setup"), true);
+
+    for (const seasonMode of ["OFF_SEASON", "PRESEASON"] as const) {
+      const ordered = orderDashboardCardsForSeason(cards, { seasonMode });
+      assert.equal(ordered[0]?.module, "SEASON_SETUP");
+      assert.equal(ordered[0]?.lead, true);
+      assert.deepEqual(
+        ordered.slice(1).map((card) => card.title),
+        titles.filter((title) => title !== "Season Setup"),
+      );
+      const groups = groupAdminDashboardCards(ordered);
+      assert.equal(groups[0]?.hideHeading, true);
+      assert.equal(groups[0]?.cards[0]?.title, "Season Setup");
+      const competition = groups.find((group) => group.category === "competition" && !group.hideHeading);
+      assert.equal(competition?.cards.some((card) => card.module === "SEASON_SETUP"), false);
+    }
+
+    for (const seasonMode of ["IN_SEASON", "POSTSEASON"] as const) {
+      const ordered = orderDashboardCardsForSeason(cards, { seasonMode });
+      assert.deepEqual(ordered.map((card) => card.title), titles);
+      assert.equal(ordered.some((card) => card.lead), false);
+    }
+
+    const allSites = orderDashboardCardsForSeason(cards, { seasonMode: "OFF_SEASON", allSites: true });
+    assert.deepEqual(allSites.map((card) => card.title), titles);
+    assert.equal(allSites.some((card) => card.lead), false);
+
+    const unknown = orderDashboardCardsForSeason(cards, {});
+    assert.deepEqual(unknown.map((card) => card.title), titles);
   });
 
   it("hides a card when none of its modules are allowed", () => {

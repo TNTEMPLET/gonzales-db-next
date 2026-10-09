@@ -2,7 +2,7 @@ import "server-only";
 
 import { prisma } from "@/lib/prisma";
 import { listVolunteerCards } from "@/lib/volunteers/service";
-import type { ContentOrgId } from "@/lib/siteConfig";
+import { isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
 import { STANDARD_DIVISIONS } from "@/lib/sportsConnect/fallballDivisions";
 import { sortTeamsManagementAgeGroups } from "@/lib/admin/teamsImportHelpers";
 import {
@@ -10,17 +10,16 @@ import {
   type DraftSessionStatusLike,
   type RosterBuildMethod,
 } from "@/lib/admin/seasonSetup/divisionRosterStatus";
+import {
+  classifyParksDirectorsRemotes,
+  divisionAgesConfirmedStatus,
+} from "@/lib/admin/seasonSetup/checklistStatus";
 
-/** The two items with no clean auto-detect signal -- an admin checks these off manually. */
-export const MANUAL_CHECKLIST_ITEM_KEYS = [
-  "REGISTRATION_WINDOW_SET",
-  "JERSEY_ORDERS_SUBMITTED",
-] as const;
-export type ManualChecklistItemKey = (typeof MANUAL_CHECKLIST_ITEM_KEYS)[number];
-
-export function isManualChecklistItemKey(key: string): key is ManualChecklistItemKey {
-  return (MANUAL_CHECKLIST_ITEM_KEYS as readonly string[]).includes(key);
-}
+export {
+  isManualChecklistItemKey,
+  MANUAL_CHECKLIST_ITEM_KEYS,
+  type ManualChecklistItemKey,
+} from "@/lib/admin/seasonSetup/checklistStatus";
 
 export type SeasonSetupSubItem = {
   label: string;
@@ -67,6 +66,8 @@ export async function getSeasonSetupChecklist(
     divisionTeams,
     draftSessions,
     activeSchedule,
+    seasonSettings,
+    scheduleParks,
   ] = await Promise.all([
     prisma.seasonSetupChecklistItem.findMany({ where: { organizationId, seasonYear } }),
     prisma.sportsConnectImportRun.findFirst({
@@ -89,6 +90,27 @@ export async function getSeasonSetupChecklist(
       select: { ageGroup: true, status: true },
     }),
     prisma.scheduleSeason.findFirst({ where: { organizationId, seasonYear, status: "ACTIVE" } }),
+    prisma.seasonOrgSettings.findUnique({
+      where: { organizationId_seasonYear: { organizationId, seasonYear } },
+      select: { divisionAgesJson: true },
+    }),
+    prisma.schedulePark.findMany({
+      where: { organizationId },
+      orderBy: { name: "asc" },
+      select: {
+        name: true,
+        isActive: true,
+        venueId: true,
+        venue: {
+          select: {
+            id: true,
+            isActive: true,
+            parkDirectorAssignments: { select: { venueId: true, active: true } },
+            scoreboardControllers: { select: { venueId: true, status: true } },
+          },
+        },
+      },
+    }),
   ]);
 
   const manualByKey = new Map(manualItems.map((m) => [`${m.itemKey}|${m.ageGroup}`, m]));
@@ -139,7 +161,40 @@ export async function getSeasonSetupChecklist(
   });
   const jerseyOrdersComplete = jerseyOrderSubItems.filter((d) => d.status === "COMPLETE").length;
 
+  const venuesById = new Map<string, { id: string; isActive: boolean }>();
+  const directors: { venueId: string; active: boolean }[] = [];
+  const remotes: { venueId: string; status: string }[] = [];
+  for (const park of scheduleParks) {
+    const venue = park.venue;
+    if (!venue || venuesById.has(venue.id)) continue;
+    venuesById.set(venue.id, { id: venue.id, isActive: venue.isActive });
+    for (const director of venue.parkDirectorAssignments) {
+      directors.push({ venueId: venue.id, active: director.active });
+    }
+    for (const remote of venue.scoreboardControllers) {
+      remotes.push({ venueId: venue.id, status: remote.status });
+    }
+  }
+  const parksReady = classifyParksDirectorsRemotes({
+    parks: scheduleParks.map((park) => ({
+      name: park.name,
+      isActive: park.isActive,
+      venueId: park.venueId,
+    })),
+    venues: [...venuesById.values()],
+    directors,
+    remotes,
+  });
+  const parksHref = isMasterDeployment() ? "/admin/parks" : "/admin/game-day/remotes";
+
   const items: SeasonSetupItem[] = [
+    {
+      key: "DIVISION_AGES_CONFIRMED",
+      label: "Division ages confirmed",
+      status: divisionAgesConfirmedStatus(seasonSettings?.divisionAgesJson ?? null),
+      href: "/admin/season-setup/division-ages",
+      manual: false,
+    },
     {
       key: "REGISTRATION_WINDOW_SET",
       label: "Registration window configured",
@@ -210,6 +265,18 @@ export async function getSeasonSetupChecklist(
       href: "/admin/teams",
       manual: true,
       subItems: jerseyOrderSubItems,
+    },
+    {
+      key: "PARKS_DIRECTORS_REMOTES",
+      label: "Parks, directors, and remotes",
+      status: parksReady.status,
+      progressLabel: parksReady.progressLabel,
+      href: parksHref,
+      manual: false,
+      subItems:
+        parksReady.subItems.length === 0
+          ? undefined
+          : parksReady.subItems.map((park) => ({ ...park, href: parksHref })),
     },
     {
       key: "SCHEDULE_PUBLISHED",

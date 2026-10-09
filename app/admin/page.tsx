@@ -38,6 +38,7 @@ import prisma from "@/lib/prisma";
 import {
   buildAdminDashboardCardDescriptors,
   cardAccessModules,
+  orderDashboardCardsForSeason,
 } from "@/lib/admin/dashboardModules";
 import { getRegistrationSummary } from "@/lib/admin/dashboard/registrationSummary";
 import { getComplianceSummary } from "@/lib/admin/dashboard/complianceSummary";
@@ -54,8 +55,10 @@ import ParkDirectorMenu from "@/components/admin/dashboard/ParkDirectorMenu";
 import ParkDirectorScope from "@/components/admin/ParkDirectorScope";
 import { loadDirectorParks, loadParkDirectorUmpirePay } from "@/lib/admin/dashboard/parkDirectorPay";
 import type { DayParkUmpirePay } from "@/lib/admin/umpirePayRows";
-import { directorGameDayOrg } from "@/lib/admin/gameDay/landing";
+import { directorGameDayOrg, pathAfterAdminLogin, withDashboardView } from "@/lib/admin/gameDay/landing";
 import { gameDayHomePath, gameDayMembershipOrgs, viewerLandsOnGameDay } from "@/lib/admin/gameDay/session";
+import { loadSeasonMode } from "@/lib/season/loadMode";
+import type { SeasonMode } from "@/lib/season/mode";
 import { leagueCalendarDate } from "@/lib/seasonConfig";
 import InSeasonBoard, { type SeasonFinanceSlice } from "@/components/admin/dashboard/InSeasonBoard";
 import type { GameDayStatus } from "@/lib/admin/dashboard/gameDay";
@@ -81,9 +84,9 @@ export function generateMetadata() {
 export default async function AdminDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string; day?: string; park?: string }>;
+  searchParams: Promise<{ org?: string; day?: string; park?: string; view?: string }>;
 }) {
-  const { org, day, park } = await searchParams;
+  const { org, day, park, view } = await searchParams;
   const masterMode = isMasterDeployment();
   const requestedOrg =
     org && CONTENT_ORGS.includes(org as ContentOrgId)
@@ -122,13 +125,39 @@ export default async function AdminDashboardPage({
   // Bare /admin on master used to land on All Sites, which forced a click
   // into the live org every visit. Redirect onto that org so the switcher,
   // sidebar, and module links share the same target. Explicit ?org=all
-  // still opens the aggregate view.
+  // still opens the aggregate view. ?view=dashboard survives this hop so
+  // the next request can stay on the module grid.
   if (masterMode && !requestedOrg && !allSitesRequested) {
-    redirect(`/admin?org=${getPrimaryLiveContentOrg()}`);
+    const primary = getPrimaryLiveContentOrg();
+    redirect(
+      view === "dashboard" ? withDashboardView(`/admin?org=${primary}`) : `/admin?org=${primary}`,
+    );
   }
 
   const currentOrg = masterMode ? requestedOrg : getDefaultContentOrg();
   const moduleOrgFallback = currentOrg ?? getPrimaryLiveContentOrg();
+
+  // Park directors, ?org=spring, and bare master /admin already redirected.
+  // ?org=all has no single mode and stays on this dashboard.
+  let seasonMode: SeasonMode | null = null;
+  if (currentOrg) {
+    try {
+      seasonMode = (await loadSeasonMode(currentOrg)).mode;
+    } catch (err) {
+      console.error(
+        "Season mode could not be loaded for admin home.",
+        err instanceof Error ? err.message : err,
+      );
+    }
+    const here =
+      view === "dashboard" ? withDashboardView(`/admin?org=${currentOrg}`) : `/admin?org=${currentOrg}`;
+    const destination = pathAfterAdminLogin({
+      nextPath: here,
+      landsOnGameDay: false,
+      seasonMode,
+    });
+    if (destination !== here) redirect(destination);
+  }
 
   const displayName =
     [adminUser.firstName, adminUser.lastName].filter(Boolean).join(" ") ||
@@ -349,17 +378,20 @@ export default async function AdminDashboardPage({
     if (currentOrg) return hasModuleAccess(currentOrg, module);
     return CONTENT_ORGS.some((orgId) => hasModuleAccess(orgId, module));
   };
-  const cards = buildAdminDashboardCardDescriptors({
-    allowModule: allowDashboardCard,
-    orgFor: (spec) => {
-      if (currentOrg) return currentOrg;
-      for (const module of cardAccessModules(spec)) {
-        const match = CONTENT_ORGS.find((orgId) => hasModuleAccess(orgId, module));
-        if (match) return match;
-      }
-      return moduleOrgFallback;
-    },
-  });
+  const cards = orderDashboardCardsForSeason(
+    buildAdminDashboardCardDescriptors({
+      allowModule: allowDashboardCard,
+      orgFor: (spec) => {
+        if (currentOrg) return currentOrg;
+        for (const module of cardAccessModules(spec)) {
+          const match = CONTENT_ORGS.find((orgId) => hasModuleAccess(orgId, module));
+          if (match) return match;
+        }
+        return moduleOrgFallback;
+      },
+    }),
+    { seasonMode, allSites: !currentOrg },
+  );
 
   const visibleModuleCount = cards.length;
   const liveSeasonLabel = currentOrg
