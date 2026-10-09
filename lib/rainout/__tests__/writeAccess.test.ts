@@ -3,7 +3,12 @@ import { describe, it } from "node:test";
 
 import type { AdminRole } from "@/lib/auth/adminRoles";
 
-import { decideRainoutWrite, RAINOUT_WRITE_DENIED_MESSAGE, type RainoutWritePath } from "../writeAccess";
+import {
+  crossLeagueRainoutActor,
+  decideRainoutWrite,
+  RAINOUT_WRITE_DENIED_MESSAGE,
+  type RainoutWritePath,
+} from "../writeAccess";
 
 const PATHS: RainoutWritePath[] = ["game-day", "park-alerts"];
 
@@ -85,5 +90,33 @@ describe("rainout write access", () => {
         path: "game-day",
       }),
     );
+  });
+});
+
+describe("cross-league park alert writes", () => {
+  it("denies a missing role on the other league unless the caller is a master", () => {
+    const missing = crossLeagueRainoutActor({ isMaster: false, targetRole: null });
+    denied(missing.decision);
+    assert.equal(missing.actor.role, null);
+    assert.equal(missing.actor.isMaster, false);
+
+    const master = crossLeagueRainoutActor({ isMaster: true, targetRole: null });
+    assert.equal(master.decision.allowed, true);
+    assert.equal(master.actor.role, null);
+    assert.equal(master.actor.isMaster, true);
+  });
+
+  it("judges the other league by that league's role", () => {
+    const board = crossLeagueRainoutActor({ isMaster: false, targetRole: "BOARD_MEMBER" });
+    denied(board.decision);
+    assert.equal(board.actor.role, "BOARD_MEMBER");
+
+    const director = crossLeagueRainoutActor({ isMaster: false, targetRole: "PARK_DIRECTOR" });
+    denied(director.decision);
+    assert.equal(director.actor.role, "PARK_DIRECTOR");
+
+    const admin = crossLeagueRainoutActor({ isMaster: false, targetRole: "ADMIN" });
+    assert.equal(admin.decision.allowed, true);
+    assert.equal(admin.actor.role, "ADMIN");
   });
 });

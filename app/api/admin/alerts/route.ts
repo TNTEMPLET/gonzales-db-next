@@ -6,7 +6,7 @@ import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import { ensureAdminModule } from "@/lib/news/auth";
 import { setOrgRainout } from "@/lib/rainout/apply";
 import { revalidateRainoutPaths } from "@/lib/rainout/revalidate";
-import { decideRainoutWrite, type RainoutActor } from "@/lib/rainout/writeAccess";
+import { crossLeagueRainoutActor, decideRainoutWrite, type RainoutActor } from "@/lib/rainout/writeAccess";
 import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
 function rainoutDenied(message: string, status: 403) {
@@ -26,6 +26,28 @@ async function parkAlertWriter(request: NextRequest, organizationId: ContentOrgI
     return { ok: false as const, response: rainoutDenied(decision.message, decision.status) };
   }
   return { ok: true as const, adminUser, actor };
+}
+
+/**
+ * Same league keeps the auth-org actor. A different league is judged on that
+ * league's role, and the write uses that actor.
+ */
+async function actorForRainoutLeague(
+  adminUser: { id: string; isMaster: boolean },
+  authOrg: ContentOrgId,
+  targetOrg: ContentOrgId,
+  authActor: RainoutActor,
+) {
+  if (targetOrg === authOrg) return { ok: true as const, actor: authActor };
+  const targetRole = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, targetOrg);
+  const { actor, decision } = crossLeagueRainoutActor({
+    isMaster: adminUser.isMaster,
+    targetRole,
+  });
+  if (!decision.allowed) {
+    return { ok: false as const, response: rainoutDenied(decision.message, decision.status) };
+  }
+  return { ok: true as const, actor };
 }
 
 export async function GET(request: NextRequest) {
@@ -67,22 +89,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid organizationId" }, { status: 400 });
   }
 
-  if (body.organizationId !== authOrg) {
-    const targetRole = await getEffectiveAdminRoleForOrg(
-      writer.adminUser.id,
-      writer.adminUser.isMaster,
-      body.organizationId,
-    );
-    if (targetRole === "PARK_DIRECTOR") {
-      const decision = decideRainoutWrite({
-        isMaster: writer.adminUser.isMaster,
-        role: "PARK_DIRECTOR",
-        otherRoles: writer.actor.role ? [writer.actor.role] : [],
-        path: "park-alerts",
-      });
-      if (!decision.allowed) return rainoutDenied(decision.message, decision.status);
-    }
-  }
+  const targetWrite = await actorForRainoutLeague(
+    writer.adminUser,
+    authOrg,
+    body.organizationId,
+    writer.actor,
+  );
+  if (!targetWrite.ok) return targetWrite.response;
 
   const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
   if (!expiresAt || Number.isNaN(expiresAt.getTime())) {
@@ -98,7 +111,7 @@ export async function POST(request: NextRequest) {
     parks,
     expiresAt,
     actorAdminId: auth.admin.id,
-    actor: writer.actor,
+    actor: targetWrite.actor,
     path: "park-alerts",
   });
   if (!result.ok) {
@@ -130,22 +143,13 @@ export async function DELETE(request: NextRequest) {
   if (!isContentOrgId(existing.organizationId)) {
     return NextResponse.json({ error: "Unknown league." }, { status: 400 });
   }
-  if (existing.organizationId !== authOrg) {
-    const targetRole = await getEffectiveAdminRoleForOrg(
-      writer.adminUser.id,
-      writer.adminUser.isMaster,
-      existing.organizationId,
-    );
-    if (targetRole === "PARK_DIRECTOR") {
-      const decision = decideRainoutWrite({
-        isMaster: writer.adminUser.isMaster,
-        role: "PARK_DIRECTOR",
-        otherRoles: writer.actor.role ? [writer.actor.role] : [],
-        path: "park-alerts",
-      });
-      if (!decision.allowed) return rainoutDenied(decision.message, decision.status);
-    }
-  }
+  const targetClear = await actorForRainoutLeague(
+    writer.adminUser,
+    authOrg,
+    existing.organizationId,
+    writer.actor,
+  );
+  if (!targetClear.ok) return targetClear.response;
 
   await prisma.orgAlert.delete({ where: { id } });
   revalidateRainoutPaths();

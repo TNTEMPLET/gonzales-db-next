@@ -46,3 +46,19 @@ export function decideRainoutWrite(input: RainoutActor & { path: RainoutWritePat
   if (input.path === "game-day" && input.role === "BOARD_MEMBER") return { allowed: true };
   return DENIED;
 }
+
+/**
+ * A rainout for a league other than the one that authorized the request
+ * is judged only on that league. A null role there is denied unless the
+ * caller is a master admin. The returned actor is the one to pass into the write.
+ */
+export function crossLeagueRainoutActor(input: {
+  isMaster: boolean;
+  targetRole: AdminRole | null;
+}): { actor: RainoutActor; decision: RainoutWriteDecision } {
+  const actor: RainoutActor = { isMaster: input.isMaster, role: input.targetRole };
+  return {
+    actor,
+    decision: decideRainoutWrite({ isMaster: input.isMaster, role: input.targetRole, path: "park-alerts" }),
+  };
+}
