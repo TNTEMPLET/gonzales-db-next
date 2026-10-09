@@ -22,4 +22,18 @@ describe("game day rainout controls", () => {
     assert.match(panel, /Rain out/);
     assert.match(panel, /Clear/);
   });
+
+  it("applies the dashboard role preview in the UI and leaves action auth on the signed-in role", () => {
+    const panel = source("components/admin/dashboard/GameDayPanel.tsx");
+    assert.match(panel, /usePreviewedRainoutWrite/);
+    assert.match(panel, /allowRolePreview/);
+    const board = source("components/admin/dashboard/InSeasonBoard.tsx");
+    assert.match(board, /allowRolePreview=\{allowRolePreview\}/);
+    const hook = source("components/admin/dashboard/usePreviewedRainoutWrite.ts");
+    assert.match(hook, /readAdminViewPreviewRole/);
+    assert.match(hook, /gameDayRainoutWriteForPreview/);
+    const actions = source("app/admin/game-day/actions.ts");
+    assert.match(actions, /decideRainoutWrite\(\{ \.\.\.auth\.actor, path: "game-day" \}\)/);
+    assert.doesNotMatch(actions, /readAdminViewPreviewRole|dashboardPreview/);
+  });
 });

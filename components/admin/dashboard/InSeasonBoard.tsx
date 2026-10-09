@@ -52,6 +52,7 @@ export default function InSeasonBoard({
   linksByOrg,
   financeByOrg,
   canWriteRainoutByOrg,
+  allowRolePreview = false,
   district,
   districtHref,
 }: {
@@ -62,6 +63,8 @@ export default function InSeasonBoard({
   linksByOrg: Partial<Record<ContentOrgId, SeasonDashboardLinks>>;
   financeByOrg: Partial<Record<ContentOrgId, SeasonFinanceSlice>>;
   canWriteRainoutByOrg: Partial<Record<ContentOrgId, boolean>>;
+  /** UI-only. The Game Day panel reapplies this with the previewed role. */
+  allowRolePreview?: boolean;
   district: DistrictIncomeView | null;
   districtHref: string | null;
 }) {
@@ -73,6 +76,7 @@ export default function InSeasonBoard({
           picture={picture}
           gameDay={gameDayByOrg[picture.organizationId] ?? null}
           canWriteRainout={canWriteRainoutByOrg[picture.organizationId] === true}
+          allowRolePreview={allowRolePreview}
           sync={syncByOrg[picture.organizationId] ?? null}
           operations={operationsByOrg[picture.organizationId] ?? null}
           links={linksByOrg[picture.organizationId] ?? null}
@@ -88,6 +92,7 @@ function OrgSeasonSection({
   picture,
   gameDay,
   canWriteRainout,
+  allowRolePreview,
   sync,
   operations,
   links,
@@ -96,6 +101,7 @@ function OrgSeasonSection({
   picture: OrgSeasonPicture;
   gameDay: GameDayStatus | null;
   canWriteRainout: boolean;
+  allowRolePreview: boolean;
   sync: AssignrSyncView | null;
   operations: OperationsView | null;
   links: SeasonDashboardLinks | null;
@@ -122,7 +128,13 @@ function OrgSeasonSection({
         ))}
       </div>
 
-      {gameDay ? <GameDayPanel status={gameDay} canWrite={canWriteRainout} /> : null}
+      {gameDay ? (
+        <GameDayPanel
+          status={gameDay}
+          canWrite={canWriteRainout}
+          allowRolePreview={allowRolePreview}
+        />
+      ) : null}
 
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
         {picture.kpis.map((kpi) => (
