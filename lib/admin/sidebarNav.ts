@@ -11,6 +11,7 @@ import {
   type AdminModule,
   type AdminRole,
 } from "@/lib/auth/adminRoles";
+import { isSetupSeasonMode, type SeasonMode } from "@/lib/season/mode";
 import { isAdminModuleEnabledForOrg, isMasterDeployment, type ContentOrgId } from "@/lib/siteConfig";
 
 export type AdminSidebarLeaf = {
@@ -253,4 +254,49 @@ export function buildAdminSidebarNav(
   ].filter((g) => g.subcategories.length > 0);
 
   return { dashboardHref: leafHref("/admin", orgSuffix), groups };
+}
+
+/** Same leaves, setup order. Unknown modes keep the order buildAdminSidebarNav emitted. */
+const SETUP_LEAF_ORDER: Record<string, readonly string[]> = {
+  competition: [
+    "season-setup",
+    "division-ages",
+    "registration",
+    "sports-connect",
+    "teams",
+    "draft",
+    "scores",
+    "scheduler",
+    "assignr",
+    "enrollment-kpi",
+  ],
+  park: ["parks", "game-day-remotes", "facilities", "game-day", "brackets", "alerts"],
+};
+
+export function applySeasonSidebarOrder(
+  nav: AdminSidebarNav,
+  mode: SeasonMode | null | undefined,
+): AdminSidebarNav {
+  if (!isSetupSeasonMode(mode)) return nav;
+  return {
+    ...nav,
+    groups: nav.groups.map((group) => ({
+      ...group,
+      subcategories: group.subcategories.map((sub) => {
+        const order = SETUP_LEAF_ORDER[sub.id];
+        if (!order) return sub;
+        const rank = new Map(order.map((id, index) => [id, index]));
+        const indexed = sub.leaves.map((leaf, index) => ({ leaf, index }));
+        indexed.sort((a, b) => {
+          const aRank = rank.get(a.leaf.id);
+          const bRank = rank.get(b.leaf.id);
+          if (aRank == null && bRank == null) return a.index - b.index;
+          if (aRank == null) return 1;
+          if (bRank == null) return -1;
+          return aRank - bRank;
+        });
+        return { ...sub, leaves: indexed.map((entry) => entry.leaf) };
+      }),
+    })),
+  };
 }

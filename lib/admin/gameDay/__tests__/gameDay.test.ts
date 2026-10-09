@@ -96,6 +96,124 @@ describe("game day landing", () => {
       "/admin?denied=game-day",
     );
   });
+
+  it("sends off season and preseason admins to season setup", () => {
+    for (const seasonMode of ["OFF_SEASON", "PRESEASON"] as const) {
+      assert.equal(
+        pathAfterAdminLogin({
+          nextPath: "/admin?org=gonzales",
+          landsOnGameDay: false,
+          seasonMode,
+        }),
+        "/admin/season-setup?org=gonzales",
+      );
+    }
+    assert.equal(
+      pathAfterAdminLogin({
+        nextPath: "/admin",
+        landsOnGameDay: false,
+        org: "fallball",
+        seasonMode: "PRESEASON",
+      }),
+      "/admin/season-setup?org=fallball",
+    );
+  });
+
+  it("keeps in season and postseason on the dashboard", () => {
+    for (const seasonMode of ["IN_SEASON", "POSTSEASON"] as const) {
+      assert.equal(
+        pathAfterAdminLogin({
+          nextPath: "/admin?org=gonzales",
+          landsOnGameDay: false,
+          seasonMode,
+        }),
+        "/admin?org=gonzales",
+      );
+      assert.equal(
+        pathAfterAdminLogin({
+          nextPath: "/admin",
+          landsOnGameDay: false,
+          seasonMode,
+        }),
+        "/admin",
+      );
+    }
+  });
+
+  it("keeps park directors on game day in the off season", () => {
+    assert.equal(
+      pathAfterAdminLogin({
+        nextPath: "/admin?org=gonzales",
+        landsOnGameDay: true,
+        org: "gonzales",
+        seasonMode: "OFF_SEASON",
+      }),
+      "/admin/game-day?org=gonzales",
+    );
+    assert.equal(
+      pathAfterAdminLogin({
+        nextPath: "/admin",
+        landsOnGameDay: true,
+        org: "fallball",
+        seasonMode: "PRESEASON",
+      }),
+      "/admin/game-day?org=fallball",
+    );
+  });
+
+  it("keeps an explicit destination and all-sites on the requested path", () => {
+    assert.equal(
+      pathAfterAdminLogin({
+        nextPath: "/admin/scores?org=gonzales",
+        landsOnGameDay: false,
+        seasonMode: "OFF_SEASON",
+      }),
+      "/admin/scores?org=gonzales",
+    );
+    assert.equal(
+      pathAfterAdminLogin({
+        nextPath: "/admin?org=all",
+        landsOnGameDay: false,
+        seasonMode: "OFF_SEASON",
+      }),
+      "/admin?org=all",
+    );
+    assert.equal(
+      pathAfterAdminLogin({
+        nextPath: "/admin?org=spring",
+        landsOnGameDay: false,
+        seasonMode: "OFF_SEASON",
+      }),
+      "/admin?org=spring",
+    );
+    assert.equal(
+      pathAfterAdminLogin({
+        nextPath: "/admin",
+        landsOnGameDay: false,
+        seasonMode: "OFF_SEASON",
+      }),
+      "/admin",
+    );
+  });
+
+  it("keeps today's path when season mode is omitted", () => {
+    assert.equal(
+      pathAfterAdminLogin({ nextPath: "/admin?org=gonzales", landsOnGameDay: false }),
+      "/admin?org=gonzales",
+    );
+    assert.equal(
+      pathAfterAdminLogin({ nextPath: "/admin", landsOnGameDay: false, org: "gonzales" }),
+      "/admin",
+    );
+    assert.equal(
+      pathAfterAdminLogin({
+        nextPath: "/admin/scores?org=gonzales",
+        landsOnGameDay: true,
+        org: "gonzales",
+      }),
+      "/admin/scores?org=gonzales",
+    );
+  });
 });
 
 describe("game day parks and tabs", () => {

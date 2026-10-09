@@ -1,4 +1,5 @@
 import type { AdminRole } from "@/lib/auth/adminRoles";
+import { isSetupSeasonMode, type SeasonMode } from "@/lib/season/mode";
 import { isContentOrgId } from "@/lib/siteConfig";
 
 /**
@@ -69,14 +70,42 @@ export function deniedGameDayRedirect(input: {
   return null;
 }
 
+/**
+ * Content org for a bare /admin Season Setup redirect.
+ * `all` and `spring` stay put: all sites has no single mode, and spring still
+ * goes to Gonzales before that league's mode applies. A path with no org uses
+ * the explicit org (league sites). A bare master /admin passes neither.
+ */
+function contentOrgForSeasonHome(input: {
+  nextPath: string;
+  org?: string | null;
+}): string | null {
+  const fromPath = orgFromAdminNext(input.nextPath);
+  if (fromPath === "all" || fromPath === "spring") return null;
+  if (fromPath) return isContentOrgId(fromPath) ? fromPath : null;
+  if (input.org && isContentOrgId(input.org)) return input.org;
+  return null;
+}
+
 /** Where a successful sign-in goes when the caller already knows the landing decision. */
 export function pathAfterAdminLogin(input: {
   nextPath: string;
   landsOnGameDay: boolean;
   /** Pass null when the director has no membership org. Omitted uses the next-path org. */
   org?: string | null;
+  /**
+   * Resolved mode for this visit. Omitted or null keeps today's path
+   * (no Season Setup redirect). An override is just this value.
+   */
+  seasonMode?: SeasonMode | null;
 }): string {
-  if (!input.landsOnGameDay || !isDefaultAdminHome(input.nextPath)) return input.nextPath;
-  const org = input.org === undefined ? orgFromAdminNext(input.nextPath) : input.org;
-  return gameDayHomePath(org);
+  if (!isDefaultAdminHome(input.nextPath)) return input.nextPath;
+  if (input.landsOnGameDay) {
+    const org = input.org === undefined ? orgFromAdminNext(input.nextPath) : input.org;
+    return gameDayHomePath(org);
+  }
+  if (!isSetupSeasonMode(input.seasonMode)) return input.nextPath;
+  const org = contentOrgForSeasonHome(input);
+  if (!org) return input.nextPath;
+  return `/admin/season-setup?org=${encodeURIComponent(org)}`;
 }
