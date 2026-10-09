@@ -1,4 +1,5 @@
 import type { AdminModule } from "@/lib/auth/adminRoles";
+import { isSetupSeasonMode, type SeasonMode } from "@/lib/season/mode";
 
 export const ADMIN_DASHBOARD_CATEGORIES = [
   "people",
@@ -105,6 +106,8 @@ export type AdminDashboardCardDescriptor = {
   comingSoon?: boolean;
   /** Overrides the module catalog order when several cards share a module. */
   sortOrder?: number;
+  /** Renders ahead of the category groups. Off season and preseason only. */
+  lead?: boolean;
 };
 
 export function getAdminDashboardCategory(
@@ -137,10 +140,18 @@ export function sortAdminDashboardCards<T extends AdminDashboardCardDescriptor>(
   return [...cards].sort(compareDashboardCards);
 }
 
+export type AdminDashboardCardGroup<T extends AdminDashboardCardDescriptor> = {
+  category: AdminDashboardCategory;
+  cards: T[];
+  /** Lead cards sit above the category sections without a second heading. */
+  hideHeading?: boolean;
+};
+
 export function groupAdminDashboardCards<T extends AdminDashboardCardDescriptor>(
   cards: T[],
-): Array<{ category: AdminDashboardCategory; cards: T[] }> {
-  const sortedCards = sortAdminDashboardCards(cards);
+): Array<AdminDashboardCardGroup<T>> {
+  const lead = cards.filter((card) => card.lead);
+  const sortedCards = sortAdminDashboardCards(cards.filter((card) => !card.lead));
   const groups = new Map<AdminDashboardCategory, T[]>();
 
   for (const card of sortedCards) {
@@ -152,11 +163,33 @@ export function groupAdminDashboardCards<T extends AdminDashboardCardDescriptor>
     groups.set(card.category, [card]);
   }
 
-  return ADMIN_DASHBOARD_CATEGORY_ORDER.flatMap((category) => {
+  const grouped = ADMIN_DASHBOARD_CATEGORY_ORDER.flatMap((category) => {
     const categoryCards = groups.get(category);
     if (!categoryCards?.length) return [];
     return [{ category, cards: categoryCards }];
   });
+  if (lead.length === 0) return grouped;
+  return [{ category: "competition", cards: lead, hideHeading: true }, ...grouped];
+}
+
+/**
+ * Off season and preseason list Season Setup first. In season, postseason,
+ * an unknown mode, and All Sites keep today's card order.
+ */
+export function orderDashboardCardsForSeason<T extends AdminDashboardCardDescriptor>(
+  cards: readonly T[],
+  input: { seasonMode?: SeasonMode | null; allSites?: boolean },
+): T[] {
+  if (input.allSites || !isSetupSeasonMode(input.seasonMode)) {
+    return cards.map((card) => ({ ...card, lead: undefined }));
+  }
+  const setup: T[] = [];
+  const rest: T[] = [];
+  for (const card of cards) {
+    if (card.module === "SEASON_SETUP") setup.push({ ...card, lead: true });
+    else rest.push({ ...card, lead: undefined });
+  }
+  return [...setup, ...rest];
 }
 
 /** Legacy hub routes. They still redirect; dashboard cards must not link here. */

@@ -1,4 +1,5 @@
 import type { AdminRole } from "@/lib/auth/adminRoles";
+import { isSetupSeasonMode, type SeasonMode } from "@/lib/season/mode";
 import { isContentOrgId } from "@/lib/siteConfig";
 
 /**
@@ -15,10 +16,36 @@ export function landsOnGameDay(input: {
   return held.every((role) => role === "PARK_DIRECTOR");
 }
 
-/** Bare /admin, including an org query, is the dashboard. Any other path is explicit. */
+/** Query that opens the module grid and skips the season-home redirect. */
+export const ADMIN_DASHBOARD_VIEW = "dashboard";
+
+/**
+ * True when this URL asks to stay on the dashboard.
+ * Login and the org switcher omit it, so bare /admin still follows the season.
+ */
+export function isExplicitDashboardView(nextPath: string): boolean {
+  const query = nextPath.split("?")[1];
+  if (!query) return false;
+  return new URLSearchParams(query).get("view") === ADMIN_DASHBOARD_VIEW;
+}
+
+/** Keep org (and any other query) and mark the link as an explicit dashboard open. */
+export function withDashboardView(href: string): string {
+  const [path, query = ""] = href.split("?");
+  const params = new URLSearchParams(query);
+  params.set("view", ADMIN_DASHBOARD_VIEW);
+  const next = params.toString();
+  return next ? `${path}?${next}` : path;
+}
+
+/**
+ * Bare /admin, including an org query, is the season-aware home.
+ * ?view=dashboard is an explicit request for the module grid, so it is not that home.
+ */
 export function isDefaultAdminHome(nextPath: string): boolean {
   const path = (nextPath.split("?")[0] ?? "/admin").replace(/\/+$/, "") || "/";
-  return path === "/admin";
+  if (path !== "/admin") return false;
+  return !isExplicitDashboardView(nextPath);
 }
 
 export function orgFromAdminNext(nextPath: string): string | null {
@@ -69,14 +96,42 @@ export function deniedGameDayRedirect(input: {
   return null;
 }
 
+/**
+ * Content org for a bare /admin Season Setup redirect.
+ * `all` and `spring` stay put: all sites has no single mode, and spring still
+ * goes to Gonzales before that league's mode applies. A path with no org uses
+ * the explicit org (league sites). A bare master /admin passes neither.
+ */
+function contentOrgForSeasonHome(input: {
+  nextPath: string;
+  org?: string | null;
+}): string | null {
+  const fromPath = orgFromAdminNext(input.nextPath);
+  if (fromPath === "all" || fromPath === "spring") return null;
+  if (fromPath) return isContentOrgId(fromPath) ? fromPath : null;
+  if (input.org && isContentOrgId(input.org)) return input.org;
+  return null;
+}
+
 /** Where a successful sign-in goes when the caller already knows the landing decision. */
 export function pathAfterAdminLogin(input: {
   nextPath: string;
   landsOnGameDay: boolean;
   /** Pass null when the director has no membership org. Omitted uses the next-path org. */
   org?: string | null;
+  /**
+   * Resolved mode for this visit. Omitted or null keeps today's path
+   * (no Season Setup redirect). An override is just this value.
+   */
+  seasonMode?: SeasonMode | null;
 }): string {
-  if (!input.landsOnGameDay || !isDefaultAdminHome(input.nextPath)) return input.nextPath;
-  const org = input.org === undefined ? orgFromAdminNext(input.nextPath) : input.org;
-  return gameDayHomePath(org);
+  if (!isDefaultAdminHome(input.nextPath)) return input.nextPath;
+  if (input.landsOnGameDay) {
+    const org = input.org === undefined ? orgFromAdminNext(input.nextPath) : input.org;
+    return gameDayHomePath(org);
+  }
+  if (!isSetupSeasonMode(input.seasonMode)) return input.nextPath;
+  const org = contentOrgForSeasonHome(input);
+  if (!org) return input.nextPath;
+  return `/admin/season-setup?org=${encodeURIComponent(org)}`;
 }

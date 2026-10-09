@@ -177,13 +177,15 @@ export default function AdminDashboardModuleGrid({
           const categoryMeta = ADMIN_DASHBOARD_CATEGORY_META[group.category];
 
           return (
-            <section key={group.category} className="space-y-4">
-              <div className="space-y-1">
-                <h3 className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
-                  {categoryMeta.label}
-                </h3>
-                <p className="text-sm text-zinc-400">{categoryMeta.description}</p>
-              </div>
+            <section key={group.hideHeading ? "lead" : group.category} className="space-y-4">
+              {group.hideHeading ? null : (
+                <div className="space-y-1">
+                  <h3 className="text-[11px] font-semibold uppercase tracking-[0.28em] text-zinc-500">
+                    {categoryMeta.label}
+                  </h3>
+                  <p className="text-sm text-zinc-400">{categoryMeta.description}</p>
+                </div>
+              )}
 
               <div className="grid gap-3 sm:grid-cols-2 sm:gap-4 xl:grid-cols-3">
                 {group.cards.map((card) => (

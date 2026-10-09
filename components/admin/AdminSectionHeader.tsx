@@ -1,6 +1,7 @@
 import Link from "next/link";
 import AdminOrgSwitcher from "@/components/admin/AdminOrgSwitcher";
 import AdminRolePreviewControl from "@/components/admin/AdminRolePreviewControl";
+import { withDashboardView } from "@/lib/admin/gameDay/landing";
 import { isMasterDeployment, type BracketOrgId, type ContentOrgId } from "@/lib/siteConfig";
 
 type AdminSectionHeaderProps = {
@@ -31,11 +32,13 @@ export default function AdminSectionHeader({
   moduleHubLabel = "Module hub",
   springCombined = null,
 }: AdminSectionHeaderProps) {
-  const adminHref = springCombined?.selected
-    ? "/admin?org=gonzales"
-    : currentOrg
-      ? `/admin?org=${currentOrg}`
-      : "/admin";
+  const adminHref = withDashboardView(
+    springCombined?.selected
+      ? "/admin?org=gonzales"
+      : currentOrg
+        ? `/admin?org=${currentOrg}`
+        : "/admin",
+  );
 
   if (isMasterDeployment()) {
     return (

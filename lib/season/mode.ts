@@ -17,6 +17,11 @@ export const SEASON_MODE_LABELS: Record<SeasonMode, string> = {
   POSTSEASON: "Postseason",
 };
 
+/** Off season and preseason use Season Setup as the admin home. */
+export function isSetupSeasonMode(mode: SeasonMode | null | undefined): boolean {
+  return mode === "OFF_SEASON" || mode === "PRESEASON";
+}
+
 export type SeasonModeInput = {
   asOf?: Date;
   /** Inclusive first game day, YYYY-MM-DD. */

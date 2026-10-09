@@ -13,10 +13,13 @@ import { isScoutOperator } from "@/lib/scout/access";
 import { SCOUT_DATA_CHANGED_EVENT } from "@/lib/scout/pageRefresh";
 import { isContentOrgId } from "@/lib/siteConfig";
 import { isCoachingInterestEnabled } from "@/lib/org/capabilities";
+import { isSeasonMode, isSetupSeasonMode, type SeasonMode } from "@/lib/season/mode";
 import { getPrimaryLiveContentOrg } from "@/lib/seasonConfig";
 import {
+  applySeasonSidebarOrder,
   buildAdminSidebarNav,
   sidebarAllowsModule,
+  type AdminSidebarNav,
   type AdminSidebarSubcategory,
 } from "@/lib/admin/sidebarNav";
 import { useAdminSidebar } from "@/components/admin/AdminSidebarProvider";
@@ -28,6 +31,16 @@ type AdminMeResponse = {
 
 function pathKeyOf(href: string): string {
   return href.split("?")[0] ?? href;
+}
+
+function seasonSetupLeafHref(nav: AdminSidebarNav): string | null {
+  for (const group of nav.groups) {
+    for (const sub of group.subcategories) {
+      const leaf = sub.leaves.find((item) => item.id === "season-setup");
+      if (leaf) return leaf.href;
+    }
+  }
+  return null;
 }
 
 export default function AdminSidebar({
@@ -51,6 +64,7 @@ export default function AdminSidebar({
   const [adminRole, setAdminRole] = useState<AdminRole | null>(null);
   const [scoutOperator, setScoutOperator] = useState(scoutNav.operator);
   const [scoutAttentionCount, setScoutAttentionCount] = useState(scoutNav.attentionCount);
+  const [seasonMode, setSeasonMode] = useState<SeasonMode | null>(null);
 
   const currentOrgParam = searchParams.get("org");
   const springView = currentOrgParam === "spring";
@@ -106,6 +120,38 @@ export default function AdminSidebar({
     };
   }, [scoutOperator]);
 
+  useEffect(() => {
+    if (!masterDeployment || springView || currentOrgParam === "all") {
+      setSeasonMode(null);
+      return;
+    }
+    const org =
+      currentOrgParam && isContentOrgId(currentOrgParam)
+        ? currentOrgParam
+        : !currentOrgParam
+          ? getPrimaryLiveContentOrg()
+          : null;
+    if (!org || !isContentOrgId(org)) {
+      setSeasonMode(null);
+      return;
+    }
+
+    let active = true;
+    setSeasonMode(null);
+    fetch(`/api/admin/season-mode?org=${encodeURIComponent(org)}`, { cache: "no-store" })
+      .then((response) => (response.ok ? response.json() : null))
+      .then((json: { mode?: unknown } | null) => {
+        if (!active) return;
+        setSeasonMode(json && isSeasonMode(json.mode) ? json.mode : null);
+      })
+      .catch(() => {
+        if (active) setSeasonMode(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [masterDeployment, springView, currentOrgParam]);
+
   if (collapsed) {
     return (
       <button
@@ -137,7 +183,12 @@ export default function AdminSidebar({
   const canCoachingInterest =
     allowModule("TEAMS") && isCoachingInterestEnabled(currentMasterOrg ?? "gonzales");
 
-  const nav = buildAdminSidebarNav(allowModule, canCoachingInterest, orgSuffix, masterDeployment);
+  const nav = applySeasonSidebarOrder(
+    buildAdminSidebarNav(allowModule, canCoachingInterest, orgSuffix, masterDeployment),
+    seasonMode,
+  );
+  const setupHome = isSetupSeasonMode(seasonMode);
+  const seasonSetupHref = setupHome ? seasonSetupLeafHref(nav) : null;
 
   function isLeafActive(href: string) {
     return pathname === pathKeyOf(href);
@@ -166,6 +217,18 @@ export default function AdminSidebar({
           </svg>
         </button>
         <nav className="px-3 py-4 text-sm">
+        {seasonSetupHref ? (
+          <Link
+            href={seasonSetupHref}
+            className={`mb-1 block rounded-md px-3 py-2 font-semibold transition-colors ${
+              pathname === "/admin/season-setup"
+                ? "bg-red-950/40 text-red-200"
+                : "text-zinc-200 hover:bg-red-950/25 hover:text-red-100"
+            }`}
+          >
+            Season Setup
+          </Link>
+        ) : null}
         <Link
           href={nav.dashboardHref}
           className={`mb-3 block rounded-md px-3 py-2 font-semibold transition-colors ${
