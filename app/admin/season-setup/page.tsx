@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import AdminSeasonSetupChecklist from "@/components/admin/AdminSeasonSetupChecklist";
 import AdminSectionHeader from "@/components/admin/AdminSectionHeader";
 import FallBallUmpirePayScheduleEditor from "@/components/admin/FallBallUmpirePayScheduleEditor";
+import SeasonModeOverrideControl from "@/components/admin/SeasonModeOverrideControl";
 import SpringRegistrationSummary from "@/components/admin/SpringRegistrationSummary";
 import { loadSpringRegistrationSummary } from "@/lib/admin/springCombined/loadRegistration";
 import {
@@ -17,6 +18,7 @@ import {
 import { canAccessAdminModule, hasAdminRoleAtLeast, type AdminRole } from "@/lib/auth/adminRoles";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import { loadSeasonMode } from "@/lib/season/loadMode";
 import { getLiveContentOrgs, getSeasonConfigForOrg, isSeasonLiveForOrg } from "@/lib/seasonConfig";
 import { getOrgDisplayName, getSiteConfig, isMasterDeployment, resolveAdminTargetOrg } from "@/lib/siteConfig";
 
@@ -145,6 +147,7 @@ export default async function SeasonSetupPage({
 
   const season = getSeasonConfigForOrg(currentOrg);
   const seasonIsLive = isSeasonLiveForOrg(currentOrg);
+  const seasonMode = adminUser.isMaster ? await loadSeasonMode(currentOrg) : null;
 
   return (
     <main className="min-h-screen bg-zinc-950 py-10 text-white sm:py-14">
@@ -178,6 +181,12 @@ export default async function SeasonSetupPage({
             )}
           </p>
         </div>
+
+        {seasonMode ? (
+          <div className="mb-6">
+            <SeasonModeOverrideControl initial={seasonMode} />
+          </div>
+        ) : null}
 
         {canAccessAdminModule(role, "DIVISION_AGES") ? (
           <Link

@@ -2649,9 +2649,17 @@ model SeasonSetupChecklistItem {
   @@index([organizationId, seasonYear])
 }
 
+/// Master-admin season phase. Null on SeasonOrgSettings means the resolver computes it.
+enum SeasonMode {
+  OFF_SEASON
+  PRESEASON
+  IN_SEASON
+  POSTSEASON
+}
+
 /// Per-org season knobs used by parish reports (registration fee cap, etc.).
 model SeasonOrgSettings {
-  id                           String   @id @default(cuid())
+  id                           String      @id @default(cuid())
   organizationId               String
   seasonYear                   Int
   parishRegistrationFeeCents   Int?
@@ -2659,8 +2667,12 @@ model SeasonOrgSettings {
   umpirePayJson                Json?
   /// Saved division-age table for this org and season. Null uses league or built-in defaults.
   divisionAgesJson             Json?
-  createdAt                    DateTime @default(now())
-  updatedAt                    DateTime @updatedAt
+  /// Null: resolver computes the mode. Set only by a master admin.
+  seasonModeOverride           SeasonMode?
+  seasonModeOverrideAt         DateTime?
+  seasonModeOverrideByAdminId  String?
+  createdAt                    DateTime    @default(now())
+  updatedAt                    DateTime    @updatedAt
 
   @@unique([organizationId, seasonYear])
   @@index([organizationId, seasonYear])
