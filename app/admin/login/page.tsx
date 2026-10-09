@@ -75,22 +75,22 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
             {!masterMode ? (
               <Link
                 href="/news"
-                className="text-brand-gold hover:text-brand-gold/80"
+                className="whitespace-nowrap text-brand-gold hover:text-brand-gold/80"
               >
                 Back to News
               </Link>
             ) : (
               <Link
                 href="/"
-                className="text-brand-gold hover:text-brand-gold/80"
+                className="whitespace-nowrap text-brand-gold hover:text-brand-gold/80"
               >
                 Back to Admin Home
               </Link>
             )}
             <DesignedByBrand
-              className="text-xs leading-none"
+              className="shrink-0 whitespace-nowrap text-xs leading-none"
               labelClassName="text-zinc-500"
-              linkClassName="font-medium text-brand-gold transition-colors hover:text-brand-gold/80"
+              linkClassName="inline-flex items-center whitespace-nowrap font-medium text-brand-gold transition-colors hover:text-brand-gold/80"
             />
           </div>
         </div>
