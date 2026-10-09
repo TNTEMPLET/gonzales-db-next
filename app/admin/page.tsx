@@ -67,6 +67,7 @@ import {
   type OperationsView,
 } from "@/lib/admin/dashboard/loadInSeasonBoard";
 import { seasonDashboardLinks, type SeasonDashboardLinks } from "@/lib/admin/dashboard/seasonLinks";
+import { canWriteRainoutByOrgFromRoles } from "@/lib/rainout/dashboardPreview";
 
 export function generateMetadata() {
   const site = getSiteConfig();
@@ -144,6 +145,13 @@ export default async function AdminDashboardPage({
   const adminRole: AdminRole = currentOrg
     ? (roleByOrg[currentOrg] ?? (adminUser.isMaster ? "MASTER_ADMIN" : "PARK_DIRECTOR"))
     : (adminUser.isMaster ? "MASTER_ADMIN" : (Object.values(roleByOrg).find((r): r is AdminRole => !!r) ?? "PARK_DIRECTOR"));
+  // Signed-in roles only. View by role is session storage, so the Game Day
+  // panel replaces this map in the UI. Rainout actions keep using this role.
+  const canWriteRainoutByOrg = canWriteRainoutByOrgFromRoles({
+    orgs: CONTENT_ORGS,
+    isMaster: adminUser.isMaster,
+    roleByOrg,
+  });
 
   const allowRolePreview = hasAdminRoleAtLeast(adminRole, "ADMIN");
   const communicationsEnabled = isCommunicationsModuleEnabled();
@@ -560,6 +568,8 @@ export default async function AdminDashboardPage({
             operationsByOrg={operationsByOrg}
             linksByOrg={seasonLinks}
             financeByOrg={seasonFinance}
+            canWriteRainoutByOrg={canWriteRainoutByOrg}
+            allowRolePreview={allowRolePreview}
             district={inSeason.district}
             districtHref={
               allSitesRequested && adminUser.isMaster ? "/admin/reports/tournament-income" : null
@@ -568,7 +578,12 @@ export default async function AdminDashboardPage({
         ) : parkDirectorGameDay.length > 0 ? (
           <div className="mb-8 space-y-4">
             {parkDirectorGameDay.map((status) => (
-              <GameDayPanel key={status.organizationId} status={status} />
+              <GameDayPanel
+                key={status.organizationId}
+                status={status}
+                canWrite={canWriteRainoutByOrg[status.organizationId] === true}
+                allowRolePreview={allowRolePreview}
+              />
             ))}
           </div>
         ) : null}

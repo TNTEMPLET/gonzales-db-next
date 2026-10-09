@@ -1,9 +1,54 @@
 import { NextRequest, NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { getAdminUserFromRequest } from "@/lib/auth/adminSession";
+import { getEffectiveAdminRoleForOrg } from "@/lib/auth/effectiveAdminRole";
+import { resolveAuthOrganizationId } from "@/lib/auth/orgAdminContext";
 import { ensureAdminModule } from "@/lib/news/auth";
 import { setOrgRainout } from "@/lib/rainout/apply";
 import { revalidateRainoutPaths } from "@/lib/rainout/revalidate";
-import { isContentOrgId } from "@/lib/siteConfig";
+import { crossLeagueRainoutActor, decideRainoutWrite, type RainoutActor } from "@/lib/rainout/writeAccess";
+import { isContentOrgId, type ContentOrgId } from "@/lib/siteConfig";
+
+function rainoutDenied(message: string, status: 403) {
+  return NextResponse.json({ error: message }, { status });
+}
+
+/** Session plus the park-alert role decision for one league. */
+async function parkAlertWriter(request: NextRequest, organizationId: ContentOrgId) {
+  const adminUser = await getAdminUserFromRequest(request);
+  if (!adminUser) {
+    return { ok: false as const, response: NextResponse.json({ error: "Unauthorized" }, { status: 401 }) };
+  }
+  const role = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, organizationId);
+  const actor: RainoutActor = { isMaster: adminUser.isMaster, role };
+  const decision = decideRainoutWrite({ ...actor, path: "park-alerts" });
+  if (!decision.allowed) {
+    return { ok: false as const, response: rainoutDenied(decision.message, decision.status) };
+  }
+  return { ok: true as const, adminUser, actor };
+}
+
+/**
+ * Same league keeps the auth-org actor. A different league is judged on that
+ * league's role, and the write uses that actor.
+ */
+async function actorForRainoutLeague(
+  adminUser: { id: string; isMaster: boolean },
+  authOrg: ContentOrgId,
+  targetOrg: ContentOrgId,
+  authActor: RainoutActor,
+) {
+  if (targetOrg === authOrg) return { ok: true as const, actor: authActor };
+  const targetRole = await getEffectiveAdminRoleForOrg(adminUser.id, adminUser.isMaster, targetOrg);
+  const { actor, decision } = crossLeagueRainoutActor({
+    isMaster: adminUser.isMaster,
+    targetRole,
+  });
+  if (!decision.allowed) {
+    return { ok: false as const, response: rainoutDenied(decision.message, decision.status) };
+  }
+  return { ok: true as const, actor };
+}
 
 export async function GET(request: NextRequest) {
   const auth = await ensureAdminModule(request, "PARK_ALERTS");
@@ -24,6 +69,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const authOrg = resolveAuthOrganizationId(request);
+  const writer = await parkAlertWriter(request, authOrg);
+  if (!writer.ok) return writer.response;
+
   const auth = await ensureAdminModule(request, "PARK_ALERTS");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message ?? "Unauthorized" }, { status: auth.status });
@@ -39,6 +88,15 @@ export async function POST(request: NextRequest) {
   if (!body?.organizationId || !isContentOrgId(body.organizationId)) {
     return NextResponse.json({ error: "Invalid organizationId" }, { status: 400 });
   }
+
+  const targetWrite = await actorForRainoutLeague(
+    writer.adminUser,
+    authOrg,
+    body.organizationId,
+    writer.actor,
+  );
+  if (!targetWrite.ok) return targetWrite.response;
+
   const expiresAt = body.expiresAt ? new Date(body.expiresAt) : null;
   if (!expiresAt || Number.isNaN(expiresAt.getTime())) {
     return NextResponse.json({ error: "Invalid expiresAt" }, { status: 400 });
@@ -53,15 +111,21 @@ export async function POST(request: NextRequest) {
     parks,
     expiresAt,
     actorAdminId: auth.admin.id,
+    actor: targetWrite.actor,
+    path: "park-alerts",
   });
   if (!result.ok) {
-    return NextResponse.json({ error: result.error }, { status: 400 });
+    return NextResponse.json({ error: result.error }, { status: result.status ?? 400 });
   }
 
   return NextResponse.json({ data: result.alert, summary: result.summary }, { status: 201 });
 }
 
 export async function DELETE(request: NextRequest) {
+  const authOrg = resolveAuthOrganizationId(request);
+  const writer = await parkAlertWriter(request, authOrg);
+  if (!writer.ok) return writer.response;
+
   const auth = await ensureAdminModule(request, "PARK_ALERTS");
   if (!auth.ok) {
     return NextResponse.json({ error: auth.message ?? "Unauthorized" }, { status: auth.status });
@@ -76,6 +140,16 @@ export async function DELETE(request: NextRequest) {
   if (!existing) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
+  if (!isContentOrgId(existing.organizationId)) {
+    return NextResponse.json({ error: "Unknown league." }, { status: 400 });
+  }
+  const targetClear = await actorForRainoutLeague(
+    writer.adminUser,
+    authOrg,
+    existing.organizationId,
+    writer.actor,
+  );
+  if (!targetClear.ok) return targetClear.response;
 
   await prisma.orgAlert.delete({ where: { id } });
   revalidateRainoutPaths();
