@@ -71,7 +71,7 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
 
           <AdminLoginForm nextPath={nextPath} initialError={loginError} />
 
-          <div className="mt-6 pt-4 border-t border-zinc-800 text-sm">
+          <div className="mt-6 flex flex-col items-center gap-3 border-t border-zinc-800 pt-4 text-sm sm:flex-row sm:justify-between">
             {!masterMode ? (
               <Link
                 href="/news"
@@ -88,7 +88,7 @@ export default async function AdminLoginPage({ searchParams }: LoginPageProps) {
               </Link>
             )}
             <DesignedByBrand
-              className="mt-4 text-xs"
+              className="text-xs leading-none"
               labelClassName="text-zinc-500"
               linkClassName="font-medium text-brand-gold transition-colors hover:text-brand-gold/80"
             />
