@@ -5,6 +5,7 @@
  * second, driftable copy of the same grouping.
  */
 import { ADMIN_DASHBOARD_CATEGORY_META } from "@/lib/admin/dashboardModules";
+import { withDashboardView } from "@/lib/admin/gameDay/landing";
 import {
   getMinimumRoleForModule,
   hasAdminRoleAtLeast,
@@ -253,7 +254,7 @@ export function buildAdminSidebarNav(
     { id: "program", label: "Program & Commerce", subcategories: withLeaves([publishing, orders, allstar]) },
   ].filter((g) => g.subcategories.length > 0);
 
-  return { dashboardHref: leafHref("/admin", orgSuffix), groups };
+  return { dashboardHref: withDashboardView(leafHref("/admin", orgSuffix)), groups };
 }
 
 /** Same leaves, setup order. Unknown modes keep the order buildAdminSidebarNav emitted. */

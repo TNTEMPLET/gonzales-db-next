@@ -55,7 +55,7 @@ import ParkDirectorMenu from "@/components/admin/dashboard/ParkDirectorMenu";
 import ParkDirectorScope from "@/components/admin/ParkDirectorScope";
 import { loadDirectorParks, loadParkDirectorUmpirePay } from "@/lib/admin/dashboard/parkDirectorPay";
 import type { DayParkUmpirePay } from "@/lib/admin/umpirePayRows";
-import { directorGameDayOrg, pathAfterAdminLogin } from "@/lib/admin/gameDay/landing";
+import { directorGameDayOrg, pathAfterAdminLogin, withDashboardView } from "@/lib/admin/gameDay/landing";
 import { gameDayHomePath, gameDayMembershipOrgs, viewerLandsOnGameDay } from "@/lib/admin/gameDay/session";
 import { loadSeasonMode } from "@/lib/season/loadMode";
 import type { SeasonMode } from "@/lib/season/mode";
@@ -84,9 +84,9 @@ export function generateMetadata() {
 export default async function AdminDashboardPage({
   searchParams,
 }: {
-  searchParams: Promise<{ org?: string; day?: string; park?: string }>;
+  searchParams: Promise<{ org?: string; day?: string; park?: string; view?: string }>;
 }) {
-  const { org, day, park } = await searchParams;
+  const { org, day, park, view } = await searchParams;
   const masterMode = isMasterDeployment();
   const requestedOrg =
     org && CONTENT_ORGS.includes(org as ContentOrgId)
@@ -125,9 +125,13 @@ export default async function AdminDashboardPage({
   // Bare /admin on master used to land on All Sites, which forced a click
   // into the live org every visit. Redirect onto that org so the switcher,
   // sidebar, and module links share the same target. Explicit ?org=all
-  // still opens the aggregate view.
+  // still opens the aggregate view. ?view=dashboard survives this hop so
+  // the next request can stay on the module grid.
   if (masterMode && !requestedOrg && !allSitesRequested) {
-    redirect(`/admin?org=${getPrimaryLiveContentOrg()}`);
+    const primary = getPrimaryLiveContentOrg();
+    redirect(
+      view === "dashboard" ? withDashboardView(`/admin?org=${primary}`) : `/admin?org=${primary}`,
+    );
   }
 
   const currentOrg = masterMode ? requestedOrg : getDefaultContentOrg();
@@ -145,7 +149,8 @@ export default async function AdminDashboardPage({
         err instanceof Error ? err.message : err,
       );
     }
-    const here = `/admin?org=${currentOrg}`;
+    const here =
+      view === "dashboard" ? withDashboardView(`/admin?org=${currentOrg}`) : `/admin?org=${currentOrg}`;
     const destination = pathAfterAdminLogin({
       nextPath: here,
       landsOnGameDay: false,

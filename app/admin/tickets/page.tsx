@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 
 import ScoutTicketsClient from "@/components/admin/ScoutTicketsClient";
+import { withDashboardView } from "@/lib/admin/gameDay/landing";
 import { ADMIN_SESSION_COOKIE, getAdminUserFromCookieToken } from "@/lib/auth/adminSession";
 import { scoutPageAccess } from "@/lib/scout/access";
 import { loadScoutPage } from "@/lib/scout/queries";
@@ -61,7 +62,7 @@ export default async function ScoutTicketsPage({
               Board mail from the inbox, checked about every 15 minutes. Subject, sender, and a short snippet only.
             </p>
           </div>
-          <Link href={`/admin?org=${org}`} className="text-sm text-zinc-400 hover:text-red-200">
+          <Link href={withDashboardView(`/admin?org=${org}`)} className="text-sm text-zinc-400 hover:text-red-200">
             Back to dashboard
           </Link>
         </div>

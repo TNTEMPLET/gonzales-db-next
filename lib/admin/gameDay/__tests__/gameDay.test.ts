@@ -196,6 +196,30 @@ describe("game day landing", () => {
     );
   });
 
+  it("keeps an explicit dashboard view in every season mode", () => {
+    assert.equal(isDefaultAdminHome("/admin?org=gonzales&view=dashboard"), false);
+    assert.equal(isDefaultAdminHome("/admin?view=dashboard"), false);
+    assert.equal(isDefaultAdminHome("/admin?org=gonzales&view=other"), true);
+    for (const seasonMode of ["OFF_SEASON", "PRESEASON", "IN_SEASON", "POSTSEASON"] as const) {
+      assert.equal(
+        pathAfterAdminLogin({
+          nextPath: "/admin?org=gonzales&view=dashboard",
+          landsOnGameDay: false,
+          seasonMode,
+        }),
+        "/admin?org=gonzales&view=dashboard",
+      );
+      assert.equal(
+        pathAfterAdminLogin({
+          nextPath: "/admin?view=dashboard&org=ascension",
+          landsOnGameDay: false,
+          seasonMode,
+        }),
+        "/admin?view=dashboard&org=ascension",
+      );
+    }
+  });
+
   it("keeps today's path when season mode is omitted", () => {
     assert.equal(
       pathAfterAdminLogin({ nextPath: "/admin?org=gonzales", landsOnGameDay: false }),

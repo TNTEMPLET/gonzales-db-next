@@ -33,6 +33,13 @@ function leafHrefs(role: AdminRole, ordersModuleEnabled: boolean, masterDeployme
 }
 
 describe("sidebar job leaves", () => {
+  it("opens the dashboard from the sidebar without taking the season-home redirect", () => {
+    const nav = buildAdminSidebarNav(() => true, false, "?org=gonzales", true);
+    assert.equal(nav.dashboardHref, "/admin?org=gonzales&view=dashboard");
+    const spring = buildAdminSidebarNav(() => true, false, "?org=spring", true);
+    assert.equal(spring.dashboardHref, "/admin?org=gonzales&view=dashboard");
+  });
+
   it("hides orders, surveys, scheduler, and Sports Connect from a park director", () => {
     const hrefs = leafHrefs("PARK_DIRECTOR", true);
     for (const path of [
